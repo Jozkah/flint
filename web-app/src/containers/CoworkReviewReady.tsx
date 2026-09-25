@@ -26,22 +26,20 @@ export function CoworkReviewReady({
     <section
       aria-label={t('common:coworkReview.ready', { count: fileCount })}
       data-testid="cowork-review-ready"
-      className="my-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2.5"
+      className="my-2 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
     >
-      <FileDiff className="size-4 shrink-0 text-ink-2" aria-hidden />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm font-medium text-foreground">
-          {t('common:coworkReview.ready', { count: fileCount })}
-        </span>
-        <span className="font-mono text-xs tabular-nums">
-          <span className="text-success">+{additions}</span>{' '}
-          <span className="text-destructive">-{deletions}</span>
-        </span>
-      </div>
+      <FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />
+      <span className="font-semibold text-foreground">
+        {t('common:coworkReview.ready', { count: fileCount })}
+      </span>
+      <span className="flex-1 font-mono text-[10.5px] tabular-nums">
+        <span className="text-diff-add">+{additions}</span>{' '}
+        <span className="text-diff-del">−{deletions}</span>
+      </span>
       <Button
         variant="outline"
         size="sm"
-        className="pointer-coarse:h-11"
+        className="h-7 pointer-coarse:h-11"
         onClick={onReview}
         data-testid="cowork-review-ready-open"
       >

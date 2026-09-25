@@ -289,7 +289,7 @@ export function CoworkTimelinePanel({
     <CoworkSidePanel
       title={t('common:timeline.title')}
       summary={
-        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+        <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
           {t('common:timeline.count', { count: rows.length })}
         </span>
       }
@@ -300,7 +300,7 @@ export function CoworkTimelinePanel({
         <div
           role="group"
           aria-label={t('common:timeline.filters')}
-          className="flex flex-wrap gap-1 border-b px-2 py-1.5"
+          className="flex flex-wrap gap-1 px-3 pt-2.5 pb-2"
         >
           {TIMELINE_CATEGORIES.map((c) => (
             <button
@@ -317,16 +317,32 @@ export function CoworkTimelinePanel({
                 })
               }
               className={cn(
-                'rounded-md border px-1.5 py-0.5 text-[11px]',
-                enabled.has(c) ? 'bg-muted text-foreground' : 'text-muted-foreground line-through'
+                'h-6 rounded-md border-[0.8px] border-border px-2 text-[11.5px] text-secondary-foreground transition-[opacity,background-color] duration-150 hover:bg-hover-row',
+                !enabled.has(c) && 'line-through opacity-55'
               )}
             >
-              {t(`common:timeline.category.${c}`)} {counts[c]}
+              {t(`common:timeline.category.${c}`)}{' '}
+              <span className="text-subtle-foreground">{counts[c]}</span>
             </button>
           ))}
         </div>
-        <div className="flex items-center justify-between border-b px-2 py-1 text-[11px] text-muted-foreground">
-          <span aria-live="polite" data-testid="timeline-live-state">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-dashed border-border px-3 pb-2 text-[11px] text-muted-foreground">
+          <span
+            aria-live="polite"
+            data-testid="timeline-live-state"
+            className="mr-auto inline-flex h-[22px] items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground"
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'relative size-1.5 rounded-full',
+                following && !replaying ? 'bg-success' : 'bg-subtle-foreground'
+              )}
+            >
+              {following && !replaying ? (
+                <span className="absolute inset-0 rounded-full bg-success motion-safe:animate-ping" />
+              ) : null}
+            </span>
             {replaying
               ? t('common:timeline.replay.replaying')
               : following
@@ -339,7 +355,7 @@ export function CoworkTimelinePanel({
               data-testid="timeline-replay"
               disabled={running}
               title={running ? t('common:timeline.replay.whileRunning') : undefined}
-              className="rounded-md border px-1.5 py-0.5 text-foreground disabled:opacity-50"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => void openRun(null)}
             >
               {t('common:timeline.replay.start')}
@@ -349,7 +365,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-replay-exit"
-              className="rounded-md border px-1.5 py-0.5 text-foreground"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={exitReplay}
             >
               {t('common:timeline.replay.exit')}
@@ -359,7 +375,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-follow"
-              className="rounded-md border px-1.5 py-0.5 text-foreground"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => setFollowing(true)}
             >
               {t('common:timeline.followLive')}
@@ -369,7 +385,7 @@ export function CoworkTimelinePanel({
             <button
               type="button"
               data-testid="timeline-unlink"
-              className="rounded-md border px-1.5 py-0.5"
+              className="inline-flex h-6 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-[11.5px] font-medium text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-50 disabled:hover:shadow-none"
               onClick={() => setLinked(null)}
             >
               {t('common:timeline.clearLink')}
@@ -416,7 +432,7 @@ export function CoworkTimelinePanel({
           tabIndex={-1}
           onScroll={onScroll}
           onKeyDown={onKeyDown}
-          className="min-h-0 flex-1 overflow-y-auto"
+          className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]"
           data-testid="timeline-list"
           data-virtual={virtual}
         >
@@ -473,12 +489,13 @@ function ReplayControls({
     e.preventDefault()
     onStep(to)
   }
-  const button = 'rounded-md border px-1.5 py-0.5 text-foreground disabled:opacity-40'
+  const button =
+    'grid size-6 place-items-center rounded-md border-[0.8px] border-border bg-card text-secondary-foreground transition-[box-shadow,color] hover:text-foreground hover:shadow-lift disabled:opacity-40 disabled:hover:shadow-none'
   return (
     <div
       role="group"
       aria-label={t('common:timeline.replay.controls')}
-      className="space-y-1 border-b px-2 py-1.5 text-[11px]"
+      className="space-y-1.5 border-b border-dashed border-border px-3 py-2 text-[11px]"
       data-testid="timeline-replay-controls"
       data-run={replay.recording.run}
       data-step={replay.step}
@@ -491,7 +508,7 @@ function ReplayControls({
           data-testid="timeline-replay-run"
           value={replay.recording.run}
           onChange={(e) => onRun(e.target.value)}
-          className="w-full rounded-md border bg-transparent px-1 py-0.5"
+          className="h-7 w-full rounded-lg border-[0.8px] border-input bg-card px-2 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           {replay.runs.map((r) => (
             <option key={r.run} value={r.run}>
@@ -615,24 +632,24 @@ function TimelineItem({
       data-current={current}
       aria-current={current ? 'step' : undefined}
       className={cn(
-        'border-b border-border',
+        'border-b border-dashed border-border transition-colors',
         // Linked is a selection: neutral fill and the 2px accent edge.
-        linked && 'bg-accent shadow-[inset_2px_0_0_var(--brand-fill)]',
+        linked && 'bg-accent shadow-[inset_2px_0_0_var(--primary)]',
         current && 'bg-warning-tint'
       )}
     >
-      <div className="flex items-start gap-1 px-2 py-1.5">
+      <div className="flex items-center gap-2.5 px-3 py-2">
         <button
           type="button"
           data-row-toggle
           aria-expanded={open}
           onClick={onToggle}
-          className="flex min-w-0 flex-1 items-start gap-2 text-left"
+          className="flex min-w-0 flex-1 items-start gap-2.5 rounded-sm text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
           <span className="pt-0.5">{STATUS_ICON[row.status]}</span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-xs font-medium">{row.title}</span>
-            <span className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] text-muted-foreground">
+            <span className="block truncate font-mono text-xs font-medium">{row.title}</span>
+            <span className="mt-0.5 flex flex-wrap gap-x-1.5 text-[11.5px] text-muted-foreground">
               <span data-testid="timeline-row-status">{status}</span>
               <span>{t(`common:timeline.category.${row.primary}`)}</span>
               <span className="font-mono tabular-nums">{time(row.at)}</span>
@@ -648,7 +665,7 @@ function TimelineItem({
                 </span>
               )}
               {row.change && (
-                <span className="font-mono tabular-nums" data-testid="timeline-row-counts">
+                <span className="font-mono tabular-nums text-diff-add" data-testid="timeline-row-counts">
                   +{row.change.added ?? 0} −{row.change.removed ?? 0}
                 </span>
               )}
@@ -658,7 +675,10 @@ function TimelineItem({
           <ChevronDown
             size={12}
             aria-hidden
-            className={cn('mt-1 shrink-0 transition-transform', !open && '-rotate-90')}
+            className={cn(
+              'mt-1 shrink-0 text-muted-foreground transition-transform duration-200',
+              !open && '-rotate-90'
+            )}
           />
         </button>
         {row.invocation && (
@@ -668,7 +688,7 @@ function TimelineItem({
             aria-pressed={linked}
             title={t('common:timeline.linkHint')}
             onClick={() => onLink(row.invocation!)}
-            className="shrink-0 rounded-md border px-1 font-mono text-[10px] text-muted-foreground"
+            className="inline-flex h-5 shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-1.5 font-mono text-[10.5px] text-secondary-foreground transition-colors hover:text-foreground aria-pressed:bg-accent aria-pressed:text-foreground"
           >
             {row.invocation.slice(-8)}
           </button>
@@ -682,7 +702,7 @@ function TimelineItem({
 function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: string }) {
   const { t } = useTranslation()
   return (
-    <div className="space-y-1.5 px-3 pb-2 text-[11px]" data-testid="timeline-detail">
+    <div className="space-y-1.5 px-3 pb-2.5 pl-9 text-[11px] motion-safe:animate-tree-in" data-testid="timeline-detail">
       <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-muted-foreground">
         {row.call && (
           <>
@@ -779,7 +799,7 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
       {row.input && (
         <details>
           <summary>{t('common:timeline.input')}</summary>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-1.5">
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg p-2 font-mono [scrollbar-width:thin]">
             {row.input}
           </pre>
         </details>
@@ -790,7 +810,7 @@ function TimelineDetail({ row, sessionId }: { row: TimelineRow; sessionId: strin
             {t('common:timeline.output')}
             {row.outputTruncated ? ` (${t('common:timeline.truncated')})` : ''}
           </summary>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted p-1.5">
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-code-bg p-2 font-mono [scrollbar-width:thin]">
             {row.output}
           </pre>
         </details>

@@ -63,11 +63,11 @@ export function CoworkEventExport({
 
   return (
     <section
-      className="flex flex-col gap-2 rounded-md border border-border p-2 text-xs"
+      className="flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card p-3 text-xs"
       aria-label="Export this session's events"
       data-testid="event-export"
     >
-      <p className="font-medium text-ink-2">Session events</p>
+      <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">Session events</p>
       <label className="flex items-start gap-2">
         <input
           type="checkbox"
@@ -104,7 +104,7 @@ export function CoworkEventExport({
         </Button>
       </div>
       {exported ? (
-        <p className="break-all text-ink-2" data-testid="event-export-path" data-count={exported.count} data-metadata-only={String(exported.metadataOnly)}>
+        <p className="break-all text-fg-2" data-testid="event-export-path" data-count={exported.count} data-metadata-only={String(exported.metadataOnly)}>
           {exported.count} event(s){exported.metadataOnly ? ', metadata only,' : ', with content,'} written to {exported.path}
         </p>
       ) : null}

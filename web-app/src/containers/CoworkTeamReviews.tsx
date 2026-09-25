@@ -81,7 +81,7 @@ function ChildRow({
 
   return (
     <li
-      className="rounded-md border border-border p-2"
+      className="rounded-[10px] border-[0.8px] border-border bg-card p-2.5"
       data-testid="team-child"
       data-task={view.taskId}
       data-state={view.state}
@@ -98,7 +98,7 @@ function ChildRow({
         </WorkStatus>
         {proposal ? (
           <span
-            className="rounded-md bg-sunken px-1 text-ink-2"
+            className="inline-flex h-[18px] items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[10.5px] text-secondary-foreground"
             data-testid="team-child-proposal"
           >
             {proposal.state === 'pending'
@@ -110,10 +110,10 @@ function ChildRow({
                   : 'Rejected'}
           </span>
         ) : null}
-        <span className="ml-auto font-mono text-success">+{adds}</span>
-        <span className="font-mono text-destructive">-{dels}</span>
+        <span className="ml-auto font-mono font-medium text-diff-add">+{adds}</span>
+        <span className="font-mono font-medium text-diff-del">-{dels}</span>
       </div>
-      <p className="mt-1 line-clamp-2 text-[11px] text-ink-2">
+      <p className="mt-1 line-clamp-2 text-[11px] text-fg-2">
         {view.description}
       </p>
       <p
@@ -154,8 +154,8 @@ function ChildRow({
             >
               <span className="min-w-0 flex-1 truncate">{f.path}</span>
               <span className="text-muted-foreground">{f.change}</span>
-              <span className="text-success">+{f.additions}</span>
-              <span className="text-destructive">-{f.deletions}</span>
+              <span className="text-diff-add">+{f.additions}</span>
+              <span className="text-diff-del">-{f.deletions}</span>
             </li>
           ))}
         </ul>
@@ -237,13 +237,13 @@ export function CoworkTeamReviews({
   if (views.length === 0) return null
   return (
     <section
-      className="mb-2 rounded-md border border-border p-2"
+      className="mx-3 mb-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] p-3 motion-safe:animate-rise-in"
       aria-label="Work from team tasks"
       data-testid="team-reviews"
     >
       <div className="flex items-center gap-2">
         <Users size={14} className="text-muted-foreground" />
-        <p className="flex-1 text-xs font-medium text-ink-2">
+        <p className="flex-1 text-[12.5px] font-medium text-foreground">
           Team tasks that worked in checkouts of their own. Nothing reaches
           your folder until you apply it.
         </p>

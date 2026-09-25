@@ -50,11 +50,11 @@ export function CoworkSessionDetails({
         <header className="flex flex-col gap-1">
           <h2
             id="cowork-session-details-heading"
-            className="text-base font-medium text-foreground"
+            className="text-[15px] font-semibold text-foreground"
           >
             {t('common:sessionDetails.title')}
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[13px] leading-[1.45] text-muted-foreground">
             {summary || t('common:sessionDetails.description')}
           </p>
         </header>
@@ -84,10 +84,10 @@ export function CoworkSessionDetails({
               : t('common:sessionDetails.title')
           }
         >
-          <Info size={18} />
+          <Info size={16} />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[80dvh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[80dvh] max-w-[680px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t('common:sessionDetails.title')}</DialogTitle>
           <DialogDescription>

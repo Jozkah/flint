@@ -31,19 +31,20 @@ import type { CoworkGitState } from '@/hooks/useCoworkGitStatus'
 
 const SCOPES: GitScope[] = ['working', 'staged', 'all']
 
-/** Colour a status badge by kind, matching the diff-line palette. */
+/** Tint a status tile by kind: added green, deleted red, modified amber. */
 function statusColor(status: GitFileEntry['status']): string {
   switch (status) {
     case 'added':
     case 'untracked':
-      return 'text-success'
+      return 'bg-success-tint text-success'
     case 'deleted':
-      return 'text-destructive'
-    case 'renamed':
-    case 'copied':
-      return 'text-ink-2'
+      return 'bg-destructive-tint text-destructive'
+    case 'modified':
+    case 'type_changed':
+    case 'unmerged':
+      return 'bg-warning-tint text-warning'
     default:
-      return 'text-muted-foreground'
+      return 'bg-muted text-fg-2'
   }
 }
 
@@ -86,7 +87,7 @@ function LazyGitDiff({
 
   if (state.status === 'loading') {
     return (
-      <p className="px-3 py-2 text-xs text-muted-foreground">
+      <p className="px-3 py-2.5 text-xs text-muted-foreground">
         {t('common:changes.loadingDiff')}
       </p>
     )
@@ -101,14 +102,14 @@ function LazyGitDiff({
   const { diff } = state
   if (diff.binary) {
     return (
-      <p className="px-3 py-2 text-xs text-muted-foreground">
+      <p className="px-3 py-2.5 text-xs text-muted-foreground">
         {t('common:changes.binary')}
       </p>
     )
   }
   if (!diff.diff.trim()) {
     return (
-      <p className="px-3 py-2 text-xs text-muted-foreground">
+      <p className="px-3 py-2.5 text-xs text-muted-foreground">
         {t('common:changes.noDiff')}
       </p>
     )
@@ -152,24 +153,24 @@ function FileRow({
   const openLabel = t('common:changes.openFile')
 
   return (
-    <div className="group/row relative">
+    <div className="group/row relative border-b border-dashed border-border">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="flex min-h-9 w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-accent pointer-coarse:min-h-11"
+        className="flex min-h-9 w-full items-center gap-2 px-3 py-2 text-left text-xs outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row pointer-coarse:min-h-11"
       >
         <ChevronDown
-          size={14}
+          size={12}
           className={cn(
-            'shrink-0 text-muted-foreground transition-transform',
+            'shrink-0 text-muted-foreground transition-transform duration-200',
             !isExpanded && '-rotate-90'
           )}
         />
         {badge ? (
           <span
             className={cn(
-              'shrink-0 font-mono text-[10px] font-semibold',
+              'grid size-[18px] shrink-0 place-items-center rounded-[4px] font-mono text-[10.5px] font-semibold',
               badgeColor
             )}
             title={badge}
@@ -178,9 +179,7 @@ function FileRow({
           </span>
         ) : null}
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-mono text-xs font-medium text-foreground">
-            {path}
-          </span>
+          <span className="truncate font-mono text-xs text-fg-2">{path}</span>
           {subtitle ? (
             <span className="truncate text-[11px] text-muted-foreground">
               {subtitle}
@@ -188,17 +187,19 @@ function FileRow({
           ) : null}
         </span>
         {note ? (
-          <span className="shrink-0 text-xs text-muted-foreground">{note}</span>
+          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground">
+            {note}
+          </span>
         ) : null}
         {indicator ? (
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="inline-flex h-[18px] shrink-0 items-center rounded-[5px] border-[0.8px] border-border bg-card px-1.5 text-[10px] text-muted-foreground">
             {indicator}
           </span>
         ) : null}
-        <span className="shrink-0 font-mono text-xs text-success">
+        <span className="shrink-0 font-mono text-xs font-medium text-diff-add">
           +{additions}
         </span>
-        <span className="shrink-0 font-mono text-xs text-destructive">
+        <span className="shrink-0 font-mono text-xs font-medium text-diff-del">
           -{deletions}
         </span>
       </button>
@@ -206,13 +207,15 @@ function FileRow({
         <button
           type="button"
           onClick={onOpen}
-          className="absolute right-2 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:bg-muted focus-visible:opacity-100 group-hover/row:opacity-100"
+          className="absolute top-1.5 right-2 rounded-md bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground opacity-0 shadow-lift transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
         >
           {openLabel}
         </button>
       ) : null}
       {isExpanded ? (
-        <div className="border-t bg-background">{children}</div>
+        <div className="border-t border-dashed border-border bg-code-bg motion-safe:animate-tree-in">
+          {children}
+        </div>
       ) : null}
     </div>
   )
@@ -317,8 +320,12 @@ export function CoworkDiffPanel({
       data-testid="cowork-diff-panel"
       title={title}
       summary={
-        <span className="shrink-0 font-mono text-xs text-muted-foreground">
-          +{additions} -{deletions}
+        <span
+          className="flex shrink-0 gap-1 font-mono text-[10.5px] font-medium tabular-nums"
+          data-testid="changes-total"
+        >
+          <span className="text-diff-add">+{additions}</span>
+          <span className="text-diff-del">-{deletions}</span>
         </span>
       }
       onClose={onClose}
@@ -326,18 +333,9 @@ export function CoworkDiffPanel({
       <div className="flex h-full flex-col">
         {header}
         {showProject ? (
-          <div className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5">
-            {git.status?.branch ? (
-              <span
-                className="inline-flex min-w-0 items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 font-mono text-[10px] text-ink-2"
-                title={git.status.branch}
-              >
-                <GitBranch size={10} className="shrink-0" />
-                <span className="truncate">{git.status.branch}</span>
-              </span>
-            ) : null}
+          <div className="flex shrink-0 items-center gap-1 px-3 pt-2.5 pb-2">
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-ink-2 hover:bg-muted">
+              <DropdownMenuTrigger className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-xs font-medium text-secondary-foreground outline-none transition-[box-shadow,color] hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:shadow-lift">
                 {t(`common:changes.scope.${git.scope}`)}
                 <ChevronDown size={12} className="shrink-0" />
               </DropdownMenuTrigger>
@@ -354,7 +352,16 @@ export function CoworkDiffPanel({
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            <div className="ml-auto flex items-center gap-1">
+            {git.status?.branch ? (
+              <span
+                className="ml-1 inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[11px] text-secondary-foreground"
+                title={git.status.branch}
+              >
+                <GitBranch size={12} className="shrink-0" />
+                <span className="truncate">{git.status.branch}</span>
+              </span>
+            ) : null}
+            <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"
                 onClick={toggleAll}
@@ -369,7 +376,7 @@ export function CoworkDiffPanel({
                     ? t('common:changes.collapseAll')
                     : t('common:changes.expandAll')
                 }
-                className="text-muted-foreground hover:text-foreground disabled:opacity-40"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground disabled:opacity-40"
               >
                 {allExpanded ? (
                   <ChevronsDownUp size={15} />
@@ -382,7 +389,7 @@ export function CoworkDiffPanel({
                 onClick={git.refresh}
                 aria-label={t('common:changes.refresh')}
                 title={t('common:changes.refresh')}
-                className="text-muted-foreground hover:text-foreground"
+                className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground"
               >
                 <RefreshCw
                   size={14}
@@ -398,7 +405,7 @@ export function CoworkDiffPanel({
           {showProject ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] border-b border-border bg-sunken px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:changes.projectWorkingTree')}
                 </h3>
               ) : null}
@@ -417,7 +424,7 @@ export function CoworkDiffPanel({
                   {t('common:changes.cleanWorkingTree')}
                 </p>
               ) : (
-                <div className="divide-y">
+                <div>
                   {gitFiles.map((file) => {
                     const id = `git:${file.path}`
                     const isExpanded = expanded.has(id)
@@ -487,11 +494,11 @@ export function CoworkDiffPanel({
           {showSandbox ? (
             <section>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] border-b border-border bg-sunken px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:changes.sandboxOutput')}
                 </h3>
               ) : null}
-              <div className="divide-y">
+              <div>
                 {sandboxFiles.map((file) => {
                   const id = `sandbox:${file.path}`
                   const isExpanded = expanded.has(id)
@@ -510,7 +517,7 @@ export function CoworkDiffPanel({
                       {file.operations.map((operation, index) => (
                         <div
                           key={`${file.path}-${index}`}
-                          className="border-b last:border-b-0"
+                          className="border-b border-dashed border-border last:border-b-0"
                         >
                           {operation.source === 'subagent' &&
                           operation.sourceName ? (

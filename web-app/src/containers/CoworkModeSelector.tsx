@@ -1,9 +1,10 @@
-import { ChevronDown, Diamond, ShieldCheck, Zap } from 'lucide-react'
+import { Check, ChevronDown, Diamond, ShieldCheck, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
@@ -48,13 +49,14 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
             size="xs"
             aria-label={t('common:coworkMode.label')}
             className={cn(
-              // h-8 to line up with the model selector and the other pills in
-              // the context bar; xs's h-6 left them shorter than the selector.
-              'h-8 shrink-0 gap-1 bg-transparent pointer-coarse:h-11',
+              // 30px, the height of every context control in the top header.
+              'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row. Warning,
               // not the accent: the accent means selected.
-              mode === 'auto' ? 'text-warning' : 'text-foreground'
+              mode === 'auto'
+                ? 'border-warning/35 bg-warning-tint text-warning'
+                : 'text-secondary-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
@@ -65,7 +67,8 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
             />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
+        <DropdownMenuContent align="start" className="w-80 p-1.5">
+          <DropdownMenuLabel>{t('common:coworkMode.label')}</DropdownMenuLabel>
           {COWORK_MODES.map((option) => {
             const OptionIcon = ICONS[option]
             return (
@@ -77,17 +80,34 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
                 role="menuitemradio"
                 aria-checked={option === mode}
                 onSelect={() => onChange(option)}
-                className="items-start gap-2"
+                className={cn(
+                  'items-start gap-2.5 px-2.5 py-2',
+                  option === mode && 'bg-accent'
+                )}
               >
-                <OptionIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
-                <span className="min-w-0">
-                  <span className="block font-medium">
+                <OptionIcon
+                  aria-hidden
+                  className={cn(
+                    'mt-px size-4 shrink-0',
+                    option === 'auto'
+                      ? 'text-warning'
+                      : 'text-secondary-foreground'
+                  )}
+                />
+                <span className="flex min-w-0 flex-1 flex-col gap-[3px]">
+                  <span className="text-[13px] font-medium">
                     {t(modeLabelKey(option))}
                   </span>
-                  <span className="block text-xs text-muted-foreground">
+                  <span className="text-xs leading-[1.4] text-muted-foreground">
                     {t(modeDescriptionKey(option))}
                   </span>
                 </span>
+                {option === mode ? (
+                  <Check
+                    aria-hidden
+                    className="size-4 shrink-0 text-foreground"
+                  />
+                ) : null}
               </DropdownMenuItem>
             )
           })}

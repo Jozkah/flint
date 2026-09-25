@@ -64,13 +64,13 @@ export function CoworkContextBreakdown({
   // every single message, pushing the conversation up the screen.
   return (
     <details
-      className="group rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
+      className="group rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-xs"
       aria-label={t('common:readiness.contextBreakdown')}
     >
-      <summary className="cursor-pointer list-none text-muted-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring rounded-sm">
+      <summary className="cursor-pointer list-none rounded-sm text-[13px] font-medium text-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40">
         {t('common:readiness.contextBreakdown')}
       </summary>
-      <div className="mt-1">
+      <div className="mt-2">
       <dl className="grid gap-1">
         {CONTEXT_CATEGORIES.map((category) => (
           <div key={category} className="flex items-baseline gap-2">

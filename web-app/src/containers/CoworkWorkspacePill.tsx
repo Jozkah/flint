@@ -61,8 +61,8 @@ export function CoworkWorkspacePill({
           size={folderName ? 'xs' : 'icon-xs'}
           className={
             folderName
-              ? 'h-8 shrink-0 gap-1 bg-transparent text-muted-foreground pointer-coarse:h-11'
-              : 'size-8 shrink-0 text-muted-foreground pointer-coarse:size-11'
+              ? 'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           aria-label={
             folderName
@@ -77,13 +77,13 @@ export function CoworkWorkspacePill({
               ) : (
                 <Folder className="size-3.5 shrink-0" aria-hidden />
               )}
-              <span className="max-w-[120px] truncate text-foreground">
+              <span className="max-w-[120px] truncate text-secondary-foreground">
                 {folderName}
               </span>
               {gitBranch ? (
                 <span
                   aria-hidden
-                  className="hidden max-w-[96px] truncate font-mono text-[11px] text-muted-foreground xl:inline"
+                  className="hidden max-w-[96px] truncate font-normal text-muted-foreground xl:inline"
                 >
                   · {gitBranch}
                 </span>
@@ -101,19 +101,19 @@ export function CoworkWorkspacePill({
 
       <PopoverContent
         align="start"
-        side="top"
-        sideOffset={8}
+        side="bottom"
+        sideOffset={6}
         collisionPadding={12}
         // Narrow windows: never wider than the viewport, and never taller
         // than the space above the composer it is anchored to.
-        className="w-[min(22rem,calc(100vw-1.5rem))] max-h-[min(28rem,60vh)] overflow-y-auto p-0"
+        className="w-[min(22rem,calc(100vw-1.5rem))] max-h-[min(28rem,60vh)] overflow-y-auto p-1.5"
         aria-label={t('common:workspace.actionsLabel')}
       >
         {folder ? (
           <>
             {/* What is attached */}
-            <section className="p-3">
-              <p className="text-xs font-medium text-muted-foreground">
+            <section className="p-2.5">
+              <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:workspace.readsFrom')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -123,7 +123,9 @@ export function CoworkWorkspacePill({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{folderName}</p>
+                  <p className="truncate text-[13px] font-semibold">
+                    {folderName}
+                  </p>
                   <p
                     className="mt-0.5 truncate font-mono text-xs text-muted-foreground"
                     title={folder}
@@ -132,7 +134,7 @@ export function CoworkWorkspacePill({
                   </p>
                 </div>
                 <span
-                  className="inline-flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[10.5px] font-medium text-secondary-foreground"
                   title={t('common:workspace.footnote')}
                 >
                   <Lock size={10} aria-hidden />
@@ -150,12 +152,12 @@ export function CoworkWorkspacePill({
               )}
             </section>
 
-            <Separator />
+            <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
             {/* Where the agent's changes actually land. The folder above is
                 read-only, so saying "writable project" would be a lie. */}
-            <section className="p-3">
-              <p className="text-xs font-medium text-muted-foreground">
+            <section className="p-2.5">
+              <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:workspace.writesTo')}
               </p>
               <div className="mt-1.5 flex items-start gap-2">
@@ -165,7 +167,7 @@ export function CoworkWorkspacePill({
                   aria-hidden
                 />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">
+                  <p className="text-[13px] font-semibold">
                     {t('common:workspace.sandbox')}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
@@ -177,32 +179,32 @@ export function CoworkWorkspacePill({
               </div>
             </section>
 
-            <Separator />
+            <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
             {/* Reaching the folder */}
-            <section className="flex flex-wrap gap-1 p-2">
+            <section className="flex flex-wrap gap-1.5 p-1.5">
               <Button
-                variant="ghost"
+                variant="surface"
                 size="sm"
-                className="h-8 flex-1"
+                className="flex-1"
                 onClick={() => void serviceHub.opener().openPath(folder)}
               >
                 <FolderOpen size={14} aria-hidden />
                 {t('common:workspace.open')}
               </Button>
               <Button
-                variant="ghost"
+                variant="surface"
                 size="sm"
-                className="h-8 flex-1"
+                className="flex-1"
                 onClick={() => void serviceHub.opener().revealItemInDir(folder)}
               >
                 <ExternalLink size={14} aria-hidden />
                 {t('common:workspace.reveal')}
               </Button>
               <Button
-                variant="ghost"
+                variant="surface"
                 size="sm"
-                className="h-8 flex-1"
+                className="flex-1"
                 onClick={() => void navigator.clipboard?.writeText(folder)}
               >
                 <Copy size={14} aria-hidden />
@@ -210,23 +212,18 @@ export function CoworkWorkspacePill({
               </Button>
             </section>
 
-            <Separator />
+            <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
             {/* Changing the attachment. Detaching is the disruptive one, so it
                 sits apart from the rest rather than beside them. */}
-            <section className="flex items-center gap-2 p-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={onAttach}
-              >
+            <section className="flex items-center gap-2 p-1.5">
+              <Button variant="surface" size="sm" onClick={onAttach}>
                 {t('common:workspace.change')}
               </Button>
               <Button
                 variant="destructive"
                 size="sm"
-                className="ml-auto h-8"
+                className="ml-auto"
                 onClick={onDetach}
               >
                 {t('common:workspace.detach')}
@@ -234,14 +231,14 @@ export function CoworkWorkspacePill({
             </section>
           </>
         ) : (
-          <section className="p-3">
+          <section className="p-2.5">
             <p className="text-xs text-muted-foreground">
               {t('common:workspace.footnoteEmpty')}
             </p>
             <Button
-              variant="outline"
+              variant="surface"
               size="sm"
-              className="mt-3 h-8 w-full"
+              className="mt-3 w-full"
               onClick={onAttach}
             >
               <FolderPlus size={14} aria-hidden />

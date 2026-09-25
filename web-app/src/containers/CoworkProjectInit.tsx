@@ -162,7 +162,7 @@ export function CoworkProjectInit({
               </label>
               <textarea
                 id="project-init-text"
-                className="h-72 w-full resize-y rounded-md border border-border bg-background p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-72 w-full resize-y rounded-lg border-[0.8px] border-input bg-code-bg p-2.5 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
                 value={draft.content}
                 onChange={(e) =>
                   useProjectInitDrafts

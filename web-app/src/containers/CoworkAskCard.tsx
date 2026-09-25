@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowRight, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
+import { ArrowUp, Check, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -7,22 +7,28 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { answerFor, buildOptions } from '@/lib/askOptions'
 import type { AskAnswer, AskRequestPayload } from '@/types/coworkSession'
 
-/** Square check used by the option rows. No checkbox primitive exists in `ui/`. */
-function CheckSquare({ checked }: { checked: boolean }) {
+/**
+ * The option mark: a radio dot for a single choice, a square for several. No
+ * checkbox primitive exists in `ui/`.
+ */
+function OptionMark({ checked, multi }: { checked: boolean; multi: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
-        // `mt-[3px]` puts the box on the cap height of the first line of the
+        // `mt-[2px]` puts the mark on the cap height of the first line of the
         // label rather than the line box, so it reads as aligned with the text
         // whether the label wraps or not.
-        'mt-[3px] flex size-4 shrink-0 items-center justify-center rounded-md border transition-colors',
+        'mt-[2px] flex size-4 shrink-0 items-center justify-center border-[1.5px] transition-[border-color,border-width,background-color] duration-150 ease-expo',
+        multi ? 'rounded-[5px]' : 'rounded-full',
         checked
-          ? 'border-primary bg-primary text-primary-foreground'
-          : 'border-line-strong'
+          ? multi
+            ? 'border-primary bg-primary text-primary-foreground'
+            : 'border-[4px] border-primary'
+          : 'border-border-strong'
       )}
     >
-      {checked && <Check size={11} strokeWidth={3} />}
+      {checked && multi && <Check size={11} strokeWidth={3} />}
     </span>
   )
 }
@@ -145,15 +151,15 @@ export function CoworkAskCard({
 
   return (
     <div
-      className="w-full overflow-hidden rounded-lg border bg-card"
+      className="flex w-full flex-col gap-1.5 overflow-hidden rounded-xl border-[0.8px] border-border-strong bg-card p-3 shadow-lift motion-safe:animate-rise-in"
       data-testid="cowork-ask-card"
       role="group"
       aria-label={question.question}
     >
       {/* Header: the question, with paging and dismiss kept out of its column
           so a long question wraps against the card edge, not the controls. */}
-      <div className="flex items-start gap-2 px-3 pt-3 pb-2">
-        <p className="min-w-0 flex-1 text-sm font-medium leading-5 text-pretty">
+      <div className="mb-1 flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-[13.5px] font-semibold leading-5 text-pretty">
           {question.question}
         </p>
         <div className="flex shrink-0 items-center gap-0.5 text-muted-foreground">
@@ -164,7 +170,7 @@ export function CoworkAskCard({
                 onClick={() => setIndex((i) => Math.max(0, i - 1))}
                 disabled={index === 0}
                 aria-label={t('common:askPrev')}
-                className="rounded-md p-0.5 hover:text-foreground disabled:opacity-30"
+                className="grid size-6 place-items-center rounded-md transition-colors hover:bg-hover-btn hover:text-foreground disabled:opacity-30"
               >
                 <ChevronLeft size={14} />
               </button>
@@ -178,7 +184,7 @@ export function CoworkAskCard({
                 }
                 disabled={isLast}
                 aria-label={t('common:askNext')}
-                className="rounded-md p-0.5 hover:text-foreground disabled:opacity-30"
+                className="grid size-6 place-items-center rounded-md transition-colors hover:bg-hover-btn hover:text-foreground disabled:opacity-30"
               >
                 <ChevronRight size={14} />
               </button>
@@ -188,7 +194,7 @@ export function CoworkAskCard({
             type="button"
             onClick={decline}
             aria-label={t('common:close')}
-            className="rounded-md p-0.5 hover:text-foreground"
+            className="ml-1 grid size-6 place-items-center rounded-md transition-colors hover:bg-hover-btn hover:text-foreground"
           >
             <X size={14} />
           </button>
@@ -198,7 +204,7 @@ export function CoworkAskCard({
       {/* Choices: one consistent vertical rhythm, inset from the card edge so
           nothing touches it, and the descriptions indented under their own
           labels rather than under the control. */}
-      <div className="flex flex-col gap-px px-2 pb-2">
+      <div className="-mx-1 flex flex-col gap-px">
         {rows.map((row, i) => {
           const checked = picks.includes(row.id)
           return (
@@ -210,24 +216,22 @@ export function CoworkAskCard({
                 onClick={() => toggle(row.id)}
                 data-testid={row.isCustom ? 'ask-custom-option' : 'ask-option'}
                 className={cn(
-                  'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left',
-                  'hover:bg-sunken focus-visible:outline-none',
-                  'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring',
-                  checked && 'bg-sunken'
+                  'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
+                  'outline-none hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40'
                 )}
               >
-                <CheckSquare checked={checked} />
+                <OptionMark checked={checked} multi={Boolean(question.multi)} />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] leading-5">
+                  <span className="block text-[13px] leading-5 font-medium">
                     {row.label}
                     {question.recommended === i && row.fromModel && (
-                      <span className="ml-1.5 text-[11px] text-muted-foreground">
+                      <span className="ml-1.5 inline-flex h-[18px] items-center rounded-[5px] bg-success-tint px-1.5 align-[1px] text-[10.5px] font-medium text-success">
                         {t('common:askRecommended')}
                       </span>
                     )}
                   </span>
                   {row.description && (
-                    <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground text-pretty">
+                    <span className="mt-0.5 block text-xs leading-4 text-muted-foreground text-pretty">
                       {row.description}
                     </span>
                   )}
@@ -253,7 +257,7 @@ export function CoworkAskCard({
                   }}
                   placeholder={t('common:askSomethingElsePlaceholder')}
                   data-testid="ask-custom-input"
-                  className="mt-1 mb-1 ml-8 h-8 w-[calc(100%-2.5rem)]"
+                  className="mt-1 mb-1 ml-9 h-8 w-[calc(100%-2.75rem)]"
                 />
               )}
             </div>
@@ -261,26 +265,26 @@ export function CoworkAskCard({
         })}
       </div>
 
-      <div className="flex items-center gap-2 border-t px-3 py-2">
-        <span className="text-xs text-muted-foreground">
+      <div className="flex items-center gap-2 border-t border-dashed border-border pt-1.5 text-xs">
+        <span className="text-muted-foreground">
           {question.multi && selectedCount > 0
             ? t('common:askSelectedCount', { count: selectedCount })
             : null}
         </span>
         <div className="ml-auto flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" className="h-7" onClick={decline}>
+          <Button variant="surface" size="sm" onClick={decline}>
             {t('common:skip')}
           </Button>
           <Button
-            size="icon-sm"
-            className="rounded-full"
+            size="sm"
             disabled={isLast ? !allAnswered : !isAnswered(question.id)}
             // Distinct from the chevron's `askNext`: that only pages the view,
             // this is the primary action (record this answer, then move on).
             aria-label={isLast ? t('common:submit') : t('common:askContinue')}
             onClick={advance}
           >
-            <ArrowRight size={14} />
+            {isLast ? t('common:submit') : t('common:askContinue')}
+            <ArrowUp aria-hidden />
           </Button>
         </div>
       </div>

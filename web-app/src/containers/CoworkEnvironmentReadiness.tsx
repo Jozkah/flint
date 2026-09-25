@@ -214,12 +214,12 @@ export function CoworkEnvironmentReadiness({
 
   return (
     <section
-      className="rounded-md border border-border"
+      className="rounded-[10px] border-[0.8px] border-border bg-card"
       data-testid="environment-readiness"
       aria-label="Environment readiness"
     >
-      <header className="flex items-center gap-2 px-3 py-2">
-        <h3 className="text-xs font-medium text-ink-2">
+      <header className="flex items-center gap-2 px-3 py-2.5">
+        <h3 className="text-[13px] font-medium text-foreground">
           Environment
         </h3>
         {unready > 0 && (
@@ -263,7 +263,7 @@ export function CoworkEnvironmentReadiness({
         </p>
       )}
 
-      <ul className="divide-y divide-border">
+      <ul className="divide-y divide-dashed divide-border border-t border-dashed border-border">
         {(readiness?.components ?? []).map((report) => {
           const Icon = STATE_ICON[report.state]
           const isOpen = expanded === report.component
@@ -273,7 +273,7 @@ export function CoworkEnvironmentReadiness({
             <li key={report.component} data-testid={`readiness-row-${report.component}`}>
               <button
                 type="button"
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-sunken"
+                className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-hover-row"
                 onClick={() =>
                   setExpanded(isOpen ? null : report.component)
                 }
@@ -287,7 +287,7 @@ export function CoworkEnvironmentReadiness({
                   )}
                   aria-hidden
                 />
-                <span className="w-24 shrink-0 text-xs text-ink-2">
+                <span className="w-24 shrink-0 text-xs text-fg-2">
                   {ROW_LABEL[report.component] ?? report.component}
                 </span>
                 <span
@@ -309,7 +309,7 @@ export function CoworkEnvironmentReadiness({
 
               {isOpen && (
                 <div className="space-y-1 px-3 pb-2 pl-[2.1rem]">
-                  <p className="text-xs text-ink-2">
+                  <p className="text-xs text-fg-2">
                     {report.message}
                   </p>
                   {report.details.length > 0 && (

@@ -71,7 +71,7 @@ describe('CoworkDiffPanel', () => {
         onClose={vi.fn()}
       />
     )
-    expect(screen.getByText('+6 -2')).toBeInTheDocument()
+    expect(screen.getByTestId('changes-total')).toHaveTextContent('+6-2')
   })
 
   it('shows a lone sandbox source without section headers', () => {
@@ -150,7 +150,7 @@ describe('CoworkDiffPanel', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('common:changes.sandboxOutput')).toBeInTheDocument()
     // Combined totals: git 3/1 + sandbox 6/2.
-    expect(screen.getByText('+9 -3')).toBeInTheDocument()
+    expect(screen.getByTestId('changes-total')).toHaveTextContent('+9-3')
     expect(screen.getByText('src/a.ts')).toBeInTheDocument()
   })
 

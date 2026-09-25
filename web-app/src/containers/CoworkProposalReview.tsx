@@ -65,7 +65,7 @@ function FileFlags({
   if (flags.length === 0) return null
   return (
     <div
-      className="mt-1 rounded-md border border-warning/40 bg-warning-tint p-1.5 text-xs"
+      className="mt-1 rounded-lg bg-warning-tint px-2.5 py-2 text-xs shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)]"
       data-testid="proposal-flags"
     >
       {flags.map((flag, i) => (
@@ -74,7 +74,7 @@ function FileFlags({
             {FLAG_LABEL[flag.kind]}: {flag.summary}
           </p>
           {flag.details.length > 0 ? (
-            <ul className="ml-4 list-disc text-ink-2">
+            <ul className="ml-4 list-disc text-fg-2">
               {flag.details.map((d) => (
                 <li key={d} className="font-mono text-[11px]">
                   {d}
@@ -115,7 +115,7 @@ function HunkPreview({
   const shown = lines.slice(0, PREVIEW_LINES)
   return (
     // Long lines scroll sideways inside the hunk, never the panel.
-    <pre className="mt-1 overflow-x-auto border-y border-border bg-code py-0.5 font-mono text-xs leading-5">
+    <pre className="mt-1.5 overflow-x-auto rounded-lg border-[0.8px] border-border bg-code-bg py-1 font-mono text-xs leading-5 [scrollbar-width:thin]">
       <div className="w-max min-w-full">
         {shown.map((l, i) => (
           <div
@@ -164,7 +164,7 @@ function FileReview({
   const fileConflict = conflicts.find((c) => c.hunk === '')
   return (
     <li
-      className="border-b border-border py-2 last:border-b-0"
+      className="border-b border-dashed border-border py-2 last:border-b-0"
       data-testid="proposal-file"
       data-path={file.path}
     >
@@ -217,7 +217,7 @@ function FileReview({
             const conflict = conflicts.find((c) => c.hunk === h.id)
             return (
               <li key={h.id} data-testid="proposal-hunk" data-hunk={h.id}>
-                <label className="flex min-h-7 items-center gap-2 font-mono text-xs text-ink-2 pointer-coarse:min-h-11">
+                <label className="flex min-h-7 items-center gap-2 font-mono text-xs text-fg-2 pointer-coarse:min-h-11">
                   <input
                     type="checkbox"
                     checked={chosen?.includes(h.id) ?? false}
@@ -437,12 +437,12 @@ export function CoworkProposalReview({
 
   return (
     <section
-      className="border-b border-border px-3 py-2"
+      className="m-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] px-3 py-2.5 text-[12.5px] motion-safe:animate-rise-in"
       data-testid="proposal-review"
     >
-      <div className="flex items-center gap-2">
-        <GitPullRequestArrow size={14} className="text-muted-foreground" />
-        <p className="flex-1 text-xs font-medium text-ink-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <GitPullRequestArrow size={14} className="shrink-0 text-muted-foreground" />
+        <p className="min-w-0 flex-1 basis-40 text-[12.5px] text-fg-2">
           {proposal
             ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
             : (title ??
@@ -451,7 +451,6 @@ export function CoworkProposalReview({
         {!proposal ? (
           <Button
             size="sm"
-            variant="outline"
             className="pointer-coarse:h-11"
             disabled={busy != null}
             onClick={() => void create()}
@@ -463,7 +462,7 @@ export function CoworkProposalReview({
         {exportBundle ? (
           <Button
             size="sm"
-            variant="ghost"
+            variant="surface"
             disabled={busy != null}
             onClick={() => void exportBundle()}
             data-testid="worktree-export"
@@ -474,7 +473,7 @@ export function CoworkProposalReview({
       </div>
       {exported ? (
         <p
-          className="mt-1 break-all text-xs text-ink-2"
+          className="mt-1 break-all text-xs text-fg-2"
           data-testid="worktree-export-path"
         >
           Patch bundle written to {exported}
@@ -492,7 +491,7 @@ export function CoworkProposalReview({
       ) : null}
       {message ? (
         <p
-          className="mt-1 text-xs text-ink-2"
+          className="mt-1 text-xs text-fg-2"
           data-testid="proposal-message"
         >
           {message}
@@ -540,7 +539,7 @@ export function CoworkProposalReview({
                 <ul className="mt-1 flex flex-col">{source.map(row)}</ul>
                 {locks.length > 0 ? (
                   <div className="mt-2" data-testid="proposal-lockfiles">
-                    <p className="text-xs font-medium text-muted-foreground">
+                    <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                       Lock files ({locks.length}), kept apart from the source
                       changes above
                     </p>
@@ -561,11 +560,11 @@ export function CoworkProposalReview({
           {/* The review bar stays in reach while the hunks scroll, with room
               for the home indicator on a phone. */}
           <div
-            className="sticky bottom-0 z-[1] -mx-3 mt-2 flex flex-wrap items-center gap-2 border-t border-border bg-card px-3 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+            className="sticky bottom-0 z-[1] -mx-3 mt-2 -mb-2.5 flex flex-wrap items-center gap-2 rounded-b-[10px] border-t border-dashed border-border bg-muted px-3 pt-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]"
             data-testid="proposal-review-bar"
           >
             <p
-              className="mr-auto text-xs text-ink-2 tabular-nums"
+              className="mr-auto text-xs text-fg-2 tabular-nums"
               aria-live="polite"
               data-testid="proposal-selected-count"
             >
@@ -573,7 +572,7 @@ export function CoworkProposalReview({
             </p>
             <Button
               size="sm"
-              variant="outline"
+              variant="surface"
               className="pointer-coarse:h-11"
               disabled={busy != null}
               onClick={() => void reject()}

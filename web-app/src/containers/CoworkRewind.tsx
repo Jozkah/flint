@@ -148,10 +148,10 @@ export function CoworkRewind(props: RewindProps) {
     <section
       data-testid="cowork-rewind"
       aria-label={t('common:rewind.title')}
-      className="border-b border-border px-3 py-2.5 text-xs"
+      className="border-t border-dashed border-border px-3 py-2.5 text-xs"
     >
-      <p className="mb-1.5 flex items-center gap-1.5 font-medium text-ink-2">
-        <History aria-hidden className="size-3.5 shrink-0" />
+      <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+        <History aria-hidden className="size-3 shrink-0" />
         {t('common:rewind.title')}
       </p>
       <ul className="grid gap-1">
@@ -161,9 +161,9 @@ export function CoworkRewind(props: RewindProps) {
               {point.label}
             </span>
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 pointer-coarse:h-11"
+              variant="surface"
+              size="xs"
+              className="h-[26px] pointer-coarse:h-11"
               disabled={busy}
               onClick={(event) => void ask(point, event.currentTarget)}
             >
@@ -182,7 +182,7 @@ export function CoworkRewind(props: RewindProps) {
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="mt-1 text-ink-2">
+        <p role="status" className="mt-1 text-fg-2">
           {notice}
         </p>
       ) : null}
@@ -202,7 +202,7 @@ export function CoworkRewind(props: RewindProps) {
               close()
             }
           }}
-          className="mt-2 rounded-lg border border-border bg-card p-3 outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="mt-2 rounded-xl border-[0.8px] border-border-strong bg-card p-3 shadow-lift outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 motion-safe:animate-rise-in"
         >
           {open.plan.kind === 'restore' ? (
             <>
@@ -213,28 +213,28 @@ export function CoworkRewind(props: RewindProps) {
                 className="mt-3 grid gap-1.5"
                 data-testid="cowork-rewind-scope"
               >
-                <p className="text-xs font-medium text-muted-foreground">
+                <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('results:rewind.scopeTitle')}
                 </p>
-                <p className="break-all font-mono text-ink-2">
+                <p className="break-all font-mono text-fg-2">
                   {t('results:rewind.scopeTree', { tree: open.point.root })}
                 </p>
                 {files === undefined ? (
-                  <p className="text-ink-2">
+                  <p className="text-fg-2">
                     {t('results:rewind.filesUnknown')}
                   </p>
                 ) : files.length === 0 ? (
-                  <p className="text-ink-2">
+                  <p className="text-fg-2">
                     {t('results:rewind.noFiles')}
                   </p>
                 ) : (
                   <>
-                    <p className="text-ink-2">
+                    <p className="text-fg-2">
                       {t('results:rewind.filesHeading', {
                         count: files.length,
                       })}
                     </p>
-                    <ul className="max-h-32 overflow-auto rounded-md border border-border bg-sunken px-2 py-1 font-mono">
+                    <ul className="max-h-32 overflow-auto rounded-lg border-[0.8px] border-border bg-code-bg px-2 py-1 font-mono">
                       {files.map((path) => (
                         <li key={path} className="break-all">
                           {path}
@@ -243,12 +243,12 @@ export function CoworkRewind(props: RewindProps) {
                     </ul>
                   </>
                 )}
-                <p className="text-ink-2">
+                <p className="text-fg-2">
                   {t('results:rewind.safetyNote')}
                 </p>
                 <p
                   id={`${ids}-boundaries`}
-                  className="rounded-md bg-warning-tint px-2 py-1.5 text-foreground"
+                  className="rounded-lg bg-warning-tint px-2.5 py-2 text-foreground"
                 >
                   {t('results:rewind.boundaries')}
                 </p>
@@ -257,7 +257,7 @@ export function CoworkRewind(props: RewindProps) {
                     role="group"
                     aria-labelledby={`${ids}-unrelated`}
                     data-testid="cowork-rewind-unrelated"
-                    className="mt-1 grid gap-1 rounded-md border border-destructive/40 bg-destructive-tint p-2"
+                    className="mt-1 grid gap-1 rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint p-2.5"
                   >
                     <p id={`${ids}-unrelated`} className="text-destructive">
                       {t('results:rewind.unrelatedTitle')}
@@ -272,7 +272,7 @@ export function CoworkRewind(props: RewindProps) {
                     <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
-                        className="mt-0.5 rounded-sm accent-[var(--brand-fill)] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        className="mt-0.5 rounded-sm accent-[var(--primary)] outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
                         checked={acknowledged}
                         disabled={busy}
                         onChange={(event) =>
@@ -313,7 +313,7 @@ export function CoworkRewind(props: RewindProps) {
               <p className="text-sm text-foreground">
                 {t('common:rewind.patchOnly')}
               </p>
-              <pre className="mt-2 max-h-48 overflow-auto whitespace-pre rounded-md border border-border bg-sunken p-2 font-mono">
+              <pre className="mt-2 max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono whitespace-pre text-term-fg">
                 {open.plan.diff.trim() || t('common:rewind.patchEmpty')}
               </pre>
               <Button

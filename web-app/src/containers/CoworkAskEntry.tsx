@@ -30,7 +30,7 @@ export function CoworkAskEntry({
 
   if (state === 'pending') {
     return (
-      <div className="px-1 pb-2" data-testid="ask-entry" data-state="pending">
+      <div className="py-1" data-testid="ask-entry" data-state="pending">
         <CoworkAskCard
           requestId={record.requestId}
           request={record.request}
@@ -46,28 +46,28 @@ export function CoworkAskEntry({
 
   return (
     <div
-      className="px-1 pb-2"
+      className="py-1"
       data-testid="ask-entry"
       data-state={state}
       aria-disabled={state === 'stale'}
     >
       <div
         className={cn(
-          'flex items-start gap-2 rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs',
+          'flex items-start gap-2.5 rounded-xl border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 text-[13px] motion-safe:animate-fade-in',
           state === 'stale' && 'opacity-70'
         )}
       >
-        <Icon size={13} className="mt-0.5 shrink-0 text-muted-foreground" />
+        <Icon size={14} className="mt-0.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
           {questions.map((question) => {
             const answer = record.answers?.find((a) => a.id === question.id)
             return (
               <div key={question.id} className="flex flex-col gap-0.5 py-0.5">
-                <span className="text-muted-foreground text-pretty">
+                <span className="font-semibold text-foreground text-pretty">
                   {question.question}
                 </span>
                 <span
-                  className="font-medium text-pretty"
+                  className="text-[12.5px] text-muted-foreground text-pretty"
                   data-testid="ask-entry-answer"
                 >
                   {state === 'answered'

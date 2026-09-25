@@ -9,6 +9,7 @@ import {
   Check,
   Copy,
   Link as LinkIcon,
+  Lock,
   MessageSquarePlus,
   WrapText,
 } from 'lucide-react'
@@ -68,10 +69,10 @@ const lineNumbers: ShikiTransformer = {
           'cv-line-no',
           'select-none',
           'inline-block',
-          'min-w-10',
+          'min-w-8',
           'mr-4',
           'text-right',
-          'text-muted-foreground',
+          'text-subtle-foreground',
         ],
         'aria-hidden': 'true',
       },
@@ -239,7 +240,7 @@ export function CodeViewer({
   )
 
   const preClasses = cn(
-    '[&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:p-3 [&>pre]:text-xs [&_code]:font-mono [&_code]:text-xs',
+    '[&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:px-2 [&>pre]:py-3 [&>pre]:text-xs [&>pre]:leading-[1.6] [&_code]:font-mono [&_code]:text-xs',
     wordWrap
       ? '[&>pre]:whitespace-pre-wrap [&>pre]:break-words'
       : '[&>pre]:whitespace-pre'
@@ -247,25 +248,26 @@ export function CodeViewer({
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col', className)}>
-      <div className="flex h-8 shrink-0 items-center gap-1 border-b border-border px-2 pointer-coarse:h-11">
+      <div className="flex h-10 shrink-0 items-center gap-1 px-3 pointer-coarse:h-11">
+        {/* Truthful about capability: this surface never writes. */}
+        {!isWritableOrigin(origin) && (
+          <span
+            className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[11px] font-medium text-secondary-foreground"
+            title={t('common:codePanel.readOnlyHint')}
+          >
+            <Lock className="size-3" aria-hidden />
+            {t('common:codePanel.readOnly')}
+          </span>
+        )}
         <span
-          className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+          className="min-w-0 flex-1 truncate px-1 font-mono text-[11px] text-muted-foreground"
           title={relPath}
         >
           {relPath}
         </span>
-        <span className="shrink-0 text-[11px] text-muted-foreground">
+        <span className="shrink-0 pr-1 text-[11px] text-subtle-foreground">
           {language.label}
         </span>
-        {/* Truthful about capability: this surface never writes. */}
-        {!isWritableOrigin(origin) && (
-          <span
-            className="shrink-0 rounded-sm bg-sunken px-1 text-[11px] text-muted-foreground"
-            title={t('common:codePanel.readOnlyHint')}
-          >
-            {t('common:codePanel.readOnly')}
-          </span>
-        )}
         {iconButton(
           t('common:codePanel.toggleWrap'),
           <WrapText className="size-3.5" />,
@@ -301,7 +303,7 @@ export function CodeViewer({
         onKeyUp={handleMouseUp}
         // The code surface scrolls both ways inside itself; long lines never
         // widen the panel or the page.
-        className="relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain bg-code focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        className="relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain border-t border-dashed border-border bg-code-bg outline-none [scrollbar-width:thin] focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:ring-inset"
         data-testid="code-viewer-body"
       >
         {html ? (
@@ -314,7 +316,7 @@ export function CodeViewer({
           // file never presents an empty pane.
           <pre
             className={cn(
-              'm-0 p-3 font-mono text-xs',
+              'm-0 px-3 py-3 font-mono text-xs leading-[1.6]',
               wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
             )}
           >
@@ -326,8 +328,8 @@ export function CodeViewer({
           <div className="sticky bottom-2 left-2 z-10 inline-flex">
             <Button
               size="sm"
-              variant="secondary"
-              className="shadow-md"
+              variant="surface"
+              className="shadow-pop"
               // The button sits inside the region that watches for selection
               // changes. Without this, pressing it collapses the selection,
               // the mouseup that follows clears `selection`, the button

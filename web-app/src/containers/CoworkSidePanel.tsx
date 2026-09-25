@@ -6,8 +6,9 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { ArrowLeft, Maximize2, Minimize2, X } from 'lucide-react'
+import { ArrowLeft, Library, Maximize2, Minimize2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
@@ -41,7 +42,7 @@ type InspectorState = {
 
 export const PANEL_MIN_W = 240
 export const PANEL_MAX_W = 640
-export const PANEL_DEFAULT_W = 360
+export const PANEL_DEFAULT_W = 430
 const KEY_STEP = 24
 
 const clampWidth = (value: number) =>
@@ -153,7 +154,7 @@ function ResizeHandle({
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
-      className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none bg-transparent outline-none transition-colors hover:bg-line-strong/60 focus-visible:bg-ring/40"
+      className="absolute inset-y-3 -left-2.5 z-10 w-2 cursor-col-resize touch-none rounded-full bg-transparent outline-none transition-colors hover:bg-border-strong/60 focus-visible:bg-ring/40"
     />
   )
 }
@@ -202,7 +203,7 @@ export function CoworkInspectorFrame({
           className="absolute inset-0 z-20 cursor-default bg-scrim motion-safe:animate-in motion-safe:fade-in-0"
         />
       )}
-      <div
+      <Frame
         data-testid="cowork-inspector"
         data-layout={layout}
         onKeyDown={
@@ -222,12 +223,10 @@ export function CoworkInspectorFrame({
             : undefined
         }
         className={cn(
-          'relative flex h-full min-h-0 min-w-0 flex-col bg-card',
-          full
-            ? 'w-full flex-1'
-            : 'max-w-full shrink-0 border-l border-border',
+          'h-full min-h-0 overflow-visible motion-safe:animate-rise-in [animation-delay:60ms]',
+          full ? 'w-full flex-1' : 'max-w-full shrink-0',
           drawer &&
-            'absolute inset-y-0 right-0 z-30 shadow-overlay motion-safe:animate-in motion-safe:slide-in-from-right-8',
+            'absolute inset-y-3 right-1 z-30 shadow-pop motion-safe:animate-in motion-safe:slide-in-from-right-8',
           !full && expanded && 'w-[40rem]',
           layout === 'docked' && expanded && 'max-w-[60%]'
         )}
@@ -241,27 +240,34 @@ export function CoworkInspectorFrame({
             onKeyDown={resize.onKeyDown}
           />
         )}
-        <div className="flex h-11 shrink-0 items-stretch gap-1 border-b border-border px-1 pointer-coarse:h-12">
-          {full && onBack ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="self-center pointer-coarse:size-11"
-              onClick={onBack}
-              aria-label={t('common:coworkLayout.back')}
-              title={t('common:coworkLayout.back')}
-            >
-              <ArrowLeft className="size-4" aria-hidden />
-            </Button>
-          ) : null}
-          {/* Tabs scroll sideways when the panel is narrow; the bar itself
-              stays hidden so it does not draw a track under the labels. */}
-          <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <FrameHeader
+          className="pointer-coarse:min-h-12"
+          icon={
+            full && onBack ? (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="-my-1 -ml-1 pointer-coarse:size-11"
+                onClick={onBack}
+                aria-label={t('common:coworkLayout.back')}
+                title={t('common:coworkLayout.back')}
+              >
+                <ArrowLeft className="size-4" aria-hidden />
+              </Button>
+            ) : (
+              <Library aria-hidden />
+            )
+          }
+          title={t('common:coworkLayout.output')}
+        />
+        <FrameBody className="min-h-0 overflow-hidden">
+          {/* The panel switch: a muted well of tabs over the open panel. */}
+          <div className="shrink-0 border-b border-dashed border-border bg-muted p-1.5">
             {tabs}
           </div>
-        </div>
-        <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
-      </div>
+          <div className="flex min-h-0 min-w-0 flex-1">{children}</div>
+        </FrameBody>
+      </Frame>
     </>
   )
 }
@@ -299,7 +305,7 @@ export function CoworkSidePanel({
         framed
           ? 'w-full'
           : cn(
-              'max-w-full shrink-0 border-l border-border',
+              'max-w-full shrink-0 rounded-xl border-[0.8px] border-input',
               expanded && 'w-[40rem] max-w-[60%]'
             )
       )}
@@ -313,9 +319,9 @@ export function CoworkSidePanel({
           onKeyDown={resize.onKeyDown}
         />
       )}
-      <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 pointer-coarse:h-12">
+      <div className="flex min-h-[41px] shrink-0 items-center gap-2 border-b border-dashed border-border px-3 py-1.5 text-[13px] pointer-coarse:h-12">
         {leading}
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+        <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
           {title}
         </span>
         {summary}
@@ -346,7 +352,7 @@ export function CoworkSidePanel({
         </Button>
       </div>
       {/* Each panel scrolls inside itself; the page never does. */}
-      <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+      <div className="min-h-0 flex-1 overflow-auto [scrollbar-width:thin]">{children}</div>
     </aside>
   )
 }

@@ -80,12 +80,12 @@ export function CoworkChildApprovals({
           key={entry.requestId}
           // A separate object that waits on a person: a bordered card whose
           // warning header says so, not a failure colour on the whole block.
-          className="overflow-hidden rounded-lg border border-warning/50 bg-card text-xs"
+          className="overflow-hidden rounded-xl border-[0.8px] border-warning/40 bg-card text-xs shadow-lift motion-safe:animate-rise-in"
           data-testid="child-approval"
           data-origin={entry.origin}
           data-tool={entry.toolName}
         >
-          <div className="flex items-start gap-2 bg-warning-tint px-3 py-2 text-[13px] font-medium text-foreground">
+          <div className="flex items-start gap-2 border-b border-dashed border-warning/30 bg-warning-tint px-3 py-2.5 text-[13px] font-medium text-foreground">
             <ShieldAlertIcon
               className="mt-0.5 size-4 shrink-0 text-warning"
               aria-hidden

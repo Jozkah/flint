@@ -130,10 +130,10 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
           aria-pressed={active}
           className={cn(
             'shrink-0',
-            active ? 'text-brand-text' : 'text-muted-foreground'
+            active ? 'bg-accent text-foreground' : 'text-muted-foreground'
           )}
         >
-          <Icon className="size-4" />
+          <Icon className="size-3.5" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
@@ -143,7 +143,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
   if (!path) {
     return (
       <CoworkSidePanel title={t('common:preview.title')} onClose={onClose}>
-        <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+        <p className="px-4 py-10 text-center text-xs text-muted-foreground motion-safe:animate-rise-in">
           {t('common:preview.empty')}
         </p>
       </CoworkSidePanel>
@@ -188,7 +188,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+    <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
       {children}
     </div>
   )
@@ -225,9 +225,9 @@ function PreviewBody({
       // artifact that draws a chart is inert without them.
       const scripts = state.kind === 'html'
       return (
-        <div className="flex h-full flex-col">
+        <div className="flex h-full flex-col bg-muted">
           {(state.unresolvedRefs ?? 0) > 0 && (
-            <p className="border-b bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <p className="mx-3 mt-3 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2">
               {t('common:preview.unresolvedRefs', {
                 count: state.unresolvedRefs,
               })}
@@ -237,7 +237,7 @@ function PreviewBody({
             title={state.path}
             srcDoc={buildSrcDoc(state.content ?? '', allowNetwork, scripts)}
             sandbox={scripts ? 'allow-scripts' : ''}
-            className="min-h-0 w-full flex-1 border-0 bg-card"
+            className="m-3 min-h-0 w-[calc(100%-1.5rem)] flex-1 rounded-lg border-0 bg-card shadow-lift"
           />
         </div>
       )
@@ -250,7 +250,7 @@ function PreviewBody({
       )
     case 'text':
       return (
-        <pre className="h-full overflow-auto p-3 font-mono text-xs leading-relaxed">
+        <pre className="h-full overflow-auto bg-code-bg p-3 font-mono text-xs leading-relaxed [scrollbar-width:thin]">
           {state.content}
         </pre>
       )

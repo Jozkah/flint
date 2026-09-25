@@ -43,7 +43,7 @@ export function CoworkHeldInput({
         <div
           role="status"
           data-testid="cowork-held-input"
-          className="mt-2 space-y-1 rounded-md border border-border px-3 py-2 text-xs"
+          className="mt-2 space-y-1.5 rounded-xl border-[0.8px] border-border bg-card px-3 py-2.5 text-xs motion-safe:animate-rise-in"
         >
           <div className="flex items-center gap-2 text-muted-foreground">
             <PauseCircle size={14} aria-hidden className="shrink-0" />

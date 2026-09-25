@@ -100,10 +100,10 @@ function ConflictRow({
   )
   const reviseField = (id: string, value: Choice) =>
     choice === value ? (
-      <label className="ml-5 flex flex-col gap-1 text-[11px] text-ink-2">
+      <label className="ml-5 flex flex-col gap-1 text-[11px] text-fg-2">
         What {id} may change (comma-separated)
         <input
-          className="rounded-md border border-border bg-transparent px-2 py-1 font-mono text-xs"
+          className="h-8 rounded-lg border-[0.8px] border-input bg-card px-2 font-mono text-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
           value={scopes[id] ?? ''}
           onChange={(e) => onScope(id, e.target.value)}
           data-testid="team-conflict-scope"
@@ -114,7 +114,7 @@ function ConflictRow({
 
   return (
     <li
-      className="rounded-md border border-border bg-card p-2"
+      className="rounded-[10px] border-[0.8px] border-border bg-card p-2.5"
       data-testid="team-conflict"
       data-tasks={conflict.tasks.join(',')}
     >
@@ -126,7 +126,7 @@ function ConflictRow({
         {conflict.overlaps.map((o) => (
           <li
             key={`${o.paths[0]}>${o.paths[1]}`}
-            className="font-mono text-[11px] text-ink-2"
+            className="font-mono text-[11px] text-fg-2"
             data-testid="team-conflict-path"
             data-kind={o.kind}
           >
@@ -199,7 +199,7 @@ function ConflictForm({ request }: { request: ConflictRequest }) {
 
   return (
     <section
-      className="my-2 rounded-md border border-warning/40 bg-warning-tint p-3"
+      className="my-2 rounded-xl bg-warning-tint p-3 shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)] motion-safe:animate-rise-in"
       role="region"
       aria-label="Overlapping team tasks"
       data-testid="team-conflicts"

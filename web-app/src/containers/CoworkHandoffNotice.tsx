@@ -58,11 +58,11 @@ export function CoworkHandoffNotice({
 
   return (
     <section
-      className="mb-2 rounded-md border border-warning/40 bg-warning-tint p-2 text-xs"
+      className="mb-2 rounded-[10px] bg-warning-tint px-3 py-2 text-xs text-fg-2 shadow-[inset_0_0_0_0.8px_color-mix(in_oklab,var(--warning)_30%,transparent)]"
       aria-label="Handed off from another computer"
       data-testid="handoff-notice"
     >
-      <p className="mb-1 font-medium">
+      <p className="mb-1 font-medium text-foreground">
         This session was handed off from another computer.
       </p>
       <ul className="list-disc pl-4" role="status" aria-live="polite">

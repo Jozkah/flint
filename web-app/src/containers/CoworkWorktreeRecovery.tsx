@@ -72,9 +72,9 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
     <section
       data-testid="cowork-worktree-recovery"
       aria-label={t('common:worktreeRecovery.title')}
-      className="rounded-md border border-border bg-sunken px-3 py-2 text-xs"
+      className="rounded-[10px] bg-muted px-3 py-2.5 text-xs shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
     >
-      <p className="mb-1 flex items-center gap-1.5 text-ink-2">
+      <p className="mb-1 flex items-center gap-1.5 text-fg-2">
         <GitBranch aria-hidden className="size-3.5 shrink-0" />
         {t('common:worktreeRecovery.found', { count: props.orphans.length })}
       </p>
@@ -116,7 +116,7 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
         <div
           role="alertdialog"
           aria-label={t('common:worktreeRecovery.confirmTitle')}
-          className="mt-2 rounded-md border border-destructive/40 p-2"
+          className="mt-2 rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint p-2.5"
         >
           <p className="text-destructive">
             {confirming.pending.length > 0

@@ -57,7 +57,7 @@ export function CoworkSandboxChip() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 shrink-0 gap-1.5 rounded-md border border-warning/40 bg-warning-tint text-warning hover:bg-warning-tint/70 pointer-coarse:h-11"
+          className="h-7 shrink-0 gap-1.5 rounded-lg border-[0.8px] border-warning/35 bg-warning-tint px-2.5 text-xs font-medium text-warning hover:bg-warning-tint hover:shadow-lift pointer-coarse:h-11"
           aria-label={t('common:sandbox.a11y')}
         >
           <TriangleAlert size={12} className="shrink-0" />
@@ -65,7 +65,9 @@ export function CoworkSandboxChip() {
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-80 p-3">
-        <h3 className="text-sm font-medium">{t('common:sandbox.title')}</h3>
+        <h3 className="text-[13px] font-semibold">
+          {t('common:sandbox.title')}
+        </h3>
         <p className="mt-1.5 text-xs text-muted-foreground">
           {t('common:sandbox.body')}
         </p>
@@ -74,7 +76,7 @@ export function CoworkSandboxChip() {
         </p>
         <div className="mt-3 flex">
           <Button
-            variant="outline"
+            variant="surface"
             size="sm"
             className="ml-auto"
             disabled={checking}

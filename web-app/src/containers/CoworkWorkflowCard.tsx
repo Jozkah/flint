@@ -48,97 +48,91 @@ export function CoworkWorkflowCard({
   return (
     <div
       data-testid="workflow-card"
-      className="my-2 rounded-lg border border-border bg-card text-xs"
+      className="my-2 flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5 text-[13px] motion-safe:animate-rise-in"
     >
-      <div className="flex items-start gap-2 px-3 py-2">
-        <span className="pt-0.5">
-          <StatusIcon status={status} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-medium" title={workflow.title}>
-            {workflow.title}
-          </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-            <span className="tabular-nums">
-              {t('common:tasks.progress', {
-                finished: progress.finished,
-                total: progress.total,
-              })}
-            </span>
-            {progress.tokens > 0 && (
-              <span className="font-mono tabular-nums">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusIcon status={status} size="size-[15px]" />
+        <p className="min-w-0 truncate font-semibold" title={workflow.title}>
+          {workflow.title}
+        </p>
+        <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+          <span className="tabular-nums">
+            {t('common:tasks.progress', {
+              finished: progress.finished,
+              total: progress.total,
+            })}
+          </span>
+          {progress.tokens > 0 && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="tabular-nums">
                 {t('common:tasks.tokens', {
                   tokens: formatTokens(progress.tokens),
                 })}
               </span>
-            )}
-          </p>
-          {progress.fraction != null && (
-            <span
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={progress.total}
-              aria-valuenow={progress.finished}
-              className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-sunken"
-            >
-              {/* Neutral, not the accent: the accent means "selected", and a
-                  workflow in progress is not a selected one. */}
-              <span
-                className={cn(
-                  'block h-full rounded-full motion-safe:transition-[width]',
-                  progress.error > 0 ? 'bg-destructive' : 'bg-ink-2'
-                )}
-                style={{ width: `${Math.round(progress.fraction * 100)}%` }}
-              />
-            </span>
+            </>
           )}
-        </div>
+        </p>
         <Button
-          variant="ghost"
+          variant="surface"
           size="xs"
-          className="shrink-0 text-brand-text pointer-coarse:h-11"
+          className="shrink-0 pointer-coarse:h-11"
           onClick={() => onOpenPanel(workflow.id)}
         >
           {t('common:tasks.openPanel')}
         </Button>
       </div>
+      {progress.fraction != null && (
+        <span
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={progress.total}
+          aria-valuenow={progress.finished}
+          className="block h-1.5 w-full overflow-hidden rounded-full bg-track"
+        >
+          <span
+            className={cn(
+              'block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo',
+              progress.error > 0
+                ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
+                : 'bg-grad'
+            )}
+            style={{ width: `${Math.round(progress.fraction * 100)}%` }}
+          />
+        </span>
+      )}
 
       {tasks.length === 0 ? (
         // A workflow exists because a dispatch happened; its children arrive a
         // moment later. Saying so beats an empty box that looks broken.
-        <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t('common:tasks.noOutput')}
         </p>
       ) : (
-        // A quiet timeline: one hairline down the status column, each step a
-        // row on it, so the order reads without boxes around every task.
-        <ul className="relative border-t border-border py-1 before:absolute before:inset-y-2 before:left-[1.1rem] before:w-px before:bg-border">
+        <ul className="-mx-1.5 flex flex-col">
           {tasks.map((task) => (
-            <li key={task.id} className="relative">
+            <li key={task.id}>
               <button
                 type="button"
                 onClick={() => onOpenTask(task)}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left outline-none hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11"
+                className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
               >
                 <StatusIcon status={task.status} />
                 {task.kind === 'shell' ? (
-                  <Terminal
-                    size={11}
-                    className="shrink-0 text-muted-foreground"
-                  />
+                  <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
                 ) : (
-                  <Bot size={11} className="shrink-0 text-muted-foreground" />
+                  <Bot className="size-3.5 shrink-0 text-muted-foreground" />
                 )}
                 <span
                   className={cn(
-                    'min-w-0 flex-1 truncate text-[11px]',
-                    task.kind === 'shell' && 'font-mono'
+                    'min-w-0 flex-1 truncate',
+                    task.kind === 'shell' && 'font-mono text-xs'
                   )}
                   title={task.title}
                 >
                   {task.title}
                 </span>
-                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 text-xs tabular-nums text-subtle-foreground">
                   {Math.round(taskElapsedMs(task, now) / 1000)}s
                 </span>
               </button>
@@ -150,16 +144,21 @@ export function CoworkWorkflowCard({
   )
 }
 
-function StatusIcon({ status }: { status: ActivityStatus }) {
+function StatusIcon({
+  status,
+  size = 'size-3.5',
+}: {
+  status: ActivityStatus
+  size?: string
+}) {
   const { t } = useTranslation()
-  // A card background behind each icon, so the timeline rule stops at it.
-  const common = 'relative size-3 shrink-0 rounded-full bg-card'
+  const common = cn('relative shrink-0', size)
   switch (status) {
     case 'running':
       return (
         <Loader2
           aria-label={t('common:tasks.statusRunning')}
-          className={cn(common, 'motion-safe:animate-spin text-ink-2')}
+          className={cn(common, 'motion-safe:animate-spin text-fg-2')}
         />
       )
     case 'queued':
