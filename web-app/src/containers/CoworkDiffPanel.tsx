@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
+import type { SandboxApplyOutcome } from '@/lib/coworkSandboxApply'
+import { errorText } from '@/lib/errorText'
 import {
   loadGitFileDiff,
   repoName,
@@ -132,6 +134,7 @@ function FileRow({
   isExpanded,
   onToggle,
   onOpen,
+  after,
   children,
 }: {
   path: string
@@ -147,6 +150,8 @@ function FileRow({
   onToggle: () => void
   /** Show this file in the Code panel. Absent where it cannot be opened. */
   onOpen?: () => void
+  /** Always shown under the row, expanded or not. */
+  after?: React.ReactNode
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
@@ -212,11 +217,89 @@ function FileRow({
           {openLabel}
         </button>
       ) : null}
+      {after}
       {isExpanded ? (
         <div className="border-t border-dashed border-border bg-code-bg motion-safe:animate-tree-in">
           {children}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+type ApplyState =
+  | { kind: 'idle' }
+  | { kind: 'busy' }
+  | { kind: 'confirm' }
+  | { kind: 'done'; outcome: 'created' | 'replaced' }
+  | { kind: 'error'; message: string }
+
+/**
+ * Copy one sandbox file into the attached folder. An existing file there is
+ * only replaced after the user confirms it here.
+ */
+function SandboxApply({
+  path,
+  onApply,
+}: {
+  path: string
+  onApply: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
+}) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<ApplyState>({ kind: 'idle' })
+
+  const apply = async (overwrite: boolean) => {
+    setState({ kind: 'busy' })
+    try {
+      const outcome = await onApply(path, overwrite)
+      setState(outcome === 'exists' ? { kind: 'confirm' } : { kind: 'done', outcome })
+    } catch (e) {
+      setState({ kind: 'error', message: errorText(e) })
+    }
+  }
+
+  const button =
+    'rounded-md border-[0.8px] border-border bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground hover:text-foreground disabled:opacity-50'
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-8 text-[11px] text-muted-foreground">
+      {state.kind === 'confirm' ? (
+        <>
+          <span role="alert">{t('common:changes.applyExists')}</span>
+          <button type="button" className={button} onClick={() => void apply(true)}>
+            {t('common:changes.applyReplace')}
+          </button>
+          <button
+            type="button"
+            className={button}
+            onClick={() => setState({ kind: 'idle' })}
+          >
+            {t('common:cancel')}
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            type="button"
+            className={button}
+            disabled={state.kind === 'busy'}
+            onClick={() => void apply(false)}
+          >
+            {t('common:changes.applyToFolder')}
+          </button>
+          <span role="status">
+            {state.kind === 'done'
+              ? t(
+                  state.outcome === 'replaced'
+                    ? 'common:changes.applyReplaced'
+                    : 'common:changes.applyCreated'
+                )
+              : state.kind === 'error'
+                ? t('common:changes.applyFailed', { message: state.message })
+                : null}
+          </span>
+        </>
+      )}
     </div>
   )
 }
@@ -243,6 +326,7 @@ export function CoworkDiffPanel({
   origins,
   onClose,
   onOpenFile,
+  onApplyFile,
   header,
   footer,
   branch,
@@ -268,6 +352,11 @@ export function CoworkDiffPanel({
   header?: React.ReactNode
   /** Show a changed file in the Code panel. */
   onOpenFile?: (path: string) => void
+  /**
+   * Copy a sandbox file into the attached folder. Absent when there is no
+   * folder to copy into.
+   */
+  onApplyFile?: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
   folder: string | null
   git: CoworkGitState
   onClose: () => void
@@ -523,6 +612,11 @@ export function CoworkDiffPanel({
                       path={file.path}
                       onOpen={
                         onOpenFile ? () => onOpenFile(file.path) : undefined
+                      }
+                      after={
+                        onApplyFile ? (
+                          <SandboxApply path={file.path} onApply={onApplyFile} />
+                        ) : undefined
                       }
                       additions={file.additions}
                       deletions={file.deletions}

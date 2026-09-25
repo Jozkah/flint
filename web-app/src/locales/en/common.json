@@ -267,7 +267,13 @@
     },
     "truncated": "{{count}} more line not shown",
     "truncated_other": "{{count}} more lines not shown",
-    "openFile": "Open"
+    "openFile": "Open",
+    "applyToFolder": "Apply to folder",
+    "applyExists": "A file with this name is already in the folder. Replace it?",
+    "applyReplace": "Replace",
+    "applyCreated": "Copied into the folder.",
+    "applyReplaced": "Replaced the file in the folder.",
+    "applyFailed": "Could not copy: {{message}}"
   },
   "compactWidth": "Compact Width",
   "fullWidth": "Full Width",

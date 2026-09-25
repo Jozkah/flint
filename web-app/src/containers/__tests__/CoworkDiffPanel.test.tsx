@@ -353,4 +353,49 @@ describe('what the Changes panel claims about each file', () => {
       screen.queryByText('common:coworkOrigins.row.observed-in-run')
     ).toBeNull()
   })
+
+  it('applies a sandbox file to the folder, asking before it replaces one', async () => {
+    const user = userEvent.setup()
+    const onApplyFile = vi
+      .fn()
+      .mockResolvedValueOnce('exists')
+      .mockResolvedValueOnce('replaced')
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[sandboxFiles[0]]}
+        folder={null}
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={onApplyFile}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    expect(onApplyFile).toHaveBeenLastCalledWith('report.md', false)
+    expect(await screen.findByRole('alert')).toHaveTextContent('common:changes.applyExists')
+    await user.click(screen.getByRole('button', { name: 'common:changes.applyReplace' }))
+    expect(onApplyFile).toHaveBeenLastCalledWith('report.md', true)
+    expect(await screen.findByText('common:changes.applyReplaced')).toBeInTheDocument()
+  })
+
+  it('reports a failed copy and offers no apply without a folder', async () => {
+    const user = userEvent.setup()
+    const onApplyFile = vi.fn().mockRejectedValue({ message: 'denied' })
+    const { rerender } = render(
+      <CoworkDiffPanel
+        sandboxFiles={[sandboxFiles[0]]}
+        folder={null}
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={onApplyFile}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    expect(await screen.findByText(/common:changes.applyFailed.*denied/)).toBeInTheDocument()
+    rerender(
+      <CoworkDiffPanel sandboxFiles={[sandboxFiles[0]]} folder={null} git={noGit} onClose={vi.fn()} />
+    )
+    expect(
+      screen.queryByRole('button', { name: 'common:changes.applyToFolder' })
+    ).not.toBeInTheDocument()
+  })
 })

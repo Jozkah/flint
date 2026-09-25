@@ -197,6 +197,10 @@ import { artifactsFromParts } from '@/lib/coworkArtifacts'
 import { CoworkArtifactCard } from '@/containers/CoworkArtifactCard'
 import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
+import {
+  applySandboxFile,
+  sandboxRelativePath,
+} from '@/lib/coworkSandboxApply'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
@@ -4879,6 +4883,24 @@ function CoworkPage() {
             projectName={folder ? basenameOf(folder) : undefined}
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
+            // Review only leaves the run's output in the sandbox; this is the
+            // explicit per-file step that brings one file into the folder.
+            onApplyFile={
+              folder && session?.id
+                ? async (path, overwrite) => {
+                    const relative = sandboxRelativePath(workspacePath, path)
+                    if (!relative) throw new Error(`${path} is not in the session sandbox`)
+                    const outcome = await applySandboxFile({
+                      session: session.id,
+                      path: relative,
+                      project: folder,
+                      overwrite,
+                    })
+                    if (outcome !== 'exists') git.refresh()
+                    return outcome
+                  }
+                : undefined
+            }
             // The tree the changes are in, not the one the session is
             // attached to: a managed run's diff lives in its worktree.
             folder={treeRoot}
