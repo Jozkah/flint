@@ -288,7 +288,7 @@ export function PermissionScopeChoices({
           {t('permissions:scope.deny')}
         </Button>
       </div>
-      <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+      <ul className="flex min-w-0 flex-1 flex-col divide-y divide-border overflow-hidden rounded-md border border-border bg-card shadow-sm">
         {offered.map((scope) => {
           const info = request.scopeExplanations[scope]!
           const explanationId = `${baseId}-${scope}`
@@ -305,7 +305,7 @@ export function PermissionScopeChoices({
                 data-scope={scope}
                 data-primary={scope === filled || undefined}
                 disabled={disabled}
-                className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
+                className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row data-primary:border-l-2 data-primary:border-l-primary data-primary:bg-primary/10 data-primary:hover:bg-primary/15 focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
                 onClick={() => onDecision(scope)}
               >
                 <b className="text-[13px] font-medium text-foreground">
