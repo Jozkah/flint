@@ -977,6 +977,14 @@ async fn execute_tool_inner(
         }
     }
     let grants = SessionGrants::default().with_write_roots(write_roots.clone());
+    // A run whose shell works in its managed worktree resolves the file tools'
+    // relative paths there too, before the gate sees them: otherwise
+    // `write check.py` lands in the workspace and `python check.py` looks for
+    // it in the worktree.
+    let mut args = args;
+    if let Some(base) = handlers::working_folder(&write_roots, Path::new(&data_folder)) {
+        handlers::rebase_relative_paths(&name, &mut args, &base);
+    }
 
     let tool = lookup(&name)
         .ok_or_else(|| AgentToolsError::from(format!("unknown built-in tool '{name}'")))?;

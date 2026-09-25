@@ -353,21 +353,30 @@ const WEB_BLOCK = [
 function workspaceBlock(opts: CoworkPromptOptions): string {
   const lines = ['# Workspace', '']
   if (opts.workspacePath) {
-    lines.push(
-      `You have one writable directory, your workspace: \`${opts.workspacePath}\`.`,
-      'Relative paths resolve against it. Everything you create must live here.'
-    )
-    if (opts.bashAvailable && opts.readOnlyFolder && opts.folderAccess === 'worktree') {
-      // The backend starts the shell in a managed worktree that is the run's
-      // write destination (#322); the file tools keep the workspace as their
-      // base for relative paths. Say both, so "relative" has one meaning per tool.
+    const inWorktree = !!opts.readOnlyFolder && opts.folderAccess === 'worktree'
+    if (inWorktree) {
+      // The backend starts the shell in the managed worktree that is the run's
+      // write destination (#322) and rebases the file tools' relative paths
+      // onto it too, so "relative" means one place for every tool.
       lines.push(
-        `\`bash\` starts in the session worktree (\`${opts.readOnlyFolder}\`), so relative`,
-        'paths in commands (`npm test`, `.\\check.ps1`) resolve there. The file tools',
-        'still resolve relative paths against your workspace: give them absolute',
-        'worktree paths.'
+        `Your working folder is the session worktree: \`${opts.readOnlyFolder}\`.`,
+        opts.bashAvailable
+          ? '`bash` starts there, and relative paths resolve there for every tool:'
+          : 'Relative paths resolve there for every tool.',
+        ...(opts.bashAvailable
+          ? ['`write check.py` followed by `python check.py` names the same file.']
+          : []),
+        `Your scratch workspace is \`${opts.workspacePath}\`; reach it by absolute`,
+        'path, from the file tools and from `bash` alike, for throwaway files that',
+        'must not become changes in the worktree.'
       )
-    } else if (opts.bashAvailable && opts.readOnlyFolder) {
+    } else {
+      lines.push(
+        `You have one writable directory, your workspace: \`${opts.workspacePath}\`.`,
+        'Relative paths resolve against it. Everything you create must live here.'
+      )
+    }
+    if (!inWorktree && opts.bashAvailable && opts.readOnlyFolder) {
       lines.push(
         `\`bash\` runs in your sandbox workspace (\`${opts.workspacePath}\`), not in the project;`,
         'it has no cwd parameter and cannot cd into the project. Put absolute project',

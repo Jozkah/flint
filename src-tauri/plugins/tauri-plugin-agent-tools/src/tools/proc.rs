@@ -486,6 +486,32 @@ pub fn posix_unavailable_error(construct: &str, available: &ShellConfig, why: &s
     )
 }
 
+/// The exact alternative to a heredoc fed to an interpreter
+/// (`python - <<'EOF' ... EOF`, `node <<EOF`): write the script to a file and
+/// run that. `None` when the heredoc does not feed a known interpreter, where
+/// the generic refusal already says what to do.
+pub fn heredoc_script_hint(command: &str) -> Option<String> {
+    let at = command.find("<<")?;
+    let head = &command[..at];
+    let program = head.split_whitespace().next()?;
+    let stem = program
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(program)
+        .to_ascii_lowercase();
+    let (ext, run) = match stem.trim_end_matches(".exe") {
+        "python" | "python3" | "py" => ("py", program),
+        "node" => ("js", program),
+        "ruby" => ("rb", program),
+        "perl" => ("pl", program),
+        _ => return None,
+    };
+    Some(format!(
+        "Instead: put the script body in a file with the `write` tool (e.g. \
+         `script.{ext}`), then run it with `bash` as `{run} script.{ext}`."
+    ))
+}
+
 /// Whether this shell accepts the `&&` / `||` command-chaining operators.
 ///
 /// True for POSIX shells and `cmd.exe`, and for PowerShell **7+** (`pwsh`),
@@ -2230,6 +2256,19 @@ mod posix_tests {
         }
         // cmd keeps the full list.
         assert!(requires_posix_shell_for("echo $(date)", ShellFlavor::Cmd).is_some());
+    }
+
+    #[test]
+    fn a_heredoc_fed_to_an_interpreter_names_the_file_alternative() {
+        let hint = heredoc_script_hint("python - <<'EOF'\nprint(1)\nEOF").unwrap();
+        assert!(hint.contains("`write` tool"), "{hint}");
+        assert!(hint.contains("`python script.py`"), "{hint}");
+        let hint = heredoc_script_hint("node <<EOF\nconsole.log(1)\nEOF").unwrap();
+        assert!(hint.contains("`node script.js`"), "{hint}");
+        let hint = heredoc_script_hint("C:\\Python311\\python.exe - <<EOF\nEOF").unwrap();
+        assert!(hint.contains("script.py"), "{hint}");
+        assert!(heredoc_script_hint("cat <<EOF > a.txt\nhi\nEOF").is_none());
+        assert!(heredoc_script_hint("python check.py").is_none());
     }
 
     #[test]

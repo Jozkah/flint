@@ -1816,8 +1816,8 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         }
         // #322: a run whose destination is a managed worktree starts its shell
         // there, so `npm test` or `.\check.ps1` mean the project. See
-        // [`managed_worktree_start`] for when, and why the file tools do not
-        // follow.
+        // [`managed_worktree_start`] for when; the file tools follow through
+        // [`rebase_relative_paths`].
         if let Some(wt) = managed_worktree_start(&write_abs, owned.as_deref()) {
             policy = policy.with_start_dir(&wt);
             start = policy.start_dir().to_path_buf();
@@ -1862,7 +1862,7 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // something, just not what was asked for.
         if selected.report.cfg.flavor != proc::ShellFlavor::Posix {
             if let Some(construct) = proc::requires_posix_shell_for(command, selected.report.cfg.flavor) {
-                return proc::posix_unavailable_error(
+                let mut refusal = proc::posix_unavailable_error(
                     construct,
                     &selected.report.cfg,
                     selected
@@ -1870,6 +1870,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
                         .as_deref()
                         .unwrap_or("no POSIX shell could be started in the sandbox"),
                 );
+                if let Some(hint) = proc::heredoc_script_hint(command) {
+                    refusal.push('\n');
+                    refusal.push_str(&hint);
+                }
+                return refusal;
             }
         }
         // `&&`/`||` reach Windows PowerShell 5.1 as a parse error, not a clean
@@ -2637,8 +2642,8 @@ fn cwd_note_applies(class: &super::shell_diag::FailureClass, out: &str) -> bool 
 fn cwd_note(cwd: &str, in_worktree: bool) -> String {
     if in_worktree {
         format!(
-            "[cwd: {cwd} (the session worktree). Relative paths in commands resolve \
-             there; the file tools resolve relative paths against the workspace.]\n"
+            "[cwd: {cwd} (the session worktree). Relative paths resolve there, in \
+             commands and in the file tools alike.]\n"
         )
     } else {
         format!(
@@ -2647,20 +2652,6 @@ fn cwd_note(cwd: &str, in_worktree: bool) -> String {
     }
 }
 
-/// Where `bash` starts when the run writes to a Jan-managed worktree (#322).
-///
-/// Only when the granted write roots are exactly one directory inside Jan's
-/// owned worktrees dir: that is the Managed worktree destination, and the one
-/// case where the shell is already confined to the worktree it would start in
-/// (the AppContainer ACE, the bwrap bind or the Seatbelt rule for that write
-/// root). Review-only runs have no write root and direct-edit runs a root that
-/// is not Jan's; both keep starting in the sandbox workspace.
-///
-/// Only the shell moves. The file tools keep resolving relative paths against
-/// the workspace: their gate, confinement checks, `.jan` hiding and display
-/// paths are all keyed on it, and moving them would change what every
-/// relative write in a worktree run means. The prompt and the `[cwd: ...]`
-/// note state both bases instead.
 /// Hide each write root's own `.jan` from the shell. The shell may write
 /// there, and a managed worktree or a repository edited in place carries the
 /// project's agent policy, hooks and skills under `.jan/agent`; it is hidden
@@ -2684,6 +2675,65 @@ pub(crate) fn native_fallback_note(spawn_error: &str, shell: &str) -> String {
     )
 }
 
+/// The folder a run's shell starts in when it is not the workspace: the
+/// managed worktree the run writes to, under exactly the conditions `bash`
+/// moves there (see [`managed_worktree_start`]). `None` for every other run.
+pub fn working_folder(write_roots: &[PathBuf], data_folder: &Path) -> Option<PathBuf> {
+    let write_abs: Vec<PathBuf> = write_roots.iter().map(|p| anchored(p)).collect();
+    let owned = crate::workspace::worktrees_dir(&anchored(data_folder));
+    if write_abs.is_empty()
+        || !jail::can_confine_write_roots(jail::backend(), &write_abs, Some(&owned))
+    {
+        return None;
+    }
+    managed_worktree_start(&write_abs, Some(&owned))
+}
+
+/// Rewrite a file tool's relative `path` argument against `base`, the folder
+/// the shell works in, so the file tools and `bash` agree on what a relative
+/// path means: `write check.py` then `python check.py` name one file.
+/// Absolute paths (and `/tmp/...`, which the scratch remaps) are left alone.
+/// A listing tool called with no path lists `base`, as `ls` in the shell would.
+pub fn rebase_relative_paths(tool: &str, args: &mut serde_json::Value, base: &Path) {
+    if !matches!(
+        tool,
+        "read" | "write" | "edit" | "ls" | "find" | "grep" | "screenshot"
+    ) {
+        return;
+    }
+    let Some(obj) = args.as_object_mut() else {
+        return;
+    };
+    let rebased = match obj.get("path") {
+        Some(serde_json::Value::String(raw))
+            if !raw.trim().is_empty()
+                && !raw.starts_with('/')
+                && !Path::new(raw).is_absolute() =>
+        {
+            lexical_normalize(&base.join(raw))
+        }
+        None if matches!(tool, "ls" | "find" | "grep") => base.to_path_buf(),
+        _ => return,
+    };
+    obj.insert(
+        "path".to_string(),
+        serde_json::Value::String(rebased.to_string_lossy().into_owned()),
+    );
+}
+
+/// Where `bash` starts when the run writes to a Jan-managed worktree (#322).
+///
+/// Only when the granted write roots are exactly one directory inside Jan's
+/// owned worktrees dir: that is the Managed worktree destination, and the one
+/// case where the shell is already confined to the worktree it would start in
+/// (the AppContainer ACE, the bwrap bind or the Seatbelt rule for that write
+/// root). Review-only runs have no write root and direct-edit runs a root that
+/// is not Jan's; both keep starting in the sandbox workspace.
+///
+/// The file tools follow: the desktop dispatcher rewrites their relative
+/// paths against the same folder before the gate sees them
+/// ([`working_folder`], [`rebase_relative_paths`]), so the two never
+/// disagree about what a relative path means.
 fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
     let [only] = write_roots else {
         return None;
@@ -6841,6 +6891,7 @@ on_failure = \"warn\"
         assert!(n.starts_with("[cwd: C:\\ws. The project is not the working directory"), "{n}");
         let n = cwd_note(r"C:\wt", true);
         assert!(n.starts_with("[cwd: C:\\wt (the session worktree). Relative paths"), "{n}");
+        assert!(n.contains("file tools alike"), "{n}");
         assert!(!n.contains("use absolute paths"), "{n}");
     }
 
@@ -6929,6 +6980,51 @@ on_failure = \"warn\"
             .with_write_roots(vec![wt.clone()])
             .with_start_dir(&wt);
         assert_eq!(policy.start_dir(), wt.as_path());
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// The file tools resolve a relative path where the shell starts, so a
+    /// script written with `write` is the one `python check.py` runs.
+    #[test]
+    fn file_tool_relative_paths_follow_the_shell_into_the_worktree() {
+        let data = unique_root();
+        let owned = crate::workspace::worktrees_dir(&data);
+        let wt = owned.join("repo").join("s1");
+        std::fs::create_dir_all(&wt).unwrap();
+        let user_repo = data.join("user-repo");
+        std::fs::create_dir_all(&user_repo).unwrap();
+
+        // Where the shell would start, the file tools rebase; nowhere else.
+        let expect_wt = jail::can_confine_write_roots(
+            jail::backend(),
+            std::slice::from_ref(&wt),
+            Some(&owned),
+        );
+        assert_eq!(working_folder(&[wt.clone()], &data).is_some(), expect_wt);
+        assert_eq!(working_folder(&[], &data), None);
+        assert_eq!(working_folder(&[user_repo], &data), None);
+
+        let mut args = json!({"path": "check_tt.py", "content": "x"});
+        rebase_relative_paths("write", &mut args, &wt);
+        assert_eq!(args["path"], json!(wt.join("check_tt.py").to_string_lossy()));
+        let mut args = json!({"path": "./src/../a.txt"});
+        rebase_relative_paths("read", &mut args, &wt);
+        assert_eq!(args["path"], json!(wt.join("a.txt").to_string_lossy()));
+        // A listing with no path lists the working folder.
+        let mut args = json!({"pattern": "*.py"});
+        rebase_relative_paths("find", &mut args, &wt);
+        assert_eq!(args["path"], json!(wt.to_string_lossy()));
+        // Absolute paths, `/tmp` and non-file tools are left alone.
+        let abs = data.join("elsewhere.txt").to_string_lossy().into_owned();
+        let mut args = json!({"path": abs.clone()});
+        rebase_relative_paths("edit", &mut args, &wt);
+        assert_eq!(args["path"], json!(abs));
+        let mut args = json!({"path": "/tmp/x.txt"});
+        rebase_relative_paths("write", &mut args, &wt);
+        assert_eq!(args["path"], json!("/tmp/x.txt"));
+        let mut args = json!({"command": "python check.py", "path": "x"});
+        rebase_relative_paths("bash", &mut args, &wt);
+        assert_eq!(args["path"], json!("x"));
         let _ = std::fs::remove_dir_all(&data);
     }
 

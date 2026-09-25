@@ -11,6 +11,27 @@
 
 use serde_json::{json, Value};
 
+/// Which shell `bash` really runs, said first: on Windows it is PowerShell,
+/// and a model told only "bash" writes heredocs and `&&` chains that are
+/// refused. Built per platform so each one reads only its own syntax rules.
+fn shell_line() -> &'static str {
+    if cfg!(windows) {
+        "Runs Windows PowerShell 5.1, not bash: write PowerShell syntax. No heredocs (`<<'EOF'`), no `&&`/`||` chaining (use `;`, or `if ($?) { ... }`), no `export VAR=` (use `$env:VAR = '...'`). To run a multi-line script, write it to a file with the `write` tool and run that file (`python check.py`) instead of piping it in."
+    } else {
+        "Runs one POSIX shell command."
+    }
+}
+
+fn bash_description() -> String {
+    format!(
+        "{} It starts in the sandbox workspace, or in the session worktree when the run works in a managed git worktree; relative paths in commands and in the file tools both resolve there. There is no cwd parameter, so use absolute paths for anywhere else. {}",
+        shell_line(),
+        BASH_DESCRIPTION_REST
+    )
+}
+
+const BASH_DESCRIPTION_REST: &str = "Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30), not milliseconds. Returns combined stdout and stderr, then a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by text on stderr: many commands (e.g. `git push`) write normal status there. The output is COMPLETE and verbatim; do not re-run a command to double-check. Past 2000 lines or 64KB it ends with an explicit `[output truncated ...]` notice naming a temp file with the full output, and the LAST lines are kept. A command still running after `timeout` is terminated, unless `background` is true: then this call returns a job_id and the command keeps running (with no timeout it is backgrounded at once). When a background job finishes you are told at the start of your next turn, so there is no need to poll it. Manage jobs without `command`: {\"action\": \"list\"}; {\"job_id\": ID} waits and collects its output (once); {\"job_id\": ID, \"action\": \"status\"} peeks without collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.";
+
 /// OpenAI function schemas for the built-in tools, in `BUILTIN_TOOLS` order.
 pub fn builtin_tool_schemas() -> Vec<Value> {
     vec![
@@ -22,7 +43,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to read, relative to your workspace, or absolute. Must be inside the workspace or an attached read root." },
+                        "path": { "type": "string", "description": "File to read, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute. Must be inside the workspace or an attached read root." },
                         "offset": { "type": "integer", "description": "1-indexed line to start from. Default 1 (start of file)." },
                         "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." }
                     },
@@ -89,7 +110,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "The .html/.htm/.svg file to render, relative to your workspace, or absolute." },
+                        "path": { "type": "string", "description": "The .html/.htm/.svg file to render, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute." },
                         "width": { "type": "integer", "description": "Viewport width in pixels. Default 1280." },
                         "height": { "type": "integer", "description": "Viewport height in pixels. Default 960." }
                     },
@@ -105,7 +126,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to create or overwrite, relative to your workspace, or absolute." },
+                        "path": { "type": "string", "description": "File to create or overwrite, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute." },
                         "content": { "type": "string", "description": "The full contents to write. This becomes the entire file." }
                     },
                     "required": ["path", "content"]
@@ -120,7 +141,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to edit, relative to your workspace, or absolute." },
+                        "path": { "type": "string", "description": "File to edit, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute." },
                         "edits": {
                             "type": "array",
                             "description": "Replacements to apply in order. At least one is required.",
@@ -143,7 +164,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "bash",
-                "description": "Run one shell command (PowerShell on Windows). It starts in the sandbox workspace, or in the session worktree when the run works in a managed git worktree; there is no cwd parameter, so use absolute paths for anywhere else. Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30), not milliseconds. Returns combined stdout and stderr, then a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by text on stderr: many commands (e.g. `git push`) write normal status there. The output is COMPLETE and verbatim; do not re-run a command to double-check. Past 2000 lines or 64KB it ends with an explicit `[output truncated ...]` notice naming a temp file with the full output, and the LAST lines are kept. A command still running after `timeout` is terminated, unless `background` is true: then this call returns a job_id and the command keeps running (with no timeout it is backgrounded at once). When a background job finishes you are told at the start of your next turn, so there is no need to poll it. Manage jobs without `command`: {\"action\": \"list\"}; {\"job_id\": ID} waits and collects its output (once); {\"job_id\": ID, \"action\": \"status\"} peeks without collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.",
+                "description": bash_description(),
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -590,6 +611,23 @@ mod tests {
             let desc = serde_json::to_string(tool(&builtin_tool_schemas(), name)).unwrap();
             assert!(!desc.contains("over `bash`"), "{name} repeats the prefer-over-bash line");
         }
+    }
+
+    /// The `bash` tool says which shell really runs: on Windows that is
+    /// PowerShell 5.1, and a model told "bash" sends heredocs that are refused.
+    #[test]
+    fn bash_description_names_the_platform_shell() {
+        let s = builtin_tool_schemas();
+        let desc = tool(&s, "bash")["function"]["description"].as_str().unwrap();
+        if cfg!(windows) {
+            for needle in ["PowerShell 5.1", "not bash", "No heredocs", "`write` tool"] {
+                assert!(desc.contains(needle), "missing {needle:?}: {desc}");
+            }
+        } else {
+            assert!(desc.starts_with("Runs one POSIX shell command."), "{desc}");
+            assert!(!desc.contains("PowerShell"), "{desc}");
+        }
+        assert!(desc.contains("file tools both resolve there"), "{desc}");
     }
 
     #[test]

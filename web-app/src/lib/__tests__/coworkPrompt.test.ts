@@ -472,8 +472,11 @@ describe('where bash runs (#322)', () => {
       opts({ readOnlyFolder: '/data/wt/s1', folderAccess: 'worktree' as const })
     )
 
-    expect(prompt).toContain('`bash` starts in the session worktree (`/data/wt/s1`)')
-    expect(prompt).toContain('still resolve relative paths against your workspace')
+    expect(prompt).toContain('Your working folder is the session worktree: `/data/wt/s1`.')
+    expect(prompt).toContain('relative paths resolve there for every tool')
+    expect(prompt).toContain('`write check.py` followed by `python check.py` names the same file.')
+    expect(prompt).not.toContain('still resolve relative paths against your workspace')
+    expect(prompt).not.toContain('Relative paths resolve against it.')
     expect(prompt).not.toContain('cannot cd into the project')
     expect(prompt).not.toContain('not in the project;')
   })
