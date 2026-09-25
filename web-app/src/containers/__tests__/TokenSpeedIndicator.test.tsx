@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import {
-  TokenSpeedIndicator,
-  isMeaningfulSpeed,
-} from '@/containers/TokenSpeedIndicator'
+import { TokenSpeedIndicator } from '@/containers/TokenSpeedIndicator'
+import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
 
 vi.mock('@/hooks/useInterfaceSettings', () => ({
   useInterfaceSettings: (sel: (s: { showTokenSpeed: boolean }) => unknown) =>
