@@ -14,6 +14,34 @@ import type {
   ServerSummary,
 } from './types'
 import { DefaultMCPService } from './default'
+import { recordToolCall } from '@/stores/engine-activity-store'
+
+/**
+ * Counts a finished call for the Tools & MCP page's per-server charts. The
+ * original promise is returned untouched, so callers see exactly what they
+ * saw before; the tally only observes it.
+ */
+function tallied<T>(
+  args: { toolName: string; serverName?: string },
+  promise: Promise<T> | undefined
+): Promise<T> {
+  if (!promise || typeof promise.then !== 'function') return promise as Promise<T>
+  promise.then(
+    (result) =>
+      recordToolCall({
+        server: args.serverName ?? '',
+        tool: args.toolName,
+        ok: !(result as { error?: string } | undefined)?.error,
+      }),
+    () =>
+      recordToolCall({
+        server: args.serverName ?? '',
+        tool: args.toolName,
+        ok: false,
+      })
+  )
+  return promise
+}
 
 export class TauriMCPService extends DefaultMCPService {
   async updateMCPConfig(configs: string): Promise<void> {
@@ -96,7 +124,7 @@ export class TauriMCPService extends DefaultMCPService {
     maxOutputChars?: number
     approvalTicket?: string
   }): Promise<{ error: string; content: { text: string }[] }> {
-    return window.core?.api?.callTool(args)
+    return tallied(args, window.core?.api?.callTool(args))
   }
 
   async trustedServers(): Promise<string[]> {
@@ -148,10 +176,13 @@ export class TauriMCPService extends DefaultMCPService {
     const token = args.cancellationToken ?? `tool_call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     // Create the tool call promise with cancellation token
-    const promise = window.core?.api?.callTool({
-      ...args,
-      cancellationToken: token
-    })
+    const promise = tallied<{ error: string; content: { text: string }[] }>(
+      args,
+      window.core?.api?.callTool({
+        ...args,
+        cancellationToken: token
+      })
+    )
 
     // Create cancel function
     const cancel = async () => {

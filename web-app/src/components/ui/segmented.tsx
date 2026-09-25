@@ -7,6 +7,8 @@ export type SegmentedOption<T extends string> = {
   label: React.ReactNode
   icon?: React.ReactNode
   disabled?: boolean
+  /** `data-testid` for this option's button. */
+  testId?: string
 }
 
 /**
@@ -77,6 +79,7 @@ function Segmented<T extends string>({
             role="radio"
             aria-checked={on}
             data-state={on ? 'on' : 'off'}
+            data-testid={o.testId}
             disabled={o.disabled}
             tabIndex={on ? 0 : -1}
             onClick={() => onValueChange(o.value)}
