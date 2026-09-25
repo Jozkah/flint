@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * What this session can actually do, component by component.
  *
@@ -168,6 +169,8 @@ export function CoworkEnvironmentReadiness({
   const [busy, setBusy] = useState<ReadinessComponent | 'all' | null>(null)
   const [copied, setCopied] = useState(false)
   const [open, setOpen] = useState(!collapsible)
+  // Re-read the clock each time a new report arrives, not on every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => Date.now(), [readiness])
 
   useEffect(() => {

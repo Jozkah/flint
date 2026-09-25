@@ -59,8 +59,8 @@ describe('ToolApprovalDialog', () => {
     )
     const thread = document.querySelector('[data-scope="allow-thread"]')!
     const once = document.querySelector('[data-scope="allow-once"]')!
-    expect(thread).toHaveAttribute('data-variant', 'default')
-    expect(once).toHaveAttribute('data-variant', 'outline')
+    expect(thread).toHaveAttribute('data-primary', 'true')
+    expect(once).not.toHaveAttribute('data-primary')
     await waitFor(() => expect(thread).toHaveFocus())
     expect(onDecision).not.toHaveBeenCalled()
   })
@@ -72,7 +72,7 @@ describe('ToolApprovalDialog', () => {
     expect(screen.queryByTestId('approval-repeat-notice')).not.toBeInTheDocument()
     expect(
       document.querySelector('[data-scope="allow-once"]')
-    ).toHaveAttribute('data-variant', 'default')
+    ).toHaveAttribute('data-primary', 'true')
     await waitFor(() =>
       expect(screen.getByText('permissions:scope.deny')).toHaveFocus()
     )

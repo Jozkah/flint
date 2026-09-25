@@ -176,8 +176,9 @@ describe('PluginsTab details ordering (#241)', () => {
     )
     render(<PluginsTab />)
 
-    fireEvent.click(await screen.findByRole('button', { name: /Demo Plugin/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Other Plugin/ }))
+    // The row's own button comes first; its menu trigger names the plugin too.
+    fireEvent.click((await screen.findAllByRole('button', { name: /Demo Plugin/ }))[0])
+    fireEvent.click(screen.getAllByRole('button', { name: /Other Plugin/ })[0])
     await waitFor(() => expect(resolvers['other-plugin']).toBeDefined())
 
     resolvers['other-plugin'](detailsFor(pluginB))

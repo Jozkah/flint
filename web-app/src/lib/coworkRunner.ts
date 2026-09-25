@@ -855,7 +855,6 @@ export async function runTurn(opts: {
        * dispatch and gets its own invocation and snapshot, because it is a
        * different request that happens to carry the same messages.
        */
-      // eslint-disable-next-line no-constant-condition
       while (true) {
         const operation = operationSignal(signal, opts.operationTimeoutMs)
         try {

@@ -376,26 +376,29 @@ export function ThreadConversation({
   const threadBusy = useAppState((s) => !!s.busyThreads[threadId])
   const { t } = useTranslation()
 
+  useEffect(() => {
+    const raw = contextLimitError?.message
+    // A refusal is the one moment a server names its own window without being
+    // asked. Recorded against this exact provider/endpoint/model before the
+    // message is turned into prose, so the next turn plans against the real
+    // number instead of the same guess that just failed.
+    if (!raw || !selectedModel?.id) return
+    const provider = getProviderByName(selectedProvider)
+    rememberServerLimit(
+      {
+        provider: selectedProvider ?? '',
+        baseUrl: (provider?.base_url as string) ?? '',
+        model: selectedModel.id,
+      },
+      parseServerContextLimit(contextLimitError, raw)
+    )
+  }, [contextLimitError, selectedModel?.id, selectedProvider, getProviderByName])
+
   // llama-server's overflow string is raw English; localize it, interpolating
   // the parsed request/context token counts when available.
   const contextBannerMessage = useMemo(() => {
     const raw = contextLimitError?.message
     if (!raw) return undefined
-    // A refusal is the one moment a server names its own window without being
-    // asked. Recorded against this exact provider/endpoint/model before the
-    // message is turned into prose, so the next turn plans against the real
-    // number instead of the same guess that just failed.
-    if (selectedModel?.id) {
-      const provider = getProviderByName(selectedProvider)
-      rememberServerLimit(
-        {
-          provider: selectedProvider ?? '',
-          baseUrl: (provider?.base_url as string) ?? '',
-          model: selectedModel.id,
-        },
-        parseServerContextLimit(contextLimitError, raw)
-      )
-    }
     const info = parseContextOverflow(raw)
     if (info)
       return t('model-errors:contextOverflowDetail', {

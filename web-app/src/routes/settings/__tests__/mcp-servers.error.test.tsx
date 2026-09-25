@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { Route as McpServersRoute } from '../mcp-servers'
@@ -62,21 +63,27 @@ vi.mock('@/containers/McpRouterModelPicker', () => ({
   McpRouterModelPicker: () => null,
 }))
 
-vi.mock('@/components/ui/button', () => ({
-  Button: ({
-    children,
-    onClick,
-    'aria-label': ariaLabel,
-  }: {
-    children: React.ReactNode
-    onClick?: () => void
-    'aria-label'?: string
-  }) => (
-    <button onClick={onClick} aria-label={ariaLabel}>
-      {children}
-    </button>
-  ),
-}))
+// Forwards the ref and the remaining props so a Radix trigger (the row menu)
+// can still open through it.
+vi.mock('@/components/ui/button', async () => {
+  const { forwardRef } = await import('react')
+  return {
+    Button: forwardRef<
+      HTMLButtonElement,
+      React.ButtonHTMLAttributes<HTMLButtonElement> & {
+        variant?: string
+        size?: string
+        asChild?: boolean
+      }
+    >(function Button({ variant: _v, size: _s, asChild: _a, children, ...props }, ref) {
+      return (
+        <button ref={ref} {...props}>
+          {children}
+        </button>
+      )
+    }),
+  }
+})
 
 vi.mock('@/components/ui/switch', () => ({
   Switch: ({
@@ -370,10 +377,11 @@ describe('MCP server connection state on the row', () => {
     await act(async () => {
       render(<Component />)
     })
-    // Cards are compact by default; the explanation lives in the expanded card.
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'mcp-servers:expandServer' }))
-    })
+    // Cards are compact by default; the explanation lives in the expanded
+    // card, which the row's menu opens.
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'engine:mcp.moreActions' }))
+    await user.click(await screen.findByRole('menuitem', { name: /mcp-servers:expandServer/ }))
     const summary = screen.getByText('mcp-servers:details.toggle')
     expect(summary.tagName).toBe('SUMMARY')
     expect(

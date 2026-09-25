@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import {
@@ -48,7 +48,7 @@ export function useImportedMcp(input: {
   readRoots?: readonly string[]
 }) {
   const { folder, workspacePath, dataFolder, writableRepository } = input
-  const readRoots = input.readRoots ?? []
+  const readRoots = useMemo(() => input.readRoots ?? [], [input.readRoots])
   /**
    * Allow one server and bring it up, or withdraw it and take it down.
    *

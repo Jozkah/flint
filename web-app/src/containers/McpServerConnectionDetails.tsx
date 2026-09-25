@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { OctagonAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'

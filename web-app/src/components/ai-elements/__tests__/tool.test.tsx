@@ -160,8 +160,8 @@ describe('ToolApprovalActions', () => {
       .getByText('permissions:scope.allowThread')
       .closest('button')!
     const once = screen.getByText('permissions:scope.allowOnce').closest('button')!
-    expect(thread).toHaveAttribute('data-variant', 'default')
-    expect(once).toHaveAttribute('data-variant', 'outline')
+    expect(thread).toHaveAttribute('data-primary', 'true')
+    expect(once).not.toHaveAttribute('data-primary')
     expect(thread).toHaveFocus()
     expect(resolveApproval).not.toHaveBeenCalled()
   })
@@ -180,7 +180,7 @@ describe('ToolApprovalActions', () => {
     expect(screen.queryByTestId('approval-repeat-notice')).not.toBeInTheDocument()
     expect(
       screen.getByText('permissions:scope.allowOnce').closest('button')
-    ).toHaveAttribute('data-variant', 'default')
+    ).toHaveAttribute('data-primary', 'true')
     expect(screen.getByText('permissions:scope.deny').closest('button')).toHaveFocus()
   })
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Dialog,
@@ -67,6 +66,15 @@ export function MigrationAssistant() {
   // open shows that outcome (and Roll back) instead of starting over.
   const unseenResultRef = useRef(false)
 
+  const seedSelection = useCallback((d: DetectResult) => {
+    const present = new Set<Category>()
+    for (const c of d.legacy?.categories ?? []) {
+      if ((c.file_count ?? 0) > 0 || (c.size_bytes ?? 0) > 0) present.add(c.category)
+    }
+    // Default to every category that actually has data; fall back to all.
+    setSelected(present.size > 0 ? present : new Set(ALL_CATEGORIES))
+  }, [])
+
   // Detect once on first mount so the assistant can auto-open on a first launch
   // that has legacy data. A manual open (from Settings) sets `open` directly.
   const autoChecked = useRef(false)
@@ -86,16 +94,7 @@ export function MigrationAssistant() {
       .catch(() => {
         // Detection is best-effort; a failure just means no prompt.
       })
-  }, [openAssistant])
-
-  const seedSelection = useCallback((d: DetectResult) => {
-    const present = new Set<Category>()
-    for (const c of d.legacy?.categories ?? []) {
-      if ((c.file_count ?? 0) > 0 || (c.size_bytes ?? 0) > 0) present.add(c.category)
-    }
-    // Default to every category that actually has data; fall back to all.
-    setSelected(present.size > 0 ? present : new Set(ALL_CATEGORIES))
-  }, [])
+  }, [openAssistant, seedSelection])
 
   // When opened manually (Settings), run detection each time it opens.
   useEffect(() => {

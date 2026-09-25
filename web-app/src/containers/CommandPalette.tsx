@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /**
  * One palette for navigation, session actions and settings. AH-206.
  *

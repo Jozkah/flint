@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { actorFromEvent, changedByText } from '@/lib/changeActor'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'

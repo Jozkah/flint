@@ -907,7 +907,7 @@ function CoworkPage() {
       openTab(current?.codePanel ?? emptyCodePanelState(), tab)
     )
     setRail({ kind: 'code' })
-  }, [])
+  }, [setRail])
 
   /**
    * Open a path a tool acted on, from its widget in the transcript.
@@ -1030,7 +1030,7 @@ function CoworkPage() {
         setRail({ kind: 'preview', path })
       }
     },
-    [openCode, session?.id]
+    [openCode, session?.id, setRail]
   )
 
   // The rail toolbar's four mutually-exclusive modes map onto the rail state
@@ -1048,7 +1048,7 @@ function CoworkPage() {
       }
       setRail(kind === 'preview' ? { kind, path: lastPreviewPath } : { kind })
     },
-    [lastPreviewPath, rail?.kind, setRail, ensureCurrentSession]
+    [lastPreviewPath, rail?.kind, setRail]
   )
   /** The toolbar's semantic mode for the currently open rail, or null. */
   const activeRail: RailMode | null =
@@ -3957,7 +3957,7 @@ function CoworkPage() {
     setLastPreviewPath(pendingPreview.path)
     setRail({ kind: 'preview', path: pendingPreview.path })
     useCoworkRun.getState().clearPendingPreview()
-  }, [pendingPreview, session?.id])
+  }, [pendingPreview, session?.id, setRail])
 
   // The file-activity view parks a request the same way, for a path it wants
   // shown but cannot open itself. Consumed once.
@@ -3983,7 +3983,7 @@ function CoworkPage() {
       openToolPath(pendingCodeOpen.path)
     }
     useCoworkRun.getState().clearPendingCodeOpen()
-  }, [pendingCodeOpen, session?.id, openToolPath])
+  }, [pendingCodeOpen, session?.id, openToolPath, setRail])
 
   // Nothing to show once the session changes: every panel describes the session
   // it was opened from.
@@ -3998,7 +3998,7 @@ function CoworkPage() {
     const previous = lastSessionId.current
     lastSessionId.current = session?.id
     if (previous != null && previous !== session?.id) setRail(null)
-  }, [session?.id])
+  }, [session?.id, setRail])
 
   // Layout. Wide windows dock the output panel beside the conversation; below
   // 1100px it becomes a drawer over the conversation's right edge; below 768px

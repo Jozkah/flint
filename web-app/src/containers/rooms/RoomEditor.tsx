@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ChevronDown, Lock, Pencil, Plus, Settings2, Users } from 'lucide-react'
 import type {
