@@ -51,7 +51,7 @@ export function NotificationPositionSwitcher() {
             key={value}
             className={cn(
               'cursor-pointer my-0.5',
-              notificationPosition === value && 'bg-brand-tint'
+              notificationPosition === value && 'bg-acc-tint'
             )}
             onClick={() => setNotificationPosition(value)}
           >

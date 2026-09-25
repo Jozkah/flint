@@ -39,7 +39,7 @@ export function ThemeSwitcher({
           <Label
             key={item.value}
             htmlFor={item.value}
-            className="cursor-pointer [&:has([data-state=checked])>div]:border-brand [&:has([data-state=checked])>div]:bg-brand-tint"
+            className="cursor-pointer [&:has([data-state=checked])>div]:border-acc [&:has([data-state=checked])>div]:bg-acc-tint"
           >
             <Card className="w-full border transition-colors shadow-none">
               <CardContent className="flex flex-row items-center justify-start gap-4 p-4">
@@ -69,7 +69,7 @@ export function ThemeSwitcher({
             key={item.value}
             className={cn(
               'cursor-pointer my-0.5',
-              activeTheme === item.value && 'bg-brand-tint'
+              activeTheme === item.value && 'bg-acc-tint'
             )}
             onClick={() => setTheme(item.value as 'auto' | 'light' | 'dark')}
           >

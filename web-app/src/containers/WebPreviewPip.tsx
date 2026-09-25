@@ -93,7 +93,7 @@ export function WebPreviewPip({
   return (
     <div
       data-testid="web-preview-pip"
-      className="fixed z-[60] flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-overlay"
+      className="fixed z-[60] flex flex-col overflow-hidden rounded-lg border border-border bg-card shadow-pop"
       style={{
         position: 'fixed',
         left: rect.x,

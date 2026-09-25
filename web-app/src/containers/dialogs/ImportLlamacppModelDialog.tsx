@@ -558,7 +558,7 @@ export const ImportLlamacppModelDialog = ({
 
           {/* Model Name Preview */}
           {modelName && !validationError && (
-            <div className="rounded-md bg-sunken px-3 py-2">
+            <div className="rounded-md bg-muted px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
                   Model will be saved as:
@@ -578,7 +578,7 @@ export const ImportLlamacppModelDialog = ({
                 <h3 className="text-[13px] font-semibold text-foreground">
                   Model File (GGUF)
                 </h3>
-                <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                   Required
                 </span>
               </div>
@@ -638,13 +638,13 @@ export const ImportLlamacppModelDialog = ({
 
                   {/* Validation Loading State */}
                   {isValidating && (
-                    <div className="bg-sunken border border-border rounded-lg p-3">
+                    <div className="bg-muted border border-border rounded-lg p-3">
                       <div className="flex items-center gap-2">
                         <LoaderCircle
                           size={16}
-                          className="text-ink-2 motion-safe:animate-spin"
+                          className="text-fg-2 motion-safe:animate-spin"
                         />
-                        <p className="text-sm text-ink-2">
+                        <p className="text-sm text-fg-2">
                           Validating model file...
                         </p>
                       </div>
@@ -672,7 +672,7 @@ export const ImportLlamacppModelDialog = ({
                   variant="link"
                   onClick={() => handleFileSelect('model')}
                   disabled={importing}
-                  className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
+                  className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                 >
                   Select GGUF File
                 </Button>
@@ -683,14 +683,14 @@ export const ImportLlamacppModelDialog = ({
               <div className="border border-border rounded-lg p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[13px] font-semibold text-foreground">MMPROJ File</h3>
-                  <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                  <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                     Required for Multimodal
                   </span>
                 </div>
 
                 {mmProjFile ? (
                   <div className="space-y-2">
-                    <div className="bg-sunken border border-border rounded-lg p-3">
+                    <div className="bg-muted border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           {isValidatingMmproj ? (
@@ -727,13 +727,13 @@ export const ImportLlamacppModelDialog = ({
                               Detected:
                             </span>
                             {detectedModalities.vision && (
-                              <span className="inline-flex items-center gap-1 text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                              <span className="inline-flex items-center gap-1 text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                                 <Image size={12} />
                                 Vision
                               </span>
                             )}
                             {detectedModalities.audio && (
-                              <span className="inline-flex items-center gap-1 text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                              <span className="inline-flex items-center gap-1 text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                                 <Mic size={12} />
                                 Audio
                               </span>
@@ -764,13 +764,13 @@ export const ImportLlamacppModelDialog = ({
 
                     {/* MMProj Validation Loading State */}
                     {isValidatingMmproj && (
-                      <div className="bg-sunken border border-border rounded-lg p-3">
+                      <div className="bg-muted border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
                           <LoaderCircle
                             size={16}
-                            className="text-ink-2 motion-safe:animate-spin"
+                            className="text-fg-2 motion-safe:animate-spin"
                           />
-                          <p className="text-sm text-ink-2">
+                          <p className="text-sm text-fg-2">
                             Validating MMProj file...
                           </p>
                         </div>
@@ -783,7 +783,7 @@ export const ImportLlamacppModelDialog = ({
                     variant="link"
                     onClick={() => handleFileSelect('mmproj')}
                     disabled={importing}
-                    className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
+                    className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                   >
                     Select MMPROJ File
                   </Button>
@@ -795,14 +795,14 @@ export const ImportLlamacppModelDialog = ({
               <div className="border border-border rounded-lg p-3 space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-[13px] font-semibold text-foreground">Draft Model File (GGUF)</h3>
-                  <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+                  <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                     Required for Draft Model
                   </span>
                 </div>
 
                 {draftFile ? (
                   <div className="space-y-2">
-                    <div className="bg-sunken border border-border rounded-lg p-3">
+                    <div className="bg-muted border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           {isValidatingDraft ? (
@@ -850,13 +850,13 @@ export const ImportLlamacppModelDialog = ({
                     )}
 
                     {isValidatingDraft && (
-                      <div className="bg-sunken border border-border rounded-lg p-3">
+                      <div className="bg-muted border border-border rounded-lg p-3">
                         <div className="flex items-center gap-2">
                           <LoaderCircle
                             size={16}
-                            className="text-ink-2 motion-safe:animate-spin"
+                            className="text-fg-2 motion-safe:animate-spin"
                           />
-                          <p className="text-sm text-ink-2">
+                          <p className="text-sm text-fg-2">
                             Validating draft model file...
                           </p>
                         </div>
@@ -869,7 +869,7 @@ export const ImportLlamacppModelDialog = ({
                     variant="link"
                     onClick={() => handleFileSelect('draft')}
                     disabled={importing}
-                    className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
+                    className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
                   >
                     Select Draft GGUF File
                   </Button>

@@ -171,7 +171,7 @@ export function SettingsSearch() {
           id="settings-search-results"
           role="listbox"
           aria-label={t('common:settingsSearch.results')}
-          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-overlay"
+          className="absolute left-1.5 right-1.5 top-full z-50 max-h-96 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-pop"
         >
           <p
             className="px-2 py-1 text-xs text-muted-foreground"

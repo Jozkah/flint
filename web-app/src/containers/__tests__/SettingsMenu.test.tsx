@@ -85,7 +85,7 @@ describe('SettingsMenu', () => {
     const link = screen.getByText('common:general').closest('a')!
     expect(link.className).toContain('[&.active]:bg-card')
     expect(link.className).toContain('[&.active]:border-border')
-    expect(link.className).not.toContain('bg-brand-tint')
+    expect(link.className).not.toContain('bg-acc-tint')
   })
 
   it('renders integrations links flagged as experimental', () => {

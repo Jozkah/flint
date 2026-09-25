@@ -498,7 +498,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       const highlightedId = highlightFzfMatch(
         item.model.id,
         positions,
-        'text-brand-text'
+        'text-acc-text'
       )
 
       return {

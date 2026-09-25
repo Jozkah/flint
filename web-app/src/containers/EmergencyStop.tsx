@@ -206,13 +206,13 @@ export function EmergencyStop(props: EmergencyStopProps) {
                   value={option}
                   checked={chosen === option}
                   onChange={() => setScope(option)}
-                  className="mt-1 accent-[var(--brand-fill)]"
+                  className="mt-1 accent-[var(--primary)]"
                 />
                 <span className="min-w-0">
                   <span className="font-medium text-foreground">
                     {SCOPE_NAME[option]}
                   </span>
-                  <span className="block break-words text-xs text-ink-2">
+                  <span className="block break-words text-xs text-fg-2">
                     {describeScope(option, props)}
                   </span>
                 </span>

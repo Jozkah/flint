@@ -90,7 +90,7 @@ export default function LlamacppBusyOnExitDialog() {
             </span>
             <div className="min-w-0">
               <DialogTitle>{t('common:llamacppBusyOnExit.title')}</DialogTitle>
-              <DialogDescription className="mt-1 text-ink-2">
+              <DialogDescription className="mt-1 text-fg-2">
                 {t('common:llamacppBusyOnExit.description')}
               </DialogDescription>
             </div>
@@ -98,8 +98,8 @@ export default function LlamacppBusyOnExitDialog() {
         </DialogHeader>
 
         {busyModels && busyModels.length > 0 && (
-          <div className="max-h-[150px] min-w-0 overflow-y-auto rounded-md border border-border bg-sunken p-3">
-            <ul className="space-y-1 break-all font-mono text-xs text-ink-2">
+          <div className="max-h-[150px] min-w-0 overflow-y-auto rounded-md border border-border bg-muted p-3">
+            <ul className="space-y-1 break-all font-mono text-xs text-fg-2">
               {busyModels.map((id) => (
                 <li key={id}>{id}</li>
               ))}

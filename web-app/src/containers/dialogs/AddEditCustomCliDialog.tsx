@@ -117,7 +117,7 @@ export default function AddEditCustomCliDialog({
                 type="button"
                 aria-label="Add environment variable"
                 title="Add environment variable"
-                className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                className="grid size-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                 onClick={handleAddEnv}
               >
                 <Plus className="size-4" aria-hidden />
@@ -143,7 +143,7 @@ export default function AddEditCustomCliDialog({
                     type="button"
                     aria-label={`Remove environment variable ${index + 1}`}
                     title="Remove"
-                    className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-sunken hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                    className="grid size-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-destructive focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                     onClick={() => handleRemoveEnv(index)}
                   >
                     <Trash2 className="size-4" aria-hidden />

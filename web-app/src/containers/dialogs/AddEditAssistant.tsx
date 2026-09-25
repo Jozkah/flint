@@ -177,11 +177,11 @@ export default function AddEditAssistant({
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative">
-              <label className="mb-2 inline-block text-sm font-medium text-ink-2">
+              <label className="mb-2 inline-block text-sm font-medium text-fg-2">
                 {t('assistants:emoji')}
               </label>
               <div
-                className="flex size-9 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-sunken pointer-coarse:size-11"
+                className="flex size-9 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-muted pointer-coarse:size-11"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 ref={emojiPickerTriggerRef}
               >
@@ -217,7 +217,7 @@ export default function AddEditAssistant({
             </div>
 
             <div className="space-y-2 w-full">
-              <label className="mb-2 inline-block text-sm font-medium text-ink-2">
+              <label className="mb-2 inline-block text-sm font-medium text-fg-2">
                 {t(`common:name`)}
               </label>
               <Input
@@ -239,7 +239,7 @@ export default function AddEditAssistant({
           )}
 
           <div className="space-y-2">
-            <label className="mb-2 inline-block text-sm font-medium text-ink-2">
+            <label className="mb-2 inline-block text-sm font-medium text-fg-2">
               {t('assistants:description')}
             </label>
             <Textarea
@@ -255,7 +255,7 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2">
-            <label className="mb-2 inline-block text-sm font-medium text-ink-2">
+            <label className="mb-2 inline-block text-sm font-medium text-fg-2">
               {t('assistants:instructions')}
             </label>
             <Textarea
@@ -275,7 +275,7 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2 my-4 mt-6">
-            <label className="text-sm font-medium text-ink-2">{t('assistants:parameters')}</label>
+            <label className="text-sm font-medium text-fg-2">{t('assistants:parameters')}</label>
             <ParametersSection
               params={params}
               providers={activeProviders}

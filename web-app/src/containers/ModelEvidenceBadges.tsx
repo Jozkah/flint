@@ -55,7 +55,7 @@ export function ModelEvidenceBadges({
     // app, so "Worked here" reads as a measured state, not as decoration.
     <span className="flex shrink-0 items-center gap-1">
       {isDefault && (
-        <span className="rounded-md border border-border bg-sunken px-1.5 text-[11px] font-medium leading-5 text-ink-2">
+        <span className="rounded-md border border-border bg-muted px-1.5 text-[11px] font-medium leading-5 text-fg-2">
           {t('model-fit:badge.default')}
         </span>
       )}

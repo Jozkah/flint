@@ -24,10 +24,10 @@ const TONE_CLASSES: Record<StatusTone, { chip: string; dot: string }> = {
     chip: 'bg-destructive-tint text-destructive',
     dot: 'bg-destructive',
   },
-  neutral: { chip: 'bg-sunken text-ink-2', dot: 'bg-muted-foreground' },
+  neutral: { chip: 'bg-muted text-fg-2', dot: 'bg-muted-foreground' },
   // Work in progress is not the accent: the accent means "selected" and marks
   // the primary action, so a running item must not look like a selected one.
-  progress: { chip: 'bg-sunken text-ink-2', dot: 'bg-ink-2' },
+  progress: { chip: 'bg-muted text-fg-2', dot: 'bg-fg-2' },
 }
 
 /**
@@ -94,9 +94,9 @@ const WORK_STATES: Record<
   WorkState,
   { icon: LucideIcon; className: string; spin?: boolean }
 > = {
-  running: { icon: Loader2, className: 'bg-sunken text-ink-2', spin: true },
-  queued: { icon: Clock, className: 'bg-sunken text-muted-foreground' },
-  waiting: { icon: Clock, className: 'bg-sunken text-muted-foreground' },
+  running: { icon: Loader2, className: 'bg-muted text-fg-2', spin: true },
+  queued: { icon: Clock, className: 'bg-muted text-muted-foreground' },
+  waiting: { icon: Clock, className: 'bg-muted text-muted-foreground' },
   blocked: { icon: Ban, className: 'bg-warning-tint text-warning' },
   'needs-you': { icon: ShieldAlert, className: 'bg-warning-tint text-warning' },
   done: { icon: CheckIcon, className: 'bg-success-tint text-success' },
@@ -104,7 +104,7 @@ const WORK_STATES: Record<
     icon: OctagonAlert,
     className: 'bg-destructive-tint text-destructive',
   },
-  cancelled: { icon: Ban, className: 'bg-sunken text-muted-foreground' },
+  cancelled: { icon: Ban, className: 'bg-muted text-muted-foreground' },
 }
 
 /**

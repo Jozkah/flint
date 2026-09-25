@@ -59,7 +59,7 @@ const DOT_CLASS: Record<FitTier, string> = {
   green: 'bg-success',
   yellow: 'bg-warning',
   red: 'bg-destructive',
-  unknown: 'bg-line-strong',
+  unknown: 'bg-border-strong',
 }
 
 /** A measured result outranks the estimate for the colour of the dot. */
@@ -357,7 +357,7 @@ export const ModelSupportStatus = ({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex size-5 items-center justify-center rounded-full hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-8"
+            className="flex size-5 items-center justify-center rounded-full hover:bg-muted focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-8"
             aria-label={t('model-fit:triggerLabel', {
               status: dismissed ? estimate : `${headline}. ${estimate}`,
             })}
@@ -423,7 +423,7 @@ export const ModelSupportStatus = ({
 
           <section
             aria-labelledby="model-fit-estimate"
-            className="space-y-1 rounded-md border border-dashed border-line-strong bg-sunken p-2.5"
+            className="space-y-1 rounded-md border border-dashed border-border-strong bg-muted p-2.5"
           >
             <h4 id="model-fit-estimate" className="text-[13px] font-semibold text-foreground">
               {t('model-fit:estimateHeading')}
@@ -442,11 +442,11 @@ export const ModelSupportStatus = ({
             />
             {/* Confidence is part of the estimate, not a detail behind a
                 disclosure: it says how much weight the verdict can bear. */}
-            <p className="text-xs text-ink-2">
+            <p className="text-xs text-fg-2">
               {t(`model-fit:uncertainty.${assessment.uncertainty}`)}
             </p>
             <Collapsible>
-              <CollapsibleTrigger className="text-xs text-brand-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring">
+              <CollapsibleTrigger className="text-xs text-acc-text underline underline-offset-2 rounded-sm focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring">
                 {t('model-fit:showReasons')}
               </CollapsibleTrigger>
               <CollapsibleContent className="pt-2 space-y-2 text-xs">
@@ -606,7 +606,7 @@ function MemoryBars({ need, available }: { need: number; available: number }) {
     {
       label: t('model-fit:breakdown.total'),
       value: need,
-      fill: need > available ? 'bg-warning' : 'bg-ink-2',
+      fill: need > available ? 'bg-warning' : 'bg-fg-2',
     },
     {
       label: t('model-fit:breakdown.budget'),
@@ -621,7 +621,7 @@ function MemoryBars({ need, available }: { need: number; available: number }) {
     >
       {rows.map((row) => (
         <div key={row.label} className="contents">
-          <dt className="text-ink-2">{row.label}</dt>
+          <dt className="text-fg-2">{row.label}</dt>
           <dd aria-hidden className="h-1.5 overflow-hidden rounded-full bg-border">
             <span
               className={cn('block h-full rounded-full', row.fill)}

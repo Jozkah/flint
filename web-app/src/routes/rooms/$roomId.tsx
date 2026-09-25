@@ -47,7 +47,7 @@ function RoomPage() {
     return (
       <div className="flex h-full flex-col">
         <HeaderPage />
-        <div className="flex h-[calc(100%-var(--ctx-h,52px))] items-center justify-center p-4 text-center">
+        <div className="flex h-full items-center justify-center p-4 text-center">
           {loading ? (
             <div className="flex w-full max-w-md flex-col items-center gap-3">
               <p role="status" className="sr-only">
@@ -107,7 +107,7 @@ function RoomPage() {
         fixed 70vh block so its transcript still scrolls, and the page scroll
         reaches the controls below it.
       */}
-      <div className="grid h-[calc(100%-var(--ctx-h,52px))] min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-1 py-4 lg:grid-cols-[minmax(0,1fr)_370px] lg:overflow-hidden">
+      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-1 py-4 lg:grid-cols-[minmax(0,1fr)_370px] lg:overflow-hidden">
         <Frame className="h-[70vh] min-h-0 motion-safe:animate-rise-in lg:h-full">
           <FrameHeader
             icon={<MessagesSquare />}

@@ -224,7 +224,7 @@ export const DialogEditModel = ({
         <div className="py-1">
           <label
             htmlFor="display-name"
-            className="mb-1.5 block text-xs font-medium text-ink-2"
+            className="mb-1.5 block text-xs font-medium text-fg-2"
           >
             {t('providers:editModel.displayName')}
           </label>

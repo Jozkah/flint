@@ -25,7 +25,7 @@ export function FavoriteModelAction({ model }: FavoriteModelActionProps) {
         className={cn(
           'size-4',
           isModelFavorite
-            ? 'fill-current text-brand-text'
+            ? 'fill-current text-acc-text'
             : 'text-muted-foreground'
         )}
       />

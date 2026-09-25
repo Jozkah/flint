@@ -398,7 +398,7 @@ export const ChainOfThoughtSearchResult = memo(
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
-        'inline-flex h-6 max-w-full items-center gap-1 rounded-md bg-sunken px-2 text-xs text-ink-2 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
+        'inline-flex h-6 max-w-full items-center gap-1 rounded-md bg-muted px-2 text-xs text-fg-2 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11',
         className
       )}
       {...props}

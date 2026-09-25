@@ -93,9 +93,9 @@ function SkillListRow({
       tabIndex={0}
       aria-current={isSelected ? 'true' : undefined}
       className={cn(
-        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+        'group relative flex min-h-9 items-center gap-2 rounded-md px-2 py-1.5 text-sm cursor-pointer text-fg-2 hover:bg-muted hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
         isSelected &&
-          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
+          'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-acc'
       )}
       onClick={onSelect}
       onContextMenu={openRowMenu}
@@ -433,7 +433,7 @@ export default function SkillsManagerDialog({
                     </p>
                   )}
                   {hubLoading ? (
-                    <div className="flex-1 flex items-center justify-center py-6 text-ink-2">
+                    <div className="flex-1 flex items-center justify-center py-6 text-fg-2">
                       <Loader2 className="motion-safe:animate-spin" size={18} aria-hidden />
                     </div>
                   ) : hubError ? (

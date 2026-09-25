@@ -153,7 +153,7 @@ export function FilePickerPopover({
           <span>
             {' '}
             for{' '}
-            <span className="font-mono font-medium text-ink-2">
+            <span className="font-mono font-medium text-fg-2">
               @{query}
             </span>
           </span>

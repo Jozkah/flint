@@ -100,7 +100,7 @@ function RoomsList() {
           </Button>
         </div>
       </HeaderPage>
-      <div className="h-[calc(100%-var(--ctx-h,52px))] overflow-y-auto">
+      <div className="h-full overflow-y-auto">
         <div className="flex w-full flex-col gap-4 px-1 py-4">
           <div className="flex flex-col gap-1 motion-safe:animate-rise-in">
             <h1 className="text-[22px] leading-tight font-semibold tracking-[-0.01em] text-foreground">

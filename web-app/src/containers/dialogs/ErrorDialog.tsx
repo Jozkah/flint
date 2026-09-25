@@ -59,14 +59,14 @@ export default function ErrorDialog() {
             </span>
             <div className="min-w-0">
               <DialogTitle>{t('common:error')}</DialogTitle>
-              <DialogDescription className="mt-1 text-ink-2">
+              <DialogDescription className="mt-1 text-fg-2">
                 {errorMessage?.title ?? t('common:errorDialog.titleFallback')}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="min-w-0 space-y-2 rounded-md border border-border bg-sunken p-3">
+        <div className="min-w-0 space-y-2 rounded-md border border-border bg-muted p-3">
           <button
             type="button"
             aria-expanded={isDetailExpanded}
@@ -83,7 +83,7 @@ export default function ErrorDialog() {
 
           {isDetailExpanded && (
             <div
-              className="max-h-[150px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border bg-card p-2.5 font-mono text-xs leading-relaxed text-ink-2"
+              className="max-h-[150px] overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border bg-card p-2.5 font-mono text-xs leading-relaxed text-fg-2"
               ref={(el) => {
                 if (el) {
                   el.scrollTop = el.scrollHeight
@@ -95,7 +95,7 @@ export default function ErrorDialog() {
           )}
           {/* What to do */}
           {errorMessage?.subtitle && (
-            <p className="text-sm text-ink-2">{errorMessage.subtitle}</p>
+            <p className="text-sm text-fg-2">{errorMessage.subtitle}</p>
           )}
         </div>
 

@@ -143,7 +143,7 @@ export const DialogDeleteAllModels = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-center justify-between gap-3 rounded-md bg-sunken px-3 py-2 text-sm">
+        <div className="flex items-center justify-between gap-3 rounded-md bg-muted px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {t('providers:deleteAllModels.sizeLabel')}
           </span>

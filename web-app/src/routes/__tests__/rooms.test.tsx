@@ -62,7 +62,7 @@ describe('rooms list route', () => {
     const root = container.firstElementChild!
     expect(root).toHaveClass('flex', 'flex-col', 'h-full')
     expect(root.firstElementChild).toHaveAttribute('data-testid', 'header-page')
-    expect(root.children[1].className).toContain('h-[calc(100%-var(--ctx-h')
+    expect(root.children[1]).toHaveClass('h-full')
     expect(screen.getByText('No rooms yet')).toBeInTheDocument()
     await waitFor(() => expect(api.loadSummaries).toHaveBeenCalled())
   })

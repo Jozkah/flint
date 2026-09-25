@@ -60,7 +60,7 @@ export function FactoryResetDialog({
                 type="checkbox"
                 checked={keepAppData}
                 onChange={(e) => setKeepAppData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
@@ -76,7 +76,7 @@ export function FactoryResetDialog({
                 type="checkbox"
                 checked={keepModelsAndConfigs}
                 onChange={(e) => setKeepModelsAndConfigs(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">
@@ -92,7 +92,7 @@ export function FactoryResetDialog({
                 type="checkbox"
                 checked={clearWebData}
                 onChange={(e) => setClearWebData(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-border accent-brand-fill cursor-pointer"
+                className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium text-foreground">

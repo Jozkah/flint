@@ -633,7 +633,7 @@ export function SecurityConfigDialog({
                     <span className="font-medium text-foreground truncate">
                       {device.name}
                     </span>
-                    <span className="text-xs px-2 py-0.5 rounded-md bg-sunken text-ink-2">
+                    <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-fg-2">
                       {device.channel}
                     </span>
                   </div>
@@ -734,7 +734,7 @@ export function SecurityConfigDialog({
                   <span className="font-medium text-foreground">
                     {log.action}
                   </span>
-                  <span className="text-xs px-2 py-0.5 rounded-md bg-sunken text-ink-2">
+                  <span className="text-xs px-2 py-0.5 rounded-md bg-muted text-fg-2">
                     {log.channel}
                   </span>
                 </div>

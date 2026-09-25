@@ -158,7 +158,7 @@ export const ImportMlxModelDialog = ({
         <div className="space-y-4">
           {/* Model Name Input */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-ink-2">
+            <label className="text-xs font-medium text-fg-2">
               Model Name
             </label>
             <input
@@ -179,13 +179,13 @@ export const ImportMlxModelDialog = ({
               <h3 className="text-[13px] font-semibold text-foreground">
                 Model Folder
               </h3>
-              <span className="text-xs bg-sunken text-ink-2 px-2 py-0.5 rounded-sm">
+              <span className="text-xs bg-muted text-fg-2 px-2 py-0.5 rounded-sm">
                 Required
               </span>
             </div>
 
             {displayPath ? (
-              <div className="bg-sunken border border-border rounded-lg p-3">
+              <div className="bg-muted border border-border rounded-lg p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <Check size={16} className="shrink-0 text-success" />
@@ -209,7 +209,7 @@ export const ImportMlxModelDialog = ({
                 variant="link"
                 onClick={handleFileSelect}
                 disabled={importing}
-                className="w-full h-12 border border-dashed border-line-strong text-muted-foreground hover:bg-sunken hover:no-underline"
+                className="w-full h-12 border border-dashed border-border-strong text-muted-foreground hover:bg-muted hover:no-underline"
               >
                 Select Model Folder
               </Button>
@@ -218,7 +218,7 @@ export const ImportMlxModelDialog = ({
 
           {/* Preview */}
           {modelName && (
-            <div className="rounded-md bg-sunken px-3 py-2">
+            <div className="rounded-md bg-muted px-3 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
                   Model will be saved as:

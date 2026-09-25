@@ -36,7 +36,7 @@ const itemClass = (selected: boolean) =>
   cn(
     'relative flex w-full min-h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent pointer-coarse:min-h-11',
     selected &&
-      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
+      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
   )
 
 function GroupLabel({ children }: { children: ReactNode }) {
@@ -397,7 +397,7 @@ export function SearchDialog({ open, onOpenChange }: SearchDialogProps) {
         </div>
 
         {/* Footer with keyboard hints; phones have no arrow keys to hint at. */}
-        <div className="hidden shrink-0 items-center justify-between border-t border-border bg-sunken px-3 py-2 text-xs text-muted-foreground sm:flex">
+        <div className="hidden shrink-0 items-center justify-between border-t border-border bg-muted px-3 py-2 text-xs text-muted-foreground sm:flex">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1">
               <kbd className="rounded border border-border bg-card px-1.5 py-0.5 text-[10px]">

@@ -73,7 +73,7 @@ export function ClaudeSkillRootsSettings({
       </header>
 
       {roots.length === 0 ? (
-        <p className="text-ink-2">
+        <p className="text-fg-2">
           {t('common:claudeCompat.roots.none')}
         </p>
       ) : (

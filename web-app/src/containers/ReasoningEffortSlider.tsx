@@ -131,7 +131,7 @@ export function ReasoningEffortSlider({
               onClick={() => onChange(level)}
               className={cn(
                 'h-1.5 flex-1 rounded-full transition-colors',
-                filled ? 'bg-primary' : 'bg-main-view-fg/15',
+                filled ? 'bg-primary' : 'bg-foreground/15',
                 'hover:bg-primary/60'
               )}
             />

@@ -277,7 +277,7 @@ export function MigrationAssistant() {
         {step === 'choose' && (
           <div className="flex flex-col gap-4">
             {detect?.legacy && (
-              <div className="rounded-md border border-main-view-fg/10 bg-main-view-fg/5 px-3 py-2 text-xs text-muted-foreground">
+              <div className="rounded-md border border-foreground/10 bg-foreground/5 px-3 py-2 text-xs text-muted-foreground">
                 Found JAN data at{' '}
                 <span className="font-mono break-all">
                   {detect.legacy.source.data_folder}
@@ -298,7 +298,7 @@ export function MigrationAssistant() {
                     'text-left rounded-md border px-3 py-2 transition-colors ' +
                     (mode === m
                       ? 'border-primary/60 bg-primary/10'
-                      : 'border-main-view-fg/10 hover:bg-main-view-fg/5')
+                      : 'border-foreground/10 hover:bg-foreground/5')
                   }
                 >
                   <div className="text-sm font-medium">{MODE_LABELS[m]}</div>
@@ -337,7 +337,7 @@ export function MigrationAssistant() {
                 <label className="mt-1 flex items-center justify-between gap-2 text-xs text-muted-foreground">
                   <span>If an item already exists in Flint</span>
                   <select
-                    className="rounded-md border border-main-view-fg/15 bg-transparent px-2 py-1 text-xs"
+                    className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
                     value={defaultConflict}
                     onChange={(e) =>
                       setDefaultConflict(e.target.value as Conflict)
@@ -364,7 +364,7 @@ export function MigrationAssistant() {
                 support. Review the warnings before continuing.
               </p>
             )}
-            <div className="rounded-md border border-main-view-fg/10 px-3 py-2 text-sm">
+            <div className="rounded-md border border-foreground/10 px-3 py-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Mode</span>
                 <span className="font-medium">{MODE_LABELS[plan.mode]}</span>
@@ -388,14 +388,14 @@ export function MigrationAssistant() {
             </div>
 
             {conflicts.length > 0 && (
-              <div className="rounded-md border border-main-view-fg/10 px-3 py-2">
+              <div className="rounded-md border border-foreground/10 px-3 py-2">
                 <div className="mb-1 flex items-center justify-between">
                   <span className="text-xs font-medium">
                     {conflicts.length} conflict
                     {conflicts.length === 1 ? '' : 's'}
                   </span>
                   <select
-                    className="rounded-md border border-main-view-fg/15 bg-transparent px-2 py-1 text-xs"
+                    className="rounded-md border border-foreground/15 bg-transparent px-2 py-1 text-xs"
                     value={defaultConflict}
                     onChange={(e) => {
                       const c = e.target.value as Conflict

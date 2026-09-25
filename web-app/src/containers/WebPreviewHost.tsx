@@ -109,7 +109,7 @@ export function WebPreviewHost() {
       >
         <RotateCw className="size-4" aria-hidden />
       </Button>
-      <span className="mx-1 min-w-0 flex-1 truncate rounded bg-sunken px-2 py-1 font-mono text-xs text-ink-2">
+      <span className="mx-1 min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-fg-2">
         {url}
       </span>
       <Button

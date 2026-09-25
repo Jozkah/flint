@@ -56,7 +56,7 @@ export default function MissingDependenciesDialog() {
               <DialogTitle>
                 {t('common:missingDependenciesDialog.title')}
               </DialogTitle>
-              <DialogDescription className="mt-1 text-ink-2">
+              <DialogDescription className="mt-1 text-fg-2">
                 {t('common:missingDependenciesDialog.description', {
                   backend: displayName,
                 })}

@@ -80,7 +80,7 @@ export function ShortcutRebind({
         <Button
           size="sm"
           variant="ghost"
-          className="text-brand-text pointer-coarse:h-11"
+          className="text-acc-text pointer-coarse:h-11"
           onClick={() => {
             setError(null)
             setRecording((r) => !r)

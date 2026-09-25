@@ -87,7 +87,7 @@ export function EditMessageDialog({
       tabIndex={0}
       disabled={!selectedModel}
       aria-label={t('common:editMessage')}
-      className="size-7 text-ink-2 hover:text-foreground pointer-coarse:size-11"
+      className="size-7 text-fg-2 hover:text-foreground pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -121,7 +121,7 @@ export function EditMessageDialog({
                     <button
                       type="button"
                       aria-label={t('common:dismiss')}
-                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-border-strong bg-card text-fg-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptImages((prev) =>
                           prev.filter((_, i) => i !== index)
@@ -135,7 +135,7 @@ export function EditMessageDialog({
                 {keptFiles.map((file) => (
                   <div
                     key={file.id}
-                    className="relative border border-border rounded-md px-3 py-2 flex items-center gap-2 bg-sunken"
+                    className="relative border border-border rounded-md px-3 py-2 flex items-center gap-2 bg-muted"
                   >
                     <FileIcon className="size-4 text-muted-foreground" />
                     <span className="text-sm max-w-32 truncate" title={file.name}>
@@ -144,7 +144,7 @@ export function EditMessageDialog({
                     <button
                       type="button"
                       aria-label={t('common:dismiss')}
-                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-line-strong bg-card text-ink-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
+                      className="absolute -top-1.5 -right-2 flex size-5 items-center justify-center rounded-full border border-border-strong bg-card text-fg-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-7"
                       onClick={() =>
                         setKeptFiles((prev) =>
                           prev.filter((f) => f.id !== file.id)

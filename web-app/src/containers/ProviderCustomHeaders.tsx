@@ -136,7 +136,7 @@ export function ProviderCustomHeaders({ provider }: { provider: ModelProvider })
         return (
           <div key={i} className="space-y-1">
             {/* Phone: switch, name and remove on one line, value below. */}
-            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-sunken p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-md border border-border bg-muted p-2 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1.4fr)_auto_auto] sm:border-0 sm:bg-transparent sm:p-0">
               <Switch
                 data-testid={`custom-header-enabled-${i}`}
                 aria-label={t('providers:customHeaders.enabled')}

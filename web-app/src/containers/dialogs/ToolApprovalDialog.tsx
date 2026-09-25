@@ -111,8 +111,8 @@ export function ToolApprovalDialog({
         {children}
 
         {showSecurityNotice && (
-          <div className="rounded-md bg-sunken px-3 py-2">
-            <p className="text-xs leading-relaxed text-ink-2">
+          <div className="rounded-md bg-muted px-3 py-2">
+            <p className="text-xs leading-relaxed text-fg-2">
               {t('tools:toolApproval.securityNotice')}
             </p>
           </div>

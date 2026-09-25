@@ -30,12 +30,12 @@ export default function AttachmentIngestionDialog() {
               </span>
             )}
           </DialogTitle>
-          <DialogDescription className="text-ink-2">
+          <DialogDescription className="text-fg-2">
             {t('common:attachmentsIngestion.description')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="min-w-0 rounded-md border border-border bg-sunken p-3">
+        <div className="min-w-0 rounded-md border border-border bg-muted p-3">
           <div className="flex min-w-0 items-center justify-between gap-2">
             <span className="flex min-w-0 items-center gap-2">
               <FileText className="size-4 shrink-0 text-muted-foreground" />

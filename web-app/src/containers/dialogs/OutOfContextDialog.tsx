@@ -51,7 +51,7 @@ export default function OutOfContextPromiseModal() {
             </DialogTitle>
           </div>
         </DialogHeader>
-        <DialogDescription className="text-ink-2 leading-relaxed">
+        <DialogDescription className="text-fg-2 leading-relaxed">
           {t('model-errors:description')}
           <br />
           <br />

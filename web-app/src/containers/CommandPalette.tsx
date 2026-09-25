@@ -274,7 +274,7 @@ export function CommandPalette() {
                   className={cn(
                     'relative flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-foreground pointer-coarse:min-h-11',
                     selected &&
-                      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
+                      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
                   )}
                 >
                   <span className="min-w-0 flex-1 truncate">

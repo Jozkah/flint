@@ -72,7 +72,7 @@ const ErrorSection = ({
         {t('common:failedToLoadModels')}
       </span>
     </div>
-    <div className="mt-0.5 break-words text-xs text-ink-2">{error}</div>
+    <div className="mt-0.5 break-words text-xs text-fg-2">{error}</div>
   </div>
 )
 
@@ -134,7 +134,7 @@ const ModelsList = ({
           highlightedIndex === index && 'bg-accent',
           // The chosen model: the same fill and the 2px accent rail.
           value === model &&
-            'bg-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
+            'bg-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
         )}
       >
         <span className="truncate text-sm text-foreground">{model}</span>
@@ -454,7 +454,7 @@ export function ModelCombobox({
           createPortal(
             <div
               ref={dropdownRef}
-              className="fixed z-9999 max-h-[300px] overflow-y-auto rounded-md border border-line-strong bg-popover py-1 shadow-overlay motion-safe:animate-in motion-safe:fade-in-0"
+              className="fixed z-9999 max-h-[300px] overflow-y-auto rounded-md border border-border-strong bg-popover py-1 shadow-pop motion-safe:animate-in motion-safe:fade-in-0"
               style={{
                 top: dropdownPosition.top,
                 left: dropdownPosition.left,

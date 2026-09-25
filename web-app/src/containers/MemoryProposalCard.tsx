@@ -79,7 +79,7 @@ export function MemoryProposalCard({
       <div className="flex items-start gap-2">
         <Brain size={14} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-medium text-ink-2">
+          <p className="text-xs font-medium text-fg-2">
             Remember this?
           </p>
           <p

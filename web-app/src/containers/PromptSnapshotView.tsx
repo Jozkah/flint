@@ -357,7 +357,7 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
       <ul className="ml-4 list-none border-l border-border pl-3">
         {entries.map(([key, child]) => (
           <li key={`${path}.${key}`} className="py-0.5">
-            <span className="font-medium text-ink-2">{key}: </span>
+            <span className="font-medium text-fg-2">{key}: </span>
             <Tree value={child} path={`${path}.${key}`} />
           </li>
         ))}
@@ -369,7 +369,7 @@ function Tree({ value, path = '' }: { value: unknown; path?: string }) {
     <span
       className={
         text === '[redacted]'
-          ? 'rounded-md bg-sunken px-1 font-mono text-muted-foreground'
+          ? 'rounded-md bg-muted px-1 font-mono text-muted-foreground'
           : 'break-words whitespace-pre-wrap'
       }
     >
@@ -431,7 +431,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
   return (
     <details
-      className="rounded-md border border-border bg-sunken/60 px-3 py-2 text-xs"
+      className="rounded-md border border-border bg-muted/60 px-3 py-2 text-xs"
       data-testid="prompt-snapshot"
       onToggle={(e) => {
         if ((e.currentTarget as HTMLDetailsElement).open) void load()
@@ -541,7 +541,7 @@ export function PromptSnapshotView(props: PromptSnapshotViewProps) {
 
             {/* Wide content scrolls inside its own box rather than pushing the
                 conversation sideways. */}
-            <div className="max-h-80 overflow-auto rounded-md border border-border bg-sunken/60 p-2">
+            <div className="max-h-80 overflow-auto rounded-md border border-border bg-muted/60 p-2">
               {view === 'json' ? (
                 <pre
                   className="whitespace-pre-wrap break-words font-mono text-[11px]"

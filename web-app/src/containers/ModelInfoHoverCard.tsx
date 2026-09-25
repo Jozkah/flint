@@ -64,8 +64,8 @@ const TRIGGER_STYLES: Record<FitTier, TriggerStyle> = {
     icon: CircleHelp,
     label: 'Fit unknown',
     detail: 'Could not estimate memory requirements',
-    pill: 'bg-sunken text-ink-2',
-    dot: 'bg-line-strong',
+    pill: 'bg-muted text-fg-2',
+    dot: 'bg-border-strong',
   },
 }
 
@@ -166,12 +166,12 @@ export const ModelInfoHoverCard = ({
               </h5>
               <div className="flex flex-wrap gap-2">
                 {model.tools && (
-                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-sunken text-ink-2 rounded-md">
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-muted text-fg-2 rounded-md">
                     <span className="text-xs font-medium">Tools</span>
                   </div>
                 )}
                 {(model.num_mmproj ?? 0) > 0 && (
-                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-sunken text-ink-2 rounded-md">
+                  <div className="flex items-center gap-1.5 px-1.5 py-0.5 bg-muted text-fg-2 rounded-md">
                     <span className="text-xs font-medium">Vision</span>
                   </div>
                 )}

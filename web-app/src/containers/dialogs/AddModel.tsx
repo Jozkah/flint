@@ -128,7 +128,7 @@ export const DialogAddModel = ({ provider, trigger }: DialogAddModelProps) => {
               href={provider.explore_models_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-brand-text underline-offset-4 hover:underline"
+              className="inline-flex items-center gap-1 text-acc-text underline-offset-4 hover:underline"
             >
               <span>
                 {t('providers:addModel.exploreModels', {

@@ -146,9 +146,9 @@ export default function AddProjectDialog({
             {looksLikeFilesystemPath(name) && (
               <div
                 role="status"
-                className="mt-2 rounded-md border border-border bg-sunken p-2"
+                className="mt-2 rounded-md border border-border bg-muted p-2"
               >
-                <p className="text-xs text-ink-2">
+                <p className="text-xs text-fg-2">
                   {t('projects.pathNameNotice')}
                 </p>
                 <Button

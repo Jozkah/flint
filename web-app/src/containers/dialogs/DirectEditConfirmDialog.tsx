@@ -110,7 +110,7 @@ export function DirectEditConfirmDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <dl className="grid gap-1 rounded-md border border-border bg-sunken px-3 py-2 text-xs">
+        <dl className="grid gap-1 rounded-md border border-border bg-muted px-3 py-2 text-xs">
           <Fact
             label={t('common:coworkAccess.confirm.folder')}
             value={facts.folder}
@@ -138,7 +138,7 @@ export function DirectEditConfirmDialog({
           />
         </dl>
 
-        <div className="space-y-1.5 text-xs text-ink-2">
+        <div className="space-y-1.5 text-xs text-fg-2">
           {/* What the current run mode will actually do with the permission,
               so the two controls are not read independently. */}
           <p>{t(modeConsequenceKey(facts.runMode))}</p>

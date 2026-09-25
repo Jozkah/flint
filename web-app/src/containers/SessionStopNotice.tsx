@@ -16,7 +16,7 @@ export function SessionStopNotice({ notice }: { notice: SessionStopNoticeData })
       data-testid="session-stop-notice"
       data-request-id={notice.requestId}
       data-from-session={notice.fromSessionId}
-      className="mt-2 flex items-start gap-2 rounded-md border border-line-strong bg-card px-3 py-2 text-xs text-ink-2"
+      className="mt-2 flex items-start gap-2 rounded-md border border-border-strong bg-card px-3 py-2 text-xs text-fg-2"
       role="note"
     >
       <OctagonX size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />

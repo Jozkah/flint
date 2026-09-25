@@ -66,7 +66,7 @@ export default function McpServerLogDialog({
           <pre
             aria-label={t('mcp-servers:serverLog.title', { serverName })}
             tabIndex={0}
-            className="max-h-96 overflow-auto rounded-md border border-border bg-code p-3 font-mono text-xs whitespace-pre-wrap text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+            className="max-h-96 overflow-auto rounded-md border border-border bg-code-bg p-3 font-mono text-xs whitespace-pre-wrap text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
           >
             {lines.join('\n')}
           </pre>

@@ -26,14 +26,14 @@ export function DependencyAdvice({
     <div className="min-w-0 space-y-3" data-testid="dependency-advice">
       {recommendations.length > 0 ? (
         <>
-          <p className="text-sm text-ink-2">
+          <p className="text-sm text-fg-2">
             {t('common:missingDependenciesDialog.installLabel')}
           </p>
           <ul className="space-y-2">
             {recommendations.map((rec) => (
               <li
                 key={rec.label}
-                className="space-y-1 rounded-md border border-border bg-sunken p-3"
+                className="space-y-1 rounded-md border border-border bg-muted p-3"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-foreground">
@@ -44,7 +44,7 @@ export function DependencyAdvice({
                       href={rec.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-brand-text hover:underline pointer-coarse:min-h-11"
+                      className="inline-flex shrink-0 items-center gap-1 rounded-sm text-xs font-medium text-acc-text hover:underline pointer-coarse:min-h-11"
                     >
                       {t('common:missingDependenciesDialog.download')}
                       <ExternalLink className="size-3" />
@@ -67,7 +67,7 @@ export function DependencyAdvice({
                 {uncovered.map((lib) => (
                   <li
                     key={lib}
-                    className="break-all rounded-sm border border-border bg-sunken px-2 py-1 font-mono text-xs text-ink-2"
+                    className="break-all rounded-sm border border-border bg-muted px-2 py-1 font-mono text-xs text-fg-2"
                   >
                     {lib}
                   </li>
@@ -79,14 +79,14 @@ export function DependencyAdvice({
       ) : (
         // No known group -- fall back to the raw list.
         <div className="space-y-1">
-          <p className="text-sm text-ink-2">
+          <p className="text-sm text-fg-2">
             {t('common:missingDependenciesDialog.missingLibraries')}
           </p>
           <ul className="max-h-[180px] space-y-1 overflow-y-auto">
             {missingLibraries.map((lib) => (
               <li
                 key={lib}
-                className="break-all rounded-sm border border-border bg-sunken px-2 py-1 font-mono text-sm text-foreground"
+                className="break-all rounded-sm border border-border bg-muted px-2 py-1 font-mono text-sm text-foreground"
               >
                 {lib}
               </li>
@@ -117,7 +117,7 @@ export function DependencyAdvice({
               {missingLibraries.map((lib) => (
                 <li
                   key={lib}
-                  className="break-all rounded-sm bg-sunken px-2 py-0.5 font-mono text-xs text-muted-foreground"
+                  className="break-all rounded-sm bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground"
                 >
                   {lib}
                 </li>

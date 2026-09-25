@@ -24,11 +24,11 @@ export default function GlobalError({ error }: GlobalErrorProps) {
             <h1 className="text-base font-semibold text-foreground">
               Something went wrong
             </h1>
-            <p className="mt-1 text-sm leading-relaxed text-ink-2">
+            <p className="mt-1 text-sm leading-relaxed text-fg-2">
               Flint hit an error it could not recover from. Try to{' '}
               <button
                 rel="noopener noreferrer"
-                className="cursor-pointer rounded-sm font-medium text-brand-text hover:underline"
+                className="cursor-pointer rounded-sm font-medium text-acc-text hover:underline"
                 onClick={() => window.location.reload()}
               >
                 refresh this page
@@ -36,7 +36,7 @@ export default function GlobalError({ error }: GlobalErrorProps) {
               . If it keeps happening,{' '}
               <a
                 rel="noopener noreferrer"
-                className="rounded-sm font-medium text-brand-text hover:underline"
+                className="rounded-sm font-medium text-acc-text hover:underline"
                 href="https://discord.gg/FTk2MvZwJH"
                 target="_blank"
               >
@@ -56,7 +56,7 @@ export default function GlobalError({ error }: GlobalErrorProps) {
               {error instanceof Error ? error.message : String(error)}
             </span>
           </p>
-          <pre className="mt-2 max-h-[250px] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-code p-3 text-left font-mono text-xs text-ink-2">
+          <pre className="mt-2 max-h-[250px] overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-code-bg p-3 text-left font-mono text-xs text-fg-2">
             <code>
               {error instanceof Error
                 ? showFull

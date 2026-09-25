@@ -118,9 +118,9 @@ function PluginListRow({
         type="button"
         aria-current={isSelected ? 'true' : undefined}
         className={cn(
-          'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-ink-2 hover:bg-sunken hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
+          'relative w-full text-left flex items-start gap-2 rounded-md px-2 py-1.5 text-sm text-fg-2 hover:bg-muted hover:text-foreground outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring',
           isSelected &&
-            'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-brand-rail'
+            'bg-accent text-foreground before:absolute before:left-0 before:inset-y-2 before:w-0.5 before:rounded-full before:bg-acc'
         )}
         onClick={onSelect}
       >

@@ -333,7 +333,7 @@ function FileRow({ file, onDelete, t }: FileRowProps) {
       className={cn(
         'flex items-center gap-2 p-2 rounded-md',
         'bg-card border border-border',
-        'group hover:bg-sunken transition-colors'
+        'group hover:bg-muted transition-colors'
       )}
       onContextMenu={openContextMenu}
       onKeyDown={onRowKeyDown}
@@ -704,8 +704,8 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           className={cn(
             'flex flex-col items-center justify-center py-8 px-4 rounded-lg border border-dashed cursor-pointer transition-colors',
             isDragging
-              ? 'bg-brand-tint border-brand'
-              : 'bg-sunken/60 border-line-strong hover:bg-sunken'
+              ? 'bg-acc-tint border-acc'
+              : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
           onClick={handleUpload}
           onDragOver={handleDragOver}
@@ -721,7 +721,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         <div
           className={cn(
             'space-y-2 rounded-lg p-1 -m-1 transition-colors',
-            isDragging && 'bg-brand-tint outline-2 outline-dashed outline-brand'
+            isDragging && 'bg-acc-tint outline-2 outline-dashed outline-acc'
           )}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -740,8 +740,8 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
           className={cn(
             'flex mt-2 flex-col items-center justify-center py-8 px-4 rounded-lg border border-dashed cursor-pointer transition-colors',
             isDragging
-              ? 'bg-brand-tint border-brand'
-              : 'bg-sunken/60 border-line-strong hover:bg-sunken'
+              ? 'bg-acc-tint border-acc'
+              : 'bg-muted/60 border-border-strong hover:bg-muted'
           )}
           onClick={handleUpload}
           onDragOver={handleDragOver}

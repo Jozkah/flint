@@ -18,7 +18,7 @@ export function WidePageBody({
   testId?: string
 }) {
   return (
-    <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
+    <div className="flex h-full min-h-0">
       <div
         data-testid={testId}
         className="w-full min-w-0 overflow-x-hidden overflow-y-auto px-3 py-4 md:px-6 md:py-5"
