@@ -2407,7 +2407,7 @@ const ChatInput = memo(function ChatInput({
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
 
   return (
-    <div className="relative">
+    <div className="relative" data-composer>
       <div className="relative">
         {/* A reply in progress is said by the Stop button in the send slot,
             not by the accent: the accent marks selection and the primary
