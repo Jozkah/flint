@@ -1432,7 +1432,9 @@ export function ThreadConversation({
       toolCallAbortController.current?.abort()
       toolCallAbortController.current = null
       approvalPromises.clear()
-      useToolApprovalRequests.getState().clearPendingForThread(threadId)
+      useToolApprovalRequests
+        .getState()
+        .clearPendingForThread(threadId, { notify: true })
       // Drop per-thread timing/progress/diff state from the shared runtime
       // store. The cards for the thread we leave are unmounting, so a thread a
       // later visit cannot show another thread's diff. (code.tsx re-hydrates

@@ -111,6 +111,8 @@ export type PendingApproval = {
    * that approves commands itself).
    */
   alwaysAsk?: boolean
+  /** When the prompt was raised (ms since epoch), to tell a long wait. */
+  requestedAt?: number
   resolve: (approved: boolean) => void
 }
 
@@ -183,7 +185,14 @@ type ToolApprovalRequestsState = {
     decision: ApprovalDecision,
     requestId?: string
   ) => void
-  clearPendingForThread: (threadId: string) => void
+  /**
+   * Answer every request of a thread no. With `notify`, the user is told the
+   * prompts went away unanswered instead of their silently vanishing.
+   */
+  clearPendingForThread: (
+    threadId: string,
+    options?: { notify?: boolean }
+  ) => void
   /**
    * Take one request away unanswered, shown or queued, and answer it no. An
    * answer that arrives for it afterwards names a request that is gone.
@@ -400,6 +409,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
           ...(context?.threadIsEphemeral ? { threadIsEphemeral: true } : {}),
           ...(alwaysAsk ? { alwaysAsk: true } : {}),
+          requestedAt: Date.now(),
           resolve,
         }
         set((s) =>
@@ -518,7 +528,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       entry.resolve(decision !== 'deny')
     },
 
-    clearPendingForThread: (threadId) => {
+    clearPendingForThread: (threadId, options) => {
       const { pending, queued } = get()
       const stranded = [
         ...Object.values(pending),
@@ -553,6 +563,19 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       })
       // Resolve as denied so any awaiting tool loop unblocks instead of hanging.
       for (const entry of stranded) entry.resolve(false)
+      // Never silently: the user may have meant to come back and answer.
+      if (options?.notify) {
+        const names = [...new Set(stranded.map((e) => e.toolName))].join(', ')
+        toast.warning(
+          stranded.length === 1
+            ? `Approval for ${names} was cancelled`
+            : `${stranded.length} approvals (${names}) were cancelled`,
+          {
+            description:
+              'The chat was left before you answered. Send the request again to retry.',
+          }
+        )
+      }
     },
 
     takeRefusal: (toolCallId) => {

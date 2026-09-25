@@ -106,6 +106,9 @@ vi.mock('@/components/shell/TopHeader', () => ({
 vi.mock('@/hooks/useAppViewport', () => ({
   useAppViewport: () => {},
 }))
+vi.mock('@/hooks/useApprovalWaitNotifier', () => ({
+  useApprovalWaitNotifier: () => {},
+}))
 vi.mock('@/components/WindowControls', () => ({
   WindowControls: () => <div data-testid="window-controls" />,
 }))
