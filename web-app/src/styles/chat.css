@@ -1,0 +1,74 @@
+/* Chat transcript styling that utilities cannot express cleanly: the
+   per-kind tool colours, which several descendants read from one variable,
+   and the terminal palette. Imported by markdown.css. */
+
+/* ---- Tool call kinds (lib/toolKind.ts) ----
+   One hue per family. --tk reaches the card's left edge, its icon tile, its
+   status text and the dot on the timeline rail beside it. */
+[data-tool-kind] {
+  --tk: var(--muted-foreground);
+}
+[data-tool-kind='read'] { --tk: #3b82f6; }
+[data-tool-kind='search'] { --tk: #8b5cf6; }
+[data-tool-kind='web'] { --tk: #0891b2; }
+[data-tool-kind='bash'] { --tk: #d97706; }
+[data-tool-kind='edit'] { --tk: #059669; }
+[data-tool-kind='todo'] { --tk: #ea580c; }
+[data-tool-kind='fail'] { --tk: #ef4444; }
+[data-tool-kind='appr'] { --tk: #f59e0b; }
+[data-tool-kind='other'] { --tk: #64748b; }
+.dark [data-tool-kind='read'] { --tk: #60a5fa; }
+.dark [data-tool-kind='search'] { --tk: #a78bfa; }
+.dark [data-tool-kind='web'] { --tk: #22d3ee; }
+.dark [data-tool-kind='bash'] { --tk: #fbbf24; }
+.dark [data-tool-kind='edit'] { --tk: #34d399; }
+.dark [data-tool-kind='todo'] { --tk: #fb923c; }
+.dark [data-tool-kind='fail'] { --tk: #f87171; }
+.dark [data-tool-kind='other'] { --tk: #94a3b8; }
+
+.tool-card {
+  border-color: color-mix(in oklab, var(--tk) 22%, var(--border));
+  box-shadow: inset 3px 0 0 color-mix(in oklab, var(--tk) 70%, transparent);
+}
+.tool-card:hover {
+  box-shadow:
+    inset 3px 0 0 color-mix(in oklab, var(--tk) 70%, transparent),
+    var(--lift);
+}
+.tool-card[data-tool-kind='appr'] {
+  box-shadow: inset 3px 0 0 var(--tk);
+}
+
+/* A timeline step holding a tool call takes its kind's colour. */
+[data-slot='step-row']:has([data-tool-kind='read']) { --cotc: #3b82f6; }
+[data-slot='step-row']:has([data-tool-kind='search']) { --cotc: #8b5cf6; }
+[data-slot='step-row']:has([data-tool-kind='web']) { --cotc: #0891b2; }
+[data-slot='step-row']:has([data-tool-kind='bash']) { --cotc: #d97706; }
+[data-slot='step-row']:has([data-tool-kind='edit']) { --cotc: #059669; }
+[data-slot='step-row']:has([data-tool-kind='todo']) { --cotc: #ea580c; }
+[data-slot='step-row']:has([data-tool-kind='fail']) { --cotc: #ef4444; }
+[data-slot='step-row']:has([data-tool-kind='appr']) { --cotc: #f59e0b; }
+[data-slot='step-row']:has([data-tool-kind]) > span > [data-slot='step-dot'] {
+  background: var(--cotc, var(--card));
+  box-shadow: 0 0 0 1.5px var(--cotc, var(--border-strong));
+}
+[data-slot='step-row']:hover [data-slot='step-dot'] {
+  transform: scale(1.5);
+}
+
+/* ---- Terminal palette (dark in both themes) ---- */
+.term .term-g, .term-g { color: #3fb950; }
+.term .term-r, .term-r { color: #f85149; }
+.term .term-y, .term-y { color: #d29922; }
+.term .term-b, .term-b { color: #58a6ff; }
+.term .term-m, .term-m { color: #bc8cff; }
+.term .term-c, .term-c { color: #39c5cf; }
+.term .term-d, .term-d { color: #8b949e; }
+.term .term-w, .term-w { color: #f0f6fc; font-weight: 600; }
+.term .term-pr, .term-pr { color: #7ee787; }
+
+/* ---- Small motion used by the transcript ---- */
+@keyframes twinkle {
+  0%, 100% { transform: scale(1) rotate(0); opacity: 1; }
+  50% { transform: scale(0.85) rotate(12deg); opacity: 0.7; }
+}

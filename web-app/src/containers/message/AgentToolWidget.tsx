@@ -23,6 +23,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
 import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
 import { ChangeDiff } from '@/components/ChangeDiff'
+import { TermOutput } from '@/components/TermOutput'
 
 const asText = (output: unknown): string =>
   typeof output === 'string'
@@ -32,7 +33,7 @@ const asText = (output: unknown): string =>
       : ''
 
 const OutputBlock = ({ children }: { children: React.ReactNode }) => (
-  <pre className="mt-1.5 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md border border-border bg-sunken px-2 py-1.5 font-mono text-xs text-muted-foreground">
+  <pre className="m-0 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word rounded-lg bg-code-bg px-2.5 py-2 font-mono text-xs leading-normal text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
     {children}
   </pre>
 )
@@ -74,65 +75,65 @@ export const TerminalWidget = memo(
     const body = result?.text || (errorText ? asText(errorText) : '')
 
     return (
+      // The terminal is always dark, in either theme: it reads as a terminal,
+      // and command output is written for one.
       <div
-        className="overflow-hidden rounded-lg border border-border bg-card"
+        className="term overflow-hidden bg-term-bg font-mono text-xs leading-[1.6] text-term-fg"
         data-testid="tool-activity-item"
         data-tool-state={state}
       >
-        <div className="flex items-center gap-1.5 border-b border-border bg-sunken px-2 py-1 text-xs text-muted-foreground">
-          <SquareTerminal className="size-3.5 shrink-0" />
-          <span className="font-medium">{t('tools:toolCall.terminal')}</span>
+        <div className="flex items-start gap-2 px-3 pt-2.5">
+          <SquareTerminal
+            aria-label={t('tools:toolCall.terminal')}
+            className="mt-0.5 size-3.5 shrink-0 text-term-fg/60"
+          />
+          <span className="term-pr shrink-0 select-none">$</span>
+          <span className="term-w min-w-0 flex-1 whitespace-pre-wrap wrap-break-word">
+            {bar.jobId && !bar.command
+              ? t('tools:toolCall.pollingJob', { id: bar.jobId })
+              : bar.command}
+            {running && <Caret />}
+          </span>
           {result?.exit !== undefined && (
             <span
               className={cn(
-                'ml-auto shrink-0 rounded px-1.5 py-0.5 font-mono tabular-nums',
+                'shrink-0 rounded-[5px] px-1.5 py-px text-[11px] tabular-nums',
                 failed
-                  ? 'bg-destructive-tint text-destructive'
-                  : 'bg-success-tint text-success'
+                  ? 'bg-[#f85149]/15 text-[#f85149]'
+                  : 'bg-[#3fb950]/15 text-[#3fb950]'
               )}
             >
               {t('tools:toolCall.exitCode', { code: result.exit })}
             </span>
           )}
           {result?.signaled && (
-            <span className="ml-auto shrink-0 rounded bg-destructive-tint px-1.5 py-0.5 text-destructive">
+            <span className="shrink-0 rounded-[5px] bg-[#f85149]/15 px-1.5 py-px text-[11px] text-[#f85149]">
               {t('tools:toolCall.terminated')}
             </span>
           )}
         </div>
-        <div className="px-2 py-1.5 font-mono text-xs">
-          <div className="flex gap-1.5">
-            <span className="shrink-0 select-none text-muted-foreground">
-              $
-            </span>
-            <span className="min-w-0 flex-1 whitespace-pre-wrap wrap-break-word text-foreground">
-              {bar.jobId && !bar.command
-                ? t('tools:toolCall.pollingJob', { id: bar.jobId })
-                : bar.command}
-              {running && <Caret />}
-            </span>
-          </div>
+        <div className="px-3 pb-2.5">
           {running && (
-            <div className="mt-1">
+            <div className="mt-1 [--color-muted-foreground:var(--term-fg)]">
               {/* The command is already on screen above, so the tool-named
                   `running` string would just repeat it. */}
               <Shimmer duration={1}>{t('tools:toolCall.working')}</Shimmer>
             </div>
           )}
           {!running && body && (
-            <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word text-muted-foreground">
-              {body}
+            <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word">
+              <TermOutput text={body} />
             </pre>
           )}
           {result?.truncated && (
-            <p className="mt-1 text-muted-foreground">
+            <p className="term-d mt-1">
               {t('tools:toolCall.outputTruncated')}
             </p>
           )}
           {/* Surfaced rather than dropped: when the sandbox is what failed the
               command, the limits are the actual explanation for the exit code. */}
           {result?.sandboxNote && (
-            <p className="mt-1 flex items-start gap-1.5 text-muted-foreground">
+            <p className="term-y mt-1 flex items-start gap-1.5">
               <Lock className="mt-0.5 size-3.5 shrink-0" />
               <span>{result.sandboxNote}</span>
             </p>
@@ -201,7 +202,7 @@ export const AgentToolWidget = memo(
 
     return (
       <div
-        className="space-y-1.5"
+        className="space-y-2 px-2.5 py-2"
         data-testid="tool-activity-item"
         data-tool-state={state}
       >
@@ -223,7 +224,7 @@ export const AgentToolWidget = memo(
         />
 
         {errorText && (
-          <div className="rounded-md border border-destructive/30 bg-destructive-tint px-2 py-1.5 text-sm text-destructive">
+          <div className="rounded-lg border-[0.8px] border-destructive/30 bg-destructive-tint px-2.5 py-2 font-mono text-xs text-destructive">
             {errorText}
           </div>
         )}
@@ -239,7 +240,8 @@ export const AgentToolWidget = memo(
           // A diff supersedes the body: `Applied 2 edit(s) to a.txt` says less
           // than the change itself.
           (diff ? (
-            <DiffBlock diff={diff} />
+            // Full-bleed inside the card, like the mockup's edit cards.
+            <DiffBlock diff={diff} bleed className="-mx-2.5 -mb-2" />
           ) : body ? (
             <OutputBlock>{body}</OutputBlock>
           ) : (

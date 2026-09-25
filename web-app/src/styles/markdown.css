@@ -1,3 +1,5 @@
+@import './chat.css';
+
 .markdown {
   @apply text-inherit;
   overflow-wrap: anywhere;
@@ -110,26 +112,27 @@
   /* Blockquotes: quieter by colour, never by opacity. */
   blockquote {
     line-height: 1.65;
-    border-left: 2px solid var(--color-line-strong);
+    border-left: 2px solid var(--color-border-strong);
     padding-left: 1em;
     margin-left: 0;
     margin-right: 0;
     margin-bottom: 0.85em;
-    color: var(--color-ink-2);
+    color: var(--color-muted-foreground);
   }
 
   /* Code */
+  /* Inline code: a quiet chip on the accent well. */
   code {
     font-family: var(--font-mono), monospace;
-    @apply bg-code text-foreground;
-    font-size: 0.9em;
-    padding: 0.15em 0.35em;
-    border-radius: 4px;
+    @apply bg-accent text-foreground;
+    font-size: 0.86em;
+    padding: 0.1em 0.4em;
+    border-radius: 5px;
   }
 
   pre {
     font-family: var(--font-mono), monospace;
-    @apply bg-code text-foreground px-0!;
+    @apply bg-code-bg text-foreground px-0!;
     /* Long lines scroll inside the block, never the page. */
     max-width: 100%;
     overflow-x: auto;
@@ -158,8 +161,8 @@
   th {
     text-align: left;
     font-weight: 600;
-    color: var(--color-ink-2);
-    border-bottom: 1px solid var(--color-line-strong);
+    color: var(--color-fg-2);
+    border-bottom: 1px solid var(--color-border-strong);
     padding: 6px 14px 6px 0;
   }
 
@@ -171,7 +174,8 @@
 
   /* Links */
   a {
-    color: var(--color-brand-text);
+    color: var(--color-acc-text);
+    text-underline-offset: 2px;
     text-decoration: none;
   }
 
@@ -211,6 +215,36 @@
     height: 1px;
     background: var(--color-border);
     margin: 1.5em 0;
+  }
+
+  /* Fenced code: a quiet card on the code surface, its header a muted strip
+     over a dashed rule, like the tool cards around it. */
+  [data-streamdown="code-block"] {
+    border: 0.8px solid var(--color-border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--color-code-bg);
+    margin-top: 0.25em;
+    margin-bottom: 0.85em;
+  }
+  [data-streamdown="code-block-header"] {
+    background: var(--color-muted);
+    border-bottom: 1px dashed var(--color-border);
+    color: var(--color-muted-foreground);
+    font-size: 11.5px;
+  }
+  [data-streamdown="code-block-body"] {
+    background: var(--color-code-bg);
+    border: 0;
+    border-radius: 0;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  [data-streamdown="code-block"] pre {
+    margin-bottom: 0;
+  }
+  [data-streamdown="inline-code"] {
+    @apply bg-accent;
   }
 
   [data-streamdown="mermaid-block"] {

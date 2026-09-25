@@ -54,7 +54,7 @@ export const RagToolWidget = memo(
       .join(' ')
 
     return (
-      <div className="space-y-2">
+      <div className="space-y-2 px-2.5 py-2">
         <ToolBar
           icon={<FileSearchIcon className="size-4" />}
           value={bar.query}

@@ -207,7 +207,7 @@ export const ChainOfThoughtHeader = memo(
         : t(keys.withDuration, { duration: formatCompactDuration(duration, t) })
 
     const rowClassName = cn(
-      'flex min-h-8 w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-left text-sm text-ink-2 transition-colors outline-hidden hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&>svg]:shrink-0',
+      '-mx-1 flex min-h-7 w-fit max-w-full min-w-0 items-center gap-2 rounded-md px-1 text-left text-[12.5px] text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11 [&>svg]:shrink-0',
       className
     )
 
@@ -221,7 +221,7 @@ export const ChainOfThoughtHeader = memo(
 
     const label = (
       <>
-        <SparklesIcon className="size-4" />
+        <SparklesIcon className="size-3.5 motion-safe:animate-[twinkle_2.4s_ease-in-out_infinite]" />
         {isStreaming ? (
           <Shimmer duration={1}>
             {streamingLabel ?? t('chat:reasoning.label')}
@@ -260,7 +260,7 @@ export const ChainOfThoughtHeader = memo(
         {label}
         <ChevronDownIcon
           className={cn(
-            'size-4 transition-transform',
+            'size-3.5 motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo',
             isOpen ? 'rotate-180' : 'rotate-0'
           )}
         />
@@ -279,13 +279,14 @@ export const ChainOfThoughtContent = memo(
   ({ className, children, ...props }: ChainOfThoughtContentProps) => (
     <CollapsibleContent
       className={cn(
-        'mt-1.5 text-sm relative',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
+        'mt-2 text-sm relative',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-fg-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="ml-3.5 min-w-0 space-y-2 border-l border-border pl-3">
+      {/* The steps draw their own dotted rail (StepRow). */}
+      <div className="ml-1.5 min-w-0 space-y-2.5">
         {children}
       </div>
     </CollapsibleContent>
@@ -304,13 +305,13 @@ export const ChainOfThoughtText = memo(
   ({ className, children, ...props }: ChainOfThoughtTextProps) => (
     <CollapsibleContent
       className={cn(
-        'mt-1.5 text-sm relative',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-ink-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
+        'mt-2 text-sm relative',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-fg-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}
     >
-      <div className="ml-3.5 min-w-0 border-l border-border pl-3">
+      <div className="ml-1.5 min-w-0 border-l-[1.5px] border-dotted border-border-strong pl-[18px]">
         <Streamdown animate={true} animationDuration={500}>
           {children}
         </Streamdown>
@@ -331,7 +332,7 @@ const statusIcons: Record<ChainOfThoughtStepStatus, ReactNode> = {
   complete: <CheckCircle2Icon className="size-4 text-success shrink-0" />,
   // The step in progress is activity: ink and a spinner, never the accent.
   active: (
-    <Loader2Icon className="size-4 text-ink-2 motion-safe:animate-spin shrink-0" />
+    <Loader2Icon className="size-4 text-muted-foreground motion-safe:animate-spin shrink-0" />
   ),
   pending: <CircleIcon className="size-4 text-muted-foreground shrink-0" />,
 }
