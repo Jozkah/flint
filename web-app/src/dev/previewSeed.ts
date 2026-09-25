@@ -17,12 +17,13 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
+import { patchSettingsServices, seedSettingsPreview } from './previewSeedSettings'
 
 const MIN = 60_000
 const now = Date.now()
 
 const model = (id: string, name: string, caps: string[] = ['tools']) =>
-  ({ id, name, capabilities: caps, settings: {} }) as unknown as Model
+  ({ id, name, displayName: name, capabilities: caps, settings: {} }) as unknown as Model
 
 function providers(): ModelProvider[] {
   return [
@@ -263,6 +264,7 @@ function patchServices() {
   set('messagesService', 'fetchMessages', async (id: string) => (id === 'release' ? releaseMessages() : []))
   set('projectsService', 'getProjects', async () => FOLDERS)
   set('threadsService', 'fetchThreads', async () => threads())
+  patchSettingsServices(hub)
 }
 
 export function seedPreview() {
@@ -278,6 +280,7 @@ export function seedPreview() {
   useAppState.setState({ activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'] } as never)
   seedUsage()
   seedCowork()
+  seedSettingsPreview()
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {
