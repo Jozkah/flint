@@ -4,7 +4,6 @@ import {
   FileText,
   Folder,
   Loader2,
-  Plus,
   Sparkles,
   Trash2,
   X,
@@ -28,6 +27,7 @@ import {
 import { listProjects, type ProjectEntry } from '@/lib/extensionsStore'
 import EnablementGrid from '@/containers/extensions/EnablementGrid'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Icon } from '@/components/ui/icon'
 
 /**
  * A skills group is either the global store or one registered project.
@@ -193,7 +193,15 @@ export default function SkillsTab() {
               <Sparkles className="size-3.5" aria-hidden />
             </span>
           }
-          title={<span className="font-mono text-[13px]">{s.name}</span>}
+          title={
+            <span className="font-mono text-[13px]" title={s.name}>
+              {/* A plugin's skill is named `<plugin>:<skill>`; the footer
+                  already says which plugin, so the card shows the skill. */}
+              {isPluginSkill(s) && s.name.startsWith(`${s.plugin}:`)
+                ? s.name.slice(`${s.plugin}:`.length)
+                : s.name}
+            </span>
+          }
           actions={
             editable && !isPluginSkill(s) ? (
               <Button
@@ -246,7 +254,8 @@ export default function SkillsTab() {
     </div>
   )
 
-  const cardGrid = 'grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-4'
+  const cardGrid =
+    'grid grid-cols-[repeat(auto-fill,minmax(min(100%,240px),1fr))] gap-4'
 
   return (
     <div
@@ -257,24 +266,27 @@ export default function SkillsTab() {
     >
       <div className="flex min-w-0 flex-col gap-5">
         <section className="flex flex-col gap-3">
-          {groupHeading(
-            t('common:extensionsManager.global'),
-            <Button size="sm" className="pointer-coarse:h-11" onClick={startNew}>
-              <Plus aria-hidden />
-              {t('common:skillNew')}
-            </Button>
-          )}
-          {globalSkills.length === 0 ? (
-            <p className="px-1 py-2 text-xs text-muted-foreground">
+          {groupHeading(t('common:extensionsManager.global'))}
+          {globalSkills.length === 0 && (
+            <p className="px-1 text-xs text-muted-foreground">
               {t('common:skillsEmpty')}
             </p>
-          ) : (
-            <div className={cardGrid}>
-              {globalSkills.map((s, i) =>
-                renderSkillCard('global', s, { editable: true }, i)
-              )}
-            </div>
           )}
+          <div className={cardGrid}>
+            {globalSkills.map((s, i) =>
+              renderSkillCard('global', s, { editable: true }, i)
+            )}
+            <button
+              type="button"
+              onClick={startNew}
+              aria-pressed={isNew}
+              style={{ animationDelay: `${40 + globalSkills.length * 45}ms` }}
+              className="flex min-h-[118px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[13px] text-muted-foreground transition-colors hover:border-ring hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in aria-pressed:border-ring aria-pressed:text-foreground"
+            >
+              <Icon name="x-plus" />
+              {t('common:skillNew')}
+            </button>
+          </div>
         </section>
 
         {projects.map((p) => (

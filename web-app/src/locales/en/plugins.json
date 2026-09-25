@@ -22,7 +22,8 @@
   "pickOne": "Select a plugin to see what it contains.",
   "state": {
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "installed": "Installed"
   },
   "counts": "{{skills}} skills · {{commands}} commands · {{agents}} agents",
   "version": "v{{version}}",

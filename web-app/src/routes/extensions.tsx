@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
@@ -20,7 +20,7 @@ export const Route = createFileRoute(route.extensions as any)({
   component: ExtensionsPage,
 })
 
-type ExtensionsTab = 'plugins' | 'skills' | 'engine'
+type ExtensionsTab = 'plugins' | 'skills' | 'engine' | 'marketplace'
 
 /** Scope the extensions views operate over. Only 'global' is wired for now. */
 type ExtensionsScope = 'global' | 'project'
@@ -30,6 +30,8 @@ function ExtensionsPage() {
   const [tab, setTab] = useState<ExtensionsTab>('plugins')
   const [scope, setScope] = useState<ExtensionsScope>('global')
   const [importOpen, setImportOpen] = useState(false)
+  // Bumped by the Install button; the plugins view opens its install panel.
+  const [installRequest, setInstallRequest] = useState(0)
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col">
@@ -39,21 +41,36 @@ function ExtensionsPage() {
           title={t('common:appRail.extensions')}
           description={t('engine:extensions.description')}
           actions={
-            <Button
-              variant="outline"
-              size="sm"
-              data-testid="extensions-import-cc-button"
-              onClick={() => setImportOpen(true)}
-            >
-              <Download aria-hidden />
-              {t('common:extensionsManager.import.button')}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:h-11"
+                data-testid="extensions-import-cc-button"
+                onClick={() => setImportOpen(true)}
+              >
+                {t('common:extensionsManager.import.button')}
+              </Button>
+              <Button
+                size="sm"
+                className="pointer-coarse:h-11"
+                data-testid="extensions-install-plugin-button"
+                onClick={() => {
+                  if (tab !== 'plugins' && tab !== 'marketplace') setTab('plugins')
+                  setInstallRequest((n) => n + 1)
+                }}
+              >
+                <Icon name="x-plus-w" size={14} />
+                {t('plugins:installButton')}
+              </Button>
+            </>
           }
         />
 
         <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:80ms]">
+          <div className="-mx-1 max-w-full overflow-x-auto px-1 [scrollbar-width:none]">
           <Segmented<ExtensionsTab>
-            className="w-[400px] max-w-full"
+            className="w-[520px] min-w-[400px] max-w-none sm:max-w-full"
             aria-label={t('common:appRail.extensions')}
             value={tab}
             onValueChange={setTab}
@@ -73,8 +90,14 @@ function ExtensionsPage() {
                 label: t('engine:extensions.engine'),
                 testId: 'extensions-tab-engine',
               },
+              {
+                value: 'marketplace',
+                label: t('engine:extensions.marketplace'),
+                testId: 'extensions-tab-marketplace',
+              },
             ]}
           />
+          </div>
           <span className="flex-1" />
           {tab !== 'engine' && (
             <Segmented<ExtensionsScope>
@@ -98,12 +121,20 @@ function ExtensionsPage() {
 
         <ImportFromClaudeCodeDialog open={importOpen} onOpenChange={setImportOpen} />
 
-        {tab === 'plugins' ? (
+        {tab === 'plugins' || tab === 'marketplace' ? (
           <div
             className="flex min-h-0 flex-col"
-            data-testid="extensions-panel-plugins"
+            data-testid={
+              tab === 'plugins'
+                ? 'extensions-panel-plugins'
+                : 'extensions-panel-marketplace'
+            }
           >
-            <PluginsTab />
+            <PluginsTab
+              hideToolbar
+              view={tab === 'plugins' ? 'installed' : 'marketplace'}
+              installRequest={installRequest}
+            />
           </div>
         ) : tab === 'skills' ? (
           <div
@@ -146,7 +177,7 @@ function EngineExtensions() {
   }
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,290px),1fr))] gap-4">
       {extensions.map((ext, i) => {
         const name = ext.productName ?? ext.name
         return (

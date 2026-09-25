@@ -26,6 +26,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { seedRooms } from './previewRooms'
+import { seedEngine } from './previewSeedEngine'
 
 const MIN = 60_000
 const now = Date.now()
@@ -659,6 +660,7 @@ export function seedPreview() {
   seedUsage()
   seedCowork()
   seedRooms()
+  seedEngine()
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {

@@ -6,18 +6,12 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useNavigate } from '@tanstack/react-router'
 import {
-  Box,
   Copy,
-  Cpu,
   ExternalLink,
-  FolderDown,
-  HardDrive,
-  KeyRound,
   Play,
-  Plus,
   Square,
-  Zap,
 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { formatBytes, getProviderTitle } from '@/lib/utils'
 import { AddProviderDialog } from '@/containers/dialogs'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
@@ -56,6 +50,7 @@ import {
   contextLengthOf,
   formatTps,
   isEngineProviderName,
+  quantOf,
   recentSpeeds,
 } from '@/lib/engineModels'
 import { useEngineActivity } from '@/stores/engine-activity-store'
@@ -70,7 +65,7 @@ type Filter = 'all' | 'local' | 'remote'
 
 /** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu. */
 const MODEL_COLS =
-  '30px minmax(160px,1.4fr) 104px minmax(140px,1.2fr) 72px 76px 120px 104px 28px'
+  '30px minmax(180px,3fr) 76px minmax(170px,1.3fr) 64px 72px 96px 100px 28px'
 
 /** How many recent replies the speed charts show. */
 const SPEED_WINDOW = 24
@@ -239,6 +234,12 @@ function ModelProviders() {
     return best
   }, [speeds])
   const maxSpeed = fastest?.avg ?? 0
+  const fastestLabel = (id: string) => {
+    const row = rows.find((r) => r.model.id === id)
+    const name = row?.model.name || id
+    const quant = quantOf(id)
+    return quant && !name.includes(quant) ? `${name} · ${quant}` : name
+  }
 
   const shownRows = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -263,7 +264,7 @@ function ModelProviders() {
   const addProviderButton = (
     <AddProviderDialog onCreateProvider={createProvider}>
       <Button variant="outline" size="sm" className="pointer-coarse:h-11">
-        <Plus aria-hidden />
+        <Icon name="x-plus" size={14} />
         <span>{t('provider:addProvider')}</span>
       </Button>
     </AddProviderDialog>
@@ -282,8 +283,8 @@ function ModelProviders() {
                 provider={llamacpp}
                 onSuccess={() => void refreshProviders()}
                 trigger={
-                  <Button size="sm" className="pointer-coarse:h-11">
-                    <FolderDown aria-hidden />
+                  <Button variant="outline" size="sm" className="pointer-coarse:h-11">
+                    <Icon name="x-download" size={14} />
                     {t('engine:models.importGguf')}
                   </Button>
                 }
@@ -295,7 +296,7 @@ function ModelProviders() {
         <KpiRow>
           <KpiTile
             title={t('engine:kpi.installed')}
-            icon={<Box />}
+            icon={<Icon name="x-cube" />}
             value={rows.length}
             sub={t('engine:kpi.installedSub', {
               local: localCount,
@@ -305,23 +306,23 @@ function ModelProviders() {
           />
           <KpiTile
             title={t('engine:kpi.loaded')}
-            icon={<Cpu />}
+            icon={<Icon name="x-cpu" />}
             value={loadedRows.length}
             sub={t('engine:kpi.loadedSub', { count: localCount })}
             delay={90}
           />
           <KpiTile
             title={t('engine:kpi.disk')}
-            icon={<HardDrive />}
+            icon={<Icon name="x-disk" />}
             value={diskBytes > 0 ? formatBytes(diskBytes) : '—'}
             sub={t('engine:kpi.diskSub', { count: localCount })}
             delay={140}
           />
           <KpiTile
             title={t('engine:kpi.fastest')}
-            icon={<Zap />}
+            icon={<Icon name="zap" />}
             value={fastest ? formatTps(fastest.avg) : '—'}
-            sub={fastest ? fastest.model : t('engine:kpi.fastestNone')}
+            sub={fastest ? fastestLabel(fastest.model) : t('engine:kpi.fastestNone')}
             delay={190}
           />
         </KpiRow>
@@ -329,7 +330,7 @@ function ModelProviders() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <Frame className="motion-safe:animate-rise-in [animation-delay:220ms]">
             <FrameHeader
-              icon={<Cpu />}
+              icon={<Icon name="x-cpu" />}
               title={t('engine:loaded.title')}
               actions={
                 loadedRows.length > 0 ? (
@@ -342,7 +343,7 @@ function ModelProviders() {
             <FrameBody className="px-3 py-1">
               {loadedRows.length === 0 ? (
                 <EmptyState
-                  icon={<Cpu />}
+                  icon={<Icon name="x-cpu" />}
                   title={t('engine:loaded.empty')}
                   description={t('engine:loaded.emptyHint')}
                 />
@@ -365,10 +366,14 @@ function ModelProviders() {
                           {model.name || model.id}
                         </b>
                         <small className="truncate text-xs text-muted-foreground">
-                          {getProviderTitle(provider.provider)}
-                          {fileSizes[model.id]
-                            ? ` · ${formatBytes(fileSizes[model.id])}`
-                            : ''}
+                          {[
+                            quantOf(model.id) ?? getProviderTitle(provider.provider),
+                            fileSizes[model.id]
+                              ? formatBytes(fileSizes[model.id])
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </small>
                         {maxSpeed > 0 && speed && (
                           <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
@@ -379,9 +384,14 @@ function ModelProviders() {
                           </span>
                         )}
                       </div>
-                      <div className="flex w-[110px] flex-col items-end gap-0.5">
+                      <div className="flex w-[110px] shrink-0 flex-col items-end gap-0.5 max-sm:hidden">
                         {series.length > 1 && (
                           <LiveChart series={series} compact format={formatTps} />
+                        )}
+                        {series.length > 0 && (
+                          <small className="text-[11.5px] text-muted-foreground tabular-nums">
+                            {formatTps(series[series.length - 1])}
+                          </small>
                         )}
                         <small className="text-[11.5px] text-muted-foreground tabular-nums">
                           {speed ? formatTps(speed.avg) : t('engine:speed.noneYet')}
@@ -390,6 +400,7 @@ function ModelProviders() {
                       <Button
                         variant="surface"
                         size="sm"
+                        className="pointer-coarse:h-11"
                         onClick={() => stopModel(model.id, provider.provider)}
                       >
                         {t('engine:loaded.unload')}
@@ -402,11 +413,11 @@ function ModelProviders() {
           </Frame>
 
           <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
-            <FrameHeader icon={<Zap />} title={t('engine:speed.title')} />
+            <FrameHeader icon={<Icon name="zap" />} title={t('engine:speed.title')} />
             <FrameBody className="justify-center p-3">
               {generations.length === 0 ? (
                 <EmptyState
-                  icon={<Zap />}
+                  icon={<Icon name="zap" />}
                   title={t('engine:speed.empty')}
                   description={t('engine:speed.emptyHint')}
                 />
@@ -429,8 +440,8 @@ function ModelProviders() {
 
         <Frame className="motion-safe:animate-rise-in [animation-delay:300ms]">
           <FrameHeader
-            icon={<KeyRound />}
-            title={t('common:modelProviders')}
+            icon={<Icon name="x-key" />}
+            title={t('engine:providers.title')}
             actions={addProviderButton}
           />
           <FrameBody className="p-3">
@@ -513,7 +524,7 @@ function ModelProviders() {
                     type="button"
                     className="flex size-full min-h-[132px] flex-col items-center justify-center gap-1 rounded-xl border-[0.8px] border-dashed border-border-strong p-3 text-center text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground"
                   >
-                    <Plus className="size-4" aria-hidden />
+                    <Icon name="x-plus" />
                     <b className="text-[13px] font-medium">{t('engine:providers.custom')}</b>
                     <small className="text-xs">{t('engine:providers.customHint')}</small>
                   </button>
@@ -525,7 +536,7 @@ function ModelProviders() {
 
         <Frame className="motion-safe:animate-rise-in [animation-delay:360ms]">
           <FrameHeader
-            icon={<Box />}
+            icon={<Icon name="x-cube" />}
             title={t('engine:installed.title')}
             actions={
               <div className="flex items-center gap-2">
@@ -553,7 +564,7 @@ function ModelProviders() {
           <FrameBody className="overflow-x-auto p-3">
             {shownRows.length === 0 ? (
               <EmptyState
-                icon={<Box />}
+                icon={<Icon name="x-cube" />}
                 title={
                   rows.length === 0
                     ? t('engine:installed.none')
@@ -567,17 +578,6 @@ function ModelProviders() {
               <TBox
                 className="min-w-[860px]"
                 columns={MODEL_COLS}
-                head={[
-                  '',
-                  t('engine:table.name'),
-                  t('engine:table.provider'),
-                  t('engine:table.capabilities'),
-                  t('engine:table.size'),
-                  t('engine:table.context'),
-                  t('engine:table.speed'),
-                  t('engine:table.status'),
-                  '',
-                ]}
               >
                 {shownRows.map(({ provider, model, local }) => {
                   const loaded = local && activeModels.includes(model.id)
@@ -604,9 +604,15 @@ function ModelProviders() {
                         </small>
                       </div>
                       <span className="min-w-0">
-                        <Chip className="max-w-full">
-                          <span className="truncate">{getProviderTitle(provider.provider)}</span>
-                        </Chip>
+                        {local && quantOf(model.id) ? (
+                          <Chip mono className="max-w-full" title={getProviderTitle(provider.provider)}>
+                            <span className="truncate">{quantOf(model.id)}</span>
+                          </Chip>
+                        ) : (
+                          <Chip className="max-w-full">
+                            <span className="truncate">{getProviderTitle(provider.provider)}</span>
+                          </Chip>
+                        )}
                       </span>
                       <CapabilityChips capabilities={model.capabilities ?? []} />
                       <span className={cn('tabular-nums', !local && 'text-muted-foreground')}>

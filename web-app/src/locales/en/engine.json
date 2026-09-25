@@ -43,6 +43,7 @@
     "noneYet": "no replies yet"
   },
   "providers": {
+    "title": "Providers",
     "onDevice": "On this device",
     "remote": "Remote",
     "modelsCount": "{{count}} models",
@@ -127,12 +128,16 @@
   "extensions": {
     "description": "Plugins, skills and the engine pieces Flint is built from.",
     "engine": "Engine",
+    "marketplace": "Marketplace",
     "engineEmpty": "No built-in extensions are loaded.",
     "builtIn": "Built in",
     "active": "Active",
-    "skillsCount": "{{count}} skills",
-    "commandsCount": "{{count}} commands",
-    "agentsCount": "{{count}} agents",
+    "skillsCount_one": "{{count}} skill",
+    "skillsCount_other": "{{count}} skills",
+    "commandsCount_one": "{{count}} command",
+    "commandsCount_other": "{{count}} commands",
+    "agentsCount_one": "{{count}} agent",
+    "agentsCount_other": "{{count}} agents",
     "pluginActions": "Actions for {{name}}",
     "details": "Details",
     "enable": "Enable",
@@ -149,8 +154,15 @@
     "kpiArtifacts": "Artifacts",
     "kpiArtifactsSub": "{{count}} new this week",
     "kpiSessions": "From Cowork",
-    "kpiSessionsSub": "of {{count}} sessions",
-    "kpiLatest": "Latest",
-    "kpiLatestNone": "Nothing made yet"
+    "kpiSessionsSub": "across {{count}} sessions",
+    "kpiDisk": "On disk",
+    "kpiDiskSub": "in session sandboxes",
+    "kindCode": "Code",
+    "kindPages": "Pages",
+    "kindDocuments": "Documents",
+    "kindImages": "Images",
+    "kindAudio": "Audio",
+    "kindVideo": "Video",
+    "htmlPage": "HTML page"
   }
 }

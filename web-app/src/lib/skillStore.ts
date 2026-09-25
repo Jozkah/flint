@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, previewCall } from '@/lib/previewInvoke'
 import {
   skillList,
   skillRead,
@@ -62,7 +62,10 @@ export async function listSkills(scope: SkillScope): Promise<SkillMeta[]> {
       project: scope.folder,
     })
   }
-  return await skillList(await dataFolder())
+  return (
+    (await previewCall<SkillMeta[]>('agent_skill_list', { store: true })) ??
+    (await skillList(await dataFolder()))
+  )
 }
 
 /** Raw SKILL.md text, frontmatter included. */
@@ -76,7 +79,10 @@ export async function readSkill(
       name,
     })
   }
-  return await skillRead(await dataFolder(), name)
+  return (
+    (await previewCall<string>('agent_skill_read', { store: true, name })) ??
+    (await skillRead(await dataFolder(), name))
+  )
 }
 
 export async function writeSkill(

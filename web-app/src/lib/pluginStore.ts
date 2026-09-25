@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/previewInvoke'
 
 /**
  * Project plugins: packages under `<folder>/.jan/agent/plugins/<id>/` that add

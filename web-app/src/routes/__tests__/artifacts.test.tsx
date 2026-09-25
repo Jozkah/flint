@@ -100,14 +100,15 @@ describe('Library route (/artifacts)', () => {
     h.existsSync.mockResolvedValue(true)
   })
 
-  it('lists each artifact as a row with its kind, session and project', async () => {
+  it('lists each artifact with its kind and session, and its project in the details', async () => {
     await renderPage()
     const row = screen.getByTestId('artifact-card')
     expect(row).toHaveTextContent('index')
-    expect(row).toHaveTextContent('Code · HTML')
+    expect(row).toHaveTextContent('engine:library.htmlPage')
     expect(row).toHaveTextContent('Landing page draft')
-    expect(row).toHaveTextContent('site')
-    expect(screen.getByTitle('index')).toBeInTheDocument()
+    await selectFirst()
+    expect(screen.getByTestId('artifact-inspector')).toHaveTextContent('site')
+    expect(screen.getAllByTitle('index').length).toBeGreaterThan(0)
     expect(screen.getByText('common:artifactsCount')).toBeInTheDocument()
   })
 
@@ -138,7 +139,7 @@ describe('Library route (/artifacts)', () => {
     expect(screen.queryByTestId('artifact-inspector')).not.toBeInTheDocument()
     await selectFirst()
     expect(screen.getByTestId('artifact-inspector')).toHaveTextContent(
-      'common:artifactSource'
+      'Landing page draft'
     )
     expect(screen.getByTestId('artifact-row')).toHaveAttribute(
       'aria-current',
@@ -183,7 +184,7 @@ describe('Library route (/artifacts)', () => {
   it('narrows the list by kind', async () => {
     await renderPage()
     // The kind filter is a segmented control: one radio per kind.
-    fireEvent.click(screen.getByRole('radio', { name: 'Image' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'engine:library.kindImages' }))
     expect(screen.queryByTestId('artifact-card')).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('radio', { name: 'common:artifactsAll' }))
     expect(screen.getByTestId('artifact-card')).toBeInTheDocument()

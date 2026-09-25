@@ -40,7 +40,7 @@ export function PageHead({
         )}
       </div>
       {actions && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 motion-safe:animate-rise-in [animation-delay:60ms]">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 motion-safe:animate-rise-in [animation-delay:60ms] max-sm:w-full">
           {actions}
         </div>
       )}
@@ -149,7 +149,7 @@ export function KpiRow({
         'grid gap-4',
         columns === 4
           ? 'grid-cols-2 xl:grid-cols-4'
-          : 'grid-cols-1 sm:grid-cols-3'
+          : 'grid-cols-2 sm:grid-cols-3 max-sm:[&>*:last-child:nth-child(odd)]:col-span-2'
       )}
     >
       {children}

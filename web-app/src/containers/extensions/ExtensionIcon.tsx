@@ -60,6 +60,56 @@ const ICONS: Record<string, IconDef> = {
       </Glyph>
     ),
   },
+  're-toolkit': {
+    from: '#10b981',
+    to: '#0e7490',
+    glyph: (
+      <Glyph>
+        <path d="m8 2 1.9 1.9M16 2l-1.9 1.9M9 7.1V6a3 3 0 1 1 6 0v1.1" />
+        <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6M12 20v-9M6.5 9C4.6 8.8 3 7.1 3 5M6 13H2M3 21c0-2.1 1.7-3.9 3.8-4M20.97 5c0 2.1-1.6 3.8-3.5 4M22 13h-4M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+      </Glyph>
+    ),
+  },
+  'obsidian-bridge': {
+    from: '#7c3aed',
+    to: '#312e81',
+    glyph: (
+      <Glyph>
+        <path d="M12 2 5 7l1.5 10L12 22l5.5-5L19 7z" />
+        <path d="M12 2v20M5 7l7 4 7-4" />
+      </Glyph>
+    ),
+  },
+  'sql-helper': {
+    from: '#0ea5e9',
+    to: '#1d4ed8',
+    glyph: (
+      <Glyph>
+        <ellipse cx="12" cy="5" rx="8" ry="3" />
+        <path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3" />
+      </Glyph>
+    ),
+  },
+  'figma-context': {
+    from: '#f43f5e',
+    to: '#f59e0b',
+    glyph: (
+      <Glyph>
+        <path d="M5 5.5A3.5 3.5 0 0 1 8.5 2H12v7H8.5A3.5 3.5 0 0 1 5 5.5zM12 2h3.5a3.5 3.5 0 1 1 0 7H12zM12 12.5a3.5 3.5 0 1 1 7 0 3.5 3.5 0 1 1-7 0zM5 19.5A3.5 3.5 0 0 1 8.5 16H12v3.5a3.5 3.5 0 1 1-7 0zM5 12.5A3.5 3.5 0 0 1 8.5 9H12v7H8.5A3.5 3.5 0 0 1 5 12.5z" />
+      </Glyph>
+    ),
+  },
+  'k8s-ops': {
+    from: '#3b82f6',
+    to: '#1e3a8a',
+    glyph: (
+      <Glyph>
+        <circle cx="12" cy="12" r="3" />
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 3v6M12 15v6M4.2 7.5l5.2 3M14.6 13.5l5.2 3M4.2 16.5l5.2-3M14.6 10.5l5.2-3" />
+      </Glyph>
+    ),
+  },
   'Jan Assistant': {
     from: '#f59e0b',
     to: '#ea580c',

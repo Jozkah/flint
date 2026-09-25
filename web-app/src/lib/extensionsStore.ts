@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/previewInvoke'
 import type { SkillMeta } from '@/lib/skillStore'
 
 export type { SkillMeta }
