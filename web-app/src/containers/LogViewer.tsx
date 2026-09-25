@@ -575,7 +575,12 @@ export function LogsDashboard({
         icon={<FileText className="size-4" />}
         actions={inShell ? undefined : copy}
       />
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-4 pb-8 [scrollbar-width:thin] max-lg:px-3">
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-8 [scrollbar-width:thin]',
+          inShell ? 'px-1' : 'px-4'
+        )}
+      >
         <div className="flex w-full min-w-0 flex-col gap-4">
           <div className="mb-2 flex flex-wrap items-start justify-between gap-4">
             <div className="flex min-w-0 flex-col gap-3">
@@ -743,7 +748,7 @@ export function LogsDashboard({
               <LogViewer
                 logs={shown}
                 follow={follow}
-                className="max-h-[62vh]"
+                className="max-h-[62vh] min-h-[240px]"
                 emptyText={
                   logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')
                 }

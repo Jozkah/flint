@@ -58,7 +58,7 @@ function SettingsSections() {
     <Frame
       // Visible overflow: the settings-search results drop down over the
       // page, and a clipped frame would cut them off at its bottom edge.
-      className="sticky top-0 hidden w-[220px] shrink-0 self-start overflow-visible lg:flex"
+      className="sticky top-0 hidden w-[236px] shrink-0 self-start overflow-visible lg:flex"
       aria-label={t('common:shell.sections')}
     >
       <FrameHeader icon={<Settings />} title={t('common:shell.sections')} />

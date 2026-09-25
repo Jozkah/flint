@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { Monitor, Moon, Sun } from 'lucide-react'
 import { route } from '@/constants/routes'
 import {
   SettingsColumns,
@@ -34,10 +33,10 @@ function ThemeSegmented() {
   const { t } = useTranslation()
   const activeTheme = useTheme((s) => s.activeTheme)
   const setTheme = useTheme((s) => s.setTheme)
-  const options: { value: ThemeChoice; label: string; icon: typeof Sun }[] = [
-    { value: 'light', label: t('common:light'), icon: Sun },
-    { value: 'dark', label: t('common:dark'), icon: Moon },
-    { value: 'auto', label: t('common:system'), icon: Monitor },
+  const options: { value: ThemeChoice; label: string }[] = [
+    { value: 'light', label: t('common:light') },
+    { value: 'dark', label: t('common:dark') },
+    { value: 'auto', label: t('common:system') },
   ]
   const index = Math.max(
     0,
@@ -55,7 +54,7 @@ function ThemeSegmented() {
         style={{ left: `calc((100% - 1rem) / 3 * ${index} + ${index} * 0.5rem)` }}
         className="pointer-events-none absolute top-0 h-7 w-[calc((100%-1rem)/3)] rounded-lg border border-primary bg-grad transition-[left] duration-300 ease-expo pointer-coarse:h-11"
       />
-      {options.map(({ value, label, icon: Icon }, i) => {
+      {options.map(({ value, label }, i) => {
         const pressed = i === index
         return (
           <button
@@ -72,7 +71,6 @@ function ThemeSegmented() {
                 : 'border-border bg-card text-secondary-foreground hover:bg-hover-row'
             )}
           >
-            <Icon className="size-3.5" aria-hidden />
             <span className="truncate">{label}</span>
           </button>
         )

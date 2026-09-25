@@ -233,8 +233,13 @@ function SystemMonitorContent() {
         actions={inShell ? undefined : live}
       />
 
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 pt-4 pb-8 [scrollbar-width:thin] md:px-1">
-        <div className="flex w-full min-w-0 flex-col gap-6 max-lg:px-2">
+      <div
+        className={cn(
+          'min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-4 pb-8 [scrollbar-width:thin]',
+          inShell ? 'px-1' : 'px-4'
+        )}
+      >
+        <div className="flex w-full min-w-0 flex-col gap-6">
           {/* In the shell the breadcrumb names the page; the heading here
               matches the other pages. The standalone window's bar already
               carries the title, so it is not repeated. */}
