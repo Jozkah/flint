@@ -68,8 +68,9 @@ function ExtensionsPage() {
         />
 
         <div className="flex flex-wrap items-center gap-3 motion-safe:animate-rise-in [animation-delay:80ms]">
+          <div className="-mx-1 max-w-full overflow-x-auto px-1 [scrollbar-width:none]">
           <Segmented<ExtensionsTab>
-            className="w-[520px] max-w-full"
+            className="w-[520px] min-w-[400px] max-w-none sm:max-w-full"
             aria-label={t('common:appRail.extensions')}
             value={tab}
             onValueChange={setTab}
@@ -96,6 +97,7 @@ function ExtensionsPage() {
               },
             ]}
           />
+          </div>
           <span className="flex-1" />
           {tab !== 'engine' && (
             <Segmented<ExtensionsScope>

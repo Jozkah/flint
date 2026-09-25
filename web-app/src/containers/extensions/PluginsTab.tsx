@@ -601,7 +601,7 @@ export default function PluginsTab({
                 {installingName === entry.name && (
                   <Loader2 className="motion-safe:animate-spin" size={14} aria-hidden />
                 )}
-                {installed ? t('plugins:state.installed') : t('plugins:installButton')}
+                {installed ? t('plugins:state.installed') : t('plugins:install.submit')}
               </Button>
             </div>
           </div>

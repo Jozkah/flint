@@ -23,11 +23,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { sessionWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
 import { artifactsFromTurns, type CoworkArtifact } from '@/lib/coworkArtifacts'
-import {
-  extensionOf,
-  previewKindFor,
-  resolveInRoot,
-} from '@/lib/coworkPreview'
+import { extensionOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { cn, formatBytes } from '@/lib/utils'
 
@@ -412,7 +408,12 @@ function ArtifactsPage() {
               <div className={cn('min-w-0', selected && 'max-lg:hidden')}>
                 {shown.length === 0 ? (
                   <EmptyState
-                    icon={<Icon name={kind ? KIND_ICON[kind] : 'x-library'} size={20} />}
+                    icon={
+                      <Icon
+                        name={kind ? KIND_ICON[kind] : 'x-library'}
+                        size={20}
+                      />
+                    }
                     title={t('common:artifactsNoMatch')}
                   />
                 ) : (

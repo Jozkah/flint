@@ -19,8 +19,9 @@ export function previewCall<T>(
   args?: InvokeArgs
 ): Promise<T> | undefined {
   if (!import.meta.env.DEV || typeof window === 'undefined') return undefined
-  const handler = (window as unknown as { __FLINT_PREVIEW_INVOKE__?: PreviewHandler })
-    .__FLINT_PREVIEW_INVOKE__
+  const handler = (
+    window as unknown as { __FLINT_PREVIEW_INVOKE__?: PreviewHandler }
+  ).__FLINT_PREVIEW_INVOKE__
   return handler?.(command, args) as Promise<T> | undefined
 }
 

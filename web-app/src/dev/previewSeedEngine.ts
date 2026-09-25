@@ -10,7 +10,11 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useMCPServers, type MCPServers } from '@/hooks/useMCPServers'
 import { useToolApproval } from '@/hooks/useToolApproval'
 import { useServiceStore } from '@/hooks/useServiceHub'
-import { useEngineActivity, type GenerationSample, type ToolCallSample } from '@/stores/engine-activity-store'
+import {
+  useEngineActivity,
+  type GenerationSample,
+  type ToolCallSample,
+} from '@/stores/engine-activity-store'
 
 const MIN = 60_000
 const GB = 1024 ** 3
@@ -66,7 +70,10 @@ function seedModels() {
         ? {
             settings: {
               ...(m.settings ?? {}),
-              ctx_len: { key: 'ctx_len', controller_props: { value: CTX[m.id] } },
+              ctx_len: {
+                key: 'ctx_len',
+                controller_props: { value: CTX[m.id] },
+              },
             },
           }
         : {}),
@@ -89,20 +96,29 @@ function seedModels() {
   }
   useModelProvider.setState({ providers } as never)
   useAppState.setState({
-    activeModels: ['Qwen3-14B-Q4_K_M', 'gemma-3-12b-it-Q5_K_M', 'jan-nano-4b-Q8_0'],
+    activeModels: [
+      'Qwen3-14B-Q4_K_M',
+      'gemma-3-12b-it-Q5_K_M',
+      'jan-nano-4b-Q8_0',
+    ],
   } as never)
 }
 
 /* ---------- engine activity (speeds, tool calls) ---------- */
 
 const SERVER_LOAD: Record<string, [perMin: number, spread: number]> = {
-  filesystem: [11, 5],
-  github: [20, 9],
+  'filesystem': [11, 5],
+  'github': [20, 9],
   'you-search': [2, 2],
 }
 const TOOLS: Record<string, string[]> = {
-  filesystem: ['read_file', 'write_file', 'list_directory', 'search_files'],
-  github: ['create_issue', 'create_pull_request', 'list_commits', 'get_file_contents'],
+  'filesystem': ['read_file', 'write_file', 'list_directory', 'search_files'],
+  'github': [
+    'create_issue',
+    'create_pull_request',
+    'list_commits',
+    'get_file_contents',
+  ],
   'you-search': ['search', 'fetch'],
 }
 
@@ -147,20 +163,32 @@ function seedActivity() {
 /* ---------- MCP servers ---------- */
 
 const SERVERS: MCPServers = {
-  filesystem: {
+  'filesystem': {
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', 'C:\\Coding'],
     env: {},
     active: true,
   },
-  github: {
+  'github': {
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-github'],
     env: { GITHUB_TOKEN: 'preview' },
     active: true,
   },
-  playwright: { command: 'npx', args: ['-y', '@playwright/mcp@latest'], env: {}, active: true },
-  'you-search': { command: '', args: [], env: {}, type: 'http', url: 'https://api.you.com/mcp', active: true },
+  'playwright': {
+    command: 'npx',
+    args: ['-y', '@playwright/mcp@latest'],
+    env: {},
+    active: true,
+  },
+  'you-search': {
+    command: '',
+    args: [],
+    env: {},
+    type: 'http',
+    url: 'https://api.you.com/mcp',
+    active: true,
+  },
   'Jan Browser MCP': {
     command: 'npx',
     args: ['-y', 'search-mcp-server@latest'],
@@ -185,22 +213,45 @@ function seedMcp() {
 
 /* ---------- artifacts (Cowork write calls) ---------- */
 
-type Art = [session: string, title: string, path: string, bytes: number, ageMin: number]
+type Art = [
+  session: string,
+  title: string,
+  path: string,
+  bytes: number,
+  ageMin: number,
+]
 const ARTIFACTS: Art[] = [
   ['changelog', 'Draft 0.9.0 changelog', 'CHANGELOG.md', 2100, 40],
-  ['escape', 'Fix JSON escape tracking', 'src/agent/json_recovery.svg', 5200, 2],
+  [
+    'escape',
+    'Fix JSON escape tracking',
+    'src/agent/json_recovery.svg',
+    5200,
+    2,
+  ],
   ['escape', 'Fix JSON escape tracking', 'out/recover_report.html', 9400, 4],
   ['paths', 'Heal Windows paths', 'charts/vram-by-model.png', 88000, 1500],
   ['paths', 'Heal Windows paths', 'scripts/build-helper.svg', 1900, 1500],
   ['sync', 'Sync RE findings', 'hunt/offsets.md', 11200, 4300],
-  ['changelog', 'Draft 0.9.0 changelog', 'out/standup-summary.mp3', 2_140_000, 4300],
+  [
+    'changelog',
+    'Draft 0.9.0 changelog',
+    'out/standup-summary.mp3',
+    2_140_000,
+    4300,
+  ],
   ['kravio', 'Kravio style preview', 'out/flint-kravio.html', 48000, 20],
 ]
 
 function seedArtifacts() {
   const now = Date.now()
   const state = useCoworkSessions.getState() as unknown as {
-    sessions: Array<{ id: string; title: string; turns: unknown[]; updated: number }>
+    sessions: Array<{
+      id: string
+      title: string
+      turns: unknown[]
+      updated: number
+    }>
   }
   const sessions = [...(state.sessions ?? [])]
   for (const [id, title, path, bytes, age] of ARTIFACTS) {
@@ -240,12 +291,67 @@ function seedArtifacts() {
 
 /* ---------- plugins and skills (Tauri commands) ---------- */
 
-type Plug = [id: string, version: string, description: string, repo: string, enabled: boolean, skills: string[], commands: number, agents: number, kind: 'local' | 'git' | 'marketplace', source: string]
+type Plug = [
+  id: string,
+  version: string,
+  description: string,
+  repo: string,
+  enabled: boolean,
+  skills: string[],
+  commands: number,
+  agents: number,
+  kind: 'local' | 'git' | 'marketplace',
+  source: string,
+]
 const PLUGINS: Plug[] = [
-  ['flint-core', '1.4.0', 'Built-in skills for Rust, git and testing.', '', true, ['rust-testing', 'git-hygiene', 'cargo-watch'], 2, 0, 'local', 'C:\\Coding\\flint-core'],
-  ['release-kit', '0.3.2', 'Changelog and release-note helpers.', 'https://github.com/jozkah/release-kit', true, ['changelog', 'release-notes'], 0, 1, 'git', 'https://github.com/jozkah/release-kit'],
-  ['design-kit', '0.9.0', 'Frontend and artifact design skills.', 'https://github.com/flint/design-kit', false, ['frontend-design', 'artifact-design', 'palette', 'type-scale'], 0, 0, 'marketplace', 'design-kit'],
-  ['re-toolkit', '0.2.1', 'Reverse-engineering notes, offsets and signatures.', '', true, ['offset-sync', 'sig-scan', 're-notes'], 0, 0, 'local', 'C:\\Coding\\re-toolkit'],
+  [
+    'flint-core',
+    '1.4.0',
+    'Built-in skills for Rust, git and testing.',
+    '',
+    true,
+    ['rust-testing', 'git-hygiene', 'cargo-watch'],
+    2,
+    0,
+    'local',
+    'C:\\Coding\\flint-core',
+  ],
+  [
+    'release-kit',
+    '0.3.2',
+    'Changelog and release-note helpers.',
+    'https://github.com/jozkah/release-kit',
+    true,
+    ['changelog', 'release-notes'],
+    0,
+    1,
+    'git',
+    'https://github.com/jozkah/release-kit',
+  ],
+  [
+    'design-kit',
+    '0.9.0',
+    'Frontend and artifact design skills.',
+    'https://github.com/flint/design-kit',
+    false,
+    ['frontend-design', 'artifact-design', 'palette', 'type-scale'],
+    0,
+    0,
+    'marketplace',
+    'design-kit',
+  ],
+  [
+    're-toolkit',
+    '0.2.1',
+    'Reverse-engineering notes, offsets and signatures.',
+    '',
+    true,
+    ['offset-sync', 'sig-scan', 're-notes'],
+    0,
+    0,
+    'local',
+    'C:\\Coding\\re-toolkit',
+  ],
 ]
 const installed = (p: Plug) => ({
   id: p[0],
@@ -261,12 +367,16 @@ const installed = (p: Plug) => ({
   source: p[9],
 })
 const SKILLS: Array<[name: string, description: string, plugin?: string]> = [
-  ['rust-testing', 'Run and read cargo tests'],
-  ['git-hygiene', 'Commit and branch conventions'],
-  ['changelog', 'Write release notes'],
-  ['tauri-release', 'Cut a Tauri release build'],
+  ['rust-testing', 'Run and read cargo tests', 'flint-core'],
+  ['git-hygiene', 'Commit and branch conventions', 'flint-core'],
+  ['changelog', 'Write release notes', 'release-kit'],
   ['frontend-design', 'Build polished UI', 'design-kit'],
   ['offset-sync', 'Sync RE findings to the repo', 're-toolkit'],
+  ['cargo-watch', 'Keep a build running', 'flint-core'],
+]
+/** Skills kept in a project's own folder. */
+const PROJECT_SKILLS = [
+  { name: 'tauri-release', description: 'Cut a Tauri release build' },
 ]
 const MARKET = [
   ['obsidian-bridge', 'Read and write your Obsidian vault.'],
@@ -274,11 +384,12 @@ const MARKET = [
   ['figma-context', 'Pull design context from Figma files.'],
   ['k8s-ops', 'Inspect clusters with read-only tools.'],
 ]
-const PROJECTS = [
-  { id: 'jan', folder: 'C:\\Coding\\jan', name: 'jan' },
-]
+const PROJECTS = [{ id: 'jan', folder: 'C:\\Coding\\jan', name: 'jan' }]
 
-function previewInvoke(command: string, args?: Record<string, unknown>): Promise<unknown> | undefined {
+function previewInvoke(
+  command: string,
+  args?: Record<string, unknown>
+): Promise<unknown> | undefined {
   const ok = (v: unknown) => Promise.resolve(v)
   switch (command) {
     case 'agent_plugin_list':
@@ -291,7 +402,10 @@ function previewInvoke(command: string, args?: Record<string, unknown>): Promise
         installedAtMs: Date.now() - 6 * 86_400_000,
         gitRef: p[8] === 'git' ? 'main' : null,
         skillNames: p[5],
-        commandNames: Array.from({ length: p[6] }, (_, i) => ['build', 'test'][i] ?? `cmd-${i}`),
+        commandNames: Array.from(
+          { length: p[6] },
+          (_, i) => ['build', 'test'][i] ?? `cmd-${i}`
+        ),
         agentNames: p[7] ? ['release-captain'] : [],
         hasMcpConfig: p[0] === 're-toolkit',
         executableFiles: [],
@@ -301,14 +415,23 @@ function previewInvoke(command: string, args?: Record<string, unknown>): Promise
     case 'agent_plugin_sources':
       return ok({ marketplace: 'https://plugins.flint.dev/index.json' })
     case 'agent_plugin_search':
-      return ok(MARKET.map(([name, description]) => ({ name, description, repo: `https://github.com/flint/${name}`, ref: null })))
+      return ok(
+        MARKET.map(([name, description]) => ({
+          name,
+          description,
+          repo: `https://github.com/flint/${name}`,
+          ref: null,
+        }))
+      )
     case 'agent_skill_list':
       return ok(
-        SKILLS.filter(([, , plugin]) => !plugin || !args?.store).map(([name, description, plugin]) => ({
-          name: plugin ? `${plugin}:${name}` : name,
-          description,
-          plugin,
-        }))
+        args?.store
+          ? SKILLS.map(([name, description, plugin]) => ({
+              name: plugin ? `${plugin}:${name}` : name,
+              description,
+              plugin,
+            }))
+          : PROJECT_SKILLS
       )
     case 'agent_skill_read':
       return ok(
@@ -337,9 +460,16 @@ function previewInvoke(command: string, args?: Record<string, unknown>): Promise
 /* ---------- services ---------- */
 
 function patchEngineServices() {
-  const hub = useServiceStore.getState().serviceHub as unknown as Record<string, Record<string, unknown>> | null
+  const hub = useServiceStore.getState().serviceHub as unknown as Record<
+    string,
+    Record<string, unknown>
+  > | null
   if (!hub) return
-  const set = (service: string, method: string, fn: (...a: never[]) => Promise<unknown>) => {
+  const set = (
+    service: string,
+    method: string,
+    fn: (...a: never[]) => Promise<unknown>
+  ) => {
     const target = hub[service]
     if (target) target[method] = fn
   }
@@ -348,8 +478,11 @@ function patchEngineServices() {
   set('mcpService', 'getToolsForServers', async (names: string[]) =>
     names.flatMap((server) =>
       (server === 'github'
-        ? [...TOOLS.github, ...Array.from({ length: 22 }, (_, i) => `github_tool_${i + 1}`)]
-        : TOOLS[server] ?? []
+        ? [
+            ...TOOLS.github,
+            ...Array.from({ length: 22 }, (_, i) => `github_tool_${i + 1}`),
+          ]
+        : (TOOLS[server] ?? [])
       ).map((name) => ({ name, server, description: '', inputSchema: {} }))
     )
   )
@@ -372,13 +505,82 @@ function patchEngineServices() {
       path: `C:\\Users\\me\\AppData\\Roaming\\flint\\llamacpp\\models\\${id}.gguf`,
     }))
   )
-  set('modelsService', 'getActiveModels', async () => useAppState.getState().activeModels ?? [])
+  set(
+    'modelsService',
+    'getActiveModels',
+    async () => useAppState.getState().activeModels ?? []
+  )
+}
+
+/** The built-in extensions the desktop app loads, for the Engine tab. */
+const ENGINE_EXTENSIONS = [
+  [
+    '@janhq/assistant-extension',
+    'Jan Assistant',
+    '1.0.2',
+    'Powers the default AI assistant that works with all your installed models.',
+  ],
+  [
+    '@janhq/conversational-extension',
+    'Conversational',
+    '1.0.0',
+    'Enables conversations and state persistence via your file system.',
+  ],
+  [
+    '@janhq/llamacpp-extension',
+    'llama.cpp Inference Engine',
+    '1.0.1',
+    'This extension enables llama.cpp chat completion API calls',
+  ],
+  [
+    '@janhq/mlx-extension',
+    'MLX Inference Engine',
+    '1.0.0',
+    'This extension enables MLX-Swift inference on Apple Silicon Macs',
+  ],
+  [
+    '@janhq/rag-extension',
+    'RAG Tools',
+    '0.1.0',
+    'Registers RAG tools and orchestrates retrieval across parser, embeddings, and vector DB',
+  ],
+  [
+    '@janhq/vector-db-extension',
+    'Vector DB',
+    '0.1.0',
+    'Vector DB integration using sqlite-vec if available with linear fallback',
+  ],
+]
+
+function seedExtensions() {
+  void import('@/lib/extension').then(({ ExtensionManager }) => {
+    const map = (
+      ExtensionManager.getInstance() as unknown as {
+        extensions: Map<string, unknown>
+      }
+    ).extensions
+    if (!map || map.size > 0) return
+    for (const [name, productName, version, description] of ENGINE_EXTENSIONS) {
+      map.set(name, {
+        name,
+        productName,
+        version,
+        description,
+        type: () => undefined,
+        onLoad: () => undefined,
+        onUnload: () => undefined,
+      })
+    }
+  })
 }
 
 let subscribed = false
 export function seedEngine() {
-  (window as unknown as { __FLINT_PREVIEW_INVOKE__?: typeof previewInvoke }).__FLINT_PREVIEW_INVOKE__ =
-    previewInvoke
+  const win = window as unknown as {
+    __FLINT_PREVIEW_INVOKE__?: typeof previewInvoke
+  }
+  win.__FLINT_PREVIEW_INVOKE__ = previewInvoke
+  seedExtensions()
   if (!subscribed) {
     subscribed = true
     useServiceStore.subscribe(() => patchEngineServices())

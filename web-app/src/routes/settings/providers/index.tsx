@@ -65,7 +65,7 @@ type Filter = 'all' | 'local' | 'remote'
 
 /** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu. */
 const MODEL_COLS =
-  '30px minmax(160px,1.4fr) 104px minmax(140px,1.2fr) 72px 76px 120px 104px 28px'
+  '30px minmax(180px,3fr) 76px minmax(170px,1.3fr) 64px 72px 96px 100px 28px'
 
 /** How many recent replies the speed charts show. */
 const SPEED_WINDOW = 24
@@ -578,17 +578,6 @@ function ModelProviders() {
               <TBox
                 className="min-w-[860px]"
                 columns={MODEL_COLS}
-                head={[
-                  '',
-                  t('engine:table.name'),
-                  t('engine:table.provider'),
-                  t('engine:table.capabilities'),
-                  t('engine:table.size'),
-                  t('engine:table.context'),
-                  t('engine:table.speed'),
-                  t('engine:table.status'),
-                  '',
-                ]}
               >
                 {shownRows.map(({ provider, model, local }) => {
                   const loaded = local && activeModels.includes(model.id)
