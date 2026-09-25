@@ -498,12 +498,14 @@ impl ProviderArgs {
     fn into_overrides(self) -> ProviderOverrides {
         // Default the target provider to the desktop app's current selection so
         // env-key fallback (<PROVIDER>_API_KEY) works without an explicit flag.
+        let pin = self.provider.is_some();
         let provider = self
             .provider
             .or_else(|| app_lib::core::cli::providers::desktop_selection().provider);
         ProviderOverrides {
             provider,
             api_key: self.api_key,
+            pin,
         }
         .with_env()
     }
@@ -1183,6 +1185,7 @@ fn make_logo() -> String {
 /// the tree small enough to fit -- would mean deciding which of a person's
 /// commands to remove.
 fn main() {
+    install_closed_pipe_hook();
     let worker = std::thread::Builder::new()
         .name("jan-main".to_string())
         .stack_size(32 * 1024 * 1024)
@@ -1199,6 +1202,33 @@ fn main() {
     if worker.join().is_err() {
         std::process::exit(70);
     }
+}
+
+/// Whether a panic message is the standard library giving up on a write to
+/// stdout or stderr. `println!` panics with "failed printing to stdout" when the
+/// reader has gone away -- `flint cli agent vcs | head` closes the pipe after
+/// ten lines -- and there is nobody left to tell about it.
+fn is_closed_output_panic(message: &str) -> bool {
+    message.starts_with("failed printing to stdout")
+        || message.starts_with("failed printing to stderr")
+}
+
+/// Exit quietly, instead of printing a panic, when a command's output stream
+/// has been closed under it. Every other panic keeps the default report.
+fn install_closed_pipe_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = info.payload();
+        let message = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        if is_closed_output_panic(message) {
+            std::process::exit(0);
+        }
+        default_hook(info);
+    }));
 }
 
 async fn run() {
@@ -2805,9 +2835,23 @@ async fn handle_models(cmd: ModelsCommands) {
                     std::process::exit(1);
                 }
             };
-            let output =
-                app_lib::core::cli::providers::model_listing(&configs, provider.as_deref());
-            if !output.is_empty() && output.iter().all(|m| m["reachable"] == false) {
+            use app_lib::core::cli::providers::{
+                find_provider, model_listing, probe_providers, REACHABILITY_TIMEOUT,
+            };
+            if let Some(p) = provider.as_deref() {
+                if find_provider(&configs, p).is_none() {
+                    eprintln!("Error: unknown provider '{p}'");
+                    std::process::exit(1);
+                }
+            }
+            // Probe each server rather than trusting a configured base_url: a
+            // provider whose server is down is not reachable, whatever its
+            // config says.
+            let probed = probe_providers(&configs, REACHABILITY_TIMEOUT).await;
+            let output = model_listing(&configs, provider.as_deref(), &probed);
+            if !output.is_empty()
+                && output.iter().all(|m| m["reachable"] == false && m["base_url"].is_null())
+            {
                 eprintln!(
                     "None of these models is reachable from the CLI: they run inside the \
                      Jan app. Enable the app's Local API Server and point the CLI at it:\n  \
@@ -3212,6 +3256,20 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    /// A closed stdout/stderr pipe is recognised; nothing else is.
+    #[test]
+    fn closed_output_panics_are_recognised() {
+        assert!(super::is_closed_output_panic(
+            "failed printing to stdout: Broken pipe (os error 32)"
+        ));
+        assert!(super::is_closed_output_panic(
+            "failed printing to stdout: The pipe is being closed. (os error 232)"
+        ));
+        assert!(super::is_closed_output_panic("failed printing to stderr: Broken pipe (os error 32)"));
+        assert!(!super::is_closed_output_panic("index out of bounds"));
+        assert!(!super::is_closed_output_panic(""));
+    }
+
     /// Running out of turns while the model is still calling tools is the one
     /// failure the shell can read as a limit rather than a crash. The message is
     /// the only marker it has, so the classifier must match that message and not
