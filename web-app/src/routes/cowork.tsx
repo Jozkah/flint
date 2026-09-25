@@ -25,7 +25,9 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, FileDiff, Handshake, Loader2 } from 'lucide-react'
+import { ArrowLeft, FileDiff, Loader2 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import { basenameOf } from '@/lib/coworkPreview'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
@@ -3956,7 +3958,10 @@ function CoworkPage() {
       />
       {/* Collapsed, and inside session details rather than above the
           composer: someone whose session works should never read it. */}
-      <CoworkEnvironmentReadiness projectRoot={folder ?? undefined} />
+      <CoworkEnvironmentReadiness
+        projectRoot={folder ?? undefined}
+        collapsible
+      />
       {runContext && <CoworkContextBreakdown context={runContext} />}
       <CoworkCompatSection
         manifest={compat}
@@ -3973,6 +3978,7 @@ function CoworkPage() {
         }}
       />
       <ClaudeSkillRootsSettings
+        collapsible
         roots={skillRoots}
         onChange={(next) => useClaudeCompat.getState().setSkillRoots(next)}
         janData={janDataFolder}
@@ -4012,10 +4018,25 @@ function CoworkPage() {
               {sessionControls}
             </div>
           )}
-          {phone && (
-            // One view at a time on a phone, chosen here rather than by
-            // swiping, so every view is reachable from the keyboard too.
-            <div
+          {!phone && (
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Closed until asked for. */}
+              <CoworkSessionDetails summary={sessionDetailsSummary}>
+                {detailsBody}
+              </CoworkSessionDetails>
+            </div>
+          )}
+        </PageHeaderRow>
+      </HeaderPage>
+
+      {phone && (
+        // On a phone the header has no room beside the breadcrumb, so the
+        // view switch -- and Stop, while the composer is out of sight -- get a
+        // row of their own over the page.
+        <div className="flex shrink-0 items-center gap-2 pt-2 pb-2">
+          {/* One view at a time on a phone, chosen here rather than by
+              swiping, so every view is reachable from the keyboard too. */}
+          <div
               role="group"
               aria-label={t('common:coworkLayout.views')}
               className="flex h-9 min-w-0 flex-1 items-stretch gap-1 overflow-hidden rounded-[10px] bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
@@ -4039,11 +4060,10 @@ function CoworkPage() {
                   </span>
                 </button>
               ))}
-            </div>
-          )}
+          </div>
           {/* The composer's stop control is out of sight in the other phone
               views, so a running session can still be stopped from here. */}
-          {phone && running && view !== 'content' ? (
+          {running && view !== 'content' ? (
             <Button
               variant="destructive"
               size="sm"
@@ -4054,17 +4074,8 @@ function CoworkPage() {
               {t('common:stop')}
             </Button>
           ) : null}
-          {!phone && (
-            <div className="ml-auto flex shrink-0 items-center gap-1">
-              {/* Closed until asked for. */}
-              <CoworkSessionDetails summary={sessionDetailsSummary}>
-                {detailsBody}
-              </CoworkSessionDetails>
-            </div>
-          )}
-        </PageHeaderRow>
-      </HeaderPage>
-
+        </div>
+      )}
       <CoworkInspectorProvider layout={inspectorLayout}>
       {/* Two framed cards side by side, as the design lays out Cowork: the
           conversation, and the output panel once one is open. */}
@@ -4082,7 +4093,7 @@ function CoworkPage() {
           data-testid="cowork-content-view"
         >
           <FrameHeader
-            icon={<Handshake aria-hidden />}
+            icon={<Icon name="x-cowork" size={16} />}
             title={
               <span
                 title={session?.title || undefined}
@@ -4099,7 +4110,10 @@ function CoworkPage() {
                       className="size-3.5 motion-safe:animate-spin"
                       aria-hidden
                     />
-                    {t('common:coworkLayout.running')}
+                    {/* Icon only on a phone, where the title needs the room. */}
+                    <span className="max-md:sr-only">
+                      {t('common:coworkLayout.running')}
+                    </span>
                   </Chip>
                 ) : null}
                 {/* The one primary action on the conversation, once there is
@@ -4109,9 +4123,12 @@ function CoworkPage() {
                     size="sm"
                     onClick={() => openRail({ kind: 'diff' })}
                     data-testid="cowork-header-review"
+                    className="pointer-coarse:h-11 max-md:px-2.5"
                   >
                     <FileDiff aria-hidden />
-                    {t('common:coworkReview.open')}
+                    <span className="max-md:sr-only">
+                      {t('common:coworkReview.open')}
+                    </span>
                   </Button>
                 ) : null}
               </>
@@ -4280,19 +4297,11 @@ function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
-                  {running && (
-                    // Row wrapper as in the chat route: the transcript is a
-                    // column flex, which stretches the indicator's own
-                    // `inline-flex` box across the whole column.
-                    <div className="flex flex-row items-center gap-2">
-                      <PromptProgress
-                        hideIdle={!awaitingModel}
-                        stateKey={session?.id}
-                      />
-                    </div>
-                  )}
-                  {!running &&
-                    (runEnding || runOrigins?.summary) &&
+                  {/* Also while the run goes, as the design shows it: what
+                      it has changed and checked so far, marked Running, with
+                      no next steps offered until it ends (the outcome holds
+                      them back while running). */}
+                  {(running || runEnding || runOrigins?.summary) &&
                     // Only when the run has something of its own to report:
                     // a write, a check, a loose end, or an ending that was
                     // not a clean finish. A working tree that was already
@@ -4300,7 +4309,10 @@ function CoworkPage() {
                     // a permanent panel over the composer listing the user's
                     // own edits. The stop reason itself stays in the notice
                     // below; this shows what was kept.
-                    shouldShowRunOutcome(runOutcome) && (
+                    (running
+                      ? runOutcome.checks.length > 0 ||
+                        runOutcome.resultLocation.paths.length > 0
+                      : shouldShowRunOutcome(runOutcome)) && (
                       <CoworkRunSummary
                         outcome={runOutcome}
                         canOpenPath={shouldOpenInCode}
@@ -4325,14 +4337,16 @@ function CoworkPage() {
                         }
                       />
                     )}
-                  {/* The session's changed files, one step from review. */}
-                  {!running && (
-                    <CoworkReviewReady
-                      fileCount={changeCounts.fileCount}
-                      additions={changeCounts.additions}
-                      deletions={changeCounts.deletions}
-                      onReview={() => openRail({ kind: 'diff' })}
-                    />
+                  {running && (
+                    // Row wrapper as in the chat route: the transcript is a
+                    // column flex, which stretches the indicator's own
+                    // `inline-flex` box across the whole column.
+                    <div className="flex flex-row items-center gap-2">
+                      <PromptProgress
+                        hideIdle={!awaitingModel}
+                        stateKey={session?.id}
+                      />
+                    </div>
                   )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
@@ -4446,6 +4460,14 @@ function CoworkPage() {
                   session &&
                   useCoworkSessions.getState().dismissHandoff(session.id)
                 }
+              />
+              {/* The session's changed files, one step from review: over the
+                  composer, where the design keeps it while the run goes on. */}
+              <CoworkReviewReady
+                fileCount={changeCounts.fileCount}
+                additions={changeCounts.additions}
+                deletions={changeCounts.deletions}
+                onReview={() => openRail({ kind: 'diff' })}
               />
               {/* The pull request for the folder's branch, if it has one, with
                   the same mark the session carries in the sidebar. */}
@@ -4565,20 +4587,12 @@ function CoworkPage() {
                   onApplied={() => git.refresh()}
                 />
               ) : null}
-              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
-              {folder && session?.id ? (
-                <CoworkBundleImport
-                  destination={folder}
-                  session={session.id}
-                  pickFolder={async () => {
-                    const picked = await serviceHub
-                      .dialog()
-                      .open({ directory: true })
-                    return typeof picked === 'string' ? picked : null
-                  }}
-                  onApplied={() => git.refresh()}
-                />
-              ) : null}
+              </>
+            }
+            // After the files, as the design orders it: what each turn
+            // changed, earlier points, then bundles made elsewhere.
+            footer={
+              <>
               {/* AH-202: each turn's own file changes, undone or redone
                   from the turn that made them. */}
               {session?.id ? (
@@ -4631,8 +4645,24 @@ function CoworkPage() {
                   return done
                 }}
               />
+              {/* AH-169: a patch bundle exported elsewhere, reviewed here. */}
+              {folder && session?.id ? (
+                <CoworkBundleImport
+                  destination={folder}
+                  session={session.id}
+                  pickFolder={async () => {
+                    const picked = await serviceHub
+                      .dialog()
+                      .open({ directory: true })
+                    return typeof picked === 'string' ? picked : null
+                  }}
+                  onApplied={() => git.refresh()}
+                />
+              ) : null}
               </>
             }
+            branch={worktree?.branch ?? gitBranch}
+            projectName={folder ? basenameOf(folder) : undefined}
             sandboxFiles={fileDiffs}
             onOpenFile={openToolPath}
             // The tree the changes are in, not the one the session is
@@ -4678,6 +4708,7 @@ function CoworkPage() {
             // agent works in a worktree would show two different repositories
             // under one name.
             folder={treeRoot}
+            projectName={folder ? basenameOf(folder) : undefined}
             workspacePath={workspacePath}
             sessionKey={session.id}
             state={session.codePanel}

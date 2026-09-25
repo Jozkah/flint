@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { CoworkCollapseHeader } from '@/containers/CoworkCollapseHeader'
 import {
   AlertTriangle,
   Check,
@@ -143,7 +144,10 @@ export function CoworkEnvironmentReadiness({
   projectRoot,
   reported,
   onOpenSetting,
+  collapsible = false,
 }: {
+  /** Starts closed behind its heading, as session details shows it. */
+  collapsible?: boolean
   /** The folder this session is attached to, if any. */
   projectRoot?: string
   /**
@@ -163,6 +167,7 @@ export function CoworkEnvironmentReadiness({
   const [expanded, setExpanded] = useState<ReadinessComponent | null>(null)
   const [busy, setBusy] = useState<ReadinessComponent | 'all' | null>(null)
   const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(!collapsible)
   const now = useMemo(() => Date.now(), [readiness])
 
   useEffect(() => {
@@ -219,18 +224,22 @@ export function CoworkEnvironmentReadiness({
       aria-label="Environment readiness"
     >
       <header className="flex items-center gap-2 px-3 py-2.5">
-        <h3 className="text-[13px] font-medium text-foreground">
-          Environment
-        </h3>
-        {unready > 0 && (
-          <span
-            className="rounded-full bg-destructive/10 px-1.5 text-[10px] text-destructive"
-            data-testid="environment-readiness-unready"
-          >
-            {unready} unavailable
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1">
+        <CoworkCollapseHeader
+          title="Environment"
+          open={open}
+          onToggle={collapsible ? () => setOpen((v) => !v) : undefined}
+          extra={
+            unready > 0 && (
+              <span
+                className="rounded-full bg-destructive/10 px-1.5 text-[10px] text-destructive"
+                data-testid="environment-readiness-unready"
+              >
+                {unready} unavailable
+              </span>
+            )
+          }
+        />
+        <div className={cn('ml-auto flex items-center gap-1', !open && 'hidden')}>
           <Button
             variant="ghost"
             size="sm"
@@ -257,13 +266,18 @@ export function CoworkEnvironmentReadiness({
         </div>
       </header>
 
-      {error && (
+      {open && error && (
         <p className="px-3 pb-2 text-xs text-destructive">
           Readiness could not be read: {error}
         </p>
       )}
 
-      <ul className="divide-y divide-dashed divide-border border-t border-dashed border-border">
+      <ul
+        className={cn(
+          'divide-y divide-dashed divide-border border-t border-dashed border-border',
+          !open && 'hidden'
+        )}
+      >
         {(readiness?.components ?? []).map((report) => {
           const Icon = STATE_ICON[report.state]
           const isOpen = expanded === report.component

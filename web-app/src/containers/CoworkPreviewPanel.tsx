@@ -152,9 +152,16 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
 
   return (
     <CoworkSidePanel
-      title={basenameOf(path)}
+      title={t('common:preview.title')}
       onClose={onClose}
+      // What is shown, then its controls on the right: the design's preview
+      // sub-header.
       summary={
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {basenameOf(path)}
+        </span>
+      }
+      aside={
         <div className="flex shrink-0 items-center gap-0.5">
           {state.status === 'ready' && state.kind === 'html' &&
             iconButton(

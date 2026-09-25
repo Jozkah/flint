@@ -1,7 +1,7 @@
 import {
   Bot,
-  CircleAlert,
-  CircleCheck,
+  Check,
+  OctagonAlert,
   CircleOff,
   CircleSlash,
   Clock,
@@ -170,7 +170,7 @@ function StatusIcon({
       )
     case 'error':
       return (
-        <CircleAlert
+        <OctagonAlert
           aria-label={t('common:tasks.statusError')}
           className={cn(common, 'text-destructive')}
         />
@@ -191,7 +191,7 @@ function StatusIcon({
       )
     default:
       return (
-        <CircleCheck
+        <Check
           aria-label={t('common:tasks.statusDone')}
           className={cn(common, 'text-success')}
         />

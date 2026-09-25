@@ -87,7 +87,7 @@ export function CoworkSessionDetails({
           <Info size={16} />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[80dvh] max-w-[680px] overflow-y-auto">
+      <DialogContent className="max-h-[80dvh] overflow-y-auto sm:max-w-[680px] lg:max-w-[680px] xl:max-w-[680px]">
         <DialogHeader>
           <DialogTitle>{t('common:sessionDetails.title')}</DialogTitle>
           <DialogDescription>

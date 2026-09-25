@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Activity, Code2, Eye, FileDiff, ListTree, Loader2 } from 'lucide-react'
+import { Activity, Code, Diff, Eye, ListTree, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -141,7 +141,7 @@ export function CoworkRailToolbar({
       {item(
         'code',
         t('common:rail.code'),
-        <Code2 className="size-3.5 shrink-0" aria-hidden />,
+        <Code className="size-3.5 shrink-0" aria-hidden />,
         undefined,
         t('common:rail.code')
       )}
@@ -150,7 +150,7 @@ export function CoworkRailToolbar({
         changeCount > 0 && changeSummary
           ? `${t('common:rail.changes')} — ${changeSummary}`
           : t('common:rail.changes'),
-        <FileDiff className="size-3.5 shrink-0" aria-hidden />,
+        <Diff className="size-3.5 shrink-0" aria-hidden />,
         changeCount > 0 ? (
           <span className="flex items-center gap-1 font-mono text-[10.5px] tabular-nums">
             <span className="text-diff-add">+{additions}</span>

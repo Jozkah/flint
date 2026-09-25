@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { OriginEntry } from '@/lib/coworkOrigins'
 import {
   ChevronDown,
-  ChevronsDownUp,
-  ChevronsUpDown,
   GitBranch,
+  Maximize2,
+  Minimize2,
   RefreshCw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -187,7 +187,7 @@ function FileRow({
           ) : null}
         </span>
         {note ? (
-          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground">
+          <span className="max-w-[40%] shrink-0 truncate text-[10.5px] text-subtle-foreground max-[479px]:hidden">
             {note}
           </span>
         ) : null}
@@ -200,7 +200,7 @@ function FileRow({
           +{additions}
         </span>
         <span className="shrink-0 font-mono text-xs font-medium text-diff-del">
-          -{deletions}
+          −{deletions}
         </span>
       </button>
       {onOpen ? (
@@ -244,8 +244,20 @@ export function CoworkDiffPanel({
   onClose,
   onOpenFile,
   header,
+  footer,
+  branch,
+  projectName,
 }: {
   sandboxFiles: CoworkFileDiff[]
+  /** The attached project's name, used until Git names the repository. */
+  projectName?: string
+  /** Rendered after the file list: secondary work on changes. */
+  footer?: React.ReactNode
+  /**
+   * The branch the changes are on when Git has not said (a managed worktree's
+   * own branch). Git's answer wins when there is one.
+   */
+  branch?: string | null
   /**
    * Rendered above the file list.
    *
@@ -312,20 +324,32 @@ export function CoworkDiffPanel({
 
   const name = repoName(git.status)
   const title = showProject
-    ? (name ?? t('common:changes.title'))
+    ? (name ?? projectName ?? t('common:changes.title'))
     : t('common:changes.title')
+  const branchName = git.status?.branch ?? branch ?? null
 
   return (
     <CoworkSidePanel
       data-testid="cowork-diff-panel"
       title={title}
+      aside={
+        showProject && branchName ? (
+          <span
+            className="inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[11px] text-secondary-foreground"
+            title={branchName}
+          >
+            <GitBranch size={12} className="shrink-0" />
+            <span className="truncate">{branchName}</span>
+          </span>
+        ) : undefined
+      }
       summary={
         <span
           className="flex shrink-0 gap-1 font-mono text-[10.5px] font-medium tabular-nums"
           data-testid="changes-total"
         >
           <span className="text-diff-add">+{additions}</span>
-          <span className="text-diff-del">-{deletions}</span>
+          <span className="text-diff-del">−{deletions}</span>
         </span>
       }
       onClose={onClose}
@@ -352,15 +376,6 @@ export function CoworkDiffPanel({
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
-            {git.status?.branch ? (
-              <span
-                className="ml-1 inline-flex h-[22px] min-w-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-[11px] text-secondary-foreground"
-                title={git.status.branch}
-              >
-                <GitBranch size={12} className="shrink-0" />
-                <span className="truncate">{git.status.branch}</span>
-              </span>
-            ) : null}
             <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"
@@ -379,9 +394,9 @@ export function CoworkDiffPanel({
                 className="grid size-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-hover-btn hover:text-foreground disabled:opacity-40"
               >
                 {allExpanded ? (
-                  <ChevronsDownUp size={15} />
+                  <Minimize2 size={14} />
                 ) : (
-                  <ChevronsUpDown size={15} />
+                  <Maximize2 size={14} />
                 )}
               </button>
               <button
@@ -511,6 +526,9 @@ export function CoworkDiffPanel({
                       }
                       additions={file.additions}
                       deletions={file.deletions}
+                      // Only Flint writes the session sandbox, so this is
+                      // known rather than inferred.
+                      note={t('common:coworkOrigins.row.jan-write')}
                       isExpanded={isExpanded}
                       onToggle={() => toggle(id)}
                     >
@@ -544,6 +562,7 @@ export function CoworkDiffPanel({
               {t('common:changes.empty')}
             </p>
           ) : null}
+          {footer}
         </div>
       </div>
     </CoworkSidePanel>

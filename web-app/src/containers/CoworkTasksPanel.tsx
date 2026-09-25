@@ -88,8 +88,17 @@ export function CoworkTasksPanel({
   onClose,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
+  // Workflows toggled away from their default: running work opens with its
+  // tasks showing, as the design lays the panel out; finished work opens
+  // closed. So membership means "collapsed" for the one and "open" for the
+  // other.
   const [expandedWorkflows, setExpandedWorkflows] = useState<Set<string>>(
     () => new Set()
+  )
+  const isOpen = useCallback(
+    (view: WorkflowView) =>
+      isLive(view.status) !== expandedWorkflows.has(view.workflow.id),
+    [expandedWorkflows]
   )
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(
     () => new Set()
@@ -128,11 +137,16 @@ export function CoworkTasksPanel({
   useEffect(() => {
     if (!focusTaskId && !focusWorkflowId) return
     if (workflowOfFocus) {
-      setExpandedWorkflows((current) =>
-        current.has(workflowOfFocus.workflow.id)
-          ? current
-          : new Set(current).add(workflowOfFocus.workflow.id)
-      )
+      const id = workflowOfFocus.workflow.id
+      const live = isLive(workflowOfFocus.status)
+      setExpandedWorkflows((current) => {
+        // Open it, whichever way "open" is recorded for this workflow.
+        if (live ? !current.has(id) : current.has(id)) return current
+        const next = new Set(current)
+        if (live) next.delete(id)
+        else next.add(id)
+        return next
+      })
       if (focusTaskId) {
         setExpandedTasks((current) =>
           current.has(focusTaskId) ? current : new Set(current).add(focusTaskId)
@@ -218,7 +232,8 @@ export function CoworkTasksPanel({
       key={view.workflow.id}
       view={view}
       now={now}
-      expanded={expandedWorkflows.has(view.workflow.id)}
+      expanded={isOpen(view)}
+      live={isLive(view.status)}
       onToggle={() => toggleWorkflow(view.workflow.id)}
       expandedTasks={expandedTasks}
       onToggleTask={toggleTask}
@@ -335,10 +350,13 @@ function WorkflowSection({
   focusWorkflowId,
   focusTaskId,
   focusRef,
+  live,
 }: {
   view: WorkflowView
   now: number
   expanded: boolean
+  /** Still going: drawn as the design's bordered card over its tasks. */
+  live?: boolean
   onToggle: () => void
   expandedTasks: Set<string>
   onToggleTask: (id: string) => void
@@ -381,11 +399,19 @@ function WorkflowSection({
 
   return (
     <section
-      className="border-b border-dashed border-border last:border-b-0"
+      className={cn(
+        !live && 'border-b border-dashed border-border last:border-b-0'
+      )}
       ref={isFocus ? focusRef : undefined}
       tabIndex={isFocus ? -1 : undefined}
     >
-      <div className="flex items-start">
+      <div
+        className={cn(
+          'flex items-start',
+          live &&
+            'mx-3 mt-1 mb-2 overflow-hidden rounded-[10px] border-[0.8px] border-border motion-safe:animate-rise-in'
+        )}
+      >
       <button
         type="button"
         onClick={onToggle}
@@ -394,15 +420,26 @@ function WorkflowSection({
       >
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
+            {live ? (
+              <Loader2
+                size={15}
+                aria-hidden
+                className="shrink-0 text-secondary-foreground motion-safe:animate-spin"
+              />
+            ) : null}
             <span
-              className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground"
+              className={cn(
+                'min-w-0 truncate text-[13px] text-foreground',
+                live ? 'font-semibold' : 'flex-1 font-medium'
+              )}
               title={workflow.title}
             >
               {workflow.title}
             </span>
             <StatusIcon status={view.status} />
+            {live ? <span className="flex-1" /> : null}
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground [&>span+span]:before:mr-1 [&>span+span]:before:content-['·']">
             {/* Who is doing the work, before how far along it is: the agents
                 and the commands are the rows under this header. */}
             {agentCount > 0 && (
@@ -418,7 +455,7 @@ function WorkflowSection({
               })}
             </span>
             {progress.tokens > 0 && (
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {t('common:tasks.tokens', {
                   tokens: formatTokens(progress.tokens),
                 })}
@@ -537,6 +574,7 @@ function StatusIcon({ status }: { status: ActivityStatus }) {
   return (
     <WorkStatus
       state={state}
+      className="bg-transparent px-0"
       aria-label={text}
       data-testid={`task-status-${known}`}
     >
@@ -689,30 +727,34 @@ function TaskItem({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-start gap-2 py-2 pr-2 pl-6 text-left text-[12.5px] outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
+          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2 pl-6 text-left text-[12.5px] outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row pointer-coarse:min-h-11"
         >
+          {/* Status first, in a fixed column, so a list of rows reads down
+              one edge: the design's task row. */}
+          <span className="flex w-[84px] shrink-0">
+            <StatusIcon status={task.status} />
+          </span>
+          {task.kind === 'shell' ? (
+            <Terminal size={14} className="shrink-0 text-muted-foreground" />
+          ) : (
+            <Bot size={14} className="shrink-0 text-muted-foreground" />
+          )}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
-              {task.kind === 'shell' ? (
-                <Terminal size={12} className="shrink-0 text-muted-foreground" />
-              ) : (
-                <Bot size={12} className="shrink-0 text-muted-foreground" />
-              )}
               <span
                 className={cn(
-                  'min-w-0 flex-1 truncate text-[13px] text-foreground',
-                  task.kind === 'shell' && 'font-mono text-xs'
+                  'min-w-0 flex-1 truncate font-medium text-foreground',
+                  task.kind === 'shell' && 'font-mono text-xs font-normal'
                 )}
                 title={task.title}
               >
                 {task.title}
               </span>
-              <StatusIcon status={task.status} />
             </span>
-            <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <span className="mt-0.5 flex flex-wrap items-center gap-x-1 text-[11.5px] text-muted-foreground [&>span+span]:before:mr-1 [&>span+span]:before:content-['·']">
               {/* Kind in words as well as the icon, so it is read out and
                 does not rest on telling two glyphs apart. */}
-              <span className="text-fg-2">
+              <span>
                 {task.kind === 'shell'
                   ? t('common:tasks.kindShell')
                   : t('common:tasks.kindAgent')}
@@ -722,19 +764,19 @@ function TaskItem({
               {task.kind === 'agent' &&
                 task.agentName &&
                 task.agentName !== task.title && (
-                  <span className="truncate text-fg-2">{task.agentName}</span>
+                  <span className="truncate">{task.agentName}</span>
                 )}
               {task.status === 'queued' && task.waiting != null && (
                 <span>
                   {t('common:tasks.queuePosition', { position: task.waiting })}
                 </span>
               )}
-              <span className="font-mono tabular-nums">
+              <span className="tabular-nums">
                 {formatCompactDuration(Math.round(ms / 1000), t)}
               </span>
               {tokens > 0 && (
                 <span
-                  className="font-mono tabular-nums"
+                  className="tabular-nums"
                   title={usageDetail || undefined}
                   data-testid="task-token-usage"
                 >
@@ -765,10 +807,7 @@ function TaskItem({
               )}
               {task.exitCode != null && (
                 <span
-                  className={cn(
-                    'font-mono',
-                    task.exitCode !== 0 && 'text-destructive'
-                  )}
+                  className={cn(task.exitCode !== 0 && 'text-destructive')}
                 >
                   {t('common:tasks.exitCode', { code: task.exitCode })}
                 </span>

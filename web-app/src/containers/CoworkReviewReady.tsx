@@ -26,7 +26,7 @@ export function CoworkReviewReady({
     <section
       aria-label={t('common:coworkReview.ready', { count: fileCount })}
       data-testid="cowork-review-ready"
-      className="my-2 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
+      className="mb-1.5 flex min-h-[38px] flex-wrap items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
     >
       <FileDiff className="size-4 shrink-0 text-fg-2" aria-hidden />
       <span className="font-semibold text-foreground">

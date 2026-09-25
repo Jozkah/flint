@@ -38,8 +38,8 @@ function Row({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-w-0 gap-2">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+    <div className="contents">
+      <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 truncate">{children}</dd>
     </div>
   )
@@ -82,9 +82,14 @@ export function CoworkReadinessCard({
   return (
     <section
       aria-label={t('common:readiness.title')}
-      className="rounded-[10px] border-[0.8px] border-border bg-card p-3 text-[12.5px]"
+      className="flex flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-card p-3 text-[12.5px]"
     >
-      <dl className="grid gap-x-3.5 gap-y-1.5 sm:grid-cols-2">
+      <h3 className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+        {t('common:readiness.title')}
+      </h3>
+      {/* One label column and one value column, as the design's key-value
+          table: the labels line up down one edge. */}
+      <dl className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 max-sm:grid-cols-[minmax(0,110px)_minmax(0,1fr)]">
         <Row label={t('common:readiness.repository')}>
           {/* The canonical path, not what was typed: this is the row someone
               checks when they suspect the wrong repository is attached. */}
@@ -198,8 +203,8 @@ export function CoworkReadinessCard({
         {manifest.folder && manifest.tooling ? (
           // AH-068 / AH-069 / AH-070. What the model will be told about how
           // this project builds and tests, shown with the same evidence.
-          <div className="flex min-w-0 gap-2 sm:col-span-2" data-testid="readiness-tooling">
-            <dt className="shrink-0 text-muted-foreground">
+          <div className="contents" data-testid="readiness-tooling">
+            <dt className="text-muted-foreground">
               {t('common:readiness.tooling.label')}
             </dt>
             <dd className="min-w-0">

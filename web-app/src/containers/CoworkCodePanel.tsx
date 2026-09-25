@@ -83,6 +83,8 @@ type FileState =
 type Props = {
   /** The attached project root; null shows the attach empty state. */
   folder: string | null
+  /** The project's name beside the panel title. */
+  projectName?: string
   /** The session's writable sandbox, where agent-written artifacts live.
    * Sandbox and artifact tabs read from here instead of the project. `null`
    * while the lookup for the current session is still running. */
@@ -113,6 +115,7 @@ type Props = {
  */
 export function CoworkCodePanel({
   folder,
+  projectName,
   workspacePath,
   sessionKey,
   state: stateProp,
@@ -924,7 +927,17 @@ export function CoworkCodePanel({
   )
 
   return (
-    <CoworkSidePanel title={t('common:codePanel.title')} onClose={onClose}>
+    <CoworkSidePanel
+      title={t('common:codePanel.title')}
+      summary={
+        projectName ? (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {projectName}
+          </span>
+        ) : undefined
+      }
+      onClose={onClose}
+    >
       <div
         data-testid="code-drop-zone"
         className={cn(

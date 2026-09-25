@@ -11,7 +11,7 @@
  * conflicts are shown against the hunks they belong to.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Check, GitPullRequestArrow, X } from 'lucide-react'
+import { AlertTriangle, Check, GitBranch, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 import {
@@ -440,14 +440,16 @@ export function CoworkProposalReview({
       className="m-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] px-3 py-2.5 text-[12.5px] motion-safe:animate-rise-in"
       data-testid="proposal-review"
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <GitPullRequestArrow size={14} className="shrink-0 text-muted-foreground" />
-        <p className="min-w-0 flex-1 basis-40 text-[12.5px] text-fg-2">
-          {proposal
-            ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
-            : (title ??
-              'This run works in its own copy. Nothing reaches your folder until you apply it.')}
-        </p>
+      {/* Icon, what this is, then what can be done with it: stacked, as the
+          design lays out the note that heads the Changes panel. */}
+      <GitBranch size={14} className="mb-2 shrink-0 text-muted-foreground" />
+      <p className="mb-2 min-w-0 text-[12.5px] text-foreground">
+        {proposal
+          ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
+          : (title ??
+            'This run works in its own copy. Nothing reaches your folder until you apply it.')}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 empty:hidden">
         {!proposal ? (
           <Button
             size="sm"

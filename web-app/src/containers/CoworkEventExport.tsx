@@ -67,16 +67,28 @@ export function CoworkEventExport({
       aria-label="Export this session's events"
       data-testid="event-export"
     >
-      <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">Session events</p>
-      <label className="flex items-start gap-2">
-        <input
-          type="checkbox"
-          checked={includeContent}
-          onChange={(e) => setIncludeContent(e.target.checked)}
-          data-testid="event-export-content"
-        />
-        <span>
-          Include content: prompts, tool inputs and outputs, and file paths.
+      {/* The actions on the heading's row and the one option under it, as
+          the design lays out the session events box. */}
+      <div className="flex flex-wrap items-center gap-1">
+        <p className="flex-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">Session events</p>
+        <Button size="sm" variant="ghost" onClick={() => void inspect()} data-testid="event-inspect">
+          Inspect an export
+        </Button>
+        {running ? (
+          <Button size="sm" variant="outline" onClick={() => void cancelEventExport(running)} data-testid="event-export-cancel">
+            Stop export
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => void run()} data-testid="event-export-run">
+            Export events
+          </Button>
+        )}
+      </div>
+      <label className="flex cursor-pointer items-start gap-3 pt-1">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] font-medium text-foreground">
+            Include content: prompts, tool inputs and outputs, and file paths.
+          </span>
           {includeContent ? (
             <span className="block text-warning" data-testid="event-export-warning">
               The export will hold what the model and tools saw. Secrets were
@@ -88,21 +100,18 @@ export function CoworkEventExport({
             </span>
           )}
         </span>
+        {/* A real checkbox drawn as a switch: it keeps `checked` for
+            everything that reads it, and the keyboard behaviour of one. */}
+        <input
+          type="checkbox"
+          role="switch"
+          aria-checked={includeContent}
+          checked={includeContent}
+          onChange={(e) => setIncludeContent(e.target.checked)}
+          data-testid="event-export-content"
+          className="relative mt-0.5 h-[18px] w-8 shrink-0 cursor-pointer appearance-none rounded-full bg-track outline-none transition-colors duration-200 ease-expo before:absolute before:top-0.5 before:left-0.5 before:size-3.5 before:rounded-full before:bg-white before:shadow-sm before:transition-transform before:duration-200 before:ease-expo checked:bg-primary checked:before:translate-x-3.5 focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:mt-0"
+        />
       </label>
-      <div className="flex flex-wrap gap-1">
-        {running ? (
-          <Button size="sm" variant="ghost" onClick={() => void cancelEventExport(running)} data-testid="event-export-cancel">
-            Stop export
-          </Button>
-        ) : (
-          <Button size="sm" variant="ghost" onClick={() => void run()} data-testid="event-export-run">
-            Export events
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => void inspect()} data-testid="event-inspect">
-          Inspect an export
-        </Button>
-      </div>
       {exported ? (
         <p className="break-all text-fg-2" data-testid="event-export-path" data-count={exported.count} data-metadata-only={String(exported.metadataOnly)}>
           {exported.count} event(s){exported.metadataOnly ? ', metadata only,' : ', with content,'} written to {exported.path}
