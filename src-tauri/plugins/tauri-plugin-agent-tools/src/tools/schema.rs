@@ -43,7 +43,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string", "description": "File to read, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute. Must be inside the workspace or an attached read root. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB). Must be inside the workspace or an attached read root." },
+                        "path": { "type": "string", "description": "File to read, relative to your working folder (the session worktree when the run has one, else your workspace), or absolute. On Windows write C:/tmp/x or C:\\\\tmp\\\\x: a single backslash is a JSON escape (\\t is a TAB). Must be inside the workspace or an attached read root." },
                         "offset": { "type": "integer", "description": "1-indexed line to start from. Default 1 (start of file)." },
                         "limit": { "type": "integer", "description": "Maximum number of lines to read from `offset`. Omit to read to the truncation cap." }
                     },
