@@ -4234,6 +4234,11 @@ fn apply_tool_allowlist(
 /// `ToolPermissions::advertises_mcp`), pruning the OpenAI tool array and the
 /// tool->server map in lockstep. The read-only default does NOT suppress MCP
 /// advertisement; only an explicit deny (or `default = "deny"`) does.
+///
+/// A self-approval tool (`approve_command` and the like, see
+/// `mcp_trust::is_self_approval_tool`) is never advertised: the model has no
+/// business approving its own commands, and offering the tool only invites it
+/// to loop on approve/execute pairs.
 fn retain_advertisable_mcp_tools(
     openai_tools: &mut Vec<serde_json::Value>,
     tool_to_server: &mut HashMap<String, String>,
@@ -4242,14 +4247,18 @@ fn retain_advertisable_mcp_tools(
     // remove the tool from anybody else's advertised list.
     subject: &tauri_plugin_agent_tools::subject::Subject,
 ) {
+    let advertised = |name: &str| {
+        permissions.advertises_mcp(name, subject)
+            && !tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name)
+    };
     openai_tools.retain(|t| {
         t.get("function")
             .and_then(|f| f.get("name"))
             .and_then(|n| n.as_str())
-            .map(|n| permissions.advertises_mcp(n, subject))
+            .map(|n| advertised(n))
             .unwrap_or(false)
     });
-    tool_to_server.retain(|name, _| permissions.advertises_mcp(name, subject));
+    tool_to_server.retain(|name, _| advertised(name));
 }
 
 /// Append the non-MCP tool schemas a run advertises -- built-ins, subagent
@@ -13241,6 +13250,31 @@ mod tests {
             "read-only must not suppress MCP advertisement"
         );
         assert!(map.contains_key("web_search_exa"));
+    }
+
+    #[test]
+    fn self_approval_mcp_tool_is_not_advertised() {
+        use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
+        let mut tools = vec![
+            json!({ "type": "function", "function": { "name": "execute_command" } }),
+            json!({ "type": "function", "function": { "name": "approve_command" } }),
+        ];
+        let mut map = HashMap::from([
+            ("execute_command".to_string(), "shell".to_string()),
+            ("approve_command".to_string(), "shell".to_string()),
+        ]);
+        let perms = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+
+        retain_advertisable_mcp_tools(
+            &mut tools,
+            &mut map,
+            &perms,
+            &tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+
+        assert_eq!(tools.len(), 1);
+        assert!(map.contains_key("execute_command"));
+        assert!(!map.contains_key("approve_command"));
     }
 
     #[test]
