@@ -11,9 +11,9 @@ import {
 } from '@/lib/accessRequests'
 
 const ROW =
-  'flex flex-col gap-2 border-b border-border py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4'
+  'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
-const REVOKE = 'self-start shrink-0 pointer-coarse:h-11 sm:self-auto'
+const REVOKE = 'shrink-0 pointer-coarse:h-11'
 
 function lifetime(g: AccessGrant): string {
   if (g.persistent || g.expiresAt === null) return 'Every conversation, until revoked'
@@ -70,12 +70,12 @@ export function FolderAccessCard() {
                 <p className="break-all font-mono text-xs text-foreground">
                   {g.display}
                 </p>
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-xs leading-[1.4] text-muted-foreground">
                   {g.mode === 'write' ? 'Read and write' : 'Read only'} ·{' '}
                   {lifetime(g)}
                 </p>
                 {g.reason && (
-                  <p className="break-words text-[13px] text-muted-foreground">
+                  <p className="break-words text-xs leading-[1.4] text-muted-foreground">
                     “{g.reason}”
                   </p>
                 )}

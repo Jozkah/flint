@@ -40,12 +40,15 @@ export function MemoryProposalCard({
   location,
   onResolved,
   onOpenSettings,
+  variant = 'card',
 }: {
   proposal: PendingProposal
   location: MemoryLocation
   /** Called once the backend has answered, so the list can drop this one. */
   onResolved: (id: string, approved: boolean) => void
   onOpenSettings?: () => void
+  /** `settings`: the design's dashed proposal box on Settings > Memory. */
+  variant?: 'card' | 'settings'
 }) {
   const [busy, setBusy] = useState<'approve' | 'reject' | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +71,67 @@ export function MemoryProposalCard({
     },
     [busy, location, proposal.id, proposal.scope, onResolved]
   )
+
+  if (variant === 'settings')
+    return (
+      <div
+        className="flex flex-col gap-2.5 rounded-xl border border-dashed border-border-strong bg-hover-row px-3.5 py-3 text-[13px]"
+        data-testid="memory-proposal-card"
+        data-proposal-id={proposal.id}
+        data-reason={proposal.reason}
+      >
+        <div className="min-w-0">
+          <p
+            className="text-[12.5px] leading-normal text-muted-foreground"
+            data-testid="memory-proposal-content"
+          >
+            “{proposal.content}”
+          </p>
+          <p
+            className="mt-1 text-xs text-subtle-foreground"
+            data-testid="memory-proposal-explanation"
+          >
+            Would apply to {SCOPE_LABEL[proposal.scope] ?? proposal.scope}.{' '}
+            {proposal.explanation}
+          </p>
+          {error && (
+            <p className="mt-2 text-xs text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {proposal.approvable ? (
+            <Button
+              className="pointer-coarse:h-11"
+              disabled={busy != null}
+              onClick={() => void answer(true)}
+              data-testid="memory-proposal-approve"
+            >
+              {busy === 'approve' ? 'Saving…' : 'Remember'}
+            </Button>
+          ) : (
+            <Button
+              variant="surface"
+              className="pointer-coarse:h-11"
+              onClick={onOpenSettings}
+              data-testid="memory-proposal-resolve-conflict"
+            >
+              Review both
+            </Button>
+          )}
+          <Button
+            variant="surface"
+            className="pointer-coarse:h-11"
+            disabled={busy != null}
+            onClick={() => void answer(false)}
+            data-testid="memory-proposal-reject"
+          >
+            {busy === 'reject' ? 'Discarding…' : 'Discard'}
+          </Button>
+        </div>
+      </div>
+    )
 
   return (
     <div
@@ -158,12 +222,14 @@ export function MemoryProposalList({
   onResolved,
   onOpenSettings,
   className,
+  variant,
 }: {
   proposals: PendingProposal[]
   location: MemoryLocation
   onResolved: (id: string, approved: boolean) => void
   onOpenSettings?: () => void
   className?: string
+  variant?: 'card' | 'settings'
 }) {
   if (proposals.length === 0) return null
   return (
@@ -178,6 +244,7 @@ export function MemoryProposalList({
           location={location}
           onResolved={onResolved}
           onOpenSettings={onOpenSettings}
+          variant={variant}
         />
       ))}
     </div>

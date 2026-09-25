@@ -71,18 +71,25 @@ export function CardItem({
         data-slot="setting-row"
         tabIndex={anchor ? -1 : undefined}
         className={cn(
-          'flex flex-col gap-2.5 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 sm:flex-row sm:justify-between sm:gap-4',
+          // Label and control share a line while both fit; a wide control
+          // (a select, a path) wraps below the text on a narrow card.
+          'flex flex-wrap justify-between gap-x-4 gap-y-2.5 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0',
           descriptionOutside && 'border-b-0',
-          align === 'start' && 'sm:items-start',
-          align === 'center' && 'sm:items-center',
-          align === 'end' && 'sm:items-end',
-          column && 'gap-y-3 sm:flex-col sm:items-stretch',
+          align === 'start' && 'items-start',
+          align === 'center' && 'items-center',
+          align === 'end' && 'items-end',
+          column && 'flex-col flex-nowrap items-stretch gap-y-3',
           anchor && settingTargetClasses,
           className
         )}
       >
         {(title || description) && (
-          <div className="flex min-w-0 flex-[1_1_auto] flex-col gap-1.5 sm:min-w-[110px]">
+          <div
+            className={cn(
+              'flex min-w-0 flex-col gap-1.5',
+              column ? 'flex-none' : 'flex-[1_1_10rem]'
+            )}
+          >
             {title && (
               <div className="text-[13px] leading-tight font-medium text-foreground">
                 {title}
@@ -99,7 +106,7 @@ export function CardItem({
           <div
             data-slot="setting-control"
             className={cn(
-              'flex min-w-0 shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
+              'flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
               classNameWrapperAction,
               column && 'w-full sm:max-w-none sm:justify-start'
             )}

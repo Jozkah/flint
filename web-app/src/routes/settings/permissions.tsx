@@ -52,10 +52,10 @@ type RenewalRow = {
 
 /** One integrated row: what the grant is on the left, its control on the right. */
 const ROW =
-  'flex flex-col gap-2 border-b border-dashed border-border py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4'
+  'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 /** Outlined destructive, never the accent fill. */
-const REVOKE = 'self-start shrink-0 pointer-coarse:h-11 sm:self-auto'
+const REVOKE = 'shrink-0 pointer-coarse:h-11'
 
 const GRANT_TONE: Record<GrantState, StatusTone> = {
   current: 'success',
@@ -344,7 +344,7 @@ function PermissionsSettings() {
                   <ul className="flex flex-col">
                     {tools.map((tool) => (
                       <li key={tool} className={ROW}>
-                        <span className="min-w-0 break-all text-sm text-foreground">
+                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                           {t('permissions:settings.toolLabel', { tool })}
                         </span>
                         <Button
@@ -364,7 +364,7 @@ function PermissionsSettings() {
                         key={`${grant.server}::${grant.tool}`}
                         className={ROW}
                       >
-                        <span className="min-w-0 break-all text-sm text-foreground">
+                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                           {t('permissions:settings.mcpToolLabel', {
                             server: grant.server,
                             tool: grant.tool,
@@ -410,7 +410,7 @@ function PermissionsSettings() {
             <ul className="flex flex-col">
               {approvedToolsGlobal.map((tool) => (
                 <li key={`tool-${tool}`} className={ROW}>
-                  <span className="min-w-0 break-all text-sm text-foreground">
+                  <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                     {t('permissions:settings.toolLabel', { tool })}
                   </span>
                   <Button
@@ -451,32 +451,32 @@ function PermissionsSettings() {
               {servers.map((server) => (
                 <li
                   key={`server-${server.name}`}
-                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-sm text-foreground">
+                      <p className="break-all text-[13px] font-medium text-foreground">
                         {t('permissions:settings.serverLabel', {
                           server: server.name,
                         })}
                       </p>
                       {server.state === 'changed' && (
-                        <p className="text-[13px] text-warning">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverChanged')}
                         </p>
                       )}
                       {server.state === 'missing' && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverMissing')}
                         </p>
                       )}
                       {server.inApp && !server.inBackend && report && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverAppOnly')}
                         </p>
                       )}
                       {server.inBackend && !server.inApp && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverBackendOnly')}
                         </p>
                       )}
@@ -524,14 +524,14 @@ function PermissionsSettings() {
             <div className={ROW}>
               <div className="min-w-0 space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-[13px] font-medium text-foreground">
                     {t('permissions:settings.allowAll')}
                   </p>
                   <StatusChip tone="warning">
                     {t('permissions:settings.allowAllOn')}
                   </StatusChip>
                 </div>
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-xs leading-[1.4] text-muted-foreground">
                   {t('permissions:settings.allowAllDesc')}
                 </p>
               </div>
@@ -559,16 +559,16 @@ function PermissionsSettings() {
               {pendingRenewals.map((row) => (
                 <li
                   key={`renewal-${row.name}`}
-                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-sm text-foreground">
+                      <p className="break-all text-[13px] font-medium text-foreground">
                         {t('permissions:settings.needsRenewalLabel', {
                           server: row.name,
                         })}
                       </p>
-                      <p className="text-[13px] text-muted-foreground">
+                      <p className="text-xs leading-[1.4] text-muted-foreground">
                         {row.reason === 'changed'
                           ? t('permissions:settings.reasonChanged')
                           : t('permissions:settings.reasonLegacy')}

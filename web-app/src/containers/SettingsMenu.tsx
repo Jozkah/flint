@@ -235,7 +235,7 @@ export function SettingsSectionPicker({ className }: { className?: string }) {
           data-testid="settings-section-picker"
           aria-label={t('common:shell.sections')}
           className={cn(
-            'inline-flex h-8 w-full max-w-xs items-center gap-2.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[13px] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
+            'inline-flex h-8 w-full items-center gap-2.5 sm:max-w-xs rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[13px] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
             className
           )}
         >
