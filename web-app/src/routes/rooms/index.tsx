@@ -43,6 +43,10 @@ import { AvatarStack, RoomCard } from '@/containers/rooms/RoomCard'
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.rooms as any)({
   component: RoomsList,
+  // `?new=1` opens the create dialog: the sidebar's "New room" lands here, and
+  // navigating to the page it is already on did nothing.
+  validateSearch: (search: Record<string, unknown>): { new?: 1 } =>
+    search.new === 1 || search.new === '1' ? { new: 1 } : {},
 })
 
 type Filter = 'all' | 'active' | 'finished' | 'draft'
@@ -119,6 +123,15 @@ function RoomsList() {
     setTitleError(false)
     setCreateOpen(true)
   }
+
+  const wantsNew = (Route.useSearch() as { new?: 1 }).new === 1
+  useEffect(() => {
+    if (!wantsNew) return
+    openCreate()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    navigate({ to: route.rooms as any, search: {} as any, replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsNew])
 
   const create = async () => {
     if (!title.trim()) {

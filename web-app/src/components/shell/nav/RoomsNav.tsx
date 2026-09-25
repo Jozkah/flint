@@ -198,7 +198,11 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       <NavCollapse as="li" open={expanded}>
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
           <NavItem>
-            <NavButton size="sub" onClick={() => navigate({ to: route.rooms })}>
+            <NavButton
+              size="sub"
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              onClick={() => navigate({ to: route.rooms, search: { new: 1 } as any })}
+            >
               <Plus aria-hidden className="size-3.5" />
               <span>{t('common:shell.newRoom')}</span>
             </NavButton>
