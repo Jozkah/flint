@@ -28,8 +28,7 @@ export type PersistedToolCall = ThreadContent & {
 function capText(text: string): string {
   if (text.length <= PERSISTED_TOOL_OUTPUT_MAX) return text
   const more = text.length - PERSISTED_TOOL_OUTPUT_MAX
-  return `${text.slice(0, PERSISTED_TOOL_OUTPUT_MAX)}
-[output truncated, ${more} chars more]`
+  return `${text.slice(0, PERSISTED_TOOL_OUTPUT_MAX)}\n[output truncated, ${more} chars more]`
 }
 
 /**
