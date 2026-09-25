@@ -12,7 +12,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
-import { ChevronsUpDown } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 
 function positionLabelKey(position: NotificationPosition): string {
   switch (position) {
@@ -37,12 +37,11 @@ export function NotificationPositionSwitcher() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
           className="w-full min-w-40 justify-between pointer-coarse:h-11"
           title={t('settings:interface.notificationPosition')}
         >
           {t(positionLabelKey(notificationPosition))}
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+          <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

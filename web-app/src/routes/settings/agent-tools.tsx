@@ -18,7 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { FolderCode, Lock, LockOpen, Pencil, Trash2 } from 'lucide-react'
+import { Lock, LockOpen } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -192,7 +193,7 @@ function AgentToolsContent() {
             aria-label={`${t('common:edit')} ${name}`}
             onClick={() => openEditor(kind, name)}
           >
-            <Pencil aria-hidden />
+            <Icon name="x-edit" size={16} />
           </Button>
           <Button
             variant="ghost"
@@ -202,7 +203,7 @@ function AgentToolsContent() {
             aria-label={`${t('common:delete')} ${name}`}
             onClick={() => remove(kind, name)}
           >
-            <Trash2 aria-hidden />
+            <Icon name="x-trash" size={16} />
           </Button>
         </div>
       }
@@ -212,7 +213,6 @@ function AgentToolsContent() {
   const addButton = (kind: EntryKind) => (
     <Button
       variant="outline"
-      size="sm"
       className="pointer-coarse:h-11"
       onClick={() => openEditor(kind)}
     >
@@ -226,6 +226,7 @@ function AgentToolsContent() {
       <SettingsPageBody
         title={t('common:agent_tools')}
         description={t('settings:pageDesc.agentTools')}
+        layout={[0, 1, 0, 1]}
       >
         <Card
           title={t('settings:agentTools.title')}
@@ -235,13 +236,12 @@ function AgentToolsContent() {
             // folder that Settings > General already owns.
             <Button
               variant="outline"
-              size="sm"
               className="shrink-0 pointer-coarse:h-11"
               title={path}
               onClick={reveal}
               disabled={!path}
             >
-              <FolderCode aria-hidden />
+              <Icon name="x-code" size={14} />
               {t('settings:agentTools.openFolder')}
             </Button>
           }

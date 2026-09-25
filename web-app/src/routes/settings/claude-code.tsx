@@ -23,7 +23,10 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover'
-import { ChevronDown, Plus, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import { BrandMark } from '@/containers/engine/BrandMark'
+import { modelLogo } from '@/lib/brandLogos'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
@@ -222,30 +225,16 @@ function ClaudeCodeIntegration() {
         description={t('settings:pageDesc.claudeCode')}
       >
         <Card
-          title={
-            <span className="flex items-center gap-2">
-              <svg
-                aria-hidden
-                width="16"
-                height="16"
-                viewBox="0 0 99 72"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-                className="shrink-0"
-              >
-                <path d="M9 0H90V54H9V0Z" fill="#D77757" />
-                <path d="M0 18H9V36H0V18Z" fill="#D77757" />
-                <path d="M18 18H27V27H18V18Z" fill="black" />
-                <path d="M72 18H81V27H72V18Z" fill="black" />
-                <path d="M90 18H99V36H90V18Z" fill="#D77757" />
-                <path d="M9 54H18V72H9V54Z" fill="#D77757" />
-                <path d="M63 54H72V72H63V54Z" fill="#D77757" />
-                <path d="M27 54H36V72H27V54Z" fill="#D77757" />
-                <path d="M81 54H90V72H81V54Z" fill="#D77757" />
-              </svg>
-              Claude Code integration
-            </span>
+          icon={
+            <img
+              src="/images/logos/claude-color.svg"
+              width={16}
+              height={16}
+              alt=""
+              className="size-4"
+            />
           }
+          title="Claude Code integration"
         >
           <CardItem
             anchor="settings-claude-code-large-model"
@@ -287,19 +276,17 @@ function ClaudeCodeIntegration() {
             }
           />
 
-          <div className="flex flex-col-reverse gap-2 border-t border-border py-3 sm:flex-row sm:justify-between">
+          <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
             <Button
-              size="sm"
               variant="outline"
               className="pointer-coarse:h-11"
               onClick={() => setIsCustomCliDialogOpen(true)}
             >
-              <Plus className="text-muted-foreground" aria-hidden />
+              <Icon name="x-plus" size={14} />
               Environment Variables
             </Button>
             <div className="flex flex-wrap gap-2 sm:justify-end">
               <Button
-                size="sm"
                 variant="outline"
                 className="pointer-coarse:h-11"
                 onClick={async () => {
@@ -315,7 +302,6 @@ function ClaudeCodeIntegration() {
                 Reset
               </Button>
               <Button
-                size="sm"
                 className="pointer-coarse:h-11"
                 onClick={handleLaunchClaudeCode}
                 disabled={isModelLoading}
@@ -326,11 +312,10 @@ function ClaudeCodeIntegration() {
           </div>
 
           {(helperModels.customCli || helperModels.envVars.length > 0) && (
-            <div className="mt-3 space-y-1 rounded-md bg-muted px-3 py-2 text-sm text-fg-2">
+            <div className="mt-2.5 rounded-lg bg-muted px-3 py-2.5 font-mono text-xs leading-[1.6] text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
               {helperModels.customCli && (
                 <div className="break-all">
-                  Command:{' '}
-                  <span className="font-mono">{helperModels.customCli}</span>
+                  Command: {helperModels.customCli}
                 </div>
               )}
               {helperModels.envVars.length > 0 && (
@@ -338,7 +323,7 @@ function ClaudeCodeIntegration() {
                   Env:{' '}
                   {helperModels.envVars
                     .map((env) => `${env.key}=******`)
-                    .join(', ')}
+                    .join(' · ')}
                 </div>
               )}
             </div>
@@ -442,29 +427,29 @@ function HelperModelSelector({
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          size="sm"
-          className="max-w-[min(100%,280px)] pointer-coarse:h-11"
+          className="w-full max-w-full min-w-[220px] justify-between sm:w-auto pointer-coarse:h-11"
         >
-          <span className="flex items-center gap-2 truncate leading-normal">
+          <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate leading-normal">
             {selectedModel && currentModel ? (
               <>
-                <span
-                  className={cn(
-                    'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
-                    currentModel.isLocal
-                      ? 'bg-success-tint text-success'
-                      : 'bg-muted text-fg-2'
-                  )}
-                >
+                <span className="inline-flex h-[18px] shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium">
                   {currentModel.isLocal ? 'Local' : 'Remote'}
                 </span>
-                <span>{formatModelWithSize(currentModel)}</span>
+                <BrandMark
+                  logo={modelLogo(currentModel.id, currentModel.providerName)}
+                  name={formatModelWithSize(currentModel)}
+                  size={16}
+                  className="rounded-full"
+                />
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {formatModelWithSize(currentModel)}
+                </span>
               </>
             ) : (
               placeholder
             )}
           </span>
-          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Icon name="arrow-down" size={12} className="opacity-70" />
         </Button>
       </PopoverTrigger>
 

@@ -2,24 +2,8 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ReactNode } from 'react'
-import {
-  Box,
-  SlidersHorizontal,
-  ChevronDown,
-  Command,
-  Feather,
-  Palette,
-  Waypoints,
-  Cpu,
-  Globe,
-  Search,
-  Brain,
-  Paperclip,
-  Puzzle,
-  Server,
-  ShieldCheck,
-  SquareTerminal,
-} from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
+import { Icon, type IconName } from '@/components/ui/icon'
 import { cn } from '@/lib/utils'
 import { SettingsSearch } from '@/containers/SettingsSearch'
 import {
@@ -76,29 +60,37 @@ const GROUPS: {
 // Only the icons live here: they are JSX, and the registry stays pure data
 // the search index can import. Keyed by the registry's id union, so adding or
 // renaming a page is a compile error rather than a silent default icon.
+/** One of the design's own icons as a menu icon. */
+const mark =
+  (name: IconName): IconComponent =>
+  ({ size = 16, className }) => (
+    <Icon name={name} size={size} className={className} />
+  )
+
 const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
-  general: SlidersHorizontal,
+  general: mark('x-sliders'),
   // "Appearance" is implemented by the existing Interface settings route.
-  appearance: Palette,
-  assistants: Feather,
-  attachments: Paperclip,
-  'local-api-server': Server,
-  'https-proxy': Globe,
-  'web-search': Search,
-  memory: Brain,
-  permissions: ShieldCheck,
-  'agent-tools': SquareTerminal,
-  shortcuts: Command,
-  hardware: Cpu,
-  'mcp-servers': Waypoints,
-  extensions: Puzzle,
+  appearance: mark('x-palette'),
+  assistants: mark('x-feather'),
+  attachments: mark('x-clip'),
+  'local-api-server': mark('x-server'),
+  'https-proxy': mark('x-globe'),
+  'web-search': mark('x-search'),
+  memory: mark('x-brain'),
+  permissions: mark('x-shield'),
+  'agent-tools': mark('x-terminal'),
+  shortcuts: mark('command'),
+  hardware: mark('x-cpu'),
+  'mcp-servers': mark('flow'),
+  extensions: mark('x-puzzle'),
+  // Claude's own mark keeps its colour in both themes.
   'claude-code': ({ size, className }) => (
     <img
-      src="/images/code-claude.svg"
+      src="/images/logos/claude-color.svg"
       width={size}
       height={size}
       alt=""
-      className={cn(className, 'dark:invert')}
+      className={className}
     />
   ),
 }
@@ -127,7 +119,7 @@ const MODEL_PROVIDERS_ENTRY: MenuEntry = {
   key: 'model-providers',
   route: route.settings.model_providers,
   titleKey: 'common:modelProviders',
-  icon: Box,
+  icon: mark('x-cube'),
   experimental: false,
 }
 
@@ -170,7 +162,7 @@ function GroupLabel({
   return (
     <p
       className={cn(
-        'mx-1 mt-2.5 mb-1 text-[11px] leading-none font-medium tracking-[.025em] text-subtle-foreground uppercase first:mt-0.5',
+        'mx-1 mt-2.5 mb-1 text-[11px] leading-[14px] font-medium tracking-[.025em] text-subtle-foreground uppercase first:mt-0.5',
         className
       )}
     >
@@ -182,7 +174,7 @@ function GroupLabel({
 // Selected rows are a raised neutral card: the accent means "selected" on
 // tabs and markers, never a whole row.
 const menuLinkClass =
-  'relative flex h-[30px] pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2 text-[13px] text-secondary-foreground outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground active:scale-[.985] focus-visible:ring-[3px] focus-visible:ring-ring/40 [&.active]:border-border [&.active]:bg-card [&.active]:font-medium [&.active]:text-foreground [&.active]:shadow-[0_4px_7px_rgba(0,0,0,.04)]'
+  'relative flex h-[30px] pointer-coarse:h-11 w-full cursor-pointer items-center gap-2.5 rounded-lg border-[0.8px] border-transparent px-2.5 text-[13px] text-secondary-foreground outline-hidden transition-[background-color,border-color,color,transform] duration-150 ease-expo hover:bg-nav-hover hover:text-foreground active:scale-[.985] focus-visible:ring-[3px] focus-visible:ring-ring/40 [&.active]:border-border [&.active]:bg-card [&.active]:font-medium [&.active]:text-foreground [&.active]:shadow-[0_4px_7px_rgba(0,0,0,.04)]'
 
 const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const { t } = useTranslation()
@@ -191,9 +183,9 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
   const renderPageLink = (menu: MenuEntry) => (
     <Link key={menu.key} to={menu.route} className={menuLinkClass}>
       <menu.icon size={16} className="size-4 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{t(menu.titleKey)}</span>
+      <span className="shrink-0 whitespace-nowrap">{t(menu.titleKey)}</span>
       {menu.experimental && (
-        <span className="shrink-0 text-[10.5px] font-normal text-subtle-foreground">
+        <span className="ml-auto min-w-0 truncate text-[10.5px] font-normal text-subtle-foreground">
           {t('common:experimental')}
         </span>
       )}
@@ -243,7 +235,7 @@ export function SettingsSectionPicker({ className }: { className?: string }) {
           data-testid="settings-section-picker"
           aria-label={t('common:shell.sections')}
           className={cn(
-            'inline-flex h-8 w-full max-w-xs items-center gap-2.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[13px] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
+            'inline-flex h-8 w-full items-center gap-2.5 sm:max-w-xs rounded-lg border-[0.8px] border-border bg-card px-2.5 text-[13px] font-medium text-foreground shadow-[0_4px_7px_rgba(0,0,0,.04)] transition-[background-color,transform] duration-150 ease-expo outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.985] pointer-coarse:h-11',
             className
           )}
         >

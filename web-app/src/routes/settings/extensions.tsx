@@ -19,7 +19,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
-import { Check, Eye, EyeOff, Globe, Puzzle } from 'lucide-react'
+import { Check, Eye, EyeOff, Globe } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import {
   useGlobalExtensions,
@@ -37,6 +38,10 @@ import { toast } from 'sonner'
 export const Route = createFileRoute(route.settings.extensions as any)({
   component: ExtensionsContent,
 })
+
+/** The design's small mono version chip. */
+const VERSION_CHIP =
+  'inline-flex h-[18px] items-center rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-xs font-medium tabular-nums text-fg-2'
 
 function PluginRow({
   plugin: p,
@@ -58,28 +63,29 @@ function PluginRow({
   }
 
   return (
-    <div onContextMenu={openRowMenu}>
-      <CardItem
-        title={
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <Puzzle size={14} className="text-muted-foreground" />
-            <span className="font-medium text-foreground">{p.name}</span>
-            <div className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg-2">
-              v{p.version}
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {scope === 'global' ? 'Global' : 'Workspace'}
-            </span>
-          </div>
-        }
-        description={p.description}
-        actions={
-          <Switch
-            checked={p.enabled}
-            onCheckedChange={onToggle}
-            aria-label={`Toggle ${p.name}`}
-          />
-        }
+    <div
+      onContextMenu={openRowMenu}
+      className="flex items-center gap-3 border-b border-dashed border-border px-0.5 py-3 last:border-b-0"
+    >
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg border-[0.8px] border-input bg-card">
+        <Icon name="x-puzzle" size={16} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] leading-[1.2] font-medium text-foreground">
+          <span>{p.name}</span>
+          <span className={VERSION_CHIP}>v{p.version}</span>
+          <span className="font-normal text-muted-foreground">
+            {scope === 'global' ? 'Global' : 'Workspace'}
+          </span>
+        </div>
+        <p className="text-xs leading-[1.35] text-muted-foreground">
+          {p.description}
+        </p>
+      </div>
+      <Switch
+        checked={p.enabled}
+        onCheckedChange={onToggle}
+        aria-label={`Toggle ${p.name}`}
       />
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger className="sr-only" />
@@ -162,6 +168,7 @@ function ExtensionsContent() {
       <SettingsPageBody
         title={t('common:extensions')}
         description={t('settings:pageDesc.extensions')}
+        layout={[0, 1]}
       >
         {plugins.length > 0 && (
           <Card
@@ -193,9 +200,7 @@ function ExtensionsContent() {
                     <span className="font-medium text-foreground">
                       {item.productName ?? item.name}
                     </span>
-                    <div className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg-2">
-                      v{item.version}
-                    </div>
+                    <span className={VERSION_CHIP}>v{item.version}</span>
                   </div>
                 }
                 description={

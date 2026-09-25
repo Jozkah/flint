@@ -8,7 +8,7 @@ import { fontSizeOptions, useInterfaceSettings } from '@/hooks/useInterfaceSetti
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
-import { ChevronsUpDown } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
@@ -49,14 +49,14 @@ export function FontSizeSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full min-w-36 justify-between font-normal pointer-coarse:h-11" title={t('common:adjustFontSize')}>
+        <Button variant="outline" className="w-full min-w-36 justify-between font-normal pointer-coarse:h-11" title={t('common:adjustFontSize')}>
           <span>
             {fontSizeOptions.find(
               (item: { value: string; label: string }) => item.value === fontSize
             )?.label || t('common:medium')}{' '}
             <span className="text-muted-foreground">{fontSize}</span>
           </span>
-          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
+          <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

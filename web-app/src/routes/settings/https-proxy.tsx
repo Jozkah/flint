@@ -75,6 +75,7 @@ function HTTPSProxyContent() {
       <SettingsPageBody
         title={t('common:https_proxy')}
         description={t('settings:pageDesc.httpsProxy')}
+        layout={[0, 1]}
       >
         {/* Proxy Configuration */}
         <Card

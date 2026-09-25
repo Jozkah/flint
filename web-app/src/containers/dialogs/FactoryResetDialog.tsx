@@ -43,7 +43,7 @@ export function FactoryResetDialog({
     <Dialog>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="sm:max-w-[425px]"
+        className="sm:max-w-[440px] lg:max-w-[440px] xl:max-w-[440px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           resetButtonRef.current?.focus()
@@ -54,7 +54,8 @@ export function FactoryResetDialog({
           <DialogDescription>
             {t('settings:general.factoryResetDesc')}
           </DialogDescription>
-          <div className="flex flex-col gap-3 pt-2">
+        </DialogHeader>
+          <div className="flex flex-col gap-3">
             <label className="flex min-h-11 cursor-pointer items-start gap-2 rounded-md py-1 sm:min-h-0">
               <input
                 type="checkbox"
@@ -63,7 +64,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-[13px] font-medium text-foreground">
                   {t('settings:general.keepAppData')}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -79,7 +80,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-[13px] font-medium text-foreground">
                   {t('settings:general.keepModelsAndConfigs')}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -95,7 +96,7 @@ export function FactoryResetDialog({
                 className="mt-0.5 h-4 w-4 rounded border-border accent-primary cursor-pointer"
               />
               <div className="flex flex-col">
-                <span className="text-sm font-medium text-foreground">
+                <span className="text-[13px] font-medium text-foreground">
                   {t('settings:general.clearWebData')}
                 </span>
                 <span className="text-xs text-muted-foreground">
@@ -106,9 +107,8 @@ export function FactoryResetDialog({
           </div>
           <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <DialogClose asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="surface"
                 className="w-full sm:w-auto pointer-coarse:h-11"
               >
                 {t('settings:general.cancel')}
@@ -120,7 +120,6 @@ export function FactoryResetDialog({
                 variant="destructive"
                 onClick={handleReset}
                 onKeyDown={handleKeyDown}
-                size="sm"
                 className="w-full sm:w-auto pointer-coarse:h-11"
                 aria-label={t('settings:general.reset')}
               >
@@ -128,7 +127,6 @@ export function FactoryResetDialog({
               </Button>
             </DialogClose>
           </DialogFooter>
-        </DialogHeader>
       </DialogContent>
     </Dialog>
   )

@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ChevronsUpDown } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 
 const LANGUAGES = [
   { value: 'en', label: 'English' },
@@ -42,12 +42,12 @@ export default function LanguageSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full justify-between">
+        <Button variant="outline" className="w-full min-w-[140px] justify-between pointer-coarse:h-11">
           {LANGUAGES.find(
             (lang: { value: string; label: string }) =>
               lang.value === currentLanguage
           )?.label || t('common:english')}
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+          <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">

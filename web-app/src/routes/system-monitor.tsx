@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useId, useState, type ReactNode } from 'react'
-import { Activity, Cpu, MemoryStick, MonitorSmartphone } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { useHardware, type GPU } from '@/hooks/useHardware'
 import { route } from '@/constants/routes'
 import { cn, formatMegaBytes } from '@/lib/utils'
@@ -229,7 +229,7 @@ function SystemMonitorContent() {
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-card">
       <SystemPageHeader
         title={t('system-monitor:title')}
-        icon={<Activity className="size-4" />}
+        icon={<Icon name="x-activity" size={16} />}
         actions={inShell ? undefined : live}
       />
 
@@ -247,7 +247,7 @@ function SystemMonitorContent() {
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="flex min-w-0 flex-col gap-3">
                 <h2 className="flex items-center gap-2 text-[22px] leading-none font-medium tracking-[-0.01em] text-foreground">
-                  <Activity className="size-4 text-muted-foreground" aria-hidden />
+                  <Icon name="x-activity" size={16} />
                   {t('system-monitor:title')}
                 </h2>
                 <p className="text-[13px] text-muted-foreground">
@@ -258,10 +258,10 @@ function SystemMonitorContent() {
             </div>
           )}
 
-          <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] items-start gap-4">
+          <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] items-start gap-4">
             <Panel
               title={t('system-monitor:cpuUsage')}
-              icon={<Cpu />}
+              icon={<Icon name="x-cpu" size={16} />}
               delay={60}
             >
               <Stats>
@@ -284,7 +284,7 @@ function SystemMonitorContent() {
 
             <Panel
               title={t('system-monitor:memoryUsage')}
-              icon={<MemoryStick />}
+              icon={<Icon name="x-disk" size={16} />}
               delay={120}
             >
               <Stats>
@@ -310,7 +310,7 @@ function SystemMonitorContent() {
             {!IS_MACOS && (
               <Panel
                 title={t('system-monitor:gpus')}
-                icon={<MonitorSmartphone />}
+                icon={<Icon name="x-monitor" size={16} />}
                 delay={180}
               >
                 <div className="flex flex-col gap-4">

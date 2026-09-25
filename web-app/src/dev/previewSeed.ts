@@ -27,6 +27,7 @@ import { useAssistant } from '@/hooks/useAssistant'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { seedRooms } from './previewRooms'
 import { seedEngine } from './previewSeedEngine'
+import { patchSettingsServices, seedSettingsPreview } from './previewSeedSettings'
 
 const MIN = 60_000
 const now = Date.now()
@@ -615,6 +616,7 @@ function patchServices() {
   set('projectsService', 'getProjects', async () => FOLDERS)
   set('threadsService', 'fetchThreads', async () => threads())
   set('assistantsService', 'getAssistants', async () => assistants())
+  patchSettingsServices(hub)
 }
 
 /** Read by hooks that would otherwise ask the backend (dev builds only). */
@@ -661,6 +663,7 @@ export function seedPreview() {
   seedCowork()
   seedRooms()
   seedEngine()
+  seedSettingsPreview()
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.
   void import('@/hooks/useThreadManagement').then((m) => {

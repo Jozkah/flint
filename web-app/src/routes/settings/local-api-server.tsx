@@ -37,11 +37,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  ChevronsUpDown,
-  ExternalLink,
   LoaderCircle,
-  Settings2,
 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import { BrandMark } from '@/containers/engine/BrandMark'
+import { modelLogo } from '@/lib/brandLogos'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.local_api_server as any)({
@@ -254,11 +254,15 @@ function LocalAPIServerContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader title={t('common:local_api_server')}>
+      <SettingsPageHeader title={t('common:local_api_server')} />
+      <SettingsPageBody
+        title={t('common:local_api_server')}
+        description={t('settings:pageDesc.localApiServer')}
+        actions={
           <Popover>
             <PopoverTrigger asChild>
-              <Button size="sm" variant="outline" className="pointer-coarse:h-11">
-                <Settings2 aria-hidden />
+              <Button variant="outline" className="pointer-coarse:h-11">
+                <Icon name="x-sliders" size={14} />
                 Configuration
               </Button>
             </PopoverTrigger>
@@ -267,15 +271,15 @@ function LocalAPIServerContent() {
               className="w-[min(100vw-1.5rem,480px)] max-h-[70vh] overflow-y-auto bg-card"
             >
               <div className="space-y-4">
-                <div className="flex items-center justify-between border-b border-border pb-2">
-                  <h2 className="font-semibold text-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.serverConfiguration')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.serverHost')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -288,7 +292,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.serverPort')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -299,7 +303,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.apiPrefix')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -309,7 +313,7 @@ function LocalAPIServerContent() {
                     <ApiPrefixInput isServerRunning={isServerRunning} />
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">
+                    <p className="text-[13px] font-medium">
                       {t('settings:localApiServer.apiKey')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -323,7 +327,7 @@ function LocalAPIServerContent() {
                     </div>
                   </div>
                   <div className="flex flex-col space-y-1">
-                    <p className="text-sm font-medium">
+                    <p className="text-[13px] font-medium">
                       {t('settings:localApiServer.trustedHosts')}
                     </p>
                     <p className="text-xs text-muted-foreground">
@@ -335,7 +339,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.proxyTimeout')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -346,15 +350,15 @@ function LocalAPIServerContent() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-border pt-4 mt-4">
-                  <h2 className="font-semibold text-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {t('settings:localApiServer.advancedSettings')}
                   </h2>
                 </div>
                 <div className="space-y-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         Execute tools on server
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -369,7 +373,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.cors')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -384,7 +388,7 @@ function LocalAPIServerContent() {
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="space-y-0.5">
-                      <p className="text-sm font-medium">
+                      <p className="text-[13px] font-medium">
                         {t('settings:localApiServer.verboseLogs')}
                       </p>
                       <p className="text-xs text-muted-foreground">
@@ -401,10 +405,8 @@ function LocalAPIServerContent() {
               </div>
             </PopoverContent>
           </Popover>
-      </SettingsPageHeader>
-      <SettingsPageBody
-        title={t('common:local_api_server')}
-        description={t('settings:pageDesc.localApiServer')}
+        }
+        layout={[0, 1, 1]}
       >
               {/* General Settings */}
               <Card
@@ -414,7 +416,6 @@ function LocalAPIServerContent() {
                   <Button
                     onClick={toggleAPIServer}
                     variant={isServerRunning ? 'destructive' : 'default'}
-                    size="sm"
                     className="pointer-coarse:h-11"
                     disabled={serverStatus === 'pending' || isModelLoading}
                   >
@@ -457,16 +458,42 @@ function LocalAPIServerContent() {
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="outline"
-                          size="sm"
-                          className="w-full max-w-56 justify-between pointer-coarse:h-11 sm:w-40"
+                          className="w-full min-w-[220px] justify-between pointer-coarse:h-11 sm:w-auto"
                         >
-                          <span className="truncate">
-                            {defaultModelLocalApiServer?.model ??
-                              t(
-                                'settings:localApiServer.defaultModelPlaceholder'
-                              )}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            {defaultModelLocalApiServer ? (
+                              <>
+                                <span className="inline-flex h-[18px] shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium">
+                                  Local
+                                </span>
+                                <BrandMark
+                                  logo={modelLogo(defaultModelLocalApiServer.model)}
+                                  name={defaultModelLocalApiServer.model}
+                                  size={16}
+                                  className="rounded-full"
+                                />
+                                <span className="min-w-0 flex-1 truncate text-left">
+                                  {providers
+                                    .find(
+                                      (p) =>
+                                        p.provider ===
+                                        defaultModelLocalApiServer.provider
+                                    )
+                                    ?.models.find(
+                                      (m) =>
+                                        m.id === defaultModelLocalApiServer.model
+                                    )?.name ?? defaultModelLocalApiServer.model}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="truncate">
+                                {t(
+                                  'settings:localApiServer.defaultModelPlaceholder'
+                                )}
+                              </span>
+                            )}
                           </span>
-                          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                          <Icon name="arrow-down" size={12} className="opacity-70" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-64 max-h-60 overflow-y-auto">
@@ -533,7 +560,6 @@ function LocalAPIServerContent() {
                     >
                       <Button
                         variant="outline"
-                        size="sm"
                         disabled={!isServerRunning}
                         title={t('settings:localApiServer.swaggerDocs')}
                       >
@@ -546,15 +572,12 @@ function LocalAPIServerContent() {
 
               <Card
                 title="Server Log"
-                bodyClassName="py-3"
                 aside={
                   <Button
                     variant="outline"
-                    size="xs"
                     onClick={handleOpenLogs}
                     className="pointer-coarse:h-11"
                   >
-                    <ExternalLink aria-hidden />
                     Open in New Window
                   </Button>
                 }

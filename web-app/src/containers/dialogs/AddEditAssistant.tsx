@@ -166,7 +166,7 @@ export default function AddEditAssistant({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[480px] lg:max-w-[480px] xl:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>
             {editingKey
@@ -246,7 +246,7 @@ export default function AddEditAssistant({
               value={description || ''}
               onChange={(e) => setDescription(e.target.value)}
               placeholder={t('assistants:enterDescription')}
-              className="resize-none"
+              className="max-h-24 resize-y"
               spellCheck={spellCheckChatInput}
               data-gramm={spellCheckChatInput}
               data-gramm_editor={spellCheckChatInput}
@@ -262,7 +262,7 @@ export default function AddEditAssistant({
               value={instructions}
               onChange={(e) => setInstructions(e.target.value)}
               placeholder={t('assistants:enterInstructions')}
-              className="resize-none"
+              className="max-h-40 min-h-[5.5rem] resize-y"
               rows={4}
               spellCheck={spellCheckChatInput}
               data-gramm={spellCheckChatInput}

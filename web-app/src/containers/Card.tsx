@@ -11,6 +11,8 @@ type CardProps = {
   description?: string | ReactNode
   /** Rendered at the end of the title row: a count, a link, a small action. */
   aside?: ReactNode
+  /** A small mark before the title. */
+  icon?: ReactNode
   children?: ReactNode
   /** Free-form content above the rows, kept for callers that build their own header. */
   header?: ReactNode
@@ -69,18 +71,25 @@ export function CardItem({
         data-slot="setting-row"
         tabIndex={anchor ? -1 : undefined}
         className={cn(
-          'flex flex-col gap-2.5 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 sm:flex-row sm:justify-between sm:gap-4',
+          // Label and control share a line while both fit; a wide control
+          // (a select, a path) wraps below the text on a narrow card.
+          'flex flex-wrap justify-between gap-x-4 gap-y-2.5 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0',
           descriptionOutside && 'border-b-0',
-          align === 'start' && 'sm:items-start',
-          align === 'center' && 'sm:items-center',
-          align === 'end' && 'sm:items-end',
-          column && 'gap-y-3 sm:flex-col sm:items-stretch',
+          align === 'start' && 'items-start',
+          align === 'center' && 'items-center',
+          align === 'end' && 'items-end',
+          column && 'flex-col flex-nowrap items-stretch gap-y-3',
           anchor && settingTargetClasses,
           className
         )}
       >
         {(title || description) && (
-          <div className="flex min-w-0 flex-[1_1_auto] flex-col gap-1.5 sm:min-w-[110px]">
+          <div
+            className={cn(
+              'flex min-w-0 flex-col gap-1.5',
+              column ? 'flex-none' : 'flex-[1_1_10rem]'
+            )}
+          >
             {title && (
               <div className="text-[13px] leading-tight font-medium text-foreground">
                 {title}
@@ -97,7 +106,7 @@ export function CardItem({
           <div
             data-slot="setting-control"
             className={cn(
-              'flex min-w-0 shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
+              'flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
               classNameWrapperAction,
               column && 'w-full sm:max-w-none sm:justify-start'
             )}
@@ -124,6 +133,7 @@ export function Card({
   title,
   description,
   aside,
+  icon,
   children,
   header,
   className,
@@ -150,15 +160,20 @@ export function Card({
       {(title || aside) && (
         <header
           data-slot="frame-header"
-          className="flex min-h-9 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 p-2"
+          className="flex min-h-[30px] w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 p-2"
         >
           {title && (
-            <h2 className="min-w-0 text-sm leading-none font-medium text-secondary-foreground">
+            <h2 className="flex min-w-0 items-center gap-3 text-sm leading-none font-medium text-secondary-foreground">
+              {icon && (
+                <span className="flex shrink-0 text-muted-foreground [&_svg:not([class*='size-'])]:size-4">
+                  {icon}
+                </span>
+              )}
               {title}
             </h2>
           )}
           {aside && (
-            <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px] text-muted-foreground">
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-base leading-none text-muted-foreground">
               {aside}
             </div>
           )}
@@ -167,12 +182,12 @@ export function Card({
       <div
         data-slot="frame-body"
         className={cn(
-          'relative flex min-w-0 flex-col rounded-xl border-[0.8px] border-input bg-card px-3.5 py-[3px]',
+          'relative flex min-w-0 flex-col rounded-xl border-[0.8px] border-input bg-card p-3.5',
           bodyClassName
         )}
       >
         {description && (
-          <p className="mt-2.5 mb-0.5 text-[12.5px] leading-normal text-muted-foreground">
+          <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
             {description}
           </p>
         )}

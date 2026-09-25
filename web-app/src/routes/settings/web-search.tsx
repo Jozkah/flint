@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
-import { EyeOff, Eye, ChevronsUpDown } from 'lucide-react'
+import { EyeOff, Eye } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
@@ -25,6 +25,7 @@ import {
   getProviderMeta,
   providerInitial,
 } from '@/hooks/useWebSearchConfig'
+import { Icon } from '@/components/ui/icon'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.web_search as any)({
@@ -83,12 +84,11 @@ function WebSearchContent() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
-                    size="sm"
                     className="max-w-full justify-between gap-2 pointer-coarse:h-11"
                   >
                     <ProviderFavicon initial={providerInitial(provider)} />
                     <span className="truncate">{provider.label}</span>
-                    <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                    <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
@@ -148,51 +148,37 @@ function WebSearchContent() {
               title={t('settings:webSearch.apiKey', {
                 provider: provider.label,
               })}
-              className="block"
-              description={
-                <div className="space-y-2">
-                  <p>
-                    {t(
-                      provider.keyless
-                        ? 'settings:webSearch.apiKeyOptional'
-                        : 'settings:webSearch.apiKeyRequired',
-                      { provider: provider.label }
-                    )}
-                  </p>
-                  <div className="relative">
-                    <Input
-                      type={showKey ? 'text' : 'password'}
-                      className="w-full pr-12 font-mono"
-                      placeholder={t(
-                        'settings:webSearch.apiKeyPlaceholder',
-                        { provider: provider.label }
-                      )}
-                      value={apiKey}
-                      onChange={(e) =>
-                        setApiKey(provider.id, e.target.value)
-                      }
-                    />
-                    <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                      <button
-                        type="button"
-                        aria-label={
-                          showKey
-                            ? t('settings:webSearch.hideKey')
-                            : t('settings:webSearch.showKey')
-                        }
-                        aria-pressed={showKey}
-                        onClick={() => setShowKey(!showKey)}
-                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-hover-row hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
-                      >
-                        {showKey ? (
-                          <EyeOff size={16} />
-                        ) : (
-                          <Eye size={16} />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              description={t(
+                provider.keyless
+                  ? 'settings:webSearch.apiKeyOptional'
+                  : 'settings:webSearch.apiKeyRequired',
+                { provider: provider.label }
+              )}
+              actions={
+                <span className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
+                  <Input
+                    type={showKey ? 'text' : 'password'}
+                    className="min-w-0 flex-1 font-mono sm:w-[220px] sm:flex-none"
+                    placeholder={t('settings:webSearch.apiKeyPlaceholder', {
+                      provider: provider.label,
+                    })}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(provider.id, e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    aria-label={
+                      showKey
+                        ? t('settings:webSearch.hideKey')
+                        : t('settings:webSearch.showKey')
+                    }
+                    aria-pressed={showKey}
+                    onClick={() => setShowKey(!showKey)}
+                    className="grid size-6 shrink-0 place-items-center rounded-md text-secondary-foreground hover:bg-hover-btn hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                  >
+                    {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </span>
               }
             />
           )}

@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
-  SettingsColumns,
   SettingsPageBody,
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
@@ -201,7 +200,6 @@ function InterfaceSettings() {
         actions={
           <Button
             variant="destructive"
-            size="sm"
             className="pointer-coarse:h-11"
             onClick={() => {
               resetInterface()
@@ -224,26 +222,14 @@ function InterfaceSettings() {
       <SettingsPageBody
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
-        width="wide"
+        layout={[0, 1, 0, 1, 0, 0]}
       >
-        {/* Theme and motion sit together at the top: both change how the
-            whole app looks and moves, before any finer reading choice. */}
-        <SettingsColumns
-          left={
-            <>
-              {theme}
-              {motion}
-              {reading}
-              {reset}
-            </>
-          }
-          right={
-            <>
-              <AccentSettings />
-              {chatDisplay}
-            </>
-          }
-        />
+        {theme}
+        <AccentSettings />
+        {reading}
+        {chatDisplay}
+        {reset}
+        {motion}
       </SettingsPageBody>
     </div>
   )

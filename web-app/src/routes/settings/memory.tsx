@@ -10,6 +10,7 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { OctagonAlert } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -23,7 +24,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Pencil, Pin, PinOff, Trash2 } from 'lucide-react'
+import { Pin, PinOff } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -655,11 +656,11 @@ function MemorySettings() {
                   />
                 }
               />
-              <div className="flex flex-col gap-0.5 border-b border-border py-3 last:border-b-0" data-testid="memory-recall">
-                <p className="text-sm font-medium text-foreground">Use remembered facts in requests</p>
-                <p className="text-[13px] text-muted-foreground">
-                  Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again.
-                </p>
+              <CardItem
+                title="Use remembered facts in requests"
+                description="Turning a scope off stops it being sent. Nothing is deleted; turning it back on uses it again."
+              />
+              <div data-testid="memory-recall" className="flex flex-col">
                 {(
                   [
                     ['session', 'This conversation'],
@@ -667,7 +668,10 @@ function MemorySettings() {
                     ['user', 'All conversations'],
                   ] as Array<[keyof MemoryRecall, string]>
                 ).map(([key, label]) => (
-                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 pl-3 text-sm text-fg-2 pointer-fine:min-h-9">
+                  <label
+                    key={key}
+                    className="flex min-h-11 items-center justify-between gap-3 border-b border-dashed border-border px-0.5 py-[11px] text-[13px] font-medium text-foreground pointer-fine:min-h-0"
+                  >
                     <span>{label}</span>
                     <Switch
                       checked={recall[key]}
@@ -767,7 +771,6 @@ function MemorySettings() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="submit"
-                      size="sm"
                       className="pointer-coarse:h-11"
                       disabled={busy || !newMemory.trim() || location == null}
                       data-testid="memory-new-save"
@@ -776,9 +779,8 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="outline"
-                      className="pointer-coarse:h-11 sm:ml-auto"
+                      className="pointer-coarse:h-11"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-export"
                       onClick={() => void onExport()}
@@ -787,7 +789,6 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="outline"
                       className="pointer-coarse:h-11"
                       disabled={busy || location == null}
@@ -798,9 +799,8 @@ function MemorySettings() {
                     </Button>
                     <Button
                       type="button"
-                      size="sm"
                       variant="destructive"
-                      className="pointer-coarse:h-11"
+                      className="pointer-coarse:h-11 sm:ml-auto"
                       disabled={busy || total === 0 || location == null}
                       data-testid="memory-clear-scope"
                       onClick={() => setClearing(scope)}
@@ -1106,7 +1106,7 @@ function MemorySettings() {
                               setDraft(memory.content)
                             }}
                           >
-                            <Pencil aria-hidden />
+                            <Icon name="x-edit" size={16} />
                           </Button>
                           <Button
                             variant="ghost"
@@ -1117,7 +1117,7 @@ function MemorySettings() {
                             aria-label="Forget memory"
                             onClick={() => void onForget(memory)}
                           >
-                            <Trash2 className="text-destructive" aria-hidden />
+                            <Icon name="x-trash" size={16} />
                           </Button>
                         </div>
                       </li>
@@ -1134,7 +1134,6 @@ function MemorySettings() {
                     <div className="flex gap-1">
                       <Button
                         variant="ghost"
-                        size="sm"
                         disabled={offset === 0}
                         onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
                       >
@@ -1142,7 +1141,6 @@ function MemorySettings() {
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
                         disabled={offset + PAGE_SIZE >= total}
                         onClick={() => setOffset(offset + PAGE_SIZE)}
                       >
@@ -1162,12 +1160,13 @@ function MemorySettings() {
                 title="Waiting for you"
                 aside={<span className="tabular-nums">{proposalsPending.length}</span>}
               >
-                <CardItem
-                  title="Memories Flint has offered"
-                  description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
-                />
-                <div className="pb-3">
+                <p className="mb-2.5 text-[12.5px] leading-normal text-muted-foreground">
+                  Nothing here is being used yet. An unanswered proposal is
+                  never added to a prompt.
+                </p>
+                <div>
                   <MemoryProposalList
+                    variant="settings"
                     proposals={proposalsPending}
                     location={proposalLocation}
                     onResolved={(id) => {
@@ -1183,40 +1182,39 @@ function MemorySettings() {
             ),
           conflicts.length > 0 && (
               <Card key="conflicts" title="Memories that disagree">
-                <CardItem
-                  title="Neither side is being used"
-                  description="These remembered facts contradict each other, so Flint leaves both out of every request here until you keep one."
-                />
-                <ul className="flex flex-col gap-3 pb-3" data-testid="memory-conflicts">
+                <p className="mb-1.5 text-[12.5px] leading-normal text-muted-foreground">
+                  Neither side is being used. These remembered facts
+                  contradict each other, so Flint leaves both out of every
+                  request here until you keep one.
+                </p>
+                <ul className="flex flex-col gap-3" data-testid="memory-conflicts">
                   {conflicts.map((conflict) => (
                     <li
                       key={`${conflict.left.id}|${conflict.right.id}`}
-                      className="rounded-md border border-border p-3"
                       data-testid="memory-conflict"
                       data-left-id={conflict.left.id}
                       data-right-id={conflict.right.id}
                     >
-                      <p className="mb-2 text-xs font-medium text-fg-2">
+                      <p className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                         About the {conflict.subject}
                       </p>
-                      <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="grid gap-2.5 sm:grid-cols-2">
                         {(
                           [
                             [conflict.left, conflict.right],
                             [conflict.right, conflict.left],
                           ] satisfies Array<[MemoryView, MemoryView]>
                         ).map(([side, other]: [MemoryView, MemoryView]) => (
-                          <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-md bg-muted p-3">
-                            <p className="text-sm break-words text-foreground">{side.content}</p>
-                            <p className="text-xs text-muted-foreground">
+                          <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-[10px] border-[0.8px] border-border bg-background p-2.5">
+                            <p className="text-[13px] break-words text-foreground">{side.content}</p>
+                            <p className="font-mono text-xs text-muted-foreground">
                               {scopeLabel(side.scope)}
                               {' · '}
-                              <span className="font-mono break-all">{side.id}</span>
+                              <span className="break-all">{side.id}</span>
                             </p>
                             <Button
-                              size="sm"
                               variant="outline"
-                              className="self-start pointer-coarse:h-11"
+                              className="mt-0.5 self-start pointer-coarse:h-11"
                               disabled={busy}
                               data-testid="memory-conflict-keep"
                               data-keep-id={side.id}

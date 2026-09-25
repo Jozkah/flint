@@ -52,10 +52,10 @@ type RenewalRow = {
 
 /** One integrated row: what the grant is on the left, its control on the right. */
 const ROW =
-  'flex flex-col gap-2 border-b border-dashed border-border py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4'
+  'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 /** Outlined destructive, never the accent fill. */
-const REVOKE = 'self-start shrink-0 pointer-coarse:h-11 sm:self-auto'
+const REVOKE = 'shrink-0 pointer-coarse:h-11'
 
 const GRANT_TONE: Record<GrantState, StatusTone> = {
   current: 'success',
@@ -76,7 +76,21 @@ function decisionTone(decision: string): StatusTone {
 
 function formatWhen(at: string): string {
   const date = new Date(at)
-  return Number.isNaN(date.getTime()) ? at : date.toLocaleString()
+  if (Number.isNaN(date.getTime())) return at
+  // Today's decisions read as a time of day; older ones keep their date.
+  return date.toDateString() === new Date().toDateString()
+    ? date.toLocaleTimeString([], { hour12: false })
+    : date.toLocaleString([], { hour12: false })
+}
+
+/** The word a recorded decision is shown as. */
+function decisionKey(decision: string): string | null {
+  const value = decision.toLowerCase()
+  if (value.startsWith('allow') || value === 'approved' || value === 'granted')
+    return 'permissions:settings.decisionAllowed'
+  if (value.startsWith('deny') || value.startsWith('refuse'))
+    return 'permissions:settings.decisionDenied'
+  return null
 }
 
 function InlineError({ id, children }: { id?: string; children: string }) {
@@ -300,6 +314,7 @@ function PermissionsSettings() {
             <span>{t('permissions:settings.revokeEffect')}</span>
           </>
         }
+        layout={[0, 1, 0, 1, 0, 1, 0]}
       >
         {/* 1. Allowed in one conversation */}
         <Card
@@ -323,18 +338,17 @@ function PermissionsSettings() {
             <ul className="flex flex-col divide-y divide-border">
               {conversations.map(({ id: threadId, tools, mcpTools }) => (
                 <li key={threadId} className="py-1.5">
-                  <p className="truncate pt-1 text-xs font-medium text-muted-foreground">
+                  <p className="truncate pt-1 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
                     {conversationTitle(threadId)}
                   </p>
                   <ul className="flex flex-col">
                     {tools.map((tool) => (
                       <li key={tool} className={ROW}>
-                        <span className="min-w-0 break-all text-sm text-foreground">
+                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                           {t('permissions:settings.toolLabel', { tool })}
                         </span>
                         <Button
                           variant="destructive"
-                          size="sm"
                           className={REVOKE}
                           aria-label={t('permissions:settings.revokeLabel', {
                             name: `${tool} (${conversationTitle(threadId)})`,
@@ -350,7 +364,7 @@ function PermissionsSettings() {
                         key={`${grant.server}::${grant.tool}`}
                         className={ROW}
                       >
-                        <span className="min-w-0 break-all text-sm text-foreground">
+                        <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                           {t('permissions:settings.mcpToolLabel', {
                             server: grant.server,
                             tool: grant.tool,
@@ -358,7 +372,6 @@ function PermissionsSettings() {
                         </span>
                         <Button
                           variant="destructive"
-                          size="sm"
                           className={REVOKE}
                           aria-label={t('permissions:settings.revokeLabel', {
                             name: `${grant.server} ${grant.tool} (${conversationTitle(threadId)})`,
@@ -397,12 +410,11 @@ function PermissionsSettings() {
             <ul className="flex flex-col">
               {approvedToolsGlobal.map((tool) => (
                 <li key={`tool-${tool}`} className={ROW}>
-                  <span className="min-w-0 break-all text-sm text-foreground">
+                  <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
                     {t('permissions:settings.toolLabel', { tool })}
                   </span>
                   <Button
                     variant="destructive"
-                    size="sm"
                     className={REVOKE}
                     aria-label={t('permissions:settings.revokeLabel', {
                       name: tool,
@@ -439,32 +451,32 @@ function PermissionsSettings() {
               {servers.map((server) => (
                 <li
                   key={`server-${server.name}`}
-                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-sm text-foreground">
+                      <p className="break-all text-[13px] font-medium text-foreground">
                         {t('permissions:settings.serverLabel', {
                           server: server.name,
                         })}
                       </p>
                       {server.state === 'changed' && (
-                        <p className="text-[13px] text-warning">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverChanged')}
                         </p>
                       )}
                       {server.state === 'missing' && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverMissing')}
                         </p>
                       )}
                       {server.inApp && !server.inBackend && report && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverAppOnly')}
                         </p>
                       )}
                       {server.inBackend && !server.inApp && (
-                        <p className="text-[13px] text-muted-foreground">
+                        <p className="text-xs leading-[1.4] text-muted-foreground">
                           {t('permissions:settings.serverBackendOnly')}
                         </p>
                       )}
@@ -478,7 +490,6 @@ function PermissionsSettings() {
                       </StatusChip>
                       <Button
                         variant="destructive"
-                        size="sm"
                         className={REVOKE}
                         disabled={busyServer === server.name}
                         aria-busy={busyServer === server.name}
@@ -513,20 +524,19 @@ function PermissionsSettings() {
             <div className={ROW}>
               <div className="min-w-0 space-y-0.5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-medium text-foreground">
+                  <p className="text-[13px] font-medium text-foreground">
                     {t('permissions:settings.allowAll')}
                   </p>
                   <StatusChip tone="warning">
                     {t('permissions:settings.allowAllOn')}
                   </StatusChip>
                 </div>
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-xs leading-[1.4] text-muted-foreground">
                   {t('permissions:settings.allowAllDesc')}
                 </p>
               </div>
               <Button
                 variant="destructive"
-                size="sm"
                 className={REVOKE}
                 onClick={revokeAllowAll}
               >
@@ -549,16 +559,16 @@ function PermissionsSettings() {
               {pendingRenewals.map((row) => (
                 <li
                   key={`renewal-${row.name}`}
-                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0"
                 >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 [&>:first-child]:flex-[1_1_10rem]">
                     <div className="min-w-0 space-y-0.5">
-                      <p className="break-all text-sm text-foreground">
+                      <p className="break-all text-[13px] font-medium text-foreground">
                         {t('permissions:settings.needsRenewalLabel', {
                           server: row.name,
                         })}
                       </p>
-                      <p className="text-[13px] text-muted-foreground">
+                      <p className="text-xs leading-[1.4] text-muted-foreground">
                         {row.reason === 'changed'
                           ? t('permissions:settings.reasonChanged')
                           : t('permissions:settings.reasonLegacy')}
@@ -570,7 +580,6 @@ function PermissionsSettings() {
                       </StatusChip>
                       <Button
                         variant="outline"
-                        size="sm"
                         className={REVOKE}
                         disabled={busyServer === row.name}
                         aria-busy={busyServer === row.name}
@@ -606,20 +615,19 @@ function PermissionsSettings() {
           aside={t('permissions:settings.historyLimit', {
             count: HISTORY_LIMIT,
           })}
-          bodyClassName="px-0 py-0"
         >
           {historyError ? (
-            <p className={`${EMPTY} px-4`}>
+            <p className={EMPTY}>
               {t('permissions:settings.historyUnavailable', {
                 error: historyError,
               })}
             </p>
           ) : history && history.length === 0 ? (
-            <p className={`${EMPTY} px-4`}>
+            <p className={EMPTY}>
               {t('permissions:settings.historyEmpty')}
             </p>
           ) : history === null ? (
-            <p className={`${EMPTY} px-4`} aria-busy>
+            <p className={EMPTY} aria-busy>
               {t('permissions:settings.loading')}
             </p>
           ) : (
@@ -631,19 +639,25 @@ function PermissionsSettings() {
               role="region"
               aria-label={t('permissions:settings.history')}
             >
-              <table className="w-full min-w-[36rem] border-collapse text-left text-sm tabular-nums">
+              <table className="w-full min-w-[28rem] table-fixed border-collapse text-left text-[12.5px] tabular-nums">
+                <colgroup>
+                  <col className="w-[110px]" />
+                  <col />
+                  <col className="w-[130px]" />
+                  <col className="w-[110px]" />
+                </colgroup>
                 <thead>
                   <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
-                    <th scope="col" className="py-2 pr-4 pl-4 font-medium">
+                    <th scope="col" className="px-0.5 py-2 font-normal">
                       {t('permissions:settings.historyTime')}
                     </th>
-                    <th scope="col" className="py-2 pr-4 font-medium">
+                    <th scope="col" className="px-0.5 py-2 font-normal">
                       {t('permissions:settings.historyTool')}
                     </th>
-                    <th scope="col" className="py-2 pr-4 font-medium">
+                    <th scope="col" className="px-0.5 py-2 font-normal">
                       {t('permissions:settings.historyScope')}
                     </th>
-                    <th scope="col" className="py-2 pr-4 font-medium">
+                    <th scope="col" className="px-0.5 py-2 font-normal">
                       {t('permissions:settings.historyDecision')}
                     </th>
                   </tr>
@@ -654,31 +668,39 @@ function PermissionsSettings() {
                       key={`${record.at}-${record.call}-${index}`}
                       className="border-b border-dashed border-border last:border-b-0"
                     >
-                      <td className="py-2.5 pr-4 pl-4 align-top whitespace-nowrap">
-                        <time dateTime={record.at} className="text-xs text-fg-2">
+                      <td className="px-0.5 py-2 align-middle whitespace-nowrap">
+                        <time dateTime={record.at} className="font-mono text-xs text-foreground">
                           {formatWhen(record.at)}
                         </time>
                       </td>
-                      <td className="py-2.5 pr-4 align-top">
+                      <td className="px-0.5 py-2 align-middle">
                         <span className="break-all font-mono text-xs text-foreground">
                           {record.tool}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-4 align-top">
+                      <td className="px-0.5 py-2 align-middle">
                         {record.resource && (
                           <span className="block break-all font-mono text-xs text-fg-2">
                             {record.resource}
                           </span>
                         )}
                         {record.reason && (
-                          <span className="block text-xs text-muted-foreground">
+                          <span
+                            className={
+                              record.resource
+                                ? 'block text-xs text-muted-foreground'
+                                : 'block text-[12.5px] text-foreground'
+                            }
+                          >
                             {record.reason}
                           </span>
                         )}
                       </td>
-                      <td className="py-2.5 pr-4 align-top">
+                      <td className="px-0.5 py-2 align-middle">
                         <StatusChip tone={decisionTone(record.decision)}>
-                          {record.decision}
+                          {decisionKey(record.decision)
+                            ? t(decisionKey(record.decision)!)
+                            : record.decision}
                         </StatusChip>
                       </td>
                     </tr>

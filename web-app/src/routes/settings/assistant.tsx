@@ -8,7 +8,7 @@ import {
   SettingsPageBody,
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import AddEditAssistant from '@/containers/dialogs/AddEditAssistant'
 import { DeleteAssistantDialog } from '@/containers/dialogs'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
@@ -22,7 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { ChevronsUpDown } from 'lucide-react'
 import { DropdownMenuSeparator } from '@radix-ui/react-dropdown-menu'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -77,22 +76,23 @@ function AssistantContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader title={t('common:assistants')}>
-        <Button
-          onClick={() => {
-            setEditingKey(null)
-            setOpen(true)
-          }}
-          size="sm"
-          className="pointer-coarse:h-11"
-        >
-          <Plus aria-hidden />
-          {t('assistants:addAssistant')}
-        </Button>
-      </SettingsPageHeader>
+      <SettingsPageHeader title={t('common:assistants')} />
       <SettingsPageBody
         title={t('common:assistants')}
         description={t('settings:pageDesc.assistants')}
+        actions={
+          <Button
+            onClick={() => {
+              setEditingKey(null)
+              setOpen(true)
+            }}
+            className="pointer-coarse:h-11"
+          >
+            <Icon name="x-plus-w" size={14} />
+            {t('assistants:addAssistant')}
+          </Button>
+        }
+        layout={[0, 1]}
       >
         {/* Default Assistant */}
         <Card>
@@ -105,13 +105,12 @@ function AssistantContent() {
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="outline"
-                    size="sm"
                     className="max-w-full justify-between pointer-coarse:h-11"
                   >
                     <span className={cn('truncate')}>
                       {defaultAssistant?.name ?? t('assistants:lastUsed')}
                     </span>
-                    <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+                    <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-40 max-h-80">
@@ -147,15 +146,14 @@ function AssistantContent() {
         <Card
           title={t('assistants:allAssistants')}
           aside={<span className="tabular-nums">{sortedAssistants.length}</span>}
-          bodyClassName="px-0 py-0"
         >
-          <ul className="divide-y divide-border">
+          <ul className="flex flex-col">
             {sortedAssistants.map((assistant) => (
               <li
-                className="group flex min-h-11 items-center gap-3 px-4 py-2.5 hover:bg-hover-row"
+                className="group flex items-center gap-3 border-b border-dashed border-border px-0.5 py-3 transition-colors last:border-b-0"
                 key={assistant.id}
               >
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border-[0.8px] border-input bg-card">
                   {assistant?.avatar && (
                     <AvatarEmoji
                       avatar={assistant?.avatar}
@@ -164,19 +162,19 @@ function AssistantContent() {
                     />
                   )}
                 </div>
-                <div className="flex flex-col min-w-0 flex-1">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                   <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">
+                    <span className="truncate text-[13px] leading-[1.2] font-medium text-foreground">
                       {assistant.name}
                     </span>
                     {defaultAssistantId === assistant.id && (
-                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-fg-2">
+                      <span className="inline-flex h-[18px] shrink-0 items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium leading-none text-fg-2">
                         {t('assistants:isDefault')}
                       </span>
                     )}
                   </div>
                   {assistant.description && (
-                    <p className="mt-0.5 line-clamp-1 pr-2 text-[13px] text-muted-foreground">
+                    <p className="text-xs leading-[1.35] text-muted-foreground">
                       {assistant.description}
                     </p>
                   )}
@@ -184,7 +182,7 @@ function AssistantContent() {
                 <div className="flex items-center shrink-0">
                   <Button
                     variant="ghost"
-                    size="icon-sm"
+                    size="icon-xs"
                     className="pointer-coarse:size-11"
                     aria-label={`${t('assistants:editAssistant')}: ${assistant.name}`}
                     title={t('assistants:editAssistant')}
@@ -193,17 +191,17 @@ function AssistantContent() {
                       setOpen(true)
                     }}
                   >
-                    <Pencil className="text-muted-foreground" aria-hidden />
+                    <Icon name="x-edit" size={16} />
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-sm"
-                    className="text-muted-foreground hover:text-destructive pointer-coarse:size-11"
+                    size="icon-xs"
+                    className="hover:text-destructive pointer-coarse:size-11"
                     aria-label={`${t('assistants:deleteAssistant')}: ${assistant.name}`}
                     title={t('assistants:deleteAssistant')}
                     onClick={() => handleDelete(assistant.id)}
                   >
-                    <Trash2 aria-hidden />
+                    <Icon name="x-trash" size={16} />
                   </Button>
                 </div>
               </li>
