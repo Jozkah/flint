@@ -23,7 +23,9 @@ export const ICON_SOURCE = 'src-tauri/icons/icon.png'
 
 /** Run `tauri icon` through the package manager's bin path. */
 function runTauriIcon(source) {
-  const result = spawnSync('tauri', ['icon', source], {
+  // One command string: Node deprecates an argument list combined with
+  // `shell: true` (DEP0190), since the list is joined unescaped.
+  const result = spawnSync(`tauri icon "${source}"`, {
     stdio: 'inherit',
     shell: true,
   })

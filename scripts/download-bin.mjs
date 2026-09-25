@@ -237,7 +237,9 @@ async function main() {
       path.join(tempBinDir, `bun-${bunPlatform}`, 'bun'),
       path.join(binDir)
     )
-    fs.chmod(path.join(binDir, 'bun'), 0o755, (err) => {
+    // Windows has no execute bit, and the binary there is bun.exe.
+    if (platform !== 'win32')
+      fs.chmod(path.join(binDir, 'bun'), 0o755, (err) => {
       if (err) {
         console.log('Add execution permission failed!', err)
       }
@@ -317,7 +319,9 @@ async function main() {
   }
   try {
     copySync(path.join(tempBinDir, `uv-${uvPlatform}`, 'uv'), path.join(binDir))
-    fs.chmod(path.join(binDir, 'uv'), 0o755, (err) => {
+    // Windows has no execute bit, and the binary there is uv.exe.
+    if (platform !== 'win32')
+      fs.chmod(path.join(binDir, 'uv'), 0o755, (err) => {
       if (err) {
         console.log('Add execution permission failed!', err)
       }
