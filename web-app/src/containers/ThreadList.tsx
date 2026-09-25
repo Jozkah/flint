@@ -32,7 +32,17 @@ import {
   NavItem,
   useShellNav,
 } from '@/components/shell/nav-kit'
-import { ThreadStatusMark, useThreadStatus } from '@/containers/ThreadStatusMark'
+import {
+  ThreadStatusMark,
+  updatedMs,
+  useThreadStatus,
+} from '@/containers/ThreadStatusMark'
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card'
+import { useDraggable } from '@dnd-kit/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { memo, useMemo, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
@@ -46,11 +56,21 @@ const ThreadItem = memo(
     thread,
     isMobile,
     currentProjectId,
+    draggable = false,
   }: {
     thread: Thread
     isMobile: boolean
     currentProjectId?: string
+    draggable?: boolean
   }) => {
+    // Rows in the sidebar can be dropped on a chat group. Only the pointer
+    // listeners are applied: the link stays the row's one focusable element,
+    // and a short press is still a click (the sensor waits for movement).
+    const drag = useDraggable({
+      id: thread.id,
+      data: { threadId: thread.id },
+      disabled: !draggable,
+    })
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
     const updateThread = useThreads((state) => state.updateThread)
@@ -185,9 +205,14 @@ const ThreadItem = memo(
 
     return (
       <NavItem
+        ref={draggable ? drag.setNodeRef : undefined}
+        {...(draggable ? drag.listeners : {})}
         onContextMenu={openRowMenu}
         onKeyDown={onRowKeyDown}
-        className={cn(currentProjectId && 'list-none')}
+        className={cn(
+          currentProjectId && 'list-none',
+          drag.isDragging && 'opacity-40'
+        )}
       >
         {currentProjectId ?
           <Link to="/threads/$threadId" params={{ threadId: thread.id }} className={cn("relative block max-w-full overflow-hidden rounded-lg border-[0.8px] border-transparent px-3 py-2 text-[0.8125rem] text-foreground transition-[background-color,border-color] duration-150 hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 outline-hidden pointer-coarse:min-h-11", isSelected && "border-border bg-card shadow-[0_4px_7px_rgba(0,0,0,.04)]")}>
@@ -202,12 +227,31 @@ const ThreadItem = memo(
               )}
           </Link>
           :
-          <NavButton asChild size="sm" isActive={isSelected}>
-            <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
-              <ThreadStatusMark status={status} />
-              <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
-            </Link>
-          </NavButton>
+          <HoverCard openDelay={650} closeDelay={80}>
+            <HoverCardTrigger asChild>
+              <NavButton asChild size="sm" isActive={isSelected}>
+                <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
+                  <ThreadStatusMark status={status} />
+                  <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
+                </Link>
+              </NavButton>
+            </HoverCardTrigger>
+            {/* A peek at the chat without opening it: its title, when it was
+                last active and the last thing asked. */}
+            <HoverCardContent side="right" align="start" sideOffset={10} className="w-72 p-3">
+              <p className="line-clamp-2 text-[0.8125rem] font-medium text-foreground">
+                {thread.title || t('common:newThread')}
+              </p>
+              <p className="mt-1 text-[11px] text-subtle-foreground">
+                {thread.updated ? new Date(updatedMs(thread.updated)).toLocaleString() : ''}
+              </p>
+              {lastUserMessageText && (
+                <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground">
+                  {lastUserMessageText}
+                </p>
+              )}
+            </HoverCardContent>
+          </HoverCard>
         }
         <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <DropdownMenuTrigger asChild>
@@ -340,9 +384,11 @@ const ThreadItem = memo(
 type ThreadListProps = {
   threads: Thread[]
   currentProjectId?: string
+  /** Rows can be dragged onto a chat group (needs a DndContext above). */
+  draggable?: boolean
 }
 
-function ThreadList({ threads, currentProjectId }: ThreadListProps) {
+function ThreadList({ threads, currentProjectId, draggable }: ThreadListProps) {
   const { isMobile } = useShellNav()
 
   const sortedThreads = useMemo(() => {
@@ -359,6 +405,7 @@ function ThreadList({ threads, currentProjectId }: ThreadListProps) {
           thread={thread}
           isMobile={isMobile}
           currentProjectId={currentProjectId}
+          draggable={draggable}
         />
       ))}
     </>

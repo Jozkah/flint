@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Trash2 } from 'lucide-react'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
-import { toast } from 'sonner'
+import { undoableDelete } from '@/lib/undoableAction'
 import { route } from '@/constants/routes'
 
 interface DeleteThreadDialogProps {
@@ -59,12 +59,15 @@ export function DeleteThreadDialog({
   }
 
   const handleDelete = () => {
-    onDelete(thread.id)
     setOpenSafe(false)
     onDropdownClose?.()
-    toast.success(t('common:toast.deleteThread.title'), {
-      id: 'delete-thread',
-      description: t('common:toast.deleteThread.description'),
+    // Hidden at once, deleted after the undo window unless Undo is pressed.
+    undoableDelete({
+      id: thread.id,
+      message: t('common:toast.deleteThread.title'),
+      description: t('common:toast.deleteThread.undoHint'),
+      undoLabel: t('common:undo'),
+      run: () => onDelete(thread.id),
     })
     if (variant !== 'project') {
       setTimeout(() => {

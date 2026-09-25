@@ -44,6 +44,12 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import {
+  ThreadStatusMark,
+  useThreadStatus,
+  type ThreadStatus,
+} from '@/containers/ThreadStatusMark'
+import { usePrStatus } from '@/stores/pr-status-store'
 import { isCoworkRoute } from '@/constants/routes'
 import {
   useCoworkSessions,
@@ -128,7 +134,7 @@ const SessionItem = memo(function SessionItem({
         data-session-id={session.id}
         data-current={isCurrent ? 'true' : 'false'}
       >
-        <SessionDot running={running} />
+        <SessionMark session={session} running={running} />
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
@@ -294,17 +300,22 @@ const SessionItem = memo(function SessionItem({
   )
 })
 
-/** Status mark before a session: a blinking blue dot while it runs. */
-function SessionDot({ running }: { running: boolean }) {
-  return (
-    <span aria-hidden className="grid size-3.5 shrink-0 place-items-center">
-      {running && (
-        <span className="relative size-2 rounded-full bg-info">
-          <span className="absolute inset-0 rounded-full bg-info motion-safe:animate-ping" />
-        </span>
-      )}
-    </span>
-  )
+/**
+ * The mark before a session: working, waiting on a pull request's review, or
+ * recently active. A session whose folder is on a branch with a pull request
+ * shows that request's state (read through the GitHub CLI).
+ */
+function SessionMark({ session, running }: { session: CoworkSession; running: boolean }) {
+  const pr = usePrStatus(session.folder)
+  const recency = useThreadStatus({ updated: session.updated }, running)
+  const status: ThreadStatus = running
+    ? 'active'
+    : pr
+      ? pr.state === 'open'
+        ? 'pr'
+        : pr.state
+      : recency
+  return <ThreadStatusMark status={status} detail={pr ? `#${pr.number}` : undefined} />
 }
 
 /**

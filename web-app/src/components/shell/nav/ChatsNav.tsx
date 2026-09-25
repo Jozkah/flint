@@ -1,4 +1,14 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
+import {
+  DndContext,
+  PointerSensor,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import { toast } from 'sonner'
+import { usePendingDeletes } from '@/lib/undoableAction'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
   ChevronDown,
@@ -62,6 +72,23 @@ type Group = {
   folder?: ThreadFolder
 }
 
+/** A group header a chat can be dropped on; it lights up while hovered. */
+function DropTarget({ id, children }: { id: string; children: ReactNode }) {
+  const { setNodeRef, isOver, active } = useDroppable({ id: `group:${id}` })
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        'rounded-md transition-[background-color,box-shadow] duration-150',
+        active && 'ring-1 ring-transparent',
+        isOver && 'bg-acc-tint ring-acc/40'
+      )}
+    >
+      {children}
+    </div>
+  )
+}
+
 /**
  * The Chats section: Pinned, one collapsible group per project, then the
  * chats in no project. A collapsed group keeps showing the chat that was open
@@ -84,6 +111,13 @@ export function ChatsNav() {
     select: (params) => params.threadId as string | undefined,
   })
 
+  const pendingDeletes = usePendingDeletes((s) => s.ids)
+  const updateThread = useThreads((s) => s.updateThread)
+  const toggleFavorite = useThreads((s) => s.toggleFavorite)
+  // A small movement starts a drag, so a click on a row still opens it.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  )
   const [filter, setFilter] = useState<ChatFilter>('all')
   const [collapsed, setCollapsed] = useState<Record<string, string | null>>({})
   const [expandedMore, setExpandedMore] = useState<Record<string, boolean>>({})
@@ -94,6 +128,7 @@ export function ChatsNav() {
   const groups = useMemo<Group[]>(() => {
     const now = Date.now()
     const all = getFilteredThreads('').filter((th) => {
+      if (pendingDeletes[th.id]) return false
       if (filter === 'all') return true
       return (
         streaming[th.id]?.isStreaming ||
@@ -125,7 +160,35 @@ export function ChatsNav() {
       out.push({ id: 'ungrouped', name: t('common:shell.ungrouped'), threads: ungrouped })
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [threads, folders, filter, streaming, getFilteredThreads, t])
+  }, [threads, folders, filter, streaming, getFilteredThreads, t, pendingDeletes])
+
+  /** Dropping a chat on a group moves it there; on Pinned it pins it. */
+  const onDragEnd = (e: DragEndEvent) => {
+    const threadId = e.active.data.current?.threadId as string | undefined
+    const target = typeof e.over?.id === 'string' ? e.over.id.replace(/^group:/, '') : null
+    if (!threadId || !target) return
+    const thread = threads[threadId]
+    if (!thread) return
+    if (target === 'pinned') {
+      if (!thread.isFavorite) toggleFavorite(threadId)
+      return
+    }
+    if (target === 'ungrouped') {
+      if (thread.isFavorite) toggleFavorite(threadId)
+      if (thread.metadata?.project)
+        updateThread(threadId, { metadata: { ...thread.metadata, project: undefined } })
+      return
+    }
+    const folder = folders.find((f) => f.id === target)
+    if (!folder || thread.metadata?.project?.id === folder.id) return
+    updateThread(threadId, {
+      metadata: {
+        ...thread.metadata,
+        project: { id: folder.id, name: folder.name, updated_at: folder.updated_at },
+      },
+    })
+    toast.success(t('common:shell.movedTo', { name: folder.name }))
+  }
 
   const toggleGroup = (id: string, isOpen: boolean) =>
     setCollapsed((c) => ({
@@ -230,6 +293,7 @@ export function ChatsNav() {
           ))}
         </div>
       ) : (
+        <DndContext sensors={sensors} onDragEnd={onDragEnd}>
         <div className="flex flex-col gap-1">
           {groups.map((g) => {
             const isOpen = collapsed[g.id] === undefined
@@ -245,6 +309,7 @@ export function ChatsNav() {
             const hidden = isOpen ? g.threads.length - visible.length : 0
             return (
               <div key={g.id} className="group/cg flex flex-col" data-testid="chat-group">
+                <DropTarget id={g.id}>
                 <div className="flex h-7 items-center gap-0.5">
                   <button
                     type="button"
@@ -309,9 +374,10 @@ export function ChatsNav() {
                     </>
                   )}
                 </div>
+                </DropTarget>
                 <NavCollapse open={visible.length > 0}>
                   <NavList>
-                    <ThreadList threads={visible} />
+                    <ThreadList threads={visible} draggable />
                   </NavList>
                   {hidden > 0 && (
                     <button
@@ -336,6 +402,7 @@ export function ChatsNav() {
             )
           })}
         </div>
+        </DndContext>
       )}
 
       <AddProjectDialog

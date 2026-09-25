@@ -4,6 +4,7 @@ import { isCoworkRoute } from '@/constants/routes'
 import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { composeWindowTitle, type WindowTitleInput } from '@/lib/windowTitle'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 /**
  * Keep the main window's native title naming what it shows.
@@ -33,7 +34,11 @@ export function useWindowTitle(): string {
     return { section: 'other' }
   }, [pathname, threadTitle, sessionTitle, projectFolder])
 
-  const title = composeWindowTitle(input)
+  // Approvals waiting for the user lead the title, so a window in the
+  // background says it needs attention in the taskbar.
+  const waiting = useToolApprovalRequests((s) => Object.keys(s.pending ?? {}).length)
+  const base = composeWindowTitle(input)
+  const title = waiting > 0 ? `(${waiting}) ${base}` : base
 
   useEffect(() => {
     document.title = title

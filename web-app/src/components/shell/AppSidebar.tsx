@@ -93,6 +93,26 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
   )
 }
 
+/** Up and Down move between the sidebar's rows, Home and End to the ends. */
+function moveFocusWithArrows(e: React.KeyboardEvent<HTMLElement>) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
+  const target = e.target as HTMLElement
+  if (target.closest('input, textarea, [role="menu"]')) return
+  const rows = Array.from(
+    e.currentTarget.querySelectorAll<HTMLElement>('[data-slot="nav-button"]')
+  ).filter((el) => el.offsetParent !== null && !el.closest('[inert]'))
+  const current = rows.findIndex((el) => el === target || el.contains(target))
+  if (current === -1) return
+  e.preventDefault()
+  const next =
+    e.key === 'Home'
+      ? 0
+      : e.key === 'End'
+        ? rows.length - 1
+        : Math.min(rows.length - 1, Math.max(0, current + (e.key === 'ArrowDown' ? 1 : -1)))
+  rows[next]?.focus()
+}
+
 /**
  * The app sidebar (250px): the Flint mark, search, and one scrolling list of
  * everything, grouped Workspace, Engine, Chats and Support, with local status
@@ -225,6 +245,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         <nav
           aria-label={t('common:appRail.label')}
           data-testid="app-sidebar"
+          onKeyDown={moveFocusWithArrows}
           className="-mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 pb-2 [scrollbar-color:transparent_transparent] [scrollbar-width:thin] hover:[scrollbar-color:var(--border-strong)_transparent] [&::-webkit-scrollbar-thumb]:bg-transparent hover:[&::-webkit-scrollbar-thumb]:bg-border-strong"
         >
           <NavGroup>
