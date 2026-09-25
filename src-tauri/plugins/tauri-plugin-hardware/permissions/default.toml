@@ -3,5 +3,6 @@ description = "Default permissions for the hardware plugin"
 permissions = [
     "allow-get-system-info",
     "allow-get-system-usage",
+    "allow-get-system-snapshot",
     "allow-refresh-system-info"
 ]

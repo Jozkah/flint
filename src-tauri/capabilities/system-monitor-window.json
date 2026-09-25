@@ -16,6 +16,7 @@
     "core:window:allow-set-focus",
     "hardware:allow-get-system-info",
     "hardware:allow-get-system-usage",
+    "hardware:allow-get-system-snapshot",
     "llamacpp:allow-read-gguf-metadata",
     "deep-link:allow-get-current",
     {
