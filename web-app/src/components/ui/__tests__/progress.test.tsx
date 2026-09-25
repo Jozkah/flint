@@ -43,9 +43,9 @@ describe('Progress', () => {
     render(<Progress value={50} />)
 
     const progress = document.querySelector('[data-slot="progress"]')
-    expect(progress).toHaveClass('bg-secondary')
+    expect(progress).toHaveClass('bg-track')
     expect(progress).toHaveClass('relative')
-    expect(progress).toHaveClass('h-2')
+    expect(progress).toHaveClass('h-1.5')
     expect(progress).toHaveClass('w-full')
     expect(progress).toHaveClass('overflow-hidden')
     expect(progress).toHaveClass('rounded-full')
@@ -55,11 +55,11 @@ describe('Progress', () => {
     render(<Progress value={50} />)
 
     const indicator = document.querySelector('[data-slot="progress-indicator"]')
-    expect(indicator).toHaveClass('bg-ink-2')
+    expect(indicator).toHaveClass('bg-grad')
     expect(indicator).toHaveClass('h-full')
     expect(indicator).toHaveClass('w-full')
     expect(indicator).toHaveClass('flex-1')
-    expect(indicator).toHaveClass('transition-all')
+    expect(indicator).toHaveClass('transition-transform')
   })
 
   it('handles undefined value', () => {

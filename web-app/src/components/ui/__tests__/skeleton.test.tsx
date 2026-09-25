@@ -21,7 +21,7 @@ describe('Skeleton', () => {
     render(<Skeleton />)
 
     const skeleton = document.querySelector('[data-slot="skeleton"]')
-    expect(skeleton).toHaveClass('bg-accent')
+    expect(skeleton).toHaveClass('bg-sk')
   })
 
   it('renders with custom width and height', () => {

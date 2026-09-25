@@ -115,9 +115,8 @@ describe('HoverCard Components', () => {
       const content = screen.getByTestId('hover-card-content')
       expect(content.className).toContain('bg-popover')
       expect(content.className).toContain('text-popover-foreground')
-      expect(content.className).toContain('rounded-md')
-      expect(content.className).toContain('border')
-      expect(content.className).toContain('shadow-md')
+      expect(content.className).toContain('rounded-xl')
+      expect(content.className).toContain('shadow-pop')
     })
 
     it('should merge custom className with default classes', () => {

@@ -68,8 +68,8 @@ describe('Input', () => {
     const input = screen.getByRole('textbox')
     expect(input).toHaveClass('h-8')
     expect(input).toHaveClass('w-full')
-    expect(input).toHaveClass('rounded-md')
-    expect(input).toHaveClass('border')
+    expect(input).toHaveClass('rounded-lg')
+    expect(input).toHaveClass('border-border')
   })
 
   it('forwards ref correctly', () => {

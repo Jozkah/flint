@@ -104,9 +104,8 @@ describe('Popover Components', () => {
         expect(content).toHaveClass('bg-popover')
         expect(content).toHaveClass('text-popover-foreground')
         expect(content).toHaveClass('w-72')
-        expect(content).toHaveClass('rounded-md')
-        expect(content).toHaveClass('border')
-        expect(content).toHaveClass('shadow-md')
+        expect(content).toHaveClass('rounded-xl')
+        expect(content).toHaveClass('shadow-pop')
       }, { timeout: 1000 })
     })
 

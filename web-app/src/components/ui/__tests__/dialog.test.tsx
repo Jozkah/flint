@@ -134,16 +134,15 @@ describe('Dialog Components', () => {
 
     const dialogContent = screen.getByRole('dialog')
     expect(dialogContent).toHaveClass(
-      'bg-card',
+      'bg-popover',
       'overflow-y-auto',
       'fixed',
       'z-50',
       'grid',
       'w-full',
       'gap-4',
-      'border',
       'p-5',
-      'shadow-overlay',
+      'shadow-pop',
       'duration-200',
       // Phone: a bottom sheet. From sm: a centred dialog.
       'inset-x-0',
@@ -153,7 +152,7 @@ describe('Dialog Components', () => {
       'sm:left-[50%]',
       'sm:translate-x-[-50%]',
       'sm:translate-y-[-50%]',
-      'sm:rounded-lg',
+      'sm:rounded-[14px]',
       'sm:max-h-[85vh]',
       'sm:max-w-lg'
     )
@@ -196,7 +195,7 @@ describe('Dialog Components', () => {
     await user.click(screen.getByText('Open Dialog'))
     
     const dialogTitle = screen.getByText('Dialog Title')
-    expect(dialogTitle).toHaveClass('text-base', 'leading-snug', 'font-semibold')
+    expect(dialogTitle).toHaveClass('leading-snug', 'font-semibold')
   })
 
   it('applies proper classes to dialog description', async () => {

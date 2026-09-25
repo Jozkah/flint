@@ -6,37 +6,39 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 /**
- * Flint Graphite Studio buttons: compact, one radius. Primary uses the accent
- * fill with its derived hover, pressed and on-fill colours (lib/accent.ts) and
- * is kept to one per working context. Destructive stays outlined in the error
- * colour so a red-hued accent can never make a primary action look
- * destructive, nor a destructive action look primary. Coarse pointers get
- * 44px targets from the call sites that need them (pointer-coarse:).
+ * Flint buttons: 8px radius, 12px medium text, a short press scale. Primary is
+ * the accent gradient (lib/accent.ts) and is kept to one per working context.
+ * Outline and surface are the quiet card-coloured buttons that lift on hover.
+ * Destructive is a soft error-tinted fill, so a red-hued accent can never
+ * make a primary action look destructive, nor the reverse. Coarse pointers
+ * get 44px targets from the call sites that need them (pointer-coarse:).
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring aria-invalid:border-destructive cursor-pointer",
+  "relative inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg text-xs font-medium transition-[transform,background-color,border-color,box-shadow,color,filter] duration-150 ease-expo active:scale-[.965] disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-3.5 shrink-0 [&_svg]:shrink-0 outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40 aria-invalid:border-destructive cursor-pointer",
   {
     variants: {
       variant: {
         default:
-          "bg-brand-fill text-brand-foreground border border-brand-fill hover:bg-brand-fill-hover active:bg-brand-fill-pressed",
+          "overflow-hidden border border-primary bg-grad text-on-grad shadow-[inset_0_1px_0_rgba(255,255,255,.14)] hover:brightness-110 dark:border-white/80",
         destructive:
-          "border border-destructive/60 bg-transparent text-destructive hover:bg-destructive-tint active:bg-destructive-tint",
+          "border-[0.8px] border-transparent bg-destructive/12 text-destructive hover:bg-destructive/18",
         outline:
-          "border border-line-strong bg-card text-foreground hover:border-input hover:bg-card active:bg-sunken",
+          "border-[0.8px] border-border bg-card text-secondary-foreground hover:border-border-strong hover:bg-hover-btn hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:bg-hover-btn",
+        surface:
+          "border-[0.8px] border-input bg-card text-secondary-foreground hover:bg-hover-btn hover:shadow-lift data-[state=open]:bg-hover-btn",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-accent active:bg-accent",
+          "border-[0.8px] border-border bg-secondary text-secondary-foreground hover:bg-accent hover:text-foreground",
         ghost:
-          "text-ink-2 hover:bg-accent hover:text-foreground active:bg-accent",
-        link: "text-brand-text underline-offset-4 hover:underline",
+          "text-secondary-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent",
+        link: "text-acc-text underline-offset-4 hover:underline active:scale-100",
       },
       size: {
-        default: "h-8 px-3 has-[>svg]:px-2.5",
-        xs: "h-6 gap-1 px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        default: "h-8 pr-2 pl-2.5 has-[>svg]:px-2",
+        xs: "h-6 gap-1 px-2 text-[11px] rounded-md has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 gap-1.5 px-2.5 has-[>svg]:px-2",
-        lg: "h-9 px-4 has-[>svg]:px-3.5",
+        lg: "h-9 px-3.5 text-[0.8125rem] has-[>svg]:px-3",
         icon: "size-8",
-        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-4",
+        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3.5",
         "icon-sm": "size-7",
         "icon-lg": "size-9",
       },

@@ -105,21 +105,21 @@ describe('Slider', () => {
     render(<Slider />)
 
     const track = document.querySelector('[data-slot="slider-track"]')
-    expect(track).toHaveClass('bg-muted', 'relative', 'grow', 'overflow-hidden', 'rounded-full')
+    expect(track).toHaveClass('bg-track', 'relative', 'grow', 'overflow-hidden', 'rounded-full')
   })
 
   it('renders range with correct styling', () => {
     render(<Slider />)
 
     const range = document.querySelector('[data-slot="slider-range"]')
-    expect(range).toHaveClass('bg-primary', 'absolute')
+    expect(range).toHaveClass('bg-grad', 'absolute')
   })
 
   it('renders thumb with correct styling', () => {
     render(<Slider value={[50]} />)
 
     const thumb = document.querySelector('[data-slot="slider-thumb"]')
-    expect(thumb).toHaveClass('border-primary', 'bg-white', 'ring-ring/50', 'block', 'size-4', 'shrink-0', 'rounded-full', 'border', 'shadow-sm')
+    expect(thumb).toHaveClass('border-border-strong', 'bg-knob', 'block', 'size-4', 'shrink-0', 'rounded-full', 'border')
   })
 
   it('handles disabled state', () => {
@@ -187,7 +187,7 @@ describe('Slider', () => {
 
     // Both thumbs should have the same styling
     thumbs.forEach(thumb => {
-      expect(thumb).toHaveClass('border-primary', 'bg-white', 'rounded-full')
+      expect(thumb).toHaveClass('bg-knob', 'rounded-full')
     })
   })
 })

@@ -56,8 +56,8 @@ describe('Textarea', () => {
     expect(textarea).toHaveClass('flex')
     expect(textarea).toHaveClass('min-h-16')
     expect(textarea).toHaveClass('w-full')
-    expect(textarea).toHaveClass('rounded-md')
-    expect(textarea).toHaveClass('border')
+    expect(textarea).toHaveClass('rounded-lg')
+    expect(textarea).toHaveClass('border-border')
   })
 
   it('forwards ref correctly', () => {
