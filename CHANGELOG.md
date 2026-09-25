@@ -1,12 +1,12 @@
 # Flint 0.9.0
 
-Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into a full agentic workspace that runs against your own models and keeps your data on your machine. This first tagged release brings together everything Flint adds on top of Jan: a local-only build that never phones home, one-click migration from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, an agent runtime you can reconstruct, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and the Graphite/Atelier redesign.
+Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into a full agentic workspace that runs against your own models and keeps your data on your machine. This first tagged release brings together everything Flint adds on top of Jan: a local-only build that never phones home, one-click migration from an existing Jan install, the **Cowork** agentic coding workspace, tool-using **Discussion Rooms**, an agent runtime you can reconstruct, cross-chat **Memory**, fingerprint-pinned **MCP**, native **Skills**, and a redesigned interface with an Overview dashboard.
 
 ## Highlights
 
 - **Local-first and private.** Telemetry, update checks, model discovery and catalogue fetches are removed and the whole repo is guarded against phoning home; web search no longer reports back what it returned. Flint runs against your own models and providers, and nothing leaves the machine unless you send it.
 - **Migrate from Jan in one launch.** Flint keeps Jan's identifier and data path, detects an existing Jan install on first run, and offers to Copy, Reuse, Move or Start fresh — per category, with conflict policies, a recoverable backup, rollback and idempotent resume.
-- **Cowork — an agentic coding workspace.** A right-rail workspace with a Code panel, a Changes (Git) rail with real diff gutters, an Activity rail, per-chat models and temporary chats. Cowork answers with a **reviewable proposal** you apply hunk-by-hunk, runs on a **managed worktree** with checkpoints and safety-point restores, can **dispatch a team** of coordinated subagents, and reports every change's true origin from recorded evidence.
+- **Cowork — an agentic coding workspace.** A workspace with an output rail with a Code panel, a Changes (Git) rail with real diff gutters, an Activity rail, per-chat models and temporary chats. Cowork answers with a **reviewable proposal** you apply hunk-by-hunk, runs on a **managed worktree** with checkpoints and safety-point restores, can **dispatch a team** of coordinated subagents, and reports every change's true origin from recorded evidence.
 - **Discussion Rooms that use tools.** Multi-model discussions, with you in control, that now do work rather than only talk. Attach a folder and give each participant **Read-only** or **Read & edit** file tools (`read`/`ls`/`find`/`grep`, and `write`/`edit` confined to that folder by a direct-edit grant), your trusted MCP servers (routed to the exact server, never offered when untrusted), and web research (`web_search`/`web_fetch`) — every call rendered as a colour-coded tool chip, matching the Cowork tab, that expands to its input and result. A participant can conclude early once the objective is met; a room stopped on a rounds/turns/tokens/time/cost limit continues for as many more rounds as you ask; a message to a paused, completed or stopped room resumes it; a discussion past the model's context window compacts automatically with a "Compacting…" note; and a room whose participants are all waiting on you hands back instead of spinning. Each participant has its own colour across `@mentions`, messages render Markdown, and new participants default to read-only tools when their model supports them.
 - **An agent runtime you can reconstruct.** Every run writes a versioned event log; a run interrupted mid-turn resumes carrying its unfinished work; token and dollar ceilings hold across runs; every tool call carries a deadline and a cancellation token; and a Timeline rail lets you step through a finished run and see what kind of failure occurred.
 - **Repository intelligence.** A stored repository index with caller/callee walking, semantic code search over a model you name, LSP-backed language servers, impact and test-coverage analysis following imports, project-tooling detection, and formatter discovery that runs on what the agent edits.
@@ -15,7 +15,7 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **MCP you can trust.** Servers are trusted by fingerprint, not the name they chose; OAuth tokens live in the secret store and refresh ahead of expiry with declared, enforced scopes; per-server liveness, logs and budgets; a server's documents and prompts; and imported servers launched confined or not at all.
 - **Native Skills and permissions.** User-level skills in the CLI and the agent loop that declare the tools they need and their version; a permission policy as a reviewed file a project cannot loosen; write authority issued as a grant over a root; and six versioned built-in roles enforced at the call site.
 - **A headless CLI.** A JSON-lines API that streams a run's canonical events with adjustable verbosity, a persistent local log and a local-only diagnostic bundle, and a harness benchmark against a fixed task set.
-- **The Graphite / Atelier redesign.** One Atelier shell — rail, contextual sidebar, context bar and status bar — with a neutral charcoal dark theme, bundled typefaces, a contrast-checked accent, an intention-led first run, global settings search, a command palette, and a system monitor with filterable logs.
+- **A redesigned interface.** A sidebar and top header in place of the rail and status bar, an Overview dashboard as the start page, a neutral Slate default accent, Inter, duotone icons, restrained motion, phone layouts, chat groups with drag and undo delete, and pull-request status in Cowork — keeping the intention-led first run, global settings search, command palette and system monitor with filterable logs.
 
 ## Migration
 
@@ -34,7 +34,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 ### Local-first and privacy
 - fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing "Expected 'function.name' to be a string" generation failures
 - perf(inference): keep GPU-capable Vulkan as the default engine build and document throughput tuning for Flash Attention, batching, offload, and parallel sequences
-- feat(app): local-only build â€” no telemetry, no catalog, no downloads (#10)
+- feat(app): local-only build — no telemetry, no catalog, no downloads (#10)
 - feat(local-only): finish removing telemetry, update checking and model discovery, and guard the whole repo
 - refactor(privacy): remove telemetry build vars, the analytics injection, the catalogue URLs and the update feed
 - refactor(core): remove the updater, the CLI's telemetry, and the mirror
@@ -42,18 +42,18 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(privacy): stop telling Google what the web search returned
 
 ### Flint identity and migration
-- rebrand(ui): present the product as Flint â€” app name, window title, rail wordmark, default assistant, and every locale
+- rebrand(ui): present the product as Flint — app name, window title, sidebar wordmark, default assistant, and every locale
 - rebrand(ui): Flint in the agent identity and the remaining visible strings
 - rebrand(agent): the default persona says Flint agent harness
 - rebrand(packaging): rename the desktop binary to Flint-Desktop and register the `flint://` deep link, keeping `jan://`
 - rebrand(docs): Flint navigation labels, keeping the research model names
 - docs(rebrand): add an original Flint logo and replace the Jan logo in the favicon, boot splash, window title, and in-app badges
-- docs(readme): rewrite the README as "Flint â€” a fork of Jan" with provenance, migration and feature sections (#12)
+- docs(readme): rewrite the README as "Flint — a fork of Jan" with provenance, migration and feature sections (#12)
 - docs(license): retain Apache-2.0, the upstream copyright, acknowledgements and upstream provenance
 - feat(migration): first-launch Jan to Flint data-migration core and the six Tauri commands
 - feat(migration): a guided first-launch migration assistant UI
 - feat(migration): Copy, Reuse, Move and Start-fresh modes, with per-category selection
-- feat(migration): conflict policies â€” keep the newer Flint item, use the Jan item, or keep both under a suffix
+- feat(migration): conflict policies — keep the newer Flint item, use the Jan item, or keep both under a suffix
 - feat(migration): a recoverable backup for Move, with rollback and retry on failure
 - feat(migration): idempotent resume of an interrupted migration, and quarantine of partial data
 - feat(migration): a migration manifest recording mode, categories, results and status
@@ -67,11 +67,11 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - chore(compat): keep the `jan.ai.app` identifier, legacy data locations and persisted IDs so an existing Jan install upgrades in place
 
 ### Cowork workspace
-- feat(cowork): complete Cowork workspace â€” Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
+- feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
 - feat(cowork): a read-only code workspace, an Activity rail, and global settings search (#1)
 - feat(cowork): make the declared coding-harness modes real (#6)
-- feat(cowork): report the real context â€” a repository map and the payload actually sent â€” with a harness feature registry (#7)
-- feat(cowork): the managed worktree â€” make it real, use the tree the run actually uses, and finish its lifecycle including recovery
+- feat(cowork): report the real context — a repository map and the payload actually sent — with a harness feature registry (#7)
+- feat(cowork): the managed worktree — make it real, use the tree the run actually uses, and finish its lifecycle including recovery
 - feat(cowork): checkpoints and two meanings of rewind, wired into Cowork with a safety point on restore
 - feat(cowork): answer an opening request with a proposal, not an edit; review it by hunk and apply only what was chosen
 - feat(cowork): export a managed worktree as a reviewable patch bundle, and import one back through proposal review
@@ -86,7 +86,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(changes): say which agent made every change, durably (AH-110)
 
 ### Agent runtime and harness
-- feat(agent): core execution â€” a run that can be reconstructed (#8)
+- feat(agent): core execution — a run that can be reconstructed (#8)
 - feat(harness): the feature registry and Phase 0 foundation, and one versioned event log per session exported through the UI
 - feat(agent): the Rust agent loop writes its calls and runs to the session's execution record (AH-004, AH-050)
 - feat(agent): a run interrupted mid-turn resumes with its turn, carrying its unfinished work (AH-026)
@@ -124,7 +124,11 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(review): work a review one comment at a time, and check that each is addressed (AH-164)
 - feat(tools): gate destructive git apart from safe git usage
 - feat(agent): check dependencies against the licences a project allows (AH-158)
-- feat(hooks): the project's own commands run around a tool call (AH-127/128/129)
+- feat(hooks): the project's own commands run around a tool call (AH-127/128/129), and command hooks on lifecycle events receive a redacted JSON payload
+- fix(agent): recover malformed tool-call arguments conservatively; MCP calls whose arguments cannot be recovered get an invalid-arguments error
+- fix(agent): on Windows, commands chained with `&&` or `||` run on a shell that can parse them
+- fix(agent-tools): raise sandbox limits to 65536 open files and 16 GiB file size
+- feat(agent-tools): tool descriptions say when to use each tool, and `edit` gains `replace_all`
 - feat(agent): named per-project profiles, chosen per run (AH-186)
 - feat(agent): rules about which model answers what (AH-194)
 - feat(agent): answer "what should I run now", and a one-shot check that a project is in working order (AH-072)
@@ -133,7 +137,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 
 ### Discussion Rooms
 - feat(rooms): the Discussion Room engine, store and controller
-- feat(rooms): the Discussion Rooms UI â€” list, room page, editor, transcript and controls
+- feat(rooms): the Discussion Rooms UI — list, room page, editor, transcript and controls
 - feat(rooms): persistence commands and a typed service
 - fix(rooms): frame transcript text, cap dissent, classify storage errors, and redact
 - fix(rooms): refuse ids Windows would alias (trailing dot, device names)
@@ -152,6 +156,11 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(cowork): a run belongs to the session that started it (#8905)
 - fix(cowork): Stop ends a run whatever it is waiting on (#8905)
 - fix(cowork): give every file an explicit origin, and stop project reads crossing projects
+- feat(cowork): Cowork in the new design, with an output rail and Activity, Preview, Code and session-details panels
+- feat(cowork): the run summary shows while the run is going
+- feat(cowork): pull-request state and checks for a Cowork folder, read through the GitHub CLI (`agent_pr_status`) with no token stored
+- fix(cowork): Stop all aborts the model stream, tool loop, subagents and pending asks
+- fix(windows): sandboxed shells, background jobs and git helpers no longer flash console windows
 
 ### MCP
 - feat(mcp): trust a server by fingerprint, not the name it chose, with a per-server auto-approve toggle
@@ -161,6 +170,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(mcp): per-server logs and budgets, and portable agent bundles (AH-140, AH-144, AH-145)
 - feat(mcp): launch an imported server confined, or not at all
 - feat(mcp): let filesystem and jailed MCP servers read a session's attached folders
+- fix(mcp): duplicate tool names from two servers are namespaced as `{server}_{tool}` (janhq/jan#8975), and inline attachments are no longer mutated
 
 ### Memory
 - feat(memory): one canonical record per scope, a precedence chain enforced and stated in every prompt (AH-081..085)
@@ -191,6 +201,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(skills): user-level native skills in the CLI and the agent loop, declaring the tools they need and their version (AH-040, AH-121, AH-123, AH-124)
 - feat(cowork): offer enabled plugin skills to Cowork's skill tools, and refresh on plugin changes
 - feat(agent): a plugin lifecycle with typed errors, local installs, and enable/disable
+- feat(extensions): scope plugins and skills to the workspace or make them global, with enable/disable
 - feat(permissions): describe tool requests and refusals in plain language, and offer only real scopes
 - feat(permissions): let a rule name the one subject it is about, without binding the others (AH-007)
 - feat(policy): a permission policy as a reviewed file a project cannot loosen (AH-052, AH-187)
@@ -211,6 +222,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cli): benchmark the harness against a fixed task set (AH-196)
 - feat(sessions): hand a session to another computer and say what did not come along
 - feat(agent): search past runs and take a transcript out (AH-178)
+- feat(cli): `flint doctor` prints hardware info (`--json`), and `flint cli models list-local|info|delete` manage local models
 
 ### Models, providers and inference
 - feat(models): evidence-based model fit, a real compatibility test, and a preferred default
@@ -232,7 +244,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 ### Chat and composer
 - feat(chat): warn before sending images to a model without vision
 - feat(chat): per-chat model settings and a reasoning-effort bar (#2)
-- feat(chat): temporary chat lifecycle â€” keep, discard, and a leave guard (#3)
+- feat(chat): temporary chat lifecycle — keep, discard, and a leave guard (#3)
 - feat(chat): split a conversation into two independent panes, with a Details inspector
 - feat(chat): attach text and code without asking the model to see it
 - feat(composer): one @ menu for files, skills, agents and aliases, and name a selection as an alias
@@ -242,22 +254,35 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(chat): a tool call with unparseable arguments no longer breaks the rest of the conversation
 - fix(chat): a new chat starts from the last-used model, or the first local one
 - fix(messages): never persist or replay a tool call without arguments
+- feat(chat): sidebar chats grouped as Pinned, one collapsible group per project, then Ungrouped, with a filter and status marks (working, recent, waiting, pull request)
+- feat(chat): drag a chat onto a group, hover a row for a preview, and move between rows with the arrow keys
+- feat(chat): undo a chat delete from the toast
+- feat(chat): the window title leads with the number of approvals waiting
+- feat(chat): a new transcript and tool timeline, chat header, model picker, Details column and split pane
+- feat(composer): a new composer with an assistant menu and a tools drawer
+- fix(chat): the chat list shows each thread's real time and sorts correctly
 
 ### Design, onboarding and system
-- feat(design): the Graphite Studio redesign with a neutral charcoal dark theme (#15)
-- feat(design): the Jan Atelier redesign, integrated with the agent phases and beginner workflows (#11)
-- feat(design): one Atelier shell with a rail, contextual sidebar, context bar and status bar
-- feat(design): Atelier and Graphite components â€” buttons, dialogs, menus, sheets, switches, inputs, model dialogs and pickers
-- feat(design): bundled typefaces and a derived, contrast-checked accent
-- feat(design): rooms and agent messages in Graphite
+- feat(design): a new interface design, replacing the Graphite and Atelier redesigns (#15, #11): a 250px sidebar (Workspace, Engine, Chats, Support) beside a main panel with a 52px top header and breadcrumb, and a local-status card in the sidebar footer
+- feat(design): new colour tokens, a neutral Slate default accent, a Violet accent and Inter as the interface font, with a derived, contrast-checked accent; a saved Vermilion accent moves to Slate once
+- feat(design): theme, accent, font size and motion apply before first paint (no white flash in dark mode), and a new start-up loader follows the theme and Reduce motion
+- feat(design): a duotone icon set, brand logos for models and providers, and the flint rock as the favicon
+- feat(design): motion that follows Flint's own Reduce motion setting: the sidebar selection glides between rows, pages fade in, primary buttons ripple, the theme toggle reveals the new theme from the button, and figures count up
+- feat(design): redesigned components — buttons, dialogs, menus, sheets, switches, inputs, frames, segmented controls, chips and empty states — and redesigned Library, Models, provider, Tools & MCP, Extensions, Logs and System monitor pages
+- feat(overview): an Overview dashboard as the start page after setup — tokens generated, average speed and tool-call success with sparklines, tokens per day, latest activity and Cowork runs — from a local store that keeps 90 days, never leaves the machine and can be reset
+- feat(design): a notifications menu behind the header bell
+- feat(design): phone layouts for every page with every feature kept: a navigation sheet, a header overflow menu, stacked frames, and tabs or sheets for side panels
+- feat(ui): right-click context menus for plugins, skills, projects, messages, MCP servers and project files
+- feat(rooms): a Rooms landing page with running, waiting, turns and models figures, a "waiting for you" section, filters, room cards and templates; a room tree in the sidebar; and a new room page
 - feat(onboarding): an intention-led first run that resumes, skips and can be reopened
 - feat(settings): global settings search with focusable, structural targets grouped by section
-- feat(settings): a Permissions page to inspect and revoke grants, and a Memory page, in the Atelier language
-- feat(search): an Atelier search dialog and command palette, with rebindable shortcuts
+- feat(settings): a Permissions page to inspect and revoke grants, and a Memory page
+- feat(search): a redesigned search dialog and command palette, with rebindable shortcuts
 - feat(system): a system monitor and filterable log viewers
-- refactor(web-app): replace tabler icons with lucide-react in the Atelier UI
 - fix(ui): one header-row component so the two pages cannot drift, and a closed dialog stops swallowing clicks
 - fix(design): keep keyboard focus rings visible, and use the navigation sheet below 1024px
+- feat(settings): a new settings layout; Appearance gains a Reduce motion switch, an accent picker with a custom colour picker, and a font size that scales the whole interface
+- fix(ui): warnings use an amber that reads in both themes
 - fix(a11y): name the message edit and delete buttons
 
 ---

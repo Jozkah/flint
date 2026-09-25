@@ -329,7 +329,7 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 
 ## Screenshots
 
-Flint's interface in dark and light themes, captured at 2560x1440. The conversations, runs and figures shown are example content.
+Flint's interface in dark and light themes, captured from the app at 2560x1440 with sample chats, runs and figures.
 
 | | |
 |---|---|
