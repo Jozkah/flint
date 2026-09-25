@@ -544,6 +544,7 @@ pub(crate) fn global_catalog() -> Vec<SkillMeta> {
 /// Global-only user-invocable catalog: the user's own skills and plugins,
 /// no project involved. What the slash popup offers on folderless surfaces
 /// (Home, Rooms); the user-side counterpart of `global_catalog`.
+#[cfg(not(feature = "cli"))]
 pub(crate) fn global_user_catalog() -> Vec<SkillMeta> {
     let mut entries = discover_user(&[]);
     entries.extend(discover_user_plugins(&[]));

@@ -398,7 +398,6 @@ fn supervise_launch(
     token: &str,
     launch: Launch,
 ) -> Result<JobState, HarnessError> {
-    use std::io::Write;
     let job = crate::identity::JobId::parse(id)?;
     let owner = crate::identity::SessionId::parse(owner)?;
     std::fs::create_dir_all(worker_dir(data_folder)).map_err(|e| {

@@ -10,6 +10,10 @@
  * normal build the branch below is dead code and none of it ships.
  */
 
+// The store is already in the main bundle (the sidebar reads it), so it is
+// imported directly; the other engine modules stay behind the flag.
+import * as storeModule from './store'
+
 export type RoomsE2EHooks = Record<string, unknown>
 
 type HookTarget = { __janRoomsE2E?: RoomsE2EHooks }
@@ -23,7 +27,7 @@ export async function installRoomsE2EHooks(
   const [controller, store, participantModel, availability, context, providers, limits, types] =
     await Promise.all([
       import('./controller'),
-      import('./store'),
+      Promise.resolve(storeModule),
       import('./participantModel'),
       import('./availability'),
       import('./context'),

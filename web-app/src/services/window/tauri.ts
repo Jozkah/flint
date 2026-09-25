@@ -5,6 +5,7 @@
 import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import type { WindowConfig, WebviewWindowInstance } from './types'
 import { DefaultWindowService } from './default'
+import { listen } from '@tauri-apps/api/event'
 
 /**
  * The theme listener of each open labeled window. listen() returns an
@@ -193,7 +194,7 @@ export class TauriWindowService extends DefaultWindowService {
 
   private setupThemeListenerForWindow(label: string, window: WebviewWindow): void {
     // Listen to theme change events from Tauri backend
-    import('@tauri-apps/api/event')
+    Promise.resolve({ listen })
       .then(async ({ listen }) => {
         const unlisten = await listen<string>('theme-changed', async (event) => {
           const theme = event.payload

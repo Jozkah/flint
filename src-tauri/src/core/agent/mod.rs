@@ -26,6 +26,8 @@ pub mod compaction_policy;
 pub mod consensus;
 pub mod context;
 pub mod context_pressure;
+// Settings plumbing for the desktop commands; the CLI build uses only part of it.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 pub mod desktop_bridge;
 pub mod destructive;
 pub mod diagnostics;
@@ -37,6 +39,7 @@ pub mod genai_bridge;
 pub mod git;
 #[cfg(feature = "cli")]
 pub mod global_config;
+#[cfg(not(feature = "cli"))]
 pub mod github_pr;
 pub mod github_recovery;
 // `/goal` is a terminal-UI command; the desktop build compiles the module
@@ -81,6 +84,8 @@ pub mod session;
 pub mod session_bundle;
 pub mod skill_hub;
 pub mod skills;
+// The slash-command catalog serves the desktop popup only.
+#[cfg(not(feature = "cli"))]
 pub mod slash;
 pub mod spend;
 pub mod state_schema;

@@ -5,6 +5,7 @@ import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { composeWindowTitle, type WindowTitleInput } from '@/lib/windowTitle'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 
 /**
  * Keep the main window's native title naming what it shows.
@@ -44,7 +45,7 @@ export function useWindowTitle(): string {
     document.title = title
     if (!IS_TAURI) return
     let cancelled = false
-    import('@tauri-apps/api/webviewWindow')
+    Promise.resolve({ getCurrentWebviewWindow })
       .then(({ getCurrentWebviewWindow }) => {
         if (cancelled) return
         const win = getCurrentWebviewWindow()

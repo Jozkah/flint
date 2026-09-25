@@ -27,6 +27,8 @@ import type {
   RoomJournalRecord,
   RoomSummary,
 } from '@/lib/rooms/types'
+import * as roomsStoreModule from '@/lib/rooms/store'
+import * as roomsPersistenceModule from '@/lib/rooms/persistence'
 
 export type RoomsUiError = { code?: string; message: string }
 
@@ -231,9 +233,9 @@ let enginePromise: Promise<RoomsUiApi> | null = null
 export function loadEngineApi(): Promise<RoomsUiApi> {
   if (!enginePromise) {
     enginePromise = Promise.all([
-      import('@/lib/rooms/store'),
+      Promise.resolve(roomsStoreModule),
       import('@/lib/rooms/controller'),
-      import('@/lib/rooms/persistence'),
+      Promise.resolve(roomsPersistenceModule),
     ])
       .then((mods) => {
         const merged = Object.assign({}, ...(mods as Record<string, unknown>[]))

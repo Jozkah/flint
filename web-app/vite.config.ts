@@ -76,6 +76,12 @@ export default defineConfig(() => {
     //
     // 1. prevent vite from obscuring rust errors
     clearScreen: false,
+    // The app is served from disk inside the desktop shell, so bundle size is
+    // not a download cost. The largest chunks are the route tree and mermaid
+    // (itself loaded on demand).
+    build: {
+      chunkSizeWarningLimit: 2500,
+    },
     // 2. tauri expects a fixed port, fail if that port is not available
     server: {
       port: 1420,

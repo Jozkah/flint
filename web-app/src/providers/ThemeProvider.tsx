@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useTheme } from '@/hooks/useTheme'
 import { isPlatformTauri } from '@/lib/platform/utils'
+import { listen } from '@tauri-apps/api/event'
 
 export function ThemeProvider() {
   const { isDark, setIsDark, activeTheme } = useTheme()
@@ -40,7 +41,7 @@ export function ThemeProvider() {
       // XDG Desktop Portal. Source-of-truth is the Rust-side portal read +
       // SettingChanged signal, re-emitted as the `theme-changed` event.
       Promise.all([
-        import('@tauri-apps/api/event'),
+        Promise.resolve({ listen }),
         import('@tauri-apps/api/core'),
       ])
         .then(async ([{ listen }, { invoke }]) => {
