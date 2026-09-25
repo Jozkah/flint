@@ -41,11 +41,52 @@ export const WEB_FETCH_INPUT_SCHEMA = {
   type: 'object',
   properties: {
     url: { type: 'string', description: 'The http(s) URL to fetch.' },
+    offset: {
+      type: 'integer',
+      description:
+        'Character offset to start reading from, to continue a page that was cut off (default 0).',
+    },
   },
   required: ['url'],
 } as const
 
-type WebToolInput = { query?: unknown; count?: unknown; url?: unknown }
+type WebToolInput = {
+  query?: unknown
+  count?: unknown
+  url?: unknown
+  offset?: unknown
+}
+
+/** Most page text one web_fetch call returns, in characters. */
+export const WEB_FETCH_MAX_CHARS = 12_000
+
+/**
+ * How long a failed fetch of a URL is remembered. A model that just saw a
+ * URL fail tends to fetch the very same URL again straight away (the audit
+ * saw three archive.org retries in one turn); inside this window it gets the
+ * earlier error back instead of another network round trip.
+ */
+export const WEB_FETCH_FAILURE_TTL_MS = 2 * 60_000
+
+const failedFetches = new Map<string, { error: string; at: number }>()
+
+/** Forget remembered fetch failures (tests). */
+export function resetWebFetchFailures(): void {
+  failedFetches.clear()
+}
+
+/**
+ * One window of a fetched page's text: at most WEB_FETCH_MAX_CHARS from
+ * `offset`, with a note saying how much is left and how to read on.
+ */
+export function pageWindow(content: string, offset: number): string {
+  const start = Math.min(Math.max(0, Math.floor(offset)), content.length)
+  const end = Math.min(content.length, start + WEB_FETCH_MAX_CHARS)
+  const slice = content.slice(start, end)
+  const more = content.length - end
+  if (more <= 0) return slice
+  return `${slice}\n\n[truncated, ${more} chars more -- call web_fetch again with offset ${end} to read on]`
+}
 type WebToolResult = { content?: unknown; error?: string }
 
 /**
@@ -79,18 +120,36 @@ export async function executeWebTool(
     }
     if (toolName === 'web_fetch') {
       const url = typeof input?.url === 'string' ? input.url : ''
-      const page = await webFetch(url, apiKey, searchProvider, endpoint)
-      const text = `Title: ${page.title}\nURL: ${page.url}\n\n${page.content}${
-        page.truncated ? '\n\n[content truncated]' : ''
+      const offset = typeof input?.offset === 'number' ? input.offset : 0
+      const key = url.trim()
+      const failed = failedFetches.get(key)
+      if (failed && Date.now() - failed.at < WEB_FETCH_FAILURE_TTL_MS) {
+        return {
+          error: `${failed.error} (this URL already failed moments ago; not fetched again -- try a different source)`,
+        }
+      }
+      let page: Awaited<ReturnType<typeof webFetch>>
+      try {
+        page = await webFetch(url, apiKey, searchProvider, endpoint)
+      } catch (e) {
+        failedFetches.set(key, { error: messageOf(e), at: Date.now() })
+        throw e
+      }
+      failedFetches.delete(key)
+      const body = pageWindow(page.content ?? '', offset)
+      const text = `Title: ${page.title}\nURL: ${page.url}\n\n${body}${
+        page.truncated ? '\n\n[content truncated at the source]' : ''
       }`
       return { content: text }
     }
     return { error: `Unknown web tool '${toolName}'` }
   } catch (e) {
-    const message =
-      e && typeof e === 'object' && 'message' in e
-        ? String((e as { message: unknown }).message)
-        : String(e)
-    return { error: message }
+    return { error: messageOf(e) }
   }
+}
+
+function messageOf(e: unknown): string {
+  return e && typeof e === 'object' && 'message' in e
+    ? String((e as { message: unknown }).message)
+    : String(e)
 }

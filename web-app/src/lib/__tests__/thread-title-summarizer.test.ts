@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { cleanTitle, generateThreadTitle } from '../thread-title-summarizer'
+import {
+  cleanTitle,
+  fallbackTitle,
+  generateThreadTitle,
+  resetTitleGuards,
+} from '../thread-title-summarizer'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
 
 // Mock AI SDK generateText
@@ -106,6 +111,7 @@ describe('generateThreadTitle', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    resetTitleGuards()
     mockSelectedProvider = 'test-provider'
     mockGetProviderByName.mockReturnValue(mockProvider)
     mockCreateModel.mockResolvedValue(mockModel)
@@ -167,32 +173,32 @@ describe('generateThreadTitle', () => {
     expect(result).toBeNull()
   })
 
-  it('returns null when provider lookup fails', async () => {
+  it('falls back to the message when provider lookup fails', async () => {
     mockGetProviderByName.mockReturnValueOnce(undefined)
 
     const controller = new AbortController()
     const result = await generateThreadTitle('test message', controller.signal)
 
-    expect(result).toBeNull()
+    expect(result).toBe('test message')
     expect(mockCreateModel).not.toHaveBeenCalled()
   })
 
-  it('returns null when model generation fails', async () => {
+  it('falls back to the message when model generation fails', async () => {
     mockGenerateText.mockRejectedValue(new Error('Network error'))
 
     const controller = new AbortController()
     const result = await generateThreadTitle('test message', controller.signal)
 
-    expect(result).toBeNull()
+    expect(result).toBe('test message')
   })
 
-  it('returns null when generated text cleans to nothing', async () => {
+  it('falls back to the message when generated text cleans to nothing', async () => {
     mockGenerateText.mockResolvedValue({ text: '!!!' })
 
     const controller = new AbortController()
     const result = await generateThreadTitle('test message', controller.signal)
 
-    expect(result).toBeNull()
+    expect(result).toBe('test message')
   })
 
   it('truncates long messages before sending to model', async () => {
@@ -219,5 +225,31 @@ describe('generateThreadTitle', () => {
         abortSignal: controller.signal,
       })
     )
+  })
+
+  it('runs once per chat and source, sharing an in-flight call', async () => {
+    let resolve!: (v: { text: string }) => void
+    mockGenerateText.mockReturnValue(new Promise((r) => (resolve = r)))
+    const signal = new AbortController().signal
+    const a = generateThreadTitle('hi', signal, 't1', 'hi')
+    const b = generateThreadTitle('hi', signal, 't1', 'hi')
+    resolve({ text: 'Greeting' })
+    expect(await a).toBe('Greeting')
+    expect(await b).toBe('Greeting')
+    expect(await generateThreadTitle('hi', signal, 't1', 'hi')).toBeNull()
+    expect(mockGenerateText).toHaveBeenCalledTimes(1)
+    // An edited first message titles again.
+    mockGenerateText.mockResolvedValue({ text: 'Other' })
+    expect(await generateThreadTitle('bye', signal, 't1', 'bye')).toBe('Other')
+  })
+})
+
+describe('fallbackTitle', () => {
+  it('keeps the first few words of a long prompt', () => {
+    expect(
+      fallbackTitle('Count from 1 to 600, one number per line, no other text.')
+    ).toBe('Count from 1 to 600, one')
+    expect(fallbackTitle('  ')).toBeNull()
+    expect(fallbackTitle('a'.repeat(100))!.length).toBeLessThanOrEqual(60)
   })
 })

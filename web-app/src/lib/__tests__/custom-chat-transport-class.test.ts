@@ -1,5 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { CustomChatTransport, normalizeToolInputSchema } from '../custom-chat-transport'
+import {
+  CustomChatTransport,
+  normalizeToolInputSchema,
+  SHELL_ROUTING_GUIDANCE,
+} from '../custom-chat-transport'
 
 // Mock all the heavy dependencies
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -169,6 +173,7 @@ describe('CustomChatTransport', () => {
     try {
       const text = transport.buildAgentToolsSystemInstruction()
       expect(text).toContain('call request_access with the narrowest absolute path')
+      expect(text).toContain(SHELL_ROUTING_GUIDANCE)
       // The inventory does not depend on the agent tools being on.
       useAgentToolsConfig.setState({ agentToolsEnabled: false })
       const prompt = (

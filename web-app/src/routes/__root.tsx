@@ -40,6 +40,7 @@ import { MigrationAssistant } from '@/containers/MigrationAssistant'
 import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 import { useWindowTitle } from '@/hooks/useWindowTitle'
 import { useAppViewport } from '@/hooks/useAppViewport'
+import { useApprovalWaitNotifier } from '@/hooks/useApprovalWaitNotifier'
 import { detectWindowChrome } from '@/lib/titlebar'
 
 export const Route = createRootRoute({
@@ -59,6 +60,7 @@ const AppLayout = () => {
   useClearSettingsSearchOnExit()
   useWindowTitle()
   useAppViewport()
+  useApprovalWaitNotifier()
   const appDrawsChrome = detectWindowChrome() === 'custom'
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)

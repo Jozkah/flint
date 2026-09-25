@@ -14,6 +14,71 @@ type ThreadContent = NonNullable<ThreadMessage['content']>[number]
  * Convert AI SDK UIMessage to Flint's ThreadMessage format.
  * This allows using chatMessages from useChat with ThreadContent component.
  */
+/** Longest tool output kept in messages.jsonl, in characters. */
+export const PERSISTED_TOOL_OUTPUT_MAX = 20_000
+
+/** A tool_call content item as persisted, with how the call settled. */
+export type PersistedToolCall = ThreadContent & {
+  /** 'output-error' or 'output-denied' when the call did not succeed. */
+  tool_state?: string
+  /** Why the call failed or was refused, shown again after a reload. */
+  error_text?: string
+}
+
+function capText(text: string): string {
+  if (text.length <= PERSISTED_TOOL_OUTPUT_MAX) return text
+  const more = text.length - PERSISTED_TOOL_OUTPUT_MAX
+  return `${text.slice(0, PERSISTED_TOOL_OUTPUT_MAX)}\n[output truncated, ${more} chars more]`
+}
+
+/**
+ * A tool output as saved: small outputs unchanged, a long one cut to
+ * PERSISTED_TOOL_OUTPUT_MAX characters (an object is kept as its truncated
+ * JSON text) so one big result cannot bloat the thread file.
+ */
+export function capToolOutput(output: unknown): unknown {
+  if (output == null) return output
+  if (typeof output === 'string') return capText(output)
+  let json: string | undefined
+  try {
+    json = JSON.stringify(output)
+  } catch {
+    return String(output)
+  }
+  if (json === undefined || json.length <= PERSISTED_TOOL_OUTPUT_MAX) return output
+  return capText(json)
+}
+
+/**
+ * How a settled tool part failed, or null when it succeeded or is still
+ * running. A denied call without its own text gets a stock reason so a
+ * reopened chat still says it was refused.
+ */
+export function settledToolError(part: {
+  state?: string
+  errorText?: unknown
+  approval?: { reason?: unknown }
+}): { state: string; errorText: string } | null {
+  if (part.state === 'output-error') {
+    const text =
+      typeof part.errorText === 'string' && part.errorText
+        ? part.errorText
+        : 'Tool call failed.'
+    return { state: 'output-error', errorText: capText(text) }
+  }
+  if (part.state === 'output-denied') {
+    const reason = part.approval?.reason
+    const text =
+      typeof part.errorText === 'string' && part.errorText
+        ? part.errorText
+        : typeof reason === 'string' && reason
+          ? `Denied: ${reason}`
+          : 'The user denied this tool call.'
+    return { state: 'output-denied', errorText: capText(text) }
+  }
+  return null
+}
+
 export function convertUIMessageToThreadMessage(
   uiMessage: UIMessage,
   threadId: string
@@ -298,7 +363,17 @@ export function convertThreadMessageToUIMessage(
     } else if (content.type === 'tool_call') {
       // Handle tool call content items - direct conversion from flat structure
       // Use AI SDK v5 UIToolInvocation format: toolCallId, state: 'output-available'/'input-available'
-      if (content.output != null) {
+      const persisted = content as PersistedToolCall
+      if (typeof persisted.error_text === 'string') {
+        // A failed or denied call: show why, as it did before the reload.
+        parts.push({
+          type: `tool-${content.tool_name}`,
+          toolCallId: content.tool_call_id,
+          input: content.input ?? {},
+          state: 'output-error',
+          errorText: persisted.error_text,
+        })
+      } else if (content.output != null) {
         parts.push({
           type: `tool-${content.tool_name}`,
           toolCallId: content.tool_call_id,
@@ -523,15 +598,20 @@ export function extractContentPartsFromUIMessage(message: UIMessage): ThreadCont
       // Handle tool call parts - flatten structure to match parts format
       const toolName = (part.type as string).replace('tool-', '')
       const toolCallId = part.toolCallId || part.toolInvocationId
-      const input = part.input || part.args
-      const output = part.output || part.result
+      const input = part.input ?? part.args
+      const output = part.output ?? part.result
 
-      const toolCallContent = {
+      const toolCallContent: PersistedToolCall = {
         type: 'tool_call' as ContentType.ToolCall,
         tool_call_id: toolCallId,
         tool_name: toolName,
         input: input,
-        output: output,
+        output: capToolOutput(output),
+      }
+      const settled = settledToolError(part)
+      if (settled) {
+        toolCallContent.tool_state = settled.state
+        toolCallContent.error_text = settled.errorText
       }
       content.push(toolCallContent)
     }
@@ -549,4 +629,43 @@ export function extractContentPartsFromUIMessage(message: UIMessage): ThreadCont
   }
 
   return content
+}
+
+/**
+ * The stored copy of an assistant message with tool results filled in from
+ * its live UI message, or null when nothing changed.
+ *
+ * onFinish saves the reply before its tools run, so the last step's results
+ * (and any failed call) only ever lived in memory: a reopened chat showed
+ * those calls as still running, with no output or error. Only tool calls the
+ * stored copy has not settled are touched; everything else stays as saved.
+ */
+export function mergeSettledToolParts(
+  stored: ThreadMessage,
+  live: UIMessage
+): ThreadMessage | null {
+  if (!Array.isArray(stored.content)) return null
+  const settled = new Map<string, PersistedToolCall>()
+  for (const item of extractContentPartsFromUIMessage(live)) {
+    const call = item as PersistedToolCall
+    if (
+      call.type === 'tool_call' &&
+      call.tool_call_id &&
+      (call.output != null || call.error_text != null)
+    ) {
+      settled.set(call.tool_call_id, call)
+    }
+  }
+  if (settled.size === 0) return null
+  let changed = false
+  const content = stored.content.map((item) => {
+    const call = item as PersistedToolCall
+    if (call.type !== 'tool_call' || !call.tool_call_id) return item
+    if (call.output != null || call.error_text != null) return item
+    const next = settled.get(call.tool_call_id)
+    if (!next) return item
+    changed = true
+    return { ...call, ...next, input: call.input ?? next.input }
+  })
+  return changed ? { ...stored, content } : null
 }

@@ -96,6 +96,7 @@ import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { recordGeneration } from '@/stores/engine-activity-store'
+import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import {
   createUsageCollector,
   readTokenUsage,
@@ -138,6 +139,17 @@ export type ServiceHub = {
     >
   }
 }
+
+/**
+ * Which shell to reach for, in order. Third-party shell MCPs (super-shell and
+ * the like) have their own whitelists and program/args shapes, and a model
+ * offered them beside bash and git kept picking them and failing.
+ */
+export const SHELL_ROUTING_GUIDANCE = [
+  'Choosing a shell: use the git tool for every git and gh command, the',
+  'built-in bash tool for all other commands, and an MCP shell or terminal',
+  'tool only when the user names it or asks for it.',
+].join(' ')
 
 const SCHEMA_PRIMITIVE_TYPES = new Set([
   'string',
@@ -1349,6 +1361,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             if (!isValidToolName(tool.name)) return
             const serverName = tool.server || 'unknown'
             if (isToolDisabled(serverName, tool.name)) return
+            // A tool that approves the server's own held commands is never
+            // offered: Flint's prompt is the only approval, and the model
+            // looped on approve/execute pairs when it had one.
+            if (isSelfApprovalTool(tool.name)) return
             const prevServer = seenBy.get(tool.name)
             if (prevServer && prevServer !== serverName) {
               console.warn(
@@ -2385,6 +2401,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     ]
     // Stating the limits up front is cheaper than letting the model discover
     // them by having a command refused. Only when bash is actually offered.
+    parts.push(SHELL_ROUTING_GUIDANCE)
     if (sandboxEnforces()) {
       parts.push(
         'bash runs commands in that workspace under an OS sandbox: it starts',

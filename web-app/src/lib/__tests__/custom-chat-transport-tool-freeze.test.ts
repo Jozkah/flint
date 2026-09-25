@@ -133,4 +133,16 @@ describe('CustomChatTransport smart-tool-routing freeze', () => {
     await t.refreshTools(undefined, true)
     expect(Object.keys(t.getTools())).toContain('retrieve')
   })
+
+  it('never offers a self-approval MCP tool', async () => {
+    h.getRelevantTools.mockResolvedValue([
+      { name: 'execute_command', description: '', inputSchema: {}, server: 'srv' },
+      { name: 'approve_command', description: '', inputSchema: {}, server: 'srv' },
+    ])
+    transport.setLastUserMessage('run it')
+    await transport.refreshTools()
+    const names = Object.keys(transport.getTools())
+    expect(names).toContain('execute_command')
+    expect(names).not.toContain('approve_command')
+  })
 })

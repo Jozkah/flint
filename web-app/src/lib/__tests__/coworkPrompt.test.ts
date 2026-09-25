@@ -546,7 +546,8 @@ describe('agent working rules and environment facts', () => {
       'do it with your tools; do not describe',
       'unless a tool actually ran it',
       'Your tools are exactly the ones provided in this request',
-      'Use an MCP shell or exec server only when the user asked',
+      'use an MCP shell or exec server only when the user asked',
+      'the `git` tool for every git and gh command, then `bash`',
       'at most 72 characters',
     ]) {
       expect(out).toContain(needle)
