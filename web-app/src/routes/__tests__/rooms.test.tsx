@@ -127,14 +127,15 @@ describe('room detail route', () => {
     expect(screen.getByLabelText('Message to the room')).toBeInTheDocument()
     expect(screen.getByRole('region', { name: 'Room controls' })).toBeInTheDocument()
     expect(screen.getByRole('form', { name: 'Room settings' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'All rooms' })).toHaveAttribute('href', '/rooms')
+    // The sidebar's Rooms row is the way back; the page has no back link.
+    expect(screen.queryByRole('link', { name: 'All rooms' })).not.toBeInTheDocument()
   })
 
   it('keeps narrow widths usable: the side panel is full width below lg', () => {
     const { api } = createFakeApi({ room: makeRoom() })
     renderWithApi(<Detail />, api)
     const panel = screen.getByTestId('room-side-panel')
-    expect(panel).toHaveClass('w-full', 'lg:w-[384px]')
+    expect(panel).toHaveClass('w-full', 'lg:w-[370px]')
     expect(panel.className).not.toMatch(/(^|\s)min-w-\[/)
   })
 

@@ -4,9 +4,9 @@ import { formatDuration, formatNumber, formatUsd, stopReasonText } from './roomU
 
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex min-w-0 items-baseline gap-1.5">
+    <div className="flex min-w-0 items-baseline gap-1">
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums text-foreground">{children}</dd>
+      <dd className="font-semibold tabular-nums text-foreground">{children}</dd>
     </div>
   )
 }
@@ -20,9 +20,9 @@ export function RoomUsageBar({ room }: { room: Room }) {
   return (
     <section
       aria-label={t('rooms:usage.label')}
-      className="border-b border-border bg-card px-4 py-2 text-xs"
+      className="shrink-0 border-b border-dashed border-border px-4 py-[7px] text-xs"
     >
-      <dl className="flex flex-wrap gap-x-4 gap-y-1">
+      <dl className="flex flex-wrap gap-x-[18px] gap-y-1.5">
         <Stat label={t('rooms:usage.turns')}>
           {of(formatNumber(usage.turns), formatNumber(limits.maxTurns))}
         </Stat>
@@ -54,7 +54,7 @@ export function RoomUsageBar({ room }: { room: Room }) {
         </Stat>
       </dl>
       {room.stopReason && room.status !== 'running' && (
-        <p className="mt-1 text-muted-foreground" data-testid="room-stop-reason">
+        <p className="mt-1.5 text-muted-foreground" data-testid="room-stop-reason">
           {t('rooms:usage.stopReason', { reason: stopReasonText(room.stopReason, t) })}
         </p>
       )}

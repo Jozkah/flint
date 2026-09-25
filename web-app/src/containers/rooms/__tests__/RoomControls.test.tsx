@@ -25,7 +25,9 @@ describe('RoomControls', () => {
   it('draft: only Start is enabled and it starts the room', async () => {
     const { controller } = setup('draft')
     expect(btn('Start')).toBeEnabled()
-    for (const name of ['Pause', 'Cancel turn', 'Stop', 'Next speaker', 'Call vote', 'Final positions', 'Synthesize'])
+    // One main button: a room that is not running offers Start, not Pause.
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
+    for (const name of ['Cancel turn', 'Stop', 'Next speaker', 'Call vote', 'Final positions', 'Synthesize'])
       expect(btn(name)).toBeDisabled()
     await userEvent.click(btn('Start'))
     expect(controller.start).toHaveBeenCalledWith('r1')
@@ -43,7 +45,7 @@ describe('RoomControls', () => {
 
   it('running mid-turn: pause, cancel turn and stop; no between-turn actions', async () => {
     const { controller } = setup('running', { live: true })
-    expect(btn('Start')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
     expect(btn('Pause')).toBeEnabled()
     expect(btn('Cancel turn')).toBeEnabled()
     expect(btn('Stop')).toBeEnabled()
@@ -58,7 +60,7 @@ describe('RoomControls', () => {
     const user = userEvent.setup()
     const { controller } = setup('paused')
     expect(screen.queryByRole('button', { name: 'Start' })).not.toBeInTheDocument()
-    expect(btn('Pause')).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Pause' })).not.toBeInTheDocument()
     expect(btn('Cancel turn')).toBeDisabled()
 
     await user.click(btn('Resume'))
@@ -108,6 +110,32 @@ describe('RoomControls', () => {
     expect(screen.queryByRole('menuitem', { name: /Down/ })).not.toBeInTheDocument()
     fireEvent.click(item)
     await waitFor(() => expect(fake.controller.selectNext).toHaveBeenCalledWith('r1', 'p2'))
+  })
+
+  it('picks the next speaker straight from the up-next queue', async () => {
+    const fake = createFakeApi()
+    const room = makeRoom({
+      status: 'awaiting-user',
+      participants: [
+        makeParticipant('p1', { name: 'Alice' }),
+        makeParticipant('p2', { name: 'Bob', order: 1 }),
+      ],
+    })
+    renderWithApi(<RoomControls room={room} />, fake.api)
+    expect(screen.getByText('Up next')).toBeInTheDocument()
+    await userEvent.click(btn('Let Bob speak next'))
+    expect(fake.controller.selectNext).toHaveBeenCalledWith('r1', 'p2')
+  })
+
+  it('names who is speaking during a live turn', () => {
+    const fake = createFakeApi({
+      liveTurn: {
+        ...live,
+        author: { kind: 'participant', participantId: 'p1', name: 'Alice' },
+      },
+    })
+    renderWithApi(<RoomControls room={makeRoom({ status: 'running' })} />, fake.api)
+    expect(screen.getByText('Alice is speaking')).toBeInTheDocument()
   })
 
   it('shows busy state and engine errors', () => {

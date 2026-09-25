@@ -1,0 +1,27 @@
+/*
+ * Room-only motion. Kept beside the rooms containers instead of index.css so
+ * the design tokens file stays shared-page material only.
+ */
+@keyframes room-eq {
+  50% {
+    transform: scaleY(0.35);
+  }
+}
+
+.room-eq > i {
+  display: block;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--primary);
+  transform-origin: bottom;
+}
+.room-eq > i:nth-child(1) { height: 40%; }
+.room-eq > i:nth-child(2) { height: 90%; animation-delay: 0.15s; }
+.room-eq > i:nth-child(3) { height: 60%; animation-delay: 0.3s; }
+.room-eq > i:nth-child(4) { height: 80%; animation-delay: 0.45s; }
+
+/* Follows Flint's own Reduce motion setting (html.reduce-motion), like the
+   motion-safe: variant does. */
+html:not(.reduce-motion) .room-eq > i {
+  animation: room-eq 1s ease-in-out infinite;
+}

@@ -65,7 +65,9 @@ describe('RoomTranscript', () => {
     render(<RoomTranscript room={room} journal={asJournal(messages)} liveTurn={null} />)
 
     const [speech, interrupted] = byKind('speech')
-    expect(within(speech).getByText('Alice · skeptic · tool-model')).toBeInTheDocument()
+    // Name in the participant's colour, role and model muted beside it.
+    expect(within(speech).getByText('Alice')).toBeInTheDocument()
+    expect(speech.querySelector('header')).toHaveTextContent('Alice · skeptic · tool-model')
     expect(within(speech).getByText('to @Bob')).toBeInTheDocument()
     expect(within(interrupted).getByText('Interrupted')).toBeInTheDocument()
 

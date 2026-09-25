@@ -23,6 +23,7 @@ import {
   type VoteTally,
 } from './roomUi'
 import { RoomMessageText } from './RoomMessageText'
+import { RoomAvatar } from './RoomAvatar'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -45,25 +46,40 @@ function authorLabel(author: RoomAuthor, room: Room | null, t: T): string {
 }
 
 /**
- * The message author in the transcript header. Each participant reads in their
- * own stable color (the same color their `@mentions` get), with the role and
- * model kept muted beside the name so the name is what the color highlights.
+ * The message author in the transcript header: the model's logo, then the
+ * name in the participant's stable color (the same color their `@mentions`
+ * get), with the role and model kept muted beside it so the name is what the
+ * color highlights.
  */
 function AuthorName({ author, room, t }: { author: RoomAuthor; room: Room | null; t: T }) {
   if (author.kind === 'participant') {
+    const p = findParticipant(room, author.participantId)
+    const name = p?.name || author.name || t('rooms:transcript.unknownParticipant')
+    const full = authorLabel(author, room, t)
     return (
-      <span className="font-semibold" style={{ color: participantColor(author.participantId) }}>
-        {authorLabel(author, room, t)}
-      </span>
+      <>
+        <RoomAvatar
+          model={p?.model}
+          name={name}
+          color={participantColor(author.participantId)}
+          size={18}
+        />
+        <span className="min-w-0" title={full}>
+          <span className="font-semibold" style={{ color: participantColor(author.participantId) }}>
+            {name}
+          </span>
+          <span className="text-muted-foreground">{full.slice(name.length)}</span>
+        </span>
+      </>
     )
   }
-  return <span className="font-medium text-foreground">{authorLabel(author, room, t)}</span>
+  return <span className="font-semibold text-foreground">{authorLabel(author, room, t)}</span>
 }
 
 /** Model output is untrusted: always plain text, whitespace preserved. */
 function PlainText({ text, className }: { text: string; className?: string }) {
   return (
-    <p className={cn('whitespace-pre-wrap break-words text-sm text-foreground', className)}>
+    <p className={cn('whitespace-pre-wrap break-words text-[13px] text-fg-2', className)}>
       {text}
     </p>
   )
@@ -73,10 +89,10 @@ function Badge({ tone, children }: { tone: 'warn' | 'error' | 'info'; children: 
   return (
     <span
       className={cn(
-        'inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium',
-        tone === 'error' && 'bg-destructive/10 text-destructive',
-        tone === 'warn' && 'bg-warning-tint text-warning',
-        tone === 'info' && 'bg-muted text-muted-foreground'
+        'inline-flex items-center rounded-full px-[7px] py-px text-[11px]',
+        tone === 'error' && 'bg-destructive-tint font-medium text-destructive',
+        tone === 'warn' && 'bg-warning-tint font-medium text-warning',
+        tone === 'info' && 'bg-accent text-muted-foreground'
       )}
     >
       {children}
@@ -145,8 +161,8 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
 
   return (
-    <div className="mb-1.5" data-testid="message-tools">
-      <div className="flex flex-wrap items-center gap-1">
+    <div data-testid="message-tools">
+      <div className="flex flex-wrap items-center gap-1.5">
         {calls.map((c, i) => {
           const tone = TONE_CLASSES[toneFor(c)]
           const Icon = toolIcon(c.name)
@@ -156,8 +172,8 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
             <span
               key={`${c.name}-${i}`}
               className={cn(
-                'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium',
-                c.ok ? 'bg-sunken text-ink-2' : 'bg-destructive-tint text-destructive'
+                'inline-flex h-[22px] items-center gap-[5px] rounded-md px-2 font-mono text-[11.5px]',
+                c.ok ? 'bg-accent text-secondary-foreground' : 'bg-destructive-tint text-destructive'
               )}
             >
               <Icon
@@ -174,11 +190,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
             data-testid="tool-trace-toggle"
-            className="inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex cursor-pointer items-center gap-[3px] rounded-md px-1 py-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             <ChevronDown
               className={cn(
-                'size-3 shrink-0 transition-transform',
+                'size-3 shrink-0 transition-transform duration-200',
                 expanded ? 'rotate-0' : '-rotate-90'
               )}
               aria-hidden
@@ -189,7 +205,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
       </div>
       {expanded && hasDetails && (
         <div
-          className="mt-2 ml-1.5 space-y-3 border-l border-border pl-3"
+          className="mt-1.5 space-y-2.5 rounded-lg bg-muted px-2.5 py-2 motion-safe:animate-dd-in"
           data-testid="tool-trace-details"
         >
           {calls.map((c, i) => {
@@ -218,7 +234,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                     <p className="text-[11px] font-medium text-muted-foreground">
                       {t('rooms:transcript.toolArgs')}
                     </p>
-                    <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-code px-3 py-2">
+                    <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-card px-3 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
                       {rows.map(([k, v], r) => (
                         <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
                           {k ? (
@@ -251,7 +267,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
                         'max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
                         isError
                           ? 'border border-destructive/30 bg-destructive-tint text-destructive'
-                          : 'bg-code text-foreground'
+                          : 'bg-card text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
                       )}
                     >
                       {c.output}
@@ -286,21 +302,19 @@ function MessageBody({
       <RoomMessageText
         text={stripConclusion(message.text).text}
         mentionColors={mentionColors}
-        className="text-sm"
+        className="text-[13.5px] leading-[1.6] text-fg-2"
       />
       {message.kind === 'vote-call' && (
-        <p className="mt-1 text-xs text-muted-foreground" data-testid="vote-tally">
+        <p className="text-xs text-muted-foreground tabular-nums" data-testid="vote-tally">
           {t('rooms:transcript.tally', tally ?? { agree: 0, disagree: 0, abstain: 0 })}
         </p>
       )}
       {message.kind === 'moderator-note' &&
         message.directive &&
         message.directive.disagreements.length > 0 && (
-          <div className="mt-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              {t('rooms:transcript.disagreements')}
-            </p>
-            <ul className="ml-4 list-disc text-sm">
+          <div className="text-[12.5px]">
+            <p className="font-semibold text-foreground">{t('rooms:transcript.disagreements')}</p>
+            <ul className="mt-1 ml-[18px] list-disc text-muted-foreground">
               {message.directive.disagreements.map((d, i) => (
                 <li key={i} className="whitespace-pre-wrap break-words">
                   {d}
@@ -313,9 +327,9 @@ function MessageBody({
         <section
           aria-label={t('rooms:transcript.dissent')}
           data-testid="synthesis-dissent"
-          className="mt-3 rounded-md border border-warning/40 bg-warning-tint p-3"
+          className="rounded-lg bg-warning-tint px-2.5 py-2 text-[12.5px]"
         >
-          <h4 className="mb-1 text-xs font-semibold text-warning">
+          <h4 className="mb-1 text-xs font-semibold text-foreground">
             {t('rooms:transcript.dissent')}
           </h4>
           {message.dissent.length === 0 ? (
@@ -333,7 +347,7 @@ function MessageBody({
         </section>
       )}
       {message.status === 'failed' && message.error && (
-        <p className="mt-1 text-xs text-destructive" data-testid="message-error">
+        <p className="text-xs text-destructive" data-testid="message-error">
           {message.error.message}
         </p>
       )}
@@ -404,6 +418,14 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
 
   const showJump = !follow
 
+  // Messages already in the journal when it first loads appear at once; only
+  // the ones that arrive afterwards rise in, so opening a room is not a cascade.
+  const seenRef = useRef<Set<string> | null>(null)
+  if (seenRef.current === null && messages.length > 0) {
+    seenRef.current = new Set(messages.map((m) => m.id))
+  }
+  const isFresh = (id: string) => seenRef.current !== null && !seenRef.current.has(id)
+
   return (
     <div
       ref={scrollRef}
@@ -412,16 +434,16 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
       data-testid="room-transcript-scroll"
       className="relative flex-1 min-h-0 overflow-y-auto outline-hidden focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring"
     >
-      <div className="flex flex-col gap-3 px-4 py-4">
+      <div className="flex flex-col gap-2.5 px-[max(16px,calc((100%-760px)/2))] pt-3.5 pb-2">
       <div
         role="log"
         aria-live="polite"
         aria-relevant="additions"
         aria-label={t('rooms:transcript.label')}
-        className="flex flex-col gap-3"
+        className="flex flex-col gap-2.5"
       >
         {messages.length === 0 && !live && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
+          <p className="mt-10 text-center text-[13px] text-muted-foreground">
             {t('rooms:transcript.empty')}
           </p>
         )}
@@ -434,7 +456,10 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                 key={m.id}
                 data-testid="room-message"
                 data-kind={m.kind}
-                className="px-2 text-center text-xs text-muted-foreground"
+                className={cn(
+                  'px-2 text-center text-xs text-muted-foreground',
+                  isFresh(m.id) && 'motion-safe:animate-fade-in'
+                )}
               >
                 <span className="sr-only">{t('rooms:transcript.system')}: </span>
                 <span className="whitespace-pre-wrap break-words">{m.text}</span>
@@ -449,16 +474,17 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
               data-status={m.status}
               data-addressed-to-user={toUser || undefined}
               className={cn(
-                'min-w-0 rounded-lg border border-border bg-card p-3',
-                m.kind === 'user' && 'bg-secondary/40',
-                m.kind === 'synthesis' && 'border-foreground/30',
-                toUser && 'border-l-4 border-l-primary'
+                'flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5',
+                m.kind === 'user' && 'bg-secondary',
+                m.kind === 'synthesis' && 'border-[1.5px] border-border-strong',
+                toUser && 'shadow-[inset_4px_0_0_var(--primary)]',
+                isFresh(m.id) && 'motion-safe:animate-msg-in'
               )}
             >
-              <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
+              <header className="flex flex-wrap items-center gap-1.5 text-xs">
                 <AuthorName author={m.author} room={room} t={t} />
                 {chip && (
-                  <span className="rounded-md bg-muted px-1.5 py-0.5 text-muted-foreground">
+                  <span className="rounded-full bg-accent px-[7px] py-px text-[11px] text-muted-foreground">
                     {chip}
                   </span>
                 )}
@@ -470,7 +496,7 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                   <Badge tone="error">{t('rooms:transcript.failed')}</Badge>
                 )}
                 {toUser && (
-                  <span className="font-medium text-primary">
+                  <span className="text-[11.5px] font-medium text-foreground">
                     {t('rooms:transcript.addressedToYou')}
                   </span>
                 )}
@@ -489,22 +515,22 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
         <article
           data-testid="room-live-turn"
           aria-busy="true"
-          className="min-w-0 rounded-lg border border-dashed border-border bg-card p-3"
+          className="flex min-w-0 flex-col gap-1.5 rounded-[10px] border-[0.8px] border-dashed border-border-strong bg-card px-3 py-2.5 motion-safe:animate-msg-in"
         >
-          <header className="mb-1 flex flex-wrap items-center gap-1.5 text-xs">
+          <header className="flex flex-wrap items-center gap-1.5 text-xs">
             <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
               {t(live.compacting ? 'rooms:transcript.compacting' : 'rooms:transcript.streaming')}
             </span>
           </header>
           {live.compacting ? (
-            <p className="text-sm text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
+            <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
           ) : (
             <RoomMessageText
               text={stripConclusion(live.text).text}
               mentionColors={mentionColors}
               isStreaming
-              className="text-sm"
+              className="text-[13.5px] leading-[1.6] text-fg-2"
             />
           )}
         </article>
@@ -523,9 +549,9 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
             type="button"
             onClick={scrollToBottom}
             data-testid="room-jump-latest"
-            className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-md outline-hidden hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+            className="pointer-events-auto inline-flex h-[30px] cursor-pointer items-center gap-1.5 rounded-full bg-popover px-3 text-xs text-foreground shadow-pop outline-hidden transition-transform duration-150 ease-expo hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 active:scale-[.965] motion-safe:animate-pop"
           >
-            <ArrowDown className="size-3.5" aria-hidden />
+            <ArrowDown className="size-[13px]" aria-hidden />
             {t('rooms:transcript.jumpToLatest')}
           </button>
         </div>
