@@ -25,6 +25,7 @@ import {
 } from '@/hooks/useConversationPane'
 import { ModelSetting } from '@/containers/ModelSetting'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
+import { ModelAvatar } from '@/containers/ModelAvatar'
 import { ModelSupportStatus } from '@/containers/ModelSupportStatus'
 import { ModelEvidenceBadges } from '@/containers/ModelEvidenceBadges'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
@@ -79,6 +80,10 @@ interface SearchableModel {
   highlightedId?: string
 }
 
+/** A section heading in the picker: Favorites, local, cloud. */
+const SECTION_HEADING =
+  'px-2 pt-2.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase'
+
 /** The menu entry for each order. */
 const SORT_LABEL_KEYS: Record<ModelSortOption, string> = {
   'name-asc': 'common:sortNameAsc',
@@ -122,19 +127,6 @@ const ProcessingLocationLabel = ({ provider }: { provider: ModelProvider }) => {
     </span>
   )
 }
-
-/**
- * The identifier a renamed model is still addressed by.
- *
- * Shown only when it differs from the name on the row: under an unrenamed
- * model it would just repeat the line above it, on every entry in the list.
- */
-const OriginalModelId = ({ model }: { model: Model }) =>
-  model.displayName && model.displayName !== model.id ? (
-    <span className="block truncate text-xs text-muted-foreground">
-      {model.id}
-    </span>
-  ) : null
 
 /** Whether a provider's requests stay on this device or network. */
 const locationKind = (provider: ModelProvider): 'local' | 'remote' =>
@@ -674,6 +666,84 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     },
   })
 
+  /**
+   * One model: its mark, its name over its identifier, what is known about it
+   * here, and what it can do. The same row in every list, so a model looks
+   * the same whether it is a favourite, in a provider's section or in the
+   * single sorted list.
+   */
+  const renderRow = (
+    item: SearchableModel,
+    list: 'fav' | 'flat' | 'group'
+  ) => {
+    const isSelected =
+      selectedModel?.id === item.model.id &&
+      selectedProvider === item.provider.provider
+    const capabilities = item.model.capabilities || []
+    const modelName = getModelDisplayName(item.model)
+    const offline = modelIsOffline(item)
+    // A single list has no provider header, so the row carries the provider.
+    const secondary =
+      list === 'flat'
+        ? `${getProviderTitle(item.provider.provider)}${modelName !== item.model.id ? ` · ${item.model.id}` : ''}`
+        : modelName !== item.model.id
+          ? item.model.id
+          : undefined
+    return (
+      <div
+        key={`${list}-${item.value}`}
+        {...selectableRow(item, isSelected)}
+        className={cn(
+          'group/mrow flex min-h-9 cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 transition-[background-color,transform] duration-150 motion-safe:animate-mi-in motion-safe:active:scale-[.985]',
+          'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+          offline && OFFLINE_ROW_CLASS,
+          isSelected && 'bg-accent'
+        )}
+      >
+        <ModelAvatar
+          modelId={item.model.id}
+          name={modelName}
+          provider={item.provider.provider}
+        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="min-w-0 flex-1">
+              <span className="flex items-center text-[13px] font-medium text-foreground">
+                <span className="truncate">{modelName}</span>
+                {offline && (
+                  <OfflineBadge
+                    label={t('common:modelOffline.badge')}
+                    tooltip={t('common:modelOffline.tooltip')}
+                  />
+                )}
+              </span>
+              {secondary && (
+                <span
+                  className={cn(
+                    'block truncate text-subtle-foreground',
+                    list === 'flat' ? 'text-[11px]' : 'font-mono text-[11px]'
+                  )}
+                >
+                  {secondary}
+                </span>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>{item.model.id}</TooltipContent>
+        </Tooltip>
+        <ModelEvidenceBadges
+          provider={item.provider.provider}
+          model={item.model}
+        />
+        {capabilities.length > 0 && (
+          <span className="ml-1 shrink-0">
+            <Capabilities capabilities={capabilities} compact />
+          </span>
+        )}
+      </div>
+    )
+  }
+
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentModel = selectedModel?.id
@@ -693,11 +763,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               type="button"
               className="relative z-20 flex min-w-0 cursor-pointer items-center gap-1.5 rounded-sm font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-ring"
             >
-              {provider && (
+              {provider && selectedModel?.id ? (
+                <ModelAvatar
+                  modelId={selectedModel.id}
+                  name={displayModel}
+                  provider={provider.provider}
+                />
+              ) : provider ? (
                 <div className="shrink-0">
                   <ProvidersAvatar provider={provider} />
                 </div>
-              )}
+              ) : null}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
@@ -742,10 +818,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <PopoverContent
         className={cn(
           // Use auto width to fit long model names; keep a sensible minimum.
-          'w-auto min-w-[380px] max-w-[90vw] p-1.5',
-          searchValue.length === 0 && 'h-80'
+          'w-[360px] max-w-[calc(100vw-24px)] p-1.5',
+          searchValue.length === 0 && 'h-[26rem]'
         )}
-        align="start"
+        align="end"
         // sideOffset={16}
         // alignOffset={-10}
         side="bottom"
@@ -801,167 +877,25 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
           </div>
 
           {/* Model list */}
-          <div className="max-h-80 min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
             {Object.keys(groupedItems).length === 0 && searchValue ? (
               <div className="py-3 px-4 text-sm ">
                 {t('common:noModelsFoundFor', { searchValue })}
               </div>
             ) : (
-              <div className="py-1">
+              <div className="pb-1">
                 {/* Favorites section - only show when not searching */}
                 {!searchValue && favoriteItems.length > 0 && (
-                  <div className="py-1">
-                    {/* Favorites header */}
-                    <div className="flex items-center gap-1.5 px-2 pt-2.5 pb-1">
-                      <span className="text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">
-                        {t('common:favorites')}
-                      </span>
-                    </div>
-
-                    {/* Favorite models */}
-                    {favoriteItems.map((searchableModel) => {
-                      const isSelected =
-                        selectedModel?.id === searchableModel.model.id &&
-                        selectedProvider === searchableModel.provider.provider
-                      const capabilities =
-                        searchableModel.model.capabilities || []
-
-                      return (
-                        <div
-                          key={`fav-${searchableModel.value}`}
-                          {...selectableRow(searchableModel, isSelected)}
-                          className={cn(
-                            'min-h-9 px-2 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 transition-colors',
-                            'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-                            modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
-                            // Selected state needs stronger contrast than the surrounding secondary tint.
-                            isSelected &&
-                              'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-acc'
-                          )}
-                        >
-                          <div className="flex items-center gap-1 flex-1 min-w-0">
-                            <div className="shrink-0 -ml-1">
-                              <ProvidersAvatar
-                                provider={searchableModel.provider}
-                              />
-                            </div>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="min-w-0 flex-1">
-                                  <span className="flex items-center text-sm">
-                                    <span className="truncate">
-                                      {getModelDisplayName(searchableModel.model)}
-                                    </span>
-                                    {modelIsOffline(searchableModel) && (
-                                      <OfflineBadge
-                                        label={t('common:modelOffline.badge')}
-                                        tooltip={t('common:modelOffline.tooltip')}
-                                      />
-                                    )}
-                                  </span>
-                                  <OriginalModelId
-                                    model={searchableModel.model}
-                                  />
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {searchableModel.model.id}
-                              </TooltipContent>
-                            </Tooltip>
-                            <ModelEvidenceBadges
-                              provider={searchableModel.provider.provider}
-                              model={searchableModel.model}
-                            />
-                            {capabilities.length > 0 && (
-                              <div className="shrink-0 -mr-1.5">
-                                <Capabilities capabilities={capabilities} />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
+                  <div>
+                    <p className={SECTION_HEADING}>{t('common:favorites')}</p>
+                    {favoriteItems.map((item) => renderRow(item, 'fav'))}
                   </div>
-                )}
-
-                {/* Divider between favorites and regular providers */}
-                {favoriteItems.length > 0 && (
-                  <div className="mx-2 my-1 border-b border-dashed border-border"></div>
                 )}
 
                 {/* One ordered list, or a section per provider */}
                 {!isGrouped ? (
-                  <div className="py-1">
-                    {flatItems.map((searchableModel) => {
-                      const isSelected =
-                        selectedModel?.id === searchableModel.model.id &&
-                        selectedProvider === searchableModel.provider.provider
-                      const capabilities =
-                        searchableModel.model.capabilities || []
-                      const modelName = getModelDisplayName(
-                        searchableModel.model
-                      )
-
-                      return (
-                        <div
-                          key={searchableModel.value}
-                          {...selectableRow(searchableModel, isSelected)}
-                          className={cn(
-                            'min-h-9 px-2 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 transition-colors',
-                            'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-                            modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
-                            isSelected &&
-                              'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-acc'
-                          )}
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className="shrink-0 -ml-1">
-                              <ProvidersAvatar
-                                provider={searchableModel.provider}
-                              />
-                            </div>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <div className="min-w-0 flex-1">
-                                  <span className="flex items-center text-sm">
-                                    <span className="truncate">{modelName}</span>
-                                    {modelIsOffline(searchableModel) && (
-                                      <OfflineBadge
-                                        label={t('common:modelOffline.badge')}
-                                        tooltip={t('common:modelOffline.tooltip')}
-                                      />
-                                    )}
-                                  </span>
-                                  {/* A single list has no provider header, so
-                                      the row carries it — with the original
-                                      identifier when the name hides it. */}
-                                  <span className="block truncate text-xs text-muted-foreground">
-                                    {getProviderTitle(
-                                      searchableModel.provider.provider
-                                    )}
-                                    {modelName !== searchableModel.model.id
-                                      ? ` · ${searchableModel.model.id}`
-                                      : ''}
-                                  </span>
-                                </div>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {searchableModel.model.id}
-                              </TooltipContent>
-                            </Tooltip>
-                            <ModelEvidenceBadges
-                              provider={searchableModel.provider.provider}
-                              model={searchableModel.model}
-                            />
-                            {capabilities.length > 0 && (
-                              <div className="shrink-0 -mr-1.5">
-                                <Capabilities capabilities={capabilities} />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
+                  <div className="pt-1">
+                    {flatItems.map((item) => renderRow(item, 'flat'))}
                   </div>
                 ) : (
                   Object.entries(groupedItems).map(([providerKey, models], groupIndex, entries) => {
@@ -988,7 +922,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                     <div key={providerKey}>
                     {startsKind && (
                       <p
-                        className="px-2 pt-2.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase"
+                        className={SECTION_HEADING}
                         data-testid={`model-group-${kind}`}
                       >
                         {kind === 'local'
@@ -996,12 +930,15 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           : `${t('model-fit:picker.remote')} · ${t('model-fit:picker.remoteHint')}`}
                       </p>
                     )}
-                    <div className="py-0.5">
-                      {/* Provider header */}
-                      <div className="flex items-center justify-between px-3 py-1">
-                        <div className="flex min-w-0 items-center gap-1.5">
-                          <ProvidersAvatar provider={providerInfo} />
-                          <span className="text-xs font-medium text-foreground">
+                    <div>
+                      {/* Provider header: its mark, its name, where it runs,
+                          and a way to its settings. */}
+                      <div className="group/prov flex items-center justify-between gap-2 px-2 pt-1.5 pb-0.5">
+                        <div className="flex min-w-0 items-center gap-1.5 text-xs">
+                          <span className="shrink-0 [&_[data-slot=brand-mark]]:!size-3.5">
+                            <ProvidersAvatar provider={providerInfo} />
+                          </span>
+                          <span className="font-semibold text-foreground">
                             {getProviderTitle(providerInfo.provider)}
                           </span>
                           <ProcessingLocationLabel provider={providerInfo} />
@@ -1012,7 +949,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                           aria-label={t('model-fit:providerSettings', {
                             provider: getProviderTitle(providerInfo.provider),
                           })}
-                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-card focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+                          className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-subtle-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
                           onClick={(e) => {
                             e.stopPropagation()
                             navigate({
@@ -1022,77 +959,12 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                             setOpen(false)
                           }}
                         >
-                          <Settings className="size-4 text-muted-foreground" />
+                          <Settings className="size-3.5" />
                         </button>
                       </div>
 
                       {/* Models for this provider */}
-                      {models.length === 0 ? (
-                        // Show message when provider has no available models
-                        <></>
-                      ) : (
-                        models.map((searchableModel) => {
-                          const isSelected =
-                            selectedModel?.id === searchableModel.model.id &&
-                            selectedProvider ===
-                              searchableModel.provider.provider
-                          const capabilities =
-                            searchableModel.model.capabilities || []
-
-                          return (
-                            <div
-                              key={searchableModel.value}
-                              {...selectableRow(searchableModel, isSelected)}
-                              className={cn(
-                                'min-h-9 px-2 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 transition-colors',
-                                'hover:bg-accent focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
-                                modelIsOffline(searchableModel) && OFFLINE_ROW_CLASS,
-                                isSelected &&
-                                  'relative bg-accent hover:bg-accent font-medium before:absolute before:left-0 before:inset-y-1.5 before:w-0.5 before:rounded-full before:bg-acc'
-                              )}
-                            >
-                              <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div className="min-w-0 flex-1">
-                                      <span className="flex items-center text-sm">
-                                        <span className="truncate">
-                                          {getModelDisplayName(
-                                            searchableModel.model
-                                          )}
-                                        </span>
-                                        {modelIsOffline(searchableModel) && (
-                                          <OfflineBadge
-                                            label={t('common:modelOffline.badge')}
-                                            tooltip={t(
-                                              'common:modelOffline.tooltip'
-                                            )}
-                                          />
-                                        )}
-                                      </span>
-                                      <OriginalModelId
-                                        model={searchableModel.model}
-                                      />
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    {searchableModel.model.id}
-                                  </TooltipContent>
-                                </Tooltip>
-                                <ModelEvidenceBadges
-                              provider={searchableModel.provider.provider}
-                              model={searchableModel.model}
-                            />
-                            {capabilities.length > 0 && (
-                                  <div className="shrink-0 -mr-1.5">
-                                    <Capabilities capabilities={capabilities} />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )
-                        })
-                      )}
+                      {models.map((item) => renderRow(item, 'group'))}
                     </div>
                     </div>
                   )

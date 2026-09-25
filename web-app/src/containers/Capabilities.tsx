@@ -16,9 +16,14 @@ import { Fragment, memo } from 'react'
 
 interface CapabilitiesProps {
   capabilities: string[]
+  /** Small quiet glyphs, for a picker row (the design's `.caps`). */
+  compact?: boolean
 }
 
-const Capabilities = memo(function Capabilities({ capabilities }: CapabilitiesProps) {
+const Capabilities = memo(function Capabilities({
+  capabilities,
+  compact = false,
+}: CapabilitiesProps) {
   if (!capabilities.length) return null
 
   // Filter out proactive capability as it's now managed in MCP settings
@@ -27,7 +32,13 @@ const Capabilities = memo(function Capabilities({ capabilities }: CapabilitiesPr
   })
 
   return (
-    <div className="flex gap-0.5">
+    <div
+      className={
+        compact
+          ? 'flex gap-1 text-subtle-foreground [&_svg]:!size-3'
+          : 'flex gap-0.5'
+      }
+    >
       {filteredCapabilities.map((capability: string, capIndex: number) => {
         let icon = null
 
@@ -57,7 +68,11 @@ const Capabilities = memo(function Capabilities({ capabilities }: CapabilitiesPr
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span
-                      className="flex items-center gap-1 size-5 hover:bg-secondary rounded text-muted-foreground justify-center last:mr-1 transition-all"
+                      className={
+                        compact
+                          ? 'flex size-3.5 items-center justify-center'
+                          : 'flex items-center gap-1 size-5 hover:bg-secondary rounded text-muted-foreground justify-center last:mr-1 transition-all'
+                      }
                     >
                       {icon}
                     </span>

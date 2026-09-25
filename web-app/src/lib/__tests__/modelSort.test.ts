@@ -24,9 +24,11 @@ const names = (items: SortableModel[]) =>
   items.map((i) => i.model.displayName ?? i.model.id)
 
 describe('the default order', () => {
-  it('is alphabetical by the name the user sees', () => {
-    expect(DEFAULT_MODEL_SORT).toBe('name-asc')
+  it('groups by provider, the design picker', () => {
+    expect(DEFAULT_MODEL_SORT).toBe('provider')
+  })
 
+  it('sorts alphabetically by the name the user sees when asked', () => {
     const sorted = sortModels(
       [
         item('openai', 'gpt-5', 'Zephyr'),

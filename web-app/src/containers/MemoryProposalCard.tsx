@@ -85,7 +85,7 @@ export function MemoryProposalCard({
       data-proposal-id={proposal.id}
       data-reason={proposal.reason}
     >
-      <div className="min-w-0 max-w-full">
+      <div className="w-full min-w-0">
         <b className="font-semibold text-foreground">Remember this?</b>
         <p className="mt-1 text-[12.5px] text-muted-foreground">
           <span data-testid="memory-proposal-content">

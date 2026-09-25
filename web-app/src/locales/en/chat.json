@@ -64,6 +64,7 @@
   },
   "split": {
     "open": "Split conversation",
+    "openShort": "Split",
     "openHint": "Open a second, independent conversation beside this one",
     "close": "Close split",
     "closePane": "Close this pane",

@@ -8,7 +8,14 @@ import {
   type MemoryScope,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { Gauge, PanelRight, RefreshCw, Sparkles, X } from 'lucide-react'
+import { PanelRight, RefreshCw, X } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import {
+  AutoCompactRow,
+  ChatActivityFrame,
+  ChatChangesFrame,
+  ChatToolsFrame,
+} from '@/containers/ChatDetailsCards'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Button } from '@/components/ui/button'
 import { route } from '@/constants/routes'
@@ -46,7 +53,6 @@ import {
   requestAttributions,
   type RequestAttribution,
 } from '@/lib/requestAttribution'
-import { TermHint } from '@/containers/TermHint'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { StatusChip, WorkStatus } from '@/containers/StatusChip'
 
@@ -99,6 +105,9 @@ function memoryFromAttribution(
 type SnapshotRecord = { payload?: unknown; unavailable?: string | null }
 
 type DetailsTab = 'using' | 'files'
+
+/** Items a section shows before "Show all". */
+const SECTION_PREVIEW = 3
 
 /**
  * The state of an item or a request as a chip with its own words. Verified is
@@ -164,13 +173,16 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
       ? Math.max(0, Math.min(100, Math.round(percentage)))
       : undefined
 
+  // Used of the window on the left, how full it is on the right, the meter,
+  // then when it compacts.
   return (
-    <section className="px-3 py-3" data-testid="context-window">
-      <div className="flex items-baseline justify-between gap-2">
-        <h3 className="text-xs text-muted-foreground">
-          {t('context:contextWindow.title')}
-        </h3>
-        <span className="text-xs font-semibold text-foreground tabular-nums">
+    <section
+      className="flex flex-col gap-2.5 px-4 py-3.5"
+      data-testid="context-window"
+      aria-label={t('context:contextWindow.title')}
+    >
+      <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
+        <span className="tabular-nums">
           {tokenCount > 0 && maxTokens
             ? t('context:contextWindow.usedOf', {
                 used: compact(tokenCount),
@@ -180,22 +192,34 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
               ? t('context:contextWindow.used', { used: compact(tokenCount) })
               : t('context:contextWindow.unknown')}
         </span>
+        {percent !== undefined && tokenCount > 0 && (
+          <b className="font-medium text-foreground tabular-nums">
+            {typeof percentage === 'number'
+              ? `${Math.max(0, Math.min(100, percentage)).toFixed(1)}%`
+              : ''}
+          </b>
+        )}
       </div>
-      {percent !== undefined && tokenCount > 0 && (
-        <div
-          role="img"
-          aria-label={t('context:contextWindow.meter', { percent })}
-          className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-track"
-        >
+      <div
+        role="img"
+        aria-label={
+          percent !== undefined
+            ? t('context:contextWindow.meter', { percent })
+            : t('context:contextWindow.unknown')
+        }
+        className="h-1.5 overflow-hidden rounded-full bg-track"
+      >
+        {percent !== undefined && tokenCount > 0 && (
           <div
             className={cn(
-              'h-full rounded-full motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo',
+              'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo',
               percent > 85 ? 'bg-warning' : 'bg-grad'
             )}
             style={{ width: `${percent}%` }}
           />
-        </div>
-      )}
+        )}
+      </div>
+      <AutoCompactRow maxTokens={maxTokens || undefined} />
     </section>
   )
 }
@@ -264,6 +288,8 @@ export function WhatJanIsUsingPanel({
   const serviceHub = useServiceHub()
   const tabsId = useId()
   const [tab, setTab] = useState<DetailsTab>('using')
+  // Long sections (every tool of a server) show their first few items.
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const thread = useThreads((s) => s.threads[threadId])
   const selectedModel = useModelProvider((s) => s.selectedModel)
@@ -527,7 +553,7 @@ export function WhatJanIsUsingPanel({
       key={section.id}
       aria-labelledby={`${tabsId}-context-${section.id}`}
       data-testid={`context-section-${section.id}`}
-      className="border-b border-dashed border-border px-3 py-2.5 last:border-b-0"
+      className="border-b border-dashed border-border py-2.5 last:border-b-0"
     >
       <h3
         id={`${tabsId}-context-${section.id}`}
@@ -540,51 +566,72 @@ export function WhatJanIsUsingPanel({
           {t(`context:empty.${section.emptyReason}`)}
         </p>
       ) : (
-        <ul className="mt-1 divide-y divide-dashed divide-border">
-          {section.items.map((item) => (
+        <ul className="flex flex-col gap-2.5 pt-0.5">
+          {(expanded[section.id]
+            ? section.items
+            : section.items.slice(0, SECTION_PREVIEW)
+          ).map((item) => (
             <li
               key={item.key}
-              className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 py-2"
+              className="flex flex-col items-start gap-1.5"
               data-testid={`context-item-${item.key}`}
               data-state={item.state}
             >
-              <div className="min-w-0 flex-1 basis-40">
-                <p className="break-words text-[13px] text-fg-2">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="break-words text-xs text-muted-foreground">
                   <span>{labelFor(item)}</span>
                   {item.detail ? (
-                    <span className="ml-1.5 text-xs text-muted-foreground">
-                      {item.detail}
-                    </span>
+                    <>
+                      <span aria-hidden className="text-subtle-foreground"> · </span>
+                      <span className="text-subtle-foreground">{item.detail}</span>
+                    </>
+                  ) : null}
+                  {item.scope ? (
+                    <>
+                      <span aria-hidden className="text-subtle-foreground"> · </span>
+                      <span className="text-subtle-foreground">
+                        {t(`context:scope.${item.scope}`)}
+                      </span>
+                    </>
                   ) : null}
                 </p>
-                {item.scope && (
-                  <p className="text-xs text-muted-foreground">
-                    {t(`context:scope.${item.scope}`)}
-                  </p>
-                )}
                 {item.reason && (
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                  <p className="text-[11.5px] leading-snug text-subtle-foreground">
                     {t(`context:reason.${item.reason}`)}
                   </p>
-                )}
-                {item.action && (
-                  <Button
-                    size="sm"
-                    variant="link"
-                    className="h-auto px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
-                    onClick={() => runAction(item.action!, item)}
-                  >
-                    {t(`context:action.${item.action}`)}
-                  </Button>
                 )}
               </div>
               <StateChip
                 state={item.state}
                 label={t(`context:state.${item.state}`)}
               />
+              {item.action && (
+                <Button
+                  size="sm"
+                  variant="link"
+                  className="h-auto px-0 text-[12.5px] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+                  onClick={() => runAction(item.action!, item)}
+                >
+                  {t(`context:action.${item.action}`)}
+                </Button>
+              )}
             </li>
           ))}
         </ul>
+      )}
+      {section.items.length > SECTION_PREVIEW && (
+        <button
+          type="button"
+          className="mt-2 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:min-h-11"
+          aria-expanded={Boolean(expanded[section.id])}
+          onClick={() =>
+            setExpanded((prev) => ({ ...prev, [section.id]: !prev[section.id] }))
+          }
+        >
+          {expanded[section.id]
+            ? t('context:showFewer')
+            : t('context:showAll', { count: section.items.length })}
+        </button>
       )}
       {section.notices?.map((notice) => (
         <p
@@ -669,14 +716,14 @@ export function WhatJanIsUsingPanel({
       aria-label={t('context:title')}
       data-testid="what-jan-is-using-panel"
       className={cn(
-        'flex min-h-0 flex-col gap-3 overflow-x-hidden overflow-y-auto bg-card [scrollbar-width:thin] motion-safe:animate-fade-in',
+        'flex min-h-0 flex-col gap-4 overflow-x-hidden overflow-y-auto [scrollbar-width:none] motion-safe:animate-fade-in',
         className
       )}
     >
-      <Frame className="shrink-0 motion-safe:animate-rise-in">
+      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:120ms]">
         <FrameHeader
-          icon={<Gauge />}
-          title={t('context:details')}
+          icon={<Icon name="analytics" />}
+          title={t('context:cards.context')}
           actions={
             <>
               <Button
@@ -706,13 +753,20 @@ export function WhatJanIsUsingPanel({
           <ContextWindowMeter threadId={threadId} />
         </FrameBody>
       </Frame>
-      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:60ms]">
-        <FrameHeader icon={<Sparkles />} title={t('context:open')} />
+      <ChatChangesFrame
+        messages={messages}
+        className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:170ms]"
+      />
+      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:220ms]">
+        <FrameHeader
+          icon={<Icon name="x-sparkle" />}
+          title={t('context:open')}
+        />
         <FrameBody className="overflow-hidden">
           <div
             role="tablist"
             aria-label={t('context:tabs.label')}
-            className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-dashed border-border px-1.5"
+            className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b border-dashed border-border px-2.5"
           >
             {tabButton('using', t('context:tabs.using'))}
             {tabButton('files', t('context:tabs.files'), fileCount)}
@@ -723,16 +777,10 @@ export function WhatJanIsUsingPanel({
             aria-labelledby={`${tabsId}-tab-using`}
             hidden={tab !== 'using'}
           >
-            <p className="border-b border-dashed border-border px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-              {t('context:description')} <TermHint term="context" />
-            </p>
-            {payload.map(renderSection)}
-            {included.length > 0 && (
-              <h3 className="px-3 pt-3 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase">
-                {t('context:included')}
-              </h3>
-            )}
-            {included.map(renderSection)}
+            <div className="px-4">
+              {included.map(renderSection)}
+              {payload.map(renderSection)}
+            </div>
           </div>
           <div
             role="tabpanel"
@@ -740,10 +788,16 @@ export function WhatJanIsUsingPanel({
             aria-labelledby={`${tabsId}-tab-files`}
             hidden={tab !== 'files'}
           >
-            {attachments.map(renderSection)}
+            <div className="px-4">{attachments.map(renderSection)}</div>
           </div>
         </FrameBody>
       </Frame>
+      <ChatToolsFrame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:270ms]" />
+      <ChatActivityFrame
+        messages={messages}
+        modelId={selectedModel?.id}
+        className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:320ms]"
+      />
     </aside>
   )
 }

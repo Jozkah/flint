@@ -91,7 +91,15 @@ import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useToolApproval } from '@/hooks/useToolApproval'
-import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import {
+  useToolApprovalRequests,
+  usePendingApprovalCount,
+} from '@/hooks/useToolApprovalRequests'
+import { useIsThreadActive } from '@/hooks/useAppState'
+import {
+  ThreadStatusMark,
+  useThreadStatus,
+} from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
@@ -194,6 +202,32 @@ export type ThreadConversationProps = {
  * conversation is split -- which is why it takes its thread id as a prop and
  * never reads the route.
  */
+/** Where the Details inspector's open state is remembered. */
+const DETAILS_OPEN_KEY = 'flint.chat.detailsOpen'
+
+function readDetailsOpen(isSplit: boolean): boolean {
+  if (isSplit) return false
+  try {
+    const saved = localStorage.getItem(DETAILS_OPEN_KEY)
+    if (saved !== null) return saved === 'true'
+  } catch {
+    // Storage unavailable: fall back to the window size.
+  }
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(min-width: 1280px)').matches
+  )
+}
+
+function writeDetailsOpen(open: boolean) {
+  try {
+    localStorage.setItem(DETAILS_OPEN_KEY, String(open))
+  } catch {
+    // Not remembered; the default applies next time.
+  }
+}
+
 export function ThreadConversation({
   threadId,
   searchThreadModel,
@@ -2063,7 +2097,10 @@ export function ThreadConversation({
   // The Details inspector ("What Flint is using"). On a narrow pane it takes the
   // whole width and a switch moves between it and the conversation; the
   // conversation stays mounted, so its draft and scroll survive.
-  const [detailsOpen, setDetailsOpen] = useState(false)
+  // Open beside the conversation on a wide window, as the design shows it;
+  // the last choice is remembered. A narrow window starts on the
+  // conversation, since there the inspector takes the whole width.
+  const [detailsOpen, setDetailsOpen] = useState(() => readDetailsOpen(isSplit))
   const [narrowView, setNarrowView] = useState<'conversation' | 'details'>(
     'conversation'
   )
@@ -2072,10 +2109,12 @@ export function ThreadConversation({
     const next = !detailsOpen
     setDetailsOpen(next)
     setNarrowView(next ? 'details' : 'conversation')
+    writeDetailsOpen(next)
   }, [detailsOpen])
   const closeDetails = useCallback(() => {
     setDetailsOpen(false)
     setNarrowView('conversation')
+    writeDetailsOpen(false)
   }, [])
 
   // Who this conversation is: the title, on the chat frame's header row.
@@ -2095,15 +2134,31 @@ export function ThreadConversation({
     </div>
   )
 
-  // The collection this chat belongs to, as a chip in the page header.
-  const projectChip = thread?.metadata?.project?.name ? (
-    <Chip
-      className="hidden max-w-48 md:inline-flex"
-      title={thread.metadata.project.name}
-    >
-      <span className="truncate">{thread.metadata.project.name}</span>
-    </Chip>
-  ) : null
+  // Where this chat sits, as the sidebar shows it: its status mark, then
+  // Pinned or its collection.
+  const pendingHere = usePendingApprovalCount(threadId)
+  const threadActive = useIsThreadActive(threadId)
+  const threadStreaming = useChatSessions(
+    (state) => state.sessions[threadId]?.isStreaming ?? false
+  )
+  const threadStatus = useThreadStatus(
+    { updated: thread?.updated ?? 0 },
+    threadActive || threadStreaming,
+    pendingHere > 0
+  )
+  const groupLabel = thread?.isFavorite
+    ? t('common:shell.pinned')
+    : thread?.metadata?.project?.name
+  const projectChip = (
+    <>
+      {threadStatus !== 'none' && <ThreadStatusMark status={threadStatus} />}
+      {groupLabel && (
+        <Chip className="hidden max-w-48 md:inline-flex" title={groupLabel}>
+          <span className="truncate">{groupLabel}</span>
+        </Chip>
+      )}
+    </>
+  )
 
   // When the conversation began: its first message's time.
   const firstCreatedAt = (
@@ -2190,7 +2245,7 @@ export function ThreadConversation({
             </div>
           </div>
         )}
-        <div className="relative flex min-h-0 min-w-0 flex-1 gap-3">
+        <div className="relative flex min-h-0 min-w-0 flex-1 gap-4">
         {/* The conversation is one Frame: its title row, then the messages
             and the composer on the card inside. */}
         <Frame

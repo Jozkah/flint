@@ -132,5 +132,29 @@
     "adapterBoundary": "Verified means present in the sanitized request Flint sent. The provider or local engine may still change it after that, for example by applying the model's chat template.",
     "noProject": "no project"
   },
-  "inspect": "Inspect the sanitized request (advanced)"
+  "inspect": "Inspect the sanitized request (advanced)",
+  "showAll": "Show all {{count}}",
+  "showFewer": "Show fewer",
+  "cards": {
+    "context": "Context",
+    "autoCompactAt": "Auto-compact at {{percent}}%",
+    "autoCompactOff": "Auto-compact is off",
+    "autoCompact": "Auto-compact",
+    "changes": "Changes",
+    "changesSession": "Diff sizes are known for edits made since Flint started.",
+    "newFile": "New file",
+    "tools": "Available tools",
+    "toolsEnabled": "{{count}} of {{total}} enabled",
+    "toolsHint": "Applies to every conversation.",
+    "activity": "Activity",
+    "ranCommand": "Ran {{tool}}",
+    "commandFailed": "Command failed",
+    "editedFile": "Edited file",
+    "readFile": "Read a file",
+    "readFiles": "Read {{count}} files",
+    "searched": "Searched",
+    "searchedWeb": "Searched the web",
+    "usedTool": "Used {{tool}}",
+    "chatStarted": "Chat started"
+  }
 }

@@ -19,12 +19,13 @@ import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
 import { useServiceStore } from '@/hooks/useServiceHub'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useAssistant } from '@/hooks/useAssistant'
 
 const MIN = 60_000
 const now = Date.now()
 
 const model = (id: string, name: string, caps: string[] = ['tools']) =>
-  ({ id, name, capabilities: caps, settings: {} }) as unknown as Model
+  ({ id, name, displayName: name, capabilities: caps, settings: {} }) as unknown as Model
 
 function providers(): ModelProvider[] {
   return [
@@ -93,6 +94,41 @@ const FOLDERS = [
   { id: 'energy', name: 'Energy monitoring', updated_at: now - 300 * MIN },
 ]
 
+/** The mockup's assistants: Flint, and two the user made. */
+function assistants(): Assistant[] {
+  const flint = useAssistant.getState().assistants.find((a) => a.id === 'jan')
+  const base = { created_at: now / 1000, description: '', instructions: '', parameters: {} }
+  return [
+    ...(flint ? [flint] : []),
+    { ...base, id: 'rust-reviewer', name: 'Rust reviewer', avatar: '🦀' },
+    { ...base, id: 'changelog', name: 'Changelog writer', avatar: '✍️' },
+  ] as unknown as Assistant[]
+}
+
+/** MCP tools, grouped by server as the tools drawer lists them. */
+function mcpTools() {
+  const tool = (server: string, name: string, description: string) => ({
+    server,
+    name,
+    description,
+    inputSchema: {},
+  })
+  return [
+    tool('filesystem', 'read_file', 'Read a file'),
+    tool('filesystem', 'write_file', 'Write a file'),
+    tool('filesystem', 'list_directory', 'List a folder'),
+    tool('filesystem', 'search_files', 'Search file names'),
+    tool('github', 'get_issue', 'Read an issue'),
+    tool('github', 'create_issue', 'Open an issue'),
+    tool('github', 'list_pull_requests', 'List pull requests'),
+    tool('github', 'get_pull_request', 'Read a pull request'),
+    tool('github', 'create_pull_request', 'Open a pull request'),
+    tool('github', 'search_code', 'Search code'),
+    tool('playwright', 'browser_navigate', 'Open a page'),
+    tool('playwright', 'browser_click', 'Click an element'),
+  ]
+}
+
 type ChatSeed = [id: string, title: string, ageMin: number, folder?: string, pinned?: boolean]
 const CHATS: ChatSeed[] = [
   ['release', 'Release build fix', 2, 'flint', true],
@@ -120,7 +156,7 @@ function threads(): Thread[] {
       title,
       updated: (now - age * MIN) / 1000,
       isFavorite: !!pinned,
-      assistants: [],
+      assistants: useAssistant.getState().assistants.filter((a) => a.id === 'jan'),
       model: { id: 'claude-sonnet-5', provider: 'anthropic' },
       metadata: f ? { project: { id: f.id, name: f.name, updated_at: f.updated_at } } : {},
     } as unknown as Thread
@@ -338,6 +374,7 @@ function patchServices() {
   set('messagesService', 'fetchMessages', async (id: string) => (id === 'release' ? releaseMessages() : []))
   set('projectsService', 'getProjects', async () => FOLDERS)
   set('threadsService', 'fetchThreads', async () => threads())
+  set('assistantsService', 'getAssistants', async () => assistants())
 }
 
 /** Read by hooks that would otherwise ask the backend (dev builds only). */
@@ -370,7 +407,11 @@ export function seedPreview() {
   useThreads.getState().setThreads(threads())
   useThreads.setState({ isLoadingThreads: false } as never)
   useMessages.getState().setMessages('release', releaseMessages())
-  useAppState.setState({ activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'] } as never)
+  useAppState.setState({
+    activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'],
+    tools: mcpTools(),
+  } as never)
+  useAssistant.setState({ assistants: assistants(), loading: false } as never)
   seedToolRuntime()
   seedUsage()
   seedCowork()
