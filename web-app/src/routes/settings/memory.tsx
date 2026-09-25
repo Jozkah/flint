@@ -4,6 +4,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { route } from '@/constants/routes'
 import {
+  SettingsColumns,
   SettingsPageBody,
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
@@ -616,7 +617,13 @@ function MemorySettings() {
       <SettingsPageBody
         title={t('common:memory')}
         description={t('settings:pageDesc.memory')}
+        width="wide"
       >
+      {/* The settings and the list of remembered facts read together on the
+          left; proposals and conflicts, which want an answer, sit beside. */}
+      <SettingsColumns
+        left={
+          <>
             <Card title="Memory">
               <CardItem
                 title="Use saved memory in conversations"
@@ -660,7 +667,7 @@ function MemorySettings() {
                     ['user', 'All conversations'],
                   ] as Array<[keyof MemoryRecall, string]>
                 ).map(([key, label]) => (
-                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 pl-3 text-sm text-ink-2 pointer-fine:min-h-9">
+                  <label key={key} className="flex min-h-11 items-center justify-between gap-3 pl-3 text-sm text-fg-2 pointer-fine:min-h-9">
                     <span>{label}</span>
                     <Switch
                       checked={recall[key]}
@@ -702,84 +709,6 @@ function MemorySettings() {
               )}
             </Card>
 
-            {proposalLocation && proposalsPending.length > 0 && (
-              <Card
-                title="Waiting for you"
-                aside={<span className="tabular-nums">{proposalsPending.length}</span>}
-              >
-                <CardItem
-                  title="Memories Flint has offered"
-                  description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
-                />
-                <div className="pb-3">
-                  <MemoryProposalList
-                    proposals={proposalsPending}
-                    location={proposalLocation}
-                    onResolved={(id) => {
-                      onProposalResolved(id)
-                      // An approval becomes a real memory, so the list below
-                      // is now out of date as well.
-                      void reload()
-                      void reloadProposals()
-                    }}
-                  />
-                </div>
-              </Card>
-            )}
-
-            {conflicts.length > 0 && (
-              <Card title="Memories that disagree">
-                <CardItem
-                  title="Neither side is being used"
-                  description="These remembered facts contradict each other, so Flint leaves both out of every request here until you keep one."
-                />
-                <ul className="flex flex-col gap-3 pb-3" data-testid="memory-conflicts">
-                  {conflicts.map((conflict) => (
-                    <li
-                      key={`${conflict.left.id}|${conflict.right.id}`}
-                      className="rounded-md border border-border p-3"
-                      data-testid="memory-conflict"
-                      data-left-id={conflict.left.id}
-                      data-right-id={conflict.right.id}
-                    >
-                      <p className="mb-2 text-xs font-medium text-ink-2">
-                        About the {conflict.subject}
-                      </p>
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {(
-                          [
-                            [conflict.left, conflict.right],
-                            [conflict.right, conflict.left],
-                          ] satisfies Array<[MemoryView, MemoryView]>
-                        ).map(([side, other]: [MemoryView, MemoryView]) => (
-                          <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-md bg-sunken p-3">
-                            <p className="text-sm break-words text-foreground">{side.content}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {scopeLabel(side.scope)}
-                              {' · '}
-                              <span className="font-mono break-all">{side.id}</span>
-                            </p>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="self-start pointer-coarse:h-11"
-                              disabled={busy}
-                              data-testid="memory-conflict-keep"
-                              data-keep-id={side.id}
-                              aria-label={`Keep "${side.preview}" and forget the other`}
-                              onClick={() => void onKeep(side, other)}
-                            >
-                              Keep this one
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            )}
-
             <Card title="Remembered">
               <CardItem
                 anchor={MEMORY_LIST_ANCHOR}
@@ -802,7 +731,7 @@ function MemorySettings() {
                       className={cn(
                         'relative shrink-0 whitespace-nowrap px-3 pt-2 pb-2.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-solid focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
                         tab.scope === scope
-                          ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-brand-fill'
+                          ? 'text-foreground after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
                           : 'text-muted-foreground hover:text-foreground'
                       )}
                       onClick={() => {
@@ -884,7 +813,7 @@ function MemorySettings() {
                 {importReport && (
                   <div
                     key={importCount}
-                    className="rounded-md bg-sunken p-3 text-xs text-ink-2"
+                    className="rounded-md bg-muted p-3 text-xs text-fg-2"
                     role="status"
                     data-testid="memory-import-report"
                     data-imported={importReport.imported.length}
@@ -1003,11 +932,11 @@ function MemorySettings() {
                 />
 
                 {unavailable ? (
-                  <p className="rounded-md border border-dashed border-line-strong py-6 text-center text-sm text-muted-foreground">
+                  <p className="rounded-md border border-dashed border-border-strong py-6 text-center text-sm text-muted-foreground">
                     {unavailable}
                   </p>
                 ) : page.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-line-strong py-6 text-center text-sm text-muted-foreground">
+                  <p className="rounded-md border border-dashed border-border-strong py-6 text-center text-sm text-muted-foreground">
                     {query
                       ? 'Nothing here matches that search.'
                       : 'Nothing remembered here yet.'}
@@ -1035,10 +964,10 @@ function MemorySettings() {
                             {formatWhen(memory.lastUsedAt)}
                           </p>
                           <details className="mt-1 text-xs" data-testid="memory-provenance">
-                            <summary className="cursor-pointer rounded-sm text-brand-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
+                            <summary className="cursor-pointer rounded-sm text-acc-text underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:py-2">
                               Why Flint remembers this
                             </summary>
-                            <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-sunken p-2 text-ink-2 sm:grid-cols-[auto_1fr]">
+                            <dl className="mt-2 grid grid-cols-1 gap-x-3 gap-y-0.5 rounded-md bg-muted p-2 text-fg-2 sm:grid-cols-[auto_1fr]">
                               <dt>ID</dt>
                               <dd className="font-mono break-all">{memory.id}</dd>
                               <dt>Scope</dt>
@@ -1224,6 +1153,88 @@ function MemorySettings() {
                 )}
               </div>
             </Card>
+          </>
+        }
+        right={[
+          proposalLocation && proposalsPending.length > 0 && (
+              <Card
+                key="waiting"
+                title="Waiting for you"
+                aside={<span className="tabular-nums">{proposalsPending.length}</span>}
+              >
+                <CardItem
+                  title="Memories Flint has offered"
+                  description="Nothing here is being used yet. An unanswered proposal is never added to a prompt."
+                />
+                <div className="pb-3">
+                  <MemoryProposalList
+                    proposals={proposalsPending}
+                    location={proposalLocation}
+                    onResolved={(id) => {
+                      onProposalResolved(id)
+                      // An approval becomes a real memory, so the list below
+                      // is now out of date as well.
+                      void reload()
+                      void reloadProposals()
+                    }}
+                  />
+                </div>
+              </Card>
+            ),
+          conflicts.length > 0 && (
+              <Card key="conflicts" title="Memories that disagree">
+                <CardItem
+                  title="Neither side is being used"
+                  description="These remembered facts contradict each other, so Flint leaves both out of every request here until you keep one."
+                />
+                <ul className="flex flex-col gap-3 pb-3" data-testid="memory-conflicts">
+                  {conflicts.map((conflict) => (
+                    <li
+                      key={`${conflict.left.id}|${conflict.right.id}`}
+                      className="rounded-md border border-border p-3"
+                      data-testid="memory-conflict"
+                      data-left-id={conflict.left.id}
+                      data-right-id={conflict.right.id}
+                    >
+                      <p className="mb-2 text-xs font-medium text-fg-2">
+                        About the {conflict.subject}
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(
+                          [
+                            [conflict.left, conflict.right],
+                            [conflict.right, conflict.left],
+                          ] satisfies Array<[MemoryView, MemoryView]>
+                        ).map(([side, other]: [MemoryView, MemoryView]) => (
+                          <div key={side.id} className="flex min-w-0 flex-col gap-2 rounded-md bg-muted p-3">
+                            <p className="text-sm break-words text-foreground">{side.content}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {scopeLabel(side.scope)}
+                              {' · '}
+                              <span className="font-mono break-all">{side.id}</span>
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="self-start pointer-coarse:h-11"
+                              disabled={busy}
+                              data-testid="memory-conflict-keep"
+                              data-keep-id={side.id}
+                              aria-label={`Keep "${side.preview}" and forget the other`}
+                              onClick={() => void onKeep(side, other)}
+                            >
+                              Keep this one
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ),
+        ]}
+      />
       </SettingsPageBody>
 
       <Dialog open={editing !== null} onOpenChange={(open) => !open && setEditing(null)}>

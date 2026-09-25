@@ -1,6 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
+import { Chip } from '@/components/ui/chip'
 import { Card, CardItem } from '@/containers/Card'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
@@ -33,14 +37,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
-  Collapsible,
-  CollapsibleTrigger,
-  CollapsibleContent,
-} from '@/components/ui/collapsible'
-import {
-  ChevronDown,
   ChevronsUpDown,
-  ChevronUp,
   ExternalLink,
   LoaderCircle,
   Settings2,
@@ -405,18 +402,10 @@ function LocalAPIServerContent() {
             </PopoverContent>
           </Popover>
       </SettingsPageHeader>
-      <div className="flex h-[calc(100%-var(--ctx-h))] min-h-0">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pt-5 pb-8 md:px-7 md:pt-6">
-            <div className="mx-auto flex w-full max-w-[50rem] min-w-0 flex-col gap-4">
-              <div className="min-w-0 space-y-0.5">
-                <h2 className="text-base font-semibold text-foreground">
-                  {t('common:local_api_server')}
-                </h2>
-                <p className="text-[13px] leading-normal text-ink-2">
-                  {t('settings:pageDesc.localApiServer')}
-                </p>
-              </div>
+      <SettingsPageBody
+        title={t('common:local_api_server')}
+        description={t('settings:pageDesc.localApiServer')}
+      >
               {/* General Settings */}
               <Card
                 title={t('settings:localApiServer.title')}
@@ -489,7 +478,7 @@ function LocalAPIServerContent() {
                               defaultModelLocalApiServer?.model === modelId &&
                                 defaultModelLocalApiServer?.provider ===
                                   provider &&
-                                'bg-brand-tint'
+                                'bg-accent'
                             )}
                             onClick={() =>
                               setDefaultModelLocalApiServer({
@@ -511,17 +500,22 @@ function LocalAPIServerContent() {
                 <CardItem
                   title="Server Status"
                   description={
-                    isServerRunning ? (
-                      <div className="space-y-1">
-                        <div>The server is currently running.</div>
-                        <div className="text-xs font-mono">
+                    isServerRunning
+                      ? 'The server is currently running.'
+                      : 'The server is stopped.'
+                  }
+                  actions={
+                    <>
+                      <Chip tone={isServerRunning ? 'ok' : 'neutral'} dot live={isServerRunning}>
+                        {isServerRunning ? 'Running' : 'Stopped'}
+                      </Chip>
+                      {isServerRunning && (
+                        <code className="inline-flex h-[30px] items-center rounded-lg bg-muted px-2.5 font-mono text-[11.5px] text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
                           http://{serverHost}:{serverPort}
                           {apiPrefix}
-                        </div>
-                      </div>
-                    ) : (
-                      'The server is stopped.'
-                    )
+                        </code>
+                      )}
+                    </>
                   }
                 />
 
@@ -549,41 +543,27 @@ function LocalAPIServerContent() {
                   }
                 />
               </Card>
-            </div>
-          </div>
-          <div className="shrink-0 border-t border-border bg-sunken px-4 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:px-7">
-            <div className="mx-auto w-full max-w-[50rem]">
-            <Card>
-              <Collapsible defaultOpen={false}>
-                <div className="flex items-center justify-between">
-                  <CollapsibleTrigger className="flex min-h-11 items-center gap-2 rounded-sm hover:no-underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring sm:min-h-0 data-[state=open]:[&>svg.chevron-down]:hidden data-[state=closed]:[&>svg.chevron-up]:hidden">
-                    <ChevronDown size={16} className="chevron-down" aria-hidden />
-                    <ChevronUp size={16} className="chevron-up" aria-hidden />
-                    <span className="font-medium text-sm">Server Log</span>
-                  </CollapsibleTrigger>
+
+              <Card
+                title="Server Log"
+                bodyClassName="py-3"
+                aside={
                   <Button
                     variant="outline"
-                    size="sm"
+                    size="xs"
                     onClick={handleOpenLogs}
-                    className="text-muted-foreground hover:text-foreground pointer-coarse:h-11"
+                    className="pointer-coarse:h-11"
                   >
                     <ExternalLink aria-hidden />
                     Open in New Window
                   </Button>
+                }
+              >
+                <div className="h-[160px]">
+                  <LogViewer />
                 </div>
-                <CollapsibleContent>
-                  <div className="pt-3">
-                    <div className="h-[200px]">
-                      <LogViewer />
-                    </div>
-                  </div>
-                </CollapsibleContent>
-              </Collapsible>
-            </Card>
-            </div>
-          </div>
-        </div>
-      </div>
+              </Card>
+      </SettingsPageBody>
     </div>
   )
 }

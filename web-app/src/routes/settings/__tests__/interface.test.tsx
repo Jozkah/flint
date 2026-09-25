@@ -49,9 +49,12 @@ vi.mock('@/containers/NotificationPositionSwitcher', () => ({
   ),
 }))
 
+const { setReduceMotion } = vi.hoisted(() => ({ setReduceMotion: vi.fn() }))
 vi.mock('@/hooks/useInterfaceSettings', () => ({
   useInterfaceSettings: () => ({
     resetInterface: vi.fn(),
+    reduceMotion: false,
+    setReduceMotion,
   }),
 }))
 
@@ -176,19 +179,26 @@ describe('Interface Settings Route', () => {
     expect(cards.length).toBeGreaterThan(0)
   })
 
-  it('should have proper responsive layout classes', () => {
+  it('offers Reduce motion as a switch bound to the interface setting', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
-    const cardItems = screen.getAllByTestId('card-item')
+    const toggle = screen.getByTestId('reduce-motion-switch')
+    expect(toggle).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(toggle)
+    expect(setReduceMotion).toHaveBeenCalledWith(true)
+  })
 
-    // Check that some card items have responsive classes
-    const responsiveItems = cardItems.filter(item =>
-      item.className?.includes('flex-col') ||
-      item.className?.includes('sm:flex-row')
+  it('places the motion group right after the theme group', () => {
+    const Component = InterfaceRoute.component as React.ComponentType
+    render(<Component />)
+
+    const titles = screen
+      .getAllByTestId('card-title')
+      .map((el) => el.textContent)
+    expect(titles.indexOf('settings:appearance.motionGroup')).toBe(
+      titles.indexOf('settings:appearance.themeGroup') + 1
     )
-
-    expect(responsiveItems.length).toBeGreaterThan(0)
   })
 
   it('should render main layout structure', () => {

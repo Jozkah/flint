@@ -135,7 +135,7 @@ function HTTPSProxyContent() {
                         }
                         aria-pressed={showPassword}
                         onClick={() => setShowPassword(!showPassword)}
-                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-hover-row hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
                       >
                         {showPassword ? (
                           <EyeOff size={16} />

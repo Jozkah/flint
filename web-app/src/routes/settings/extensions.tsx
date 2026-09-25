@@ -64,7 +64,7 @@ function PluginRow({
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <Puzzle size={14} className="text-muted-foreground" />
             <span className="font-medium text-foreground">{p.name}</span>
-            <div className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-xs tabular-nums text-ink-2">
+            <div className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg-2">
               v{p.version}
             </div>
             <span className="text-xs text-muted-foreground">
@@ -193,7 +193,7 @@ function ExtensionsContent() {
                     <span className="font-medium text-foreground">
                       {item.productName ?? item.name}
                     </span>
-                    <div className="rounded-sm bg-sunken px-1.5 py-0.5 font-mono text-xs tabular-nums text-ink-2">
+                    <div className="rounded-sm bg-muted px-1.5 py-0.5 font-mono text-xs tabular-nums text-fg-2">
                       v{item.version}
                     </div>
                   </div>
@@ -205,7 +205,7 @@ function ExtensionsContent() {
                       a: ({ ...props }) => (
                         <a
                           {...props}
-                          className="text-brand-text underline-offset-4 hover:underline"
+                          className="text-acc-text underline-offset-4 hover:underline"
                           target="_blank"
                           rel="noopener noreferrer"
                         />

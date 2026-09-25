@@ -152,10 +152,10 @@ function AssistantContent() {
           <ul className="divide-y divide-border">
             {sortedAssistants.map((assistant) => (
               <li
-                className="group flex min-h-11 items-center gap-3 px-4 py-2.5 hover:bg-sunken"
+                className="group flex min-h-11 items-center gap-3 px-4 py-2.5 hover:bg-hover-row"
                 key={assistant.id}
               >
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sunken">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted">
                   {assistant?.avatar && (
                     <AvatarEmoji
                       avatar={assistant?.avatar}
@@ -170,7 +170,7 @@ function AssistantContent() {
                       {assistant.name}
                     </span>
                     {defaultAssistantId === assistant.id && (
-                      <span className="shrink-0 rounded-md bg-sunken px-1.5 py-0.5 text-[11px] font-medium leading-none text-ink-2">
+                      <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium leading-none text-fg-2">
                         {t('assistants:isDefault')}
                       </span>
                     )}

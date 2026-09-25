@@ -52,7 +52,7 @@ type RenewalRow = {
 
 /** One integrated row: what the grant is on the left, its control on the right. */
 const ROW =
-  'flex flex-col gap-2 border-b border-border py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4'
+  'flex flex-col gap-2 border-b border-dashed border-border py-2.5 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4'
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 /** Outlined destructive, never the accent fill. */
 const REVOKE = 'self-start shrink-0 pointer-coarse:h-11 sm:self-auto'
@@ -439,7 +439,7 @@ function PermissionsSettings() {
               {servers.map((server) => (
                 <li
                   key={`server-${server.name}`}
-                  className="border-b border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="min-w-0 space-y-0.5">
@@ -549,7 +549,7 @@ function PermissionsSettings() {
               {pendingRenewals.map((row) => (
                 <li
                   key={`renewal-${row.name}`}
-                  className="border-b border-border py-2.5 last:border-b-0"
+                  className="border-b border-dashed border-border py-2.5 last:border-b-0"
                 >
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <div className="min-w-0 space-y-0.5">
@@ -633,7 +633,7 @@ function PermissionsSettings() {
             >
               <table className="w-full min-w-[36rem] border-collapse text-left text-sm tabular-nums">
                 <thead>
-                  <tr className="border-b border-border text-xs text-muted-foreground">
+                  <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
                     <th scope="col" className="py-2 pr-4 pl-4 font-medium">
                       {t('permissions:settings.historyTime')}
                     </th>
@@ -652,10 +652,10 @@ function PermissionsSettings() {
                   {history.map((record, index) => (
                     <tr
                       key={`${record.at}-${record.call}-${index}`}
-                      className="border-b border-border last:border-b-0"
+                      className="border-b border-dashed border-border last:border-b-0"
                     >
                       <td className="py-2.5 pr-4 pl-4 align-top whitespace-nowrap">
-                        <time dateTime={record.at} className="text-xs text-ink-2">
+                        <time dateTime={record.at} className="text-xs text-fg-2">
                           {formatWhen(record.at)}
                         </time>
                       </td>
@@ -666,7 +666,7 @@ function PermissionsSettings() {
                       </td>
                       <td className="py-2.5 pr-4 align-top">
                         {record.resource && (
-                          <span className="block break-all font-mono text-xs text-ink-2">
+                          <span className="block break-all font-mono text-xs text-fg-2">
                             {record.resource}
                           </span>
                         )}

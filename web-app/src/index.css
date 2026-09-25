@@ -115,6 +115,7 @@
   --animate-send-ready: send-ready 0.4s var(--expo);
   --animate-tree-in: tree-in 0.3s var(--expo) both;
   --animate-sb-in: sb-in 0.4s var(--expo) both;
+  --animate-cp-in: cp-in 0.42s var(--expo) both;
 
   @keyframes dd-in { 0% { opacity: 0; transform: translateY(-4px) scale(0.97); } to { opacity: 1; transform: none; } }
   @keyframes dlg-in { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
@@ -132,6 +133,7 @@
   @keyframes ring { 0%, to { transform: rotate(0); } 20% { transform: rotate(14deg); } 40% { transform: rotate(-12deg); } 60% { transform: rotate(8deg); } 80% { transform: rotate(-4deg); } }
   @keyframes wave { 0%, to { transform: rotate(0); } 15% { transform: rotate(14deg); } 30% { transform: rotate(-8deg); } 45% { transform: rotate(14deg); } 60% { transform: rotate(-4deg); } 75% { transform: rotate(10deg); } }
   @keyframes sb-in { from { opacity: 0; transform: translateX(-14px); } }
+  @keyframes cp-in { 0% { opacity: 0; transform: translateY(-8px) scale(0.92); filter: blur(2px); } 60% { filter: none; } to { opacity: 1; transform: none; } }
   --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 
@@ -436,6 +438,29 @@ html.reduce-motion *::after {
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
+}
+
+/* Settings > Appearance > Font size. The design sizes type in pixels, which a
+   root font-size cannot reach, so the chosen size scales the whole app surface
+   the way the design does (zoom = size / 16px). Inside it the rem type scale
+   stays at design size, or text would grow twice. The height is divided back
+   so the zoomed surface still fills the window exactly. An engine without
+   typed calc() division keeps zoom 1 and falls back to the rem scale alone. */
+@supports (zoom: calc(2px / 1px)) {
+  .app-zoom {
+    --app-zoom: calc(var(--font-size-base, 16px) / 16px);
+    --app-font-base: 16px;
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-lg: 1.125rem;
+    --text-xl: 1.25rem;
+    --text-2xl: 1.5rem;
+    --text-3xl: 1.875rem;
+    --text-4xl: 2.25rem;
+    zoom: var(--app-zoom);
+    height: calc(var(--app-vvh, 100dvh) / var(--app-zoom)) !important;
+  }
 }
 
 /* Set by index.html before first paint and removed two frames after mount, so

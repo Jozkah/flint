@@ -1,4 +1,4 @@
-﻿import {
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -32,7 +32,7 @@ export function FontSizeSwitcher({
           <Label
             key={item.value}
             htmlFor={item.value}
-            className="cursor-pointer [&:has([data-state=checked])>div]:border-brand [&:has([data-state=checked])>div]:bg-brand-tint"
+            className="cursor-pointer [&:has([data-state=checked])>div]:border-primary [&:has([data-state=checked])>div]:bg-accent"
           >
             <Card className="w-full border transition-colors shadow-none">
               <CardContent className="flex flex-row items-center justify-start gap-4 p-4">
@@ -49,11 +49,14 @@ export function FontSizeSwitcher({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="w-full min-w-40 justify-between pointer-coarse:h-11" title={t('common:adjustFontSize')}>
-          {fontSizeOptions.find(
-            (item: { value: string; label: string }) => item.value === fontSize
-          )?.label || t('common:medium')}
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground ml-2" />
+        <Button variant="outline" size="sm" className="w-full min-w-36 justify-between font-normal pointer-coarse:h-11" title={t('common:adjustFontSize')}>
+          <span>
+            {fontSizeOptions.find(
+              (item: { value: string; label: string }) => item.value === fontSize
+            )?.label || t('common:medium')}{' '}
+            <span className="text-muted-foreground">{fontSize}</span>
+          </span>
+          <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -62,11 +65,12 @@ export function FontSizeSwitcher({
             key={item.value}
             className={cn(
               'cursor-pointer my-0.5',
-              fontSize === item.value && 'bg-brand-tint'
+              fontSize === item.value && 'bg-accent font-medium'
             )}
             onClick={() => setFontSize(item.value as FontSize)}
           >
-            {item.label}
+            <span className="flex-1">{item.label}</span>
+            <span className="text-xs text-muted-foreground">{item.value}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

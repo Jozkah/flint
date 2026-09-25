@@ -7,7 +7,7 @@ import {
 
 type CardProps = {
   title?: string | ReactNode
-  /** One line under the group title, for groups that need a sentence. */
+  /** One sentence opening the group's panel, for groups that need it. */
   description?: string | ReactNode
   /** Rendered at the end of the title row: a count, a link, a small action. */
   aside?: ReactNode
@@ -15,7 +15,7 @@ type CardProps = {
   /** Free-form content above the rows, kept for callers that build their own header. */
   header?: ReactNode
   className?: string
-  /** Classes for the body that holds the rows. */
+  /** Classes for the panel that holds the rows. */
   bodyClassName?: string
   'data-testid'?: string
   /** Stable settings-search id for the whole group. */
@@ -35,7 +35,7 @@ type CardItemProps = {
    * Stable settings-search id for this row, e.g. `settings-appearance-theme`.
    *
    * Applied to the row's own element rather than a wrapper: the row draws its
-   * divider with `last:border-none`, which is relative to its parent, so
+   * divider with `last:border-b-0`, which is relative to its parent, so
    * wrapping it would make every row the last one and strip the dividers from
    * the whole group.
    */
@@ -43,9 +43,10 @@ type CardItemProps = {
 }
 
 /**
- * One setting inside a group: the label and a readable explanation on the
- * left, its control on the right. On narrow screens the control wraps below
- * the text instead of squeezing it.
+ * One setting inside a group (the design's `.srow`): the label and a readable
+ * explanation on the left, its control on the right, rows parted by a dashed
+ * hairline. On narrow screens the control wraps below the text instead of
+ * squeezing it.
  */
 export function CardItem({
   title,
@@ -65,27 +66,28 @@ export function CardItem({
         ref={anchor ? targetRef : undefined}
         id={anchor}
         data-setting-anchor={anchor}
+        data-slot="setting-row"
         tabIndex={anchor ? -1 : undefined}
         className={cn(
-          'flex flex-col gap-2.5 border-b border-border py-3 last:border-none sm:flex-row sm:justify-between sm:gap-6',
-          descriptionOutside && 'border-0',
+          'flex flex-col gap-2.5 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 sm:flex-row sm:justify-between sm:gap-4',
+          descriptionOutside && 'border-b-0',
           align === 'start' && 'sm:items-start',
           align === 'center' && 'sm:items-center',
           align === 'end' && 'sm:items-end',
-          column && 'sm:flex-col gap-y-3 sm:items-start',
+          column && 'gap-y-3 sm:flex-col sm:items-stretch',
           anchor && settingTargetClasses,
           className
         )}
       >
         {(title || description) && (
-          <div className="min-w-0 space-y-0.5">
+          <div className="flex min-w-0 flex-[1_1_auto] flex-col gap-1.5 sm:min-w-[110px]">
             {title && (
-              <div className="text-sm font-medium leading-5 text-foreground">
+              <div className="text-[13px] leading-tight font-medium text-foreground">
                 {title}
               </div>
             )}
             {description && (
-              <div className="text-[13px] leading-normal text-muted-foreground">
+              <div className="text-xs leading-[1.4] text-muted-foreground">
                 {description}
               </div>
             )}
@@ -93,10 +95,11 @@ export function CardItem({
         )}
         {actions && (
           <div
+            data-slot="setting-control"
             className={cn(
-              'min-w-0 shrink-0',
+              'flex min-w-0 shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
               classNameWrapperAction,
-              column && 'w-full'
+              column && 'w-full sm:max-w-none sm:justify-start'
             )}
           >
             {actions}
@@ -104,7 +107,7 @@ export function CardItem({
         )}
       </div>
       {descriptionOutside && (
-        <div className="pb-3 text-[13px] leading-normal text-muted-foreground">
+        <div className="border-b border-dashed border-border pb-3 text-xs leading-[1.4] text-muted-foreground last:border-b-0">
           {descriptionOutside}
         </div>
       )}
@@ -113,9 +116,9 @@ export function CardItem({
 }
 
 /**
- * A settings group (Flint Graphite Studio): a bordered `rounded-lg` object with
- * a compact title row and integrated rows separated by hairlines. No shadow,
- * no oversized heading.
+ * A settings group, drawn as the design's Frame: a muted shell carrying the
+ * group title, and a raised inner panel holding the rows. The optional
+ * description opens the panel as one muted sentence.
  */
 export function Card({
   title,
@@ -136,33 +139,43 @@ export function Card({
       data-setting-anchor={anchor}
       tabIndex={anchor ? -1 : undefined}
       data-testid={testId}
+      data-slot="frame"
       className={cn(
-        'w-full min-w-0 rounded-lg border border-border bg-card text-ink-2',
+        'relative flex w-full min-w-0 flex-col overflow-clip rounded-xl bg-muted p-1 text-fg-2 shadow-[inset_0_0_0_0.8px_var(--border)]',
         anchor && settingTargetClasses,
-        anchor && 'rounded-lg',
+        anchor && 'rounded-xl',
         className
       )}
     >
       {(title || aside) && (
-        <div className="flex min-h-10 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-2">
+        <header
+          data-slot="frame-header"
+          className="flex min-h-9 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 p-2"
+        >
           {title && (
-            <h2 className="min-w-0 text-[13px] font-semibold text-foreground">
+            <h2 className="min-w-0 text-sm leading-none font-medium text-secondary-foreground">
               {title}
             </h2>
           )}
           {aside && (
-            <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+            <div className="ml-auto flex shrink-0 items-center gap-2 text-[13px] text-muted-foreground">
               {aside}
             </div>
           )}
-          {description && (
-            <p className="basis-full text-[13px] leading-normal text-muted-foreground">
-              {description}
-            </p>
-          )}
-        </div>
+        </header>
       )}
-      <div className={cn('px-4 py-1', bodyClassName)}>
+      <div
+        data-slot="frame-body"
+        className={cn(
+          'relative flex min-w-0 flex-col rounded-xl border-[0.8px] border-input bg-card px-3.5 py-[3px]',
+          bodyClassName
+        )}
+      >
+        {description && (
+          <p className="mt-2.5 mb-0.5 text-[12.5px] leading-normal text-muted-foreground">
+            {description}
+          </p>
+        )}
         {header && header}
         {children}
       </div>

@@ -64,7 +64,7 @@ const AppLayout = () => {
       <HeaderSlotProvider>
         <div
           data-testid="app-shell"
-          className="relative flex h-(--app-vvh,100dvh) w-full overflow-hidden bg-background"
+          className="app-zoom relative flex h-(--app-vvh,100dvh) w-full overflow-hidden bg-background"
         >
           <KeyboardShortcutsProvider />
           <TemporaryChatGuard />
@@ -94,7 +94,7 @@ const AppLayout = () => {
 const LogsLayout = () => {
   return (
     <Fragment>
-      <main className="relative h-svh text-sm antialiased select-text bg-background p-2">
+      <main className="app-zoom relative h-svh text-sm antialiased select-text bg-background p-2">
         <div className="flex h-full">
           {/* Main content panel */}
           <div className="h-full flex w-full">
