@@ -1002,6 +1002,8 @@
     "statusDone": "Finished",
     "statusError": "Failed",
     "statusPartial": "Finished with errors",
+    "statusCheckFailed": "Check failed (exit {{code}})",
+    "exitCode": "exit {{code}}",
     "statusCancelled": "Cancelled",
     "statusInterrupted": "Interrupted",
     "kindAgent": "Agent",

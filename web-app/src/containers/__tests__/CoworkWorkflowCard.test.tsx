@@ -223,4 +223,39 @@ describe('CoworkWorkflowCard', () => {
       screen.getAllByLabelText('common:tasks.statusError').length
     ).toBeGreaterThan(0)
   })
+
+  it('shows a command that exited non-zero as an amber check failure', () => {
+    render(
+      <Card
+        state={stateWith(
+          task({
+            id: 'a',
+            kind: 'shell',
+            title: 'pytest',
+            status: 'error',
+            exitCode: 1,
+            output: 'FAILED test_rows\n[exit 1]',
+            endedAt: T0 + 1,
+          }),
+          task({
+            id: 'b',
+            kind: 'shell',
+            title: 'sleep 999',
+            status: 'error',
+            output: 'ERROR: command timed out after 60s and was terminated.',
+            endedAt: T0 + 2,
+          })
+        )}
+      />
+    )
+    // The check failure: amber, with its exit code.
+    expect(
+      screen.getByLabelText('common:tasks.statusCheckFailed code=1')
+    ).toHaveClass('text-warning')
+    expect(screen.getByText('common:tasks.exitCode code=1')).toBeInTheDocument()
+    // The timeout stays a red error.
+    expect(
+      screen.getAllByLabelText('common:tasks.statusError').length
+    ).toBeGreaterThan(0)
+  })
 })

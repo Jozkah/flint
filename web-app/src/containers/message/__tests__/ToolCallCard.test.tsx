@@ -76,4 +76,41 @@ describe('ToolCallCard', () => {
     )
     expect(screen.getByText('title: Bug')).toBeInTheDocument()
   })
+
+  // A command that ran and exited non-zero is a failed check: amber, not the
+  // red a refusal, crash or timeout gets.
+  it('colours a non-zero exit amber and a failed call red', () => {
+    origin.mockReturnValue({ kind: 'agent' })
+    const { container, unmount } = render(
+      <ToolCallCard
+        part={{
+          type: 'tool-bash',
+          state: 'output-available',
+          toolCallId: 'tc-exit',
+          input: { command: 'pytest' },
+          output: '2 failed\n[exit 1]',
+        }}
+        messageId="m1"
+      />
+    )
+    expect(
+      container.querySelector('[data-slot="tool-card"]')
+    ).toHaveAttribute('data-tool-kind', 'warn')
+    unmount()
+    const failed = render(
+      <ToolCallCard
+        part={{
+          type: 'tool-bash',
+          state: 'output-error',
+          toolCallId: 'tc-err',
+          input: { command: 'pytest' },
+          errorText: 'refused',
+        }}
+        messageId="m1"
+      />
+    )
+    expect(
+      failed.container.querySelector('[data-slot="tool-card"]')
+    ).toHaveAttribute('data-tool-kind', 'fail')
+  })
 })

@@ -27,6 +27,7 @@ import {
   updateTask,
   workflowAnchoredAt,
   workflowStatus,
+  isCheckFailure,
   isLive,
   workflowView,
   type ActivityState,
@@ -803,4 +804,22 @@ describe('phase identity when the todo list is re-indexed', () => {
     expect(again.phaseId).toBe(first.phaseId)
     expect(again.state).toBe(first.state)
   })
+
+describe('isCheckFailure', () => {
+  const shell = (over: Partial<ActivityTask>) =>
+    task({ id: 'x', kind: 'shell', status: 'error', ...over })
+  it('is a command that ran and exited non-zero', () => {
+    expect(isCheckFailure(shell({ exitCode: 1, output: 'boom\n[exit 1]' }))).toBe(true)
+    expect(isCheckFailure(shell({ exitCode: 2 }))).toBe(true)
+  })
+  it('is not a refusal, crash, timeout or spawn failure', () => {
+    expect(isCheckFailure(shell({}))).toBe(false)
+    expect(isCheckFailure(shell({ exitCode: 1, signalled: true }))).toBe(false)
+    expect(
+      isCheckFailure(shell({ exitCode: 1, output: 'ERROR: command timed out after 60s' }))
+    ).toBe(false)
+    expect(isCheckFailure(shell({ exitCode: 0, status: 'done' }))).toBe(false)
+    expect(isCheckFailure(task({ id: 'y', status: 'error', exitCode: 1 }))).toBe(false)
+  })
+})
 })

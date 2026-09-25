@@ -57,6 +57,25 @@ export type WorkflowStatus = ActivityStatus | 'partial'
 
 export type ActivityKind = 'agent' | 'shell'
 
+/**
+ * A shell command that ran and exited non-zero: a check that failed (a test,
+ * a `grep` with no match), not a refusal, a crash, a timeout or a command
+ * that never started -- those carry no exit code, were killed by a signal, or
+ * come back as the tool's own `ERROR:` message. Shown amber, not red.
+ */
+export function isCheckFailure(
+  task: Pick<ActivityTask, 'kind' | 'status' | 'exitCode' | 'signalled' | 'output'>
+): boolean {
+  return (
+    task.kind === 'shell' &&
+    task.status === 'error' &&
+    task.exitCode != null &&
+    task.exitCode >= 1 &&
+    !task.signalled &&
+    !/^\s*ERROR:/.test(task.output ?? '')
+  )
+}
+
 /** A stage of the parent's todo list, as it stood when work was dispatched. */
 export type ActivityPhase = {
   /** Stable for the life of the workflow. Never reused, never renumbered. */

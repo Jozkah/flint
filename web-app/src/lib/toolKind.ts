@@ -15,6 +15,8 @@ export type ToolKind =
   | 'edit'
   | 'todo'
   | 'fail'
+  /** A command that ran and exited non-zero: a failed check, not a crash. */
+  | 'warn'
   | 'appr'
   | 'other'
 
@@ -27,6 +29,8 @@ export type ToolKindInput = {
   origin?: string
   /** A permission request for this call is waiting on the user. */
   awaitingApproval?: boolean
+  /** A command that ran and exited non-zero (see `ToolKind` `warn`). */
+  checkFailed?: boolean
 }
 
 const WEB = /^web_|^fetch$|browser/
@@ -41,10 +45,12 @@ export function toolKind({
   state,
   origin,
   awaitingApproval,
+  checkFailed,
 }: ToolKindInput): ToolKind {
   // What needs the user, then what went wrong, outrank what the tool is.
   if (awaitingApproval) return 'appr'
   if (state === 'output-error' || state === 'output-denied') return 'fail'
+  if (checkFailed) return 'warn'
   const n = name.toLowerCase()
   if (WEB.test(n) || origin === 'Web') return 'web'
   if (TODO.test(n)) return 'todo'

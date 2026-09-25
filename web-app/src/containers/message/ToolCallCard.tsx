@@ -158,6 +158,10 @@ export const ToolCallCard = memo(
     const exitFailed =
       done && Boolean(bash && ((bash.exit ?? 0) !== 0 || bash.signaled))
     const failed = isError || exitFailed
+    // It ran and exited non-zero: a failed check (amber), not a crash, a
+    // refusal or a timeout (red).
+    const checkFailed = exitFailed && !bash?.signaled
+    const hardFailed = exitFailed && !checkFailed
     const showDiff = Boolean(diff) && !running && !isError
 
     // `skill_read` reads as a bare tool name otherwise; the label names the
@@ -177,7 +181,7 @@ export const ToolCallCard = memo(
             {t('tools:toolCall.terminated')}
           </Chip>
         ) : (
-          <Chip tone="err" dot className="tabular-nums">
+          <Chip tone="warn" dot className="tabular-nums">
             {t('tools:toolCall.exitCode', { code: bash.exit })}
           </Chip>
         )
@@ -279,7 +283,8 @@ export const ToolCallCard = memo(
         messageId={messageId}
         name={toolName}
         origin={originLabel}
-        failed={exitFailed}
+        failed={hardFailed}
+        checkFailed={checkFailed}
         // Open while it runs, so the live result is in view, and for what is
         // worth reading afterwards: a failure or a change.
         autoOpen={running || failed || showDiff}
@@ -293,7 +298,7 @@ export const ToolCallCard = memo(
           arg={bar ? headerArg(bar) : undefined}
           input={bar ? undefined : part.input}
           badge={badge}
-          failed={exitFailed}
+          failed={hardFailed}
         />
         <ToolProgressRow
           toolCallId={part.toolCallId}

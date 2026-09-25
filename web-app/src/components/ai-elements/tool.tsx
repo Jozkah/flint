@@ -117,6 +117,11 @@ export type ToolProps = ComponentProps<typeof Collapsible> & {
    */
   failed?: boolean
   /**
+   * The command ran and exited non-zero: a failed check, coloured amber
+   * rather than as a failure (which stays for refusals, crashes, timeouts).
+   */
+  checkFailed?: boolean
+  /**
    * Opens the card while true and closes it when it turns false, e.g. open
    * while the call runs and for a failure or a diff worth reading.
    */
@@ -132,6 +137,7 @@ export const Tool = memo(
     name,
     origin,
     failed = false,
+    checkFailed = false,
     autoOpen,
     open,
     defaultOpen = false,
@@ -175,6 +181,7 @@ export const Tool = memo(
       state: failed ? 'output-error' : state,
       origin,
       awaitingApproval: isPending,
+      checkFailed,
     })
 
     return (

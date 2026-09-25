@@ -14,6 +14,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
 import { formatCompactDuration } from '@/lib/duration'
 import {
+  isCheckFailure,
   taskElapsedMs,
   type WorkflowStatus,
   type ActivityTask,
@@ -124,9 +125,11 @@ export function CoworkWorkflowCard({
           <span
             className={cn(
               'block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo',
-              progress.error > 0
-                ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
-                : 'bg-grad'
+              status === 'partial'
+                ? 'bg-[linear-gradient(90deg,#f59e0b,#d97706)]'
+                : progress.error > 0
+                  ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
+                  : 'bg-grad'
             )}
             style={{ width: `${Math.round(progress.fraction * 100)}%` }}
           />
@@ -148,7 +151,17 @@ export function CoworkWorkflowCard({
                 onClick={() => onOpenTask(task)}
                 className="flex h-[26px] w-full items-center gap-2 rounded-md px-1.5 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
               >
-                <StatusIcon status={task.status} />
+                {isCheckFailure(task) ? (
+                  <TriangleAlert
+                    aria-label={t('common:tasks.statusCheckFailed', {
+                      code: task.exitCode,
+                    })}
+                    data-testid={`task-check-failed-${task.id}`}
+                    className="relative size-3.5 shrink-0 text-warning"
+                  />
+                ) : (
+                  <StatusIcon status={task.status} />
+                )}
                 {task.kind === 'shell' ? (
                   <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
                 ) : (
@@ -163,6 +176,11 @@ export function CoworkWorkflowCard({
                 >
                   {task.title}
                 </span>
+                {isCheckFailure(task) && (
+                  <span className="shrink-0 font-mono text-[11px] tabular-nums text-warning">
+                    {t('common:tasks.exitCode', { code: task.exitCode })}
+                  </span>
+                )}
                 <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                   {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
                 </span>
