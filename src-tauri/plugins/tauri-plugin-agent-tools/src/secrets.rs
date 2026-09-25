@@ -420,8 +420,33 @@ fn hunk_start(header: &str) -> Option<usize> {
 /// Applied before anything is persisted or rendered. The line stays legible --
 /// which key was set, and where -- because a redaction that removes the whole
 /// line loses the part that was worth keeping.
+///
+/// Line endings are kept exactly as they were -- `\r\n` stays `\r\n` and a
+/// trailing newline stays -- so text holding no credential comes back
+/// byte-for-byte unchanged. `str::lines` dropped both: a Windows tool's CRLF
+/// output came back altered, and a batch whose last part was empty lost that
+/// part, which the renderer reads as a failed check and withholds the whole
+/// tool result (`git clone` output and a README printed back were withheld as
+/// "could not be checked for credentials").
 pub fn redact_secrets(text: &str) -> String {
-    text.lines()
+    let mut out = String::with_capacity(text.len());
+    for piece in text.split_inclusive('\n') {
+        let (line, ending) = if let Some(line) = piece.strip_suffix("\r\n") {
+            (line, "\r\n")
+        } else if let Some(line) = piece.strip_suffix('\n') {
+            (line, "\n")
+        } else {
+            (piece, "")
+        };
+        out.push_str(&redact_one_line(line));
+        out.push_str(ending);
+    }
+    out
+}
+
+/// [`redact_secrets`] for a single line without its terminator.
+fn redact_one_line(line: &str) -> String {
+    std::iter::once(line)
         // The word-level pass first, wherever it can do the job: it replaces
         // the credential and leaves the rest of the line standing. Falling back
         // to the line-level pass matters for the shape configuration has, where
@@ -444,8 +469,8 @@ pub fn redact_secrets(text: &str) -> String {
             },
             None => redact_tokens_in_line(line).unwrap_or_else(|| line.to_string()),
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .next()
+        .unwrap_or_default()
 }
 
 /// Replace credentials sitting in prose, leaving the rest of the line alone.
@@ -555,6 +580,46 @@ fn redact_line(line: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// Ordinary `git clone` output and a README printed back carry no
+    /// credential, so they come back byte-for-byte -- CRLF, trailing newlines
+    /// and empty parts of a batch included -- and the renderer's batch of
+    /// parts splits back into as many parts as went in.
+    #[test]
+    fn plain_git_output_passes_unchanged() {
+        let clone = "Cloning into 'Hello-World'...\r\nremote: Enumerating objects: 13, done.\r\n\
+remote: Total 13 (delta 0), reused 0 (delta 0), pack-reused 13 (from 1)\r\n\
+Receiving objects: 100% (13/13), done.\r\n";
+        assert_eq!(redact_secrets(clone), clone);
+        let readme = "Hello World!\n";
+        assert_eq!(redact_secrets(readme), readme);
+        let url = "git clone https://github.com/octocat/Hello-World\n";
+        assert_eq!(redact_secrets(url), url);
+        assert_eq!(redact_secrets(""), "");
+
+        // The renderer joins a tool result's strings with this separator and
+        // splits them apart again; an empty last part must survive.
+        let separator = "\n\u{0}\u{0}\n";
+        let parts = [readme, clone, ""];
+        let joined = parts.join(separator);
+        let back = redact_secrets(&joined);
+        assert_eq!(back, joined);
+        assert_eq!(back.split(separator).count(), parts.len());
+    }
+
+    /// Keeping line endings does not weaken the redaction.
+    #[test]
+    fn secrets_are_still_redacted_with_line_endings_kept() {
+        let text = "ok\r\nAuthorization: Bearer abcdefghijklmnopqrstuvwxyz012345\r\n\
+key sk-live-abcdefghijklmnopqrstuvwxyz012345\n\
+git clone https://user:hunter2hunter2@github.com/octocat/Hello-World\n";
+        let out = redact_secrets(text);
+        assert!(!out.contains("abcdefghijklmnopqrstuvwxyz012345"), "{out}");
+        assert!(!out.contains("hunter2hunter2"), "{out}");
+        assert!(out.starts_with("ok\r\n"), "{out}");
+        assert!(out.ends_with('\n'), "{out}");
+        assert_eq!(out.matches("\r\n").count(), 2, "{out}");
+    }
+
     use super::*;
 
     /// Jozkah/jan#277: a shaped token on a line must not stop the assignment
