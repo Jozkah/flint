@@ -305,7 +305,9 @@ export const ChainOfThoughtGroup = memo(
           {!groupIsStreaming
             ? renderTimeline(entries, false)
             : isExtended
-              ? autoFollowBox(renderTimeline(entries, true), 'max-h-80')
+              ? // The live timeline flows at full size along the chat, as it
+                // does once the turn ends; no capped inner scroll box.
+                renderTimeline(entries, true)
               : renderCondensed()}
         </ChainOfThoughtContent>
       </ChainOfThought>
