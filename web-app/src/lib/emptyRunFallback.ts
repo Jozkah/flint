@@ -5,10 +5,18 @@
  * failed, the sandbox could not start, the model gave up), the chat used to
  * show only the tool trace and no answer. This builds a short fallback line
  * naming the last tool failure so the user is not left with nothing.
+ *
+ * A turn with no tool calls and no text at all (the model streamed nothing,
+ * or only reasoning) gets a fallback too: otherwise the chat shows an empty
+ * bubble and the user cannot tell the turn ended.
  */
 import type { MessagePartLike } from '@/containers/message/types'
 
 const MAX_ERROR_CHARS = 300
+
+/** Shown for a finished turn with no text and no tool calls. */
+export const EMPTY_REPLY_FALLBACK =
+  'The model returned an empty reply. Try again or switch model.'
 
 function textOf(value: unknown): string | undefined {
   if (typeof value === 'string') return value.trim() || undefined
@@ -55,9 +63,10 @@ function clip(s: string): string {
 }
 
 /**
- * The fallback reply for a finished assistant message whose tool calls were
- * not followed by any text, or null when it has an answer (or is still
- * running, or used no tools).
+ * The fallback reply for a finished assistant message that has no answer:
+ * tool calls not followed by any text, or no text and no tool calls at all.
+ * Null when it has an answer, or a tool is still running. The caller only
+ * asks once the message has stopped streaming.
  */
 export function emptyRunFallback(parts: readonly MessagePartLike[]): string | null {
   let lastTool = -1
@@ -67,7 +76,12 @@ export function emptyRunFallback(parts: readonly MessagePartLike[]): string | nu
       break
     }
   }
-  if (lastTool === -1) return null
+  if (lastTool === -1) {
+    const answered = parts.some(
+      (p) => (p.type === 'text' && !!p.text?.trim()) || p.type === 'file'
+    )
+    return answered ? null : EMPTY_REPLY_FALLBACK
+  }
   const answered = parts
     .slice(lastTool + 1)
     .some((p) => (p.type === 'text' && !!p.text?.trim()) || p.type === 'file')

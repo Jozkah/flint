@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { emptyRunFallback, toolPartError } from '@/lib/emptyRunFallback'
+import {
+  EMPTY_REPLY_FALLBACK,
+  emptyRunFallback,
+  toolPartError,
+} from '@/lib/emptyRunFallback'
 import type { MessagePartLike } from '@/containers/message/types'
 
 const tool = (extra: Partial<MessagePartLike>): MessagePartLike => ({
@@ -41,8 +45,21 @@ describe('emptyRunFallback', () => {
     expect(emptyRunFallback([tool({ state: 'input-available' })])).toBeNull()
   })
 
-  it('is null for a message without tools', () => {
-    expect(emptyRunFallback([{ type: 'text', text: '' }])).toBeNull()
+  it('is null for a message without tools that has text', () => {
+    expect(emptyRunFallback([{ type: 'text', text: 'Hello' }])).toBeNull()
+  })
+
+  it('says the reply was empty when there is no text and no tool call', () => {
+    expect(emptyRunFallback([])).toBe(EMPTY_REPLY_FALLBACK)
+    expect(emptyRunFallback([{ type: 'text', text: '  ' }])).toBe(
+      EMPTY_REPLY_FALLBACK
+    )
+    expect(
+      emptyRunFallback([{ type: 'reasoning', text: 'thinking' }])
+    ).toBe(EMPTY_REPLY_FALLBACK)
+    expect(EMPTY_REPLY_FALLBACK).toBe(
+      'The model returned an empty reply. Try again or switch model.'
+    )
   })
 })
 
