@@ -255,6 +255,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.themeDesc',
     keywords: ['dark mode', 'light mode', 'color scheme', 'appearance'],
   }),
+  item('appearance', 'reduce-motion', 'settings:appearance.reduceMotion', {
+    descriptionKey: 'settings:appearance.reduceMotionDesc',
+    keywords: ['animation', 'motion', 'accessibility', 'transitions'],
+  }),
   item('appearance', 'font-size', 'settings:interface.fontSize', {
     descriptionKey: 'settings:interface.fontSizeDesc',
     keywords: ['text size', 'zoom', 'typography'],

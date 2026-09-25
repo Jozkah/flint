@@ -2201,7 +2201,7 @@ export function ThreadConversation({
           className="message-zoom flex-1 relative min-w-0"
           style={
             {
-              '--font-size-base': `calc(${fontSize} * ${messageZoom})`,
+              '--font-size-base': `calc(var(--app-font-base, ${fontSize}) * ${messageZoom})`,
             } as CSSProperties
           }
         >

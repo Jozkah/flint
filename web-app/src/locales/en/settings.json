@@ -471,7 +471,10 @@
     "previewDiffAdded": "+ added",
     "previewDiffRemoved": "− removed",
     "resetTo": "Reset to {{name}}",
-    "presetDefault": "Default"
+    "presetDefault": "Default",
+    "pickerSaturation": "Saturation and brightness",
+    "pickerHue": "Hue",
+    "useColour": "Use colour"
   },
   "appearance": {
     "themeGroup": "Theme",
@@ -479,7 +482,10 @@
     "themeHint": "System follows your operating system.",
     "readingGroup": "Reading",
     "behaviourGroup": "Chat display",
-    "resetGroup": "Reset"
+    "resetGroup": "Reset",
+    "motionGroup": "Motion",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionDesc": "Turn off animations in Flint. Flint does not follow the system setting, so motion stays on unless you switch this."
   },
   "pageDesc": {
     "general": "Language, the data folder, logs and app-wide options.",
