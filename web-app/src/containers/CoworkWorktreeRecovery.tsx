@@ -34,6 +34,13 @@ export type WorktreeRecoveryProps = {
   onPending: (record: WorktreeRecord) => Promise<string[]>
   /** Removes it. `force` is only ever what the user chose after seeing the list. */
   onRemove: (record: WorktreeRecord, force: boolean) => Promise<void>
+  /** This session's own worktree branch, labelled so it can be told apart. */
+  ownBranch?: string
+  /**
+   * Why the session dropped to review-only, when it was using a managed
+   * worktree before a restart. Shown above the list.
+   */
+  downgradeNote?: string
 }
 
 export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
@@ -74,6 +81,11 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
       aria-label={t('common:worktreeRecovery.title')}
       className="rounded-[10px] bg-muted px-3 py-2.5 text-xs shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
     >
+      {props.downgradeNote && (
+        <p className="mb-1 text-fg-2" data-testid="cowork-worktree-downgrade">
+          {props.downgradeNote}
+        </p>
+      )}
       <p className="mb-1 flex items-center gap-1.5 text-fg-2">
         <GitBranch aria-hidden className="size-3.5 shrink-0" />
         {t('common:worktreeRecovery.found', { count: props.orphans.length })}
@@ -83,6 +95,12 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
           <li key={record.path} className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 flex-1 truncate" title={record.path}>
               {record.branch}
+              {props.ownBranch && record.branch === props.ownBranch && (
+                <span className="text-fg-2">
+                  {' '}
+                  {t('common:worktreeRecovery.thisSession')}
+                </span>
+              )}
               <span className="text-muted-foreground"> — {record.path}</span>
             </span>
             <Button

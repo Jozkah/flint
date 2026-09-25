@@ -14,7 +14,6 @@ pub mod core;
 #[cfg(not(feature = "cli"))]
 use core::{
     app::commands::get_jan_data_folder_path,
-    downloads::models::DownloadManagerState,
     mcp::models::McpSettings,
     setup::{self, setup_mcp},
     state::AppState,
@@ -52,6 +51,7 @@ macro_rules! invoke_commands_with_extras {
         core::filesystem::commands::decompress,
         core::filesystem::commands::open_dialog,
         core::filesystem::commands::save_dialog,
+        core::filesystem::group_folders::inspect_group_folders,
         // App configuration commands
         core::app::commands::get_app_configurations,
         core::app::commands::get_user_home_path,
@@ -164,6 +164,8 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_plugin_remove,
         core::agent::commands::agent_plugin_search,
         core::agent::commands::agent_resolve_extensions,
+        core::agent::commands::agent_slash_catalog,
+        core::agent::commands::agent_slash_invoke_skill,
         core::agent::commands::agent_extensions_matrix_get,
         core::agent::commands::agent_extensions_matrix_set,
         core::agent::commands::agent_extensions_matrix_set_item,
@@ -175,6 +177,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_worktree_state,
         core::agent::commands::agent_worktree_discard,
         core::agent::commands::agent_worktree_pending,
+        core::agent::commands::agent_destructive_reason,
         core::agent::commands::agent_desktop_bridge,
         core::agent::commands::agent_worktree_list,
         core::agent::commands::agent_worktree_optimize,
@@ -188,6 +191,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_team_child_propose,
         core::agent::commands::agent_checkpoint_capture,
         core::agent::commands::agent_checkpoint_plan,
+        core::agent::commands::agent_checkpoint_preview_diff,
         core::agent::commands::agent_checkpoint_restore,
         core::agent::commands::agent_checkpoint_forget,
         core::agent::commands::agent_git_status,
@@ -245,12 +249,11 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
-        // Download
-        core::downloads::commands::download_files,
-        core::downloads::commands::cancel_download_task,
-        core::downloads::commands::pause_download_task,
+        core::preview::preview_register,
+        core::preview::preview_release,
         // App lifecycle
         confirm_exit,
+        cancel_exit,
         // Theme
         core::setup::get_system_theme,
         core::setup::set_gtk_prefer_dark,
@@ -269,15 +272,109 @@ static GRACEFUL_IN_PROGRESS: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
 #[cfg(not(feature = "cli"))]
 static BUSY_MODELS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+/// Set by `cancel_exit` when the user declines to quit from the busy-on-exit
+/// dialog; the graceful-exit loop takes it and stops instead of quitting as
+/// soon as the model goes idle.
+#[cfg(not(feature = "cli"))]
+static EXIT_CANCELLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Whether the pending exit was cancelled, clearing the request.
+#[cfg(not(feature = "cli"))]
+fn take_exit_cancelled() -> bool {
+    EXIT_CANCELLED.swap(false, std::sync::atomic::Ordering::SeqCst)
+}
+
+/// The user clicked Cancel on the busy-on-exit dialog: keep the app running.
+#[cfg(not(feature = "cli"))]
+#[tauri::command]
+fn cancel_exit() {
+    EXIT_CANCELLED.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod exit_cancel_tests {
+    use super::*;
+
+    #[test]
+    fn cancel_is_seen_once_by_the_exit_loop() {
+        assert!(!take_exit_cancelled());
+        cancel_exit();
+        assert!(take_exit_cancelled(), "the loop must see the cancel");
+        assert!(!take_exit_cancelled(), "and consume it");
+    }
+}
 
 #[cfg(not(feature = "cli"))]
 #[tauri::command]
-async fn confirm_exit<R: tauri::Runtime>(_app_handle: tauri::AppHandle<R>) {
+async fn confirm_exit<R: tauri::Runtime>(app_handle: tauri::AppHandle<R>) {
     SHUTTING_DOWN.store(true, std::sync::atomic::Ordering::SeqCst);
-    tokio::spawn(async {
+    tokio::spawn(async move {
+        // #79: std::process::exit skips RunEvent::Exit, so reap agent process
+        // trees and MCP servers here first or they outlive the app.
+        let state = app_handle.state::<AppState>();
+        force_quit_cleanup(
+            tauri_plugin_agent_tools::tools::proc::kill_all,
+            crate::core::mcp::helpers::background_cleanup_mcp_servers(&app_handle, &state),
+            std::time::Duration::from_secs(5),
+        )
+        .await;
+        core::app::settings_store::flush_settings();
+        // #168: the migration reuse lock is otherwise only released in
+        // RunEvent::Exit, which exit(0) skips; a force quit left the profile
+        // refused as "held" for hours.
+        core::migration::lock::release_session_locks();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         std::process::exit(0);
     });
+}
+
+/// The cleanup a force quit owes before `std::process::exit` (#79): kill the
+/// agent process trees, then stop MCP servers, bounded by `limit` so a stuck
+/// server cannot keep the app from quitting.
+#[cfg(not(feature = "cli"))]
+async fn force_quit_cleanup<F: std::future::Future>(
+    kill_agent_processes: impl FnOnce(),
+    stop_mcp_servers: F,
+    limit: std::time::Duration,
+) {
+    kill_agent_processes();
+    if tokio::time::timeout(limit, stop_mcp_servers).await.is_err() {
+        log::warn!("MCP cleanup timed out during force quit");
+    }
+}
+
+#[cfg(all(test, not(feature = "cli")))]
+mod force_quit_tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn a_force_quit_kills_agent_processes_and_stops_mcp_servers() {
+        let killed = Arc::new(AtomicBool::new(false));
+        let stopped = Arc::new(AtomicBool::new(false));
+        let (k, s) = (killed.clone(), stopped.clone());
+        super::force_quit_cleanup(
+            move || k.store(true, Ordering::SeqCst),
+            async move { s.store(true, Ordering::SeqCst) },
+            Duration::from_secs(5),
+        )
+        .await;
+        assert!(killed.load(Ordering::SeqCst));
+        assert!(stopped.load(Ordering::SeqCst));
+    }
+
+    #[tokio::test]
+    async fn a_stuck_mcp_server_cannot_block_the_force_quit() {
+        let started = std::time::Instant::now();
+        super::force_quit_cleanup(
+            || {},
+            std::future::pending::<()>(),
+            Duration::from_millis(100),
+        )
+        .await;
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
 }
 
 #[cfg(not(feature = "cli"))]
@@ -358,10 +455,23 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
         if SHUTTING_DOWN.load(Ordering::SeqCst) {
             return;
         }
+        if take_exit_cancelled() {
+            log::info!("{}: exit cancelled by the user", source);
+            if let Ok(mut g) = BUSY_MODELS.lock() {
+                g.clear();
+            }
+            return;
+        }
         match tauri_plugin_llamacpp::try_graceful_stop_engine(app_handle.clone(), 1).await {
             Ok(None) => {
                 if let Ok(mut g) = BUSY_MODELS.lock() {
                     g.clear();
+                }
+                // The user may have cancelled while the stop was in flight;
+                // honor that instead of quitting anyway.
+                if take_exit_cancelled() {
+                    log::info!("{}: exit cancelled by the user", source);
+                    return;
                 }
                 SHUTTING_DOWN.store(true, Ordering::SeqCst);
                 app_handle.exit(exit_code);
@@ -425,6 +535,13 @@ pub fn build_app() -> tauri::App {
         // when defining deep link schemes at runtime, you must also check `argv` here
     }));
 
+    // #135: HTML previews are served from their own scheme so they carry
+    // their own CSP instead of inheriting the app's through `about:srcdoc`.
+    let builder = builder.register_uri_scheme_protocol(
+        core::preview::PREVIEW_SCHEME,
+        |_ctx, request| core::preview::handle(request.uri().path()),
+    );
+
     let mut app_builder = builder
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_opener::init())
@@ -473,7 +590,6 @@ pub fn build_app() -> tauri::App {
         .manage(AppState {
             app_token: Some(generate_app_token()),
             mcp_servers: Arc::new(Mutex::new(HashMap::new())),
-            download_manager: Arc::new(Mutex::new(DownloadManagerState::default())),
             mcp_active_servers: Arc::new(Mutex::new(HashMap::new())),
             server_handle: Arc::new(Mutex::new(None)),
             tool_call_cancellations: Arc::new(Mutex::new(HashMap::new())),
@@ -580,24 +696,38 @@ pub fn build_app() -> tauri::App {
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");
-            let store = app
-                .handle()
-                .store(store_path)
-                .expect("Store not initialized");
-            let stored_version = store
-                .get("version")
-                .and_then(|v| v.as_str().map(String::from))
-                .unwrap_or_default();
+            // A store that cannot be opened or saved (a read-only or full data
+            // folder, a file locked by antivirus, a corrupt store.json) is
+            // logged and the app starts without the migration, like every
+            // other failure in this block -- not a panic before any window
+            // exists (Jozkah/jan#233).
             let app_version = app.config().version.clone().unwrap_or_default();
-
-            // Migrate MCP servers
-            if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
-                log::error!("Failed to migrate MCP servers: {e}");
-            }
-
-            // Store the new app version
-            store.set("version", serde_json::json!(app_version));
-            store.save().expect("Failed to save store");
+            let stored_version = match app.handle().store(store_path.clone()) {
+                Ok(store) => {
+                    let stored_version = store
+                        .get("version")
+                        .and_then(|v| v.as_str().map(String::from))
+                        .unwrap_or_default();
+                    // Migrate MCP servers
+                    if let Err(e) = setup::migrate_mcp_servers(app.handle().clone(), store.clone()) {
+                        log::error!("Failed to migrate MCP servers: {e}");
+                    }
+                    // Store the new app version
+                    store.set("version", serde_json::json!(app_version));
+                    if let Err(e) = store.save() {
+                        log::error!("Could not save {}: {e}", store_path.display());
+                    }
+                    stored_version
+                }
+                Err(e) => {
+                    log::error!(
+                        "Could not open {}: {e}; starting without the store migration",
+                        store_path.display()
+                    );
+                    // Unknown: treat as unchanged, so nothing reinstalls on a guess.
+                    app_version.clone()
+                }
+            };
             // Migration completed
 
             #[cfg(feature = "desktop")]
@@ -704,6 +834,8 @@ pub fn run_app(app: tauri::App) {
             }
             let app_handle = app.clone();
             let exit_code = code.unwrap_or(0);
+            // A Cancel from an earlier attempt must not cancel this one.
+            EXIT_CANCELLED.store(false, Ordering::SeqCst);
             tauri::async_runtime::spawn(async move {
                 handle_graceful_exit(app_handle, "ExitRequested", exit_code).await;
                 GRACEFUL_IN_PROGRESS.store(false, Ordering::SeqCst);
@@ -716,6 +848,10 @@ pub fn run_app(app: tauri::App) {
             // Drain any debounced settings writes before the process dies so
             // jan CLI never reads a stale settings.json.
             core::app::settings_store::flush_settings();
+
+            // A profile reused by the migration stays locked for the session;
+            // unlock it so the next launch is not refused by our dead pid.
+            core::migration::lock::release_session_locks();
 
             #[cfg(not(any(target_os = "ios", target_os = "android")))]
             {

@@ -167,6 +167,12 @@ fn names_device(lower: &str) -> bool {
         || lower.contains("/dev/null")
         || lower.contains("'/dev/")
         || lower.contains(r"\\.\pipe")
+        // A program that opens the null device by its DOS name: Go prints
+        // `open NUL: Access is denied.`, .NET and others quote it.
+        || lower.contains("open nul:")
+        || lower.contains("nul: access is denied")
+        || lower.contains("'nul'")
+        || lower.contains("\"nul\"")
 }
 
 /// Classify a failed command's output. `command` matters: the same "access
@@ -304,6 +310,22 @@ mod tests {
         assert_eq!(
             classify("x > /dev/null", "bash: /dev/null: Permission denied", ShellFlavor::Posix),
             FailureClass::DeviceFile
+        );
+        // The live Go report: a device denial, not a folder to grant.
+        for flavor in [ShellFlavor::PowerShell, ShellFlavor::Cmd] {
+            assert_eq!(
+                classify(
+                    "go test ./...",
+                    "go: error obtaining buildID for go tool compile: open NUL: Access is denied.",
+                    flavor,
+                ),
+                FailureClass::DeviceFile
+            );
+        }
+        // A file merely named like the device is still a file.
+        assert_eq!(
+            classify("type nullable.txt", "Access is denied.", ShellFlavor::Cmd),
+            FailureClass::FileAccessDenied
         );
         assert_eq!(classify("x", "test failed: 3 assertions", ShellFlavor::Posix), FailureClass::Other);
     }

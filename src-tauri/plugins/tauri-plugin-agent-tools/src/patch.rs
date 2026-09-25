@@ -86,7 +86,7 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
 /// One contiguous change: lines removed from the base and lines put in their
 /// place. Line numbers are 1-based, against the base and against the full
 /// proposal respectively.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Hunk {
     /// Position in [`StagedPatch::hunks`], and the id a selection names.
@@ -100,7 +100,7 @@ pub struct Hunk {
 }
 
 /// What a client receives: the hunks and the base they were computed against.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchView {
     pub base: String,

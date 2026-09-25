@@ -2,22 +2,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const advertisedToolSchemas = vi.fn()
 const executeTool = vi.fn()
+const executeToolStreaming = vi.fn()
 const threadWorkspaceDelete = vi.fn()
 const threadWorkspaceSweep = vi.fn()
 const sandboxStatus = vi.fn()
+const sandboxToolchains = vi.fn()
 const getJanDataFolder = vi.fn()
 
 vi.mock('@janhq/tauri-plugin-agent-tools-api', () => ({
   advertisedToolSchemas: (...args: unknown[]) => advertisedToolSchemas(...args),
   executeTool: (...args: unknown[]) => executeTool(...args),
+  executeToolStreaming: (...args: unknown[]) => executeToolStreaming(...args),
   threadWorkspaceDelete: (...args: unknown[]) => threadWorkspaceDelete(...args),
   threadWorkspaceSweep: (...args: unknown[]) => threadWorkspaceSweep(...args),
   sandboxStatus: () => sandboxStatus(),
+  sandboxToolchains: () => sandboxToolchains(),
 }))
 
 const invoke = vi.fn()
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
+  Channel: class {
+    onmessage: (m: unknown) => void = () => {}
+  },
 }))
 
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -97,7 +104,12 @@ describe('agentTools', () => {
   /// generated binding cannot pass, so a scoped request calls the plugin
   /// command itself -- and is cached apart from the thread list.
   it('passes the session scope to the backend and caches it apart from threads', async () => {
-    const messaging = ['list_sessions', 'send_message', 'read_messages', 'wait_for_reply']
+    const messaging = [
+      'list_sessions',
+      'send_message',
+      'read_messages',
+      'wait_for_reply',
+    ]
     advertisedToolSchemas.mockResolvedValue(advertising(['read']))
     invoke.mockReset().mockResolvedValue(advertising(['read', ...messaging]))
     const { getAgentToolSchemas } = await import('../agentTools')
@@ -106,15 +118,18 @@ describe('agentTools', () => {
     expect(thread).toEqual(['read'])
     expect(invoke).not.toHaveBeenCalled()
 
-    const session = (await getAgentToolSchemas('/p', undefined, 'session' as never)).map(
-      (s) => s.function.name
-    )
+    const session = (
+      await getAgentToolSchemas('/p', undefined, 'session' as never)
+    ).map((s) => s.function.name)
     expect(session).toEqual(['read', ...messaging])
-    expect(invoke).toHaveBeenCalledWith('plugin:agent-tools|advertised_tool_schemas', {
-      projectRoot: '/p',
-      reported: undefined,
-      scope: 'session',
-    })
+    expect(invoke).toHaveBeenCalledWith(
+      'plugin:agent-tools|advertised_tool_schemas',
+      {
+        projectRoot: '/p',
+        reported: undefined,
+        scope: 'session',
+      }
+    )
   })
 
   it('advertises the workspace tools including writes and bash', async () => {
@@ -297,6 +312,61 @@ describe('agentTools', () => {
     expect(call[11]).toBe('run-7')
   })
 
+  it('streams bash output in seq order when a sink is given', async () => {
+    executeToolStreaming.mockImplementation(
+      async (
+        _d: string,
+        _t: string,
+        _n: string,
+        _a: unknown,
+        channel: { onmessage: (m: { seq: number; text: string }) => void }
+      ) => {
+        channel.onmessage({ seq: 1, text: 'b' })
+        channel.onmessage({ seq: 0, text: 'a' })
+        channel.onmessage({ seq: 2, text: 'c' })
+        return { content: 'abc [exit 0]', diff: null, isError: false }
+      }
+    )
+    const chunks: string[] = []
+    const { executeAgentTool } = await import('../agentTools')
+    const result = await executeAgentTool('bash', { command: 'x' }, 't', {
+      onOutput: (text) => chunks.push(text),
+    })
+    expect(chunks).toEqual(['a', 'b', 'c'])
+    expect(result.content).toBe('abc [exit 0]')
+    expect(executeTool).not.toHaveBeenCalled()
+  })
+
+  // Cancellation goes by call id (`cancel_tool`), so the streaming path has
+  // to carry it exactly as the plain one does; a failed command comes back as
+  // the same error result, with only the chunks that arrived streamed.
+  it('streams with the call id, so a stop still reaches the command', async () => {
+    executeToolStreaming.mockImplementation(
+      async (
+        _d: string,
+        _t: string,
+        _n: string,
+        _a: unknown,
+        channel: { onmessage: (m: { seq: number; text: string }) => void }
+      ) => {
+        channel.onmessage({ seq: 0, text: '\x1b[31mboom\x1b[0m\n' })
+        return { content: 'boom\n[exit 2]', diff: null, isError: true }
+      }
+    )
+    const chunks: string[] = []
+    const { executeAgentTool } = await import('../agentTools')
+    const result = await executeAgentTool('bash', { command: 'x' }, 't', {
+      callId: 'call-9',
+      onOutput: (text) => chunks.push(text),
+    })
+    const options = executeToolStreaming.mock.calls.at(-1)?.[5] as {
+      callId?: string
+    }
+    expect(options.callId).toBe('call-9')
+    expect(chunks).toEqual(['\x1b[31mboom\x1b[0m\n'])
+    expect(result.error).toBe('boom\n[exit 2]')
+  })
+
   it('passes the network setting through to the plugin', async () => {
     executeTool.mockResolvedValue({ content: '', diff: null, isError: false })
     const { useAgentToolsConfig } = await import('@/hooks/useAgentToolsConfig')
@@ -310,7 +380,7 @@ describe('agentTools', () => {
       { command: 'ls' },
       undefined,
       undefined,
-      false,
+      true,
       undefined,
       undefined,
       'thread',
@@ -368,7 +438,7 @@ describe('agentTools', () => {
       { path: 'a.txt' },
       undefined,
       undefined,
-      false,
+      true,
       undefined,
       undefined,
       'thread',
@@ -397,7 +467,7 @@ describe('agentTools', () => {
       { path: 'a.txt' },
       undefined,
       undefined,
-      false,
+      true,
       '/home/u/repo',
       undefined,
       'thread',
@@ -457,7 +527,7 @@ describe('agentTools', () => {
       {},
       undefined,
       undefined,
-      false,
+      true,
       undefined,
       undefined,
       'thread',
@@ -622,5 +692,17 @@ describe('agentTools host-answered tools', () => {
     expect(out.error).toBeUndefined()
     expect(JSON.parse(out.content as string).code).toBe('drive_root')
     expect(invoke.mock.calls[0][0]).toBe('plugin:agent-tools|access_prepare')
+  })
+})
+
+describe('getSandboxToolchains', () => {
+  it('passes the probe through and turns unknown or a failure into null', async () => {
+    const { getSandboxToolchains } = await import('../agentTools')
+    sandboxToolchains.mockResolvedValueOnce({ runnable: ['node'], unavailable: ['python'] })
+    expect(await getSandboxToolchains()).toEqual({ runnable: ['node'], unavailable: ['python'] })
+    sandboxToolchains.mockResolvedValueOnce(null)
+    expect(await getSandboxToolchains()).toBeNull()
+    sandboxToolchains.mockRejectedValueOnce(new Error('boom'))
+    expect(await getSandboxToolchains()).toBeNull()
   })
 })

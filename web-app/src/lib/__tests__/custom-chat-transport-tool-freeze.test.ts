@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   servers: ['srv'] as string[],
   getRelevantTools: vi.fn(),
   serviceHub: null as unknown,
+  projectFiles: [] as unknown[],
 }))
 
 const mcpService = {
@@ -17,7 +18,9 @@ const mcpService = {
 
 h.serviceHub = {
   mcp: () => mcpService,
-  rag: () => ({ getTools: async () => [] }),
+  rag: () => ({
+    getTools: async () => [{ name: 'retrieve', description: '', inputSchema: {}, server: 'rag' }],
+  }),
 }
 
 vi.mock('@/hooks/useServiceHub', () => ({
@@ -39,10 +42,12 @@ vi.mock('@/hooks/useAssistant', () => ({
   useAssistant: { getState: () => ({ currentAssistant: null }) },
 }))
 vi.mock('@/hooks/useThreads', () => ({
-  useThreads: { getState: () => ({ threads: {} }) },
+  useThreads: {
+    getState: () => ({ threads: { 'thread-p': { metadata: { project: { id: 'p1' } } } } }),
+  },
 }))
 vi.mock('@/hooks/useAttachments', () => ({
-  useAttachments: { getState: () => ({ enabled: false }) },
+  useAttachments: { getState: () => ({ enabled: true }) },
 }))
 vi.mock('@/hooks/useMCPServers', () => ({
   useMCPServers: {
@@ -50,7 +55,11 @@ vi.mock('@/hooks/useMCPServers', () => ({
   },
 }))
 vi.mock('@/lib/extension', () => ({
-  ExtensionManager: { getInstance: () => ({ get: () => null }) },
+  ExtensionManager: {
+    getInstance: () => ({
+      get: () => ({ listAttachmentsForProject: async () => h.projectFiles }),
+    }),
+  },
 }))
 vi.mock('@/lib/mcp-orchestrator', () => ({
   mcpOrchestrator: { getRelevantTools: h.getRelevantTools },
@@ -108,5 +117,20 @@ describe('CustomChatTransport smart-tool-routing freeze', () => {
     transport.setLastUserMessage('q2')
     await transport.refreshTools()
     expect(h.getRelevantTools).toHaveBeenCalledTimes(2)
+  })
+
+  // #128: a file attached to the thread's project mid-thread must reach the
+  // model on the next cached refresh, not wait for an unrelated key change.
+  it('offers the RAG tools once a project file is attached mid-thread', async () => {
+    h.projectFiles = []
+    const t = new CustomChatTransport('sys', 'thread-p')
+    t.setLastUserMessage('q1')
+    await t.refreshTools(undefined, true)
+    expect(Object.keys(t.getTools())).not.toContain('retrieve')
+
+    h.projectFiles = [{ id: 'f1' }]
+    t.setLastUserMessage('q2')
+    await t.refreshTools(undefined, true)
+    expect(Object.keys(t.getTools())).toContain('retrieve')
   })
 })

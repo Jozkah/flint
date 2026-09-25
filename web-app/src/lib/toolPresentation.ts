@@ -20,7 +20,14 @@ export type ToolCallBar =
    * for read/ls, the pattern for find/grep, the entry name for memory/skill --
    * with `detail` carrying the secondary argument when there is one.
    */
-  | { variant: 'workspace'; tool: string; target: string; detail?: string }
+  | {
+      variant: 'workspace'
+      tool: string
+      target: string
+      detail?: string
+      /** grep only: how the pattern was matched, for highlighting results. */
+      grep?: { literal: boolean; ignoreCase: boolean }
+    }
 
 /**
  * Owned by the RAG extension (extensions/rag-extension/src/tools.ts) and not
@@ -79,6 +86,14 @@ export function describeNativeToolCall(
         tool: toolName,
         target: asString(args.pattern),
         detail: asString(args.path) || undefined,
+        ...(toolName === 'grep'
+          ? {
+              grep: {
+                literal: args.literal === true,
+                ignoreCase: args.ignore_case === true,
+              },
+            }
+          : {}),
       }
     }
     return {
@@ -184,4 +199,104 @@ export function parseWebFetchOutput(output: unknown): WebFetchPage | undefined {
     content: match[3],
     truncated,
   }
+}
+
+export type GrepLine = { line: number; match: boolean; text: string }
+export type GrepGroup = { file: string; lines: GrepLine[]; gaps: number[] }
+export type GrepOutput = {
+  groups: GrepGroup[]
+  /** Trailing notices (result cap, byte truncation), shown as-is. */
+  notes: string[]
+}
+
+const GREP_LINE = /^ {2}(\d+)([:-]) (.*)$/
+const GREP_NOTE = /^\[.*\]$/
+
+/**
+ * Parse `grep`'s grouped output (see `format_grep_groups` in the agent-tools
+ * plugin): a path header per file, then `  N: text` matches and `  N- text`
+ * context lines, `  --` marking a gap. Returns undefined when the text is not
+ * in that shape (an error, "No matches.", or an older flat result), so the
+ * caller falls back to plain text.
+ */
+export function parseGrepOutput(text: string): GrepOutput | undefined {
+  const groups: GrepGroup[] = []
+  const notes: string[] = []
+  let current: GrepGroup | undefined
+  for (const raw of text.split('\n')) {
+    if (raw === '') {
+      current = undefined
+      continue
+    }
+    if (GREP_NOTE.test(raw)) {
+      notes.push(raw.slice(1, -1))
+      current = undefined
+      continue
+    }
+    if (raw.startsWith('  ')) {
+      if (!current) return undefined
+      if (raw === '  --') {
+        current.gaps.push(current.lines.length)
+        continue
+      }
+      const m = GREP_LINE.exec(raw)
+      if (!m) return undefined
+      current.lines.push({ line: Number(m[1]), match: m[2] === ':', text: m[3] })
+      continue
+    }
+    if (current) return undefined
+    current = { file: raw, lines: [], gaps: [] }
+    groups.push(current)
+  }
+  if (groups.length === 0 || groups.some((g) => g.lines.length === 0)) {
+    return undefined
+  }
+  return { groups, notes }
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The grep pattern as a JS regex for highlighting. The backend uses Rust's
+ * regex syntax, which mostly overlaps; anything JS cannot compile (inline flags,
+ * Rust-only classes) yields undefined and results render unhighlighted. Patterns
+ * that can match the empty string are rejected too: they would highlight nothing
+ * useful and can loop.
+ */
+export function grepHighlightRegex(
+  pattern: string,
+  opts: { literal: boolean; ignoreCase: boolean }
+): RegExp | undefined {
+  if (!pattern) return undefined
+  try {
+    const re = new RegExp(
+      opts.literal ? escapeRegExp(pattern) : pattern,
+      opts.ignoreCase ? 'gi' : 'g'
+    )
+    if (re.test('')) return undefined
+    re.lastIndex = 0
+    return re
+  } catch {
+    return undefined
+  }
+}
+
+/** Split `text` into alternating plain/matched runs for `re`. */
+export function splitGrepMatches(
+  text: string,
+  re: RegExp | undefined
+): { text: string; hit: boolean }[] {
+  if (!re) return [{ text, hit: false }]
+  const parts: { text: string; hit: boolean }[] = []
+  let last = 0
+  re.lastIndex = 0
+  for (const m of text.matchAll(re)) {
+    const start = m.index ?? 0
+    if (m[0] === '') continue
+    if (start > last) parts.push({ text: text.slice(last, start), hit: false })
+    parts.push({ text: m[0], hit: true })
+    last = start + m[0].length
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), hit: false })
+  return parts.length ? parts : [{ text, hit: false }]
 }

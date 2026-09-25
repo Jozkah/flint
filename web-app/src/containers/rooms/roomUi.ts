@@ -64,17 +64,27 @@ export function controlAvailability(
   }
 }
 
-/** Clamp a limit to [min, ceiling]. Returns the value and whether it was capped. */
+/**
+ * Clamp a limit to [min, ceiling]. Returns the value, whether it was capped
+ * at the ceiling, and whether it was raised to the minimum, so the editor can
+ * say which bound rewrote the input.
+ */
 export function clampLimit(
   key: keyof RoomLimits,
   value: number
-): { value: number; capped: boolean } {
-  if (!Number.isFinite(value)) return { value: LIMIT_MIN[key], capped: false }
+): { value: number; capped: boolean; raised: boolean } {
+  if (!Number.isFinite(value))
+    return { value: LIMIT_MIN[key], capped: false, raised: false }
   const max = limitCeiling(key)
   const min = LIMIT_MIN[key]
-  if (max !== null && value > max) return { value: max, capped: true }
-  if (value < min) return { value: min, capped: false }
-  return { value, capped: false }
+  if (max !== null && value > max) return { value: max, capped: true, raised: false }
+  if (value < min) return { value: min, capped: false, raised: true }
+  return { value, capped: false, raised: false }
+}
+
+/** The smallest value a limit accepts, in the limit's stored unit. */
+export function limitMin(key: keyof RoomLimits): number {
+  return LIMIT_MIN[key]
 }
 
 const LIMIT_MIN: Record<keyof RoomLimits, number> = {

@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { memo, useState, useCallback, useEffect, useMemo } from 'react'
+import { SlashInvocation } from '@/components/SlashInvocation'
+import { parseSlashMarker } from '@/lib/slashCommands'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
 import { cn } from '@/lib/utils'
@@ -66,6 +68,7 @@ import type { RagCitation, WebCitation } from '@/components/Citations'
 import { useGroundingStore } from '@/stores/grounding-store'
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { WebSourcesRow } from '@/components/WebSourcesRow'
+import { fetchedUrlOf } from '@/lib/webSources'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
 import { FlintMark } from '@/components/shell/FlintMark'
@@ -233,9 +236,10 @@ export const MessageItem = memo(
     // Aggregate RAG citations in part order and record each rag tool part's
     // base offset, so its card numbers/anchors continue the same global
     // sequence the inline superscript markers use.
-    const { ragCitations, citationOffsets, webCitations } = useMemo(() => {
+    const { ragCitations, citationOffsets, webCitations, webReads } = useMemo(() => {
       const out: RagCitation[] = []
       const web: WebCitation[] = []
+      const reads: string[] = []
       const offsets = new Map<number, number>()
       if (message.role === 'assistant') {
         const parts = message.parts as any[]
@@ -243,6 +247,11 @@ export const MessageItem = memo(
           const part = parts[i]
           if (!part.type?.startsWith('tool-')) continue
           if (part.state !== 'output-available') continue
+          if (part.type === 'tool-web_fetch') {
+            const url = fetchedUrlOf(part.output)
+            if (url) reads.push(url)
+            continue
+          }
           const parsed = parseCitationsFromToolOutput(part.output)
           if (parsed?.kind === 'rag') {
             offsets.set(i, out.length)
@@ -252,7 +261,12 @@ export const MessageItem = memo(
           }
         }
       }
-      return { ragCitations: out, citationOffsets: offsets, webCitations: web }
+      return {
+        ragCitations: out,
+        citationOffsets: offsets,
+        webCitations: web,
+        webReads: reads,
+      }
     }, [message.parts, message.role])
 
     const serviceHub = useServiceHub()
@@ -335,6 +349,10 @@ export const MessageItem = memo(
           ? extractFilesFromPrompt(part.text).cleanPrompt
           : part.text
 
+      // A `/command` the user sent reads as typed; the expansion folds away.
+      const slashInvocation =
+        message.role === 'user' ? parseSlashMarker(displayText) : null
+
       if (
         !displayText.trim() &&
         message.role === 'user' &&
@@ -391,11 +409,17 @@ export const MessageItem = memo(
                     ))}
                   </div>
                 )}
-                {displayText && (
-                  <div dir="auto" className="select-text whitespace-pre-wrap">
-                    {displayText}
-                  </div>
-                )}
+                {displayText &&
+                  (slashInvocation ? (
+                    <SlashInvocation
+                      invocation={slashInvocation.invocation}
+                      body={slashInvocation.body}
+                    />
+                  ) : (
+                    <div dir="auto" className="select-text whitespace-pre-wrap">
+                      {displayText}
+                    </div>
+                  ))}
               </div>
             </div>
           ) : (
@@ -640,8 +664,9 @@ export const MessageItem = memo(
         {/* Render message parts */}
         {renderedParts}
 
-        {message.role === 'assistant' && !isStreaming && webCitations.length > 0 && (
-          <WebSourcesRow citations={webCitations} />
+        {message.role === 'assistant' && !isStreaming &&
+          (webCitations.length > 0 || webReads.length > 0) && (
+          <WebSourcesRow citations={webCitations} readUrls={webReads} />
         )}
 
         {message.role === 'assistant' && !isStreaming && usedSkills.length > 0 && (

@@ -30,6 +30,7 @@ import { Streamdown } from 'streamdown'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatCompactDuration } from '@/lib/duration'
 import { Shimmer } from './shimmer'
+import { useElapsedSeconds } from '@/hooks/useElapsedSeconds'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,8 @@ type ChainOfThoughtContextValue = {
   setIsOpen: (open: boolean) => void
   isStreaming: boolean
   duration: number | undefined
+  /** Live whole seconds across the trace while streaming; undefined otherwise. */
+  elapsed: number | undefined
 }
 
 const MS_IN_S = 1000
@@ -137,9 +140,14 @@ export const ChainOfThought = memo(
         ? fallbackDuration
         : Math.max(1, Math.ceil(elapsedMs / MS_IN_S))
 
+    const elapsed = useElapsedSeconds(
+      isStreaming ? startTime : null,
+      elapsedMs ?? 0
+    )
+
     const contextValue = useMemo(
-      () => ({ isStreaming, isOpen, setIsOpen, duration }),
-      [isStreaming, isOpen, setIsOpen, duration]
+      () => ({ isStreaming, isOpen, setIsOpen, duration, elapsed }),
+      [isStreaming, isOpen, setIsOpen, duration, elapsed]
     )
 
     return (
@@ -204,7 +212,7 @@ export const ChainOfThoughtHeader = memo(
     ...props
   }: ChainOfThoughtHeaderProps) => {
     const { t } = useTranslation()
-    const { isStreaming, isOpen, duration } = useChainOfThought()
+    const { isStreaming, isOpen, duration, elapsed } = useChainOfThought()
 
     const keys = COMPLETED_KEYS[completedVariant]
     const completedLabel =
@@ -229,9 +237,19 @@ export const ChainOfThoughtHeader = memo(
       <>
         <SparklesIcon className="size-3.5 motion-safe:animate-[twinkle_2.4s_ease-in-out_infinite]" />
         {isStreaming ? (
-          <Shimmer duration={1}>
-            {streamingLabel ?? t('chat:reasoning.label')}
-          </Shimmer>
+          <>
+            <Shimmer duration={1}>
+              {streamingLabel ?? t('chat:reasoning.label')}
+            </Shimmer>
+            {elapsed !== undefined && (
+              <span
+                className="shrink-0 tabular-nums text-muted-foreground"
+                data-testid="reasoning-elapsed"
+              >
+                {elapsed}s
+              </span>
+            )}
+          </>
         ) : title ? (
           <p>{title}</p>
         ) : (

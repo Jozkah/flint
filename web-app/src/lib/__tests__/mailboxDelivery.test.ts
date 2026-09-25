@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   createMailboxDelivery,
   dequeueClaimedReady,
+  drainIdleSession,
   takeClaimed,
 } from '../mailboxDelivery'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -219,6 +220,34 @@ describe('mailbox delivery', () => {
     expect(fake.state.a2).toBe('read')
     expect(q('A')).toEqual([])
     expect(await dequeueClaimedReady('A', fake.mailbox)).toBeUndefined()
+  })
+
+  it('never sends a drained message into a session switched to mid-claim', async () => {
+    fake.envelope('A', 'w1')
+    await delivery.onEvent({ sessionId: 'A', messageId: 'w1' })
+    useMessageQueue.getState().release('A', 'mail:w1')
+    await flush()
+    // The claim is a round trip; the user moves to B while it is in flight.
+    const realClaim = fake.mailbox.claim.getMockImplementation()!
+    fake.mailbox.claim.mockImplementationOnce(async (sid: string, ids: string[]) => {
+      useCoworkSessions.setState({ currentId: 'B' })
+      return realClaim(sid, ids)
+    })
+    const sent: Array<[string, string | undefined]> = []
+    const run = (text: string, from?: { sessionId: string }) =>
+      sent.push([useCoworkSessions.getState().currentId ?? '', from?.sessionId])
+
+    await drainIdleSession('A', run, fake.mailbox)
+    expect(sent).toEqual([])
+    // Back in A's queue, still ready.
+    expect(q('A').map((m) => [m.id, m.held])).toEqual([['mail:w1', false]])
+    expect(q('B')).toEqual([])
+
+    // Returning to A sends it there, without being dropped as already read.
+    useCoworkSessions.setState({ currentId: 'A' })
+    await drainIdleSession('A', run, fake.mailbox)
+    expect(sent.map(([into]) => into)).toEqual(['A'])
+    expect(q('A')).toEqual([])
   })
 
   it('leaves normal held input alone', async () => {

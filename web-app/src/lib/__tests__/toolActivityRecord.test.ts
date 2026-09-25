@@ -196,9 +196,11 @@ describe('reading a stored diff', () => {
   it('asks for exactly that session and call', async () => {
     h.invoke.mockImplementation(async () => '+ a')
     expect(await loadToolDiff('s1', 'c1')).toBe('+ a')
+    // No invocation was given, so none is sent (7e2a3b904 added the field).
     expect(h.invoke).toHaveBeenCalledWith('tool_activity_diff', {
       session: 's1',
       call: 'c1',
+      invocation: null,
     })
   })
 

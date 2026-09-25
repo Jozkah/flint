@@ -28,11 +28,12 @@ export function formatCompactDuration(
       : `${minutes} ${t('common:duration.seconds', { count: rest })}`
   }
 
-  const hours = t('common:duration.hours', {
-    count: Math.floor(seconds / SECONDS_PER_HOUR),
-  })
-  const rest = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
-  return rest === 0
-    ? hours
-    : `${hours} ${t('common:duration.minutes', { count: rest })}`
+  const parts = [
+    t('common:duration.hours', { count: Math.floor(seconds / SECONDS_PER_HOUR) }),
+  ]
+  const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE)
+  const rest = seconds % SECONDS_PER_MINUTE
+  if (minutes > 0) parts.push(t('common:duration.minutes', { count: minutes }))
+  if (rest > 0) parts.push(t('common:duration.seconds', { count: rest }))
+  return parts.join(' ')
 }

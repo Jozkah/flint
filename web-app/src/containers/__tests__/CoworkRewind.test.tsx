@@ -302,4 +302,44 @@ describe('a safety point before every restore', () => {
       screen.getByRole('button', { name: 'common:rewind.confirmRestore' })
     ).toBeEnabled()
   })
+
+  it('previews the restore diff before confirming, without restoring', async () => {
+    const onPreviewDiff = vi.fn(async () => ({
+      ok: true as const,
+      diff: 'diff --git a/src/parser.ts b/src/parser.ts\n-new line\n+old line',
+    }))
+    const p = props({ onPreviewDiff })
+    render(<CoworkRewind {...p} />)
+    await userEvent.click(screen.getByText('common:rewind.goBack'))
+    await userEvent.click(screen.getByText('results:rewind.previewDiff'))
+
+    const diff = await screen.findByTestId('cowork-rewind-diff')
+    expect(onPreviewDiff).toHaveBeenCalledWith('a'.repeat(40))
+    expect(diff).toHaveTextContent('-new line')
+    expect(diff).toHaveTextContent('+old line')
+    expect(p.onRestore).not.toHaveBeenCalled()
+    // The files list is still there alongside the diff.
+    expect(screen.getByText('src/parser.ts')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('results:rewind.hideDiff'))
+    expect(screen.queryByTestId('cowork-rewind-diff')).toBeNull()
+  })
+
+  it('reports a diff that could not be built', async () => {
+    const p = props({
+      onPreviewDiff: vi.fn(async () => ({ ok: false as const, reason: 'git broke' })),
+    })
+    render(<CoworkRewind {...p} />)
+    await userEvent.click(screen.getByText('common:rewind.goBack'))
+    await userEvent.click(screen.getByText('results:rewind.previewDiff'))
+    expect(
+      await screen.findByText('results:rewind.previewFailed#git broke')
+    ).toBeInTheDocument()
+  })
+
+  it('offers no preview without a diff source', async () => {
+    render(<CoworkRewind {...props()} />)
+    await userEvent.click(screen.getByText('common:rewind.goBack'))
+    expect(screen.queryByText('results:rewind.previewDiff')).toBeNull()
+  })
 })

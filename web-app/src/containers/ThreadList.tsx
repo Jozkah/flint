@@ -51,6 +51,7 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
+import { useConversationGroups } from '@/lib/groups/store'
 
 const ThreadItem = memo(
   ({
@@ -74,7 +75,6 @@ const ThreadItem = memo(
     })
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
-    const updateThread = useThreads((state) => state.updateThread)
     const getFolderById = useThreadManagement().getFolderById
     const { folders } = useThreadManagement()
     const { t } = useTranslation()
@@ -96,8 +96,10 @@ const ThreadItem = memo(
       getMessages(thread.id)
     )
 
-    // Fetch messages if not loaded yet
+    // Fetch messages if not loaded yet. Only the project page shows a message
+    // preview; the sidebar never loads transcripts just to render a row.
     useEffect(() => {
+      if (!currentProjectId) return
       const currentMessages = getMessages(thread.id)
 
       // Initial load: no messages yet, fetch them
@@ -127,7 +129,7 @@ const ThreadItem = memo(
         setLocalMessages(currentMessages)
         messagesLengthRef.current = currentMessages.length
       }
-    }, [thread.id, serviceHub, getMessages, setMessages])
+    }, [thread.id, currentProjectId, serviceHub, getMessages, setMessages])
 
     const lastUserMessageText = useMemo(() => {
       const userMessages = messages.filter((m) => m.role === 'user')
@@ -153,22 +155,14 @@ const ThreadItem = memo(
 
     const assignThreadToProject = (threadId: string, projectId: string) => {
       const project = getFolderById(projectId)
-      if (project && updateThread) {
-        const projectMetadata = {
-          id: project.id,
-          name: project.name,
-          updated_at: project.updated_at,
-        }
-
-        updateThread(threadId, {
-          metadata: {
-            ...thread.metadata,
-            project: projectMetadata,
-          },
+      if (!project) return
+      // Home groups are the source of truth; the mirror updates metadata.project.
+      void useConversationGroups
+        .getState()
+        .moveItem('home', threadId, projectId)
+        .then((ok) => {
+          if (ok) toast.success(`Thread assigned to "${project.name}" successfully`)
         })
-
-        toast.success(`Thread assigned to "${project.name}" successfully`)
-      }
     }
 
     const isAppStateActive = useIsThreadActive(thread.id)
@@ -337,15 +331,12 @@ const ThreadItem = memo(
                   onClick={(e) => {
                     e.stopPropagation()
                     const projectName = thread.metadata?.project?.name
-                    updateThread(thread.id, {
-                      metadata: {
-                        ...thread.metadata,
-                        project: undefined,
-                      },
-                    })
-                    toast.success(
-                      `Thread removed from "${projectName}" successfully`
-                    )
+                    void useConversationGroups
+                      .getState()
+                      .moveItem('home', thread.id, null)
+                      .then((ok) => {
+                        if (ok) toast.success(`Thread removed from "${projectName}" successfully`)
+                      })
                   }}
                 >
                   <X className="size-4" />
@@ -446,4 +437,5 @@ function ThreadList({ threads, currentProjectId, draggable }: ThreadListProps) {
   )
 }
 
+export { ThreadItem }
 export default memo(ThreadList)

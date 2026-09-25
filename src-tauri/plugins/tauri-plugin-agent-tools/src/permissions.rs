@@ -156,6 +156,29 @@ impl ToolPermissions {
             .find(|r| r.matches_allow(name, resources, subject))
     }
 
+    /// Whether an allow rule names this call specifically rather than covering
+    /// it along with everything else.
+    ///
+    /// The rule must be resource-qualified, allow `resources`, and *not* allow
+    /// `probe` -- the same call with the sensitive part swapped for a harmless
+    /// one. The hard denies for credential files and destructive git used to
+    /// accept any parenthesised rule, so `read(**)` or `bash(git *)` -- rules
+    /// people write to widen reads or enable git -- quietly unlocked `.env` and
+    /// `git push --force` (Jozkah/jan#47).
+    pub fn names_call(
+        &self,
+        name: &str,
+        resources: &[Resource],
+        probe: &[Resource],
+        subject: &crate::subject::Subject,
+    ) -> bool {
+        self.allow.iter().chain(self.allow_write.iter()).any(|r| {
+            r.is_resource_qualified()
+                && r.matches_allow(name, resources, subject)
+                && !r.matches_allow(name, probe, subject)
+        })
+    }
+
     /// Whether this specific call must be confirmed every time.
     ///
     /// Consulted between deny and allow: a matching `ask` rule turns an
@@ -170,7 +193,7 @@ impl ToolPermissions {
     ) -> Option<&ResourceRule> {
         self.ask
             .iter()
-            .find(|r| r.matches_allow(name, resources, subject))
+            .find(|r| r.matches_ask(name, resources, subject))
     }
 
     /// Filesystem directories the allow rules make readable, derived from their

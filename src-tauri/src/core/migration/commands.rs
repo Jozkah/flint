@@ -68,9 +68,50 @@ pub async fn migration_plan(
     ))
 }
 
+/// Rebuild the plan the webview sent from the real roots, keeping only the
+/// user's choices from it.
+///
+/// The plan comes back over IPC, so every path in it is caller-controlled: a
+/// script in the webview could name any source to copy (and, in Move mode,
+/// delete) and any destination to overwrite. Paths are therefore never taken
+/// from it. The mode and categories are re-planned against the legacy and
+/// Flint roots the backend discovers itself; from the client plan only the
+/// set of items to migrate (matched by category, root and name) and each
+/// conflict's resolution carry over.
+pub(crate) fn trusted_plan(client: &MigrationPlan, roots: &Roots) -> Result<MigrationPlan, String> {
+    let flint = flint_paths(roots);
+    let legacy = detect::detect_legacy(roots)
+        .ok_or_else(|| "no legacy JAN data found to migrate".to_string())?;
+    let mut trusted = plan::plan(
+        &legacy,
+        &flint,
+        &client.selected_categories,
+        client.mode,
+        Conflict::KeepFlint,
+    );
+    let chosen = |item: &plan::PlannedItem| {
+        client
+            .items
+            .iter()
+            .find(|c| c.category == item.category && c.root == item.root && c.name == item.name)
+    };
+    trusted.items.retain(|item| chosen(item).is_some());
+    for item in trusted.items.iter_mut() {
+        let resolution = chosen(item)
+            .and_then(|c| c.conflict.as_ref())
+            .map(|c| c.resolution);
+        if let (Some(conflict), Some(resolution)) = (item.conflict.as_mut(), resolution) {
+            conflict.resolution = resolution;
+        }
+    }
+    trusted.estimated_bytes = trusted.items.iter().map(|i| i.size_bytes).sum();
+    Ok(trusted)
+}
+
 /// Execute a previously built plan.
 #[tauri::command]
 pub async fn migration_execute(plan: MigrationPlan) -> Result<MigrationResult, String> {
+    let plan = trusted_plan(&plan, &roots())?;
     let opts = ExecuteOpts::with_holder("flint-migration");
     // Run the (blocking) filesystem work off the async runtime.
     tauri::async_runtime::spawn_blocking(move || execute::execute(&plan, &opts))
@@ -132,6 +173,70 @@ pub fn command_paths() -> &'static [&'static str] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// #72: paths in a webview-supplied plan are never trusted; the executed
+    /// plan's paths all come from the real roots.
+    #[test]
+    fn a_tampered_plan_is_replanned_from_the_real_roots() {
+        use crate::core::migration::detect::{detect_legacy, Category};
+        let td = tempfile::tempdir().unwrap();
+        let data_dir = td.path().join("appdata");
+        let home = td.path().join("home");
+        crate::core::migration::detect::tests::seed_legacy(&data_dir, &home);
+        let roots = Roots::new(&data_dir, &home);
+        let flint = flint_paths(&roots);
+        let honest = plan::plan(
+            &detect_legacy(&roots).unwrap(),
+            &flint,
+            &[Category::Conversations],
+            Mode::Move,
+            Conflict::KeepBoth,
+        );
+        assert!(!honest.items.is_empty());
+
+        let evil = td.path().join("elsewhere");
+        let mut tampered = honest.clone();
+        tampered.dest_config_dir = evil.clone();
+        tampered.dest_data_folder = evil.join("data");
+        tampered.source_data_folder = evil.clone();
+        for item in tampered.items.iter_mut() {
+            item.source = evil.join("victim");
+            item.destination = evil.join("overwritten");
+        }
+
+        let trusted = trusted_plan(&tampered, &roots).unwrap();
+        assert_eq!(trusted.dest_config_dir, flint.config_dir);
+        assert_eq!(trusted.dest_data_folder, flint.data_folder);
+        assert_eq!(trusted.source_data_folder, honest.source_data_folder);
+        assert_eq!(trusted.items.len(), honest.items.len());
+        for item in &trusted.items {
+            assert!(!item.source.starts_with(&evil), "{:?}", item.source);
+            assert!(!item.destination.starts_with(&evil), "{:?}", item.destination);
+        }
+    }
+
+    #[test]
+    fn items_the_client_dropped_are_not_migrated() {
+        use crate::core::migration::detect::{detect_legacy, Category};
+        let td = tempfile::tempdir().unwrap();
+        let data_dir = td.path().join("appdata");
+        let home = td.path().join("home");
+        crate::core::migration::detect::tests::seed_legacy(&data_dir, &home);
+        let roots = Roots::new(&data_dir, &home);
+        let mut client = plan::plan(
+            &detect_legacy(&roots).unwrap(),
+            &flint_paths(&roots),
+            &[Category::Conversations, Category::Settings],
+            Mode::Copy,
+            Conflict::KeepBoth,
+        );
+        let kept = client.items.remove(0);
+        client.items.truncate(0);
+        client.items.push(kept.clone());
+        let trusted = trusted_plan(&client, &roots).unwrap();
+        assert_eq!(trusted.items.len(), 1);
+        assert_eq!(trusted.items[0].name, kept.name);
+    }
 
     #[test]
     fn command_paths_lists_all_six() {

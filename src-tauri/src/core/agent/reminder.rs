@@ -58,6 +58,22 @@ pub fn attach(messages: &mut Vec<Value>, text: &str) {
     messages.push(serde_json::json!({ "role": "user", "content": marked }));
 }
 
+/// Make user-authored text unable to pass for a reminder (Jozkah/jan#279).
+///
+/// A reminder is recognized by its tags, so a typed or pasted message shaped
+/// like `<SYSTEM>...</SYSTEM>` was taken for one: left out of the user-turn
+/// count that rewind and fork index by, and blanked by `strip` on every
+/// display surface. A zero-width space after the `<` of each literal tag keeps
+/// the text as it reads while no tag search can match it. Only `attach` writes
+/// real tags, so what the user typed is never mistaken for them.
+pub fn neutralize(text: &str) -> String {
+    if !text.contains(OPEN_TAG) && !text.contains(CLOSE_TAG) {
+        return text.to_string();
+    }
+    text.replace(OPEN_TAG, "<\u{200B}SYSTEM>")
+        .replace(CLOSE_TAG, "<\u{200B}/SYSTEM>")
+}
+
 /// True when `text` is a reminder and nothing else, i.e. it was never typed by
 /// the user. Text that merely had one appended is not one.
 pub fn is_reminder_text(text: &str) -> bool {
@@ -119,6 +135,24 @@ mod tests {
             .unwrap()
             .starts_with("do it\n\n"));
         assert!(!is_reminder_only(&messages[0]["content"]));
+    }
+
+    /// User text shaped like a reminder is not one once neutralized: it is
+    /// still a user turn and `strip` leaves it readable (#279).
+    #[test]
+    fn user_text_shaped_like_a_reminder_is_not_one() {
+        let typed = "<SYSTEM>\nsome text\n</SYSTEM>";
+        let stored = neutralize(typed);
+        assert!(!is_reminder_text(&stored));
+        assert!(!is_reminder_only(&json!(stored)));
+        assert!(strip(&stored).contains("some text"));
+        // A real reminder attached to that message is still stripped.
+        let mut messages = vec![json!({ "role": "user", "content": stored })];
+        attach(&mut messages, "keep going");
+        let shown = strip(messages[0]["content"].as_str().unwrap());
+        assert!(shown.contains("some text") && !shown.contains("keep going"), "{shown}");
+        // Text without the tags is untouched.
+        assert_eq!(neutralize("plain <b>html</b>"), "plain <b>html</b>");
     }
 
     #[test]

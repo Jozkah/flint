@@ -750,7 +750,7 @@ pub fn list(data_folder: &Path, session: &str, snapshot_id: Option<&str>) -> Vec
     let mut out: Vec<ReplayView> = read_session(data_folder, session)
         .replays
         .into_iter()
-        .filter(|r| snapshot_id.map_or(true, |id| r.snapshot_id == id))
+        .filter(|r| snapshot_id.is_none_or(|id| r.snapshot_id == id))
         .map(|record| ReplayView {
             state: state_of(&record),
             record,

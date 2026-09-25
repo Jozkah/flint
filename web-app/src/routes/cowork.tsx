@@ -1,11 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrBar } from '@/containers/PrBar'
 import { createFileRoute } from '@tanstack/react-router'
+import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
+import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import {
   Fragment,
@@ -85,11 +87,12 @@ import {
 } from '@/stores/message-queue-store'
 import {
   agentAttribution,
-  dequeueClaimedReady,
+  drainIdleSession,
   takeClaimed,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
 import {
@@ -237,11 +240,18 @@ import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
-import { TeamControl, awaitingDecision } from '@/lib/coworkTeamControl'
+import {
+  COWORK_DECISION_WINDOW_MS,
+  TeamControl,
+  awaitingDecision,
+} from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
-import { orphans as orphanWorktrees } from '@/lib/coworkWorktrees'
+import {
+  orphans as orphanWorktrees,
+  sessionWorktreeBranch,
+} from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
 import { ClaudeSkillRootsSettings } from '@/containers/ClaudeSkillRootsSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
@@ -256,7 +266,12 @@ import {
   emptyManifest as emptyCompatManifest,
 } from '@/lib/claudeCompat'
 import { effectiveEnabled, useSkills } from '@/hooks/useSkills'
-import { accessOf, effectiveAccess, runCarries } from '@/lib/coworkAccess'
+import {
+  accessOf,
+  effectiveAccess,
+  effectiveDowngradeKey,
+  runCarries,
+} from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   COMPATIBILITY_INSTRUCTION_FILES,
@@ -278,6 +293,9 @@ import { measureContextPack } from '@/lib/coworkContext'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
+  acceptsProposal,
+  continuationInstruction,
+  PROPOSAL_ACCEPTED_RESULT,
   recordFor,
 } from '@/lib/coworkContinuity'
 import { CoworkChatTransport } from '@/lib/coworkTransport'
@@ -294,6 +312,7 @@ import {
   refuseGraph,
   refuseUnresolved,
   renderTeamReport,
+  renderNotRetried,
   runTeam,
   scopeConflicts,
   teamProgress,
@@ -325,8 +344,14 @@ import { parseAskRequest, renderAskResult } from '@/lib/coworkAsk'
 import {
   planReviewDecision,
   renderPlanReviewResult,
+  planExecuteNotice,
+  PLAN_EXECUTE_INSTRUCTION,
 } from '@/lib/coworkPlanReview'
-import { getSandboxStatus, sandboxEnforces } from '@/lib/agentTools'
+import {
+  getSandboxStatus,
+  getSandboxToolchains,
+  sandboxEnforces,
+} from '@/lib/agentTools'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { MAX_AGENT_STEPS } from '@/lib/coworkBudget'
 import {
@@ -362,6 +387,9 @@ import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
+import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useMCPServers } from '@/hooks/useMCPServers'
+import { sessionDetailsLabel } from '@/lib/windowTitle'
 
 /** How often the backend's background-job list is re-read. Slower than the
  * activity panel's clock tick: the list changes when a command starts or ends,
@@ -369,6 +397,7 @@ import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 const JOB_POLL_MS = 3000
 
 export const Route = createFileRoute(route.cowork as any)({
+  beforeLoad: () => ensureCoworkEnabled(),
   component: CoworkPage,
 })
 
@@ -397,10 +426,38 @@ const PHONE_VIEWS: readonly CoworkPhoneView[] = ['content', 'output', 'details']
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
+/** A session title for a request: a `/command` is named as typed. */
+const slashTitle = (text: string) => {
+  const slash = parseSlashMarker(text)
+  return slash ? slashDisplay(slash.invocation) : text
+}
+
 function CoworkPage() {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
-  const { selectedModel, selectedProvider } = useModelProvider()
+  // The session's own model when it has one (#215): the picker no longer
+  // mirrors a session's choice into the global store, so the readiness card
+  // and capability checks read it from the session, as the run does.
+  const {
+    selectedModel: globalModel,
+    selectedProvider: globalProvider,
+    getProviderByName,
+    providers: modelProviders,
+  } = useModelProvider()
+  const viewedModel = useCoworkSessions(
+    (s) => s.sessions.find((x) => x.id === s.currentId)?.model
+  )
+  const { selectedModel, selectedProvider } = useMemo(
+    () =>
+      selectionForThreadModel(viewedModel, {
+        selectedModel: globalModel,
+        selectedProvider: globalProvider,
+        getProviderByName,
+      }),
+    // `modelProviders` is why getProviderByName's answer can change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewedModel, globalModel, globalProvider, getProviderByName, modelProviders]
+  )
   // Resolved once for the route: the readiness card, the context measurement
   // and the run all have to be talking about the same window.
   // The snapshot of the dispatch now in flight, so its reply's usage can be
@@ -655,6 +712,10 @@ function CoworkPage() {
     approvedUserSkillRoots: skillRoots,
   })
 
+  // Counted only to say that they are not offered here (the run is given none).
+  const settingsMcpServers = useMCPServers(
+    (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
+  )
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
       available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -753,11 +814,10 @@ function CoworkPage() {
    * which is what someone glances at to confirm they are in the right place.
    * The rest lives inside the dialog.
    */
-  const sessionDetailsSummary = useMemo(() => {
-    const repo = readiness.folder?.split('/').filter(Boolean).pop()
-    if (!repo) return ''
-    return readiness.branch ? `${repo} · ${readiness.branch}` : repo
-  }, [readiness.folder, readiness.branch])
+  const sessionDetailsSummary = useMemo(
+    () => sessionDetailsLabel(readiness.folder, readiness.branch),
+    [readiness.folder, readiness.branch]
+  )
 
   // A retake re-uses the skills of the turn it takes again -- that session's
   // turn, not whichever session ran last.
@@ -1023,9 +1083,19 @@ function CoworkPage() {
       setGitBranch(null)
       return
     }
+    // Like the tooling effect below: a slow answer for a folder no longer
+    // attached must not name the branch of the one that is.
+    let alive = true
     invoke<string | null>('agent_git_branch', { project: folder })
-      .then(setGitBranch)
-      .catch(() => setGitBranch(null))
+      .then((branch) => {
+        if (alive) setGitBranch(branch)
+      })
+      .catch(() => {
+        if (alive) setGitBranch(null)
+      })
+    return () => {
+      alive = false
+    }
   }, [folder])
 
   // Read once per attached folder. A failure is a typed state, never a throw,
@@ -1250,6 +1320,10 @@ function CoworkPage() {
         runId: session?.id ?? null,
         finishedAt: runOrigins?.at ?? null,
         checkpoints: checkpointChain ?? [],
+        openTodos: (session?.todos?.phases ?? [])
+          .flatMap((phase) => phase.tasks)
+          .filter((task) => task.status === 'pending' || task.status === 'in_progress')
+          .length,
         handlers: {
           // Opening a file resolves against the attached folder or the
           // sandbox; a managed worktree's files are reviewed in Changes.
@@ -1268,6 +1342,7 @@ function CoworkPage() {
       displayedTurns,
       runOrigins,
       session?.id,
+      session?.todos,
       checkpointChain,
     ]
   )
@@ -1659,16 +1734,24 @@ function CoworkPage() {
   // A task the inline card asked the panel to reveal.
   const [focusTaskId, setFocusTaskId] = useState<string | null>(null)
   const [focusWorkflowId, setFocusWorkflowId] = useState<string | null>(null)
-  const showTaskInPanel = useCallback((task: ActivityTask) => {
-    setRail({ kind: 'tasks' })
-    setFocusWorkflowId(task.workflowId)
-    setFocusTaskId(task.id)
-  }, [])
-  const showWorkflowInPanel = useCallback((workflowId: string) => {
-    setRail({ kind: 'tasks' })
-    setFocusTaskId(null)
-    setFocusWorkflowId(workflowId)
-  }, [])
+  // `setRail` is bound to the session in view; with empty deps these kept the
+  // one from the first render and opened the rail for no session at all.
+  const showTaskInPanel = useCallback(
+    (task: ActivityTask) => {
+      setRail({ kind: 'tasks' })
+      setFocusWorkflowId(task.workflowId)
+      setFocusTaskId(task.id)
+    },
+    [setRail]
+  )
+  const showWorkflowInPanel = useCallback(
+    (workflowId: string) => {
+      setRail({ kind: 'tasks' })
+      setFocusTaskId(null)
+      setFocusWorkflowId(workflowId)
+    },
+    [setRail]
+  )
 
   // Whether the run still holds a controller for an agent task. Consulted
   // rather than assumed, so a Stop control is only offered where pressing it
@@ -1834,7 +1917,7 @@ function CoworkPage() {
     }
     // Another session's message is not what this session is about.
     if (text && !from && current?.title === 'New session')
-      store.setTitle(sid, text.slice(0, 40))
+      store.setTitle(sid, slashTitle(text).slice(0, 40))
 
     /**
      * A managed worktree still being the thing this session recorded.
@@ -2192,6 +2275,10 @@ function CoworkPage() {
     // Warm the sandbox probe: the transport's prompt and tool set read it
     // synchronously via sandboxEnforces().
     if ((await prepared(getSandboxStatus())) === STOPPED) return
+    // Which runtimes the shell can start, so the model does not spend calls
+    // finding out. Never throws; null (unknown) leaves the lines out.
+    const toolchains = await prepared(getSandboxToolchains())
+    if (toolchains === STOPPED) return
     // Read once per run, not subscribed: the advertised set is frozen for the
     // run anyway, so a mid-run flip in Settings would only desync the prompt.
     const webSearch = useWebSearchConfig.getState().webSearchEnabled
@@ -2297,6 +2384,7 @@ function CoworkPage() {
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
+      worktreeBranch: worktree?.branch ?? null,
       gitBranch,
       projectInstructions,
       // Only what the resolver made active: a file that is present but not
@@ -2305,6 +2393,15 @@ function CoworkPage() {
       compatInstructions: compatInstructionBlocks(runCompat),
       projectTooling: runTooling,
       openingInspection: inspecting,
+      // What the shell can and cannot do, stated up front. Without it the
+      // model learned by failing: probing the disk for runtimes, trying POSIX
+      // syntax, and hunting for MCP servers Cowork never offers.
+      platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+      shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+      runnable: toolchains?.runnable,
+      unavailable: toolchains?.unavailable,
+      networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+      mcpServers: [],
     })
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
@@ -2380,6 +2477,10 @@ function CoworkPage() {
         if (row) {
           row.args = call.input
           publish()
+          // #321: checkpointed now, not at the next step or text delta. A
+          // crash between here and the step's end otherwise left the saved
+          // call without its arguments, and resuming replayed it without them.
+          saveInFlight(true)
         }
         // A shell command is background work the moment it starts, and its
         // arguments are the only place the command line exists.
@@ -2554,8 +2655,15 @@ function CoworkPage() {
             // child never resolves its own access or its own
             // instructions.
             folderAccess: promptFolderAccess(origins),
+            worktreeBranch: worktree?.branch ?? null,
             projectInstructions,
             compatInstructions: compatInstructionBlocks(runCompat),
+            platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+            shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+            runnable: toolchains?.runnable,
+            unavailable: toolchains?.unavailable,
+            networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
+            mcpServers: [],
           },
           signal: childAbort.signal,
           sessionTokens: 0,
@@ -2609,11 +2717,14 @@ function CoworkPage() {
               // they go through the same prompt rather than around it --
               // shown on its own, because the child's calls are not parts of
               // any message on screen.
-              onApprove: (callId, toolName, input, preview, signal) =>
+              onApprove: (callId, toolName, input, preview, signal, forced) =>
                 useToolApprovalRequests
                   .getState()
                   .requestApproval(callId, toolName, sid, undefined, {
                     input,
+                    ...(forced
+                      ? { alwaysAsk: true, taskContext: forced.reason }
+                      : {}),
                     workspaceLabel:
                       (destination ? destination.path : current?.folder) ??
                       undefined,
@@ -2789,6 +2900,13 @@ function CoworkPage() {
       deadlineBudgetMs: runDeadline.budgetMs,
     })
 
+    /**
+     * The instruction to continue with once this run ends, set when the
+     * opening proposal is accepted (#296). The opening run is read-only by
+     * construction and its tools are frozen, so the accepted step cannot run
+     * here: it runs in a new request under the session's stored mode.
+     */
+    let continueWith: string | null = null
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -2814,14 +2932,16 @@ function CoworkPage() {
         // seeding with it would pre-charge the whole replayed prompt.
         sessionTokens: 0,
         deps: {
-          sendStep: (msgs, signal) =>
-            transport.sendMessages({
+          sendStep: (msgs, signal, stepOpts) => {
+            transport.textOnlyNext = stepOpts?.textOnly === true
+            return transport.sendMessages({
               chatId: sid,
               messages: msgs,
               abortSignal: signal,
               trigger: 'submit-message',
               messageId: undefined,
-            } as any),
+            } as any)
+          },
           dispatch: (call, toolSignal) =>
             withToolTiming(call.toolCallId, () =>
               dispatchCoworkTool(call, {
@@ -2857,11 +2977,14 @@ function CoworkPage() {
                 // The prompt the chat surface already uses for tool approval,
                 // not a second one: it honours grants the user has already made
                 // and renders in the tool card the call is reported in.
-                onApprove: (callId, toolName, input, preview, signal) =>
+                onApprove: (callId, toolName, input, preview, signal, forced) =>
                   useToolApprovalRequests
                     .getState()
                     .requestApproval(callId, toolName, sid, undefined, {
                       input,
+                      ...(forced
+                        ? { alwaysAsk: true, taskContext: forced.reason }
+                        : {}),
                       workspaceLabel: current?.folder ?? undefined,
                       preview,
                       signal,
@@ -2946,12 +3069,48 @@ function CoworkPage() {
                           proposal: proposal.question,
                         })
                       }
+                      // An accepted opening proposal ends this read-only run
+                      // and continues in a new one that can write (#296).
+                      if (
+                        inspecting &&
+                        proposal &&
+                        answers &&
+                        acceptsProposal(parsed, answers)
+                      ) {
+                        continueWith = continuationInstruction(
+                          proposal.question,
+                          answers
+                        )
+                        resolve({
+                          output: PROPOSAL_ACCEPTED_RESULT,
+                          endsTurn: true,
+                        })
+                        return
+                      }
                       // A plan review changes the session's mode, from the next
                       // message: this run's tools are frozen. Only ever towards
                       // Ask, where each change still waits for the user.
                       const review = planReviewDecision(parsed, answers)
                       if (review === 'execute' || review === 'exit') {
                         useCoworkSessions.getState().setMode(sid, 'ask')
+                      }
+                      // "Execute plan" leaves plan mode and carries on: this
+                      // run's tools are frozen read-only, so it ends and the
+                      // plan continues in a new run that can make changes.
+                      // When those changes cannot reach the user's files, the
+                      // user is told what to change rather than left to find
+                      // "Attach a folder first" in the access menu.
+                      if (review === 'execute') {
+                        const notice = planExecuteNotice({
+                          folder: current?.folder,
+                          access: effective.access,
+                        })
+                        if (notice) {
+                          toast.info(t(`common:coworkPlanExecute.${notice}`), {
+                            duration: 12000,
+                          })
+                        }
+                        continueWith = PLAN_EXECUTE_INSTRUCTION
                       }
                       resolve(
                         review === 'none'
@@ -3100,6 +3259,7 @@ function CoworkPage() {
                       signal: controller.signal,
                       allowParallel,
                       control: teamControl,
+                      decisionWindowMs: COWORK_DECISION_WINDOW_MS,
                       onControl: (request, result) => {
                         if (!result.ok || request.kind === 'finish') {
                           if (!result.ok) toast.error(result.refusal.message)
@@ -3248,7 +3408,11 @@ function CoworkPage() {
                     }
                     const where = describeDestinations(plan.byTask)
                     const rendered = [
-                      renderTeamReport(outcome.report) + (outcome.decision === 'window-elapsed' ? '\n\nThe failed tasks were not restarted: nobody decided within the time a team waits for a decision.' : ''),
+                      renderTeamReport(outcome.report) +
+                        (outcome.decision === 'window-elapsed' ||
+                        outcome.decision === 'not-retried'
+                          ? `\n\n${renderNotRetried(outcome.report)}`
+                          : ''),
                       where
                         ? `${where}\nTheir changes wait for the user's review in the Changes panel; none of them has been applied.`
                         : '',
@@ -3572,6 +3736,11 @@ function CoworkPage() {
       // dropping it silently nor sending it on its own is right.
       // janhq/jan#8864.
       if (stop && stop !== 'done') useMessageQueue.getState().holdQueue(sid)
+      // Only after a clean finish: a stopped or failed opening run must not
+      // start work on its own.
+      if (continueWith && stop === 'done') {
+        void runRequestRef.current(continueWith)
+      }
     }
   }
 
@@ -3581,6 +3750,23 @@ function CoworkPage() {
   runRequestRef.current = runRequest
 
   const handleSubmit = (text: string) => void runRequest(text)
+  // Cowork's own `/` built-ins; `/help` is added by the composer.
+  const slashBuiltins = useMemo(
+    () => [
+      {
+        name: 'new',
+        description: t('slash:builtin.newSession'),
+        run: () => {
+          // Same rule as the sidebar's entry point: one press, at most one
+          // session. The draft is the `/new` being consumed, so it is no draft.
+          const store = useCoworkSessions.getState()
+          const id = store.startSession({ running, hasDraft: false })
+          store.selectSession(id)
+        },
+      },
+    ],
+    [t, running]
+  )
 
   /**
    * Take the last turn again. Rewinding to the question and resuming is the
@@ -3674,10 +3860,13 @@ function CoworkPage() {
     // Held input waits for the user; only what is ready goes. Mail is claimed
     // first, so a reply a tool already consumed is not sent again.
     idleDrainRef.current = true
-    void dequeueClaimedReady(session.id)
-      .then((next) => {
+    // The message is sent only into the session it was drained from; see
+    // drainIdleSession.
+    void drainIdleSession(session.id, (text, from) => {
+      void runRequestRef.current(text, from)
+    })
+      .then(() => {
         idleDrainRef.current = false
-        if (next) void runRequestRef.current(next.text, next.from)
       })
       .catch(() => {
         idleDrainRef.current = false
@@ -3947,7 +4136,10 @@ function CoworkPage() {
   // conversation: behind a dialog on wide screens, a view of its own on phones.
   const detailsBody = (
     <>
-      <CoworkReadinessCard manifest={readiness} />
+      <CoworkReadinessCard
+        manifest={readiness}
+        settingsMcpServers={settingsMcpServers}
+      />
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport
         sessionId={session?.id}
@@ -4012,8 +4204,10 @@ function CoworkPage() {
         <PageHeaderRow>
           {!phone && (
             // Set off from the breadcrumb by a dashed rule, as the design's
-            // context controls are.
-            <div className="flex min-w-0 items-center gap-2 border-l border-dashed border-border pl-3.5">
+            // context controls are. Clips and lets the pills shrink, so on a
+            // narrow window they give way instead of sliding under "Review
+            // changes" on the right.
+            <div className="flex min-w-0 shrink items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5 [&>*]:min-w-0 [&>*]:shrink">
               {modelSelector}
               {sessionControls}
             </div>
@@ -4416,10 +4610,22 @@ function CoworkPage() {
                   folders, context accounting -- moved behind the session
                   details control in the header, so the composer sits directly
                   beneath the conversation. */}
-              {folder && (session?.turns.length ?? 0) === 0 && (
+              {folder &&
+                ((session?.turns.length ?? 0) === 0 ||
+                  effective.downgradedFrom === 'managed-worktree') && (
                 <div className="px-1 pb-2">
                   <CoworkWorktreeRecovery
                     orphans={orphanWorktrees(foundWorktrees, worktree)}
+                    ownBranch={
+                      session?.id ? sessionWorktreeBranch(session.id) : undefined
+                    }
+                    downgradeNote={(() => {
+                      const key = effectiveDowngradeKey(effective)
+                      return key &&
+                        effective.downgradedFrom === 'managed-worktree'
+                        ? t(key)
+                        : undefined
+                    })()}
                     onAdopt={(record) => {
                       if (session?.id)
                         useCoworkWorktrees.getState().adopt(session.id, record)
@@ -4494,6 +4700,9 @@ function CoworkPage() {
                 // `@` names files in the folder the run works in, nothing else.
                 referenceRoot={treeRoot}
                 referenceSources={referenceSources}
+                slashSurface="cowork"
+                slashProject={folder}
+                slashBuiltins={slashBuiltins}
                 onSubmit={handleSubmit}
                 onStop={handleStop}
                 chatStatus={running ? 'streaming' : 'ready'}
@@ -4613,6 +4822,11 @@ function CoworkPage() {
                 }
                 onPlan={(sha) =>
                   useCoworkCheckpoints.getState().plan(session?.id ?? '', sha)
+                }
+                onPreviewDiff={(sha) =>
+                  useCoworkCheckpoints
+                    .getState()
+                    .previewDiff(session?.id ?? '', sha)
                 }
                 // Newer edits Flint made itself are not someone else's work, so
                 // only the rest need an explicit acknowledgement.

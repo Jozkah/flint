@@ -516,16 +516,43 @@ pub fn thread_segment(thread_id: &str) -> Result<String, String> {
 /// Sanitize a caller-supplied entry name into a safe `<stem>.md` filename.
 /// Rejects path separators and `..` so the result can never escape the
 /// store directory. `.md` is appended if absent.
+/// Replace `path` with `bytes` so that a failure part-way leaves the old file
+/// whole (Jozkah/jan#238): the new contents go to a uniquely named sibling,
+/// which is then renamed over the target. A plain write truncates first, and
+/// a full disk or a crash then leaves a user's skill or memory empty.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static N: AtomicU64 = AtomicU64::new(0);
+    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let temp = path.with_file_name(format!(
+        ".{name}.tmp-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::SeqCst)
+    ));
+    std::fs::write(&temp, bytes)?;
+    std::fs::rename(&temp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&temp);
+    })
+}
+
 pub fn workspace_filename(name: &str) -> Result<String, String> {
     let trimmed = name.trim();
     let stem = trimmed.strip_suffix(".md").unwrap_or(trimmed);
     // Checked on the stem, not the input: otherwise a bare "." passes and the
     // guard emits "..md", a name it would itself reject as input.
+    // `:` makes a drive-relative name on Windows (`C:x`), which `Path::join`
+    // lets replace the base directory entirely (Jozkah/jan#254). The component
+    // check covers anything else that is not one plain name, on any platform.
     if stem.is_empty()
         || stem.contains('/')
         || stem.contains('\\')
+        || stem.contains(':')
         || stem.contains("..")
         || stem.chars().all(|c| c == '.')
+        || !matches!(
+            std::path::Path::new(stem).components().collect::<Vec<_>>().as_slice(),
+            [std::path::Component::Normal(_)]
+        )
     {
         return Err(format!("ERROR: invalid name '{name}'"));
     }
@@ -757,7 +784,12 @@ mod tests {
 
     #[test]
     fn filename_rejects_escapes() {
-        for bad in ["", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b"] {
+        // Jozkah/jan#254: a drive prefix makes `Path::join` replace the base on
+        // Windows, so `store.join("C:x.md")` lands outside the store.
+        for bad in [
+            "", "  ", "../x", "a/b", "a\\b", "..", "a/../b", "a..b", "C:x", "c:FLINT", "D:x.md",
+            "x:y", "C:", "a:b.md",
+        ] {
             assert!(
                 workspace_filename(bad).is_err(),
                 "expected {bad:?} to be rejected"

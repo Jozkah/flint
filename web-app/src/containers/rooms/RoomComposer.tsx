@@ -10,6 +10,9 @@ import { normalizeError, useRoomsApi, type RoomsUiError } from './roomsBindings'
 import { activeParticipants, participantColor } from './roomUi'
 import { selectClassName } from './RoomModelSelect'
 import { RoomAvatar } from './RoomAvatar'
+import { SlashCommandMenu } from '@/components/SlashCommandMenu'
+import { slashOptionId } from '@/lib/slashCommands'
+import { useSlashCommands } from '@/hooks/useSlashCommands'
 
 const toValue = (a: Address) =>
   a.kind === 'participant' ? `participant:${a.participantId}` : a.kind
@@ -31,6 +34,30 @@ export function RoomComposer({ room }: { room: Room }) {
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [extendBy, setExtendBy] = useState(3)
   const textRef = useRef<HTMLTextAreaElement>(null)
+  // The same `/` commands as the other composers, filtered for Rooms; a
+  // command expands into the message the room receives.
+  const slash = useSlashCommands({
+    surface: 'rooms',
+    helpDescription: t('slash:builtin.help'),
+  })
+  const changeText = (value: string) => {
+    setText(value)
+    slash.onTextChange(value)
+  }
+
+  /** The message the room gets for a draft, or null when nothing is sent. */
+  const expand = async (body: string): Promise<string | null> => {
+    const result = await slash.prepareSend(body)
+    if (result.kind === 'handled') {
+      setText('')
+      return null
+    }
+    if (result.kind === 'error') {
+      setError({ message: t('slash:error', { command: body.split(/\s/)[0], error: result.error }) })
+      return null
+    }
+    return result.kind === 'message' ? result.text : body
+  }
 
   // The room is not running and continuing would immediately hit a soft limit
   // (whether it stopped on that limit or concluded while already at it). A plain
@@ -46,11 +73,13 @@ export function RoomComposer({ room }: { room: Room }) {
   const limitCeiling = ROOM_LIMIT_CEILINGS.maxRounds
 
   const send = async () => {
-    const body = text.trim()
-    if (!body || sending) return
+    const typed = text.trim()
+    if (!typed || sending) return
     setSending(true)
     setError(null)
     try {
+      const body = await expand(typed)
+      if (body === null) return
       await api.controller.sendUserMessage(room.id, body, fromValue(to))
       setText('')
     } catch (err) {
@@ -65,7 +94,9 @@ export function RoomComposer({ room }: { room: Room }) {
     setSending(true)
     setError(null)
     try {
-      const body = text.trim()
+      const typed = text.trim()
+      const body = typed ? await expand(typed) : ''
+      if (body === null) return
       await api.controller.extendLimit(
         room.id,
         extendBy,
@@ -179,6 +210,16 @@ export function RoomComposer({ room }: { room: Room }) {
             })}
           </div>
         </div>
+        {slash.open && (
+          <SlashCommandMenu
+            items={slash.visible}
+            activeIndex={slash.activeIndex}
+            listId={`${id}-slash`}
+            help={slash.helpOpen}
+            onActiveChange={slash.setActiveIndex}
+            onSelect={(item) => changeText(slash.pick(item))}
+          />
+        )}
         <label htmlFor={`${id}-text`} className="sr-only">
           {t('rooms:composer.label')}
         </label>
@@ -186,12 +227,26 @@ export function RoomComposer({ room }: { room: Room }) {
           id={`${id}-text`}
           ref={textRef}
           value={text}
+          aria-autocomplete="list"
+          aria-expanded={slash.open}
+          aria-controls={slash.open ? `${id}-slash` : undefined}
+          aria-activedescendant={
+            slash.open && slash.visible.length > 0
+              ? slashOptionId(`${id}-slash`, slash.activeIndex)
+              : undefined
+          }
           rows={2}
           maxLength={ROOM_LIMIT_CEILINGS.maxTextLength}
           placeholder={placeholder}
           aria-describedby={`${id}-hint`}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => changeText(e.target.value)}
           onKeyDown={(e) => {
+            const slashKey = slash.onKeyDown(e)
+            if (typeof slashKey === 'string') {
+              changeText(slashKey)
+              return
+            }
+            if (slashKey) return
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
               e.preventDefault()
               void (limitStop ? extend() : send())

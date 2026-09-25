@@ -91,6 +91,25 @@ async fn test_create_and_list_threads() {
 }
 
 #[tokio::test]
+async fn list_threads_skips_a_thread_file_it_cannot_read() {
+    let (app, data_folder) = mock_app_with_temp_data_dir();
+    let created = create_thread(app.handle().clone(), create_test_thread("Readable"))
+        .await
+        .unwrap();
+    // A thread.json that exists but cannot be read as a file.
+    let broken = get_data_dir(&data_folder)
+        .join(format!("unreadable-{}", uuid::Uuid::new_v4()))
+        .join(THREADS_FILE);
+    fs::create_dir_all(&broken).unwrap();
+
+    let threads = list_threads(app.handle().clone())
+        .await
+        .expect("one unreadable thread must not fail the whole listing");
+    assert!(threads.iter().any(|t| t["id"] == created["id"]));
+    let _ = fs::remove_dir_all(broken.parent().unwrap());
+}
+
+#[tokio::test]
 async fn test_create_and_list_messages() {
     let (app, _data_dir) = mock_app_with_temp_data_dir();
     // Create a thread first
@@ -262,6 +281,47 @@ async fn test_desktop_storage_backend() {
     }
 }
 
+#[test]
+fn a_thread_id_must_be_one_plain_path_component() {
+    // Jozkah/jan#35.
+    use super::utils::validate_thread_id;
+    for ok in ["3f0c9a52-1b7e-4d8e-9a3c-2f1d7e6b5a40", "aaaa1111", "cowork-thread.v2"] {
+        assert!(validate_thread_id(ok).is_ok(), "{ok}");
+    }
+    for bad in [
+        "", ".", "..", "../x", "a/b", r"a\b", r"..\x", "/etc", r"C:\Windows", "C:x", "x\0y",
+    ] {
+        assert!(validate_thread_id(bad).is_err(), "{bad:?} must be refused");
+    }
+}
+
+#[tokio::test]
+async fn thread_commands_refuse_an_id_that_escapes_the_threads_directory() {
+    // Jozkah/jan#35: `delete_thread("../victim")` removed a sibling of the
+    // threads directory, and `modify_thread` planted a thread.json there.
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    ensure_data_dirs(&jan_data).unwrap();
+    let victim = jan_data.join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::write(victim.join("keep.txt"), "x").unwrap();
+
+    for id in ["../victim", r"..\victim"] {
+        assert!(delete_thread(app.handle().clone(), id.to_string()).await.is_err());
+        assert!(victim.join("keep.txt").exists(), "{id} deleted outside threads/");
+
+        let planted = json!({ "id": id, "title": "x" });
+        assert!(modify_thread(app.handle().clone(), planted).await.is_err());
+        assert!(!victim.join(THREADS_FILE).exists(), "{id} wrote outside threads/");
+
+        assert!(list_messages(app.handle().clone(), id.to_string()).await.is_err());
+        let message = json!({ "thread_id": id, "role": "user", "content": [] });
+        assert!(create_message(app.handle().clone(), message).await.is_err());
+        assert!(!victim.join(MESSAGES_FILE).exists(), "{id} wrote messages outside threads/");
+    }
+    let _ = fs::remove_dir_all(&victim);
+}
+
 #[tokio::test]
 async fn test_modify_and_delete_thread() {
     let (app, data_dir) = mock_app_with_temp_data_dir();
@@ -308,10 +368,17 @@ async fn test_modify_and_delete_thread() {
         tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
     }
 
+    // An agent tool call made the thread a scratch dir (Jozkah/jan#186).
+    let scratch = tauri_plugin_agent_tools::workspace::ensure_scratch_dir(&thread_id)
+        .await
+        .unwrap();
+    fs::write(scratch.join("work.txt"), b"x").unwrap();
+
     // Delete the thread
     delete_thread(app.handle().clone(), thread_id.clone())
         .await
         .unwrap();
+    assert!(!scratch.exists(), "a deleted thread's scratch dir must go with it");
 
     // Verify deletion
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -759,6 +826,21 @@ async fn test_get_lock_for_thread_distinct_ids_distinct_locks() {
     let l1 = get_lock_for_thread("lock-thread-x").await;
     let l2 = get_lock_for_thread("lock-thread-y").await;
     assert!(!std::sync::Arc::ptr_eq(&l1, &l2));
+}
+
+/// Jozkah/jan#179: a lock nobody holds is evicted, so the map does not keep
+/// one entry per thread ever touched; a held lock is never evicted.
+#[tokio::test]
+async fn test_idle_thread_locks_are_evicted() {
+    let held = get_lock_for_thread("evict-held").await;
+    drop(get_lock_for_thread("evict-idle").await);
+    let _other = get_lock_for_thread("evict-trigger").await;
+    let map = super::helpers::MESSAGE_LOCKS.get().unwrap().lock().await;
+    assert!(!map.contains_key("evict-idle"), "an idle lock was kept");
+    assert!(map.contains_key("evict-held"), "a held lock was evicted");
+    drop(map);
+    let again = get_lock_for_thread("evict-held").await;
+    assert!(std::sync::Arc::ptr_eq(&held, &again));
 }
 
 #[tokio::test]

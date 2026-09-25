@@ -171,6 +171,10 @@ export function CoworkCodePanel({
   const openExternalFiles = useCallback(
     async (picked: File[]) => {
       if (!sessionKey) return
+      // Each opened tab builds on the one before it. The route replaces the
+      // whole panel state on every `onStateChange`, so deriving every tab
+      // from the pre-loop `state` would keep only the last file of a batch.
+      let next = state
       for (const file of picked) {
         // Selections for the same tab are numbered, so a read that resolves
         // late cannot overwrite the bytes of a newer one.
@@ -199,7 +203,8 @@ export function CoworkCodePanel({
             [tabId(tab)]: { file, content },
           }))
           // An already-open file is focused rather than opened twice.
-          onStateChange(openTab(state, tab))
+          next = openTab(next, tab)
+          onStateChange(next)
         } catch {
           toast.error(t('common:codePanel.unreadable', { name: file.name }))
         }

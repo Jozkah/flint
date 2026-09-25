@@ -4,7 +4,41 @@
 //! (the upstream call streams via SSE) plus per-step progress and one terminal
 //! `Done`/`Error`.
 
-#[derive(Clone, Debug, serde::Serialize)]
+/// One image in an outbound request, as [`StreamEvent::RequestProvenance`]
+/// reports it: identity, not content.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct ProvenanceImage {
+    /// SHA-256 over the image's decoded bytes (over the URL text for a remote
+    /// image, which has no bytes here).
+    pub sha256: String,
+    pub mime_type: String,
+    /// Decoded length in bytes.
+    pub bytes: u64,
+    /// The tool call whose result carried it, when one did. `None` for an
+    /// image the user attached.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+/// Version of the wire contract the event stream speaks, carried as
+/// `protocol_version` on the headless channel's `init` record and in the
+/// terminal envelope of `--output-format json`.
+///
+/// Bump it only for a change a v1 consumer cannot survive: a renamed or removed
+/// tag, a removed field, or a new meaning for an existing one. Adding a variant
+/// or a field is not a bump -- the contract requires a consumer to ignore what
+/// it does not know, which is what lets a provider-neutral field land without
+/// breaking anyone. The full rule is documented next to the channel it governs,
+/// in `docs/src/pages/docs/agent/cli.mdx` under `jan cli agent run`.
+pub const PROTOCOL_VERSION: u32 = 1;
+
+/// `Deserialize` as well as `Serialize`: a consumer validates what it received
+/// against these shapes, and `JsonSchema` is what `jan cli agent schema`
+/// publishes them as -- a consumer generates its own types from
+/// `protocol/schema.json` rather than copying this declaration. The wire has to
+/// survive a round trip, not just a write, so `#[serde(tag = "type")]` keeps the
+/// tag on both sides.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
     /// A snapshot of the exact payload that was just dispatched. AH-078.
@@ -17,6 +51,41 @@ pub enum StreamEvent {
         id: String,
         hash: String,
         redactions: usize,
+    },
+    /// What the run is about to send a provider, emitted immediately before
+    /// each request goes out (upstream janhq/jan#9056): identity, not content.
+    ///
+    /// The hashes describe the body Jan built for the adapter, so two runs can
+    /// be compared field by field without copying prompts or frames around.
+    /// Nothing here is model input or output: it never joins the transcript,
+    /// and a consumer may render it, store it or ignore it.
+    RequestProvenance {
+        /// The run that made the request (the same id its prompt snapshot and
+        /// invocation records carry).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run_id: Option<String>,
+        /// The session the request belongs to, when the run has one.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// The configured provider the model resolved to, when known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        provider: Option<String>,
+        /// The model id the upstream receives, without a `<provider>/` prefix.
+        model: String,
+        /// The wire API the request is built for (`anthropic`, `google`,
+        /// `openai-responses`), absent for chat/completions.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        api_type: Option<String>,
+        /// SHA-256 of the request body as Jan built it.
+        request_sha256: String,
+        body_bytes: u64,
+        /// SHA-256 of the `tools` array as sent, able to change while the model
+        /// id does not.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tools_sha256: Option<String>,
+        /// Every image in the body, in order, hashed over its decoded bytes.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        images: Vec<ProvenanceImage>,
     },
     /// A streamed content delta from the model.
     Token { text: String },
@@ -113,6 +182,11 @@ pub enum StreamEvent {
     /// concurrently. `event` is a non-terminal child event (Token/Step/ToolCall/
     /// ToolResult/PermissionRequest); the child's terminal Done/Error is never
     /// wrapped (its result is delivered via `await_subagent`).
+    ///
+    /// Never a `ToolRequest`: a client answers a request by `request_id` on
+    /// stdin, and it is told nothing about this wrapper, so a nested request
+    /// would be unanswerable. A child's host tool call is routed to the root
+    /// channel unwrapped instead, attributed by `ToolRequest.run_id`.
     Subagent {
         run_id: String,
         name: String,
@@ -153,7 +227,17 @@ pub enum StreamEvent {
     /// all. Consumers accumulate these to show context pressure, output
     /// volume, and throughput while the work is still happening -- for the
     /// parent run and, via the [`Subagent`] bracket, for each child.
-    TurnUsage { usage: Usage },
+    TurnUsage {
+        usage: Usage,
+        /// The provider's id for the execution that produced this usage, when
+        /// it reported one. This is the handle a per-request billing lookup is
+        /// keyed by. A sibling of `usage` rather than a field inside it, because
+        /// it is a billing handle and not a token count. Absent on the default
+        /// upstream path, which cannot see the response headers (see
+        /// [`crate::core::agent::correlation`]).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        execution_id: Option<String>,
+    },
     /// Terminal success: the model returned a final (tool-free) completion.
     Done {
         stop_reason: String,
@@ -183,6 +267,44 @@ pub enum StreamEvent {
         patch: Option<tauri_plugin_agent_tools::patch::PatchView>,
         prompt_kind: String,
         offers_always: bool,
+        /// Why this call is being asked about when a grant or auto-approval
+        /// would otherwise have let it run: a destructive shell command, or the
+        /// check-in after a long streak of auto-approved calls. `None` for an
+        /// ordinary prompt.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<String>,
+    },
+    /// A host-registered tool was called and the run is waiting for the host to
+    /// execute it. The client replies with a `tool_result` line carrying this
+    /// `request_id`; until it does, the turn is parked on this one call.
+    ///
+    /// `tool_name` is the name the *host* declared, not the `host__`-prefixed
+    /// name the model calls: the host dispatches on the name it chose and never
+    /// has to know this layer's prefixing rule.
+    ToolRequest {
+        request_id: String,
+        tool_name: String,
+        /// The arguments the model produced, already parsed from the call's
+        /// JSON string. Validated against nothing here -- the host owns the
+        /// schema it declared and is the only party that can enforce it.
+        args: serde_json::Value,
+        /// Which run raised the request: `None` for the main run, the child's
+        /// run id for a subagent. Attribution only -- the host answers by
+        /// `request_id` alone, and a child's request is emitted unwrapped at
+        /// the top level so the same answer path serves both.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        run_id: Option<String>,
+    },
+    /// A pending [`StreamEvent::ToolRequest`] was withdrawn: the host must not
+    /// answer it any more, and a late answer is reported as not pending.
+    /// `reason` is `aborted` | `interrupted` | `client_gone`.
+    ToolRequestCancelled { request_id: String, reason: String },
+    /// Host/UI-only structured data a host tool returned alongside its result,
+    /// emitted right after that call's [`StreamEvent::ToolResult`] (same `id`).
+    /// Never sent to the model; a display may render it or ignore it.
+    ToolDetails {
+        id: String,
+        details: serde_json::Value,
     },
 }
 
@@ -260,7 +382,7 @@ fn arg_name(args: &serde_json::Value) -> String {
         .unwrap_or_default()
 }
 
-#[derive(Clone, Debug, Default, serde::Serialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Usage {
     pub prompt_tokens: Option<u64>,
     pub completion_tokens: Option<u64>,
@@ -297,10 +419,332 @@ impl Usage {
     }
 }
 
+/// Test-only, and reachable from the sibling test in `core::cli::run_report`
+/// that checks the documented tag list against these variants: the table has to
+/// live with the enum it enumerates, but the contract it defends is the one the
+/// CLI channel documents.
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+    use crate::core::agent::interaction::{AskRequest, OptionItem, Question};
+    use crate::core::agent::todo::{TodoItem, TodoList, TodoPhase, TodoStatus};
     use serde_json::json;
+
+    /// One instance of every variant, paired with the variant's name as the
+    /// enum spells it. The tag is read from serde when this list is serialized,
+    /// so a variant's tag is never restated here -- only its coverage is.
+    ///
+    /// [`every_variant_is_sampled`] is what keeps this list honest: it matches
+    /// every variant with no wildcard arm, so adding one to `StreamEvent` fails
+    /// the build until it is added here too.
+    pub(crate) fn sample_events() -> Vec<(&'static str, StreamEvent)> {
+        vec![
+            (
+                "PromptSnapshot",
+                StreamEvent::PromptSnapshot {
+                    id: "p1".into(),
+                    hash: "fnv1a64:0000000000000001".into(),
+                    redactions: 0,
+                },
+            ),
+            ("Token", StreamEvent::Token { text: "hi".into() }),
+            ("Reasoning", StreamEvent::Reasoning { text: "hmm".into() }),
+            ("Step", StreamEvent::Step { index: 1, max: 0 }),
+            (
+                "ToolCallStarted",
+                StreamEvent::ToolCallStarted {
+                    id: "t1".into(),
+                    name: "read".into(),
+                },
+            ),
+            (
+                "ToolCallArgsDelta",
+                StreamEvent::ToolCallArgsDelta {
+                    id: "t1".into(),
+                    delta: "{\"pa".into(),
+                },
+            ),
+            (
+                "ToolCall",
+                StreamEvent::ToolCall {
+                    id: "t1".into(),
+                    name: "read".into(),
+                    args: json!({ "path": "a.txt" }),
+                },
+            ),
+            (
+                "ToolOutputDelta",
+                StreamEvent::ToolOutputDelta {
+                    id: "t1".into(),
+                    delta: "line\n".into(),
+                },
+            ),
+            (
+                "ToolResult",
+                StreamEvent::ToolResult {
+                    id: "t1".into(),
+                    content: "ok".into(),
+                    is_error: false,
+                    diff: Some("-a\n+b\n".into()),
+                },
+            ),
+            (
+                "SubagentStart",
+                StreamEvent::SubagentStart {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                    task: Some("look".into()),
+                },
+            ),
+            (
+                "SubagentQueued",
+                StreamEvent::SubagentQueued {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                    task: None,
+                    waiting: 2,
+                },
+            ),
+            (
+                "SubagentEnd",
+                StreamEvent::SubagentEnd {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                },
+            ),
+            (
+                "Subagent",
+                StreamEvent::Subagent {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                    event: Box::new(StreamEvent::Token { text: "hi".into() }),
+                },
+            ),
+            (
+                "RunResources",
+                StreamEvent::RunResources {
+                    resources: tauri_plugin_agent_tools::resources::RunResources {
+                        commands: 2,
+                        measured_commands: 1,
+                        cpu_ms: 40,
+                        peak_memory_bytes: 1024,
+                        processes: 1,
+                        unmeasured_reason: Some("exited too fast".into()),
+                    },
+                },
+            ),
+            (
+                "MessagesUpdated",
+                StreamEvent::MessagesUpdated {
+                    messages: vec![json!({ "role": "user", "content": "hi" })],
+                },
+            ),
+            (
+                "AskRequest",
+                StreamEvent::AskRequest {
+                    request_id: "ask-1".into(),
+                    request: AskRequest {
+                        questions: vec![Question {
+                            id: "q1".into(),
+                            question: "which?".into(),
+                            options: vec![OptionItem {
+                                label: "a".into(),
+                                description: None,
+                            }],
+                            multi: false,
+                            recommended: Some(0),
+                        }],
+                    },
+                    timeout_secs: Some(30),
+                },
+            ),
+            (
+                "AskResolved",
+                StreamEvent::AskResolved {
+                    request_id: "ask-1".into(),
+                },
+            ),
+            (
+                "TodoUpdate",
+                StreamEvent::TodoUpdate {
+                    list: TodoList {
+                        phases: vec![TodoPhase {
+                            name: "Implement".into(),
+                            tasks: vec![TodoItem {
+                                content: "wire the record".into(),
+                                status: TodoStatus::InProgress,
+                            }],
+                        }],
+                    },
+                },
+            ),
+            (
+                "TurnUsage",
+                StreamEvent::TurnUsage {
+                    usage: Usage {
+                        prompt_tokens: Some(120),
+                        completion_tokens: Some(8),
+                        total_tokens: Some(128),
+                        cached_prompt_tokens: Some(64),
+                        cache_write_tokens: None,
+                    },
+                    execution_id: Some("exec-1".into()),
+                },
+            ),
+            (
+                "Done",
+                StreamEvent::Done {
+                    stop_reason: "stop".into(),
+                    usage: None,
+                },
+            ),
+            (
+                "Error",
+                StreamEvent::Error {
+                    code: "upstream_error".into(),
+                    message: "boom".into(),
+                },
+            ),
+            (
+                "PermissionRequest",
+                StreamEvent::PermissionRequest {
+                    request_id: "perm-1".into(),
+                    tool_name: "bash".into(),
+                    capability: "exec".into(),
+                    path: None,
+                    command: Some("ls".into()),
+                    diff: None,
+                    patch: None,
+                    prompt_kind: "exec".into(),
+                    offers_always: true,
+                    reason: None,
+                },
+            ),
+            (
+                "ToolRequest",
+                StreamEvent::ToolRequest {
+                    request_id: "host-1".into(),
+                    tool_name: "observe".into(),
+                    args: serde_json::json!({ "camera": "front" }),
+                    run_id: Some("run-1".into()),
+                },
+            ),
+            (
+                "ToolRequestCancelled",
+                StreamEvent::ToolRequestCancelled {
+                    request_id: "host-1".into(),
+                    reason: "aborted".into(),
+                },
+            ),
+            (
+                "ToolDetails",
+                StreamEvent::ToolDetails {
+                    id: "t1".into(),
+                    details: serde_json::json!({ "pose": [0, 1] }),
+                },
+            ),
+            (
+                "RequestProvenance",
+                StreamEvent::RequestProvenance {
+                    run_id: Some("run-1".into()),
+                    session_id: Some("session-9".into()),
+                    provider: Some("anthropic".into()),
+                    model: "claude-sonnet-5".into(),
+                    api_type: Some("anthropic".into()),
+                    request_sha256: "0".repeat(64),
+                    body_bytes: 41,
+                    tools_sha256: Some("1".repeat(64)),
+                    images: vec![ProvenanceImage {
+                        sha256: "2".repeat(64),
+                        mime_type: "image/png".into(),
+                        bytes: 3,
+                        tool_call_id: Some("call_7".into()),
+                    }],
+                },
+            ),
+        ]
+    }
+
+    /// Exhaustive on purpose: a variant added to `StreamEvent` stops this
+    /// matching, and the error names the arm that is missing, which is the
+    /// prompt to add it to [`sample_events`] as well.
+    #[allow(dead_code)]
+    fn every_variant_is_sampled(ev: &StreamEvent) {
+        match ev {
+            StreamEvent::Token { .. }
+            | StreamEvent::Reasoning { .. }
+            | StreamEvent::Step { .. }
+            | StreamEvent::ToolCallStarted { .. }
+            | StreamEvent::ToolCallArgsDelta { .. }
+            | StreamEvent::ToolCall { .. }
+            | StreamEvent::ToolOutputDelta { .. }
+            | StreamEvent::ToolResult { .. }
+            | StreamEvent::SubagentStart { .. }
+            | StreamEvent::SubagentQueued { .. }
+            | StreamEvent::SubagentEnd { .. }
+            | StreamEvent::Subagent { .. }
+            | StreamEvent::PromptSnapshot { .. }
+            | StreamEvent::RunResources { .. }
+            | StreamEvent::MessagesUpdated { .. }
+            | StreamEvent::AskRequest { .. }
+            | StreamEvent::AskResolved { .. }
+            | StreamEvent::TodoUpdate { .. }
+            | StreamEvent::TurnUsage { .. }
+            | StreamEvent::Done { .. }
+            | StreamEvent::Error { .. }
+            | StreamEvent::PermissionRequest { .. }
+            | StreamEvent::ToolRequest { .. }
+            | StreamEvent::ToolRequestCancelled { .. }
+            | StreamEvent::ToolDetails { .. }
+            | StreamEvent::RequestProvenance { .. } => {}
+        }
+    }
+
+    /// A consumer validates what it receives against these shapes, so every
+    /// variant has to survive a write/read pair unchanged -- optional fields
+    /// included, since a `skip_serializing_if` field that cannot be read back is
+    /// how a consumer ends up with a struct it cannot deserialize at all.
+    #[test]
+    fn every_variant_round_trips_through_the_wire() {
+        let samples = sample_events();
+        assert!(samples.len() >= 24, "{} variants sampled", samples.len());
+        for (name, ev) in samples {
+            let line = serde_json::to_string(&ev).expect(name);
+            let back: StreamEvent = serde_json::from_str(&line)
+                .unwrap_or_else(|e| panic!("{name} does not read back: {e}\n{line}"));
+            assert_eq!(
+                serde_json::to_value(&back).unwrap(),
+                serde_json::to_value(&ev).unwrap(),
+                "{name} changed across a round trip"
+            );
+        }
+    }
+
+    /// `sample_events` pairs each instance with its variant name, and this is
+    /// what makes the pairing meaningful: the names it uses are the ones the
+    /// enum declares, and no two variants share a tag.
+    #[test]
+    fn sampled_names_are_distinct_and_match_their_tags() {
+        let mut names: Vec<&str> = sample_events().iter().map(|(name, _)| *name).collect();
+        let total = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), total, "a variant is sampled twice");
+
+        let mut tags: Vec<String> = sample_events()
+            .iter()
+            .map(|(name, ev)| {
+                serde_json::to_value(ev).unwrap()["type"]
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{name} has no tag"))
+                    .to_string()
+            })
+            .collect();
+        let total = tags.len();
+        tags.sort();
+        tags.dedup();
+        assert_eq!(tags.len(), total, "two variants share one tag");
+    }
 
     #[test]
     fn token_serializes_with_snake_case_tag() {
@@ -442,6 +886,7 @@ mod tests {
             patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
+            reason: None,
         })
         .unwrap();
         assert_eq!(
@@ -456,6 +901,51 @@ mod tests {
                 "prompt_kind": "write",
                 "offers_always": true
             })
+        );
+    }
+
+    /// `run_id` is additive: a main-run request serializes exactly as it did
+    /// before the field existed, so a v1 host sees no change.
+    #[test]
+    fn host_tool_events_serialize_to_wire_shape() {
+        let main = serde_json::to_value(StreamEvent::ToolRequest {
+            request_id: "host-1".into(),
+            tool_name: "observe".into(),
+            args: json!({}),
+            run_id: None,
+        })
+        .unwrap();
+        assert_eq!(
+            main,
+            json!({ "type": "tool_request", "request_id": "host-1", "tool_name": "observe", "args": {} })
+        );
+        let old: StreamEvent = serde_json::from_value(main).expect("no run_id reads back");
+        assert!(matches!(old, StreamEvent::ToolRequest { run_id: None, .. }));
+
+        let child = serde_json::to_value(StreamEvent::ToolRequest {
+            request_id: "host-2".into(),
+            tool_name: "observe".into(),
+            args: json!({}),
+            run_id: Some("sub-1".into()),
+        })
+        .unwrap();
+        assert_eq!(child["run_id"], "sub-1");
+
+        assert_eq!(
+            serde_json::to_value(StreamEvent::ToolRequestCancelled {
+                request_id: "host-1".into(),
+                reason: "aborted".into(),
+            })
+            .unwrap(),
+            json!({ "type": "tool_request_cancelled", "request_id": "host-1", "reason": "aborted" })
+        );
+        assert_eq!(
+            serde_json::to_value(StreamEvent::ToolDetails {
+                id: "c1".into(),
+                details: json!({ "k": 1 }),
+            })
+            .unwrap(),
+            json!({ "type": "tool_details", "id": "c1", "details": { "k": 1 } })
         );
     }
 

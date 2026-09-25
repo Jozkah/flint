@@ -195,7 +195,7 @@ describe('useAssistant', () => {
     expect(result.current.currentAssistant.name).toBe('Flint')
     expect(result.current.currentAssistant.avatar).toBe('/images/flint-logo.png')
     expect(result.current.currentAssistant.instructions).toContain(
-      'Before engaging any tools, articulate your complete thought process in natural language'
+      'You are Flint, a helpful assistant'
     )
     expect(typeof result.current.currentAssistant.created_at).toBe('number')
     expect(typeof result.current.currentAssistant.parameters).toBe('object')

@@ -482,10 +482,15 @@ pub async fn start_mcp_server<R: Runtime>(
                 .await;
             });
 
-            // Store the monitoring task handle so it can be aborted on shutdown
+            // Store the monitoring task handle so it can be aborted on shutdown.
+            // A monitor already stored under this name watches an earlier
+            // definition; dropping its handle would only detach it, so it is
+            // aborted instead of left to reconnect the old config (#112).
             {
                 let mut monitoring_tasks = app_state.mcp_monitoring_tasks.lock().await;
-                monitoring_tasks.insert(name.clone(), monitor_handle);
+                if let Some(previous) = monitoring_tasks.insert(name.clone(), monitor_handle) {
+                    previous.abort();
+                }
             }
 
             Ok(())
@@ -626,7 +631,7 @@ async fn schedule_mcp_start_task<R: Runtime>(
         // What confines it is `ConfinedMcpLaunch::prepare`, which is the only
         // way to reach the process builder for a local server.
         let build_cmd = |use_override: bool| -> Command {
-            let mut cmd = Command::new(config_params.command.clone());
+            let mut cmd = Command::new(super::launch::launchable_program(&config_params.command));
             if use_override
                 && config_params.command == "npx"
                 && can_override_npx(bun_x_path.display().to_string())
@@ -714,6 +719,10 @@ async fn schedule_mcp_start_task<R: Runtime>(
                     if let Some(mut stderr_stream) = stderr {
                         let _ = stderr_stream.read_to_string(&mut buffer).await;
                     }
+                    // The same scrub the running-server stderr pump applies: a
+                    // server that prints a credential and then crashes must
+                    // not put it in app.log or the error shown in the UI (#119).
+                    let buffer = scrub_handshake_stderr(&buffer);
 
                     if use_override && override_available {
                         log::warn!(
@@ -742,11 +751,14 @@ async fn schedule_mcp_start_task<R: Runtime>(
             let log_folder = crate::core::app::commands::resolve_jan_data_folder();
             tokio::spawn(async move {
                 let mut buf = [0u8; 1024];
+                // #187: bytes of a UTF-8 character split across two reads.
+                let mut carry: Vec<u8> = Vec::new();
                 while let Ok(n) = stderr_stream.read(&mut buf).await {
                     if n == 0 {
                         break;
                     }
-                    if let Ok(text) = std::str::from_utf8(&buf[..n]) {
+                    let text = decode_stderr_chunk(&mut carry, &buf[..n]);
+                    {
                         for line in text.lines() {
                             if !line.trim().is_empty() {
                                 log_mcp_stderr_line(&stderr_name, line);
@@ -872,6 +884,12 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
     log::log!(level, "{text}");
 }
 
+/// Stderr captured from a server that died during the handshake, scrubbed of
+/// credential-shaped text before it is logged or returned to the UI.
+fn scrub_handshake_stderr(stderr: &str) -> String {
+    tauri_plugin_agent_tools::harness_error::scrub(stderr)
+}
+
 /// The level and text an MCP server's stderr line is logged with.
 ///
 /// A server's stderr is third-party text, and servers print credentials in
@@ -880,7 +898,7 @@ fn log_mcp_stderr_line(server_name: &str, line: &str) {
 /// the app log while the server's own log was clean.
 fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
     let scrubbed = tauri_plugin_agent_tools::harness_error::scrub(line);
-    let level_token = scrubbed.trim_start().split_whitespace().next().map(|t| {
+    let level_token = scrubbed.split_whitespace().next().map(|t| {
         t.trim_matches(|c: char| !c.is_ascii_alphabetic())
             .to_ascii_uppercase()
     });
@@ -892,20 +910,6 @@ fn stderr_log_record(server_name: &str, line: &str) -> (log::Level, String) {
         _ => log::Level::Info,
     };
     (level, format!("[mcp-stderr:{server_name}] {scrubbed}"))
-}
-
-#[cfg(test)]
-mod stderr_log_tests {
-    #[test]
-    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
-        let (level, text) =
-            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
-        assert_eq!(level, log::Level::Error);
-        assert!(!text.contains("AAAABBBB"), "{text}");
-        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
-        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
-        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
-    }
 }
 
 /// Uses `reqwest13` because rmcp's streamable-http transport is implemented for
@@ -946,7 +950,10 @@ where
         client,
         StreamableHttpClientTransportConfig::with_uri(url.to_string()),
     );
-    handler.serve(transport).await.map_err(|e| e.to_string())
+    handler
+        .serve(transport)
+        .await
+        .map_err(|e| super::oauth::redact_url(&e.to_string(), url))
 }
 
 fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
@@ -1026,12 +1033,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
                         return Ok(true);
                     }
                 } else {
+                    // Name only: this is another application's process, and
+                    // its command line can carry its own secrets (Jozkah/jan#257).
                     log::warn!(
-                    "Lock file PID {} is alive but NOT an MCP process (name: {}, cmd: {:?}). Lock file is stale.",
-                    lock.pid,
-                    process_info.name,
-                    process_info.cmd
-                );
+                        "Lock file PID {} is alive but NOT an MCP process (name: {}). Lock file is stale.",
+                        lock.pid,
+                        process_info.name,
+                    );
                     // PID reused by another process, clean up stale lock file
                     check_and_cleanup_stale_lock(app, port).await?;
                 }
@@ -1051,12 +1059,13 @@ pub async fn kill_orphaned_mcp_process_with_app<R: Runtime>(
         None => return Ok(false),
     };
 
+    // Not the command line: until the check below, this may be any other
+    // application, and its arguments can carry its secrets (Jozkah/jan#257).
     log::info!(
-        "Found process on port {}: PID={}, name={}, cmd={:?}",
+        "Found process on port {}: PID={}, name={}",
         port,
         process_info.pid,
         process_info.name,
-        process_info.cmd
     );
 
     if !jan_utils::network::is_orphaned_mcp_process(&process_info) {
@@ -1362,6 +1371,21 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
     Ok(())
 }
 
+/// Stop the health monitor watching `name`, if one is running.
+///
+/// The monitor holds the definition it was started with and exits only on
+/// shutdown or when the name leaves the active list. A same-name edit puts the
+/// name straight back, so without this the old monitor would keep running and
+/// could relaunch the pre-edit config on the next disconnect (#112).
+pub async fn abort_mcp_monitor(
+    monitoring_tasks: &Mutex<HashMap<String, tauri::async_runtime::JoinHandle<()>>>,
+    name: &str,
+) {
+    if let Some(handle) = monitoring_tasks.lock().await.remove(name) {
+        handle.abort();
+    }
+}
+
 /// Store active server configuration for restart purposes
 pub async fn store_active_server_config(
     active_servers_state: &Arc<Mutex<HashMap<String, Value>>>,
@@ -1414,4 +1438,87 @@ pub fn add_server_config_with_path<R: Runtime>(
         .map_err(|e| format!("Failed to write config file: {e}"))?;
 
     Ok(())
+}
+
+/// Decodes one raw stderr read, carrying a trailing incomplete UTF-8
+/// sequence over to the next call instead of dropping the whole chunk
+/// (#187). Genuinely invalid bytes are replaced lossily.
+fn decode_stderr_chunk(carry: &mut Vec<u8>, chunk: &[u8]) -> String {
+    carry.extend_from_slice(chunk);
+    let mut out = String::new();
+    let mut rest: &[u8] = carry;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(s) => {
+                out.push_str(s);
+                rest = &[];
+                break;
+            }
+            Err(e) => {
+                let valid = e.valid_up_to();
+                // Safe: from_utf8 validated this prefix.
+                out.push_str(std::str::from_utf8(&rest[..valid]).unwrap_or_default());
+                match e.error_len() {
+                    // Truncated sequence at the end: keep it for the next read.
+                    None => {
+                        rest = &rest[valid..];
+                        break;
+                    }
+                    Some(bad) => {
+                        out.push('\u{FFFD}');
+                        rest = &rest[valid + bad..];
+                    }
+                }
+            }
+        }
+    }
+    *carry = rest.to_vec();
+    out
+}
+
+#[cfg(test)]
+mod stderr_log_tests {
+    #[test]
+    fn a_utf8_character_split_across_reads_loses_no_lines() {
+        let mut carry = Vec::new();
+        let full = "boot ok\n\u{65E5}\u{672C} ready\n".as_bytes();
+        // Split inside the 3-byte first CJK character.
+        let split = "boot ok\n".len() + 2;
+        let first = super::decode_stderr_chunk(&mut carry, &full[..split]);
+        assert_eq!(first, "boot ok\n");
+        assert_eq!(carry.len(), 2);
+        let second = super::decode_stderr_chunk(&mut carry, &full[split..]);
+        assert_eq!(second, "\u{65E5}\u{672C} ready\n");
+        assert!(carry.is_empty());
+    }
+
+    #[test]
+    fn invalid_stderr_bytes_are_replaced_not_dropped() {
+        let mut carry = Vec::new();
+        let text = super::decode_stderr_chunk(&mut carry, b"a\xFFb\n");
+        assert_eq!(text, "a\u{FFFD}b\n");
+        assert!(carry.is_empty());
+    }
+
+    #[test]
+    fn a_servers_stderr_reaches_the_app_log_scrubbed_and_levelled() {
+        let (level, text) =
+            super::stderr_log_record("s", "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE");
+        assert_eq!(level, log::Level::Error);
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.starts_with("[mcp-stderr:s] ERROR boot failed"), "{text}");
+        assert_eq!(super::stderr_log_record("s", "plain line").0, log::Level::Info);
+        assert_eq!(super::stderr_log_record("s", "[warn] slow").0, log::Level::Warn);
+    }
+
+    /// #119: the handshake-failure path logged and returned stderr unscrubbed.
+    #[test]
+    fn handshake_failure_stderr_is_scrubbed() {
+        let text = super::scrub_handshake_stderr(
+            "ERROR boot failed api_key=sk-live-AAAABBBBCCCCDDDDEEEE\nexiting\n",
+        );
+        assert!(!text.contains("AAAABBBB"), "{text}");
+        assert!(text.contains("ERROR boot failed"), "{text}");
+        assert!(text.contains("exiting"), "{text}");
+    }
 }

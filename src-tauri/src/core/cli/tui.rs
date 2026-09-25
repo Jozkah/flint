@@ -46,6 +46,7 @@ use super::agent_status::AgentStatusReporter;
 use super::brand;
 use super::journal::{self, DisplayEntry, ReasoningSeg};
 use super::mcp::McpServerEntry;
+use super::user_message::{build_user_message, image_mime, image_mime_of, PendingImage, MAX_IMAGE_BYTES};
 use super::worktree::Worktree;
 use super::{
     is_user_turn, sort_threads_recent, AgentSession, ResumeRequest, ResumeTarget, SessionLimits,
@@ -320,17 +321,15 @@ impl Pending {
         let Some(command) = self.command.as_deref() else {
             return "Allow always (this thread)".to_string();
         };
+        // The grant is the exact command (AH-037: `grant_command` records the
+        // string shown, `covers_command` matches only it), so the label says
+        // so. It used to name the base commands -- "Allow all 'git' commands"
+        // -- a scope the grant has not had since (Jozkah/jan#126).
         match scan_command(command) {
-            CommandScan::Bases(bases) if !bases.is_empty() => {
-                let list = bases
-                    .iter()
-                    .map(|b| format!("'{b}'"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                format!("Allow all {list} commands (this thread)")
+            CommandScan::Bases(bases) if bases.is_empty() => "Allow always (this thread)".to_string(),
+            CommandScan::Bases(_) | CommandScan::Opaque => {
+                "Allow this exact command (this thread)".to_string()
             }
-            CommandScan::Bases(_) => "Allow always (this thread)".to_string(),
-            CommandScan::Opaque => "Allow this exact command (this thread)".to_string(),
         }
     }
 
@@ -912,6 +911,9 @@ struct CurrentRun {
     handle: JoinHandle<()>,
 }
 
+// One value at a time in the event loop and never stored in bulk, so the
+// size of the stream variant costs nothing worth a box per event.
+#[allow(clippy::large_enum_variant)]
 enum RunEvent {
     Stream(Option<StreamEvent>),
     Steering(SteeringRequest),
@@ -1463,14 +1465,6 @@ struct Checkpoint {
     sha: String,
 }
 
-/// An image staged by `/image <path>`, sent with the next user message as an
-/// OpenAI `image_url` content part. `name` is the basename shown in the
-/// transcript; `data_url` is the `data:<mime>;base64,...` payload.
-struct PendingImage {
-    name: String,
-    data_url: String,
-}
-
 /// One entry in the file-path hint popup triggered by typing `@`.
 struct PathHintItem {
     /// Display path (relative to project root).
@@ -1843,6 +1837,10 @@ struct App {
     display_log: Vec<DisplayEntry>,
     /// Background journal writer, created on the first dump and joined on exit.
     journal_writer: Option<journal::Writer>,
+    /// Background thread saver for mid-turn `MessagesUpdated` snapshots, so a
+    /// model step does not stall the render loop on a full-history rewrite
+    /// and fsync (#63). Flushed before every synchronous save and on exit.
+    thread_saver: Option<ThreadSaver>,
     /// In-progress assistant text for the current turn, flushed on the next
     /// step/tool/terminal event.
     assistant_buf: String,
@@ -1976,6 +1974,13 @@ struct App {
     /// loop (it sizes the tool segment, which takes the MCP server lock a turn
     /// may be holding). Taken once, like `mcp_job_request`.
     context_request: bool,
+    /// Set by `/usage <view>` to ask the loop to query the Tokamak usage API
+    /// off the render loop (upstream #9034). Taken once, like
+    /// `context_request`.
+    usage_request: Option<crate::core::cli::tokamak::usage::Query>,
+    /// The provider's execution id for the most recent request that reported
+    /// one, so `/usage` can name the handle a billing lookup is keyed by.
+    last_execution_id: Option<String>,
     /// Active MCP add/edit wizard (docked); owns the keyboard while open.
     mcp_prompt: Option<McpPrompt>,
     /// The `/mcp` detail screen's data, alongside the `McpServer` picker whose
@@ -2450,6 +2455,7 @@ impl App {
             transcript: Vec::new(),
             display_log: Vec::new(),
             journal_writer: None,
+            thread_saver: None,
             assistant_buf: String::new(),
             reasoning_segs: Vec::new(),
             tool_group: None,
@@ -2495,6 +2501,8 @@ impl App {
             settings_prompt: None,
             context_view: None,
             context_request: false,
+            usage_request: None,
+            last_execution_id: None,
             mcp_prompt: None,
             mcp_detail: None,
             agent_detail: None,
@@ -2625,6 +2633,9 @@ impl App {
         self.starting.clear();
         self.groups.clear();
         self.pending_rows.clear();
+        // Job pairings belong to the session being dropped (Jozkah/jan#134).
+        self.bash_jobs.clear();
+        self.job_origin.clear();
         self.reasoning_blocks.clear();
         self.expanded_traces.clear();
         self.subagent_blocks.clear();
@@ -3192,17 +3203,19 @@ impl App {
         // Collecting a backgrounded job: the detached command still streams under
         // the id of the call that started it, so point this call at that buffer.
         // Without the alias the row the user is waiting on shows an empty box.
-        if let Some(job) = bash_job_id(&args) {
+        let mut remembered = None;
+        if let Some(job) = bash_job_id(&args).map(str::to_string) {
             // The collecting call blocks until the job finishes, so it is no
             // longer running unattended: drop it from the status-bar count.
-            self.active_bg_jobs.remove(job);
-            if let Some(origin) = self.job_origin.get(job) {
-                self.live_alias.insert(id.to_string(), origin.clone());
+            // Its pairing entries are consumed here too, or both maps would
+            // keep one entry per backgrounded job for the whole session
+            // (Jozkah/jan#134).
+            self.active_bg_jobs.remove(&job);
+            if let Some(origin) = self.job_origin.remove(&job) {
+                self.live_alias.insert(id.to_string(), origin);
             }
+            remembered = self.bash_jobs.remove(&job);
         }
-        let remembered = bash_job_id(&args)
-            .and_then(|job| self.bash_jobs.get(job))
-            .cloned();
         if let (Some(cmd), Some(obj)) = (remembered, args.as_object_mut()) {
             self.bash_commands.insert(id.to_string(), cmd.clone());
             obj.insert("command".to_string(), serde_json::Value::String(cmd));
@@ -3312,10 +3325,12 @@ impl App {
     /// every keystroke but leaves a cursor blinking in the composer promises a
     /// field that is not there.
     fn blocking_dock(&self) -> Option<&'static str> {
-        if self.login.is_some() {
+        if self.account_login.is_some() || self.login.is_some() {
             Some("sign in in the dock above")
         } else if self.browser_confirm.is_some() {
             Some("answer the question above")
+        } else if self.context_view.is_some() {
+            Some("close the context view above")
         } else if self.settings_prompt.is_some() {
             Some("edit the setting above")
         } else if self.mcp_prompt.is_some() || self.provider_prompt.is_some() {
@@ -4125,6 +4140,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -4153,6 +4174,12 @@ impl App {
                 Ok(pair) => pair,
                 Err(_) => return false,
             };
+        // Handled, but no turn without a provider: the same guard a plain
+        // message gets in `submit_user_text` (#141).
+        if self.model.is_empty() {
+            self.note("not signed in — run /login to choose a provider first");
+            return true;
+        }
         self.ensure_base_snapshot();
         let args = args.trim();
         self.history
@@ -4463,6 +4490,13 @@ impl App {
         }
         if let Some(base) = self.base_snapshot.as_ref() {
             meta.insert("base_snapshot".to_string(), serde_json::json!(base));
+            // So `flint threads delete` can drop the snapshot ref (#143).
+            if let Some(repo) = self.repo_root.as_ref() {
+                meta.insert(
+                    super::SNAPSHOT_REPO_KEY.to_string(),
+                    serde_json::json!(repo.to_string_lossy()),
+                );
+            }
             meta.insert(
                 "checkpoints".to_string(),
                 serde_json::json!(self.checkpoints),
@@ -4551,6 +4585,9 @@ impl App {
         if self.history.is_empty() {
             return;
         }
+        // A queued background save must land first, or it could overwrite
+        // this newer snapshot after the fact.
+        self.flush_thread_saves();
         match super::cli_save_thread(
             &self.agent_dir,
             self.thread_id.as_deref(),
@@ -4563,6 +4600,46 @@ impl App {
                 self.dump_display_log();
             }
             Err(e) => self.detail = format!("save failed: {e}"),
+        }
+    }
+
+    /// `persist` off the render loop: the mid-turn save on every model step
+    /// hands the snapshot to a writer thread instead of rewriting the whole
+    /// history (with an fsync) inside a frame. The first save of a new thread
+    /// still runs inline, because it is what assigns the thread id.
+    fn persist_in_background(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        let Some(id) = self.thread_id.clone() else {
+            self.persist();
+            return;
+        };
+        // Built first: `thread_metadata` borrows `self`, which the saver below
+        // holds mutably.
+        let job = ThreadSave {
+            base: self.agent_dir.clone(),
+            id,
+            model: self.model.clone(),
+            history: self.history.clone(),
+            metadata: self.thread_metadata(),
+        };
+        let saver = self.thread_saver.get_or_insert_with(ThreadSaver::new);
+        if let Some(err) = saver.take_error() {
+            self.detail = format!("save failed: {err}");
+        }
+        saver.save(job);
+        self.dump_display_log();
+    }
+
+    /// Wait for queued background thread saves to reach disk, surfacing the
+    /// last failure in the status line.
+    fn flush_thread_saves(&mut self) {
+        if let Some(saver) = self.thread_saver.as_ref() {
+            saver.flush();
+            if let Some(err) = saver.take_error() {
+                self.detail = format!("save failed: {err}");
+            }
         }
     }
 
@@ -4580,6 +4657,8 @@ impl App {
 
     /// Wait for queued journal dumps to reach disk (session exit, tests).
     fn join_journal(&mut self) {
+        self.flush_thread_saves();
+        self.thread_saver = None;
         if let Some(writer) = self.journal_writer.as_mut() {
             writer.join();
         }
@@ -4772,6 +4851,7 @@ async fn compute_context_report(snapshot: ContextSnapshot) -> ContextReport {
             args.max_parallel_subagents,
             args.ask_requests.is_some(),
             args.todo_registry.is_some(),
+            &args.host_tools,
         )
         .await
         .iter()
@@ -5213,6 +5293,13 @@ impl App {
                 ));
                 self.publish_agent_status();
             }
+            // Host tools belong to a headless run driven by a host process.
+            // The TUI is that host's opposite number -- there is no peer on
+            // stdin to execute a callback -- so it never declares them and
+            // cannot receive this.
+            StreamEvent::ToolRequest { .. }
+            | StreamEvent::ToolRequestCancelled { .. }
+            | StreamEvent::ToolDetails { .. } => {}
             // The loop auto-answered a timed-out ask; drop its now-dead prompt.
             // A user answer clears the queue in `resolve_front_ask` instead, so
             // this only fires for the timeout path.
@@ -5281,7 +5368,13 @@ impl App {
                 name,
                 event,
             } => self.apply_subagent_event(&run_id, &name, *event),
-            StreamEvent::TurnUsage { usage } => {
+            StreamEvent::TurnUsage {
+                usage,
+                execution_id,
+            } => {
+                if let Some(id) = execution_id {
+                    self.last_execution_id = Some(id);
+                }
                 self.turn_output_tokens += usage.completion_tokens.unwrap_or(0);
                 // Latest request's context, not a sum: each request resends the
                 // whole conversation, so adding them would be meaningless.
@@ -5301,12 +5394,14 @@ impl App {
             // wildcard, so a new event breaks this build rather than being
             // silently dropped from the interface.
             StreamEvent::PromptSnapshot { .. } => {}
+            // Machine-facing identity record (upstream #9056): nothing to draw.
+            StreamEvent::RequestProvenance { .. } => {}
             // AH-174: the run's resource figures are recorded with its end and
             // shown on the timeline; the TUI's transcript does not repeat them.
             StreamEvent::Done { .. } | StreamEvent::Error { .. } | StreamEvent::RunResources { .. } => {}
             StreamEvent::MessagesUpdated { messages } => {
                 self.history = messages;
-                self.persist();
+                self.persist_in_background();
             }
             StreamEvent::TodoUpdate { list } => {
                 self.todos = list;
@@ -5386,7 +5481,7 @@ impl App {
                     panel.requests += 1;
                 }
             }
-            StreamEvent::TurnUsage { usage } => {
+            StreamEvent::TurnUsage { usage, .. } => {
                 if let Some(panel) = self.subagents.iter_mut().find(|p| p.run_id == run_id) {
                     panel.prompt_tokens = usage.prompt_tokens.unwrap_or(panel.prompt_tokens);
                 }
@@ -6070,7 +6165,7 @@ impl ContextReport {
 /// is slightly below 2.05 but `k * 10.0` lands on exactly 20.5, so the branch
 /// selected decimal output while the renderer produced the self-defeating
 /// `2.0K`. Integer math removes that representation mismatch.
-fn format_tokens(tokens: u64) -> String {
+pub(crate) fn format_tokens(tokens: u64) -> String {
     if tokens < 1_000 {
         return tokens.to_string();
     }
@@ -7994,6 +8089,39 @@ async fn await_mcp_job(
 
 /// Await an in-flight `/context` report, parking forever when none is running
 /// so this can sit in the loop's `select!` unconditionally.
+/// A `/usage` lookup's query and what the provider answered.
+type UsageDone = (
+    crate::core::cli::tokamak::usage::Query,
+    Result<crate::core::cli::tokamak::usage::Payload, crate::core::cli::tokamak::usage::UsageError>,
+);
+
+async fn await_usage(task: &mut Option<tokio::task::JoinHandle<UsageDone>>) -> Option<UsageDone> {
+    let joined = match task.as_mut() {
+        Some(h) => h.await,
+        None => return pending().await,
+    };
+    *task = None;
+    joined.ok()
+}
+
+/// Write a `/usage` answer into the transcript. Every line says it is what the
+/// provider recorded; a failure is reported as one, never as a zero charge.
+fn finish_usage(app: &mut App, (query, result): UsageDone) {
+    match result {
+        Ok(payload) => {
+            app.note(&format!("usage ({}), as recorded by Tokamak:", query.label()));
+            for line in crate::core::cli::usage_view::reported_usage_lines(
+                &query,
+                &payload,
+                crate::core::cli::usage_view::Fold::Fixed,
+            ) {
+                app.system_detail_text(&line);
+            }
+        }
+        Err(e) => app.note(&format!("usage ({}): {e}", query.label())),
+    }
+}
+
 async fn await_context(
     task: &mut Option<tokio::task::JoinHandle<ContextReport>>,
 ) -> Option<ContextReport> {
@@ -8543,6 +8671,9 @@ async fn chat_loop<B: Backend>(
     // executing an MCP tool call holds it for up to the tool-call timeout), so
     // it must never run on the render loop. One at a time.
     let mut context_task: Option<tokio::task::JoinHandle<ContextReport>> = None;
+    // `/usage <view>`: a round trip to the provider's usage API, so it runs off
+    // the render loop too. One at a time.
+    let mut usage_task: Option<tokio::task::JoinHandle<UsageDone>> = None;
     // `/plugin install` clones a git repo, so it runs off the render loop via
     // the installer's internal `spawn_blocking`; one at a time. A collection
     // source resolves in two steps (list -> picker -> install the chosen set),
@@ -8684,6 +8815,14 @@ async fn chat_loop<B: Backend>(
             app.context_request = false;
             let snapshot = app.context_snapshot();
             context_task = Some(tokio::spawn(compute_context_report(snapshot)));
+        }
+        if usage_task.is_none() {
+            if let Some(query) = app.usage_request.take() {
+                usage_task = Some(tokio::spawn(async move {
+                    let result = crate::core::cli::tokamak::usage::fetch(&query).await;
+                    (query, result)
+                }));
+            }
         }
         // A key was submitted at the `/login` prompt: verify it off-loop. One at
         // a time - the prompt is read-only while `verifying`.
@@ -8885,6 +9024,9 @@ async fn chat_loop<B: Backend>(
             }
             Some(done) = await_mcp_job(&mut mcp_job) => {
                 finish_mcp_job(app, done, mcp_servers, &mut mcp_job).await;
+            }
+            Some(done) = await_usage(&mut usage_task) => {
+                finish_usage(app, done);
             }
             Some(report) = await_context(&mut context_task) => {
                 // Only apply a report the user is still looking at: a result
@@ -9377,10 +9519,99 @@ fn apply_repaint<B: Backend>(terminal: &mut Terminal<B>) {
     }
 }
 
+/// One snapshot for [`ThreadSaver`].
+struct ThreadSave {
+    base: std::path::PathBuf,
+    id: String,
+    model: String,
+    history: Vec<serde_json::Value>,
+    metadata: Option<serde_json::Value>,
+}
+
+enum ThreadSaveJob {
+    Save(ThreadSave),
+    Flush(std::sync::mpsc::Sender<()>),
+}
+
+/// Writes thread snapshots on a dedicated thread, in the order queued, so the
+/// newest snapshot is always the last one written.
+struct ThreadSaver {
+    tx: Option<std::sync::mpsc::Sender<ThreadSaveJob>>,
+    handle: Option<std::thread::JoinHandle<()>>,
+    error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+}
+
+impl ThreadSaver {
+    fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel::<ThreadSaveJob>();
+        let error = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let sink = error.clone();
+        let handle = std::thread::spawn(move || {
+            for job in rx {
+                match job {
+                    ThreadSaveJob::Save(s) => {
+                        if let Err(e) = super::cli_save_thread(
+                            &s.base,
+                            Some(&s.id),
+                            &s.model,
+                            &s.history,
+                            s.metadata,
+                        ) {
+                            if let Ok(mut slot) = sink.lock() {
+                                *slot = Some(e);
+                            }
+                        }
+                    }
+                    ThreadSaveJob::Flush(done) => {
+                        let _ = done.send(());
+                    }
+                }
+            }
+        });
+        Self {
+            tx: Some(tx),
+            handle: Some(handle),
+            error,
+        }
+    }
+
+    fn save(&self, save: ThreadSave) {
+        if let Some(tx) = self.tx.as_ref() {
+            let _ = tx.send(ThreadSaveJob::Save(save));
+        }
+    }
+
+    /// Block until every save queued before this call has been written.
+    fn flush(&self) {
+        let Some(tx) = self.tx.as_ref() else {
+            return;
+        };
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        if tx.send(ThreadSaveJob::Flush(done_tx)).is_ok() {
+            let _ = done_rx.recv();
+        }
+    }
+
+    fn take_error(&self) -> Option<String> {
+        self.error.lock().ok().and_then(|mut slot| slot.take())
+    }
+}
+
+impl Drop for ThreadSaver {
+    fn drop(&mut self) {
+        drop(self.tx.take());
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
 /// Route a bracketed paste event to the active input owner. The order mirrors
-/// `handle_key`: each docked prompt owns the keyboard while open, so a paste
-/// must land in its fields rather than the chat composer (where a pasted API
-/// key would echo).
+/// the key path (`handle_ask_key`, then `handle_key`): each docked prompt owns
+/// the keyboard while open, so a paste must land in its fields rather than the
+/// chat composer (where a pasted API key would echo). An overlay that owns the
+/// keyboard but has no text field drops the paste; it must never fall through
+/// to the composer hidden behind it.
 fn route_paste_event(app: &mut App, event: Event) {
     let Event::Paste(text) = event else {
         return;
@@ -9388,25 +9619,57 @@ fn route_paste_event(app: &mut App, event: Event) {
     if let Some(prompt) = app.account_login.as_mut() {
         // A pasted redirect/code belongs to the OAuth prompt, not chat.
         prompt.paste(&text);
-    } else if let Some(prompt) = app.login.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.login.as_mut() {
         // A pasted API key belongs to the login field, not the chat composer
         // (where it would echo).
         prompt.paste(&text);
-    } else if let Some(prompt) = app.settings_prompt.as_mut() {
+        return;
+    }
+    // A yes/no question has no text field: the paste is dropped.
+    if app.browser_confirm.is_some() {
+        return;
+    }
+    if let Some(prompt) = app.settings_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.mcp_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.mcp_prompt.as_mut() {
         prompt.paste(&text);
-    } else if let Some(prompt) = app.provider_prompt.as_mut() {
+        return;
+    }
+    if let Some(prompt) = app.provider_prompt.as_mut() {
         prompt.paste(&text);
-    } else if !app.ask_queue.is_empty() {
+        return;
+    }
+    if !app.ask_queue.is_empty() {
         handle_ask_paste(app, &text);
-    } else {
-        // Bracketed paste of a split SGR report is the same leak as typing it
-        // a character at a time; strip before the composer sees it.
-        let text = strip_sgr_mouse_reports(&text);
-        for c in text.chars() {
-            app.input_insert(c);
+        return;
+    }
+    // The context view and a waiting permission prompt take keys, not text.
+    if app.context_view.is_some() || !app.pending_queue.is_empty() {
+        return;
+    }
+    if let Some(picker) = app.model_picker.as_mut() {
+        // The model picker's only text field is its filter.
+        if picker.focus == ModelPickerFocus::Models {
+            picker
+                .query
+                .extend(text.chars().filter(|c| !c.is_control()));
+            picker.refresh_items();
         }
+        return;
+    }
+    // List pickers navigate by key and have no text field.
+    if app.picker.is_some() {
+        return;
+    }
+    // Bracketed paste of a split SGR report is the same leak as typing it
+    // a character at a time; strip before the composer sees it.
+    let text = strip_sgr_mouse_reports(&text);
+    for c in text.chars() {
+        app.input_insert(c);
     }
 }
 
@@ -9890,8 +10153,19 @@ async fn handle_key(
                 }
                 let name = item.value.clone();
                 let enable = !item.checkbox.unwrap_or(false);
-                item.checkbox = Some(enable);
-                if set_mcp_active(app, mcp_servers, &name, enable).await {
+                // The row flips only once mcp_config.json has been written: a
+                // failed write leaves it showing the state that is on disk.
+                let Some(connect) = set_mcp_active(app, mcp_servers, &name, enable).await else {
+                    return;
+                };
+                if let Some(item) = app
+                    .picker
+                    .as_mut()
+                    .and_then(|p| p.items.iter_mut().find(|i| i.value == name))
+                {
+                    item.checkbox = Some(enable);
+                }
+                if connect {
                     // Nothing on this screen is waiting on the answer, so it is
                     // detached rather than taking the single job slot.
                     reconnect_mcp_server(mcp_servers, name);
@@ -10753,6 +11027,12 @@ const SLASH_COMMANDS: &[SlashCommand] = &[
         alias_of: None,
     },
     SlashCommand {
+        name: "/usage",
+        hint: "[account|daily|requests|limits|run|<execution-id>]",
+        description: "Show recorded Tokamak usage and spend",
+        alias_of: None,
+    },
+    SlashCommand {
         name: "/goal",
         hint: "[condition|clear]",
         description: "Keep working until a condition is met (bare: status)",
@@ -11052,6 +11332,7 @@ async fn run_command(
         }
         "compact" => compact_command(app),
         "context" => context_command(app),
+        "usage" => usage_command(app, arg),
         "threads" | "list" => match super::list_threads_in(&app.agent_dir) {
             Ok(threads) if threads.is_empty() => {
                 app.note("no saved threads found");
@@ -11149,6 +11430,47 @@ async fn run_command(
 /// and fills the overlay in when it lands. Unlike the old idle-only transcript
 /// row, the readout is a popup the user closes with Esc, so it stays available
 /// mid-turn without ever blocking the render loop.
+/// `/usage [view]`: what the provider recorded (upstream #9034).
+///
+/// These are the provider's own figures, fetched off the render loop. Bare
+/// `/usage` is the account summary and also names the last execution id this
+/// session reported, so a single request's charge is one lookup away. `run`
+/// correlates every execution this session produced through the
+/// `X-Client-Request-Id` the agent sends.
+fn usage_command(app: &mut App, arg: &str) {
+    use crate::core::cli::tokamak::usage::Query;
+    if crate::core::cli::tokamak::stored_api_key().is_none() {
+        app.note("usage: not signed in to Tokamak -- run /login first");
+        return;
+    }
+    let query = match arg.trim() {
+        "" | "account" => {
+            if let Some(id) = app.last_execution_id.as_deref() {
+                app.note(&format!(
+                    "last execution id: {id} (/usage {id} shows what it was charged)"
+                ));
+            }
+            Query::Summary
+        }
+        "daily" => Query::Daily,
+        "requests" => Query::Requests,
+        "limits" => Query::Limits,
+        "run" => {
+            let session = app.args.as_ref().and_then(|a| a.session_id.clone());
+            match crate::core::agent::correlation::session_request_id(session.as_deref()) {
+                Some(id) => Query::Correlated(id),
+                None => {
+                    app.note("usage: this session has no id to correlate yet");
+                    return;
+                }
+            }
+        }
+        id => Query::Generation(id.to_string()),
+    };
+    app.note(&format!("usage: asking Tokamak for {}...", query.label()));
+    app.usage_request = Some(query);
+}
+
 fn context_command(app: &mut App) {
     app.context_view = Some(ContextView::Loading);
     app.context_request = true;
@@ -12198,6 +12520,28 @@ fn grapheme_prefix(s: &str, n: usize) -> String {
 /// Enter validates and writes (an empty field clears the key, except for a
 /// `Glyph`, where it writes the off value), Esc cancels. Mirrors
 /// `handle_login_key`, minus the secret/verify machinery.
+/// Parse the field of an `Int` setting into the TOML integer to write, or
+/// `None` for a cleared field (unset). TOML integers are signed 64-bit, so a
+/// value above `i64::MAX` is refused here: casting it would wrap negative,
+/// and a negative value in a `u64` field makes agent.toml fail to load, which
+/// stops the TUI from starting for that project (#133).
+fn parse_int_setting(input: &str, default: Option<u64>, min: u64) -> Result<Option<i64>, String> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Ok(None);
+    }
+    let default = default
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "unset".into());
+    match input.parse::<u64>() {
+        Ok(n) if n < min => Err(format!("must be at least {min} (default: {default})")),
+        Ok(n) => i64::try_from(n)
+            .map(Some)
+            .map_err(|_| format!("must be at most {} (default: {default})", i64::MAX)),
+        Err(_) => Err(format!("'{input}' is not an integer")),
+    }
+}
+
 fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
     if (key.code == KeyCode::Esc || (ctrl && key.code == KeyCode::Char('c')))
         && app.settings_prompt.is_some()
@@ -12213,25 +12557,11 @@ fn handle_settings_key(app: &mut App, key: KeyEvent, ctrl: bool) {
             let toml_path = app.agent_dir.join("agent.toml");
             let value: Option<toml_edit::Item> = match prompt.def().kind {
                 AgentSettingKind::Int { default, min } => {
-                    if prompt.input.trim().is_empty() {
-                        None
-                    } else {
-                        match prompt.input.trim().parse::<u64>() {
-                            Ok(n) if n >= min => Some(toml_edit::value(n as i64)),
-                            Ok(_) => {
-                                prompt.error = Some(format!(
-                                    "must be at least {min} (default: {})",
-                                    default
-                                        .map(|d| d.to_string())
-                                        .unwrap_or_else(|| "unset".into())
-                                ));
-                                return;
-                            }
-                            Err(_) => {
-                                prompt.error =
-                                    Some(format!("'{}' is not an integer", prompt.input));
-                                return;
-                            }
+                    match parse_int_setting(&prompt.input, default, min) {
+                        Ok(v) => v.map(toml_edit::value),
+                        Err(err) => {
+                            prompt.error = Some(err);
+                            return;
                         }
                     }
                 }
@@ -13826,17 +14156,11 @@ fn open_account_login_with_begin(
 }
 
 fn open_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
-    #[cfg(target_os = "linux")]
-    let mut command = Command::new("xdg-open");
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut command = Command::new("cmd");
-        command.args(["/C", "start"]);
-        command
-    };
-    command
+    // Shared with `browser::launch`: on Windows, `cmd /C start` cut the OAuth
+    // URL at its first `&` (#59).
+    let (program, args) = super::browser::platform_launcher();
+    Command::new(program)
+        .args(args)
         .arg(url)
         .spawn()
         .map(|_| ())
@@ -13926,8 +14250,12 @@ fn finish_tokamak_login(app: &mut App, result: Result<super::tokamak::Login, Str
                 models,
                 config_path,
                 default_model,
+                replaced_default,
                 account,
             } = login;
+            if replaced_default {
+                app.note("your previous default model is no longer offered by any provider; it was replaced");
+            }
             finish_login(
                 app,
                 Ok(crate::core::cli::auth::LoginResult {
@@ -14353,7 +14681,9 @@ async fn run_mcp_action(
         }
         MCP_ACTION_TOGGLE => {
             let enable = !detail.server.active;
-            let connect = set_mcp_active(app, mcp_servers, &name, enable).await;
+            let connect = set_mcp_active(app, mcp_servers, &name, enable)
+                .await
+                .unwrap_or(false);
             open_mcp_detail(app, &name, mcp_servers).await;
             if connect {
                 // After `open_mcp_detail`, which requests the tool list and
@@ -14439,10 +14769,10 @@ async fn set_mcp_active(
     mcp_servers: &crate::core::state::SharedMcpServers,
     name: &str,
     enable: bool,
-) -> bool {
+) -> Option<bool> {
     if let Err(e) = super::mcp::set_active(name, enable) {
         app.note(&format!("failed to update mcp_config.json: {e}"));
-        return false;
+        return None;
     }
     if enable {
         app.note(&format!("enabling MCP server '{name}'..."));
@@ -14450,7 +14780,7 @@ async fn set_mcp_active(
         super::mcp::disconnect(name, mcp_servers).await;
         app.note(&format!("disabled MCP server '{name}'"));
     }
-    enable
+    Some(enable)
 }
 
 /// Resolve a thread by id (exact or unique prefix), load its messages into the
@@ -15080,32 +15410,6 @@ async fn load_thread(app: &mut App, thread: &serde_json::Value, verb: &str) {
     }
 }
 
-/// Largest image accepted from a path or the clipboard, before base64 (which
-/// inflates it by 4/3).
-const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
-
-/// Infer an image MIME type from a file extension. `None` when the extension is
-/// not a known image type.
-fn image_mime_of(path: &str) -> Option<&'static str> {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    match ext.as_str() {
-        "png" => Some("image/png"),
-        "jpg" | "jpeg" => Some("image/jpeg"),
-        "gif" => Some("image/gif"),
-        "webp" => Some("image/webp"),
-        _ => None,
-    }
-}
-
-/// Infer an image MIME type from a file extension, defaulting to PNG.
-fn image_mime(path: &str) -> &'static str {
-    image_mime_of(path).unwrap_or("image/png")
-}
-
 /// Read an image file into a `PendingImage` (base64 data URL + basename).
 fn load_image_file(path: &str) -> Result<PendingImage, String> {
     use base64::Engine;
@@ -15216,30 +15520,9 @@ fn clipboard_image() -> Result<PendingImage, String> {
     })
 }
 
-/// Build the OpenAI-shaped user message: a plain string with no images, else a
-/// content-part array (text first, then `image_url` parts) matching the desktop
-/// web-app wire shape.
-fn build_user_message(text: &str, images: &[PendingImage]) -> serde_json::Value {
-    if images.is_empty() {
-        return serde_json::json!({ "role": "user", "content": text });
-    }
-    let mut parts = Vec::with_capacity(images.len() + 1);
-    if !text.is_empty() {
-        parts.push(serde_json::json!({ "type": "text", "text": text }));
-    }
-    for img in images {
-        parts.push(serde_json::json!({
-            "type": "image_url",
-            "image_url": { "url": img.data_url, "detail": "auto" }
-        }));
-    }
-    serde_json::json!({ "role": "user", "content": parts })
-}
-
 /// Split a user message's `content` into display text and one label per attached
 /// image. Handles plain-string content and the `image_url` content-part array;
 /// data-URL parts carry no filename, so their label is empty.
-
 fn user_content_parts(content: &serde_json::Value) -> (String, Vec<String>) {
     match content {
         serde_json::Value::String(s) => (crate::core::agent::reminder::strip(s), Vec::new()),
@@ -18004,6 +18287,24 @@ fn footer_spans(app: &App) -> Vec<Span<'static>> {
 #[cfg(test)]
 mod tests {
 
+    /// #133: a value above i64::MAX used to be cast with `as i64`, wrapping
+    /// negative into agent.toml and bricking the next startup.
+    #[test]
+    fn int_setting_refuses_values_that_do_not_fit_a_toml_integer() {
+        use super::parse_int_setting;
+        assert_eq!(parse_int_setting("", Some(8), 1), Ok(None));
+        assert_eq!(parse_int_setting(" 42 ", Some(8), 1), Ok(Some(42)));
+        assert_eq!(
+            parse_int_setting(&i64::MAX.to_string(), None, 1),
+            Ok(Some(i64::MAX))
+        );
+        assert!(parse_int_setting("0", Some(8), 1).is_err(), "below min");
+        assert!(parse_int_setting("abc", Some(8), 1).is_err(), "not a number");
+        let over = (i64::MAX as u64 + 1).to_string();
+        assert!(parse_int_setting(&over, None, 1).is_err(), "wraps negative");
+        assert!(parse_int_setting(&u64::MAX.to_string(), None, 1).is_err());
+    }
+
     /// An empty MCP map, for the `run_command`/`handle_key` paths that take one
     /// but whose behaviour under test has nothing to do with MCP.
     fn no_mcp() -> crate::core::state::SharedMcpServers {
@@ -18124,6 +18425,8 @@ mod tests {
             compaction: Default::default(),
             max_tokens: None,
             max_session_tokens: 128_000,
+            max_turns: None,
+            cost_ceiling: None,
         };
         let app = App::new(
             "m".into(),
@@ -18322,6 +18625,38 @@ mod tests {
         assert!(app.message_queue.is_empty());
     }
 
+    /// #63: a mid-turn `MessagesUpdated` on an existing thread is saved by
+    /// the background saver, not inline in the render loop, and still reaches
+    /// disk (in order) once the saver is flushed.
+    #[tokio::test]
+    async fn mid_turn_messages_updated_saves_off_the_render_loop() {
+        let mut app = test_app();
+        app.submit_user("first".into());
+        app.persist();
+        assert!(app.thread_id.is_some(), "first save assigns the id");
+        assert!(app.thread_saver.is_none(), "first save runs inline");
+
+        for text in ["step one", "step two"] {
+            app.apply(StreamEvent::MessagesUpdated {
+                messages: vec![
+                    json!({ "role": "user", "content": "first" }),
+                    json!({ "role": "assistant", "content": text }),
+                ],
+            });
+        }
+        assert!(
+            app.thread_saver.is_some(),
+            "a mid-turn save must go through the background saver"
+        );
+        app.join_journal();
+
+        let mut restored = test_app();
+        restored.agent_dir = app.agent_dir.clone();
+        apply_resume(&mut restored, &ResumeRequest::resume(ResumeTarget::Latest)).await;
+        let last = restored.history.last().expect("history restored");
+        assert_eq!(last["content"], "step two", "newest snapshot wins");
+    }
+
     #[tokio::test]
     async fn steering_consumed_input_survives_resume_once() {
         let mut app = test_app();
@@ -18421,6 +18756,8 @@ mod tests {
             compaction: Default::default(),
                     max_tokens: None,
                     max_session_tokens: 128_000,
+                    max_turns: None,
+                    cost_ceiling: None,
                 },
                 false,
                 agent_dir,
@@ -19074,7 +19411,7 @@ mod tests {
     fn always_label_is_command_scoped_for_exec() {
         assert_eq!(
             pending(true).always_label(),
-            "Allow all 'git' commands (this thread)"
+            "Allow this exact command (this thread)"
         );
         let mut p = pending(true);
         p.command = None;
@@ -19102,6 +19439,7 @@ mod tests {
             patch: None,
             prompt_kind: "write".into(),
             offers_always: true,
+            reason: None,
         });
         let p = app.pending().unwrap();
         assert_eq!(p.diff.as_deref(), Some("@@ created file @@\n+ hi"));
@@ -19140,6 +19478,7 @@ mod tests {
             patch: None,
             prompt_kind: "exec".into(),
             offers_always: true,
+            reason: None,
         });
         assert!(app.pending().unwrap().diff_preview(60).is_empty());
     }
@@ -19174,9 +19513,7 @@ mod tests {
         cell.set_symbol("W");
         terminal
             .backend_mut()
-            .draw(std::iter::once((cx, cy, &cell)))
-            .ok()
-            .expect("the backend accepts the write");
+            .draw(std::iter::once((cx, cy, &cell))).expect("the backend accepts the write");
         (cx, cy)
     }
 
@@ -21035,6 +21372,15 @@ mod tests {
         );
         assert_eq!(clipboard_path("/tmp/b.jpg").as_deref(), Some("/tmp/b.jpg"));
         assert_eq!(clipboard_path("   \n  "), None);
+    }
+
+    /// A typed message shaped like a reminder still counts as a user turn and
+    /// still shows its text (#279).
+    #[test]
+    fn build_user_message_never_stores_a_reminder_shape() {
+        let m = build_user_message("<SYSTEM>\npasted log\n</SYSTEM>", &[]);
+        assert!(!crate::core::agent::reminder::is_reminder_only(&m["content"]));
+        assert!(user_content_parts(&m["content"]).0.contains("pasted log"));
     }
 
     #[test]
@@ -22957,6 +23303,40 @@ mod tests {
         assert!(app.input.is_empty(), "the composer must not see the key");
     }
 
+    /// `/context` and the account sign-in prompt own the keyboard in
+    /// `handle_key` too, so a queued ask must defer to them: Esc meant to
+    /// close `/context` silently cancelled the agent's question (#127).
+    #[tokio::test]
+    async fn a_queued_ask_defers_to_the_context_view_and_account_login() {
+        for dock in ["context_view", "account_login"] {
+            let mut app = test_app();
+            let registry = crate::core::agent::interaction::new_registry();
+            let (request_id, _receiver) =
+                crate::core::agent::interaction::register(&registry).await;
+            app.apply(StreamEvent::AskRequest {
+                request_id,
+                request: ask_request(false, false),
+                timeout_secs: None,
+            });
+            match dock {
+                "context_view" => app.context_view = Some(ContextView::Loading),
+                _ => {
+                    let login = crate::core::cli::auth::account::begin(
+                        crate::core::cli::auth::account::AccountProvider::Claude,
+                    )
+                    .unwrap();
+                    app.account_login = Some(crate::core::cli::tui::AccountLoginPrompt::new(login));
+                }
+            }
+            let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+            assert!(
+                !handle_ask_key(&mut app, esc, &registry).await,
+                "{dock} owns the keyboard"
+            );
+            assert_eq!(app.ask_queue.len(), 1, "{dock}: the ask was consumed");
+        }
+    }
+
     fn blank_mcp_prompt() -> super::McpPrompt {
         super::McpPrompt {
             editing: None,
@@ -23117,6 +23497,7 @@ mod tests {
                 models: vec!["tokamak-1-preview".into()],
                 config_path: std::path::PathBuf::from("/tmp/config.toml"),
                 default_model: None,
+                replaced_default: false,
                 account: Some("a@b.c".into()),
             }),
         ));
@@ -23363,6 +23744,10 @@ mod tests {
                 permission_requests: std::sync::Arc::new(tokio::sync::Mutex::new(
                     std::collections::HashMap::new(),
                 )),
+                host_tools: crate::core::agent::host_tools::HostToolSet::new(),
+                host_tool_requests: crate::core::agent::host_tools::new_registry(),
+                host_owns_gate: false,
+                host_tool_route: None,
                 ask_requests: None,
                 todo_registry: None,
                 system_prompt_override: None,
@@ -23371,6 +23756,7 @@ mod tests {
                 auto_approve: false,
                 run_mode: crate::core::agent::plan::RunMode::Normal,
                 session_id: None,
+                run_id: None,
                 subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
                 sandbox: None,
             });
@@ -25255,6 +25641,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             },
         ));
         assert_eq!(
@@ -25294,6 +25681,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             },
         ));
         // Second subagent's request arrives while the first is still pending.
@@ -25310,6 +25698,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "read".into(),
                 offers_always: false,
+                reason: None,
             },
         ));
 
@@ -26937,6 +27326,7 @@ mod tests {
                 None,
                 &json!({"model": "m", "messages": [{"role": "user", "content": "go"}]}),
                 &tx,
+                None,
             ),
         )
         .await
@@ -27496,6 +27886,7 @@ mod tests {
                 patch: None,
                 prompt_kind: "exec".into(),
                 offers_always: true,
+                reason: None,
             });
             app.pending_queue.clear(); // simulate approval
             app.apply(StreamEvent::ToolResult {
@@ -28906,6 +29297,7 @@ mod tests {
                         total_tokens: Some(12_900),
                         ..Default::default()
                     },
+                    execution_id: None,
                 },
             );
             subagent_event(
@@ -29561,6 +29953,7 @@ mod tests {
                     total_tokens: Some(40_500),
                     ..Default::default()
                 },
+                execution_id: None,
             });
         }
         assert_eq!(app.turn_output_tokens, 1_500);
@@ -29945,6 +30338,7 @@ mod tests {
                 total_tokens: Some(90_010),
                 ..Default::default()
             },
+            execution_id: None,
         });
         assert!(
             app.context_report().await.fill_reported,
@@ -29970,6 +30364,7 @@ mod tests {
                 total_tokens: Some(120_010),
                 ..Default::default()
             },
+            execution_id: None,
         });
         assert!(app.context_report().await.fill_reported);
         rewind_to(&mut app, 0, false);
@@ -31773,6 +32168,9 @@ mod tests {
             args: json!({ "job_id": "bash-0" }),
         });
         assert!(app.active_bg_jobs.is_empty(), "collected job is uncounted");
+        // Jozkah/jan#134: collecting the job consumes its pairing entries.
+        assert!(app.bash_jobs.is_empty(), "collected job's command is kept");
+        assert!(app.job_origin.is_empty(), "collected job's origin is kept");
         let footer: String = super::footer_spans(&app)
             .iter()
             .map(|s| s.content.as_ref())
@@ -32773,6 +33171,23 @@ mod tests {
         assert!(app.base_requested);
         assert!(matches!(app.snap_queue.front(), Some(SnapshotJob::Base)));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A skill or command invoked before signing in gets the not-signed-in
+    /// note, not a turn armed with an empty model (#141).
+    #[test]
+    fn dispatch_without_a_provider_arms_no_turn() {
+        let (mut app, root) = skill_test_app("deploy", "How to deploy.");
+        plugin_command_in_app(&root, "feature-dev", "feature-dev", "Build: $ARGUMENTS");
+        app.model.clear();
+        let before = app.history.len();
+        assert!(app.dispatch_command("feature-dev", "add auth"));
+        assert!(app.dispatch_skill("deploy", "staging"));
+        assert!(!app.want_start, "a turn was armed without a provider");
+        assert_eq!(app.status, Status::Idle);
+        assert_eq!(app.history.len(), before);
+        assert!(transcript_text(&app).contains("not signed in"));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -34328,6 +34743,30 @@ mod tests {
         assert!(picker.items.iter().all(|item| item.provider == "anthropic"));
     }
 
+    /// #69: a paste while a picker owns the keyboard must not reach the chat
+    /// composer hidden behind it. The model picker takes it as its filter.
+    #[test]
+    fn paste_does_not_leak_past_open_pickers() {
+        let mut app = test_app();
+        app.model_picker = super::ModelPicker::from_pairs(
+            vec![("openai".into(), "gpt-5-codex".into())],
+            "missing-current",
+        );
+        route_paste_event(&mut app, Event::Paste("codex".into()));
+        assert!(app.input.is_empty(), "paste leaked past the model picker");
+        assert_eq!(app.model_picker.as_ref().unwrap().query, "codex");
+
+        let mut app = test_app();
+        app.picker = Some(super::Picker {
+            kind: PickerKind::AgentSettings,
+            items: Vec::new(),
+            selected: 0,
+            armed_delete: None,
+        });
+        route_paste_event(&mut app, Event::Paste("must not become chat".into()));
+        assert!(app.input.is_empty(), "paste leaked past the list picker");
+    }
+
     #[tokio::test]
     async fn model_picker_enter_uses_raw_value_while_label_is_provider_scoped() {
         let mut app = test_app();
@@ -34750,6 +35189,43 @@ mod tests {
             assert!(!items
                 .iter()
                 .any(|i| i.value == super::MCP_ACTION_CLEAR_AUTH));
+        });
+    }
+
+    /// #148: Space used to flip the row before writing mcp_config.json, and a
+    /// failed write left the checkbox showing a state that was not on disk.
+    #[test]
+    fn space_leaves_the_row_unchanged_when_the_config_write_fails() {
+        crate::core::app::commands::with_temp_data_folder(|folder| {
+            write_mcp_config(
+                folder,
+                serde_json::json!({
+                    "files": { "command": "npx", "args": ["-y", "files"], "active": false },
+                }),
+            );
+            let registry: PermissionRegistry =
+                std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new()));
+            let mut current: Option<CurrentRun> = None;
+            let mut app = test_app();
+            let servers = no_mcp();
+            rt().block_on(async {
+                super::open_mcp_picker(&mut app, &servers).await;
+                assert_eq!(app.picker.as_ref().unwrap().items[0].checkbox, Some(false));
+                // The server vanishes from the config behind the picker's back,
+                // so the write in `set_active` fails.
+                write_mcp_config(folder, serde_json::json!({}));
+                handle_key(
+                    &mut app,
+                    KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE),
+                    &registry,
+                    &mut current,
+                    &servers,
+                )
+                .await;
+            });
+            let item = &app.picker.as_ref().expect("still on the list").items[0];
+            assert_eq!(item.value, "files");
+            assert_eq!(item.checkbox, Some(false), "the row flipped on a failed write");
         });
     }
 

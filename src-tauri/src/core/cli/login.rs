@@ -206,7 +206,13 @@ fn report(login: &tokamak::Login) {
     }
     println!("  key saved to {}", login.config_path.display());
     if let Some(model) = &login.default_model {
-        println!("  default model: {model}");
+        if login.replaced_default {
+            // Never swapped in silence: the previous default is no longer
+            // offered by any provider, which is why it was replaced.
+            println!("  default model: {model} (your previous default is no longer offered)");
+        } else {
+            println!("  default model: {model}");
+        }
     }
     println!();
 }
@@ -242,6 +248,7 @@ mod tests {
                     models: models.clone(),
                     config_path: std::path::PathBuf::from("/tmp/config.toml"),
                     default_model: Some("a".to_string()),
+                    replaced_default: false,
                     account,
                 });
             }

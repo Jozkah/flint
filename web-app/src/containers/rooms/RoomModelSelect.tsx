@@ -74,6 +74,21 @@ export function RoomModelSelect({
 
   const missing = value && !findModel(providers, value)
 
+  // The same model is often offered by several providers (a local engine and
+  // two remote endpoints serving one name). The group label only shows while
+  // the list is open, and a closed select shows just the option, so an
+  // ambiguous name carries its provider in the option itself.
+  const labelCounts = new Map<string, number>()
+  for (const g of groups) {
+    for (const m of g.models) {
+      labelCounts.set(modelLabel(m), (labelCounts.get(modelLabel(m)) ?? 0) + 1)
+    }
+  }
+  const optionLabel = (m: Model, provider: string) =>
+    (labelCounts.get(modelLabel(m)) ?? 0) > 1
+      ? `${modelLabel(m)} — ${provider}`
+      : modelLabel(m)
+
   return (
     <select
       id={id}
@@ -106,7 +121,7 @@ export function RoomModelSelect({
         >
           {models.map((m) => (
             <option key={m.id} value={encode({ provider: provider.provider, id: m.id })}>
-              {modelLabel(m)}
+              {optionLabel(m, provider.provider)}
             </option>
           ))}
         </optgroup>

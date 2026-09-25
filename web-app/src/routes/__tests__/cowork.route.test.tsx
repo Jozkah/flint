@@ -33,6 +33,10 @@ import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 const h = vi.hoisted(() => ({
   /** Tauri commands, by name. Tests install answers per case. */
   invoke: vi.fn(),
+  getSandboxToolchains: vi.fn(
+    async (): Promise<{ runnable: string[]; unavailable: string[] } | null> =>
+      null
+  ),
   directEditCapability: vi.fn(async () => true),
   managedWorktreeCapability: vi.fn(async () => true),
   directEditAuthorize: vi.fn(async () => 'grant-1'),
@@ -107,6 +111,7 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
 
 vi.mock('@/lib/agentTools', () => ({
   executeAgentTool: h.executeAgentTool,
+  getSandboxToolchains: h.getSandboxToolchains,
   sandboxEnforces: () => true,
   getSandboxStatus: vi.fn(async () => ({
     backend: 'bubblewrap',
@@ -221,6 +226,7 @@ vi.mock('@/lib/coworkTransport', () => ({
 vi.mock('@/lib/coworkTeamControl', async (orig) => ({
   ...(await orig<typeof import('@/lib/coworkTeamControl')>()),
   DECISION_WINDOW_MS: 0,
+  COWORK_DECISION_WINDOW_MS: 0,
 }))
 vi.mock('@/lib/coworkRunner', async (orig) => {
   const actual = await orig<typeof import('@/lib/coworkRunner')>()
@@ -663,6 +669,21 @@ describe('what a run carries, decided by the route', () => {
       projectRoot: FOLDER,
       temporary: false,
     })
+  })
+
+  it('tells the model which toolchains the sandbox can run', async () => {
+    h.getSandboxToolchains.mockResolvedValueOnce({
+      runnable: ['node', 'npm'],
+      unavailable: ['python', 'git'],
+    })
+    await renderRoute()
+    await runOneTurn()
+    expect(h.transports.at(-1)?.config).toEqual(
+      expect.objectContaining({
+        runnable: ['node', 'npm'],
+        unavailable: ['python', 'git'],
+      })
+    )
   })
 
   it('does not start a run against a worktree that is no longer there', async () => {
@@ -1230,5 +1251,37 @@ describe('the folder the session is bound to', () => {
           ?.folder
       ).toBe('/another/repo')
     )
+  })
+})
+
+describe('the branch shown for the attached folder', () => {
+  it('ignores a branch answer for a folder no longer attached', async () => {
+    let answerOld: (b: string) => void = () => {}
+    installInvoke({
+      agent_git_branch: (args: { project: string }) =>
+        args.project === FOLDER
+          ? new Promise<string>((r) => {
+              answerOld = r
+            })
+          : 'branch-of-other',
+    })
+    seedSession()
+    await renderRoute()
+
+    // The folder changes while the first answer is still out.
+    await act(async () => {
+      useCoworkSessions.setState((s) => ({
+        sessions: s.sessions.map((x) => ({ ...x, folder: '/other' })),
+      }))
+    })
+    await waitFor(() =>
+      expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+    )
+
+    await act(async () => {
+      answerOld('branch-of-repo')
+    })
+    expect(screen.queryByText(/branch-of-repo/)).toBeNull()
+    expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
   })
 })

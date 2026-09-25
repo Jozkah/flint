@@ -88,6 +88,7 @@ vi.mock('@/lib/mcp-router-model-filter', () => ({
 }))
 vi.mock('@/lib/reasoningProviderOptions', () => ({
   buildReasoningProviderOptions: () => undefined,
+  buildReasoningBodyParams: () => undefined,
 }))
 vi.mock('@/lib/providerCaps', () => ({
   isPredefinedRemoteProvider: () => false,
@@ -165,5 +166,46 @@ describe('CustomChatTransport: abort during model load', () => {
 
     await expect(send).resolves.toBeDefined()
     expect(h.unloadLlamaModel).not.toHaveBeenCalled()
+  })
+
+  it('observes a load that fails after an already-aborted request (#88)', async () => {
+    const unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown) => unhandled.push(reason)
+    process.on('unhandledRejection', onUnhandled)
+    try {
+      let failLoad: (e: Error) => void = () => {}
+      h.createModelMock.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            failLoad = reject
+          })
+      )
+      const controller = new AbortController()
+      controller.abort()
+      const transport = new CustomChatTransport() as unknown as {
+        createModelOrAbort: (
+          modelId: string,
+          provider: unknown,
+          parameters: Record<string, unknown>,
+          providerId: string,
+          abortSignal: AbortSignal
+        ) => Promise<unknown>
+      }
+      const pending = transport.createModelOrAbort(
+        'qwen3-4b',
+        provider,
+        {},
+        'llamacpp',
+        controller.signal
+      )
+      await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+
+      failLoad(new Error('engine failed to load'))
+      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(unhandled).toEqual([])
+    } finally {
+      process.off('unhandledRejection', onUnhandled)
+    }
   })
 })

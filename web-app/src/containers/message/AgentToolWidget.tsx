@@ -1,7 +1,8 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { ToolUIPart } from 'ai'
 import {
   BookOpen,
+  ChevronRight,
   File as FileIcon,
   FilePen,
   Folder,
@@ -14,8 +15,12 @@ import {
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
+  grepHighlightRegex,
   isToolRunning,
   parseBashOutput,
+  parseGrepOutput,
+  splitGrepMatches,
+  type GrepGroup,
   type ToolCallBar,
 } from '@/lib/toolPresentation'
 import { cn } from '@/lib/utils'
@@ -24,6 +29,7 @@ import { Caret, ToolBar } from './ToolBar'
 import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import { TermOutput } from '@/components/TermOutput'
+import { parseAnsi, stripAnsi, type AnsiStyle } from '@/lib/ansi'
 
 const asText = (output: unknown): string =>
   typeof output === 'string'
@@ -55,21 +61,63 @@ export type TerminalWidgetProps = {
    * terminal shows just the prompt line and the scrollback.
    */
   embedded?: boolean
+  /** Looks up the call's live (streamed, colour-preserving) output. */
+  toolCallId?: string
 }
+
+const segmentStyle = (s: AnsiStyle): React.CSSProperties | undefined => {
+  const fg = s.inverse ? (s.bg ?? 'var(--card)') : s.fg
+  const bg = s.inverse ? (s.fg ?? 'var(--foreground)') : s.bg
+  if (!fg && !bg && !s.bold && !s.dim && !s.italic && !s.underline) {
+    return undefined
+  }
+  return {
+    color: fg,
+    backgroundColor: bg,
+    fontWeight: s.bold ? 600 : undefined,
+    opacity: s.dim ? 0.7 : undefined,
+    fontStyle: s.italic ? 'italic' : undefined,
+    textDecoration: s.underline ? 'underline' : undefined,
+  }
+}
+
+/** Command output with its ANSI colours rendered; other escapes are dropped. */
+export const AnsiText = memo(({ text }: { text: string }) => {
+  const segments = useMemo(() => parseAnsi(text), [text])
+  return (
+    <>
+      {segments.map((seg, i) => {
+        const style = segmentStyle(seg.style)
+        return style ? (
+          <span key={i} style={style}>
+            {seg.text}
+          </span>
+        ) : (
+          seg.text
+        )
+      })}
+    </>
+  )
+})
+AnsiText.displayName = 'AnsiText'
 
 /**
  * `bash` rendered as a terminal: the command streams in after a prompt, then its
  * output fills the scrollback below. The trailing `[exit N]` marker becomes a
  * status chip rather than staying in the text.
  *
- * The command streams; the output does not. `execute_tool` is one round trip, so
- * stdout arrives whole when the run finishes. Incremental output would need the
- * Rust side to emit events per chunk.
+ * Output streams too when the call was run with a live-output sink: chunks land
+ * in the runtime store raw, so colours render. The model-facing result has its
+ * escapes stripped by the backend; a failed command is shown plain, since the
+ * failure text is what matters there.
  */
 export const TerminalWidget = memo(
-  ({ bar, state, output, errorText, embedded = false }: TerminalWidgetProps) => {
+  ({ bar, state, output, errorText, toolCallId, embedded = false }: TerminalWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
+    const live = useToolCallRuntime((s) =>
+      toolCallId ? s.output[toolCallId] : undefined
+    )
     const result = useMemo(
       () => (output ? parseBashOutput(output) : undefined),
       [output]
@@ -77,7 +125,12 @@ export const TerminalWidget = memo(
     // A non-zero exit is reported in-band, so the body is the failure detail and
     // the chip is the failure signal; there is no separate error banner to show.
     const failed = errorText !== undefined || (result?.exit ?? 0) !== 0
-    const body = result?.text || (errorText ? asText(errorText) : '')
+    const finalText = result?.text || (errorText ? asText(errorText) : '')
+    // The streamed text keeps colours, but is only complete for a finished call
+    // that was not truncated; otherwise the result is the full account.
+    const coloured =
+      !failed && live && !result?.truncated && live.trim() ? live : undefined
+    const body = failed ? stripAnsi(finalText) : finalText
 
     return (
       // The terminal is always dark, in either theme: it reads as a terminal,
@@ -103,6 +156,10 @@ export const TerminalWidget = memo(
           </span>
           {!embedded && result?.exit !== undefined && (
             <span
+              role="img"
+              aria-label={t('tools:toolCall.exitCode', { code: result.exit })}
+              title={t('tools:toolCall.exitCode', { code: result.exit })}
+              data-testid="terminal-status-dot"
               className={cn(
                 'shrink-0 rounded-[5px] px-1.5 py-px text-[11px] tabular-nums',
                 failed
@@ -120,6 +177,14 @@ export const TerminalWidget = memo(
           )}
         </div>
         <div className="px-3 pb-2.5">
+          {running && live && (
+            <pre
+              className="m-0 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word"
+              data-testid="terminal-live-output"
+            >
+              <TermOutput text={live} />
+            </pre>
+          )}
           {running && (
             <div className="mt-1 [--color-muted-foreground:var(--term-fg)]">
               {/* The command is already on screen above, so the tool-named
@@ -127,9 +192,9 @@ export const TerminalWidget = memo(
               <Shimmer duration={1}>{t('tools:toolCall.working')}</Shimmer>
             </div>
           )}
-          {!running && body && (
+          {!running && (coloured || body) && (
             <pre className="m-0 max-h-72 overflow-auto whitespace-pre-wrap wrap-break-word">
-              <TermOutput text={body} />
+              <TermOutput text={coloured ?? body} />
             </pre>
           )}
           {result?.truncated && (
@@ -152,6 +217,92 @@ export const TerminalWidget = memo(
 )
 
 TerminalWidget.displayName = 'TerminalWidget'
+
+const HighlightedLine = ({ text, re }: { text: string; re?: RegExp }) => {
+  const parts = useMemo(() => splitGrepMatches(text, re), [text, re])
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.hit ? (
+          <mark
+            key={i}
+            className="rounded-sm bg-warning-tint px-px text-foreground"
+            data-testid="grep-match"
+          >
+            {p.text}
+          </mark>
+        ) : (
+          <span key={i}>{p.text}</span>
+        )
+      )}
+    </>
+  )
+}
+
+const GrepFileGroup = ({ group, re }: { group: GrepGroup; re?: RegExp }) => {
+  const [open, setOpen] = useState(true)
+  const hits = group.lines.filter((l) => l.match).length
+  return (
+    <div data-testid="grep-file-group">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1 py-0.5 text-left text-foreground hover:text-foreground/80"
+      >
+        <ChevronRight
+          className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')}
+        />
+        <span className="min-w-0 flex-1 truncate">{group.file}</span>
+        <span className="shrink-0 tabular-nums text-muted-foreground">{hits}</span>
+      </button>
+      {open && (
+        <div className="pl-4">
+          {group.lines.map((l, i) => (
+            <div key={`${l.line}-${i}`}>
+              {group.gaps.includes(i) && (
+                <div className="select-none text-muted-foreground/50">⋯</div>
+              )}
+              <div className="flex gap-2">
+                <span className="w-8 shrink-0 select-none text-right tabular-nums text-muted-foreground/60">
+                  {l.line}
+                </span>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 whitespace-pre-wrap wrap-break-word',
+                    l.match ? 'text-muted-foreground' : 'text-muted-foreground/60'
+                  )}
+                >
+                  {l.match ? <HighlightedLine text={l.text} re={re} /> : l.text}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** `grep` results grouped per file, collapsible, with the matches highlighted. */
+export const GrepResults = memo(
+  ({ groups, notes, re }: { groups: GrepGroup[]; notes: string[]; re?: RegExp }) => (
+    <div
+      className="mt-1.5 max-h-80 space-y-1 overflow-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs"
+      data-testid="grep-results"
+    >
+      {groups.map((g, i) => (
+        <GrepFileGroup key={`${g.file}-${i}`} group={g} re={re} />
+      ))}
+      {notes.map((n, i) => (
+        <p key={i} className="text-muted-foreground">
+          {n}
+        </p>
+      ))}
+    </div>
+  )
+)
+GrepResults.displayName = 'GrepResults'
 
 const TOOL_ICONS: Record<string, LucideIcon> = {
   read: FileIcon,
@@ -206,10 +357,20 @@ export const AgentToolWidget = memo(
     )
     const Icon = TOOL_ICONS[bar.tool] ?? FileIcon
     const body = asText(output)
+    const grep = useMemo(
+      () => (bar.tool === 'grep' && body ? parseGrepOutput(body) : undefined),
+      [bar.tool, body]
+    )
+    const highlight = useMemo(
+      () =>
+        grep && bar.grep ? grepHighlightRegex(bar.target, bar.grep) : undefined,
+      [grep, bar.target, bar.grep]
+    )
     // `ls` with no path lists the workspace root; show that rather than a bar
     // that reads as though an argument failed to stream.
     const value =
-      bar.target || (LISTING_TOOLS.has(bar.tool) ? t('tools:toolCall.workspaceRoot') : '')
+      bar.target ||
+      (LISTING_TOOLS.has(bar.tool) ? t('tools:toolCall.workspaceRoot') : '')
     // The path the tool was called with is structured data, so opening it in
     // the code panel needs no parsing of the model's prose. Only once the call
     // has finished streaming: a half-written path opens the wrong file.
@@ -236,7 +397,14 @@ export const AgentToolWidget = memo(
           activateLabel={t('common:codePanel.openInCode')}
           trailing={
             bar.detail ? (
-              <span className="shrink-0 font-mono text-xs text-muted-foreground">
+              // The detail is often an absolute search root (a managed
+              // worktree path runs past 100 characters), so it must shrink
+              // and truncate rather than push the transcript sideways.
+              <span
+                data-testid="tool-bar-detail"
+                title={bar.detail}
+                className="min-w-0 max-w-[45%] truncate font-mono text-xs text-muted-foreground"
+              >
                 {bar.detail}
               </span>
             ) : undefined
@@ -263,6 +431,8 @@ export const AgentToolWidget = memo(
           (diff ? (
             // Full-bleed inside the card, like the mockup's edit cards.
             <DiffBlock diff={diff} bleed className="-mx-2.5 -mb-2" />
+          ) : grep ? (
+            <GrepResults groups={grep.groups} notes={grep.notes} re={highlight} />
           ) : body ? (
             <OutputBlock>{body}</OutputBlock>
           ) : (

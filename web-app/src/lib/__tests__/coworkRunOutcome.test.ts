@@ -188,7 +188,8 @@ describe('deriving a run outcome', () => {
       })
     )
 
-    expect(outcome.status).toBe('completed')
+    // A failed check is not a completed request: partly done.
+    expect(outcome.status).toBe('partial')
     expect(outcome.headline).toBe('completed-checks-failed')
     expect(outcome.checks[0]).toMatchObject({
       outcome: 'failed',
@@ -529,6 +530,18 @@ describe('summarising verification from recorded results', () => {
     expect(s).toMatchObject({ passed: 0, didNotFinish: 1, allPassed: false, visualNotChecked: false })
   })
 
+  it.each([
+    ['cancelled', { toolState: 'cancelled', exitCode: 0 }],
+    ['cancelled', { toolState: 'cancelled', exitCode: 1 }],
+    ['timed-out', { toolState: 'timed-out', exitCode: 0 }],
+    ['timed-out', { toolState: 'timed-out', exitCode: 137 }],
+  ] as const)('gives a %s check with an exit code no pass/fail outcome (%o)', (_, over) => {
+    const outcome = deriveRunOutcome(input({ turns: [user(), bash('npm test', over)] }))
+    expect(outcome.checks[0].outcome).toBe('unknown')
+    expect(checkVerdict(outcome.checks[0])).toBe('did-not-finish')
+    expect(outcome.unresolved.some((u) => u.kind === 'check-failed')).toBe(false)
+  })
+
   it('counts a check left running when the run ended as did not finish', () => {
     const s = summarize(
       [bash('go test ./...', { toolState: 'running', status: 'running' })],
@@ -644,5 +657,70 @@ describe('claims in the assistant’s text', () => {
     expect(
       claimsFromText('The build succeeded.\nType-checking is clean.').map((c) => c.kind)
     ).toEqual(['build', 'lint'])
+  })
+})
+
+describe('a normal finish that left the request undone', () => {
+  it('is partly done when a requested write was refused', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          {
+            role: 'tool',
+            content: '',
+            name: 'write',
+            callId: 'w1',
+            args: { path: 'out/report.md' },
+            status: 'done',
+            isError: true,
+            result: 'The call to `write` was not run: tool not offered.',
+          },
+          assistant('Done.'),
+        ],
+      })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
+  it('is partly done while the plan has open items', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), assistant('Done.')], openTodos: 2 })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
+  it('is partly done when the sandbox could not run a command', () => {
+    const outcome = deriveRunOutcome(
+      input({
+        turns: [
+          user(),
+          {
+            role: 'tool',
+            content: '',
+            name: 'bash',
+            callId: 'b1',
+            args: { command: 'python examples\\basic.py' },
+            status: 'done',
+            isError: true,
+            result:
+              "python : The term 'python' is not recognized\n[exit 1]\n" +
+              '[sandbox: `python` is not available in this sandbox. Do not retry.]',
+          },
+          assistant('Not run: no Python in the sandbox.'),
+        ],
+      })
+    )
+    expect(outcome.status).toBe('partial')
+    expect(outcome.headline).toBe('finished-incomplete')
+  })
+
+  it('is still completed when nothing was left undone', () => {
+    const outcome = deriveRunOutcome(
+      input({ turns: [user(), assistant('Done.')], openTodos: 0 })
+    )
+    expect(outcome.status).toBe('completed')
   })
 })

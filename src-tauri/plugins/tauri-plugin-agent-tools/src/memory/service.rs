@@ -441,8 +441,11 @@ pub fn move_scope(
     record.updated_at = now;
 
     // Written to the destination before it leaves the source, so a failure
-    // between the two duplicates a memory rather than losing one.
-    store::upsert(&target_store, &record).map_err(Denied::Storage)?;
+    // between the two duplicates a memory rather than losing one. Capped like
+    // every other write that adds to a scope, or moving records in would grow
+    // a full one without bound (Jozkah/jan#188).
+    store::insert_capped(&target_store, &record, super::create::MAX_RECORDS_PER_SCOPE)
+        .map_err(Denied::Storage)?;
     let source_store = access.store_for(from).expect("checked in find");
     store::remove(source_store, from, id).map_err(Denied::Storage)?;
     Ok(MemoryView::from_record(&record))
@@ -740,6 +743,41 @@ mod tests {
             .items
             .is_empty());
         assert_eq!(list(&access, Scope::User, None, 0, 50).unwrap().total, 1);
+        let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
+    }
+
+    #[test]
+    fn moving_into_a_full_scope_is_refused_and_moves_nothing() {
+        let (access, project, permanent) = access();
+        let many: Vec<MemoryRecord> = (0..super::super::create::MAX_RECORDS_PER_SCOPE)
+            .map(|i| {
+                MemoryRecord::new(
+                    MemoryId::new(format!("u{i}")),
+                    &format!("fact {i}"),
+                    Scope::User,
+                    Creator::User,
+                    Origin::Explicit,
+                    1_000,
+                )
+            })
+            .collect();
+        store::save(&permanent, Scope::User, &many).unwrap();
+        save(&project, "m", "a project fact", Scope::Project, Some("p1"), None);
+
+        let result = move_scope(
+            &access,
+            Scope::Project,
+            &MemoryId::new("m"),
+            Scope::User,
+            2_000,
+        );
+        assert!(matches!(result, Err(Denied::Storage(_))), "{result:?}");
+        assert_eq!(
+            store::load(&permanent, Scope::User).records.len(),
+            super::super::create::MAX_RECORDS_PER_SCOPE
+        );
+        // Still where it was.
+        assert!(get(&access, Scope::Project, &MemoryId::new("m")).is_ok());
         let _ = std::fs::remove_dir_all(permanent.parent().unwrap());
     }
 

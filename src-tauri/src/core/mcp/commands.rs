@@ -214,6 +214,11 @@ pub async fn deactivate_mcp_server<R: Runtime>(
         generations.insert(name.clone(), next);
     }
 
+    // The monitor for this instance must stop with it. Its handle is removed
+    // here rather than left for a later start to overwrite, which would only
+    // detach it (#112).
+    super::helpers::abort_mcp_monitor(&state.mcp_monitoring_tasks, &name).await;
+
     // Explicit deactivation is the only thing that should drop the last-known
     // tool schema — a transient disconnect must not (collect_mcp_tools keeps
     // serving it until the server is actually turned off).
@@ -393,28 +398,6 @@ pub async fn get_server_summaries(
     Ok(summaries)
 }
 
-/// Calls a tool on an MCP server by name with optional arguments
-///
-/// # Arguments
-/// * `state` - Application state containing MCP server connections
-/// * `tool_name` - Name of the tool to call
-/// * `server_name` - Optional name of the server to call the tool from (for disambiguation)
-/// * `arguments` - Optional map of argument names to values
-/// * `cancellation_token` - Optional token to allow cancellation from JS side
-/// * `max_output_chars` - Optional caller-derived per-result character budget
-///   (the desktop chat derives one from the active model's context window);
-///   combined with the `maxToolOutputChars` setting, tighter wins
-///
-/// # Returns
-/// * `Result<CallToolResult, String>` - Result of the tool call if successful, or error message if failed
-///
-/// This function:
-/// 1. Locks the MCP servers mutex to access server connections
-/// 2. If server_name is provided, looks for the tool in that specific server
-/// 3. Otherwise, searches through all servers for one containing the named tool
-/// 4. When found, calls the tool on that server with the provided arguments
-/// 5. Supports cancellation via cancellation_token
-/// 6. Returns error if no server has the requested tool or if specified server not found
 /// The prompts a connected server offers (AH-138).
 ///
 /// A prompt is a message the *server* composes -- a template its author wrote,
@@ -672,6 +655,28 @@ pub async fn mcp_allow_once(
     )
 }
 
+/// Calls a tool on an MCP server by name with optional arguments
+///
+/// # Arguments
+/// * `state` - Application state containing MCP server connections
+/// * `tool_name` - Name of the tool to call
+/// * `server_name` - Optional name of the server to call the tool from (for disambiguation)
+/// * `arguments` - Optional map of argument names to values
+/// * `cancellation_token` - Optional token to allow cancellation from JS side
+/// * `max_output_chars` - Optional caller-derived per-result character budget
+///   (the desktop chat derives one from the active model's context window);
+///   combined with the `maxToolOutputChars` setting, tighter wins
+///
+/// # Returns
+/// * `Result<CallToolResult, String>` - Result of the tool call if successful, or error message if failed
+///
+/// This function:
+/// 1. Locks the MCP servers mutex to access server connections
+/// 2. If server_name is provided, looks for the tool in that specific server
+/// 3. Otherwise, searches through all servers for one containing the named tool
+/// 4. When found, calls the tool on that server with the provided arguments
+/// 5. Supports cancellation via cancellation_token
+/// 6. Returns error if no server has the requested tool or if specified server not found
 #[tauri::command]
 pub async fn call_tool(
     state: State<'_, AppState>,
@@ -1096,8 +1101,75 @@ pub async fn get_mcp_configs<R: Runtime>(app: AppHandle<R>) -> Result<String, St
         *settings_guard = settings.clone();
     }
 
+    // #118: remember the server list the desktop now believes is on disk.
+    remember_desktop_view(&path, config_value.get("mcpServers"));
+
     serde_json::to_string_pretty(&config_value)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))
+}
+
+/// The `mcpServers` map the desktop UI last loaded or saved, per config path.
+/// `save_mcp_configs` uses it as the merge base so a save only applies what
+/// the desktop itself changed, instead of overwriting edits that `flint mcp`
+/// (or the TUI) made to the same file while the app was running (#118).
+fn desktop_views() -> &'static std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Map<String, Value>>> {
+    static VIEWS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, Map<String, Value>>>,
+    > = std::sync::OnceLock::new();
+    VIEWS.get_or_init(Default::default)
+}
+
+fn remember_desktop_view(path: &Path, servers: Option<&Value>) {
+    let servers = servers
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    if let Ok(mut views) = desktop_views().lock() {
+        views.insert(path.to_path_buf(), servers);
+    }
+}
+
+/// Three-way merge of the server list. `base` is what the desktop last saw,
+/// `ours` is what it wants to save, `disk` is the file as it is now.
+/// A server the desktop did not touch (same in `ours` and `base`) takes the
+/// disk version, including being absent because another writer removed it;
+/// a server the desktop added, edited or removed takes the desktop's version;
+/// a server only on disk (added elsewhere) is kept.
+fn merge_mcp_servers(
+    base: &Map<String, Value>,
+    ours: &Map<String, Value>,
+    disk: &Map<String, Value>,
+) -> Map<String, Value> {
+    let mut merged = Map::new();
+    for (name, value) in ours {
+        if base.get(name) == Some(value) {
+            if let Some(on_disk) = disk.get(name) {
+                merged.insert(name.clone(), on_disk.clone());
+            }
+        } else {
+            merged.insert(name.clone(), value.clone());
+        }
+    }
+    for (name, value) in disk {
+        if merged.contains_key(name) || ours.contains_key(name) {
+            continue;
+        }
+        if base.contains_key(name) {
+            // The desktop removed it: only honour that if the disk copy is the
+            // one the desktop saw, otherwise another writer changed it since.
+            if base.get(name) == Some(value) {
+                continue;
+            }
+        }
+        merged.insert(name.clone(), value.clone());
+    }
+    merged
+}
+
+fn read_disk_servers(path: &Path) -> Option<Map<String, Value>> {
+    let text = fs::read_to_string(path).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    value.get("mcpServers")?.as_object().cloned()
 }
 
 /// Check if error indicates extension not connected
@@ -1258,6 +1330,24 @@ pub async fn save_mcp_configs<R: Runtime>(
         config_object.insert("mcpServers".to_string(), json!({}));
     }
 
+    // #118: merge with the file as it is now instead of overwriting it with
+    // the desktop's startup snapshot, so concurrent `flint mcp` edits survive.
+    let ours = config_object
+        .get("mcpServers")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let base = desktop_views()
+        .lock()
+        .ok()
+        .and_then(|views| views.get(&path).cloned());
+    if let (Some(base), Some(disk)) = (base, read_disk_servers(&path)) {
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        config_object.insert("mcpServers".to_string(), Value::Object(merged));
+    }
+    // The desktop's belief is its own payload; the next save diffs against it.
+    remember_desktop_view(&path, Some(&Value::Object(ours)));
+
     let serialized = serde_json::to_string_pretty(&config_value)
         .map_err(|e| format!("Failed to serialize MCP config: {e}"))?;
     write_file_atomically(&path, serialized.as_bytes())?;
@@ -1269,4 +1359,47 @@ pub async fn save_mcp_configs<R: Runtime>(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod stale_write_tests {
+    use super::merge_mcp_servers;
+    use serde_json::{json, Map, Value};
+
+    fn map(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    #[test]
+    fn a_desktop_toggle_keeps_a_server_the_cli_added() {
+        let base = map(json!({"a": {"command": "x", "active": true}}));
+        let ours = map(json!({"a": {"command": "x", "active": false}}));
+        let disk = map(json!({
+            "a": {"command": "x", "active": true},
+            "foo": {"command": "npx", "env": {"API_KEY": "k"}}
+        }));
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        assert_eq!(merged["a"]["active"], json!(false));
+        assert!(merged.contains_key("foo"), "CLI-added server was dropped");
+    }
+
+    #[test]
+    fn an_unrelated_desktop_save_does_not_resurrect_a_cli_removal() {
+        let base = map(json!({"a": {"command": "x"}, "b": {"command": "y"}}));
+        let ours = map(json!({"a": {"command": "x"}, "b": {"command": "y2"}}));
+        let disk = map(json!({"b": {"command": "y"}}));
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        assert!(!merged.contains_key("a"), "CLI-removed server came back");
+        assert_eq!(merged["b"]["command"], json!("y2"));
+    }
+
+    #[test]
+    fn a_cli_enable_is_not_reverted_and_a_desktop_removal_still_applies() {
+        let base = map(json!({"a": {"active": false}, "gone": {"command": "z"}}));
+        let ours = map(json!({"a": {"active": false}}));
+        let disk = map(json!({"a": {"active": true}, "gone": {"command": "z"}}));
+        let merged = merge_mcp_servers(&base, &ours, &disk);
+        assert_eq!(merged["a"]["active"], json!(true));
+        assert!(!merged.contains_key("gone"));
+    }
 }

@@ -25,7 +25,12 @@ import {
   type StreamSink,
   type ToolOutcome,
 } from '@/lib/coworkRunner'
-import { buildSubagentSystemPrompt } from '@/lib/coworkPrompt'
+import {
+  buildSubagentSystemPrompt,
+  environmentOptions,
+  type CoworkEnvironmentOptions,
+  type PromptFolderAccess,
+} from '@/lib/coworkPrompt'
 import { streamCutOff } from '@/lib/streamFinish'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
@@ -321,7 +326,7 @@ export type RunSubagentOptions = {
      * was. A child that believes the folder is editable when it is not writes
      * into refusals and reports work it did not do.
      */
-    folderAccess?: 'read-only' | 'editable'
+    folderAccess?: PromptFolderAccess
     /** The parent's `JAN.md`, handed down for the same reason. */
     projectInstructions?: string | null
     /**
@@ -332,7 +337,9 @@ export type RunSubagentOptions = {
      * dispatched it, in the same repository, in the same run.
      */
     compatInstructions?: readonly { name: string; content: string }[]
-  }
+    /** The managed worktree's own branch, handed down like the access. */
+    worktreeBranch?: string | null
+  } & CoworkEnvironmentOptions
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /** Who the child's calls are recorded as (see `RunDeps.activity`). */
@@ -359,6 +366,8 @@ function childStep(opts: {
   tools: Record<string, Tool>
   messages: UIMessage[]
   signal: AbortSignal
+  /** The closing turn after the loop guard stopped the run: no tool calls. */
+  textOnly?: boolean
 }): Promise<ReadableStream<UIMessageChunk>> {
   return (async () => {
     const modelMessages = await convertToModelMessages(opts.messages, {
@@ -370,7 +379,12 @@ function childStep(opts: {
       messages: modelMessages,
       abortSignal: opts.signal,
       tools: Object.keys(opts.tools).length > 0 ? opts.tools : undefined,
-      toolChoice: Object.keys(opts.tools).length > 0 ? 'auto' : undefined,
+      toolChoice:
+        Object.keys(opts.tools).length > 0
+          ? opts.textOnly
+            ? 'none'
+            : 'auto'
+          : undefined,
     })
     const usage = createUsageCollector()
     return result.toUIMessageStream({
@@ -420,6 +434,8 @@ export async function runSubagent(
       folderAccess: opts.system.folderAccess,
       projectInstructions: opts.system.projectInstructions,
       compatInstructions: opts.system.compatInstructions,
+      worktreeBranch: opts.system.worktreeBranch,
+      ...environmentOptions(opts.system),
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })
@@ -457,13 +473,14 @@ export async function runSubagent(
       maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
       sessionTokens,
       deps: {
-        sendStep: (msgs, signal) =>
+        sendStep: (msgs, signal, stepOpts) =>
           childStep({
             model: opts.model,
             system,
             tools,
             messages: msgs,
             signal,
+            textOnly: stepOpts?.textOnly,
           }),
         dispatch: opts.dispatch,
         activity: opts.activity,

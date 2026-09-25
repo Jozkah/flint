@@ -16,6 +16,7 @@ import {
   SearchField,
 } from '@/containers/engine/EngineKit'
 import { route } from '@/constants/routes'
+import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -28,6 +29,7 @@ import type { CoworkTurn } from '@/types/coworkSession'
 import { cn, formatBytes } from '@/lib/utils'
 
 export const Route = createFileRoute(route.artifacts as any)({
+  beforeLoad: () => ensureCoworkEnabled(),
   component: ArtifactsPage,
 })
 
@@ -644,6 +646,10 @@ function LibraryCard({
   typeText: string
 }) {
   const { t } = useTranslation()
+  // #183: a row whose path never resolved inside its session root has nothing
+  // to preview; the double-click and Open button are gated the same way as
+  // the inspector's Open Preview.
+  const canOpen = Boolean(row.root && resolveInRoot(row.root, row.path))
   return (
     <li data-testid="artifact-card" className="min-w-0">
       <Frame
@@ -664,6 +670,7 @@ function LibraryCard({
               size="icon-sm"
               className="relative z-10 pointer-coarse:size-11"
               onClick={onOpen}
+              disabled={!canOpen}
               title={t('common:artifactOpenPreview')}
               aria-label={`${t('common:artifactOpenPreview')}: ${row.title}`}
               data-testid="artifact-open"
@@ -676,7 +683,7 @@ function LibraryCard({
           <button
             type="button"
             onClick={onSelect}
-            onDoubleClick={onOpen}
+            onDoubleClick={canOpen ? onOpen : undefined}
             aria-current={selected || undefined}
             aria-label={t('common:artifactShowDetails', { name: row.title })}
             data-testid="artifact-row"
@@ -854,7 +861,9 @@ function ArtifactInspector({
             size="sm"
             className="pointer-coarse:h-11"
             onClick={onOpen}
-            disabled={missing}
+            // Same precondition as the external/folder actions: a path that
+            // never resolved inside the session root cannot be previewed.
+            disabled={!abs || missing}
             data-testid="artifact-inspector-open"
           >
             {t('common:artifactOpenPreview')}

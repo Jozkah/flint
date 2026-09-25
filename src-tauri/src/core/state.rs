@@ -4,8 +4,6 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 #[cfg(not(feature = "cli"))]
-use crate::core::downloads::models::DownloadManagerState;
-#[cfg(not(feature = "cli"))]
 use crate::core::mcp::models::{McpSettings, ToolWithServer};
 #[cfg(not(feature = "cli"))]
 use crate::core::mcp::progress::JanClientHandler;
@@ -42,9 +40,56 @@ pub struct ProviderConfig {
     /// the provider's native API.
     #[serde(default)]
     pub api_type: Option<String>,
+    /// Whether credentials kept outside this config -- the auth credential
+    /// store, the OS keyring, account (OAuth) tokens -- may be attached to
+    /// requests for it. Never persisted: it is decided afresh each time the
+    /// configs are layered, from where this entry's `base_url` came from.
+    #[serde(skip)]
+    pub stored_credentials: StoredCredentials,
+}
+
+/// Provenance of a provider entry's endpoint, as far as credentials stored
+/// under the provider's name are concerned. A provider name alone never
+/// authorizes attaching a stored secret: a project's `agent.toml` can reuse
+/// any name and point it anywhere (Jozkah/jan#60).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StoredCredentials {
+    /// The endpoint's provenance is unknown or project-supplied: only keys
+    /// written inline in this very config are sent. The default, so an entry
+    /// nobody vouched for fails closed.
+    #[default]
+    Withheld,
+    /// The endpoint is one the user configured (global config, Desktop, a
+    /// CLI override) or a project override naming that same endpoint.
+    Allowed,
+}
+
+/// Whether two provider base URLs name the same endpoint. Both must parse as
+/// absolute URLs with a host. Scheme and host case, a default port written
+/// out, and one trailing slash on the path are ignored; everything else --
+/// user info, port, path, query, fragment -- must match exactly. There is no
+/// prefix, suffix or substring matching.
+pub fn same_endpoint(a: &str, b: &str) -> bool {
+    fn normalized(raw: &str) -> Option<url::Url> {
+        let mut url = url::Url::parse(raw.trim()).ok()?;
+        if url.cannot_be_a_base() || url.host_str().is_none() {
+            return None;
+        }
+        if let Some(path) = url.path().strip_suffix('/').map(str::to_string) {
+            url.set_path(&path);
+        }
+        Some(url)
+    }
+    matches!((normalized(a), normalized(b)), (Some(a), Some(b)) if a == b)
 }
 
 impl ProviderConfig {
+    /// The one rule every stored-credential path consults before attaching a
+    /// secret it did not find inline in this config.
+    pub fn may_use_stored_credentials(&self) -> bool {
+        self.stored_credentials == StoredCredentials::Allowed
+    }
+
     pub fn bearer_key_chain(&self) -> Vec<String> {
         if !self.api_keys.is_empty() {
             return self.api_keys.clone();
@@ -177,7 +222,6 @@ impl RunningServiceEnum {
 pub struct AppState {
     pub app_token: Option<String>,
     pub mcp_servers: SharedMcpServers,
-    pub download_manager: Arc<Mutex<DownloadManagerState>>,
     pub mcp_active_servers: Arc<Mutex<HashMap<String, serde_json::Value>>>,
     pub server_handle: Arc<Mutex<Option<ServerHandle>>>,
     pub tool_call_cancellations: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
@@ -221,7 +265,6 @@ impl Default for AppState {
         Self {
             app_token: None,
             mcp_servers: Default::default(),
-            download_manager: Default::default(),
             mcp_active_servers: Default::default(),
             server_handle: Default::default(),
             tool_call_cancellations: Default::default(),

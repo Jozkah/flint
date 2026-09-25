@@ -61,6 +61,10 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
 
+/// The latest diagnostics per document URI, with the version they were
+/// published for.
+type Diagnostics = Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>;
+
 /// One language server this build knows how to start.
 #[derive(Debug, Clone, Copy)]
 pub struct ServerSpec {
@@ -278,7 +282,7 @@ struct Connection {
     stdin: Arc<Mutex<ChildStdin>>,
     next_id: AtomicU64,
     pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Reply>>>>,
-    diagnostics: Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>,
+    diagnostics: Diagnostics,
     /// Bumped on every `publishDiagnostics`, so a wait can see a new one.
     published: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
@@ -553,7 +557,7 @@ fn read_loop(
     mut reader: BufReader<std::process::ChildStdout>,
     stdin: Arc<Mutex<ChildStdin>>,
     pending: Arc<Mutex<HashMap<u64, mpsc::Sender<Reply>>>>,
-    diagnostics: Arc<Mutex<HashMap<String, (u64, Vec<Value>)>>>,
+    diagnostics: Diagnostics,
     published: Arc<AtomicU64>,
     alive: Arc<AtomicBool>,
 ) {
@@ -716,11 +720,10 @@ impl LspPool {
                 ),
             )
         })?;
-        if query.line == 0 || query.column == 0 {
-            if query.action != Action::Diagnostics {
+        if (query.line == 0 || query.column == 0)
+            && query.action != Action::Diagnostics {
                 return Err(LspError::new(LspErrorKind::InvalidInput, "line and column are 1-based and must be given"));
             }
-        }
         if cancel() {
             return Err(LspError::new(LspErrorKind::Cancelled, "the run was cancelled before the language server was asked"));
         }
@@ -824,6 +827,32 @@ impl Drop for LspPool {
     }
 }
 
+/// One line of a file a result names, for its snippet (Jozkah/jan#153).
+///
+/// The server may name any file: one outside the project, or one far larger
+/// than a line is worth. Only a file inside the project and within
+/// `MAX_FILE_BYTES` -- the bound the queried file is held to -- is read, and
+/// only up to the line wanted; anything else shows no snippet.
+fn location_line(project: &Path, path: &Path, line0: u64) -> String {
+    use std::io::BufRead;
+    let inside = match (std::fs::canonicalize(project), std::fs::canonicalize(path)) {
+        (Ok(root), Ok(file)) => file.starts_with(root),
+        _ => false,
+    };
+    let small = std::fs::metadata(path).is_ok_and(|m| m.is_file() && m.len() <= MAX_FILE_BYTES);
+    if !inside || !small {
+        return String::new();
+    }
+    let Ok(file) = std::fs::File::open(path) else {
+        return String::new();
+    };
+    std::io::BufReader::new(file)
+        .lines()
+        .nth(line0 as usize)
+        .and_then(Result::ok)
+        .unwrap_or_default()
+}
+
 fn ask(connection: &Connection, spec: &ServerSpec, project: &Path, query: &Query, cancel: &dyn Fn() -> bool) -> Result<String, LspError> {
     let before = connection.published.load(Ordering::SeqCst);
     let (uri, text) = connection.sync(spec, &query.path)?;
@@ -855,8 +884,8 @@ fn ask(connection: &Connection, spec: &ServerSpec, project: &Path, query: &Query
             }
             let mut out = format!("{} location(s) where it is {what} ({}):\n", locations.len().min(MAX_LOCATIONS), spec.program);
             for (path, line0, char0) in locations.iter().take(MAX_LOCATIONS) {
-                let source = std::fs::read_to_string(path).unwrap_or_default();
-                let target = source.lines().nth(*line0 as usize).unwrap_or("");
+                let source = location_line(project, path, *line0);
+                let target = source.as_str();
                 let column = from_lsp_character(target, *char0);
                 let snippet: String = target.trim().chars().take(MAX_LINE_CHARS).collect();
                 out.push_str(&format!("{}:{}:{}  {snippet}\n", display_path(project, path), line0 + 1, column));
@@ -1010,6 +1039,29 @@ fn hover_text(result: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A result location is read only inside the project and within the size
+    /// bound the queried file has (#153).
+    #[test]
+    fn a_result_snippet_is_bounded_and_stays_in_the_project() {
+        let root = std::env::temp_dir().join(format!("jan-lsp-loc-{}", std::process::id()));
+        let project = root.join("p");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(project.join("a.rs"), "one
+two
+").unwrap();
+        assert_eq!(location_line(&project, &project.join("a.rs"), 1), "two");
+
+        let big = project.join("big.js");
+        let f = std::fs::File::create(&big).unwrap();
+        f.set_len(MAX_FILE_BYTES + 1).unwrap();
+        assert_eq!(location_line(&project, &big, 0), "");
+
+        std::fs::write(root.join("outside.rs"), "secret
+").unwrap();
+        assert_eq!(location_line(&project, &root.join("outside.rs"), 0), "");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn a_message_round_trips_and_a_bad_frame_is_refused() {

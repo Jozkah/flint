@@ -52,7 +52,7 @@ pub(crate) fn discover_including_disabled(root: &Path) -> Vec<CommandEntry> {
 
 /// Scan one plugins directory (project or global) for command files,
 /// skipping disabled plugins and interrupted `.installing-*` staging dirs.
-fn scan_dir(dir: &Path, disabled: &[String], out: &mut Vec<CommandEntry>) {
+pub(crate) fn scan_dir(dir: &Path, disabled: &[String], out: &mut Vec<CommandEntry>) {
     let Ok(rd) = std::fs::read_dir(dir) else {
         return;
     };
@@ -110,8 +110,7 @@ fn scan(root: &Path, disabled: &[String]) -> Vec<CommandEntry> {
 /// Commands offered to the human, honoring the `[skills].enabled` whitelist
 /// (plugin name, qualified `<plugin>:<name>`, or plain name enable a command;
 /// an empty whitelist enables everything). Used by the cli slash popup; the
-/// desktop invokes commands through the plugin crate's handlers.
-#[cfg(any(feature = "cli", test))]
+/// desktop slash popup reads the same list through `slash::catalog`.
 pub(crate) fn catalog(root: &Path, enabled: &[String]) -> Vec<CommandEntry> {
     let commands = discover(root);
     if enabled.is_empty() {

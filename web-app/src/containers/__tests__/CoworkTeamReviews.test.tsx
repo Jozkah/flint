@@ -15,7 +15,8 @@ vi.mock('@tauri-apps/api/core', () => ({
 }))
 
 import { CoworkTeamReviews } from '../CoworkTeamReviews'
-import type { ChildView } from '@/lib/teamChildren'
+import { useTeamChildrenVersion, type ChildView } from '@/lib/teamChildren'
+import { act } from '@testing-library/react'
 
 const base = (over: Partial<ChildView>): ChildView => ({
   ownerId: 's1--child-alpha',
@@ -177,5 +178,34 @@ describe('CoworkTeamReviews', () => {
     render(<CoworkTeamReviews project="C:/project" session="s1" />)
     await waitFor(() => expect(invoke).toHaveBeenCalled())
     expect(screen.queryByTestId('team-reviews')).toBeNull()
+  })
+
+  it('ignores an older load that answers after a newer one', async () => {
+    // First call hangs until released; the second answers at once.
+    let releaseFirst: (v: ChildView[]) => void = () => {}
+    let calls = 0
+    invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'agent_team_children_list') {
+        calls += 1
+        if (calls === 1) {
+          return new Promise<ChildView[]>((r) => {
+            releaseFirst = r
+          })
+        }
+        return [base({})]
+      }
+      if (cmd === 'agent_proposal_list') return []
+      return null
+    })
+    render(<CoworkTeamReviews project="C:/project" session="s1" />)
+    await waitFor(() => expect(calls).toBe(1))
+
+    act(() => useTeamChildrenVersion.getState().bump())
+    await waitFor(() => expect(screen.getAllByTestId('team-child')).toHaveLength(1))
+
+    await act(async () => {
+      releaseFirst(children)
+    })
+    expect(screen.getAllByTestId('team-child')).toHaveLength(1)
   })
 })

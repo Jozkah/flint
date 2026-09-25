@@ -21,7 +21,6 @@ Object.defineProperty(globalThis, 'window', {
     core: {
       extensionManager: {
         getByName: vi.fn().mockReturnValue({
-          downloadFiles: vi.fn().mockResolvedValue(undefined),
           cancelDownload: vi.fn().mockResolvedValue(undefined),
           pauseDownload: vi.fn().mockResolvedValue(undefined),
         }),

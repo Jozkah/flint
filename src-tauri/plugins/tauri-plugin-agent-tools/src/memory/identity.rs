@@ -58,6 +58,29 @@ pub fn project_id_read_only(project_root: &Path) -> String {
     read_written_id(project_root).unwrap_or_else(|| derived_project_id(project_root))
 }
 
+/// Write `id` down as the identity of the project whose store is
+/// `store_root`, when that store lives inside a project folder
+/// (`<project>/.jan/agent`) and no id file is there yet.
+///
+/// Called when a project memory is actually saved -- the one moment the
+/// identity has to survive a move of the folder. Resolving a scope to read or
+/// recall uses [`project_id_read_only`] and writes nothing, so attaching a
+/// folder in Review only never creates `.jan/` in it (#312). A store in the
+/// data folder (workspace projects) is not a project folder and is skipped.
+pub fn persist_for_store(store_root: &Path, id: &str) {
+    let id = id.trim();
+    if id.is_empty() || !store_root.ends_with(Path::new(".jan").join("agent")) {
+        return;
+    }
+    let path = store_root.join("project-id");
+    if path.exists() {
+        return;
+    }
+    if std::fs::create_dir_all(store_root).is_ok() {
+        let _ = write_atomically(&path, id);
+    }
+}
+
 /// The id derived from the folder's canonical path alone, ignoring any
 /// written id file. Memory does not use this; cross-session messaging does,
 /// because a written id is repository content and can be copied into an
@@ -232,6 +255,30 @@ mod tests {
         assert_eq!(project_id_read_only(&chosen), "proj-by-hand");
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_dir_all(&chosen);
+    }
+
+    /// #312: saving a project memory is what writes the id down, and it
+    /// writes the same id a read-only lookup already used.
+    #[test]
+    fn persisting_from_a_project_store_writes_the_read_only_id() {
+        let root = unique_project("persist");
+        let id = project_id_read_only(&root);
+        assert!(!identity_path(&root).exists());
+        persist_for_store(&project_store(&root), &id);
+        assert_eq!(std::fs::read_to_string(identity_path(&root)).unwrap(), id);
+        // An existing id is never overwritten.
+        persist_for_store(&project_store(&root), "proj-other");
+        assert_eq!(project_id_read_only(&root), id);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_data_folder_store_gets_no_id_file() {
+        let data = unique_project("datafolder");
+        let store = data.join("agent-workspace");
+        persist_for_store(&store, "jan-project:p1");
+        assert!(!store.join("project-id").exists());
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     #[test]

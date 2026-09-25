@@ -105,9 +105,24 @@ describe('CoworkWorkflowCard', () => {
       />
     )
     expect(screen.getByText('refactor the parser')).toBeInTheDocument()
-    expect(
-      screen.getByText(/common:tasks.progress finished=1 total=2/)
-    ).toBeInTheDocument()
+    // While work is running the summary says how much is running; the
+    // finished count returns once nothing is.
+    expect(screen.getByText(/common:tasks.runningTasks count=1/)).toBeInTheDocument()
+  })
+
+  it('summarises time, tokens, running work and running tools on one line', () => {
+    render(
+      <Card
+        state={stateWith(
+          task({ id: 'a', status: 'done', endedAt: T0 + 1 }),
+          task({ id: 'b', title: 'pnpm build', kind: 'shell' })
+        )}
+      />
+    )
+    const summary = screen.getByTestId('workflow-summary')
+    expect(summary).toHaveTextContent(/common:tasks.runningTasks count=1/)
+    expect(summary).toHaveTextContent('common:tasks.runningTools')
+    expect(summary).toHaveTextContent('·')
   })
 
   it('lists each unit of work with its own status', () => {
@@ -135,9 +150,7 @@ describe('CoworkWorkflowCard', () => {
     // canonical state" has to mean.
     const before = stateWith(task({ id: 'a' }))
     const { rerender } = render(<Card state={before} />)
-    expect(
-      screen.getByText(/common:tasks.progress finished=0 total=1/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/common:tasks.runningTasks count=1/)).toBeInTheDocument()
 
     const after = updateTask(before, idOf('a'), {
       status: 'done',

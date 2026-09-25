@@ -218,7 +218,17 @@ pub enum ProposalError {
     /// approval did not acknowledge.
     Unacknowledged(Vec<String>),
     Conflicts(Vec<Conflict>),
+    /// Failed before anything was written to the destination.
     Io(String),
+    /// A write failed part-way and the files written before it were put
+    /// back -- all of them, or all but `not_restored` (Jozkah/jan#264).
+    WriteFailed {
+        error: String,
+        not_restored: Vec<String>,
+    },
+    /// Every file was written, and then the proposal's own record could not
+    /// be saved: the change is on disk but the proposal still reads pending.
+    NotRecorded(String),
 }
 
 impl ProposalError {
@@ -261,7 +271,18 @@ impl ProposalError {
                 "{} selected change(s) overlap edits made since the proposal; nothing was written",
                 c.len()
             ),
-            ProposalError::Io(e) => format!("could not apply the change ({e}); nothing was left half-written"),
+            ProposalError::Io(e) => format!("could not apply the change ({e}); nothing was written"),
+            ProposalError::WriteFailed { error, not_restored } if not_restored.is_empty() => format!(
+                "could not apply the change ({error}); the files written before it were put back, so nothing was left half-written"
+            ),
+            ProposalError::WriteFailed { error, not_restored } => format!(
+                "could not apply the change ({error}), and {} could not be put back and may be half-applied: {}",
+                not_restored.len(),
+                not_restored.join(", ")
+            ),
+            ProposalError::NotRecorded(e) => format!(
+                "the change was written in full, but the proposal's record could not be saved ({e}); it may still show as pending"
+            ),
         }
     }
 }
@@ -289,11 +310,27 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    write_atomic_with(path, bytes, None)
+}
+
+/// `write_atomic`, giving the temp file `perms` before it replaces `path`, so
+/// the result carries them rather than the process's `0o666 & umask` default.
+fn write_atomic_with(
+    path: &Path,
+    bytes: &[u8],
+    perms: Option<std::fs::Permissions>,
+) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let temp = path.with_extension(format!("tmp-{}", std::process::id()));
     std::fs::write(&temp, bytes).map_err(|e| e.to_string())?;
+    if let Some(perms) = perms {
+        if let Err(e) = std::fs::set_permissions(&temp, perms) {
+            let _ = std::fs::remove_file(&temp);
+            return Err(e.to_string());
+        }
+    }
     std::fs::rename(&temp, path).map_err(|e| {
         let _ = std::fs::remove_file(&temp);
         e.to_string()
@@ -988,7 +1025,14 @@ pub fn plan(
                 out
             }
         };
-        if chosen.is_empty() && !(file.binary || file.oversized) {
+        // Nothing chosen means nothing to do -- except a whole-file change
+        // approved whole: an empty file added or deleted has no hunks at all,
+        // and skipping it here left it unapplied under an Applied report
+        // (Jozkah/jan#272).
+        let whole_file = file.binary
+            || file.oversized
+            || (file.change != Change::Modified && matches!(sel.hunks, HunkChoice::All));
+        if chosen.is_empty() && !whole_file {
             continue;
         }
 
@@ -1106,13 +1150,30 @@ pub struct ApplyReport {
 fn write_file(dest_root: &Path, path: &str, content: Option<&[u8]>) -> Result<(), String> {
     let target = dest_root.join(path);
     match content {
-        Some(bytes) => write_atomic(&target, bytes),
+        Some(bytes) => write_atomic_with(&target, bytes, existing_mode(&target)),
         None => match std::fs::remove_file(&target) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
             Err(e) => Err(e.to_string()),
         },
     }
+}
+
+/// The permission bits of a file about to be replaced, so an edit keeps an
+/// executable script executable (Jozkah/jan#274). Unix only: Windows has no
+/// mode bits, and carrying its read-only flag onto the temp file would make
+/// the replacing rename fail. A new file gets the default mode.
+#[cfg(unix)]
+fn existing_mode(target: &Path) -> Option<std::fs::Permissions> {
+    std::fs::metadata(target)
+        .ok()
+        .filter(|m| m.is_file())
+        .map(|m| m.permissions())
+}
+
+#[cfg(not(unix))]
+fn existing_mode(_target: &Path) -> Option<std::fs::Permissions> {
+    None
 }
 
 /// Apply an approval. All files land, or none do.
@@ -1152,12 +1213,16 @@ pub fn apply(
     let mut written: Vec<&PlannedFile> = Vec::new();
     for file in &planned {
         if let Err(e) = write_file(dest_root, &file.path, file.content.as_deref()) {
-            // Put back everything already written, in reverse.
+            // Put back everything already written, in reverse, and say which
+            // could not be (Jozkah/jan#264).
+            let mut not_restored = Vec::new();
             for done in written.iter().rev() {
-                let _ = write_file(dest_root, &done.path, done.current.as_deref());
+                if write_file(dest_root, &done.path, done.current.as_deref()).is_err() {
+                    not_restored.push(done.path.clone());
+                }
             }
             audit(data_folder, &record, "rolled-back", format!("{}: {e}", file.path));
-            return Err(ProposalError::Io(e));
+            return Err(ProposalError::WriteFailed { error: e, not_restored });
         }
         written.push(file);
     }
@@ -1186,7 +1251,8 @@ pub fn apply(
         event: "applied".into(),
         detail: detail.clone(),
     });
-    save(data_folder, &record).map_err(ProposalError::Io)?;
+    // The files are already written: a failure here is not "nothing written".
+    save(data_folder, &record).map_err(ProposalError::NotRecorded)?;
     audit(data_folder, &record, "applied", detail);
     Ok(ApplyReport {
         proposal_id: record.id.clone(),
@@ -1291,6 +1357,77 @@ mod tests {
         assert_eq!(loaded, record);
         // The destination is untouched by creating a proposal.
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), BASE);
+    }
+
+    /// Jozkah/jan#264: the error only claims nothing was left half-written
+    /// when that is true.
+    #[test]
+    fn failure_messages_say_what_was_left_on_disk() {
+        let clean = ProposalError::WriteFailed { error: "disk full".into(), not_restored: vec![] };
+        assert!(clean.message().contains("nothing was left half-written"));
+        let dirty = ProposalError::WriteFailed {
+            error: "disk full".into(),
+            not_restored: vec!["a.txt".into()],
+        };
+        assert!(!dirty.message().contains("nothing was left"), "{}", dirty.message());
+        assert!(dirty.message().contains("a.txt"));
+        let unrecorded = ProposalError::NotRecorded("denied".into()).message();
+        assert!(unrecorded.contains("written in full") && !unrecorded.contains("nothing was"), "{unrecorded}");
+    }
+
+    /// Jozkah/jan#274: applying an edit to an executable file keeps its mode;
+    /// a file the proposal creates still gets the default mode.
+    #[cfg(unix)]
+    #[test]
+    fn apply_keeps_the_mode_of_an_edited_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let (data, dest) = dirs("mode");
+        let record = two_hunks(&data, &dest);
+        let target = dest.join("a.txt");
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (data2, dest2) = dirs("mode-new");
+        let fresh = create(
+            &data2,
+            scope(&dest2),
+            "abc123",
+            vec![FileInput { path: "new.txt".into(), base: None, proposed: Some(b"x".to_vec()) }],
+        )
+        .unwrap();
+
+        apply(&data, &dest, &approve(&record, &dest, vec![all("a.txt")])).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), PROPOSED);
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(mode, 0o755, "mode changed to {mode:o}");
+
+        apply(&data2, &dest2, &approve(&fresh, &dest2, vec![all("new.txt")])).unwrap();
+        let mode = std::fs::metadata(dest2.join("new.txt")).unwrap().permissions().mode();
+        assert_eq!(mode & 0o111, 0, "a created file came out executable: {mode:o}");
+    }
+
+    /// Jozkah/jan#272: an empty file added (`__init__.py`, `.gitkeep`) or an
+    /// empty file deleted stages to zero hunks. Approved whole, it must still
+    /// land, not be skipped while the proposal reports Applied.
+    #[test]
+    fn empty_files_added_and_deleted_still_land() {
+        let (data, dest) = dirs("empty");
+        std::fs::write(dest.join("gone.txt"), "").unwrap();
+        let record = create(
+            &data,
+            scope(&dest),
+            "abc123",
+            vec![
+                FileInput { path: "__init__.py".into(), base: None, proposed: Some(Vec::new()) },
+                FileInput { path: "gone.txt".into(), base: Some(Vec::new()), proposed: None },
+            ],
+        )
+        .unwrap();
+        // A deletion is only applied once acknowledged, empty file or not.
+        let mut approval = approve(&record, &dest, vec![all("__init__.py"), all("gone.txt")]);
+        approval.acknowledged = vec!["gone.txt".into()];
+        let report = apply(&data, &dest, &approval).unwrap();
+        assert_eq!(report.state, ProposalState::Applied);
+        assert!(dest.join("__init__.py").is_file(), "the empty file was not created");
+        assert!(!dest.join("gone.txt").exists(), "the empty file was not deleted");
     }
 
     #[test]
@@ -1552,7 +1689,7 @@ mod tests {
             &approve(&record, &dest, vec![all("a.txt"), all("b/c.txt")]),
         )
         .unwrap_err();
-        assert!(matches!(err, ProposalError::Io(_)));
+        assert!(matches!(&err, ProposalError::WriteFailed { not_restored, .. } if not_restored.is_empty()), "{err:?}");
         assert_eq!(std::fs::read_to_string(dest.join("a.txt")).unwrap(), "a\n");
     }
 

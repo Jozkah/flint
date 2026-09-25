@@ -1,5 +1,4 @@
 pub mod cli;
-pub mod config;
 pub mod crypto;
 pub mod fs;
 pub mod http;
@@ -11,7 +10,6 @@ pub mod system;
 
 // Re-export commonly used functions
 pub use cli::*;
-pub use config::*;
 pub use crypto::*;
 pub use fs::*;
 pub use http::*;

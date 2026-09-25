@@ -92,20 +92,69 @@ pub fn get_short_path<P: AsRef<std::path::Path>>(path: P) -> Option<String> {
         .chain(Some(0))
         .collect();
 
+    // When the buffer is too small, GetShortPathNameW writes nothing and
+    // returns the size it needs (terminator included), which can exceed 260
+    // for a long path. Grow to that size and ask again rather than slicing
+    // past the end of the buffer (#176).
     let mut buffer = vec![0u16; 260];
-    let len = unsafe { GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32) };
+    for _ in 0..3 {
+        let len = unsafe {
+            GetShortPathNameW(wide.as_ptr(), buffer.as_mut_ptr(), buffer.len() as u32)
+        } as usize;
+        match short_path_outcome(len, buffer.len()) {
+            ShortPath::Failed => return None,
+            ShortPath::Written(len) => return Some(String::from_utf16_lossy(&buffer[..len])),
+            ShortPath::NeedsBuffer(size) => buffer = vec![0u16; size],
+        }
+    }
+    None
+}
 
-    if len > 0 {
-        Some(String::from_utf16_lossy(&buffer[..len as usize]))
+/// What a `GetShortPathNameW` return value means for a buffer of `capacity`.
+#[cfg(any(windows, test))]
+#[derive(Debug, PartialEq, Eq)]
+enum ShortPath {
+    Failed,
+    Written(usize),
+    NeedsBuffer(usize),
+}
+
+#[cfg(any(windows, test))]
+fn short_path_outcome(returned: usize, capacity: usize) -> ShortPath {
+    if returned == 0 {
+        ShortPath::Failed
+    } else if returned < capacity {
+        ShortPath::Written(returned)
     } else {
-        None
+        ShortPath::NeedsBuffer(returned)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    #[cfg(windows)]
     use super::*;
+
+    #[test]
+    fn a_too_small_buffer_asks_for_a_bigger_one_instead_of_slicing() {
+        assert_eq!(short_path_outcome(0, 260), ShortPath::Failed);
+        assert_eq!(short_path_outcome(12, 260), ShortPath::Written(12));
+        assert_eq!(short_path_outcome(260, 260), ShortPath::NeedsBuffer(260));
+        assert_eq!(short_path_outcome(400, 260), ShortPath::NeedsBuffer(400));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_path_longer_than_max_path_does_not_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut long = dir.path().to_path_buf();
+        for _ in 0..30 {
+            long.push("a_fairly_long_directory_name");
+        }
+        let long = std::path::PathBuf::from(format!("\\\\?\\{}", long.display()));
+        std::fs::create_dir_all(&long).unwrap();
+        // Either a short path or None; never a panic.
+        let _ = get_short_path(&long);
+    }
 
     #[cfg(windows)]
     #[test]

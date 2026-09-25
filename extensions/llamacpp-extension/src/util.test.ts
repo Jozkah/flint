@@ -9,7 +9,7 @@ import {
   getProxyConfig,
   truncateToTokenBudget,
 } from './util'
-import { getBackendSetting } from './backend-settings'
+import { getBackendSecret, getBackendSetting } from './backend-settings'
 
 vi.mock('./backend-settings')
 
@@ -26,6 +26,33 @@ describe('getProxyConfig', async () => {
 
     expect(result).toBeNull()
     expect(getBackendSetting).toHaveBeenCalledWith('setting-proxy-config')
+  })
+
+  // #82: the password is no longer in the settings blob; it comes from the
+  // keyring.
+  it('reads the proxy password from the keyring', async () => {
+    const proxyConfig = {
+      state: {
+        proxyEnabled: true,
+        proxyUrl: 'http://proxy.example.com:8080',
+        proxyUsername: 'user',
+        proxyIgnoreSSL: false,
+        verifyProxySSL: true,
+        verifyProxyHostSSL: true,
+        verifyPeerSSL: true,
+        verifyHostSSL: true,
+        noProxy: '',
+      },
+      version: 1,
+    }
+    vi.mocked(getBackendSetting).mockResolvedValue(JSON.stringify(proxyConfig))
+    vi.mocked(getBackendSecret).mockResolvedValueOnce('kr-pass')
+
+    const result = await getProxyConfig()
+
+    expect(getBackendSecret).toHaveBeenCalledWith('proxy-password')
+    expect(result?.username).toBe('user')
+    expect(result?.password).toBe('kr-pass')
   })
 
   it('should return null when proxy is disabled', async () => {

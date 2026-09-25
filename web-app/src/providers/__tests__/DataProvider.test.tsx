@@ -467,6 +467,31 @@ describe('DataProvider', () => {
     expect(calls.length).toBe(0)
   })
 
+  // #139: the backend picks its wire converter by api_type, so it has to be
+  // sent -- for the built-in anthropic provider and for a custom provider
+  // configured as Anthropic.
+  it('registers each provider with the wire format it speaks', async () => {
+    const fetched = [
+      { provider: 'anthropic', active: true, models: [{ id: 'claude' }], custom_header: [], base_url: 'https://a' },
+      { provider: 'my-proxy', api_type: 'anthropic', active: true, models: [{ id: 'm' }], custom_header: [], base_url: 'https://p' },
+      { provider: 'openai', active: true, models: [{ id: 'gpt-4' }], custom_header: [], base_url: 'https://o' },
+    ]
+    hubState.getProviders.mockResolvedValue(fetched)
+    h.providers = fetched
+    render(<DataProvider />)
+    const sent = () =>
+      Object.fromEntries(
+        h.invoke.mock.calls
+          .filter((c) => c[0] === 'register_provider_config')
+          .map((c) => {
+            const r = (c[1] as { request: { provider: string; api_type?: string } }).request
+            return [r.provider, r.api_type]
+          })
+      )
+    await waitFor(() => expect(Object.keys(sent())).toHaveLength(3))
+    expect(sent()).toEqual({ anthropic: 'anthropic', 'my-proxy': 'anthropic', openai: 'openai' })
+  })
+
   it('skips registration when provider has no API key chain', async () => {
     h.providerRemoteApiKeyChain.mockReturnValue([])
     h.providers = [
@@ -548,6 +573,20 @@ describe('DataProvider', () => {
         { model: 'm1', provider: 'openai' },
       ])
     })
+  })
+
+  // #156: an omitted flag reads as false on the backend, so the auto-start
+  // must pass the persisted "Execute tools on server" setting through.
+  it('auto-starts the server with the persisted server tool execution setting', async () => {
+    h.localApi.enableOnStartup = true
+    ;(h.localApi as Record<string, unknown>).enableServerToolExecution = true
+    hubState.getServerStatus.mockResolvedValue(false)
+    render(<DataProvider />)
+    await waitFor(() => expect(hubState.startServer).toHaveBeenCalled())
+    expect(hubState.startServer).toHaveBeenCalledWith(
+      expect.objectContaining({ enableServerToolExecution: true })
+    )
+    delete (h.localApi as Record<string, unknown>).enableServerToolExecution
   })
 
   it('sets server status to stopped on startup failure', async () => {

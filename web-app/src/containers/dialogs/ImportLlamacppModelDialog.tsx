@@ -46,6 +46,17 @@ const EMBEDDING_GGUF_ARCHS = new Set([
 // legitimately different for MTP draft heads (e.g. "gemma4-assistant" vs "gemma4").
 const SPEC_VOCAB_MAX_SIZE_DIFFERENCE = 128
 
+/** The id format the llamacpp extension accepts (`isValidModelId`). */
+const MODEL_ID_RE = /^[a-zA-Z0-9/_.-]+$/
+
+/**
+ * Turn a file name into a model id the backend accepts: whitespace becomes
+ * `-` and any other character outside `[a-zA-Z0-9/_.-]` is dropped.
+ */
+function toModelId(name: string): string {
+  return name.replace(/\s/g, '-').replace(/[^a-zA-Z0-9/_.-]/g, '')
+}
+
 type TokenizerInfo = {
   tokenizerModel?: string
   addBos?: boolean
@@ -201,7 +212,9 @@ export const ImportLlamacppModelDialog = ({
               const architecture =
                 result.metadata.metadata?.['general.architecture']
 
-              setModelName(await serviceHub.path().basename(filePath))
+              // Sanitize the file name: a raw name with spaces or other
+              // characters would pass here and then fail the backend's id check.
+              setModelName(toModelId(await serviceHub.path().basename(filePath)))
               setModelTokenizerInfo(
                 extractTokenizerInfo(result.metadata.metadata)
               )
@@ -361,10 +374,7 @@ export const ImportLlamacppModelDialog = ({
       if (type === 'model') {
         setModelFile(selectedFile)
         // Set temporary model name from filename (will be overridden by baseName from metadata if available)
-        const sanitizedName = fileName
-          .replace(/\s/g, '-')
-          .replace(/\.(gguf|GGUF)$/, '')
-          .replace(/[^a-zA-Z0-9/_.-]/g, '') // Remove any characters not allowed in model IDs
+        const sanitizedName = toModelId(fileName.replace(/\.(gguf|GGUF)$/, ''))
         setModelName(sanitizedName)
 
         // Validate the selected model file (this will update model name with baseName from metadata)
@@ -895,6 +905,7 @@ export const ImportLlamacppModelDialog = ({
               importing ||
               !modelFile ||
               !modelName ||
+              !MODEL_ID_RE.test(modelName) ||
               (isMultimodal && !mmProjFile) ||
               (isDraftModel && !draftFile) ||
               validationError !== null ||

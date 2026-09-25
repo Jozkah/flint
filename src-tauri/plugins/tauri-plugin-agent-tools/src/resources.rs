@@ -47,7 +47,7 @@ impl Resources {
 }
 
 /// What a whole run's commands used.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RunResources {
     /// Commands the run started.

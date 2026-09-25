@@ -13,6 +13,7 @@ import {
   projectHistory,
   quoteText,
   renderSkillsCatalog,
+  SKILL_CATALOG_BUDGET_CHARS,
   transcriptText,
   UNTRUSTED_NOTICE,
 } from '../context'
@@ -48,18 +49,34 @@ describe('context projection', () => {
     resolveExtensions.mockClear()
   })
 
-  it('injects the resolved skills catalog into the built system prompt', async () => {
+  it('injects the resolved skills catalog for a participant with tools', async () => {
     resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    const withTools = {
+      kind: 'participant' as const,
+      participant: { ...room.participants[0], toolAccess: 'read' as const },
+    }
     const built = await buildPrompt({
       room,
       messages: [],
-      speaker: alice,
+      speaker: withTools,
       contextWindow: 32000,
       maxOutputTokens: 512,
     })
     expect(resolveExtensions).toHaveBeenCalledWith('rooms')
-    expect(built.system).toContain('## Skill: caveman')
+    expect(built.system).toContain('- `caveman`')
     expect(built.system).toContain('Talk terse.')
+    expect(built.system).toContain('skill_read')
+  })
+
+  it('lists no skills to a speaker that has no tools to load them', async () => {
+    resolvedSkills = [{ name: 'caveman', description: 'Talk terse.' }]
+    for (const speaker of [
+      { kind: 'participant' as const, participant: { ...room.participants[0], toolAccess: 'none' as const } },
+      { kind: 'moderator' as const },
+    ]) {
+      const built = await buildPrompt({ room, messages: [], speaker, contextWindow: 32000, maxOutputTokens: 512 })
+      expect(built.system).not.toContain('# Skills')
+    }
   })
 
   it('leaves the prompt unchanged when the resolver returns no skills', async () => {
@@ -71,14 +88,46 @@ describe('context projection', () => {
       contextWindow: 32000,
       maxOutputTokens: 512,
     })
-    expect(built.system).toBe(buildSystemPrompt(room, alice))
+    // Only the date is added, last, so the prefix stays cacheable.
+    expect(built.system).toMatch(/\n\nToday's date is \d{4}-\d{2}-\d{2}\.$/)
+    expect(built.system.startsWith(buildSystemPrompt(room, alice))).toBe(true)
     expect(built.system).not.toContain('# Skills')
+  })
+
+  it('points a tool-capable speaker with no folder at its tool list, and edit access at the delete rule', () => {
+    const noFolder = makeRoom({ folder: undefined })
+    const reader = {
+      kind: 'participant' as const,
+      participant: { ...noFolder.participants[0], toolAccess: 'read' as const },
+    }
+    const s = buildSystemPrompt(noFolder, reader)
+    expect(s).toContain('tool list')
+    expect(s).not.toContain('Unless connected MCP tools')
+    const withFolder = makeRoom({ folder: '/work' })
+    const editor = {
+      kind: 'participant' as const,
+      participant: { ...withFolder.participants[0], toolAccess: 'edit' as const },
+    }
+    expect(buildSystemPrompt(withFolder, editor)).toContain('Do not delete, overwrite or move files')
+  })
+
+  it('renderSkillsCatalog keeps a large library within the budget, standalone skills first', () => {
+    const long = `${'Does a thing. '.repeat(40)}\nSecond line.`
+    const skills = [
+      ...Array.from({ length: 400 }, (_, i) => ({ name: `pack:s${i}`, description: long, plugin: 'pack' })),
+      { name: 'deploy', description: long },
+    ] as never[]
+    const block = renderSkillsCatalog(skills)!
+    expect(block.length).toBeLessThan(SKILL_CATALOG_BUDGET_CHARS + 200)
+    expect(block.split('\n').find((l) => l.startsWith('- '))).toMatch(/^- `deploy`/)
+    expect(block).toContain('more skills are not listed')
+    expect(block).not.toContain('Second line')
   })
 
   it('renderSkillsCatalog renders name + description, and null for an empty list', () => {
     expect(renderSkillsCatalog([])).toBeNull()
     const block = renderSkillsCatalog([{ name: 'caveman', description: 'Talk terse.' } as never])
-    expect(block).toContain('## Skill: caveman')
+    expect(block).toContain('- `caveman`')
     expect(block).toContain('Talk terse.')
   })
 

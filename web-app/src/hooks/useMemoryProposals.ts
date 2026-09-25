@@ -11,7 +11,7 @@
  * unanswered guess is not injected into any prompt while it waits.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   memoryProposalsList,
   type MemoryLocation,
@@ -78,7 +78,12 @@ export function useMemoryProposals({
     [dataFolder, sessionId, janProjectId, projectRoot]
   )
 
+  // The primary thread pane keeps this hook mounted across a thread switch, so
+  // a list requested for the previous thread can answer after the current
+  // one's. Only the most recently issued reload may write the list.
+  const reloadSeq = useRef(0)
   const reload = useCallback(async () => {
+    const seq = ++reloadSeq.current
     // Development preview (dev/previewSeed.ts): the browser has no backend.
     if (import.meta.env.DEV && enabled) {
       const preview = (
@@ -97,6 +102,7 @@ export function useMemoryProposals({
     }
     try {
       const all = await memoryProposalsList(location)
+      if (seq !== reloadSeq.current) return
       setProposals(
         sessionId ? all.filter((p) => p.sourceSessionId === sessionId) : all
       )
@@ -104,7 +110,7 @@ export function useMemoryProposals({
       // Outside a chat or project the backend refuses rather than returning an
       // empty list. Either way there is nothing to answer, and a toast about a
       // background poll would be noise.
-      setProposals([])
+      if (seq === reloadSeq.current) setProposals([])
     }
   }, [location, enabled, sessionId])
 

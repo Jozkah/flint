@@ -82,6 +82,8 @@ pub async fn register_provider_config(
             .collect(),
         models: request.models, // Models will be added when they are configured
         api_type: request.api_type,
+        // Registered by the user in Desktop; no project config reaches here.
+        stored_credentials: crate::core::state::StoredCredentials::Allowed,
     };
 
     // Persist the key chain to the OS keyring so it survives webview storage
@@ -231,6 +233,7 @@ mod tests {
             custom_headers: vec![],
             models: vec![],
             api_type: None,
+            ..Default::default()
         }
     }
 

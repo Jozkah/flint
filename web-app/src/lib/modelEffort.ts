@@ -12,6 +12,7 @@
  */
 
 import {
+  anthropicTakesAnExplicitBudget,
   THINKING_BUDGET_LEVELS,
   type ThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
@@ -29,15 +30,11 @@ export function effortLabel(level: EffortLevel): string {
   return THINKING_BUDGET_LEVELS.find((l) => l.key === level)?.label ?? level
 }
 
-/**
- * Anthropic's adaptive thinking sizes itself, so a level changes nothing on
- * models that support it. Only the pre-4.6 family takes an explicit
- * `budgetTokens`, and that is the same test `buildReasoningProviderOptions`
- * makes — kept identical here so the control and the request cannot disagree.
- */
-function anthropicTakesAnExplicitBudget(modelId: string): boolean {
-  return /(opus|sonnet|haiku)-([0-3]|4-[0-5])\b/.test(modelId.toLowerCase())
-}
+// Anthropic's adaptive thinking sizes itself, so a level changes nothing on
+// models that support it. Only the pre-4.6 family takes an explicit
+// `budgetTokens`: `anthropicTakesAnExplicitBudget`, the same function
+// `buildReasoningProviderOptions` uses, so the control and the request cannot
+// disagree.
 
 /**
  * Providers with their own reasoning wiring, handled explicitly elsewhere and

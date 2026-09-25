@@ -415,6 +415,45 @@ fn the_selected_shell_writes_its_worktree_and_not_the_checkout() {
     assert!(!outside.exists(), "the confined shell wrote the user's checkout: {seen}");
 }
 
+/// Jozkah/jan#124: a Jan-owned worktree granted as a write root keeps its
+/// `.jan` (the project's agent policy and hooks) out of the confined shell,
+/// while the rest of the worktree stays readable. Driven through the real
+/// helper, so the ACLs are the ones a `bash` call gets.
+#[test]
+fn a_worktrees_jan_is_unreadable_from_the_sandbox() {
+    let sandbox = Sandbox::new("worktree-jan");
+    let worktree = sandbox.root.join("jan-worktree");
+    std::fs::create_dir_all(worktree.join(".jan").join("agent")).expect("worktree");
+    let policy = worktree.join(".jan").join("agent").join("agent.toml");
+    std::fs::write(&policy, "policy-marker-124").expect("policy");
+    let source = worktree.join("main.rs");
+    std::fs::write(&source, "source-marker-124").expect("source");
+    let script = format!(
+        "Get-Content -LiteralPath '{}'; try {{ Get-Content -LiteralPath '{}' -ErrorAction Stop }} catch {{ 'refused-jan' }}",
+        source.display(),
+        policy.display()
+    );
+    let argv = appcontainer::helper_args(
+        &sandbox.workspace,
+        Some(&sandbox.scratch),
+        &[worktree.clone()],
+        false,
+        &powershell(),
+        &[
+            "-NoProfile".to_string(),
+            "-NonInteractive".to_string(),
+            "-Command".to_string(),
+            script,
+        ],
+    );
+    let out = Command::new(HELPER).args(&argv).output().expect("helper");
+    let seen = text(&out);
+    appcontainer::release(&worktree);
+    assert!(seen.contains("refused-jan"), "{seen}");
+    assert!(seen.contains("source-marker-124"), "the worktree itself was unreadable: {seen}");
+    assert!(!seen.contains("policy-marker-124"), "the confined shell read the worktree's .jan: {seen}");
+}
+
 /// Whether `pid` names a running process.
 fn alive(pid: u32) -> bool {
     Command::new("tasklist")
@@ -490,4 +529,60 @@ fn a_stopped_sandboxed_command_leaves_no_process_behind() {
     for one in std::iter::once(pid).chain(tree.iter().copied()) {
         assert!(!alive(one), "process {one} outlived the stop");
     }
+}
+
+/// Toolchains open the NUL device all the time (Go's buildID probe, git's
+/// `/dev/null`, `> NUL` redirects). Whether a confined process can is decided
+/// by `\Device\Null`'s DACL, not by anything the helper sets: a plain
+/// AppContainer passes only if it grants `ALL APPLICATION PACKAGES`. So the
+/// scenario checks the helper against the host's own answer -- where the DACL
+/// admits containers NUL must open, and where it does not the failure must be
+/// the device's `Access is denied`, which is what the hint explains.
+#[test]
+fn the_nul_device_matches_what_its_descriptor_allows() {
+    let sandbox = Sandbox::new("nul-device");
+    let admits = appcontainer::null_device_admits_sandbox()
+        .expect("the NUL descriptor should be readable from an ordinary process");
+    let cmd = text(&sandbox.cmd("echo x > NUL && echo nul-ok"));
+    let ps = text(&sandbox.run(
+        &powershell(),
+        &[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "try { [System.IO.File]::OpenWrite('NUL').Dispose(); 'nul-ok' } catch { 'nul-denied' }",
+        ],
+        false,
+    ));
+    for seen in [&cmd, &ps] {
+        if admits {
+            assert!(seen.contains("nul-ok"), "NUL should open: {seen}");
+        } else {
+            assert!(!seen.contains("nul-ok"), "NUL opened despite its DACL: {seen}");
+            assert!(seen.to_lowercase().contains("denied"), "{seen}");
+        }
+    }
+}
+
+/// Go's build cache must be writable in the sandbox: its default sits under
+/// the host `LOCALAPPDATA`, so the helper points it into the synthetic home.
+/// Skipped when Go is not installed where its installer puts it.
+#[test]
+fn go_sees_a_writable_build_cache() {
+    let go = PathBuf::from(r"C:\Program Files\Go\bin\go.exe");
+    if !go.is_file() {
+        eprintln!("skipped: no Go at {}", go.display());
+        return;
+    }
+    let sandbox = Sandbox::new("go-cache");
+    let out = sandbox.run(&go, &["env", "GOCACHE"], false);
+    let seen = text(&out);
+    assert_eq!(out.status.code(), Some(0), "{seen}");
+    // Go may add a telemetry warning line after the value.
+    let cache = PathBuf::from(seen.lines().next().unwrap_or_default().trim());
+    assert!(cache.ends_with(r"AppData\Local\go-build"), "{seen}");
+    assert!(
+        !cache.starts_with(std::env::var_os("LOCALAPPDATA").unwrap_or_default()),
+        "GOCACHE still points at the host profile: {seen}"
+    );
 }

@@ -153,6 +153,12 @@ function General() {
 
     if (selectedPath === janDataFolder) return
     if (selectedPath !== null) {
+      // Reject a drive/filesystem root up front, before the confirm dialog
+      // can stop models or kill the sidecar (e.g. C:\ on Windows, / on Unix).
+      if (isRootDir(selectedPath as string)) {
+        toast.error(t('settings:general.couldNotRelocateToRoot'))
+        return
+      }
       setSelectedNewPath(selectedPath as string)
       setIsDialogOpen(true)
     }
@@ -160,14 +166,17 @@ function General() {
 
   const confirmDataFolderChange = async () => {
     if (selectedNewPath) {
+      // Validate before any destructive step: stopping models and killing the
+      // sidecar for a path that will be rejected anyway is needless disruption.
+      if (isRootDir(selectedNewPath)) {
+        toast.error(t('settings:general.couldNotRelocateToRoot'))
+        return
+      }
       try {
         await serviceHub.models().stopAllModels()
         serviceHub.events().emit(SystemEvent.KILL_SIDECAR)
         setTimeout(async () => {
           try {
-            // Prevent relocating to root directory (e.g., C:\ or D:\ on Windows, / on Unix)
-            if (isRootDir(selectedNewPath))
-              throw new Error(t('settings:general.couldNotRelocateToRoot'))
             await serviceHub.app().relocateJanDataFolder(selectedNewPath)
             setJanDataFolder(selectedNewPath)
             // Only relaunch if relocation was successful

@@ -10,14 +10,17 @@ struct MLXServerCommand: AsyncParsableCommand {
         abstract: "MLX-Swift inference server with OpenAI-compatible API"
     )
 
-    @Option(name: [.long, .short], help: "Path to the GGUF model file")
+    @Option(name: [.long, .short], help: "Path to the model directory, or a file inside it")
     var model: String
 
     @Option(name: .long, help: "Port to listen on")
     var port: Int = 8080
 
-    @Option(name: .long, help: "Context window size")
-    var ctxSize: Int = 4096
+    /// Optional on purpose: MLX's `maxKVSize` is a rotating sliding window, not
+    /// a hard cap, so a default here would silently drop every session's
+    /// oldest tokens past it (#70). Only an explicit `--ctx-size` applies it.
+    @Option(name: .long, help: "Context window size (bounds the KV cache when given)")
+    var ctxSize: Int?
 
     @Option(name: .long, help: "API key for authentication (optional)")
     var apiKey: String = ""
@@ -25,15 +28,19 @@ struct MLXServerCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Model ID reported by the API (defaults to parent directory name)")
     var modelId: String = ""
 
+    /// MLX buffer cache limit: 20 GiB. It was `20 * 1024 * 1024`, 20 MiB,
+    /// which made the allocator churn buffers on every step (#75).
+    static let gpuCacheLimitBytes: Int = 20 * 1024 * 1024 * 1024
+
     func run() async throws {
         // Set GPU memory limit to prevent OOM issues
-        Memory.cacheLimit = 20 * 1024 * 1024  // 20GB limit
+        Memory.cacheLimit = Self.gpuCacheLimitBytes
 
         // Print startup info
         log("[mlx] MLX-Swift Server starting...")
         log("[mlx] Model path: \(model)")
         log("[mlx] Port: \(port)")
-        log("[mlx] Context size: \(ctxSize)")
+        log("[mlx] Context size: \(ctxSize.map(String.init) ?? "model default")")
         log("[mlx] Memory cache limit: \(Memory.cacheLimit / (1024 * 1024))MB")
 
         // Resolve model ID: use --model-id if provided, otherwise derive from parent directory
@@ -44,6 +51,8 @@ struct MLXServerCommand: AsyncParsableCommand {
 
         // Load the model
         let modelRunner = ModelRunner()
+        // Apply --ctx-size, when given, to every chat session.
+        await modelRunner.setContextLength(ctxSize)
 
         do {
             try await modelRunner.load(modelPath: model)

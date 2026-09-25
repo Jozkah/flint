@@ -317,6 +317,35 @@ describe('useMessages', () => {
       expect(result.current.messages['thread1']).toEqual([testMessages[1]])
     })
 
+    it('restores the message and logs when the backend delete fails (#80)', async () => {
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mockDeleteMessage.mockRejectedValueOnce(new Error('disk error'))
+      const { result } = renderHook(() => useMessages())
+      const testMessages: ThreadMessage[] = [
+        { id: 'a', thread_id: 't', role: 'user', content: 'A', created_at: 1 },
+        { id: 'b', thread_id: 't', role: 'user', content: 'B', created_at: 2 },
+        { id: 'c', thread_id: 't', role: 'user', content: 'C', created_at: 3 },
+      ] as ThreadMessage[]
+      act(() => {
+        result.current.setMessages('t', testMessages)
+      })
+
+      act(() => {
+        result.current.deleteMessage('t', 'b')
+      })
+      expect(result.current.messages['t'].map((m) => m.id)).toEqual(['a', 'c'])
+
+      await act(async () => {
+        await new Promise((r) => setTimeout(r, 0))
+      })
+      expect(result.current.messages['t'].map((m) => m.id)).toEqual(['a', 'b', 'c'])
+      expect(errorSpy).toHaveBeenCalledWith(
+        'Failed to delete message:',
+        expect.any(Error)
+      )
+      errorSpy.mockRestore()
+    })
+
     it('should handle deleting from empty thread', () => {
       const { result } = renderHook(() => useMessages())
 
@@ -373,5 +402,61 @@ describe('useMessages', () => {
 
       expect(result2.current.getMessages('thread1')).toEqual([testMessage])
     })
+  })
+})
+
+describe('useMessages addMessage persist echo (#178)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useMessages.setState({ messages: {} })
+  })
+
+  const msg: ThreadMessage = {
+    id: 'm1',
+    thread_id: 't1',
+    role: 'user',
+    content: 'Hello',
+    created_at: 1,
+  } as ThreadMessage
+
+  it('does not let the createMessage echo undo a newer updateMessage', async () => {
+    let resolveCreate!: (m: ThreadMessage) => void
+    mockCreateMessage.mockReturnValue(
+      new Promise<ThreadMessage>((resolve) => {
+        resolveCreate = resolve
+      })
+    )
+    mockModifyMessage.mockResolvedValue(undefined)
+
+    act(() => {
+      useMessages.getState().addMessage(msg)
+    })
+    act(() => {
+      useMessages.getState().updateMessage({
+        ...msg,
+        metadata: { error: 'x' },
+      } as ThreadMessage)
+    })
+
+    await act(async () => {
+      resolveCreate({ ...msg })
+      await Promise.resolve()
+    })
+
+    const stored = useMessages.getState().getMessages('t1')
+    expect(stored).toHaveLength(1)
+    expect(stored[0].metadata).toEqual({ error: 'x' })
+  })
+
+  it('still applies the echo when nothing changed meanwhile', async () => {
+    const persisted = { ...msg, content: 'persisted' } as ThreadMessage
+    mockCreateMessage.mockResolvedValue(persisted)
+
+    await act(async () => {
+      useMessages.getState().addMessage(msg)
+      await Promise.resolve()
+    })
+
+    expect(useMessages.getState().getMessages('t1')[0]).toBe(persisted)
   })
 })

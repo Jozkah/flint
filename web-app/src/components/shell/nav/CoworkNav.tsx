@@ -75,6 +75,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
 
+
 type CoworkNavItem = {
   title: string
   icon: LucideIcon
@@ -137,11 +138,12 @@ const SessionItem = memo(function SessionItem({
         <span className="truncate">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
-          // session in view being treated as busy (janhq/jan#8905). A neutral
-          // spinner, not the accent: the accent marks the selected row.
+          // session in view being treated as busy (janhq/jan#8905). The row's
+          // status mark shows it; this names it for assistive technology.
           <span
             role="status"
             aria-label={t('common:tasks.running', { count: 1 })}
+            title={t('common:tasks.running', { count: 1 })}
             data-testid={`cowork-session-running-${session.id}`}
             className="sr-only"
           >

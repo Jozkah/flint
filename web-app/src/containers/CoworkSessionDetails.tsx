@@ -58,7 +58,10 @@ export function CoworkSessionDetails({
             {summary || t('common:sessionDetails.description')}
           </p>
         </header>
-        <div className="flex flex-col gap-3" data-testid="session-details-body">
+        <div
+          className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere] [&_*]:min-w-0"
+          data-testid="session-details-body"
+        >
           {children}
         </div>
       </section>
@@ -87,7 +90,9 @@ export function CoworkSessionDetails({
           <Info size={16} />
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[80dvh] overflow-y-auto sm:max-w-[680px] lg:max-w-[680px] xl:max-w-[680px]">
+      {/* Paths and environment notes are long single tokens; without these
+          the body grew wider than the dialog and scrolled sideways. */}
+      <DialogContent className="max-h-[80dvh] overflow-y-auto overflow-x-hidden sm:max-w-[680px] lg:max-w-[680px] xl:max-w-[680px]">
         <DialogHeader>
           <DialogTitle>{t('common:sessionDetails.title')}</DialogTitle>
           <DialogDescription>
@@ -98,7 +103,7 @@ export function CoworkSessionDetails({
             manifest for a panel nobody asked to see. */}
         {open && (
           <div
-            className="flex flex-col gap-3"
+            className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere] [&_*]:min-w-0"
             data-testid="session-details-body"
           >
             {children}

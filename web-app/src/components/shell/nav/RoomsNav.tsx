@@ -41,6 +41,8 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
+import { useRoomsStore } from '@/lib/rooms/store'
 
 const RoomItem = memo(function RoomItem({
   room,
@@ -48,12 +50,14 @@ const RoomItem = memo(function RoomItem({
   isMobile,
   onSelect,
   onRequestDelete,
+  running,
 }: {
   room: RoomSummary
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
   onRequestDelete: (pending: { id: string; title: string }) => void
+  running?: boolean
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -78,7 +82,7 @@ const RoomItem = memo(function RoomItem({
         onClick={() => onSelect(room.id)}
         data-testid="room-nav-item"
       >
-        <span aria-hidden className="size-3.5 shrink-0" />
+        <ThreadStatusMark status={running ? 'active' : 'none'} />
         <span className="truncate">{room.title}</span>
       </NavButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -133,6 +137,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     id: string
     title: string
   } | null>(null)
+  const runningRoomIds = useRoomsStore((s) => s.runningRoomIds)
 
   useEffect(() => {
     if (api.status !== 'ready') return
@@ -206,6 +211,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
               isMobile={isMobile}
               onSelect={selectRoom}
               onRequestDelete={setPendingDelete}
+              running={runningRoomIds.includes(room.id)}
             />
           ))}
         </NavList>

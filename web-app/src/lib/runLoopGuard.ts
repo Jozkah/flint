@@ -24,6 +24,12 @@ export type LoopReason =
   | 'no-progress'
   /** A subagent delegating deeper than the run allows. */
   | 'recursive-delegation'
+  /** Shell commands failing in a row for the same kind of reason. */
+  | 'failing-shell'
+  /** Too many failed shell commands in one run, whatever the reasons. */
+  | 'shell-failure-budget'
+  /** One tool failing call after call, whatever the arguments or errors. */
+  | 'failing-tool'
 
 export type LoopVerdict =
   | { tripped: false }
@@ -32,15 +38,67 @@ export type LoopVerdict =
 /**
  * How many times a shape may repeat before it counts as a loop.
  *
- * Five for an identical call, not three: re-reading a file after editing it,
- * or running the same test command twice while fixing it, is ordinary work,
- * and a guard that stops ordinary work gets turned off. A *failure* repeating
- * is stronger evidence and is allowed fewer.
+ * - `REPEAT_LIMIT` (5): the same call, successful or not. Five, not three:
+ *   re-reading a file after editing it, or running the same test command twice
+ *   while fixing it, is ordinary work, and a guard that stops ordinary work
+ *   gets turned off.
+ * - `FAILURE_LIMIT` (3): the same tool failing with the same error. A failure
+ *   repeating is stronger evidence than a call repeating, so it gets fewer.
+ * - `SHELL_STREAK_LIMIT` (3): consecutive failed shell commands that fail for
+ *   the same kind of reason (a program that is not installed, access denied,
+ *   a POSIX-only construct, the sandbox in the way), whatever the commands
+ *   were. Probing for a missing program with ten spellings of the same idea
+ *   is one loop, not ten different attempts.
+ * - `SHELL_FAILURE_BUDGET` (8): failed shell commands in one run, for any
+ *   reason. A run that has failed that often is guessing.
  */
 export const REPEAT_LIMIT = 5
 export const FAILURE_LIMIT = 3
+export const SHELL_STREAK_LIMIT = 3
+export const SHELL_FAILURE_BUDGET = 8
+/**
+ * Consecutive failed calls of one tool, whatever the arguments and whatever
+ * the errors, before the run is stopped. A model trying a different command
+ * against a tool that keeps refusing ("Command not whitelisted", then another
+ * error, then another) changes its arguments every time, so neither the
+ * same-call nor the same-error count ever trips; this does. A success of that
+ * tool ends the streak; calls to other tools in between do not. The built-in
+ * shell has its own, reason-aware counting above and is not counted here.
+ */
+export const TOOL_FAILURE_STREAK_LIMIT = 5
 export const NO_PROGRESS_LIMIT = 2
 export const DELEGATION_DEPTH_LIMIT = 3
+
+/** The shell tool's name, whose failures get the stricter counting. */
+const SHELL_TOOL = 'bash'
+
+/** Why a shell command failed, coarsely, so different commands can be compared. */
+export type ShellFailureClass =
+  | 'program not available'
+  | 'needs a POSIX shell'
+  | 'access denied'
+  | 'blocked by the sandbox'
+
+/**
+ * The kind of reason a failed shell command gives, or null when it is not one
+ * of the kinds that repeat without the model being able to change anything.
+ */
+export function classifyShellFailure(error: string | undefined): ShellFailureClass | null {
+  if (!error) return null
+  if (/needs a POSIX shell/i.test(error)) return 'needs a POSIX shell'
+  if (
+    /is not recognized as (the name of a cmdlet|an internal or external command)|command not found|CommandNotFoundException/i.test(
+      error
+    )
+  ) {
+    return 'program not available'
+  }
+  if (/access (is )?denied|permission denied|UnauthorizedAccess/i.test(error)) {
+    return 'access denied'
+  }
+  if (/\[sandbox:/i.test(error)) return 'blocked by the sandbox'
+  return null
+}
 
 export type ObservedCall = {
   tool: string
@@ -136,19 +194,106 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
       const count = (failures.get(failureKey) ?? 0) + 1
       failures.set(failureKey, count)
       if (count >= FAILURE_LIMIT) {
+        const kind =
+          call.tool === SHELL_TOOL ? classifyShellFailure(call.error) : null
+        const inputs = new Set(
+          calls
+            .filter(
+              (one) => one.failed && `${one.tool}::${one.error ?? ''}` === failureKey
+            )
+            .map((one) => canonicalKey(one))
+        )
         return {
           tripped: true,
           reason: 'repeated-failure',
-          detail: `${call.tool} failed ${count} times the same way`,
+          // "The same way" only when it was the same call: different commands
+          // failing alike are the same *reason*, not the same attempt.
+          detail:
+            inputs.size <= 1
+              ? `${call.tool} failed ${count} times the same way`
+              : kind
+                ? `${call.tool} failed ${count} times for the same reason (${kind})`
+                : `${call.tool} failed ${count} times with the same error`,
         }
       }
     }
   }
 
+  const shell = shellFailures(calls)
+  if (shell) return shell
+
+  const failing = toolFailureStreak(calls)
+  if (failing) return failing
+
   const churn = noProgressCycle(calls)
   if (churn) return churn
 
   return { tripped: false }
+}
+
+/**
+ * Failed shell commands, counted by kind of reason rather than by text.
+ *
+ * A successful shell command ends a streak; calls to other tools in between
+ * (reading a file to see why) do not.
+ */
+function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
+  let total = 0
+  let streakClass: ShellFailureClass | null = null
+  let streak = 0
+  for (const call of calls) {
+    if (call.tool !== SHELL_TOOL) continue
+    if (!call.failed) {
+      streakClass = null
+      streak = 0
+      continue
+    }
+    total += 1
+    if (total >= SHELL_FAILURE_BUDGET) {
+      return {
+        tripped: true,
+        reason: 'shell-failure-budget',
+        detail: `${total} shell commands failed in this run`,
+      }
+    }
+    const kind = classifyShellFailure(call.error)
+    if (kind && kind === streakClass) {
+      streak += 1
+    } else {
+      streakClass = kind
+      streak = kind ? 1 : 0
+    }
+    if (streakClass && streak >= SHELL_STREAK_LIMIT) {
+      return {
+        tripped: true,
+        reason: 'failing-shell',
+        detail: `${call.tool} failed ${streak} times in a row for the same reason (${streakClass})`,
+      }
+    }
+  }
+  return null
+}
+
+/** One tool failing again and again in a row, however its calls differ. */
+function toolFailureStreak(calls: ObservedCall[]): LoopVerdict | null {
+  const streaks = new Map<string, number>()
+  for (const call of calls) {
+    if (call.tool === SHELL_TOOL || call.failed === undefined) continue
+    if (!call.failed) {
+      streaks.delete(call.tool)
+      continue
+    }
+    const streak = (streaks.get(call.tool) ?? 0) + 1
+    streaks.set(call.tool, streak)
+    if (streak >= TOOL_FAILURE_STREAK_LIMIT) {
+      return {
+        tripped: true,
+        reason: 'failing-tool',
+        detail: `${call.tool} failed ${streak} times in a row`,
+      }
+    }
+  }
+  return null
 }
 
 /**
@@ -191,5 +336,18 @@ export function loopStopMessage(verdict: LoopVerdict & { tripped: true }): strin
     `Stopped: ${verdict.detail}. This is not making progress. ` +
     'Say what you were trying to do and what is in the way, and wait for ' +
     'instructions rather than trying again.'
+  )
+}
+
+/**
+ * The note the model gets for its one last, tool-less turn after the guard
+ * stops a run, so the user hears from it instead of the run just ending.
+ */
+export function loopFinalTurnNote(verdict: LoopVerdict & { tripped: true }): string {
+  return (
+    `[Flint stopped tool use: ${verdict.detail}. No more tools can run in this ` +
+    'turn.] Reply to the user in plain text: say what you tried, what is ' +
+    'blocking it, and what they could do (for example a command to run ' +
+    'themselves). Do not call any tools.'
   )
 }

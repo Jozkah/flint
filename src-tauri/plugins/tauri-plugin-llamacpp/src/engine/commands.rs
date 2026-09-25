@@ -47,6 +47,11 @@ fn generate_worker_key() -> String {
 /// packaging puts it, alongside the ggml backend modules the worker loads by
 /// scanning its own directory), then beside the app executable for a
 /// `cargo run` build.
+///
+/// A miss names every path that was tried. The file is shipped in the bundle,
+/// so its absence always means the install is damaged rather than that the user
+/// has something to configure, and which directory came up empty is the only
+/// thing that distinguishes the ways that happens.
 fn resolve_worker_exe<R: tauri::Runtime>(
     app_handle: &tauri::AppHandle<R>,
 ) -> Result<PathBuf, String> {
@@ -61,19 +66,62 @@ fn resolve_worker_exe<R: tauri::Runtime>(
         ));
     }
 
+    let mut tried: Vec<PathBuf> = Vec::new();
+
     if let Ok(dir) = app_handle.path().resource_dir() {
         let bundled = dir.join("resources/bin").join(worker::worker_file_name());
         if bundled.is_file() {
             return Ok(bundled);
         }
+        tried.push(bundled);
     }
 
-    worker::sidecar_path().ok_or_else(|| {
-        format!(
-            "{} was not found in the app resources or next to the executable",
-            worker::worker_file_name()
-        )
-    })
+    if let Some(sidecar) = worker::sidecar_candidate() {
+        if sidecar.is_file() {
+            return Ok(sidecar);
+        }
+        tried.push(sidecar);
+    }
+
+    Err(worker_missing_message(&tried))
+}
+
+/// Builds the "worker is missing" error from the paths that were tried.
+///
+/// Split out so it can be tested: the caller needs an `AppHandle` to resolve
+/// the bundle directory, but which paths were checked is the whole content of
+/// the message.
+fn worker_missing_message(tried: &[PathBuf]) -> String {
+    let checked = if tried.is_empty() {
+        "no candidate path could be resolved".to_string()
+    } else {
+        tried
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    // A `.old` beside a missing worker is the fingerprint of an interrupted
+    // Windows upgrade: the installer frees the file by renaming it before the
+    // first write, so that copy is left behind when the install does not go
+    // ahead. Worth naming, because the fix is to run the installer again
+    // rather than anything the app can do.
+    let interrupted = tried.iter().any(|p| {
+        let mut old = p.clone().into_os_string();
+        old.push(".old");
+        PathBuf::from(old).exists()
+    });
+    let hint = if interrupted {
+        " A .old copy is present, which means an interrupted install left it renamed; re-run the installer."
+    } else {
+        " The install looks incomplete; re-run the installer."
+    };
+
+    format!(
+        "{} was not found in the app resources or next to the executable (checked: {checked}).{hint}",
+        worker::worker_file_name()
+    )
 }
 
 /// Forwards a worker fault to the frontend, which turns it into the OOM or
@@ -183,10 +231,51 @@ async fn abort_unload_watcher(state: &Arc<LlamacppState>) {
     }
 }
 
+/// How long a loopback call to the worker may take before it is abandoned.
+///
+/// A worker that accepted the connection but stopped answering would
+/// otherwise hang the command, and whatever frontend flow awaits it, forever.
+/// `/models` is a listing; `/slots/state/erase` deletes files; a reload may
+/// load models, so it gets the same budget as a model load.
+const BUSY_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+const ERASE_SLOT_STATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const RELOAD_MODELS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// An HTTP client for talking to the worker, with a request timeout.
+///
+/// Never falls back to `reqwest::Client::new()`: that client has no timeout,
+/// which is the hang this exists to prevent. If the builder fails (system
+/// proxy discovery is the usual cause), one retry skips proxies -- the worker
+/// is on loopback anyway -- and a second failure is an error.
+fn worker_client(timeout: std::time::Duration) -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .or_else(|e| {
+            log::warn!("could not build the engine worker client ({e}); retrying without proxies");
+            reqwest::Client::builder().timeout(timeout).no_proxy().build()
+        })
+        .map_err(|e| {
+            log::error!("could not build the engine worker client: {e}");
+            format!("could not build an HTTP client for the engine worker: {e}")
+        })
+}
+
 /// Models with a request in flight, from the worker's own `/models` listing.
 /// An unreachable worker reports none -- it cannot be generating.
 async fn busy_models(port: u16, api_key: &str) -> Vec<String> {
-    let Ok(resp) = reqwest::Client::new()
+    busy_models_within(port, api_key, BUSY_MODELS_TIMEOUT).await
+}
+
+async fn busy_models_within(
+    port: u16,
+    api_key: &str,
+    timeout: std::time::Duration,
+) -> Vec<String> {
+    let Ok(client) = worker_client(timeout) else {
+        return Vec::new();
+    };
+    let Ok(resp) = client
         .get(format!("http://127.0.0.1:{port}/models"))
         .bearer_auth(api_key)
         .send()
@@ -306,7 +395,7 @@ pub async fn reload_engine_models(
         body["slot_cache_mib"] = serde_json::json!(m);
     }
 
-    let resp = reqwest::Client::new()
+    let resp = worker_client(RELOAD_MODELS_TIMEOUT)?
         .post(format!("http://127.0.0.1:{port}/models/reload"))
         .bearer_auth(&api_key)
         .json(&body)
@@ -357,7 +446,14 @@ pub async fn engine_slots_idle(
             None => return Ok(true),
         }
     };
-    let busy = busy_models(port, &api_key).await;
+    // busy_models has its own request timeout; this outer bound also covers a
+    // client that could not honor it, so the command can never hang.
+    let busy = tokio::time::timeout(
+        BUSY_MODELS_TIMEOUT + std::time::Duration::from_secs(1),
+        busy_models(port, &api_key),
+    )
+    .await
+    .unwrap_or_default();
     Ok(match model_id {
         Some(id) => !busy.contains(&id),
         None => busy.is_empty(),
@@ -425,7 +521,7 @@ pub async fn erase_thread_slot_state(
         body.insert("model".into(), serde_json::Value::String(m));
     }
     let body = serde_json::Value::Object(body);
-    let client = reqwest::Client::new();
+    let client = worker_client(ERASE_SLOT_STATE_TIMEOUT)?;
     let resp = client
         .post(format!("http://127.0.0.1:{port}/slots/state/erase"))
         .bearer_auth(&api_key)
@@ -506,6 +602,32 @@ pub fn get_engine_version() -> EngineVersion {
 mod tests {
     use super::*;
 
+    /// Regression for #151: a worker that accepts the connection but never
+    /// answers must not hang `busy_models` (and so `engine_slots_idle`).
+    #[tokio::test]
+    async fn busy_models_gives_up_on_a_silent_worker() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Accept and hold connections without ever writing a response.
+        let server = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((sock, _)) = listener.accept().await {
+                held.push(sock);
+            }
+        });
+
+        let started = std::time::Instant::now();
+        let busy = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            busy_models_within(port, "k", std::time::Duration::from_millis(200)),
+        )
+        .await
+        .expect("busy_models hung on a silent worker");
+        assert!(busy.is_empty());
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        server.abort();
+    }
+
     /// The screen that shows this is the only place a user can check which
     /// engine they are running, so it has to report the pin rather than a
     /// hardcoded string that outlives the next bump.
@@ -541,6 +663,40 @@ mod tests {
             .expect("a missing override must be rejected, not ignored");
         assert!(err.contains("not a file"), "got {err}");
         std::env::remove_var("JAN_LLAMA_WORKER_BIN");
+    }
+
+    // The bundle ships the worker, so this error only ever means a damaged
+    // install. It was reported from the field with nothing but the file name,
+    // which is not enough to tell a wrong resource dir from a file the
+    // installer removed, so the paths have to be in the message.
+    #[test]
+    fn a_missing_worker_names_every_path_it_looked_at() {
+        let tried = [
+            PathBuf::from("/opt/jan/resources/bin").join(worker::worker_file_name()),
+            PathBuf::from("/opt/jan").join(worker::worker_file_name()),
+        ];
+        let msg = worker_missing_message(&tried);
+        assert!(msg.contains("/opt/jan/resources/bin"), "got {msg}");
+        assert!(msg.contains("re-run the installer"), "got {msg}");
+    }
+
+    // The abort path of the Windows installer renames the worker aside before
+    // it writes anything, so a leftover `.old` names the actual cause and a
+    // fix the user can act on.
+    #[test]
+    fn a_leftover_old_copy_is_called_out_as_an_interrupted_install() {
+        let dir = std::env::temp_dir().join(format!("jan-worker-old-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let worker_path = dir.join(worker::worker_file_name());
+
+        let without = worker_missing_message(std::slice::from_ref(&worker_path));
+        assert!(!without.contains(".old copy"), "got {without}");
+
+        std::fs::write(dir.join(format!("{}.old", worker::worker_file_name())), b"x").unwrap();
+        let with = worker_missing_message(&[worker_path]);
+        assert!(with.contains("interrupted install"), "got {with}");
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     // A thread deleted with no model loaded is the common case, so the erase

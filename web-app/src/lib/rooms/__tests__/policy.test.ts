@@ -95,6 +95,18 @@ describe('speaking policy', () => {
     expect(missing.kind === 'speaker' && missing.note).toContain('Bad JSON.')
   })
 
+  // #180: outside user-selected, a blocked selectNext was dropped with no note.
+  it.each(['round-robin', 'moderator-selected'] as const)(
+    'explains a blocked explicit choice in %s mode',
+    (mode) => {
+      const room = { ...three(), mode, round: 1, spokenThisRound: ['a'] }
+      const choice = nextSpeaker({ room, messages: [speech('a')], override: 'a' })
+      expect(choice).toMatchObject({ kind: 'speaker', via: 'fallback' })
+      expect(choice.kind === 'speaker' && choice.participant.id).not.toBe('a')
+      expect(choice.kind === 'speaker' && choice.note).toContain('Alice would exceed the consecutive-turn limit')
+    }
+  )
+
   it('enforces maxConsecutivePerParticipant', () => {
     const room = { ...three(), mode: 'moderator-selected' as const, round: 1, spokenThisRound: ['a'] }
     const d = { next: 'Alice', request: null, disagreements: [], converged: false, stop: false, reason: '' }

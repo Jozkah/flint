@@ -567,6 +567,19 @@ pub async fn sandbox_status() -> Result<SandboxStatus, AgentToolsError> {
     })
 }
 
+/// Which common toolchain programs the confined shell can run, and which are
+/// installed on the host but cannot run in the sandbox. `None` where this is
+/// not known (any backend but AppContainer). Worked out from `PATH` and folder
+/// ACLs without starting the sandbox, once per app session; a readiness retry
+/// asks again.
+#[tauri::command]
+pub async fn sandbox_toolchains(
+) -> Result<Option<crate::tools::host_tools::ToolchainReport>, AgentToolsError> {
+    tokio::task::spawn_blocking(crate::tools::host_tools::probe_toolchains)
+        .await
+        .map_err(|e| AgentToolsError::from(format!("toolchain probe failed: {e}")))
+}
+
 /// What a session can do right now, component by component.
 ///
 /// The tool list, the run preflight and the Environment readiness card all read
@@ -605,6 +618,8 @@ pub async fn environment_readiness_retry(
     component: Option<readiness::Component>,
     reported: Option<Vec<readiness::ComponentReport>>,
 ) -> Result<readiness::EnvironmentReadiness, AgentToolsError> {
+    // The user asked to look again; programs may have been installed since.
+    crate::tools::host_tools::reset_toolchain_probe();
     let root = project_root.map(PathBuf::from);
     let mut report = tokio::task::spawn_blocking(move || match component {
         Some(component) => readiness::retry(root.as_deref(), component),
@@ -1112,7 +1127,9 @@ async fn execute_tool_inner(
         _ => read_roots.first().map(|r| workspace::project_store(r)),
     };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
-        .with_network(allow_network.unwrap_or(false))
+        // The toggle, clamped by the project's `agent.toml` and the machine's
+        // policy: either one can turn the shell's network off.
+        .with_network(policy.network.allowed && allow_network.unwrap_or(false))
         .with_confined_writes(true)
         .with_mask_root(Path::new(&data_folder))
         .with_scratch_root(&scratch)
@@ -1166,11 +1183,20 @@ async fn execute_tool_inner(
             }),
         _ => None,
     };
-    let (content, diff, _images) = handlers::execute_builtin_with_diff(tool, &args, &ctx).await;
+    let ((content, diff, _images), read_ok) =
+        handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
     // AH-009: what the call was is decided once, by classification. A shell
     // command that exited non-zero is a tool failure even though it said so in
-    // its own words rather than in the tool protocol's.
-    let failure = crate::harness_error::classify_tool(&name, &content).or_else(|| {
+    // its own words rather than in the tool protocol's. A `read` that
+    // succeeded on a file whose text starts with "ERROR" is not one
+    // (Jozkah/jan#62).
+    let read_succeeded = read_ok.is_some_and(|ok| content.starts_with(&ok));
+    let failure = if read_succeeded {
+        None
+    } else {
+        crate::harness_error::classify_tool(&name, &content)
+    }
+    .or_else(|| {
         (name == "bash" && handlers::bash_result_failed(&content)).then(|| {
             crate::harness_error::HarnessError::new(
                 crate::harness_error::ErrorKind::ToolFailed,

@@ -119,7 +119,7 @@ pub struct OrgPolicy {
 
 /// How permissive a default is, so two can be compared. Higher is more
 /// permissive, which is the direction a project may not move in.
-fn permissiveness(value: PermissionDefault) -> u8 {
+pub(crate) fn permissiveness(value: PermissionDefault) -> u8 {
     match value {
         PermissionDefault::Deny => 0,
         PermissionDefault::ReadOnly => 1,

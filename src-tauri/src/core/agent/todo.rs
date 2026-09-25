@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TodoStatus {
     Pending,
@@ -18,7 +18,7 @@ pub enum TodoStatus {
     Abandoned,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TodoItem {
     pub content: String,
     pub status: TodoStatus,
@@ -33,7 +33,7 @@ impl TodoItem {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TodoPhase {
     pub name: String,
     pub tasks: Vec<TodoItem>,
@@ -48,7 +48,7 @@ pub fn new_registry() -> TodoRegistry {
     Arc::new(Mutex::new(TodoList::default()))
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub struct TodoList {
     pub phases: Vec<TodoPhase>,
 }
@@ -423,6 +423,97 @@ pub fn render_result(list: &TodoList) -> String {
     serde_json::to_string(list).unwrap_or_else(|e| format!("ERROR: could not encode todos: {e}"))
 }
 
+/// Per-turn todo reminders folded into the model context. On by default; a run
+/// opts out with `"todo_reminders": false` on the request body.
+pub const TODO_REMINDERS_ENABLED_BY_DEFAULT: bool = true;
+/// Tool turns without a list before the one-time "consider a todo" nudge.
+pub const TODO_CREATE_NUDGE_AFTER_TOOL_TURNS: usize = 3;
+/// While work is open and the list is unchanged, the table is re-sent at most
+/// once per this many turns, so a long run is reminded without a copy of the
+/// same table after every tool call.
+pub const TODO_UNCHANGED_REFRESH_TURNS: usize = 4;
+
+pub const TODO_CREATE_NUDGE: &str = "This task is taking several steps. If it has more \
+work left, call `todo` with `init` to lay out the remaining steps so progress stays visible; \
+skip this if you are nearly done.";
+
+/// Decides, turn by turn, whether the model needs the current todo table or
+/// the one-time nudge to create a list. Pure bookkeeping, so the loop stays
+/// thin and the policy is unit-testable.
+#[derive(Debug, Default)]
+pub struct TodoReminderState {
+    last_sent: Option<String>,
+    turns_since_sent: usize,
+    tool_turns: usize,
+    create_nudged: bool,
+}
+
+impl TodoReminderState {
+    /// Called once after each tool turn with the list as it now stands.
+    /// Returns the reminder text to attach, if any.
+    pub fn after_tool_turn(&mut self, list: &TodoList) -> Option<String> {
+        self.tool_turns += 1;
+        self.turns_since_sent += 1;
+        if list.is_empty() {
+            self.last_sent = None;
+            if !self.create_nudged && self.tool_turns >= TODO_CREATE_NUDGE_AFTER_TOOL_TURNS {
+                self.create_nudged = true;
+                return Some(TODO_CREATE_NUDGE.to_string());
+            }
+            return None;
+        }
+        let table = list.compact_table();
+        let changed = self.last_sent.as_deref() != Some(table.as_str());
+        let open = list.has_open();
+        // All done and already reported: nothing left to remind about.
+        let send = if !open {
+            changed
+        } else {
+            changed || self.turns_since_sent >= TODO_UNCHANGED_REFRESH_TURNS
+        };
+        if !send {
+            return None;
+        }
+        self.last_sent = Some(table.clone());
+        self.turns_since_sent = 0;
+        Some(if open {
+            format!(
+                "Current todo list:\n{table}\nWhen a task's status changes, update it with \
+                 `todo` (start/done/drop) before moving on."
+            )
+        } else {
+            format!("Current todo list (all done):\n{table}")
+        })
+    }
+}
+
+impl TodoList {
+    /// Compact `#|item|status` table of every task, phases prefixed to the
+    /// item as `[phase]` so the table stays three columns wide.
+    pub fn compact_table(&self) -> String {
+        let mut out = String::from("#|item|status");
+        let mut n = 0;
+        for phase in &self.phases {
+            for task in &phase.tasks {
+                n += 1;
+                let status = match task.status {
+                    TodoStatus::Pending => "pending",
+                    TodoStatus::InProgress => "in_progress",
+                    TodoStatus::Completed => "done",
+                    TodoStatus::Abandoned => "dropped",
+                };
+                let item = task.content.replace('|', "/");
+                if phase.name.is_empty() {
+                    out.push_str(&format!("\n{n}|{item}|{status}"));
+                } else {
+                    out.push_str(&format!("\n{n}|[{}] {item}|{status}", phase.name));
+                }
+            }
+        }
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -616,5 +707,46 @@ mod tests {
             Ok(Target::All)
         ));
         assert!(parse_target(&serde_json::json!({})).is_err());
+    }
+
+    #[test]
+    fn compact_table_lists_items_with_status() {
+        let mut list = TodoList::default();
+        list.init(vec![phase("Build", &["a|b", "c"])]).unwrap();
+        assert_eq!(
+            list.compact_table(),
+            "#|item|status\n1|[Build] a/b|in_progress\n2|[Build] c|pending"
+        );
+    }
+
+    #[test]
+    fn reminder_sends_on_change_and_skips_unchanged_done_list() {
+        let mut st = TodoReminderState::default();
+        let mut list = TodoList::default();
+        list.init(vec![phase("P", &["a"])]).unwrap();
+        assert!(st.after_tool_turn(&list).unwrap().contains("1|[P] a|in_progress"));
+        // Unchanged and open: quiet until the refresh interval.
+        for _ in 1..TODO_UNCHANGED_REFRESH_TURNS {
+            assert!(st.after_tool_turn(&list).is_none());
+        }
+        assert!(st.after_tool_turn(&list).is_some(), "periodic refresh");
+        list.done(Target::Task("a")).unwrap();
+        assert!(st.after_tool_turn(&list).unwrap().contains("all done"));
+        for _ in 0..10 {
+            assert!(st.after_tool_turn(&list).is_none(), "done list re-sent");
+        }
+    }
+
+    #[test]
+    fn create_nudge_fires_once_after_several_tool_turns() {
+        let mut st = TodoReminderState::default();
+        let list = TodoList::default();
+        for _ in 1..TODO_CREATE_NUDGE_AFTER_TOOL_TURNS {
+            assert!(st.after_tool_turn(&list).is_none());
+        }
+        assert_eq!(st.after_tool_turn(&list).as_deref(), Some(TODO_CREATE_NUDGE));
+        for _ in 0..10 {
+            assert!(st.after_tool_turn(&list).is_none());
+        }
     }
 }

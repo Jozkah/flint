@@ -14,7 +14,7 @@
 //! - writes: the thread workspace and a private temp dir, nothing else.
 //! - network: denied unless explicitly allowed.
 //! - the agent's own `<workspace>/.jan` state directory is hidden even though it
-//!   sits inside the workspace ([`Policy::hide_root`]); AppContainer is the one
+//!   sits inside the workspace ([`Policy::hide_roots`]); AppContainer is the one
 //!   backend that cannot express it.
 //!
 //! AppContainer is stricter than that on reads: it can only read what grants
@@ -76,11 +76,12 @@ pub struct Policy {
     /// masking it would hide the very files the agent works on.
     pub mask_root: Option<PathBuf>,
     pub allow_network: bool,
-    /// A path *inside* the workspace to hide from the shell: the agent's own
-    /// `<project>/.jan` state directory. The workspace bind/allow makes the whole
-    /// project reachable, so hiding it needs a rule layered on top -- see
-    /// [`Policy::with_hide_root`].
-    pub hide_root: Option<PathBuf>,
+    /// Paths to hide from the shell: the agent's own `<project>/.jan` state
+    /// directory, and the `.jan` of every write root (a managed worktree or a
+    /// repository edited in place keeps the project's agent policy and hooks
+    /// there). The workspace and write-root binds make those reachable, so
+    /// hiding them needs a rule layered on top -- see [`Policy::with_hide_root`].
+    pub hide_roots: Vec<PathBuf>,
     /// Expose `$HOME` to the sandboxed shell read-only instead of hiding it.
     /// The CLI turns this on so helpers that read the user's home (`git`/`ssh`
     /// credential helpers, `~/.ssh/config`, `~/.netrc`) work, while writes stay
@@ -112,6 +113,11 @@ pub struct Policy {
     /// make the access mode a statement about one of them rather than about
     /// the run.
     pub write_roots: Vec<PathBuf>,
+    /// Where the shell starts, when that is not `workspace`: the managed
+    /// worktree a run writes to. Always one of `write_roots`
+    /// ([`Policy::with_start_dir`] ignores anything else), so the shell never
+    /// starts somewhere it was not granted.
+    pub start_dir: Option<PathBuf>,
 }
 
 impl Policy {
@@ -120,12 +126,27 @@ impl Policy {
             workspace: workspace.to_path_buf(),
             mask_root: None,
             allow_network,
-            hide_root: None,
+            hide_roots: Vec::new(),
             home_readonly: false,
             scratch_root: None,
             read_roots: Vec::new(),
             write_roots: Vec::new(),
+            start_dir: None,
         }
+    }
+
+    /// Start the shell in `dir`, which must already be one of the write roots;
+    /// anything else leaves the start at the workspace.
+    pub fn with_start_dir(mut self, dir: &Path) -> Self {
+        if self.write_roots.iter().any(|r| r == dir) {
+            self.start_dir = Some(dir.to_path_buf());
+        }
+        self
+    }
+
+    /// The directory the shell starts in.
+    pub fn start_dir(&self) -> &Path {
+        self.start_dir.as_deref().unwrap_or(&self.workspace)
     }
 
     /// Attach read-only roots. See [`Policy::read_roots`] for why their bind
@@ -157,8 +178,13 @@ impl Policy {
     /// writes and runs). Not enforced on AppContainer, where the workspace is
     /// granted by an ACE and carving a subpath back out would mean writing a deny
     /// ACE onto the user's directory; there the scan stands alone.
+    ///
+    /// May be called more than once; every path given is hidden, a repeat is
+    /// ignored.
     pub fn with_hide_root(mut self, hide_root: &Path) -> Self {
-        self.hide_root = Some(hide_root.to_path_buf());
+        if !self.hide_roots.iter().any(|h| h == hide_root) {
+            self.hide_roots.push(hide_root.to_path_buf());
+        }
         self
     }
 
@@ -341,8 +367,9 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
             program: helper_exe()?,
-            args: appcontainer::helper_args(
+            args: appcontainer::helper_args_at(
                 &policy.workspace,
+                policy.start_dir.as_deref(),
                 policy.scratch_root.as_deref(),
                 &policy.write_roots,
                 policy.allow_network,
@@ -426,6 +453,14 @@ fn push(args: &mut Vec<String>, parts: &[&str]) {
     args.extend(parts.iter().map(|s| s.to_string()));
 }
 
+/// Paths under the masked `/run` that bubblewrap binds back read-only
+/// (Jozkah/jan#210). None of them holds a session socket.
+const RUN_KEEP: &[&str] = &["/run/current-system", "/run/booted-system", "/run/opengl-driver"];
+
+/// Bound back under `/run` only when the network is allowed: what name
+/// resolution reads when `/etc/resolv.conf` points into systemd-resolved.
+const RUN_KEEP_NETWORK: &[&str] = &["/run/systemd/resolve"];
+
 /// Build bubblewrap's argv. Operations apply in order, which the layering below
 /// depends on: the read-only root comes first, then the tmpfs that hides `$HOME`,
 /// then the workspace bind that punches back through it.
@@ -438,6 +473,37 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // rather than the host's, and so an unshared pid namespace has a valid /proc.
     push(&mut args, &["--proc", "/proc"]);
     push(&mut args, &["--dev", "/dev"]);
+    // An empty tmpfs over `/run` (Jozkah/jan#210). The read-only root bind
+    // leaves `/run/user/$UID` visible, and a read-only mount does not stop
+    // `connect()` on a pathname unix socket, nor does `--unshare-all` (such
+    // sockets live in the filesystem, not the network namespace). Left
+    // visible, the session D-Bus and the `systemd --user` socket let a command
+    // run `systemd-run --user` and start a process outside the sandbox; the
+    // ssh-agent/keyring sockets there hand out the user's credentials.
+    // Before every bind below, which take host paths as sources and so still
+    // work for a root that happens to sit under `/run`.
+    push(&mut args, &["--tmpfs", "/run"]);
+    // `/var/run` is normally a symlink into `/run` and so is covered; where it
+    // is still a real directory, mask it too.
+    #[cfg(target_os = "linux")]
+    {
+        if std::fs::symlink_metadata("/var/run").is_ok_and(|m| m.is_dir()) {
+            push(&mut args, &["--tmpfs", "/var/run"]);
+        }
+    }
+    // Put back, read-only, only what ordinary commands need from `/run`: the
+    // NixOS system profile (every binary on PATH there, the shell included)
+    // and its graphics drivers. `-try`, since most hosts have none of these.
+    for &keep in RUN_KEEP {
+        push(&mut args, &["--ro-bind-try", keep, keep]);
+    }
+    // With the network shared, name resolution: `/etc/resolv.conf` is often a
+    // symlink into `/run/systemd/resolve`.
+    if policy.allow_network {
+        for &keep in RUN_KEEP_NETWORK {
+            push(&mut args, &["--ro-bind-try", keep, keep]);
+        }
+    }
     // `/tmp`: by default a private tmpfs, writable and discarded with the
     // sandbox. When a session-scoped scratch root is set, bind it over `/tmp`
     // instead (the tmpfs would shadow it), so scratch files persist across
@@ -503,10 +569,10 @@ pub fn bwrap_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     // only when the directory exists, so a `.jan` created while the sandbox runs
     // cannot be read back by the next command in the same shell. Writes into it
     // are discarded with the sandbox (and hard-denied at the tool layer anyway).
-    if let Some(hide) = &policy.hide_root {
+    for hide in &policy.hide_roots {
         push(&mut args, &["--tmpfs", &hide.to_string_lossy()]);
     }
-    push(&mut args, &["--chdir", &ws]);
+    push(&mut args, &["--chdir", &policy.start_dir().to_string_lossy()]);
 
     // Drops the network, pid, ipc, uts and cgroup namespaces along with the
     // user namespace; --share-net selectively restores networking.
@@ -616,15 +682,26 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
     }
     // Last, so it wins over the workspace allow above: the agent's own state
     // directory is neither readable nor writable, however the command spells it.
-    if policy.hide_root.is_some() {
-        p.push_str(
-            "(deny file-read* (subpath (param \"HIDE_ROOT\")))\n\
-             (deny file-write* (subpath (param \"HIDE_ROOT\")))\n",
-        );
+    for i in 0..policy.hide_roots.len() {
+        let name = hide_param(i);
+        p.push_str(&format!(
+            "(deny file-read* (subpath (param \"{name}\")))\n\
+             (deny file-write* (subpath (param \"{name}\")))\n"
+        ));
     }
+    // IP only (Jozkah/jan#206). A bare `(allow network*)` also covers
+    // `network-outbound` to a `unix-socket` remote, i.e. connect() to any
+    // unix socket the command can name -- among them the launchd ssh-agent
+    // under `/private/tmp/com.apple.launchd.*/Listeners`, which would hand the
+    // sandbox the user's SSH identities that stripping SSH_AUTH_SOCK and
+    // denying `$HOME` are meant to keep out. The one unix socket allowed is
+    // mDNSResponder's, which name resolution goes through.
     if policy.allow_network {
         p.push_str(
-            "(allow network*)\n\
+            "(allow network-outbound (remote ip \"*:*\"))\n\
+             (allow network-inbound (local ip \"*:*\"))\n\
+             (allow network-bind (local ip \"*:*\"))\n\
+             (allow network-outbound (literal \"/private/var/run/mDNSResponder\"))\n\
              (allow system-socket)\n\
              (allow mach-lookup\n\
              \x20 (global-name \"com.apple.SystemConfiguration.DNSConfiguration\")\n\
@@ -638,6 +715,16 @@ pub fn seatbelt_policy(policy: &Policy) -> String {
         p.push_str("(deny network*)\n");
     }
     p
+}
+
+/// Seatbelt parameter naming the `i`th hide root. The first keeps the plain
+/// `HIDE_ROOT` name from when there was only ever one.
+fn hide_param(i: usize) -> String {
+    if i == 0 {
+        "HIDE_ROOT".to_string()
+    } else {
+        format!("HIDE_ROOT_{i}")
+    }
 }
 
 /// Build `sandbox-exec`'s argv. Paths travel as `-D` parameters rather than being
@@ -660,8 +747,8 @@ pub fn seatbelt_args(policy: &Policy, cfg: &ShellConfig) -> Vec<String> {
     for (i, root) in policy.write_roots.iter().enumerate() {
         args.push(format!("-DWRITE_ROOT_{i}={}", root.to_string_lossy()));
     }
-    if let Some(hide) = &policy.hide_root {
-        args.push(format!("-DHIDE_ROOT={}", hide.to_string_lossy()));
+    for (i, hide) in policy.hide_roots.iter().enumerate() {
+        args.push(format!("-D{}={}", hide_param(i), hide.to_string_lossy()));
     }
     args.push(format!(
         "-DTMPDIR={}",
@@ -731,40 +818,92 @@ pub fn denial_hint(policy: &Policy) -> String {
     let home = if policy.home_readonly {
         ""
     } else {
-        " and files under your home directory are not readable"
+        " Files under your home directory are not readable."
     };
-    // Naming only the workspace would send the model away from the scratch,
-    // which is writable too and is where temporary work belongs.
-    let scratch = match scratch_env_path(backend(), policy) {
-        Some(path) => format!(" and the scratch dir ({})", path.display()),
-        None => String::new(),
+    // Every place the shell may write, as the policy actually grants it: the
+    // workspace, the scratch (writable too, and where temporary work belongs)
+    // and any authorized write root such as a managed worktree. Naming only
+    // the workspace sent the model away from a worktree it could write.
+    let mut writable = vec![format!("the workspace ({})", policy.workspace.display())];
+    if let Some(path) = scratch_env_path(backend(), policy) {
+        writable.push(format!("the scratch dir ({})", path.display()));
+    }
+    for root in &policy.write_roots {
+        if root != &policy.workspace {
+            writable.push(root.display().to_string());
+        }
+    }
+    let start = if policy.start_dir() != policy.workspace.as_path() {
+        format!(" The shell starts in {}.", policy.start_dir().display())
+    } else {
+        String::new()
     };
     // An attached folder the file tools can read but the shell cannot is a real
     // asymmetry on Windows, where granting it would mean permanently rewriting
-    // the DACL of a directory Jan does not own and never revokes. Saying so
-    // beats letting the model read the folder with `read` and conclude `bash` is
-    // broken when the same path is missing there.
-    let attached = if policy.read_roots.is_empty() {
+    // the DACL of a directory Jan does not own and never revokes. Only folders
+    // the shell really cannot reach are named: one inside a write root (the
+    // managed worktree, say) is readable and writable there.
+    let unreachable: Vec<String> = policy
+        .read_roots
+        .iter()
+        .filter(|r| !shell_writable(policy, r))
+        .map(|r| r.display().to_string())
+        .collect();
+    let attached = if unreachable.is_empty() {
         String::new()
     } else if backend() == Backend::AppContainer {
-        " The attached folder is readable by the file tools but not by shell \
-         commands on this platform."
-            .to_string()
+        format!(
+            " The attached folder ({}) is readable by the file tools but not by shell \
+             commands on this platform.",
+            unreachable.join(", ")
+        )
     } else {
         format!(
             " The attached folder ({}) is readable but not writable.",
-            policy
-                .read_roots
-                .iter()
-                .map(|r| r.display().to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
+            unreachable.join(", ")
         )
     };
     format!(
-        "\n[sandbox: writes are limited to the workspace ({}){scratch}{home}.{net}{attached}]",
-        policy.workspace.display()
+        "\n[sandbox: writes are limited to {}.{start}{home}{net}{attached}]",
+        writable.join(", ")
     )
+}
+
+/// Is `path` inside a directory the shell may write (workspace, scratch or a
+/// granted write root)? Compared case-insensitively with either separator,
+/// which is how Windows resolves paths; on Unix a false match costs only a
+/// missing hint sentence, never access.
+fn shell_writable(policy: &Policy, path: &Path) -> bool {
+    fn norm(p: &Path) -> String {
+        let s = p.to_string_lossy().replace('\\', "/").to_lowercase();
+        s.trim_end_matches('/').to_string()
+    }
+    let candidate = norm(path);
+    let roots = std::iter::once(policy.workspace.as_path())
+        .chain(policy.scratch_root.as_deref())
+        .chain(policy.write_roots.iter().map(PathBuf::as_path));
+    roots.map(norm).any(|root| {
+        !root.is_empty()
+            && (candidate == root
+                || candidate
+                    .strip_prefix(&root)
+                    .is_some_and(|rest| rest.starts_with('/')))
+    })
+}
+
+/// Absolute paths a failure message names, best effort: quoted or bare tokens
+/// that start like a Windows drive path or a Unix root.
+fn named_paths(output: &str) -> Vec<PathBuf> {
+    output
+        .split(|c: char| c.is_whitespace() || matches!(c, '\'' | '"' | '`'))
+        .map(|t| t.trim_end_matches([':', ',', '.', ';', ')']))
+        .filter(|t| {
+            let b = t.as_bytes();
+            (b.len() > 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && matches!(b[2], b'\\' | b'/'))
+                || (b.len() > 1 && b[0] == b'/' && b[1] != b'/')
+        })
+        .map(PathBuf::from)
+        .collect()
 }
 
 /// What a model is told when granting access would fix the failure.
@@ -779,10 +918,22 @@ pub const REQUEST_ACCESS_ADVICE: &str = " Call request_access with the narrowest
 /// did it sends the model after the wrong problem. A network refusal gets the
 /// limits (network is off) but no access advice: a folder grant opens no
 /// socket.
-pub fn failure_hint(policy: &Policy, class: &super::shell_diag::FailureClass) -> Option<String> {
+///
+/// `output` is the command's output: a denial whose every named path is one the
+/// shell may already write is not a grant problem (a locked file, a read-only
+/// attribute, a device), so it gets no access advice either.
+pub fn failure_hint(
+    policy: &Policy,
+    class: &super::shell_diag::FailureClass,
+    output: &str,
+) -> Option<String> {
     use super::shell_diag::{powershell_equivalent, FailureClass};
     match class {
         FailureClass::FileAccessDenied => {
+            let named = named_paths(output);
+            if !named.is_empty() && named.iter().all(|p| shell_writable(policy, p)) {
+                return None;
+            }
             let mut hint = denial_hint(policy);
             // Inside the closing bracket, so it reads as part of the note.
             hint.pop();
@@ -803,13 +954,32 @@ pub fn failure_hint(policy: &Policy, class: &super::shell_diag::FailureClass) ->
                  Use {fix}.]"
             ))
         }
-        FailureClass::DeviceFile => Some(
-            "\n[device_path: the failure is on a device path (such as the null device), \
-             not on a file the sandbox is hiding. Discard output with the shell's own null \
-             syntax instead.]"
-                .to_string(),
-        ),
+        FailureClass::DeviceFile => Some(device_hint(
+            backend() == Backend::AppContainer
+                && super::appcontainer::null_device_admits_sandbox() == Some(false),
+        )),
         _ => None,
+    }
+}
+
+/// The note for a failure on a device path. `null_denied` is true when this
+/// machine's `\Device\Null` refuses AppContainers outright (see
+/// [`super::appcontainer::null_device_admits_sandbox`]): then a program that
+/// opens NUL itself -- Go, git -- cannot run here whatever the command says,
+/// and advice to use the shell's null syntax would be wrong.
+fn device_hint(null_denied: bool) -> String {
+    if null_denied {
+        "\n[device_path: this machine's null device (NUL) does not admit sandboxed \
+         processes: its security descriptor grants Everyone but not ALL APPLICATION \
+         PACKAGES, so any program that opens NUL itself (go, git, some build tools) fails \
+         inside the sandbox. It is not a folder permission, so granting access cannot fix \
+         it. Report it to the user rather than retrying.]"
+            .to_string()
+    } else {
+        "\n[device_path: the failure is on a device path (such as the null device), \
+         not on a file the sandbox is hiding. Discard output with the shell's own null \
+         syntax instead.]"
+            .to_string()
     }
 }
 
@@ -1238,6 +1408,36 @@ pub fn select_chaining_capable(policy: &Policy) -> Option<SelectedShell> {
     })
 }
 
+/// A Windows-native shell to retry a command on when the selected POSIX shell
+/// passed its probe but then could not be spawned for the real command
+/// (upstream janhq/jan#9044: a Git for Windows install whose directory grants
+/// nothing to `ALL APPLICATION PACKAGES`, an antivirus block, a damaged
+/// install -- `os error 203` from `CreateProcessW`).
+///
+/// Only non-POSIX candidates qualify (PowerShell, cmd, which live under
+/// `%SystemRoot%`), and each is probed under the same `policy`, so confinement
+/// is unchanged: the retry runs in the same container, workspace and network
+/// decision. A shell that would misread `command` is skipped -- a POSIX-only
+/// construct, `&&`/`||` on Windows PowerShell 5.1, or cmd's `2>nul` on
+/// PowerShell -- and `None` is returned when no native shell can take it, so
+/// the caller reports the original failure rather than running the command
+/// somewhere it means something else.
+pub fn select_native_fallback(policy: &Policy, command: &str) -> Option<ShellConfig> {
+    proc::candidates()
+        .into_iter()
+        .filter(|cfg| cfg.flavor != proc::ShellFlavor::Posix)
+        .filter(|cfg| proc::requires_posix_shell_for(command, cfg.flavor).is_none())
+        .filter(|cfg| {
+            proc::requires_and_or_chaining(command).is_none() || proc::supports_and_or_chaining(cfg)
+        })
+        .filter(|cfg| {
+            cfg.flavor != proc::ShellFlavor::PowerShell
+                || crate::tools::shell_diag::cmd_nul_redirects(command).is_empty()
+        })
+        .find(|cfg| probe(cfg, policy).usable())
+        .and_then(|cfg| wrap(&cfg, policy))
+}
+
 #[cfg(test)]
 mod probe_cache_tests {
     use super::*;
@@ -1343,6 +1543,34 @@ mod tests {
         }
     }
 
+    /// Jozkah/jan#210: `/run` (session D-Bus, systemd --user, ssh-agent) is
+    /// masked right after the root bind and before anything is bound on top,
+    /// and only name resolution comes back, only with the network on.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn bwrap_masks_run_before_the_workspace_and_keeps_resolve_only_with_network() {
+        let text = joined(&bwrap_args(&policy(), &cfg()));
+        let root = text.find("--ro-bind / /").expect("root bind");
+        let run = text.find("--tmpfs /run").expect("/run tmpfs");
+        let ws = text.find("--bind /data").expect("workspace bind");
+        assert!(root < run && run < ws, "{text}");
+        assert!(!text.contains("/run/user"), "{text}");
+        assert!(!text.contains("/run/systemd/resolve"), "{text}");
+        for keep in RUN_KEEP {
+            assert!(text.contains(&format!("--ro-bind-try {keep} {keep}")), "{text}");
+        }
+
+        let open = joined(&bwrap_args(
+            &Policy::new(Path::new("/data/agent-workspace/threads/t1"), true),
+            &cfg(),
+        ));
+        assert!(
+            open.contains("--ro-bind-try /run/systemd/resolve /run/systemd/resolve"),
+            "{open}"
+        );
+        assert!(open.find("--tmpfs /run").unwrap() < open.find("/run/systemd/resolve").unwrap());
+    }
+
     #[test]
     fn bwrap_binds_the_workspace_writable_and_chdirs_into_it() {
         let args = bwrap_args(&policy(), &cfg());
@@ -1350,6 +1578,19 @@ mod tests {
         let ws = "/data/agent-workspace/threads/t1";
         assert!(text.contains(&format!("--bind {ws} {ws}")));
         assert!(text.contains(&format!("--chdir {ws}")));
+    }
+
+    /// A run writing to a managed worktree starts the shell there; a start
+    /// outside the write roots is ignored rather than trusted.
+    #[test]
+    fn bwrap_chdirs_into_the_start_dir_only_when_it_is_a_write_root() {
+        let wt = PathBuf::from("/data/agent-workspace/worktrees/repo/s1");
+        let started = policy().with_write_roots(vec![wt.clone()]).with_start_dir(&wt);
+        let text = joined(&bwrap_args(&started, &cfg()));
+        assert!(text.contains(&format!("--chdir {}", wt.display())), "{text}");
+
+        let ignored = policy().with_start_dir(&wt);
+        assert_eq!(ignored.start_dir(), ignored.workspace.as_path());
     }
 
     #[test]
@@ -1472,6 +1713,41 @@ mod tests {
         assert!(!seatbelt_args(&policy(), &cfg())
             .iter()
             .any(|a| a.contains("READ_ROOT")));
+    }
+
+    /// Jozkah/jan#124: every hide root is masked, each after the workspace
+    /// and write-root binds, and a repeat is kept once.
+    #[test]
+    fn several_hide_roots_are_all_hidden_last() {
+        let ws = "/data/agent-workspace/threads/t1";
+        let wt = "/data/worktrees/repo/s1";
+        let p = policy()
+            .with_write_roots(vec![PathBuf::from(wt)])
+            .with_hide_root(Path::new(&format!("{ws}/.jan")))
+            .with_hide_root(Path::new(&format!("{wt}/.jan")))
+            .with_hide_root(Path::new(&format!("{wt}/.jan")));
+        assert_eq!(p.hide_roots.len(), 2);
+
+        let text = joined(&bwrap_args(&p, &cfg()));
+        let wt_bind = text.find(&format!("--bind {wt} {wt}")).expect("write root bind");
+        let ws_bind = text.find(&format!("--bind {ws} {ws}")).expect("workspace bind");
+        let ws_hide = text.find(&format!("--tmpfs {ws}/.jan")).expect("workspace hide");
+        let wt_hide = text.find(&format!("--tmpfs {wt}/.jan")).expect("write root hide");
+        assert!(wt_bind < wt_hide && ws_bind < wt_hide && ws_bind < ws_hide, "{text}");
+
+        let profile = seatbelt_policy(&p);
+        let allow = profile
+            .find("(allow file-write* (subpath (param \"WRITE_ROOT_0\")))")
+            .expect("write allow");
+        let deny = profile
+            .find("(deny file-write* (subpath (param \"HIDE_ROOT_1\")))")
+            .expect("second hide deny");
+        assert!(allow < deny, "{profile}");
+        assert!(profile.contains("(deny file-read* (subpath (param \"HIDE_ROOT_1\")))"));
+        let args = joined(&seatbelt_args(&p, &cfg()));
+        assert!(args.contains(&format!("-DHIDE_ROOT={ws}/.jan")), "{args}");
+        assert!(args.contains(&format!("-DHIDE_ROOT_1={wt}/.jan")), "{args}");
+        assert!(!profile.contains("HIDE_ROOT_2"));
     }
 
     #[test]
@@ -1644,8 +1920,28 @@ mod tests {
     fn seatbelt_denies_network_unless_allowed() {
         assert!(seatbelt_policy(&policy()).contains("(deny network*)"));
         let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
-        assert!(open.contains("(allow network*)"));
+        assert!(open.contains("(allow network-outbound (remote ip \"*:*\"))"), "{open}");
         assert!(!open.contains("(deny network*)"));
+    }
+
+    /// Jozkah/jan#206: network on grants IP traffic, not connect() to every
+    /// unix socket on the host (the launchd ssh-agent among them). Only the
+    /// mDNSResponder socket DNS needs is named.
+    #[test]
+    fn seatbelt_network_is_ip_only() {
+        let open = seatbelt_policy(&Policy::new(Path::new("/data/ws"), true));
+        assert!(!open.contains("(allow network*)"), "{open}");
+        assert!(!open.contains("unix-socket"), "{open}");
+        for line in open.lines().filter(|l| l.contains("(allow network")) {
+            assert!(
+                line.contains("(remote ip ")
+                    || line.contains("(local ip ")
+                    || line.contains("/private/var/run/mDNSResponder"),
+                "network rule not scoped to IP: {line}"
+            );
+        }
+        assert!(open.contains("(allow network-inbound (local ip \"*:*\"))"), "{open}");
+        assert!(open.contains("(allow network-bind (local ip \"*:*\"))"), "{open}");
     }
 
     #[test]
@@ -1705,11 +2001,70 @@ mod tests {
         );
     }
 
+    /// A managed-worktree session: the shell starts in the worktree and may
+    /// write it, and the attached checkout it was cut from is a separate path.
+    fn worktree_policy() -> Policy {
+        let wt = PathBuf::from("/data/worktrees/proj-1");
+        Policy::new(Path::new("/data/agent-workspace/threads/t1"), false)
+            .with_write_roots(vec![wt.clone()])
+            .with_start_dir(&wt)
+    }
+
+    #[test]
+    fn denial_hint_lists_every_write_root_and_the_start_dir() {
+        let hint = denial_hint(&worktree_policy());
+        assert!(hint.contains("/data/worktrees/proj-1"), "{hint}");
+        assert!(hint.contains("The shell starts in /data/worktrees/proj-1."), "{hint}");
+        assert!(hint.contains("writes are limited to the workspace ("), "{hint}");
+    }
+
+    #[test]
+    fn an_attached_folder_the_shell_can_write_is_not_called_unreadable() {
+        let inside = worktree_policy()
+            .with_read_roots(vec![PathBuf::from("/data/worktrees/proj-1/sub")]);
+        assert!(!denial_hint(&inside).contains("attached folder"));
+        let outside = worktree_policy().with_read_roots(vec![PathBuf::from("/home/me/proj")]);
+        let hint = denial_hint(&outside);
+        assert!(hint.contains("attached folder (/home/me/proj)"), "{hint}");
+    }
+
+    #[test]
+    fn a_denial_inside_the_write_roots_gets_no_access_advice() {
+        use crate::tools::shell_diag::FailureClass;
+        let p = worktree_policy();
+        let inside = "rm: cannot remove '/data/worktrees/proj-1/locked.db': Permission denied";
+        assert!(failure_hint(&p, &FailureClass::FileAccessDenied, inside).is_none());
+        let outside = "cat: /home/me/.ssh/config: Permission denied";
+        let hint = failure_hint(&p, &FailureClass::FileAccessDenied, outside).unwrap();
+        assert!(hint.contains("request_access"), "{hint}");
+        // No path named at all: unknown, so the advice stays.
+        assert!(failure_hint(&p, &FailureClass::FileAccessDenied, "Access is denied.").is_some());
+    }
+
+    #[test]
+    fn named_paths_finds_windows_and_unix_paths() {
+        let found = named_paths(r"open C:\Users\me\x.txt: denied; see '/etc/passwd'.");
+        assert_eq!(
+            found,
+            vec![PathBuf::from(r"C:\Users\me\x.txt"), PathBuf::from("/etc/passwd")]
+        );
+        assert!(named_paths("open NUL: Access is denied.").is_empty());
+    }
+
+    #[test]
+    fn a_null_device_that_refuses_the_sandbox_is_not_blamed_on_a_folder() {
+        let hint = device_hint(true);
+        assert!(hint.contains("ALL APPLICATION PACKAGES"), "{hint}");
+        assert!(!hint.contains("request_access"), "{hint}");
+        assert!(!hint.contains("writes are limited"), "{hint}");
+        assert!(device_hint(false).contains("null syntax"));
+    }
+
     #[test]
     fn failure_hint_advises_request_access_only_for_file_denials() {
         use crate::tools::shell_diag::FailureClass;
         let p = policy();
-        let hint = failure_hint(&p, &FailureClass::FileAccessDenied).unwrap();
+        let hint = failure_hint(&p, &FailureClass::FileAccessDenied, "").unwrap();
         assert!(hint.contains("Call request_access with the narrowest required path"));
         assert!(hint.ends_with(']'));
         for class in [
@@ -1720,15 +2075,15 @@ mod tests {
             FailureClass::Network,
             FailureClass::Other,
         ] {
-            let h = failure_hint(&p, &class).unwrap_or_default();
+            let h = failure_hint(&p, &class, "").unwrap_or_default();
             assert!(!h.contains("request_access"), "{class:?}: {h}");
         }
-        let nul = failure_hint(&p, &FailureClass::CmdNulRedirect("2>nul".into())).unwrap();
+        let nul = failure_hint(&p, &FailureClass::CmdNulRedirect("2>nul".into()), "").unwrap();
         assert!(nul.contains("`2>$null`"));
         assert!(nul.contains("not a sandbox restriction"));
         assert!(!nul.contains("writes are limited"));
-        assert!(failure_hint(&p, &FailureClass::MissingCommand).is_none());
-        assert!(failure_hint(&Policy::new(Path::new("/w"), true), &FailureClass::Network).is_none());
+        assert!(failure_hint(&p, &FailureClass::MissingCommand, "").is_none());
+        assert!(failure_hint(&Policy::new(Path::new("/w"), true), &FailureClass::Network, "").is_none());
     }
 
     #[test]
@@ -2382,6 +2737,67 @@ mod enforcement_tests {
         let (ok, _) = run(&ws, false, "exec 3<>/dev/tcp/1.1.1.1/53 && echo connected").await;
         let _ = std::fs::remove_dir_all(&ws);
         assert!(!ok, "network must be denied by default");
+    }
+
+    /// Jozkah/jan#210: a socket in the user's runtime dir (where the session
+    /// D-Bus, `systemd --user` and ssh-agent listen) is not reachable from
+    /// the sandbox. Skipped where there is no `XDG_RUNTIME_DIR` under `/run`.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn sockets_under_the_runtime_dir_are_not_reachable() {
+        require_backend!();
+        let Some(runtime) = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from) else {
+            eprintln!("skipping: no XDG_RUNTIME_DIR");
+            return;
+        };
+        if !runtime.starts_with("/run") || !runtime.is_dir() {
+            eprintln!("skipping: XDG_RUNTIME_DIR is not under /run");
+            return;
+        }
+        let sock = runtime.join(format!("jan_jail_probe_{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let Ok(_listener) = std::os::unix::net::UnixListener::bind(&sock) else {
+            eprintln!("skipping: cannot create a socket in XDG_RUNTIME_DIR");
+            return;
+        };
+        let ws = workspace();
+        let (_, out) = run(
+            &ws,
+            false,
+            &format!("if test -e {0}; then echo VISIBLE; else echo HIDDEN; fi", sock.display()),
+        )
+        .await;
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(out.contains("HIDDEN"), "the runtime-dir socket is reachable: {out}");
+    }
+
+    /// Jozkah/jan#206: with the network on, a sandboxed command still cannot
+    /// connect to a unix socket outside the workspace (where the launchd
+    /// ssh-agent lives), while IP networking is left to the other tests.
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn network_on_does_not_open_host_unix_sockets() {
+        require_backend!();
+        let sock = PathBuf::from(format!("/private/tmp/jan_sb_probe_{}.sock", std::process::id()));
+        let _ = std::fs::remove_file(&sock);
+        let listener = std::os::unix::net::UnixListener::bind(&sock).expect("bind probe socket");
+        listener.set_nonblocking(true).unwrap();
+        let ws = workspace();
+        let (_, out) = run(
+            &ws,
+            true,
+            &format!("nc -w 1 -U {} </dev/null && echo CONNECTED", sock.display()),
+        )
+        .await;
+        let accepted = listener.accept();
+        let _ = std::fs::remove_file(&sock);
+        let _ = std::fs::remove_dir_all(&ws);
+        assert!(
+            matches!(&accepted, Err(e) if e.kind() == std::io::ErrorKind::WouldBlock),
+            "the sandbox connected to a host unix socket: {accepted:?} {out}"
+        );
+        assert!(!out.contains("CONNECTED"), "{out}");
     }
 
     /// A relocated store root (e.g. `JAN_DATA_FOLDER` outside `$HOME`) must not

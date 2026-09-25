@@ -34,6 +34,18 @@ export type ToolCallRuntimeSnapshot = {
    * settles, since the diff is the whole point of the finished card.
    */
   diffs: Record<string, string>
+  /**
+   * Live `bash` output per call, as streamed by the backend: raw, so it keeps
+   * the command's ANSI colours (the model-facing result has them stripped).
+   * Kept after the call settles so the finished card can still show colours.
+   */
+  output: Record<string, string>
+  /**
+   * The conversation each enqueued call belongs to. The store is shared by
+   * every mounted conversation (a split view runs two at once), so a turn's
+   * housekeeping must only touch its own calls.
+   */
+  owners: Record<string, string>
 }
 
 type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
@@ -41,19 +53,22 @@ type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
    * Starts a turn. Earlier timings are kept: their cards are still on screen
    * and would otherwise lose the duration they had been showing.
    */
-  enqueue: (toolCallIds: string[]) => void
+  enqueue: (toolCallIds: string[], owner?: string) => void
   markRunning: (toolCallId: string) => void
   markSettled: (toolCallId: string) => void
   /**
    * Records an MCP progress update against the running call. The notification
-   * carries no tool call id, so the running call is the only thing it can
-   * belong to -- well defined because tools execute one at a time.
+   * carries no tool call id or conversation, so it is attached only when
+   * exactly one call is running; with two conversations running tools at once
+   * it cannot be attributed and is dropped rather than shown on the wrong card.
    */
   reportProgress: (update: ToolProgressUpdate) => void
   /** Records a display-only diff against the call that produced it. */
   recordDiff: (toolCallId: string, diff: string) => void
+  /** Appends a chunk of live command output to the call that produced it. */
+  appendOutput: (toolCallId: string, text: string) => void
   /** Ends a turn: nothing still queued will run, so stop showing it as waiting. */
-  settleRemaining: () => void
+  settleRemaining: (owner?: string) => void
   reset: () => void
   /**
    * Drops these calls' entries and nothing else. `reset` clears every
@@ -89,24 +104,42 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
   timings: {},
   progress: {},
   diffs: {},
+  output: {},
+  owners: {},
 
-  enqueue: (toolCallIds) =>
+  enqueue: (toolCallIds, owner) =>
     set((s) => {
       const timings = { ...s.timings }
-      // A turn cannot start while a call from the previous one is still
-      // running, so anything left running was stranded by a severed turn (HMR
-      // in dev, a reload, a crashed executor). Left alone it keeps ticking and
-      // steals the running slot from every later call.
-      const stranded = findRunningToolCallId(timings)
-      if (stranded) {
-        timings[stranded] = { ...timings[stranded], endedAt: Date.now() }
+      const ownerOf = (id: string) => s.owners[id]
+      // A turn cannot start while a call from the previous one *in the same
+      // conversation* is still running, so anything of this conversation left
+      // running was stranded by a severed turn (HMR in dev, a reload, a crashed
+      // executor). Another pane's running call is live and is left alone.
+      for (const [id, timing] of Object.entries(timings)) {
+        if (
+          timing.startedAt !== undefined &&
+          timing.endedAt === undefined &&
+          ownerOf(id) === owner
+        ) {
+          timings[id] = { ...timing, endedAt: Date.now() }
+        }
+      }
+      const owners = { ...s.owners }
+      for (const id of toolCallIds) {
+        if (owner === undefined) delete owners[id]
+        else owners[id] = owner
       }
       return {
-        queue: [...toolCallIds],
+        // Only this conversation's queue is replaced.
+        queue: [
+          ...s.queue.filter((id) => ownerOf(id) !== owner),
+          ...toolCallIds,
+        ],
         timings: {
           ...timings,
           ...Object.fromEntries(toolCallIds.map((id) => [id, {}])),
         },
+        owners,
       }
     }),
 
@@ -140,31 +173,52 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
 
   reportProgress: (update) =>
     set((s) => {
-      const running = findRunningToolCallId(s.timings)
-      return running ? { progress: { ...s.progress, [running]: update } } : s
+      const running = Object.entries(s.timings).filter(
+        ([, t]) => t.startedAt !== undefined && t.endedAt === undefined
+      )
+      if (running.length !== 1) return s
+      const [id] = running[0]
+      return { progress: { ...s.progress, [id]: update } }
     }),
 
   recordDiff: (toolCallId, diff) =>
     set((s) => ({ diffs: { ...s.diffs, [toolCallId]: diff } })),
 
-  settleRemaining: () =>
+  appendOutput: (toolCallId, text) =>
+    set((s) => ({
+      output: {
+        ...s.output,
+        [toolCallId]: (s.output[toolCallId] ?? '') + text,
+      },
+    })),
+
+  settleRemaining: (owner) =>
     set((s) => {
-      if (s.queue.length === 0) return s
+      const mine = s.queue.filter((id) => s.owners[id] === owner)
+      if (mine.length === 0) return s
       const now = Date.now()
       const timings = { ...s.timings }
-      for (const id of s.queue) {
+      for (const id of mine) {
         timings[id] = { ...timings[id], endedAt: now }
       }
-      return { queue: [], timings }
+      return { queue: s.queue.filter((id) => s.owners[id] !== owner), timings }
     }),
 
-  reset: () => set({ queue: [], timings: {}, progress: {}, diffs: {} }),
+  reset: () =>
+    set({
+      queue: [],
+      timings: {},
+      progress: {},
+      diffs: {},
+      output: {},
+      owners: {},
+    }),
 
   forget: (toolCallIds) =>
     set((s) => {
       if (toolCallIds.length === 0) return s
       const drop = new Set(toolCallIds)
-      const keep = <T,>(record: Record<string, T>) =>
+      const keep = <T>(record: Record<string, T>) =>
         Object.fromEntries(
           Object.entries(record).filter(([id]) => !drop.has(id))
         ) as Record<string, T>
@@ -173,6 +227,8 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
         timings: keep(s.timings),
         progress: keep(s.progress),
         diffs: keep(s.diffs),
+        output: keep(s.output),
+        owners: keep(s.owners),
       }
     }),
 }))

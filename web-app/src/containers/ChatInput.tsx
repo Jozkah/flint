@@ -149,6 +149,10 @@ import {
 import { resolveAlias, useReferenceAliases } from '@/lib/referenceAliases'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { FilePickerPopover } from '@/components/FilePickerPopover'
+import { SlashCommandMenu } from '@/components/SlashCommandMenu'
+import { slashOptionId } from '@/lib/slashCommands'
+import { useSlashCommands, type SlashSurface } from '@/hooks/useSlashCommands'
+import type { SlashBuiltin } from '@/lib/slashCommands'
 import { readFileAsText } from '@/lib/fileSafety'
 
 type ChatInputProps = {
@@ -237,6 +241,15 @@ type ChatInputProps = {
    * must not pull focus away from the one they are.
    */
   takeFocus?: boolean
+  /**
+   * Which surface's `/` commands this composer offers (default Home). Plugin
+   * commands and skills are filtered by that surface's enablement toggle.
+   */
+  slashSurface?: SlashSurface
+  /** Cowork's folder: its project commands and skills join the global ones. */
+  slashProject?: string | null
+  /** Surface built-ins; Home gets `/new` by default. `/help` is always there. */
+  slashBuiltins?: SlashBuiltin[]
 }
 
 // Video containers llama-server can decode via ffmpeg/ffprobe into frames.
@@ -276,6 +289,9 @@ const ChatInput = memo(function ChatInput({
   threadId: threadIdProp,
   draftScope,
   takeFocus = true,
+  slashSurface = 'home',
+  slashProject,
+  slashBuiltins,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [isFocused, setIsFocused] = useState(false)
@@ -332,6 +348,14 @@ const ChatInput = memo(function ChatInput({
   )
   const routeThreadId = useThreads((state) => state.currentThreadId)
   const currentThreadId = threadIdProp ?? routeThreadId
+  // The SDK reports "ready" before the previous turn's tool loop has run
+  // (onFinish fires after the status flips), so streaming status alone says
+  // nothing about tools still awaiting approval or executing. The thread is
+  // marked busy for exactly that window; a send then must queue, or a second
+  // tool loop starts over the same tool queue and re-runs its calls (#129).
+  const threadBusy = useAppState((state) =>
+    currentThreadId ? Boolean(state.busyThreads?.[currentThreadId]) : false
+  )
   // Subscribed to the map, not read through getState(), so the control
   // re-renders when this chat's overrides change.
   const overridesByThread = useModelOverrides((state) => state.byThread)
@@ -390,6 +414,26 @@ const ChatInput = memo(function ChatInput({
   // Announced: how many references match, or what happened to an alias.
   const [referenceStatus, setReferenceStatus] = useState('')
   const referenceListId = useId()
+  const slashListId = useId()
+  const defaultSlashBuiltins = useMemo<SlashBuiltin[]>(
+    () =>
+      slashSurface === 'home'
+        ? [
+            {
+              name: 'new',
+              description: t('slash:builtin.new'),
+              run: () => void router.navigate({ to: route.home }),
+            },
+          ]
+        : [],
+    [slashSurface, t, router]
+  )
+  const slashCommands = useSlashCommands({
+    surface: slashSurface,
+    project: slashProject,
+    builtins: slashBuiltins ?? defaultSlashBuiltins,
+    helpDescription: t('slash:builtin.help'),
+  })
   const referenceSkills = referenceSources?.skills
   const referenceAgents = referenceSources?.agents
   const [filePickerPosition, setFilePickerPosition] = useState<{
@@ -795,11 +839,25 @@ const ChatInput = memo(function ChatInput({
   const mcpExtension = extensionManager.get<MCPExtension>(ExtensionTypeEnum.MCP)
   const MCPToolComponent = mcpExtension?.getToolComponent?.()
 
-  const handleSendMessage = async (prompt: string) => {
-    if (!selectedModel) {
+  const handleSendMessage = async (typed: string) => {
+    if (!selectedModel && !slashCommands.isBuiltin(typed)) {
       setMessage('Please select a model to start chatting.')
       return
     }
+    // A `/command` expands into what the model receives; a built-in runs here
+    // and sends nothing. Anything that names no known command is sent as typed.
+    const slash = await slashCommands.prepareSend(typed)
+    if (slash.kind === 'handled') {
+      setPrompt('')
+      return
+    }
+    if (slash.kind === 'error') {
+      toast.error(
+        t('slash:error', { command: typed.trim().split(/\s/)[0], error: slash.error })
+      )
+      return
+    }
+    const prompt = slash.kind === 'message' ? slash.text : typed
 
     // Resolve @path references before sending
     const { text: resolvedText, resolvedContents } =
@@ -817,12 +875,13 @@ const ChatInput = memo(function ChatInput({
     }
 
     setMessage('')
-    addToHistory(effectivePrompt)
+    addToHistory(slash.kind === 'message' ? typed : effectivePrompt)
 
     // Use onSubmit prop if available (AI SDK), otherwise create thread and navigate
     if (onSubmit) {
-      // When the model is still streaming, queue the message for later
-      if (isStreaming && queueId) {
+      // When the model is still streaming, or the previous turn's tools are
+      // still pending or running, queue the message for later
+      if ((isStreaming || threadBusy) && queueId) {
         useMessageQueue.getState().enqueue(queueId, {
           id: generateId(),
           text: effectivePrompt,
@@ -940,7 +999,7 @@ const ChatInput = memo(function ChatInput({
             id: threadModelId,
             provider: selectedProvider,
           },
-          prompt, // Use prompt as thread title
+          slash.kind === 'message' ? slash.display : prompt, // Use prompt as thread title
           assistant,
           projectMetadata
         )
@@ -2502,6 +2561,21 @@ const ChatInput = memo(function ChatInput({
                 ))}
               </div>
             )}
+            {slashCommands.open && (
+              <div className="relative">
+                <SlashCommandMenu
+                  items={slashCommands.visible}
+                  activeIndex={slashCommands.activeIndex}
+                  listId={slashListId}
+                  help={slashCommands.helpOpen}
+                  onActiveChange={slashCommands.setActiveIndex}
+                  onSelect={(item) => {
+                    setPrompt(slashCommands.pick(item))
+                    textareaRef.current?.focus()
+                  }}
+                />
+              </div>
+            )}
             <TextareaAutosize
               dir="auto"
               ref={textareaRef}
@@ -2512,17 +2586,26 @@ const ChatInput = memo(function ChatInput({
               data-testid={'chat-input'}
               // The `@` menu is a listbox the composer drives; these tell
               // assistive technology which row is active without moving focus.
-              aria-autocomplete={workingDir ? 'list' : undefined}
+              aria-autocomplete="list"
               aria-expanded={
-                workingDir
+                slashCommands.open ||
+                (workingDir
                   ? filePickerOpen && filePickerEntries.length > 0
-                  : undefined
+                  : false)
               }
-              aria-controls={filePickerOpen ? referenceListId : undefined}
+              aria-controls={
+                slashCommands.open
+                  ? slashListId
+                  : filePickerOpen
+                    ? referenceListId
+                    : undefined
+              }
               aria-activedescendant={
-                filePickerOpen && filePickerEntries.length > 0
-                  ? optionId(referenceListId, referenceActive)
-                  : undefined
+                slashCommands.open && slashCommands.visible.length > 0
+                  ? slashOptionId(slashListId, slashCommands.activeIndex)
+                  : filePickerOpen && filePickerEntries.length > 0
+                    ? optionId(referenceListId, referenceActive)
+                    : undefined
               }
               onChange={(e) => {
                 const value = e.target.value
@@ -2531,6 +2614,7 @@ const ChatInput = memo(function ChatInput({
                 // Track when @ is freshly typed
                 const prevPrompt = prompt
                 handlePromptChange(value)
+                slashCommands.onTextChange(value)
 
                 // Snapshot cursor position when user types @
                 if (value.includes('@') && !prevPrompt.includes('@')) {
@@ -2552,6 +2636,15 @@ const ChatInput = memo(function ChatInput({
                 // e.keyCode 229 is for IME input with Safari
                 const isComposing =
                   e.nativeEvent.isComposing || e.keyCode === 229
+                // The `/` menu owns the arrows, Enter/Tab and Esc while open.
+                if (!isComposing) {
+                  const slashKey = slashCommands.onKeyDown(e)
+                  if (typeof slashKey === 'string') {
+                    setPrompt(slashKey)
+                    return
+                  }
+                  if (slashKey) return
+                }
                 // The `@` menu owns these keys while it is open: Enter inserts
                 // the reference rather than sending, and the arrows move the
                 // active row rather than walking prompt history.

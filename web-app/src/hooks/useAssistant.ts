@@ -36,7 +36,27 @@ export const defaultAssistant: Assistant = {
   avatar: '/images/flint-logo.png',
   description:
     "Flint is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user's behalf.",
-  instructions: `You must output your response in the exact language used in the latest user message. Do not provide translations or switch languages unless explicitly instructed to do so. If the input is mostly English, respond in English.
+  instructions:
+    "You are Flint, a helpful assistant in the Flint desktop app. Reply in the language of the user's latest message unless asked otherwise. Break complex questions into parts. When a tool would give a better answer than memory -- current facts, the user's files -- use it rather than guessing, and say plainly when you could not check something. Be concise.",
+}
+
+/**
+ * The built-in assistant used to ship as "Jan"; it is now "Flint". Its stable
+ * id never changed, so an install from before the rename still holds a saved
+ * assistant with id `jan` and the old name and description. We migrate that one
+ * record to the new branding, but ONLY when it still matches the old default
+ * verbatim — a user who renamed or re-described their assistant kept a
+ * deliberate choice we must not overwrite. Gating on the exact legacy strings
+ * makes the migration idempotent and safe to run on every load.
+ */
+const LEGACY_DEFAULT_ASSISTANT_NAME = 'Jan'
+/**
+ * The default instructions before they were rewritten. They told the model to
+ * narrate its reasoning before every tool call, promised search tools even
+ * with web search off, and put the date first, where it invalidated the cached
+ * prompt every day. Replaced only when still verbatim, like the name.
+ */
+export const LEGACY_DEFAULT_ASSISTANT_INSTRUCTIONS = `You must output your response in the exact language used in the latest user message. Do not provide translations or switch languages unless explicitly instructed to do so. If the input is mostly English, respond in English.
 
 When handling user queries:
 
@@ -53,19 +73,7 @@ When handling user queries:
 
 You have tools to search for and access real-time, up-to-date data. Use them. Search before stating that you can't or don't know.
 
-Current date: {{current_date}}`,
-}
-
-/**
- * The built-in assistant used to ship as "Jan"; it is now "Flint". Its stable
- * id never changed, so an install from before the rename still holds a saved
- * assistant with id `jan` and the old name and description. We migrate that one
- * record to the new branding, but ONLY when it still matches the old default
- * verbatim — a user who renamed or re-described their assistant kept a
- * deliberate choice we must not overwrite. Gating on the exact legacy strings
- * makes the migration idempotent and safe to run on every load.
- */
-const LEGACY_DEFAULT_ASSISTANT_NAME = 'Jan'
+Current date: {{current_date}}`
 const LEGACY_DEFAULT_ASSISTANT_DESCRIPTION =
   "Jan is a helpful desktop assistant that can reason through complex tasks and use tools to complete them on the user's behalf."
 
@@ -75,12 +83,14 @@ export const migrateLegacyDefaultAssistant = (a: Assistant): Assistant => {
   const renamed = a.name === LEGACY_DEFAULT_ASSISTANT_NAME
   const redescribed = a.description === LEGACY_DEFAULT_ASSISTANT_DESCRIPTION
   const reavatar = !a.avatar || a.avatar === '👋'
-  if (!renamed && !redescribed && !reavatar) return a
+  const reinstructed = a.instructions === LEGACY_DEFAULT_ASSISTANT_INSTRUCTIONS
+  if (!renamed && !redescribed && !reavatar && !reinstructed) return a
   return {
     ...a,
     name: renamed ? defaultAssistant.name : a.name,
     description: redescribed ? defaultAssistant.description : a.description,
     avatar: reavatar ? defaultAssistant.avatar : a.avatar,
+    instructions: reinstructed ? defaultAssistant.instructions : a.instructions,
   }
 }
 

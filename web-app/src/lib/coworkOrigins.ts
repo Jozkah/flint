@@ -7,6 +7,7 @@ import {
 import type { GitStatus } from '@/lib/coworkGit'
 import type { FileOrigin } from '@/lib/fileActivity'
 import type { AccessMode } from '@/lib/coworkAccess'
+import type { PromptFolderAccess } from '@/lib/coworkPrompt'
 
 /**
  * Where a change went, and what we actually know about who made it.
@@ -309,17 +310,20 @@ export type RunOrigins = {
  */
 export const promptFolderAccess = (
   origins: RunOrigins
-): 'read-only' | 'editable' =>
+): PromptFolderAccess =>
   // Both writing destinations, because both are true: a managed worktree is
   // the run's whole world, read and written, and telling the model it is
   // read-only would have it spend the run proposing changes it could have
   // made. The pairing of access and destination is what keeps a downgraded
   // session honest — either half alone would say editable for a session
   // holding no grant.
-  (origins.access === 'edit-folder' && origins.destination === 'repository') ||
-  (origins.access === 'managed-worktree' && origins.destination === 'managed')
+  // A managed worktree gets its own wording: telling the model it edits the
+  // user's checkout had it report worktree changes as landing on `main`.
+  origins.access === 'edit-folder' && origins.destination === 'repository'
     ? 'editable'
-    : 'read-only'
+    : origins.access === 'managed-worktree' && origins.destination === 'managed'
+      ? 'worktree'
+      : 'read-only'
 
 /**
  * What this run will not be able to tell the user afterwards.

@@ -299,3 +299,44 @@ describe('PluginsManagerDialog', () => {
     expect(screen.queryByRole('radio', { name: 'plugins:install.marketplace' })).toBeNull()
   })
 })
+
+describe('PluginsManagerDialog details ordering (#241)', () => {
+  const beta = { ...alpha, id: 'beta', name: 'beta', source: '/src/beta' }
+  const betaDetails = {
+    ...alphaDetails,
+    ...beta,
+    installedPath: '/project/.jan/agent/plugins/beta',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    listPlugins.mockResolvedValue([alpha, beta])
+    getPluginSources.mockResolvedValue({ marketplace: null, gitAvailable: true })
+  })
+
+  it('keeps the newer selection when an older details request resolves last', async () => {
+    const resolvers: Record<string, (d: unknown) => void> = {}
+    getPluginDetails.mockImplementation(
+      (_folder: string, id: string) =>
+        new Promise((resolve) => {
+          resolvers[id] = resolve
+        })
+    )
+    await renderDialog()
+
+    fireEvent.click(await screen.findByRole('button', { name: /alpha/ }))
+    fireEvent.click(screen.getByRole('button', { name: /beta/ }))
+    await waitFor(() => expect(resolvers.beta).toBeDefined())
+
+    await act(async () => {
+      resolvers.beta(betaDetails)
+    })
+    expect(await screen.findByText('/project/.jan/agent/plugins/beta')).toBeInTheDocument()
+
+    await act(async () => {
+      resolvers.alpha(alphaDetails)
+    })
+    expect(screen.getByText('/project/.jan/agent/plugins/beta')).toBeInTheDocument()
+    expect(screen.queryByText('plugins:details.loading')).toBeNull()
+  })
+})

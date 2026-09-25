@@ -285,17 +285,25 @@ export default function PluginsManagerDialog({
     setMode('browse')
   }, [folder])
 
+  // The plugin whose details were asked for last. A slower request for a
+  // plugin the user already left must not overwrite the current one's details
+  // (the pane would then show "loading" forever).
+  const detailsForRef = useRef<string | null>(null)
+
   const loadDetails = useCallback(
     async (id: string): Promise<PluginDetails | null> => {
       if (!folder) return null
+      detailsForRef.current = id
       setDetails(null)
       setDetailsError(null)
       try {
         const d = await getPluginDetails(folder, id)
-        setDetails(d)
+        if (detailsForRef.current === id) setDetails(d)
         return d
       } catch (e) {
-        setDetailsError(pluginErrorText(tRef.current, e))
+        if (detailsForRef.current === id) {
+          setDetailsError(pluginErrorText(tRef.current, e))
+        }
         if (toPluginError(e).code === 'not_installed') void refresh()
         return null
       }

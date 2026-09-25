@@ -1176,10 +1176,19 @@ mod mcp_confinement_tests {
             return;
         };
 
+        // On Windows the AppContainer helper also gets the two names it needs
+        // to start (Jozkah/jan#284); nothing else from the host.
+        let helper_needs = |k: &str| {
+            cfg!(windows)
+                && tauri_plugin_agent_tools::tools::win_env::REQUIRED
+                    .iter()
+                    .any(|r| r.eq_ignore_ascii_case(k))
+        };
         let passed: Vec<String> = cmd
             .as_std()
             .get_envs()
             .map(|(k, _)| k.to_string_lossy().into_owned())
+            .filter(|k| !helper_needs(k))
             .collect();
 
         assert_eq!(passed, vec!["API_TOKEN".to_string()]);
@@ -1844,6 +1853,30 @@ mod mcp_http_integration_tests {
         }
     }
 
+    /// Jozkah/jan#261: a URL can carry the server's credential (a Zapier-style
+    /// `/s/<secret>/mcp` path, `?api_key=`). A failed connection's error is
+    /// logged and shown, so it names the server's origin and nothing more.
+    #[tokio::test]
+    async fn a_failed_connection_does_not_repeat_the_url_secret() {
+        let port = {
+            let socket = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+            socket.local_addr().expect("addr").port()
+        };
+        let client = reqwest13::Client::builder().build().expect("client");
+        let url = format!("http://127.0.0.1:{port}/api/mcp/s/SECRET123456/mcp?api_key=QUERYSECRET789");
+        let err = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            serve_http(client, &url, handler("leaky")),
+        )
+        .await
+        .expect("fails rather than hangs")
+        .err()
+        .expect("a closed port does not connect");
+        assert!(!err.contains("SECRET123456"), "{err}");
+        assert!(!err.contains("QUERYSECRET789"), "{err}");
+        assert!(err.contains(&format!("127.0.0.1:{port}")), "still names the server: {err}");
+    }
+
     /// An `initialize` reply that is not a valid result is a failed handshake,
     /// not a server to start publishing tools from.
     #[tokio::test]
@@ -2395,6 +2428,71 @@ mod manager_bookkeeping_tests {
             !monitors.contains_key("absent"),
             "a failed start must not leave a monitor reconnecting it"
         );
+    }
+
+    /// A task that stands in for a health monitor, and a receiver that
+    /// resolves once the task is gone (its sender is dropped on abort).
+    fn fake_monitor() -> (
+        tauri::async_runtime::JoinHandle<()>,
+        tokio::sync::oneshot::Receiver<()>,
+    ) {
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let handle = tauri::async_runtime::spawn(async move {
+            let _tx = tx;
+            std::future::pending::<()>().await;
+        });
+        (handle, rx)
+    }
+
+    /// #112: deactivating a server left its monitor running with the old
+    /// config, so a same-name re-activation could be reverted by it later.
+    #[tokio::test]
+    async fn deactivating_a_server_stops_its_monitor() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let state = handle.state::<AppState>();
+        let (monitor, gone) = fake_monitor();
+        state
+            .mcp_monitoring_tasks
+            .lock()
+            .await
+            .insert("edited".to_string(), monitor);
+
+        // No running service is registered, so this reports "not found"; the
+        // monitor must be stopped regardless.
+        let _ = super::super::commands::deactivate_mcp_server(
+            handle.clone(),
+            handle.state::<AppState>(),
+            "edited".to_string(),
+        )
+        .await;
+
+        assert!(!state.mcp_monitoring_tasks.lock().await.contains_key("edited"));
+        tokio::time::timeout(std::time::Duration::from_secs(5), gone)
+            .await
+            .expect("the old monitor must be aborted, not detached")
+            .unwrap_err();
+    }
+
+    #[tokio::test]
+    async fn aborting_a_monitor_stops_the_task() {
+        let (app, _servers) = app_with_state();
+        let handle = app.handle().clone();
+        let state = handle.state::<AppState>();
+        let (monitor, gone) = fake_monitor();
+        state
+            .mcp_monitoring_tasks
+            .lock()
+            .await
+            .insert("x".to_string(), monitor);
+
+        super::super::helpers::abort_mcp_monitor(&state.mcp_monitoring_tasks, "x").await;
+
+        assert!(state.mcp_monitoring_tasks.lock().await.is_empty());
+        tokio::time::timeout(std::time::Duration::from_secs(5), gone)
+            .await
+            .expect("aborted")
+            .unwrap_err();
     }
 
     /// Every start takes a number, and the number moves. That is what lets a

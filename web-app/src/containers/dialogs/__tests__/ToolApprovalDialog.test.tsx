@@ -36,6 +36,48 @@ const renderDialog = (
 }
 
 describe('ToolApprovalDialog', () => {
+  // The caller found this exact bash command already allowed once in this
+  // conversation: the dialog says so and prefers the conversation grant,
+  // without answering anything itself.
+  it('marks a repeated command and prefers allowing it for the conversation', async () => {
+    const onDecision = vi.fn()
+    const request = describePermissionRequest({
+      toolName: 'bash',
+      input: { command: 'npm test' },
+    })
+    render(
+      <ToolApprovalDialog
+        open
+        toolName="bash"
+        request={request}
+        repeatedCommand
+        onDecision={onDecision}
+      />
+    )
+    expect(screen.getByTestId('approval-repeat-notice')).toHaveTextContent(
+      'permissions:repeat.allowedOnceBefore'
+    )
+    const thread = document.querySelector('[data-scope="allow-thread"]')!
+    const once = document.querySelector('[data-scope="allow-once"]')!
+    expect(thread).toHaveAttribute('data-variant', 'default')
+    expect(once).toHaveAttribute('data-variant', 'outline')
+    await waitFor(() => expect(thread).toHaveFocus())
+    expect(onDecision).not.toHaveBeenCalled()
+  })
+
+  it('keeps the usual choices when the command is not a repeat', async () => {
+    renderDialog(
+      describePermissionRequest({ toolName: 'bash', input: { command: 'ls' } })
+    )
+    expect(screen.queryByTestId('approval-repeat-notice')).not.toBeInTheDocument()
+    expect(
+      document.querySelector('[data-scope="allow-once"]')
+    ).toHaveAttribute('data-variant', 'default')
+    await waitFor(() =>
+      expect(screen.getByText('permissions:scope.deny')).toHaveFocus()
+    )
+  })
+
   it('offers exactly the scopes the request supports, least broad first', () => {
     renderDialog()
     const offered = Array.from(

@@ -50,6 +50,7 @@ function ClaudeCodeIntegration() {
     trustedHosts,
     proxyTimeout,
     setLastServerModels,
+    enableServerToolExecution,
   } = useLocalApiServer()
 
   const { serverStatus, setServerStatus } = useAppState()
@@ -148,6 +149,8 @@ function ClaudeCodeIntegration() {
           isCorsEnabled: corsEnabled,
           isVerboseEnabled: verboseLogs,
           proxyTimeout: proxyTimeout,
+          // Omitted, the backend reads it as false (#156).
+          enableServerToolExecution,
         })
       } catch (startErr) {
         const msg =

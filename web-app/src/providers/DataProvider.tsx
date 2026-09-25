@@ -2,7 +2,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 
 import {
   useGeneralSetting,
-  HUGGINGFACE_TOKEN_SECRET_KEY,
+  loadHuggingfaceToken,
 } from '@/hooks/useGeneralSetting'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
@@ -11,6 +11,7 @@ import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
 import { ExtensionManager } from '@/lib/extension'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
+import { getProviderApiType } from '@/lib/providerCaps'
 import { useAppState } from '@/hooks/useAppState'
 import { AppEvent, events } from '@janhq/core'
 import { SystemEvent } from '@/types/events'
@@ -36,6 +37,10 @@ type RegisterProviderRequest = {
   base_url?: string
   custom_headers: RegisteredCustomHeader[]
   models: string[]
+  /** The wire format the provider speaks. The Local API proxy and the agent
+   * loop pick their request converter by it; without it every provider was
+   * forwarded as OpenAI chat/completions (#139). */
+  api_type: ProviderApiType
 }
 
 async function registerRemoteProvider(provider: ModelProvider) {
@@ -58,7 +63,8 @@ async function registerRemoteProvider(provider: ModelProvider) {
       value: h.value,
       secret: !!h.secret,
     })),
-    models: provider.models.map(e => e.id)
+    models: provider.models.map(e => e.id),
+    api_type: getProviderApiType(provider),
   }
 
   try {
@@ -226,6 +232,7 @@ export function DataProvider() {
     setLastServerModels,
     defaultModelLocalApiServer,
     runInBackground,
+    enableServerToolExecution,
   } = useLocalApiServer()
   const setServerStatus = useAppState((state) => state.setServerStatus)
 
@@ -246,9 +253,12 @@ export function DataProvider() {
     })
     // Re-seed the Hugging Face token from the keyring (no longer persisted to
     // settings storage) into the store + download extension for this session.
-    invoke<string | null>('get_secret', {
-      key: HUGGINGFACE_TOKEN_SECRET_KEY,
-    })
+    loadHuggingfaceToken(
+      (command, args) => invoke(command, args),
+      useModelProvider
+        .getState()
+        .providers.find((p) => p.provider === 'huggingface')?.api_key
+    )
       .then((token) => {
         if (token) useGeneralSetting.getState().setHuggingfaceToken(token)
       })
@@ -447,6 +457,9 @@ export function DataProvider() {
               isCorsEnabled: corsEnabled,
               isVerboseEnabled: verboseLogs,
               proxyTimeout: proxyTimeout,
+              // Omitted, the backend reads it as false and silently turns off
+              // the setting the user enabled (#156).
+              enableServerToolExecution,
             })
             .then(async (actualPort: number) => {
               // Store the actual port that was assigned (important for mobile with port 0)

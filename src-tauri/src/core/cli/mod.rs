@@ -5,7 +5,10 @@
 mod agent_status;
 pub mod auth;
 pub mod brand;
+pub mod color;
 pub mod browser;
+#[cfg(test)]
+mod contract_conformance;
 pub mod device_auth;
 pub mod doctor;
 pub mod file_log;
@@ -15,8 +18,16 @@ pub mod json_api;
 pub mod bench;
 pub mod login;
 pub mod mcp;
+/// `jan mcp serve`: the other direction, Jan's toolset served over MCP.
+pub mod mcp_serve;
 mod model_capabilities;
 mod path_refs;
+/// `jan cli agent schema`: the protocol's JSON Schema, generated from the types.
+pub mod protocol_schema;
+/// `jan cli agent rpc`: persistent, session-scoped JSON-RPC transport.
+pub mod rpc;
+/// `jan cli agent rpc-schema`: the RPC request and event schemas.
+pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
 pub mod secrets;
@@ -25,7 +36,11 @@ pub mod stream_input;
 pub mod terminal_setup;
 pub mod tokamak;
 mod tui;
+/// Renders reported usage from the Tokamak usage API (upstream #9034).
+pub mod usage_view;
 pub mod version;
+/// The user-message wire shape, shared by the TUI and the headless channel.
+mod user_message;
 pub mod worktree;
 
 use std::path::PathBuf;
@@ -248,14 +263,45 @@ pub fn cli_list_messages(thread_id: &str) -> Result<Vec<serde_json::Value>, Stri
 
 /// Delete a thread directory.
 pub fn cli_delete_thread(thread_id: &str) -> Result<(), String> {
+    delete_thread_at(&resolve_jan_data_folder(), thread_id)
+}
+
+/// Metadata key naming the repository that holds a thread's snapshot ref.
+/// Written by the TUI with its snapshots; read back on delete, which otherwise
+/// has no repository in hand to drop the ref from (Jozkah/jan#143).
+pub(crate) const SNAPSHOT_REPO_KEY: &str = "snapshot_repo";
+
+fn delete_thread_at(data_folder: &std::path::Path, thread_id: &str) -> Result<(), String> {
     use std::fs;
 
-    let data_folder = resolve_jan_data_folder();
-    let thread_dir = get_thread_dir(&data_folder, thread_id);
+    // Read where the snapshots live before the thread's files go away.
+    let snapshot_repo = fs::read_to_string(get_thread_metadata_path(data_folder, thread_id))
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|t| {
+            t.pointer(&format!("/metadata/{SNAPSHOT_REPO_KEY}"))
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from)
+        });
+    let thread_dir = get_thread_dir(data_folder, thread_id);
     if thread_dir.exists() {
         fs::remove_dir_all(thread_dir).map_err(|e| e.to_string())?;
     }
     crate::core::agent::git::cleanup_snapshot_index(thread_id);
+    // The ref is what keeps the snapshot commit chain alive; the index above
+    // is only scratch. Same pair the desktop's checkpoint::forget drops.
+    if let Some(repo) = snapshot_repo.filter(|r| r.is_dir()) {
+        let _ = crate::core::agent::git::drop_ref(&repo, thread_id);
+    }
+    // What the thread's runs recorded goes with it, as on the desktop
+    // (Jozkah/jan#294): snapshots, usage, diffs, decisions, undo journal.
+    if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(&data_folder, thread_id) {
+        eprintln!("could not remove the records of thread {thread_id}: {e}");
+    }
+    // Its agent scratch dir goes too (Jozkah/jan#186).
+    if let Some(scratch) = crate::core::threads::utils::thread_scratch_dir(thread_id) {
+        let _ = fs::remove_dir_all(scratch);
+    }
     Ok(())
 }
 
@@ -736,9 +782,12 @@ use crate::core::agent::r#loop::{
     SteeringRequest,
 };
 use crate::core::cli::providers::{load_provider_configs, ProviderOverrides};
-use crate::core::cli::run_report::{ndjson_line, OutputFormat, PermissionDecisionRecord, RunReport};
+use crate::core::cli::run_report::{
+    ndjson_line, Init, InputContentParts, OutputFormat, PermissionDecisionRecord, RunReport,
+};
 use crate::core::cli::stream_input::{
-    parse_input_line, InputErrorRecord, InputFormat, InputMessage, StreamInput,
+    parse_input_line, InputErrorRecord, InputFormat, InputMessage, StreamInput, INPUT_KINDS,
+    MAX_ECHO_BYTES, MAX_LINE_BYTES,
 };
 use crate::core::mcp::models::McpSettings;
 use std::collections::HashMap;
@@ -748,11 +797,80 @@ use tauri_plugin_agent_tools::workspace;
 use tokio::sync::{mpsc, Mutex};
 
 /// Token-spend ceiling for one agent run when `agent.toml [budget].max_tokens`
-/// is unset. There is no turn cap: the agent takes as many turns as the task
-/// needs and this budget (or cancellation) is what stops a runaway loop. `0`
-/// disables the ceiling entirely. Counted marginally by `SessionBudget`, so
-/// this bounds real new spend, not the context replayed on every turn.
+/// is unset. `0` disables the ceiling entirely. Counted marginally by
+/// `SessionBudget`, so it tracks real new spend, not the context replayed on
+/// every turn.
+///
+/// Spending it stops the run (see `body_session_budget`); `--max-turns` adds a
+/// turn cap on top.
 const DEFAULT_MAX_SESSION_TOKENS: u64 = 128_000;
+
+/// Where the session token ceiling in effect came from, so `agent status` can
+/// say which source won.
+///
+/// `agent status` takes no budget flag and so always passes `None`, making
+/// `"flag"` unreachable from the binary today. It is kept because the argument
+/// mirrors `resolve_session_budget` below: a status surface that does accept
+/// the flag (or any caller reporting an in-flight run's ceiling) would
+/// otherwise report `agent.toml` for a value the flag had overridden.
+fn session_budget_source(flag: Option<u64>, configured: Option<u64>) -> &'static str {
+    match (flag, configured) {
+        (Some(_), _) => "flag",
+        (None, Some(_)) => "agent.toml",
+        (None, None) => "default",
+    }
+}
+
+/// Session token ceiling for one run. Precedence is the per-invocation
+/// `--max-session-tokens` flag, then `agent.toml [budget].max_tokens`, then
+/// `DEFAULT_MAX_SESSION_TOKENS` - the same flag/config/default shape the
+/// sandbox setting resolves with. `0` from either source means unbounded and is
+/// carried through as-is (see `body_session_budget`).
+/// The money ceiling for a run (upstream #9034): `--max-budget-usd`, then
+/// `[budget].max_usd`, then none.
+///
+/// A ceiling is only meaningful if the run can be priced, and in this fork the
+/// price is what a person declared in `<data folder>/prices.toml`. So a model
+/// with no declared price is **refused** rather than run uncapped, and a
+/// negative limit is refused as a typo. `0` is allowed and honest: it stops at
+/// the first billed request. Refused at startup, before any paid request.
+fn resolve_cost_ceiling(
+    flag: Option<f64>,
+    configured: Option<f64>,
+    prices: &std::collections::BTreeMap<String, crate::core::agent::spend::Price>,
+    model: &str,
+) -> Result<Option<crate::core::agent::session::CostCeiling>, String> {
+    let Some(max_usd) = flag.or(configured) else {
+        return Ok(None);
+    };
+    if !max_usd.is_finite() || max_usd < 0.0 {
+        return Err(format!(
+            "a cost ceiling must be a non-negative amount in USD, not {max_usd}"
+        ));
+    }
+    let price = crate::core::agent::spend::price_for(prices, model).ok_or_else(|| {
+        format!(
+            "cannot cap spend for {model}: no price is declared for it in prices.toml, so \
+             there is nothing to meter a ${max_usd} ceiling against. Remove the limit to run \
+             uncapped, or declare the model's price (dollars per million tokens)."
+        )
+    })?;
+    // prices.toml is dollars per million tokens.
+    let per_token = |per_million: f64| per_million / 1_000_000.0;
+    Ok(Some(crate::core::agent::session::CostCeiling {
+        rates: crate::core::agent::session::TokenRates {
+            prompt_usd: per_token(price.input),
+            completion_usd: per_token(price.output),
+            cache_read_usd: price.cached_input.map(per_token),
+            cache_write_usd: None,
+        },
+        max_usd,
+    }))
+}
+
+fn resolve_session_budget(flag: Option<u64>, configured: Option<u64>) -> u64 {
+    flag.or(configured).unwrap_or(DEFAULT_MAX_SESSION_TOKENS)
+}
 
 /// Resolve the `--project` flag (default `"."`) to an absolute path. The raw
 /// value is what the model would otherwise see verbatim in the system prompt's
@@ -795,7 +913,14 @@ pub fn cli_agent_status(
         "project": project_root.to_string_lossy(),
         "data_folder": resolve_jan_data_folder().to_string_lossy(),
         "model": cfg.agent.model,
-        "max_session_tokens": cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+        // The effective ceiling with the config files resolved. A
+        // `--max-session-tokens` flag is per-invocation and so, like
+        // `--sandbox` below, cannot be reflected in a config dump.
+        "max_session_tokens": resolve_session_budget(None, cfg.budget.max_tokens),
+        "max_session_tokens_source": session_budget_source(None, cfg.budget.max_tokens),
+        // The configured money ceiling, or null when the project sets none.
+        // Whether it can be enforced depends on the model a run resolves.
+        "max_budget_usd": cfg.budget.max_usd,
         "tools": {
             "default": cfg.tools.default,
             "allow": cfg.tools.allow,
@@ -907,8 +1032,8 @@ pub async fn cli_plugin_search(
     crate::core::agent::plugins::search(&resolve_project_root(project), query).await
 }
 
-/// Autonomous run: as many turns as the task needs, bounded only by the
-/// session token budget.
+/// Autonomous run: as many turns as the task needs, bounded by a `max_turns`
+/// cap when one is set, and by the session token budget.
 ///
 /// The failure is classified (AH-009), so the caller can choose an exit status
 /// and a message from what went wrong rather than from how it was worded.
@@ -922,15 +1047,19 @@ pub async fn cli_agent_run(
     resume: Option<ResumeRequest>,
     format: OutputFormat,
     input_format: InputFormat,
+    host_tools: Option<&str>,
+    host_gate: bool,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     run_agent_loop(
         project, task, model, false, overrides, flags, resume, format, input_format,
+        host_tools,
+        host_gate,
     )
     .await
 }
 
-/// Single-turn run for debugging: the one place a turn cap is still applied,
-/// and it is not user-configurable.
+/// Single-turn run for debugging: the turn cap is pinned to 1 here and
+/// outranks any `--max-turns`.
 pub async fn cli_agent_step(
     project: &str,
     task: &str,
@@ -948,6 +1077,10 @@ pub async fn cli_agent_step(
         None,
         OutputFormat::Text,
         InputFormat::Text,
+        // `step` is a debugging path with no client on stdin, so there is
+        // nothing that could execute a host tool.
+        None,
+        false,
     )
     .await
 }
@@ -960,6 +1093,8 @@ fn build_cli_orchestration_args(
     mcp_servers: crate::core::state::SharedMcpServers,
     mcp_settings: McpSettings,
     permission_requests: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolSet,
+    host_tool_requests: crate::core::agent::host_tools::HostToolRegistry,
     auto_approve: bool,
     plan: bool,
     max_parallel_subagents: u32,
@@ -984,6 +1119,10 @@ fn build_cli_orchestration_args(
         permissions,
         project_root: Some(project_root),
         permission_requests,
+        host_tools,
+        host_tool_requests,
+        host_owns_gate: false,
+        host_tool_route: None,
         ask_requests: None,
         todo_registry: None,
         system_prompt_override: None,
@@ -1000,6 +1139,8 @@ fn build_cli_orchestration_args(
         // reuses `args` across turns and wipes it when the interactive session
         // ends.
         session_id: Some(uuid::Uuid::new_v4().to_string()),
+        // The top-level run is not a child: no dispatch gave it an id.
+        run_id: None,
         // `--sandbox` only when passed; unset falls through to the project's
         // `[tools].sandbox` and then the user's global `sandbox`.
         subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
@@ -1056,9 +1197,19 @@ pub(crate) struct SessionLimits {
     /// Per-request output cap forwarded to the model as OpenAI `max_tokens`.
     /// `None` omits the field (model default).
     pub max_tokens: Option<u64>,
-    /// `[budget].max_tokens`: marginal token-spend ceiling for one run, the
-    /// only cap on run length. `0` is unbounded.
+    /// `--max-session-tokens`, else `[budget].max_tokens`, else the default:
+    /// marginal token-spend ceiling for one run. `0` is no ceiling.
+    ///
+    /// Spending it stops the run; `max_turns` is a separate turn cap.
     pub max_session_tokens: u64,
+    /// `--max-turns`: hard cap on agentic turns for this run. `None` omits the field from the request
+    /// body, which the engine reads as unbounded; `0` means unbounded too (see
+    /// `body_turn_cap`).
+    pub max_turns: Option<u64>,
+    /// `--max-budget-usd`, else `[budget].max_usd`: the run's money ceiling and
+    /// the rates to meter it against, resolved once at startup by
+    /// `resolve_cost_ceiling`. `None` leaves the run unmetered.
+    pub cost_ceiling: Option<crate::core::agent::session::CostCeiling>,
 }
 
 /// Resolved engine handle for a chat session: the args are built once and the
@@ -1096,24 +1247,54 @@ pub(crate) struct AgentSession {
     pub workspace_note: Option<String>,
 }
 
+/// The request body for one turn, as a free function of the parts that shape
+/// it. Split out of [`AgentSession::body`] so the wire contract is testable
+/// without standing up an orchestration handle (MCP maps, HTTP client, tool
+/// permissions), none of which this assembly reads.
+fn request_body(
+    model: &str,
+    limits: &SessionLimits,
+    send_reasoning: bool,
+    messages: serde_json::Value,
+) -> serde_json::Value {
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "max_session_tokens": limits.max_session_tokens,
+        "stream": true,
+    });
+    // Forward the per-request output cap only when configured; it flows to
+    // the upstream via `copy_optional_chat_params`.
+    if let Some(max) = limits.max_tokens {
+        body["max_tokens"] = serde_json::json!(max);
+    }
+    // Single place a turn cap enters the body: `agent step` pins 1 the same
+    // way `--max-turns` pins N, so both go through `limits`. Absent rather
+    // than 0 when unset, so the engine's own default applies.
+    if let Some(turns) = limits.max_turns {
+        body["max_turns"] = serde_json::json!(turns);
+    }
+    // The ceiling travels with the rates it is metered against: the loop is
+    // not `cli`-gated, so prices resolved here are the only ones it sees.
+    if let Some(ceiling) = limits.cost_ceiling {
+        body["max_budget_usd"] = serde_json::json!(ceiling.max_usd);
+        body["token_rates"] = serde_json::json!({
+            "prompt_usd": ceiling.rates.prompt_usd,
+            "completion_usd": ceiling.rates.completion_usd,
+            "cache_read_usd": ceiling.rates.cache_read_usd,
+            "cache_write_usd": ceiling.rates.cache_write_usd,
+        });
+    }
+    // Reasoning resend policy: the request-level flag the loop reads to
+    // decide whether prior assistant `reasoning_content` goes back out.
+    body["send_reasoning"] = serde_json::json!(send_reasoning);
+    body
+}
+
 impl AgentSession {
     /// Build a streaming request body for the given conversation history.
     pub(crate) fn body(&self, messages: serde_json::Value) -> serde_json::Value {
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "messages": messages,
-            "max_session_tokens": self.limits.max_session_tokens,
-            "stream": true,
-        });
-        // Forward the per-request output cap only when configured; it flows to
-        // the upstream via `copy_optional_chat_params`.
-        if let Some(max) = self.limits.max_tokens {
-            body["max_tokens"] = serde_json::json!(max);
-        }
-        // Reasoning resend policy: the request-level flag the loop reads to
-        // decide whether prior assistant `reasoning_content` goes back out.
-        body["send_reasoning"] = serde_json::json!(self.send_reasoning);
-        body
+        request_body(&self.model, &self.limits, self.send_reasoning, messages)
     }
 }
 
@@ -1149,6 +1330,17 @@ pub struct SessionFlags {
     /// defers to `[agent].worktree`, then the global `worktree`, then the CLI
     /// default of off.
     pub worktree: Option<bool>,
+    /// `--max-turns`: hard cap on agentic turns. `None` (not passed) leaves the run unbounded by turns; `0`
+    /// is unbounded as well.
+    pub max_turns: Option<u64>,
+    /// `--max-session-tokens`: session token ceiling, outranking
+    /// `[budget].max_tokens`. `None` (not passed) defers to that, then to
+    /// `DEFAULT_MAX_SESSION_TOKENS`.
+    pub max_session_tokens: Option<u64>,
+    /// `--max-budget-usd`: hard USD ceiling for the run, outranking
+    /// `[budget].max_usd`. A run that asks for one but cannot be priced is
+    /// refused (see `resolve_cost_ceiling`).
+    pub max_budget_usd: Option<f64>,
 }
 
 /// The desktop app's currently-selected model, adopted only when signed in to
@@ -1355,7 +1547,7 @@ fn prepare_agent_session(
     // ignored would send the run to a model nobody chose while looking as
     // though the rule had been honoured.
     let routing = crate::core::agent::routing::rules(&cfg.routing)
-        .map_err(|e| format!("{}", e.message()))?;
+        .map_err(|e| e.message().to_string())?;
     let model = match crate::core::agent::routing::route(
         &routing,
         &crate::core::agent::routing::Request {
@@ -1445,6 +1637,13 @@ fn prepare_agent_session(
         mcp_servers.clone(),
         mcp_settings,
         permission_requests.clone(),
+        // Host tools are declared per *run*, by a client on stdin, so the
+        // session is built without them and the duplex headless path installs
+        // the declared set before orchestration starts. The TUI leaves this
+        // empty, and `run_subagent` clears it for a child, so neither emits a
+        // `tool_request` -- only a run with a client that can answer one does.
+        crate::core::agent::host_tools::HostToolSet::new(),
+        crate::core::agent::host_tools::new_registry(),
         flags.auto_approve,
         flags.plan,
         max_parallel_subagents,
@@ -1469,6 +1668,19 @@ fn prepare_agent_session(
     )
     .map_err(|e| e.message().to_string())?;
 
+    // Resolved before the session is built: a run that asked for a ceiling it
+    // cannot be priced against is refused here, before any paid request.
+    let cost_ceiling = match flags.max_budget_usd.or(cfg.budget.max_usd) {
+        None => None,
+        Some(_) => {
+            let prices = crate::core::agent::spend::prices(
+                &crate::core::app::commands::resolve_jan_data_folder(),
+            )
+            .map_err(|e| e.message)?;
+            resolve_cost_ceiling(flags.max_budget_usd, cfg.budget.max_usd, &prices, &model)?
+        }
+    };
+
     Ok(AgentSession {
         args,
         permission_requests,
@@ -1480,7 +1692,12 @@ fn prepare_agent_session(
             reserve_tokens: compaction.reserve_tokens,
             compaction: compaction.clone(),
             max_tokens: cfg.agent.max_tokens,
-            max_session_tokens: cfg.budget.max_tokens.unwrap_or(DEFAULT_MAX_SESSION_TOKENS),
+            max_session_tokens: resolve_session_budget(
+                flags.max_session_tokens,
+                cfg.budget.max_tokens,
+            ),
+            max_turns: flags.max_turns,
+            cost_ceiling,
         },
         show_reasoning: cfg.agent.show_reasoning.unwrap_or(false),
         stream_reasoning: crate::core::agent::global_config::stream_reasoning_enabled(),
@@ -1595,6 +1812,9 @@ fn prepare_agent_run(
         SessionFlags {
             plan: false,
             require_model: true,
+            // `agent step` is a single turn by definition and outranks any
+            // flag; `agent run` carries whatever `--max-turns` asked for.
+            max_turns: if single_turn { Some(1) } else { flags.max_turns },
             ..flags
         },
         resume.as_ref(),
@@ -1664,10 +1884,7 @@ fn prepare_agent_run(
         .map(|r| r.history.clone())
         .unwrap_or_default();
     history.push(serde_json::json!({ "role": "user", "content": final_task }));
-    let mut body = session.body(serde_json::json!(history.clone()));
-    if single_turn {
-        body["max_turns"] = serde_json::json!(1);
-    }
+    let body = session.body(serde_json::json!(history.clone()));
     // Emit resolved references stderr so the user sees what was injected
     if !injected.is_empty() {
         eprintln!("(resolved @path references)");
@@ -1695,6 +1912,20 @@ fn short_id(id: &str) -> String {
     id.chars().take(8).collect()
 }
 
+/// Read a host's tool declarations from the file `--host-tools` names.
+///
+/// Every failure is the host's to fix and is reported with the path, since a
+/// host that mistyped one is otherwise left guessing which of its tools the run
+/// disagreed with.
+fn load_host_tools(path: &str) -> Result<crate::core::agent::host_tools::HostToolSet, String> {
+    let raw = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read --host-tools file '{path}': {e}"))?;
+    let decls: Vec<crate::core::agent::host_tools::HostToolDecl> = serde_json::from_str(&raw)
+        .map_err(|e| format!("--host-tools file '{path}' is not a list of tool declarations: {e}"))?;
+    crate::core::agent::host_tools::HostToolSet::declare(decls)
+        .map_err(|e| format!("--host-tools file '{path}': {e}"))
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_agent_loop(
     project: &str,
@@ -1706,6 +1937,8 @@ async fn run_agent_loop(
     resume: Option<ResumeRequest>,
     format: OutputFormat,
     input_format: InputFormat,
+    host_tools: Option<&str>,
+    host_gate: bool,
 ) -> Result<(), tauri_plugin_agent_tools::harness_error::HarnessError> {
     // A duplex run switches off both of the CLI's own answer paths, so the
     // client is the only thing that can resolve a permission request -- and it
@@ -1714,17 +1947,67 @@ async fn run_agent_loop(
     // pairing leaves a gated call unanswerable. Rejected rather than silently
     // upgraded: a caller parsing plain text should not have the format changed
     // under it.
-    if input_format.is_stream_json() && !format.is_stream_json() {
-        return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
-            tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
-            "--input-format stream-json requires --output-format stream-json (the client answers \
-             permission requests, so it must be reading them)",
-        ));
-    }
     let started = std::time::Instant::now();
     // Read before the flags are handed on: this is the run's own answer about
     // how much to say, and it is wanted after the run as well as during it.
     let asked_density = flags.density;
+    // Every refusal below is a setup failure like any other, so it is reported
+    // the way `prepare_agent_run`'s is: one `result` record with
+    // `error.code: "setup_error"`. Returning early instead would leave a
+    // machine consumer an empty stdout and a human string on stderr, which is
+    // the one thing this channel promises never to do -- and a mistyped
+    // `--host-tools` path is the first failure a host is likely to hit.
+    let setup = (|| {
+        if input_format.is_stream_json() && !format.is_stream_json() {
+            return Err(
+                "--input-format stream-json requires --output-format stream-json (the client \
+                 answers permission requests, so it must be reading them)"
+                    .to_string(),
+            );
+        }
+        // Declared before anything is spent: a malformed or unacceptable tool
+        // set is the host's own mistake, and finding out at the first call --
+        // mid-task, after paid requests -- is worse than refusing to start.
+        // Handing the gate to a host that declared no tools would be a no-op
+        // the caller probably did not mean; say so rather than ignore it.
+        if host_gate && host_tools.is_none() {
+            return Err("--host-gate requires --host-tools".to_string());
+        }
+        match host_tools {
+            Some(path) => {
+                if !input_format.is_stream_json() {
+                    return Err(
+                        "--host-tools requires --input-format stream-json (a host tool call is \
+                         answered with a tool_result message on stdin)"
+                            .to_string(),
+                    );
+                }
+                load_host_tools(path)
+            }
+            None => Ok(crate::core::agent::host_tools::HostToolSet::new()),
+        }
+    })();
+    let host_tools = match setup {
+        Ok(host_tools) => host_tools,
+        Err(e) => {
+            if format.is_machine() {
+                print_report(
+                    format,
+                    RunReport::setup_failure(&e).finish(
+                        None,
+                        "",
+                        started.elapsed().as_millis(),
+                        None,
+                    ),
+                );
+            }
+            return Err(tauri_plugin_agent_tools::harness_error::HarnessError::new(
+                tauri_plugin_agent_tools::harness_error::ErrorKind::InvalidInput,
+                e,
+            )
+            .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
+        }
+    };
     let prepared = prepare_agent_run(
         project,
         task,
@@ -1737,7 +2020,7 @@ async fn run_agent_loop(
     // A setup failure never reaches the event stream, so a JSON consumer would
     // otherwise get an empty stdout and have to parse the human error off stderr.
     let PreparedRun {
-        args,
+        mut args,
         body,
         limits,
         permission_requests,
@@ -1766,6 +2049,13 @@ async fn run_agent_loop(
             .at(tauri_plugin_agent_tools::harness_error::Stage::Startup));
         }
     };
+    // Installed after the session is built, since host tools are declared per
+    // run rather than per project: the same session config serves a run with
+    // them and one without.
+    args.host_tools = host_tools;
+    // `--host-gate`: the host's own callback is the approval step, so Jan
+    // raises no `permission_request` for a host tool of any class.
+    args.host_owns_gate = host_gate;
 
     // Block until active MCP servers connect, so tools (collected once per run)
     // are present on the first turn.
@@ -1805,17 +2095,50 @@ async fn run_agent_loop(
     let notify = crate::core::agent::notify::check(&notify)?;
     let notify_root = std::path::PathBuf::from(project);
     let notify_session = args.session_id.clone().unwrap_or_default();
+    // The session this run saves under, decided here rather than at save time
+    // so the `init` record can name it: a client learns the id it can `--resume`
+    // from the first line of the stream, and a run killed mid-flight still told
+    // it which id to look for.
+    let session_id = persist
+        .thread_id
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    // The run's own id becomes the session id, so the one a client is handed,
+    // the one its requests are correlated under, and the one a provenance
+    // record names are the same id: three spellings of a session would only
+    // ever be a way to lose the thread between them.
+    args.session_id = Some(session_id.clone());
+
+    // The handshake, before anything else can reach stdout. Printed here rather
+    // than from the printer task for exactly that reason: nothing has been
+    // spawned yet, so "first line" is a property of the code's order rather than
+    // a race against the run's own events.
+    if format.is_stream_json() {
+        print_json_line(&init_record(&args, &session_id, &persist.model, input_format).await);
+    }
+
     // The client on stdin, when there is one: it owns every permission decision
     // and can steer or stop the run while it is in flight.
     let input = input_format
         .is_stream_json()
         .then(|| Arc::new(StreamInput::default()));
+    // Created before the reader so it can report the host requests it releases
+    // on the same channel as the run's events: the printer then orders those
+    // records before the final result, which it prints only once every sender
+    // (the reader's included) has dropped.
+    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     let reader = input.as_ref().map(|input| {
-        spawn_input_reader(Arc::clone(input), Arc::clone(&permission_requests), format)
+        spawn_input_reader(
+            Arc::clone(input),
+            Arc::clone(&permission_requests),
+            Arc::clone(&args.host_tool_requests),
+            tx.clone(),
+            format,
+        )
     });
     let client = input.clone();
+    let host_tool_requests = Arc::clone(&args.host_tool_requests);
 
-    let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
     // The report is folded in both formats from the same stream the printer
     // reads, so the JSON envelope can never disagree with the text output.
     // AH-181: how much this run says about itself. The flag outranks the
@@ -1868,7 +2191,7 @@ async fn run_agent_loop(
             report.observe(&ev);
             // Said before the reply that would overflow, not after: the point
             // of the warning is that there is still a choice to make.
-            if let StreamEvent::TurnUsage { usage } = &ev {
+            if let StreamEvent::TurnUsage { usage, .. } = &ev {
                 let used = usage.total_tokens.or(usage.prompt_tokens).unwrap_or(0);
                 match crate::core::agent::context_pressure::pressure(
                     used,
@@ -1880,8 +2203,14 @@ async fn run_agent_loop(
                     Some(found) if !warned_about_context => {
                         warned_about_context = true;
                         eprintln!(
-                            "\n\x1b[33m[context] {}\x1b[0m",
-                            crate::core::agent::context_pressure::line(&found)
+                            "\n{}",
+                            color::paint(
+                                "33",
+                                format_args!(
+                                    "[context] {}",
+                                    crate::core::agent::context_pressure::line(&found),
+                                ),
+                            ),
                         );
                     }
                     Some(_) => {}
@@ -1936,6 +2265,26 @@ async fn run_agent_loop(
             // only while it is still reading. Once stdin has closed, the CLI
             // takes its own path back, which on a pipe is an auto-deny.
             let duplex = client.as_ref().is_some_and(|c| !c.client_gone());
+            // Only the client can answer a host tool call. If it has already
+            // left, the call is failed here: `strand_all` fired when stdin
+            // closed, so nothing else will ever release this one and the turn
+            // would park forever.
+            if let StreamEvent::ToolRequest { request_id, .. } = &ev {
+                if !duplex {
+                    // The request is already on stdout, so its withdrawal is
+                    // too; printed here because this task is the stream's order.
+                    if crate::core::agent::host_tools::strand(&host_tool_requests, request_id)
+                        .await
+                    {
+                        let cancelled = request_cancelled(request_id, CANCEL_CLIENT_GONE);
+                        report.observe(&cancelled);
+                        if format.is_stream_json() {
+                            print_json_line(&cancelled);
+                        }
+                    }
+                    continue;
+                }
+            }
             match format {
                 OutputFormat::Text => {
                     print_event(ev, &permission_requests, density, duplex).await
@@ -1965,6 +2314,12 @@ async fn run_agent_loop(
     };
     if let Some(reader) = reader {
         reader.abort();
+    }
+    // A request still registered now belongs to a call the run dropped (it
+    // failed or stopped mid-batch); nothing will await its answer, so the host
+    // is told to stop working on it before the result record closes the stream.
+    for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
+        let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
     }
     let aborted = outcome.is_none();
     let result = outcome.unwrap_or_else(|| Err(ABORTED_BY_CLIENT.into()));
@@ -2003,7 +2358,7 @@ async fn run_agent_loop(
 
     // Write the turn back so the session stays continuable with --resume.
     let model = persist.model.clone();
-    let persisted = persist_headless_run(persist, &result, conversation);
+    let persisted = persist_headless_run(persist, &result, conversation, Some(&session_id));
     let (session_id, final_text) = (persisted.session_id, persisted.final_text);
     // Saved, so nothing is in flight any more. A run that failed before its
     // thread could be written keeps its checkpoint: its completed steps are
@@ -2016,9 +2371,15 @@ async fn run_agent_loop(
     if persisted.saved && !format.is_machine() {
         if let Some(id) = session_id.as_deref() {
             eprintln!(
-                "\x1b[2m[session {} - resume with `flint --resume={}`]\x1b[0m",
-                short_id(id),
-                short_id(id)
+                "{}",
+                color::paint(
+                    "2",
+                    format_args!(
+                        "[session {} - resume with `flint --resume={}`]",
+                        short_id(id),
+                        short_id(id),
+                    ),
+                ),
             );
         }
     }
@@ -2063,6 +2424,7 @@ fn persist_headless_run(
     persist: PersistTarget,
     result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
     conversation: Option<Vec<serde_json::Value>>,
+    save_as: Option<&str>,
 ) -> PersistedRun {
     let PersistTarget {
         agent_dir,
@@ -2103,7 +2465,13 @@ fn persist_headless_run(
                 }
             }
         }
-        match cli_save_thread(&agent_dir, thread_id.as_deref(), &model, &history, None) {
+        match cli_save_thread(
+            &agent_dir,
+            thread_id.as_deref().or(save_as),
+            &model,
+            &history,
+            None,
+        ) {
             Ok(id) => {
                 session_id = Some(id);
                 saved = true;
@@ -2219,6 +2587,86 @@ pub fn stream_events_to(
     Ok(())
 }
 
+/// The `init` handshake of a `--output-format stream-json` run, assembled from
+/// the same parts the run itself uses: the session it saves under, the model it
+/// dispatches to, and the tools its first turn will advertise, so the record
+/// cannot describe a run other than this one.
+async fn init_record(
+    args: &OrchestrationArgs,
+    session_id: &str,
+    model: &str,
+    input_format: InputFormat,
+) -> Init {
+    let tools: Vec<String> = crate::core::agent::r#loop::context_advertised_tools(
+        &args.mcp_servers,
+        &args.mcp_settings,
+        &args.permissions,
+        args.project_root.as_deref(),
+        args.run_mode,
+        args.subagents_enabled,
+        args.max_parallel_subagents,
+        args.ask_requests.is_some(),
+        args.todo_registry.is_some(),
+        &args.host_tools,
+    )
+    .await
+    .iter()
+    .filter_map(tool_name)
+    .collect();
+    // Only the host tools' schemas are echoed, not every advertised tool's: the
+    // host is comparing these against what it sent, and a built-in's schema is
+    // this process's own business.
+    //
+    // Filtered to what `tools` actually advertises rather than to everything
+    // declared. A deny list, an allowlist or Plan mode can withhold a host tool,
+    // and a host that saw its schema echoed anyway would conclude the tool was
+    // live and wait for a call that is never coming. Echoing the advertised set
+    // lets it detect the suppression instead.
+    let tool_specs = args
+        .host_tools
+        .schemas()
+        .into_iter()
+        .filter(|spec| {
+            tool_name(spec).is_some_and(|name| tools.iter().any(|t| t == &name))
+        })
+        .collect();
+    // The project root the run's tools are confined to, as the run itself sees
+    // it. A caller that built these args without one gets `null`: any path
+    // substituted here would claim a confinement the run does not have.
+    let cwd = args
+        .project_root
+        .as_deref()
+        .map(|root| root.to_string_lossy().into_owned());
+    // A run that does not read stdin accepts nothing, and says so: an empty
+    // list is a client's answer that there is no reply path, which is more use
+    // than an absent field or a list of kinds the run will ignore.
+    let input_kinds = if input_format.is_stream_json() {
+        INPUT_KINDS.to_vec()
+    } else {
+        Vec::new()
+    };
+    // The caps go with the kinds: a client that can send an image should learn
+    // the limits from the handshake rather than by having a message rejected.
+    let input_content_parts = input_format
+        .is_stream_json()
+        .then(InputContentParts::current);
+    Init::new(
+        session_id,
+        model,
+        cwd,
+        tools,
+        tool_specs,
+        input_kinds,
+        input_content_parts,
+    )
+}
+
+/// A rendered tool schema's name, out of the OpenAI `{"type":"function",
+/// "function":{"name":…}}` shape the advertised array carries.
+fn tool_name(tool: &serde_json::Value) -> Option<String> {
+    Some(tool.get("function")?.get("name")?.as_str()?.to_string())
+}
+
 /// Stop reason reported for a run the client ended with an `abort` message, and
 /// the error the run itself returns -- never printed, since an abort exits 0.
 const ABORTED_BY_CLIENT: &str = "aborted by client";
@@ -2248,6 +2696,14 @@ async fn run_steered(
     let outcome = tokio::select! {
         result = run_orchestration_steered(tx, body, args, Some(&steering_tx)) => Some(result),
         _ = input.aborted() => {
+            // A host still holding a request must be told to drop it: the run
+            // it would answer is gone. Released here, not by the reader, so
+            // the records land before `done` and cannot race the reader's
+            // shutdown; `cancel_all` rather than `strand_all` so a child still
+            // awaiting one is told it was cancelled, not that the host left.
+            for id in crate::core::agent::host_tools::cancel_all(&args.host_tool_requests).await {
+                let _ = tx.send(request_cancelled(&id, CANCEL_ABORTED));
+            }
             // The loop emits its own terminal event; an abort pre-empts it, so
             // the report is given one here or it would read as a clean stop.
             let _ = tx.send(StreamEvent::Done {
@@ -2360,6 +2816,18 @@ pub async fn run_durable_subagent(
         Err(e) => Err(HarnessError::new(ErrorKind::ChildFailed, e.message().to_string()).at(Stage::Child)),
     }
 }
+/// `tool_request_cancelled` reasons this surface raises: the client stopped the
+/// run, or it can no longer answer (stdin closed).
+const CANCEL_ABORTED: &str = "aborted";
+const CANCEL_CLIENT_GONE: &str = "client_gone";
+
+fn request_cancelled(request_id: &str, reason: &str) -> StreamEvent {
+    StreamEvent::ToolRequestCancelled {
+        request_id: request_id.to_string(),
+        reason: reason.to_string(),
+    }
+}
+
 /// What a client line asks the reader to do next.
 #[derive(Debug, PartialEq, Eq)]
 enum InputFlow {
@@ -2371,17 +2839,28 @@ enum InputFlow {
     Stop,
 }
 
+/// The registries a client line can resolve against.
+struct InputTargets<'a> {
+    permissions: &'a PermissionRegistry,
+    host_tools: &'a crate::core::agent::host_tools::HostToolRegistry,
+}
+
 /// Apply one client line. `Err` is the message reported back to the client; it
 /// is never fatal, since this is a peer process's output and one malformed line
 /// must not cost the work already done.
 async fn apply_input_line(
     line: &str,
     input: &StreamInput,
-    registry: &PermissionRegistry,
+    targets: &InputTargets<'_>,
 ) -> Result<InputFlow, String> {
+    let registry = targets.permissions;
     match parse_input_line(line)? {
         InputMessage::User(text) => {
             input.queue_user(text);
+            Ok(InputFlow::Continue)
+        }
+        InputMessage::UserParts(parts) => {
+            input.queue_user_parts(parts);
             Ok(InputFlow::Continue)
         }
         InputMessage::Abort => {
@@ -2402,7 +2881,25 @@ async fn apply_input_line(
             let _ = sender.send(decision);
             Ok(InputFlow::Decided(request_id, decision))
         }
+        InputMessage::ToolResult { request_id, result } => {
+            // Same single-use rule as a permission decision, and the same
+            // reason: the run has already fed this answer to the model, so a
+            // second one cannot be applied and must be reported rather than
+            // silently dropped.
+            crate::core::agent::host_tools::respond(targets.host_tools, &request_id, Ok(result))
+                .await?;
+            Ok(InputFlow::Continue)
+        }
     }
+}
+
+/// One line from the client, bounded.
+struct ClientLine {
+    text: String,
+    /// True when the line went past [`MAX_LINE_BYTES`] and was cut: `text` is
+    /// then the echo-sized prefix, and the line is rejected without being
+    /// parsed.
+    oversized: bool,
 }
 
 /// Client lines, read on a detached OS thread.
@@ -2411,11 +2908,15 @@ async fn apply_input_line(
 /// which shutdown waits for, so a client that keeps stdin open -- which is what
 /// a duplex client does for the whole run -- leaves the process alive after its
 /// terminal record has been printed. A plain thread dies with the process.
-fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
+///
+/// The read is bounded rather than line-at-a-time: a line is only as long as
+/// the client says it is, and `BufRead::lines` would hold whatever arrives in
+/// memory before the cap could be applied to it.
+fn stdin_lines() -> mpsc::UnboundedReceiver<ClientLine> {
     let (tx, rx) = mpsc::unbounded_channel();
     std::thread::spawn(move || {
-        use std::io::BufRead as _;
-        for line in std::io::stdin().lock().lines().map_while(Result::ok) {
+        let mut reader = std::io::stdin().lock();
+        while let Ok(Some(line)) = read_bounded_line(&mut reader) {
             if tx.send(line).is_err() {
                 return;
             }
@@ -2424,31 +2925,103 @@ fn stdin_lines() -> mpsc::UnboundedReceiver<String> {
     rx
 }
 
+/// Read one line, keeping at most [`MAX_LINE_BYTES`] of it and discarding the
+/// rest rather than growing to hold it.
+///
+/// A line over the cap keeps only its first [`MAX_ECHO_BYTES`]: it can never be
+/// parsed, so the only use its bytes have left is the echo in `input_error`.
+/// Cutting there can split a character, which is why the kept bytes go through
+/// `from_utf8_lossy` -- the echo is for a human, and a line that is over the cap
+/// is already being refused.
+fn read_bounded_line<R: std::io::BufRead>(
+    reader: &mut R,
+) -> std::io::Result<Option<ClientLine>> {
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut oversized = false;
+    let mut saw_any = false;
+    loop {
+        let available = match reader.fill_buf()? {
+            [] => break,
+            buf => buf,
+        };
+        saw_any = true;
+        let newline = available.iter().position(|b| *b == b'\n');
+        let take = newline.map_or(available.len(), |i| i + 1);
+        if !oversized {
+            let room = MAX_LINE_BYTES.saturating_sub(bytes.len());
+            if take <= room {
+                bytes.extend_from_slice(&available[..take]);
+            } else {
+                bytes.truncate(MAX_ECHO_BYTES.min(bytes.len()));
+                oversized = true;
+            }
+        }
+        reader.consume(take);
+        if newline.is_some() {
+            break;
+        }
+    }
+    if !saw_any {
+        return Ok(None);
+    }
+    while matches!(bytes.last(), Some(b'\n') | Some(b'\r')) {
+        bytes.pop();
+    }
+    Ok(Some(ClientLine {
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+        oversized,
+    }))
+}
+
 /// Consume client messages until `abort` or end of input.
 ///
 /// End of input is not an abort: a client that has said everything it means to
 /// say may close the pipe and still want its answer. It *is* the end of the
-/// only thing that can answer a permission request, though, so the exit is
-/// latched and anything already waiting is released -- see
-/// [`strand_pending_permissions`].
+/// only thing that can answer a permission request or run a host tool, though,
+/// so the exit is latched and anything already waiting is released -- see
+/// [`strand_pending_permissions`] and
+/// [`crate::core::agent::host_tools::strand_all`]. Each released host request
+/// is reported on `events` as `tool_request_cancelled`.
+///
+/// An `abort` leaves the host requests alone: the run's abort path withdraws
+/// them itself, as `aborted` rather than `client_gone`.
 async fn read_input_lines(
-    mut lines: mpsc::UnboundedReceiver<String>,
+    mut lines: mpsc::UnboundedReceiver<ClientLine>,
     input: Arc<StreamInput>,
     registry: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolRegistry,
+    events: mpsc::UnboundedSender<StreamEvent>,
     format: OutputFormat,
 ) {
+    let targets = InputTargets {
+        permissions: &registry,
+        host_tools: &host_tools,
+    };
+    let mut aborted = false;
     while let Some(line) = lines.recv().await {
+        if line.oversized {
+            report_input_error(
+                format,
+                &format!("line is over the {MAX_LINE_BYTES} byte cap"),
+                &line.text,
+            );
+            continue;
+        }
+        let line = line.text;
         if line.trim().is_empty() {
             continue;
         }
-        match apply_input_line(&line, &input, &registry).await {
+        match apply_input_line(&line, &input, &targets).await {
             Ok(InputFlow::Continue) => {}
             Ok(InputFlow::Decided(request_id, decision)) => {
                 if format.is_stream_json() {
                     print_json_line(&PermissionDecisionRecord::new(&request_id, decision));
                 }
             }
-            Ok(InputFlow::Stop) => break,
+            Ok(InputFlow::Stop) => {
+                aborted = true;
+                break;
+            }
             Err(message) => report_input_error(format, &message, &line),
         }
     }
@@ -2456,6 +3029,14 @@ async fn read_input_lines(
     // otherwise be recorded as the client's to answer and find no reader.
     input.mark_client_gone();
     strand_pending_permissions(&registry, format).await;
+    if aborted {
+        return;
+    }
+    // A host tool call cannot be answered by anyone else, so a parked turn is
+    // released with a typed failure rather than waiting on a dead pipe.
+    for id in crate::core::agent::host_tools::strand_all(&host_tools).await {
+        let _ = events.send(request_cancelled(&id, CANCEL_CLIENT_GONE));
+    }
 }
 
 /// Name the follow-ups the run ended before reaching. Queued turns are joined
@@ -2464,7 +3045,10 @@ async fn read_input_lines(
 /// the text is what the client needs to decide whether to send it again.
 fn report_dropped_follow_ups(input: &StreamInput, format: OutputFormat) {
     for turn in input.take_queued() {
-        let text = turn["content"].as_str().unwrap_or_default().to_string();
+        // The text, whether it arrived as a string or as content parts: an
+        // image-only follow-up reads as empty here, which is all this report
+        // needs to say about it.
+        let text = crate::core::cli::user_message::text_of_content(&turn["content"]);
         report_input_error(format, "run ended before this follow-up was read", &text);
     }
 }
@@ -2484,7 +3068,13 @@ async fn strand_pending_permissions(registry: &PermissionRegistry, format: Outpu
             ));
         } else {
             eprintln!(
-                "\x1b[33m[permission] auto-denied '{request_id}' (client closed stdin)\x1b[0m"
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!(
+                        "[permission] auto-denied '{request_id}' (client closed stdin)",
+                    ),
+                ),
             );
         }
     }
@@ -2493,9 +3083,18 @@ async fn strand_pending_permissions(registry: &PermissionRegistry, format: Outpu
 fn spawn_input_reader(
     input: Arc<StreamInput>,
     registry: PermissionRegistry,
+    host_tools: crate::core::agent::host_tools::HostToolRegistry,
+    events: mpsc::UnboundedSender<StreamEvent>,
     format: OutputFormat,
 ) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(read_input_lines(stdin_lines(), input, registry, format))
+    tokio::spawn(read_input_lines(
+        stdin_lines(),
+        input,
+        registry,
+        host_tools,
+        events,
+        format,
+    ))
 }
 
 /// Tell the client its line was rejected, on whichever stream it is reading.
@@ -2503,7 +3102,7 @@ fn report_input_error(format: OutputFormat, message: &str, line: &str) {
     if format.is_stream_json() {
         print_json_line(&InputErrorRecord::new(message, line));
     } else {
-        eprintln!("\x1b[33m[input] {message}\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[input] {message}")));
     }
 }
 
@@ -2670,8 +3269,14 @@ async fn print_event(
 ) {
     if crate::core::cli::auth::account::take_claude_alias_engaged() {
         eprintln!(
-            "\x1b[33m[warning] {}\x1b[0m",
-            crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE
+            "{}",
+            color::paint(
+                "33",
+                format_args!(
+                    "[warning] {}",
+                    crate::core::cli::auth::account::CLAUDE_ALIAS_NOTICE,
+                ),
+            ),
         );
     }
     match ev {
@@ -2682,6 +3287,9 @@ async fn print_event(
         // the redacted record. Matched explicitly rather than through a
         // wildcard so a new event still fails this build instead of vanishing.
         StreamEvent::PromptSnapshot { .. } => {}
+        // Provenance is machine-facing: an identity record for a harness, not
+        // something to draw. The stream-json writer serializes the event itself.
+        StreamEvent::RequestProvenance { .. } => {}
         StreamEvent::Token { text } => {
             print!("{text}");
             let _ = std::io::stdout().flush();
@@ -2694,7 +3302,7 @@ async fn print_event(
             // Live command output is the noisiest thing a run produces, and
             // the whole of it arrives again with the tool result.
             if density != Density::Compact {
-                eprint!("\x1b[2m{delta}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{delta}")));
                 let _ = std::io::stderr().flush();
             }
         }
@@ -2702,15 +3310,15 @@ async fn print_event(
         // yields only the real completion.
         StreamEvent::Reasoning { text } => {
             if density != Density::Compact {
-                eprint!("\x1b[2m{text}\x1b[0m");
+                eprint!("{}", color::paint("2", format_args!("{text}")));
                 let _ = std::io::stderr().flush();
             }
         }
         StreamEvent::Step { index, max } => {
             if density != Density::Compact {
                 match max {
-                    0 => eprintln!("\n\x1b[2m[turn {index}]\x1b[0m"),
-                    m => eprintln!("\n\x1b[2m[turn {index}/{m}]\x1b[0m"),
+                    0 => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}]"))),
+                    m => eprintln!("\n{}", color::paint("2", format_args!("[turn {index}/{m}]"))),
                 }
             }
         }
@@ -2722,7 +3330,7 @@ async fn print_event(
         // Headless reports totals once, from the terminal `Done` -- unless the
         // run was asked to say more, in which case each turn's own numbers are
         // worth having, because a total hides which turn was expensive.
-        StreamEvent::TurnUsage { usage } => {
+        StreamEvent::TurnUsage { usage, .. } => {
             if density == Density::Verbose {
                 let (input, output, total) = (
                     usage.prompt_tokens.unwrap_or(0),
@@ -2730,13 +3338,25 @@ async fn print_event(
                     usage.total_tokens.unwrap_or(0),
                 );
                 eprintln!(
-                    "\x1b[2m[turn-usage] in={input} out={output} total={total}\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[turn-usage] in={input} out={output} total={total}",
+                        ),
+                    ),
                 );
             }
         }
         StreamEvent::ToolCall { name, args, .. } => eprintln!(
-            "\x1b[2m[tool] {}\x1b[0m",
-            crate::core::agent::events::describe_tool_call(&name, &args)
+            "{}",
+            color::paint(
+                "2",
+                format_args!(
+                    "[tool] {}",
+                    crate::core::agent::events::describe_tool_call(&name, &args),
+                ),
+            ),
         ),
         StreamEvent::ToolResult {
             content, is_error, ..
@@ -2749,17 +3369,17 @@ async fn print_event(
             // A failure is never quiet: a compact run drops results, not the
             // news that something did not work.
             if density != Density::Compact || is_error {
-                eprintln!("\x1b[2m[{tag}] {content}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("[{tag}] {content}")));
             }
         }
         StreamEvent::SubagentStart { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] started (background)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] started (background)")))
         }
         StreamEvent::SubagentQueued { name, waiting, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] queued ({waiting} waiting)\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] queued ({waiting} waiting)")))
         }
         StreamEvent::SubagentEnd { name, .. } => {
-            eprintln!("\x1b[2m[subagent:{name}] finished\x1b[0m")
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
         }
         StreamEvent::Subagent { name, event, .. } => {
             if let StreamEvent::ToolCall {
@@ -2767,8 +3387,14 @@ async fn print_event(
             } = *event
             {
                 eprintln!(
-                    "\x1b[2m[subagent:{name}] {}\x1b[0m",
-                    crate::core::agent::events::describe_tool_call(&tool, &args)
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[subagent:{name}] {}",
+                            crate::core::agent::events::describe_tool_call(&tool, &args),
+                        ),
+                    ),
                 );
             }
         }
@@ -2787,29 +3413,33 @@ async fn print_event(
                     )
                 };
                 eprintln!(
-                    "[2m[resources] {figures} ({} of {} commands measured)[0m",
-                    resources.measured_commands, resources.commands
+                    "{}",
+                    color::paint(
+                        "2",
+                        format_args!(
+                            "[resources] {figures} ({} of {} commands measured)",
+                            resources.measured_commands, resources.commands
+                        ),
+                    ),
                 );
             }
         }
         StreamEvent::Done { stop_reason, usage } => {
             let tokens = usage.and_then(|u| u.total_tokens).unwrap_or(0);
-            eprintln!("\n\x1b[2m[done] stop_reason={stop_reason} tokens={tokens}\x1b[0m");
+            eprintln!("\n{}", color::paint("2", format_args!("[done] stop_reason={stop_reason} tokens={tokens}")));
         }
         StreamEvent::Error { code, message } => {
             // AH-009: the event already carries the classification, so the
             // line says what kind of failure it was once, and a cancellation
             // does not read as a crash.
             if code == "cancelled" {
-                eprintln!("
-[2m[stopped] {message}[0m");
+                eprintln!("\n{}", color::paint("2", format_args!("[stopped] {message}")));
             } else {
-                eprintln!("
-[31m[error:{code}] {message}[0m");
+                eprintln!("\n{}", color::paint("31", format_args!("[error:{code}] {message}")));
             }
         }
         StreamEvent::AskRequest { .. } => {
-            eprintln!("\n\x1b[31m[error] interactive ask requires `flint agent ui`\x1b[0m")
+            eprintln!("\n{}", color::paint("31", format_args!("[error] interactive ask requires `flint agent ui`")))
         }
         // Headless never renders an ask prompt, so there is nothing to dismiss.
         StreamEvent::AskResolved { .. } => {}
@@ -2826,18 +3456,29 @@ async fn print_event(
             path,
             command,
             diff,
+            reason,
             ..
         } => {
+            // Why a call auto-approval would have run is being asked about.
+            if let Some(reason) = &reason {
+                eprintln!("{}", color::paint("33", format_args!("[permission] {reason}")));
+            }
             let detail = command
                 .map(|c| format!(" ({c})"))
                 .or_else(|| path.map(|p| format!(" on {p}")))
                 .unwrap_or_default();
             if let Some(diff) = diff {
-                eprintln!("\x1b[2m{diff}\x1b[0m");
+                eprintln!("{}", color::paint("2", format_args!("{diff}")));
             }
             if duplex {
                 eprintln!(
-                    "\x1b[33m[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin\x1b[0m"
+                    "{}",
+                    color::paint(
+                        "33",
+                        format_args!(
+                            "[permission] {capability} via '{tool_name}'{detail} - awaiting '{request_id}' on stdin",
+                        ),
+                    ),
                 );
                 return;
             }
@@ -2846,6 +3487,30 @@ async fn print_event(
                 let _ = sender.send(decision);
             }
         }
+        // Only a host process can answer this, and only over the duplex
+        // channel; a text-format run cannot declare host tools at all (the
+        // flag requires stream-json both ways), so this is diagnostics only.
+        StreamEvent::ToolRequest {
+            request_id,
+            tool_name,
+            ..
+        } => {
+            eprintln!(
+                "{}",
+                color::paint(
+                    "33",
+                    format_args!("[host tool] '{tool_name}' - awaiting '{request_id}' on stdin"),
+                ),
+            );
+        }
+        StreamEvent::ToolRequestCancelled { request_id, reason } => {
+            eprintln!(
+                "{}",
+                color::paint("2", format_args!("[host tool] '{request_id}' cancelled ({reason})")),
+            );
+        }
+        // Structured data for a host's own display; text output has none.
+        StreamEvent::ToolDetails { .. } => {}
     }
 }
 
@@ -2859,11 +3524,11 @@ async fn prompt_permission(
 ) -> PermissionDecision {
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() {
-        eprintln!("\x1b[33m[permission] auto-denied {capability} via '{tool_name}' (non-interactive)\x1b[0m");
+        eprintln!("{}", color::paint("33", format_args!("[permission] auto-denied {capability} via '{tool_name}' (non-interactive)")));
         return PermissionDecision::Deny;
     }
     tokio::task::spawn_blocking(move || {
-        eprint!("\x1b[33m[permission] allow {capability} via '{tool_name}'{detail}? [y/N] \x1b[0m");
+        eprint!("{}", color::paint("33", format_args!("[permission] allow {capability} via '{tool_name}'{detail}? [y/N] ")));
         let _ = std::io::stderr().flush();
         let mut line = String::new();
         if std::io::stdin().read_line(&mut line).is_err() {
@@ -2880,6 +3545,75 @@ async fn prompt_permission(
 
 #[cfg(test)]
 mod tests {
+    /// #200: every colored line goes through `color::paint`, so NO_COLOR and
+    /// non-terminal stderr are honored. Neither source may hold an SGR
+    /// sequence of its own, whether escaped or as a raw ESC character.
+    #[test]
+    fn cli_sources_hold_no_raw_escape_sequences() {
+        let escaped = concat!("\\", "x1b[");
+        for (name, src) in [
+            ("core/cli/mod.rs", include_str!("mod.rs")),
+            ("bin/flint.rs", include_str!("../../bin/flint.rs")),
+        ] {
+            assert!(!src.contains(escaped), "{name} writes an escape sequence directly");
+            assert!(!src.contains('\u{1b}'), "{name} holds a raw ESC character");
+        }
+    }
+
+    /// #143: deleting a thread drops its snapshot ref in the repository the
+    /// thread recorded, not only the scratch index.
+    #[test]
+    fn deleting_a_thread_drops_its_snapshot_ref() {
+        use crate::core::agent::git;
+        let git_in = |dir: &std::path::Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .expect("git");
+            assert!(out.status.success(), "git {args:?}: {out:?}");
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        let repo = tempfile::tempdir().unwrap();
+        let data = tempfile::tempdir().unwrap();
+        git_in(repo.path(), &["init", "-q"]);
+        // The empty tree (stdin is empty), written so commit-tree can use it.
+        let tree = git_in(repo.path(), &["hash-object", "-t", "tree", "-w", "--stdin"]);
+        let sha = git_in(
+            repo.path(),
+            &[
+                "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+                "commit-tree", &tree, "-m", "s",
+            ],
+        );
+        let id = "cli-delete-drops-ref";
+        git::update_ref(repo.path(), id, &sha).unwrap();
+        let reference = git::snapshot_ref(id);
+        git_in(repo.path(), &["rev-parse", "--verify", &reference]);
+
+        let meta_path = super::get_thread_metadata_path(data.path(), id);
+        std::fs::create_dir_all(meta_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &meta_path,
+            serde_json::json!({
+                "id": id,
+                "metadata": { super::SNAPSHOT_REPO_KEY: repo.path().to_string_lossy() },
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        super::delete_thread_at(data.path(), id).unwrap();
+
+        let still = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", "--quiet", &reference])
+            .current_dir(repo.path())
+            .output()
+            .unwrap();
+        assert!(!still.status.success(), "snapshot ref survived the delete");
+        assert!(!meta_path.exists());
+    }
+
     /// AH-181: a declared density is read, and anything that is not one is
     /// refused rather than quietly treated as the default -- a run that says
     /// less than somebody asked it to is a run whose log is missing what they
@@ -2989,13 +3723,20 @@ mod tests {
         ];
         let (lines_tx, lines) = mpsc::unbounded_channel();
         for line in script {
-            lines_tx.send(line.to_string()).expect("reader is alive");
+            lines_tx
+                .send(ClientLine {
+                    text: line.to_string(),
+                    oversized: false,
+                })
+                .expect("reader is alive");
         }
         drop(lines_tx);
         read_input_lines(
             lines,
             Arc::clone(&input),
             Arc::clone(&registry),
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
             OutputFormat::Json,
         )
         .await;
@@ -3024,17 +3765,58 @@ mod tests {
         registry.lock().await.insert("perm-1".to_string(), tx);
         let line = r#"{"type":"permission","request_id":"perm-1","decision":"deny"}"#;
 
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let targets = InputTargets {
+            permissions: &registry,
+            host_tools: &host_tools,
+        };
         assert_eq!(
-            apply_input_line(line, &input, &registry).await,
+            apply_input_line(line, &input, &targets).await,
             Ok(InputFlow::Decided(
                 "perm-1".to_string(),
                 PermissionDecision::Deny
             ))
         );
-        let err = apply_input_line(line, &input, &registry)
+        let err = apply_input_line(line, &input, &targets)
             .await
             .expect_err("nothing is pending any more");
         assert!(err.contains("no permission request 'perm-1'"), "{err}");
+    }
+
+    /// The same single-use rule for a host tool answer, and the same reason:
+    /// the first result has already been fed to the model.
+    #[tokio::test]
+    async fn a_second_tool_result_for_one_request_is_rejected() {
+        let input = StreamInput::default();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        // The id comes from the registry: the counter is process-wide, so a
+        // literal would depend on which tests ran first.
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let targets = InputTargets {
+            permissions: &registry,
+            host_tools: &host_tools,
+        };
+        let line = format!(r#"{{"type":"tool_result","request_id":"{id}","content":"moved"}}"#);
+        let line = line.as_str();
+
+        assert_eq!(
+            apply_input_line(line, &input, &targets).await,
+            Ok(InputFlow::Continue)
+        );
+        assert_eq!(
+            answer.await.expect("the run's tool wait is answered"),
+            Ok(crate::core::agent::host_tools::HostToolResult {
+                content: "moved".to_string(),
+                parts: None,
+                details: None,
+                is_error: false,
+            })
+        );
+        let err = apply_input_line(line, &input, &targets)
+            .await
+            .expect_err("nothing is pending any more");
+        assert!(err.contains(&format!("no host tool request '{id}'")), "{err}");
     }
 
     /// The wedge this guards: with a client on stdin the CLI answers nothing
@@ -3051,12 +3833,14 @@ mod tests {
             .insert("perm-1".to_string(), answer_tx);
 
         // No lines at all: the client opened the pipe and closed it again.
-        let (lines_tx, lines) = mpsc::unbounded_channel::<String>();
+        let (lines_tx, lines) = mpsc::unbounded_channel::<ClientLine>();
         drop(lines_tx);
         read_input_lines(
             lines,
             Arc::clone(&input),
             Arc::clone(&registry),
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
             OutputFormat::StreamJson,
         )
         .await;
@@ -3072,14 +3856,154 @@ mod tests {
         );
     }
 
-    /// The other half of the same wedge: a request raised *after* the pipe
-    /// closed. The latch is what sends the printer back to its own answer path.
+    /// The same wedge for a host tool, where it is sharper: only the client can
+    /// answer a `tool_request`, so a pipe that closes mid-call would park the
+    /// turn forever rather than merely losing a decision default.
     #[tokio::test]
-    async fn a_request_raised_after_the_client_left_is_not_left_to_the_client() {
+    async fn a_pending_host_tool_call_is_released_when_the_client_leaves() {
+        let input = Arc::new(StreamInput::default());
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+
+        let (lines_tx, lines) = mpsc::unbounded_channel::<ClientLine>();
+        drop(lines_tx);
+        let (events_tx, mut events) = mpsc::unbounded_channel();
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            Arc::clone(&registry),
+            Arc::clone(&host_tools),
+            events_tx,
+            OutputFormat::StreamJson,
+        )
+        .await;
+
+        assert_eq!(
+            answer.await.expect("the wait is settled, not dropped"),
+            Err(crate::core::agent::host_tools::HostToolError::ClientGone)
+        );
+        assert!(host_tools.lock().await.is_empty());
+        // The host is told, on the run's own stream, which request it lost.
+        assert_eq!(
+            serde_json::to_value(events.recv().await.expect("a record")).unwrap(),
+            serde_json::json!({
+                "type": "tool_request_cancelled",
+                "request_id": id,
+                "reason": "client_gone"
+            })
+        );
+        assert!(events.recv().await.is_none(), "one record per released request");
+    }
+
+    /// An `abort` stops the reader but leaves host requests to the run's abort
+    /// path, which withdraws them as `aborted`; releasing them here as well
+    /// would report the same request twice under two reasons.
+    #[tokio::test]
+    async fn an_abort_leaves_host_requests_to_the_run() {
+        let input = Arc::new(StreamInput::default());
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, _answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let (lines_tx, lines) = mpsc::unbounded_channel();
+        lines_tx
+            .send(ClientLine {
+                text: r#"{"type":"abort"}"#.to_string(),
+                oversized: false,
+            })
+            .expect("reader is alive");
+        drop(lines_tx);
+        let (events_tx, mut events) = mpsc::unbounded_channel();
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            Arc::new(Mutex::new(HashMap::new())),
+            Arc::clone(&host_tools),
+            events_tx,
+            OutputFormat::StreamJson,
+        )
+        .await;
+        assert!(events.recv().await.is_none());
+        assert!(host_tools.lock().await.contains_key(&id));
+        // What the abort path then does: the host is told, and a reply the
+        // host was already writing is refused as no longer pending.
+        let released = crate::core::agent::host_tools::cancel_all(&host_tools).await;
+        assert_eq!(released, vec![id.clone()]);
+        let late = format!(r#"{{"type":"tool_result","request_id":"{id}","content":"late"}}"#);
+        let targets = InputTargets {
+            permissions: &Arc::new(Mutex::new(HashMap::new())),
+            host_tools: &host_tools,
+        };
+        let err = apply_input_line(&late, &input, &targets)
+            .await
+            .expect_err("nothing pending");
+        assert!(err.contains("is pending (answered, cancelled, or never issued)"), "{err}");
+    }
+
+    /// An over-cap tool result is refused as a line, and the request is still
+    /// pending: the host can shrink the image and answer again.
+    #[tokio::test]
+    async fn an_over_cap_tool_result_leaves_the_request_pending() {
         let input = StreamInput::default();
-        assert!(!input.client_gone());
+        let host_tools = crate::core::agent::host_tools::new_registry();
+        let (id, answer) = crate::core::agent::host_tools::register(&host_tools).await;
+        let permissions: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let targets = InputTargets {
+            permissions: &permissions,
+            host_tools: &host_tools,
+        };
+        let big = "A".repeat((stream_input::MAX_IMAGE_BYTES + 3) / 3 * 4);
+        let line = serde_json::json!({
+            "type": "tool_result",
+            "request_id": id,
+            "content": [{ "type": "image_url",
+                          "image_url": { "url": format!("data:image/png;base64,{big}") } }]
+        })
+        .to_string();
+        let err = apply_input_line(&line, &input, &targets)
+            .await
+            .expect_err("over the cap");
+        assert!(err.contains("byte cap"), "{err}");
+        assert!(host_tools.lock().await.contains_key(&id), "still pending");
+        let retry = serde_json::json!({
+            "type": "tool_result",
+            "request_id": id,
+            "content": [{ "type": "text", "text": "smaller" }],
+            "details": { "retry": 1 }
+        })
+        .to_string();
+        assert_eq!(
+            apply_input_line(&retry, &input, &targets).await,
+            Ok(InputFlow::Continue)
+        );
+        let result = answer.await.expect("delivered").expect("answered");
+        assert_eq!(result.content, "smaller");
+        assert_eq!(result.details, Some(serde_json::json!({ "retry": 1 })));
+    }
+
+    /// The other half of the same wedge, and the sharper half: a request raised
+    /// *after* the pipe closed. `strand_all` has already run by then, so unless
+    /// the printer fails this call itself the turn parks on a reply no one is
+    /// left to send. Asserts the release, not merely that the latch flipped.
+    #[tokio::test]
+    async fn a_request_raised_after_the_client_left_is_failed_not_parked() {
+        let input = StreamInput::default();
+        let host_tools = crate::core::agent::host_tools::new_registry();
+
+        // The client leaves, and the reader drains what was pending.
         input.mark_client_gone();
+        crate::core::agent::host_tools::strand_all(&host_tools).await;
+
+        // Only now does the model call a host tool.
+        let (request_id, answer) =
+            crate::core::agent::host_tools::register(&host_tools).await;
         assert!(input.client_gone());
+        crate::core::agent::host_tools::strand(&host_tools, &request_id).await;
+
+        assert_eq!(
+            answer.await.expect("the wait is settled, not dropped"),
+            Err(crate::core::agent::host_tools::HostToolError::ClientGone)
+        );
+        assert!(host_tools.lock().await.is_empty());
     }
 
     /// `--input-format stream-json` with any other output format leaves the
@@ -3097,6 +4021,8 @@ mod tests {
                 None,
                 format,
                 InputFormat::StreamJson,
+                None,
+                false,
             )
             .await
             .expect_err("the pairing is required");
@@ -3105,6 +4031,78 @@ mod tests {
                 "{err}"
             );
         }
+    }
+
+    /// A content-part follow-up reaches the queue as the client wrote it: the
+    /// same parts `upstream.rs` hands the provider, not a re-encoding of them.
+    #[tokio::test]
+    async fn a_content_part_follow_up_is_queued_verbatim() {
+        let input = Arc::new(StreamInput::default());
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let parts = serde_json::json!([
+            { "type": "text", "text": "what is in this shot?" },
+            { "type": "image_url",
+              "image_url": { "url": "data:image/png;base64,QUJD", "detail": "high" } }
+        ]);
+        let line = serde_json::json!({ "type": "user", "content": parts }).to_string();
+        let (lines_tx, lines) = mpsc::unbounded_channel();
+        lines_tx
+            .send(ClientLine {
+                text: line,
+                oversized: false,
+            })
+            .expect("reader is alive");
+        drop(lines_tx);
+        read_input_lines(
+            lines,
+            Arc::clone(&input),
+            registry,
+            crate::core::agent::host_tools::new_registry(),
+            mpsc::unbounded_channel().0,
+            OutputFormat::Json,
+        )
+        .await;
+
+        let queued = input.take_queued();
+        assert_eq!(queued.len(), 1, "the follow-up is queued as one turn");
+        assert_eq!(queued[0]["role"], "user");
+        assert_eq!(queued[0]["content"], parts);
+    }
+
+    /// A line over the cap is refused without being parsed, and what the reader
+    /// keeps of it is bounded: the cap exists so the bytes are not carried on.
+    #[test]
+    fn a_line_over_the_cap_is_refused_and_its_echo_bounded() {
+        let mut bytes = vec![b'x'; MAX_LINE_BYTES + 1024];
+        bytes.push(b'\n');
+        bytes.extend_from_slice(br#"{"type":"user","text":"after"}"#);
+        let mut reader = std::io::BufReader::new(std::io::Cursor::new(bytes));
+
+        let first = read_bounded_line(&mut reader).unwrap().expect("a line");
+        assert!(first.oversized);
+        assert_eq!(first.text.len(), MAX_ECHO_BYTES, "the echo, not the line");
+        // Resynchronised on the next line rather than treating the overflow as
+        // the end of input.
+        let second = read_bounded_line(&mut reader)
+            .unwrap()
+            .expect("the line after the overflow");
+        assert!(!second.oversized);
+        assert_eq!(second.text, r#"{"type":"user","text":"after"}"#);
+        assert!(read_bounded_line(&mut reader).unwrap().is_none());
+    }
+
+    /// The rejected echo the client sees is the bounded one, so a client that
+    /// matches on `input_error.line` still can.
+    #[test]
+    fn an_over_cap_line_is_reported_with_a_truncated_echo() {
+        let line = "x".repeat(MAX_ECHO_BYTES * 3);
+        let record = serde_json::to_value(InputErrorRecord::new("line is over the cap", &line))
+            .expect("a JSON record");
+        assert_eq!(
+            record["line"].as_str().expect("a string").len(),
+            MAX_ECHO_BYTES
+        );
+        assert_eq!(record["line_truncated"], serde_json::json!(true));
     }
 
     /// A queued follow-up the run never reached is reported rather than
@@ -4141,5 +5139,114 @@ mod tests {
         // A source that recorded a snapshot uses it, no capture needed.
         let snapped = serde_json::json!({ "id": "s", "metadata": { "base_snapshot": "cafe" } });
         assert_eq!(fork_base(Some(&snapped)).as_deref(), Some("cafe"));
+    }
+
+    /// `--max-session-tokens` outranks `[budget].max_tokens`, which outranks
+    /// the built-in default; `0` from either source survives as the unbounded
+    /// marker `body_session_budget` expects rather than falling through.
+    /// The money ceiling resolves flag > config > none, and a run that asks
+    /// for one it cannot price is refused rather than run uncapped.
+    #[test]
+    fn a_cost_ceiling_is_refused_rather_than_run_uncapped() {
+        let none = std::collections::BTreeMap::new();
+        let unpriced = "no-such-model/never-priced";
+        assert_eq!(resolve_cost_ceiling(None, None, &none, unpriced), Ok(None));
+        let refused = resolve_cost_ceiling(Some(2.0), None, &none, unpriced)
+            .expect_err("an unpriceable ceiling must not silently run uncapped");
+        assert!(refused.contains("no price is declared"), "{refused}");
+        assert!(resolve_cost_ceiling(None, Some(2.0), &none, unpriced).is_err());
+        let precedence = resolve_cost_ceiling(Some(2.0), Some(9.0), &none, unpriced)
+            .expect_err("still unpriceable");
+        assert!(precedence.contains("$2") && !precedence.contains("$9"), "{precedence}");
+        let negative = resolve_cost_ceiling(Some(-1.0), None, &none, unpriced)
+            .expect_err("a negative ceiling is rejected");
+        assert!(negative.contains("non-negative"), "{negative}");
+        assert!(resolve_cost_ceiling(Some(f64::NAN), None, &none, unpriced).is_err());
+
+        // A declared price (dollars per million) becomes per-token rates, and
+        // a provider-qualified id finds a bare declaration.
+        let mut prices = std::collections::BTreeMap::new();
+        prices.insert(
+            "claude-x".to_string(),
+            crate::core::agent::spend::Price {
+                input: 3.0,
+                output: 15.0,
+                cached_input: Some(0.3),
+            },
+        );
+        let ceiling = resolve_cost_ceiling(Some(0.0), None, &prices, "anthropic/claude-x")
+            .expect("priced")
+            .expect("a ceiling");
+        assert_eq!(ceiling.max_usd, 0.0);
+        assert!((ceiling.rates.prompt_usd - 3e-6).abs() < 1e-15);
+        assert!((ceiling.rates.completion_usd - 15e-6).abs() < 1e-15);
+        assert_eq!(ceiling.rates.cache_read_usd, Some(0.3 / 1_000_000.0));
+
+        // It reaches the request body with its rates.
+        let mut limits = limits_with(None, 0);
+        limits.cost_ceiling = Some(ceiling);
+        let body = request_body("m", &limits, true, serde_json::json!([]));
+        assert_eq!(body["max_budget_usd"], 0.0);
+        assert!(body["token_rates"]["prompt_usd"].as_f64().is_some());
+    }
+
+    #[test]
+    fn session_budget_precedence_is_flag_then_config_then_default() {
+        assert_eq!(
+            resolve_session_budget(None, None),
+            DEFAULT_MAX_SESSION_TOKENS
+        );
+        assert_eq!(resolve_session_budget(None, Some(50_000)), 50_000);
+        assert_eq!(resolve_session_budget(Some(20_000), Some(50_000)), 20_000);
+        assert_eq!(resolve_session_budget(Some(20_000), None), 20_000);
+        assert_eq!(resolve_session_budget(Some(0), Some(50_000)), 0);
+        assert_eq!(resolve_session_budget(None, Some(0)), 0);
+
+        assert_eq!(session_budget_source(None, None), "default");
+        assert_eq!(session_budget_source(None, Some(50_000)), "agent.toml");
+        assert_eq!(session_budget_source(Some(0), Some(50_000)), "flag");
+    }
+
+    fn limits_with(max_turns: Option<u64>, max_session_tokens: u64) -> SessionLimits {
+        SessionLimits {
+            context_window: 128_000,
+            context_window_source:
+                crate::core::cli::model_capabilities::ContextWindowSource::Fallback,
+            reserve_tokens: 16_384,
+            compaction: Default::default(),
+            max_tokens: None,
+            max_session_tokens,
+            max_turns,
+            cost_ceiling: None,
+        }
+    }
+
+    /// The write side of the caps: the limits have to reach the request body in
+    /// the encoding `body_turn_cap` / `body_session_budget` read back, or the
+    /// flags are inert. `max_turns` is absent (not `0`) when unset, so a caller
+    /// that never passes it is byte-identical to before the flag existed.
+    #[test]
+    fn run_limits_reach_the_request_body() {
+        let messages = serde_json::json!([]);
+
+        let unset = request_body("m", &limits_with(None, 128_000), true, messages.clone());
+        assert!(
+            unset.get("max_turns").is_none(),
+            "an unset cap must not write the field at all: {unset}"
+        );
+        assert_eq!(unset["max_session_tokens"], 128_000);
+
+        // What `agent step` pins, and what `--max-turns 5` pins, by the same route.
+        let stepped = request_body("m", &limits_with(Some(1), 128_000), true, messages.clone());
+        assert_eq!(stepped["max_turns"], 1);
+        let capped = request_body("m", &limits_with(Some(5), 20_000), true, messages.clone());
+        assert_eq!(capped["max_turns"], 5);
+        assert_eq!(capped["max_session_tokens"], 20_000);
+
+        // An explicit 0 is the engine's "unbounded" encoding and must survive as
+        // itself rather than being dropped back to the absent case.
+        let zero = request_body("m", &limits_with(Some(0), 0), true, messages);
+        assert_eq!(zero["max_turns"], 0);
+        assert_eq!(zero["max_session_tokens"], 0);
     }
 }

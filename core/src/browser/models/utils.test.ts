@@ -338,7 +338,14 @@ describe('extractModelLoadParams', () => {
     const modelParams = { ctx_len: -1, ngl: 'invalid' }
     const originParams = { ctx_len: 2048, ngl: 12 }
     const result = extractModelLoadParams(modelParams as any, originParams)
-    expect(result).toEqual({})
+    expect(result).toEqual({ ctx_len: 2048, ngl: 12 })
+  })
+
+  it('does not mutate its input when falling back (#216)', () => {
+    const modelParams = { ctx_len: -1, embedding: true }
+    const originParams = { ctx_len: 2048 }
+    extractModelLoadParams(modelParams as any, originParams)
+    expect(modelParams).toEqual({ ctx_len: -1, embedding: true })
   })
 
   it('should skip invalid values when no origin params provided', () => {

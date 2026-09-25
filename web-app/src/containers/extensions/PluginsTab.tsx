@@ -149,14 +149,23 @@ export default function PluginsTab({
       .catch(() => setSources(null))
   }, [refresh])
 
+  // The plugin whose details were asked for last. A slower request for a
+  // plugin the user already left must not overwrite the current one's details
+  // (the pane would then show "loading" forever).
+  const detailsForRef = useRef<string | null>(null)
+
   const loadDetails = useCallback(
     async (id: string) => {
+      detailsForRef.current = id
       setDetails(null)
       setDetailsError(null)
       try {
-        setDetails(await getPluginDetails('', id, 'global'))
+        const d = await getPluginDetails('', id, 'global')
+        if (detailsForRef.current === id) setDetails(d)
       } catch (e) {
-        setDetailsError(pluginErrorText(tRef.current, e))
+        if (detailsForRef.current === id) {
+          setDetailsError(pluginErrorText(tRef.current, e))
+        }
         if (toPluginError(e).code === 'not_installed') void refresh()
       }
     },
@@ -742,7 +751,7 @@ export default function PluginsTab({
               <EnablementGrid kind="plugin" id={plugin.id} />
               <p className="mt-1.5 text-xs text-muted-foreground">
                 {t('common:extensionsManager.enablement.pluginNote', undefined) ??
-                  "Governs this plugin's skills and subagents on each surface. Its slash commands are not yet filtered by this toggle."}
+                  "Governs this plugin's skills, subagents and slash commands on each surface."}
               </p>
             </div>
             <div>

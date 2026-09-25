@@ -176,8 +176,11 @@ impl Where {
             // Derived from the project itself, never from anything the
             // renderer says it is: an id supplied by the caller would be a way
             // to ask for another project's memories by name.
+            // Read-only: resolving where memories live must not write into
+            // the folder, which Review only promises to leave untouched
+            // (#312). The id is written down when a project memory is saved.
             Some(root) => (
-                super::identity::project_id(root),
+                Some(super::identity::project_id_read_only(root)),
                 Some(workspace::project_store(root)),
             ),
             // A folder was named but refused: no project memory at all, rather
@@ -1432,6 +1435,11 @@ mod tests {
         .access();
         let id = access.project_id.expect("folder identity");
         assert!(!id.starts_with(JAN_PROJECT_PREFIX), "{id}");
+        // #312: resolving the scope writes nothing into the folder.
+        assert!(
+            !root.join(".jan").exists(),
+            "scope resolution wrote into the project folder"
+        );
         // The folder is validated and canonicalised before it becomes a store.
         let canonical = root.canonicalize().unwrap();
         assert_eq!(access.project_store, Some(workspace::project_store(&canonical)));

@@ -64,7 +64,7 @@ pub fn migrate_mcp_servers(
         }
     }
     store.set("mcp_version", 5);
-    store.save().expect("Failed to save store");
+    store.save().map_err(|e| format!("could not save the store: {e}"))?;
     Ok(())
 }
 

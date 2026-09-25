@@ -22,6 +22,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 const FETCH_MAX_CHARS: usize = 40_000;
+/// Hard cap on the bytes read from any response body (Jozkah/jan#182). The
+/// body is read chunk by chunk and reading stops here, so a huge or endless
+/// response never has to fit in memory before the character bound applies.
+/// 4 MiB leaves room for a 40k-character page in any encoding plus markup,
+/// and for every provider's JSON result list.
+const MAX_RESPONSE_BYTES: usize = 4 * 1024 * 1024;
 pub const SEARCH_DEFAULT_COUNT: u32 = 5;
 pub const SEARCH_MAX_COUNT: u32 = 20;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
@@ -120,6 +126,136 @@ fn build_http_client(provider: &str) -> Result<reqwest::Client, String> {
         .map_err(|e| format!("failed to build HTTP client for {provider}: {e}"))
 }
 
+// -- fetching pages from this machine (Jozkah/jan#189) ------------------------
+//
+// SearXNG, Brave, Serper and keyless You.com fetch a page by GETting it from
+// the user's machine, and `web_fetch` runs without an approval prompt. So the
+// URL is model-chosen and must not reach this machine, the LAN or a cloud
+// metadata endpoint. Three layers: the URL's own host is checked when it is an
+// address; every name the client resolves (the first hop, each redirect, and
+// again at connect time, so a rebinding DNS answer gains nothing) keeps only
+// public addresses; and each redirect is checked the same way before it is
+// followed. The provider's own API client is separate, so a self-hosted
+// SearXNG search endpoint on localhost keeps working.
+
+/// Whether `ip` is an ordinary internet address: not loopback, private,
+/// link-local, CGNAT, unique-local, unspecified, multicast, broadcast,
+/// documentation or reserved, and not one of those wrapped in IPv6.
+pub(crate) fn is_public_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            let [a, b, c, _] = v4.octets();
+            !(v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_unspecified()
+                || v4.is_broadcast()
+                || v4.is_documentation()
+                || v4.is_multicast()
+                || a == 0
+                || (a == 100 && (64..128).contains(&b)) // CGNAT 100.64/10
+                || (a == 192 && b == 0 && c == 0) // IETF 192.0.0/24
+                || (a == 198 && (b == 18 || b == 19)) // benchmarking 198.18/15
+                || a >= 240) // reserved 240/4
+        }
+        IpAddr::V6(v6) => {
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            let seg = v6.segments();
+            // NAT64 (64:ff9b::/96) carries an IPv4 address in its low bits.
+            if seg[0] == 0x64 && seg[1] == 0xff9b && seg[2..6] == [0, 0, 0, 0] {
+                let [.., hi, lo] = seg;
+                let v4 = std::net::Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+                return is_public_ip(IpAddr::V4(v4));
+            }
+            !(v6.is_loopback()
+                || v6.is_unspecified()
+                || v6.is_multicast()
+                || (seg[0] & 0xfe00) == 0xfc00 // unique local fc00::/7
+                || (seg[0] & 0xffc0) == 0xfe80 // link local fe80::/10
+                || (seg[0] == 0x2001 && seg[1] == 0x0db8)) // documentation
+        }
+    }
+}
+
+/// Refuse a URL whose host is written as a non-public address or is a name
+/// for this machine. Names are left to [`PublicOnlyResolver`].
+pub(crate) fn check_public_url(url: &reqwest::Url) -> Result<(), String> {
+    match url.host() {
+        Some(url::Host::Ipv4(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Ipv6(ip)) if !is_public_ip(ip.into()) => {
+            Err(format!("refused to fetch {url}: {ip} is a local or private address"))
+        }
+        Some(url::Host::Domain(d))
+            if d.eq_ignore_ascii_case("localhost")
+                || d.to_ascii_lowercase().ends_with(".localhost") =>
+        {
+            Err(format!("refused to fetch {url}: {d} is this machine"))
+        }
+        None => Err(format!("refused to fetch {url}: no host")),
+        _ => Ok(()),
+    }
+}
+
+/// Resolves a name to its public addresses only; a name with none is an error.
+struct PublicOnlyResolver;
+
+impl reqwest::dns::Resolve for PublicOnlyResolver {
+    fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            let public: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
+                .await?
+                .filter(|a| is_public_ip(a.ip()))
+                .collect();
+            if public.is_empty() {
+                return Err(format!("{host} resolves only to local or private addresses").into());
+            }
+            Ok(Box::new(public.into_iter()) as reqwest::dns::Addrs)
+        })
+    }
+}
+
+/// The one client pages are fetched with, built once.
+fn public_fetch_client() -> Result<&'static reqwest::Client, String> {
+    static CLIENT: std::sync::OnceLock<Result<reqwest::Client, String>> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+                .dns_resolver(std::sync::Arc::new(PublicOnlyResolver))
+                .redirect(reqwest::redirect::Policy::custom(|attempt| {
+                    if attempt.previous().len() >= 10 {
+                        return attempt.error("too many redirects");
+                    }
+                    match check_public_url(attempt.url()) {
+                        Ok(()) => attempt.follow(),
+                        Err(e) => attempt.error(e),
+                    }
+                }))
+                .build()
+                .map_err(|e| format!("failed to build the page-fetch HTTP client: {e}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// GET `url` from this machine, refusing anything that is not a public
+/// internet address.
+async fn public_get(url: &str, provider: &str) -> Result<reqwest::Response, String> {
+    let parsed = reqwest::Url::parse(url).map_err(|e| format!("{provider} fetch: invalid URL: {e}"))?;
+    check_public_url(&parsed)?;
+    public_fetch_client()?
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|e| format!("{provider} fetch request failed: {e}"))
+}
+
 /// Which Exa transport the adapter uses.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ExaMode {
@@ -175,8 +311,7 @@ impl ExaProvider {
             .await
             .map_err(|e| format!("Exa request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Exa: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -223,8 +358,7 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa search request failed: {e}"))?;
                 let status = resp.status();
-                let text = resp
-                    .text()
+                let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa search: failed to read response body: {e}"))?;
                 if !status.is_success() {
@@ -264,8 +398,7 @@ impl SearchProvider for ExaProvider {
                     .await
                     .map_err(|e| format!("Exa fetch request failed: {e}"))?;
                 let status = resp.status();
-                let text = resp
-                    .text()
+                let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
                     .await
                     .map_err(|e| format!("Exa fetch: failed to read response body: {e}"))?;
                 if !status.is_success() {
@@ -310,6 +443,16 @@ fn parse_hosted_result_text(body: &str, provider: &str) -> Result<String, String
         .and_then(|a| a.first())
         .and_then(|c| c.get("text"))
         .and_then(|v| v.as_str());
+    // A throttled hosted endpoint answers HTTP 200 with no `isError`, putting
+    // the refusal in the text block where it parses as zero results. Reported
+    // as success that reads to a model as "the web has nothing", so the flag in
+    // `_meta` is the only thing separating a refusal from a real empty answer.
+    if is_rate_limited(result) {
+        return Err(format!(
+            "{provider} rate limit reached: {}",
+            text.unwrap_or("no quota remaining on the keyless endpoint")
+        ));
+    }
     if result.get("isError").and_then(|v| v.as_bool()) == Some(true) {
         return Err(format!(
             "{provider} tool call failed: {}",
@@ -318,6 +461,22 @@ fn parse_hosted_result_text(body: &str, provider: &str) -> Result<String, String
     }
     text.map(str::to_string)
         .ok_or_else(|| format!("{provider} response had no text content"))
+}
+
+/// Whether a hosted `result` carries a provider rate-limit marker in `_meta`.
+///
+/// Namespaced per vendor (`ai.exa/rateLimited`), so the suffix is matched
+/// rather than one hard-coded key: the hosted transport is shared by every
+/// keyless backend here.
+fn is_rate_limited(result: &Value) -> bool {
+    result
+        .get("_meta")
+        .and_then(|m| m.as_object())
+        .is_some_and(|meta| {
+            meta.iter().any(|(k, v)| {
+                (k == "rateLimited" || k.ends_with("/rateLimited")) && v.as_bool() == Some(true)
+            })
+        })
 }
 
 fn parse_hosted_search_text(text: &str) -> Vec<SearchResult> {
@@ -494,8 +653,7 @@ impl TavilyProvider {
             .await
             .map_err(|e| format!("Tavily request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Tavily: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -637,8 +795,7 @@ impl YouComProvider {
             .await
             .map_err(|e| format!("You.com request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("You.com: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -826,8 +983,7 @@ impl SearchProvider for SearxngProvider {
             .await
             .map_err(|e| format!("SearXNG request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("SearXNG: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -854,18 +1010,13 @@ impl SearchProvider for SearxngProvider {
 /// Serper) share this: there is nothing provider-specific about pulling a URL
 /// and reading its body, so the logic lives once.
 async fn http_get_page(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    let resp = public_get(url, provider).await?;
     let status = resp.status();
-    let body = resp
-        .text()
+    let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
     if !status.is_success() {
@@ -914,8 +1065,7 @@ impl SearchProvider for BraveProvider {
             .await
             .map_err(|e| format!("Brave request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Brave: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -999,8 +1149,7 @@ impl SearchProvider for SerperProvider {
             .await
             .map_err(|e| format!("Serper request failed: {e}"))?;
         let status = resp.status();
-        let text = resp
-            .text()
+        let text = read_body_capped(resp, MAX_RESPONSE_BYTES)
             .await
             .map_err(|e| format!("Serper: failed to read response body: {e}"))?;
         if !status.is_success() {
@@ -1101,18 +1250,13 @@ fn normalize_searxng_search(body: &Value, count: u32) -> Vec<SearchResult> {
 /// Used by backends that have no content-extraction endpoint on the active
 /// transport, so `web_fetch` still answers instead of erroring.
 async fn fetch_url_direct(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     url: &str,
     provider: &str,
 ) -> Result<FetchedPage, String> {
-    let resp = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| format!("{provider} fetch request failed: {e}"))?;
+    let resp = public_get(url, provider).await?;
     let status = resp.status();
-    let body = resp
-        .text()
+    let body = read_body_capped(resp, MAX_RESPONSE_BYTES)
         .await
         .map_err(|e| format!("{provider} fetch: failed to read response body: {e}"))?;
     if !status.is_success() {
@@ -1167,9 +1311,146 @@ pub fn clamp_count(requested: Option<u64>) -> u32 {
     }
 }
 
+/// Read `resp`'s body as text, stopping after `cap` bytes. `.text()` buffers
+/// the whole body first, however large; this never holds more than `cap`
+/// bytes (plus one network chunk). Bytes are decoded as UTF-8, lossily, and a
+/// character split by the cap is dropped.
+async fn read_body_capped(mut resp: reqwest::Response, cap: usize) -> reqwest::Result<String> {
+    let mut buf: Vec<u8> = Vec::new();
+    if let Some(len) = resp.content_length() {
+        buf.reserve(usize::try_from(len).unwrap_or(cap).min(cap));
+    }
+    while let Some(chunk) = resp.chunk().await? {
+        let room = cap - buf.len();
+        if chunk.len() >= room {
+            buf.extend_from_slice(&chunk[..room]);
+            break;
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    // Drop the connection instead of draining the rest of the body.
+    drop(resp);
+    let valid = match std::str::from_utf8(&buf) {
+        Ok(_) => buf.len(),
+        // Only a character cut short at the very end is dropped; bad bytes
+        // elsewhere are replaced, as `.text()` would.
+        Err(e) if e.error_len().is_none() => e.valid_up_to(),
+        Err(_) => buf.len(),
+    };
+    Ok(String::from_utf8_lossy(&buf[..valid]).into_owned())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Jozkah/jan#182: an endless response body is cut off at the cap instead
+    /// of being buffered until the request timeout (or memory) runs out.
+    #[tokio::test]
+    async fn an_endless_body_is_read_only_up_to_the_cap() {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut sock, &mut req).await;
+            let _ = sock
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n")
+                .await;
+            let chunk = vec![b'a'; 16 * 1024];
+            while sock.write_all(&chunk).await.is_ok() {}
+        });
+        let resp = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap();
+        let body = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            read_body_capped(resp, 64 * 1024),
+        )
+        .await
+        .expect("reading an endless body must stop at the cap")
+        .unwrap();
+        assert_eq!(body.len(), 64 * 1024);
+    }
+
+    #[tokio::test]
+    async fn a_split_utf8_character_at_the_cap_is_dropped() {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut req = [0u8; 1024];
+            let _ = tokio::io::AsyncReadExt::read(&mut sock, &mut req).await;
+            let body = "ab\u{e9}".as_bytes(); // the last character is two bytes
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.write_all(body).await;
+        });
+        let resp = reqwest::Client::new()
+            .get(format!("http://127.0.0.1:{port}/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(read_body_capped(resp, 3).await.unwrap(), "ab");
+    }
+
+    /// Jozkah/jan#189: a model-driven `web_fetch` must not reach this machine
+    /// or the local network. A listener on loopback stands in for a local
+    /// service; the fetch is refused and the listener never sees a connection.
+    #[tokio::test]
+    async fn a_direct_fetch_never_reaches_a_local_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let client = build_http_client("test").unwrap();
+        for url in [
+            format!("http://127.0.0.1:{port}/"),
+            format!("http://localhost:{port}/"),
+            format!("http://[::ffff:127.0.0.1]:{port}/"),
+        ] {
+            assert!(http_get_page(&client, &url, "test").await.is_err(), "{url}");
+            assert!(fetch_url_direct(&client, &url, "test").await.is_err(), "{url}");
+        }
+        let connected =
+            tokio::time::timeout(std::time::Duration::from_millis(200), listener.accept()).await;
+        assert!(connected.is_err(), "a local service received a connection");
+    }
+
+    #[test]
+    fn only_public_addresses_are_fetchable() {
+        for local in [
+            "127.0.0.1", "127.8.9.10", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254",
+            "100.64.0.1", "0.0.0.0", "255.255.255.255", "224.0.0.1", "240.0.0.1", "198.18.0.1",
+            "::1", "::", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "fc00::1", "fd12::1", "fe80::1",
+            "64:ff9b::7f00:1", "ff02::1",
+        ] {
+            assert!(!is_public_ip(local.parse().unwrap()), "{local} counted as public");
+        }
+        for public in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"] {
+            assert!(is_public_ip(public.parse().unwrap()), "{public} counted as local");
+        }
+    }
+
+    #[test]
+    fn a_redirect_target_is_held_to_the_same_rule() {
+        for refused in [
+            "http://127.0.0.1/x",
+            "http://[::1]/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://LOCALHOST:8080/",
+            "http://api.localhost/",
+            "http://[::ffff:192.168.0.1]/",
+        ] {
+            assert!(check_public_url(&reqwest::Url::parse(refused).unwrap()).is_err(), "{refused}");
+        }
+        assert!(check_public_url(&reqwest::Url::parse("https://example.com/").unwrap()).is_ok());
+    }
 
     #[test]
     fn clamp_count_defaults_and_caps() {
@@ -1451,6 +1732,54 @@ mod tests {
         assert!(parse_hosted_result_text(tool_err, "Exa")
             .unwrap_err()
             .contains("bad"));
+    }
+
+    #[test]
+    fn parse_hosted_result_text_surfaces_rate_limit_as_error() {
+        // Verbatim shape of a throttled `mcp.exa.ai/mcp` reply: the call
+        // "succeeds" (no `isError`, HTTP 200) and the refusal is prose in the
+        // text block, so only `_meta` distinguishes it from a real answer.
+        let sse = format!(
+            "event: message\ndata: {}\n\n",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "result": {
+                    "_meta": { "ai.exa/rateLimited": true },
+                    "content": [{
+                        "type": "text",
+                        "text": "You've hit Exa's free MCP rate limit. To continue using without limits, create your own Exa API key."
+                    }]
+                }
+            })
+        );
+        let err = parse_hosted_result_text(&sse, "Exa")
+            .expect_err("a throttled reply must not read as a successful search");
+        assert!(err.contains("rate limit"), "unexpected message: {err}");
+    }
+
+    #[test]
+    fn parse_hosted_result_text_ignores_unrelated_meta() {
+        let raw = json!({
+            "result": {
+                "_meta": { "ai.exa/cached": true },
+                "content": [{ "type": "text", "text": "hello" }]
+            }
+        })
+        .to_string();
+        assert_eq!(parse_hosted_result_text(&raw, "Exa").unwrap(), "hello");
+    }
+
+    #[test]
+    fn parse_hosted_result_text_rate_limit_flag_must_be_true() {
+        let raw = json!({
+            "result": {
+                "_meta": { "ai.exa/rateLimited": false },
+                "content": [{ "type": "text", "text": "hello" }]
+            }
+        })
+        .to_string();
+        assert_eq!(parse_hosted_result_text(&raw, "Exa").unwrap(), "hello");
     }
 
     #[test]

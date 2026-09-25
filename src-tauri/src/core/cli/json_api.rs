@@ -483,10 +483,7 @@ async fn run_agent(
         _ = &mut cancel => None,
     };
     drop(tx);
-    let (mut report, conversation, checkpoint) = match forwarder.await {
-        Ok(done) => done,
-        Err(_) => (RunReport::default(), None, None),
-    };
+    let (mut report, conversation, checkpoint) = forwarder.await.unwrap_or_default();
 
     // Whatever happened, this run's servers, scratch space and pending
     // approvals end with it.
@@ -514,7 +511,7 @@ async fn run_agent(
             serde_json::to_value(report.finish(None, &model, elapsed, None)).unwrap_or_default()
         }
         Some(result) => {
-            let persisted = super::persist_headless_run(persist, &result, conversation);
+            let persisted = super::persist_headless_run(persist, &result, conversation, None);
             if persisted.saved || result.is_ok() {
                 if let Some(writer) = checkpoint {
                     writer.finish();

@@ -382,6 +382,62 @@ pub async fn agent_resolve_extensions(
     ))
 }
 
+/// The surface a slash request comes from, plus the project folder it may
+/// read. Cowork passes its folder; the matrix keys Cowork by the folder's
+/// registered project id, so the folder is looked up in the registry.
+fn slash_surface(
+    surface: &str,
+    project: Option<&str>,
+) -> (
+    crate::core::agent::extensions::Surface,
+    Option<std::path::PathBuf>,
+) {
+    let folder = project
+        .filter(|p| !p.trim().is_empty() && surface == "cowork")
+        .map(std::path::PathBuf::from);
+    let id = folder.as_ref().and_then(|f| {
+        crate::core::agent::projects_registry::list_projects()
+            .into_iter()
+            .find(|p| std::path::Path::new(&p.folder) == f.as_path())
+            .map(|p| p.id)
+    });
+    (resolve_surface(surface, id.as_deref()), folder)
+}
+
+/// What the composer's `/` menu offers on `surface` ("home" | "rooms" |
+/// "cowork"): plugin commands (with their template bodies) and user-invocable
+/// skills, filtered by the per-surface enablement matrix.
+#[tauri::command]
+pub async fn agent_slash_catalog(
+    surface: String,
+    project: Option<String>,
+) -> Result<Vec<crate::core::agent::slash::SlashEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (surface, folder) = slash_surface(&surface, project.as_deref());
+        crate::core::agent::slash::catalog(&surface, folder.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The message that invokes skill `name` from the `/` menu with `args` as
+/// the task. Err when the surface does not offer that skill.
+#[tauri::command]
+pub async fn agent_slash_invoke_skill(
+    surface: String,
+    project: Option<String>,
+    name: String,
+    args: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (surface, folder) = slash_surface(&surface, project.as_deref());
+        crate::core::agent::slash::invoke_skill(&surface, folder.as_deref(), &name, &args)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(ui_error)
+}
+
 /// The raw global skills/plugins enablement matrix (`extensions.json`).
 #[tauri::command]
 pub async fn agent_extensions_matrix_get() -> Result<serde_json::Value, String> {
@@ -619,7 +675,21 @@ pub fn agent_worktree_discard(
             record.path
         ));
     }
-    worktree::discard(&record, force)
+    worktree::discard_owned(&record, &roots, force)
+}
+
+/// Why a shell command would be asked about before it runs, or `None`.
+///
+/// The renderer's own port (`destructiveCommand.ts`) compares paths as text;
+/// this resolves every root and target through the filesystem first, so an
+/// absolute path inside an approved root is inside even when spelled through
+/// a symlink, a junction, mixed separators or `..`, and a link inside a root
+/// that leads out of it is outside. Roots that are not absolute are ignored;
+/// with none left the scope is unknown and every absolute path is outside.
+#[tauri::command]
+pub fn agent_destructive_reason(command: String, roots: Vec<String>) -> Option<String> {
+    let scope = crate::core::agent::destructive::Scope::new(roots.iter());
+    crate::core::agent::destructive::destructive_reason_in(&command, &scope)
 }
 
 /// What a worktree holds that removing it would destroy.
@@ -652,7 +722,18 @@ pub fn agent_desktop_bridge(
     use crate::core::agent::desktop_bridge::{DesktopBridge, FileSettingsUi, RequestContext};
     let settings_path = std::path::Path::new(&data_folder)
         .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
-    let mut bridge = DesktopBridge::new(FileSettingsUi::new(settings_path));
+    // The app's own settings file belongs to settings_store, which rewrites
+    // it whole from memory; writing it directly lost one writer's keys
+    // (#240). Any other folder has no in-process owner and is written as a
+    // file.
+    let app_settings = crate::core::app::commands::resolve_jan_data_folder()
+        .join(crate::core::app::constants::CONFIGURATION_FILE_NAME);
+    let ui = if settings_path == app_settings {
+        FileSettingsUi::app_store()
+    } else {
+        FileSettingsUi::new(settings_path)
+    };
+    let mut bridge = DesktopBridge::new(ui);
     let ctx = RequestContext {
         window_id: String::new(),
         workspace_root: std::path::PathBuf::from(&workspace),
@@ -1052,6 +1133,13 @@ pub fn agent_checkpoint_plan(
     checkpoint::plan(&checkpoint, &latest)
 }
 
+/// The diff a restore to `checkpoint` would apply to the tree as it stands.
+/// Changes nothing; refuses a checkpoint in the user's own checkout.
+#[tauri::command]
+pub fn agent_checkpoint_preview_diff(checkpoint: checkpoint::Checkpoint) -> Result<String, String> {
+    checkpoint::preview_restore_diff(&checkpoint)
+}
+
 /// Roll a Flint-owned tree back to a checkpoint.
 ///
 /// Refuses a checkpoint taken in the user's checkout, whatever the caller
@@ -1154,7 +1242,7 @@ mod worktree_command_tests {
             let err =
                 agent_worktree_discard(data.to_string_lossy().to_string(), record(path), true)
                     .expect_err("must refuse");
-            assert!(err.contains("not a worktree Jan manages"), "{err}");
+            assert!(err.contains("not a worktree Flint manages"), "{err}");
         }
     }
 
@@ -1247,7 +1335,15 @@ pub async fn agent_prompt_snapshots_delete(
     session: String,
 ) -> Result<usize, String> {
     let data_folder = crate::core::app::commands::get_jan_data_folder_path(app);
-    tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session)
+    if session.trim().is_empty() {
+        // Refused, as before, rather than read as "all".
+        return tauri_plugin_agent_tools::snapshot::delete_session(&data_folder, &session);
+    }
+    // Everything recorded for the session, not only its snapshots: its usage,
+    // stored diffs, permission decisions and undo journal (Jozkah/jan#294).
+    // A Cowork session is deleted through here alone.
+    tauri_plugin_agent_tools::retention::delete_session(&data_folder, &session)
+        .map(|removed| removed.snapshots)
 }
 
 /// Export a managed worktree as a patch bundle under `<data>/exports`. AH-168.
@@ -1935,10 +2031,18 @@ pub async fn tool_activity_diff(
     app: tauri::AppHandle,
     session: String,
     call: String,
+    // The call's invocation, when the caller knows it: a provider can reuse a
+    // call id across requests, and only this picks the right one (Jozkah/jan#244).
+    invocation: Option<String>,
 ) -> Result<Option<String>, String> {
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
-        tauri_plugin_agent_tools::activity::read_diff(&data_folder, &session, &call)
+        tauri_plugin_agent_tools::activity::read_diff(
+            &data_folder,
+            &session,
+            invocation.as_deref(),
+            &call,
+        )
     })
     .await
     .map_err(|e| e.to_string())

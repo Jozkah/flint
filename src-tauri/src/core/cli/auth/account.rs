@@ -269,33 +269,57 @@ async fn accept_callback(
 ) -> Result<String, String> {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut stream = listener
-        .accept()
+    const OK: &str = "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 71\r\nConnection: close\r\n\r\n<html><body>Sign-in completed. You can close this window.</body></html>";
+    const BAD: &str = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 56\r\nConnection: close\r\n\r\n<html><body>Sign-in could not be verified.</body></html>";
+    const NOT_FOUND: &str =
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    // Serve connections until one carries this login's state. A browser may
+    // open a speculative connection and close it empty, send a Private Network
+    // Access preflight, or probe `/favicon.ico`; any other local process can
+    // touch the fixed port too. None of those may end the login.
+    loop {
+        let mut stream = listener
+            .accept()
+            .await
+            .map_err(|_| "could not receive the account callback".to_string())?;
+        let mut request = [0; 8192];
+        // A preconnect that never sends anything must not hold the loop.
+        let read = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stream.read(&mut request),
+        )
         .await
-        .map_err(|_| "could not receive the account callback".to_string())?;
-    let mut request = [0; 8192];
-    let read = stream
-        .read(&mut request)
-        .await
-        .map_err(|_| "could not read the account callback".to_string())?;
-    let target = std::str::from_utf8(&request[..read])
-        .ok()
-        .and_then(|request| request.lines().next())
-        .and_then(|line| line.split_whitespace().nth(1))
-        .ok_or_else(|| "the account callback was malformed".to_string())?;
-    let callback = format!(
-        "{}/{}",
-        login.redirect_uri.trim_end_matches('/'),
-        target.trim_start_matches('/')
-    );
-    let result = parse_callback(&callback, &login.state);
-    let response = if result.is_ok() {
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 71\r\nConnection: close\r\n\r\n<html><body>Sign-in completed. You can close this window.</body></html>"
-    } else {
-        "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: 56\r\nConnection: close\r\n\r\n<html><body>Sign-in could not be verified.</body></html>"
-    };
-    let _ = stream.write_all(response.as_bytes()).await;
-    result
+        {
+            Ok(Ok(read)) => read,
+            _ => continue,
+        };
+        let target = std::str::from_utf8(&request[..read])
+            .ok()
+            .and_then(|request| request.lines().next())
+            .and_then(|line| line.split_whitespace().nth(1));
+        let Some(target) = target else {
+            let _ = stream.write_all(NOT_FOUND.as_bytes()).await;
+            continue;
+        };
+        let callback = format!(
+            "{}/{}",
+            login.redirect_uri.trim_end_matches('/'),
+            target.trim_start_matches('/')
+        );
+        let carries_our_state = url::Url::parse(&callback).is_ok_and(|url| {
+            url.query_pairs()
+                .any(|(key, value)| key == "state" && value == login.state.as_str())
+        });
+        if !carries_our_state {
+            let _ = stream.write_all(NOT_FOUND.as_bytes()).await;
+            continue;
+        }
+        let result = parse_callback(&callback, &login.state);
+        let response = if result.is_ok() { OK } else { BAD };
+        let _ = stream.write_all(response.as_bytes()).await;
+        return result;
+    }
 }
 
 /// A loopback listener for the OAuth redirect.
@@ -750,11 +774,8 @@ async fn claude_code_access_token() -> Option<String> {
             Ok(fresh) => {
                 // Write the rotated token back into omp's keychain entry so the
                 // shared credential stays fresh even if Flint is the only client
-                // running. On writeback failure we still return the refreshed
-                // token so Flint keeps working for this session.
-                if write_claude_code_keychain(&entry, &raw, &fresh).is_err() {
-                    debug_log("claude alias: refreshed but could not write back to the Claude Code keychain");
-                }
+                // running.
+                keep_rotated_claude_token(write_claude_code_keychain(&entry, &raw, &fresh), &fresh);
                 #[cfg(not(test))]
                 CLAUDE_ALIAS_ENGAGED.store(true, std::sync::atomic::Ordering::Relaxed);
                 return Some(fresh.access_token);
@@ -797,6 +818,26 @@ fn rotate_claude_code_secret(raw: &str, fresh: &OAuthToken) -> Result<String, St
 /// Refresh-rotate the `claudeAiOauth` block inside a Claude Code keychain JSON
 /// document in place, preserving all other top-level fields (e.g. `mcpOAuth`,
 /// `claudeOauth`), so omp's entry is updated rather than replaced.
+/// Handle the outcome of writing a refreshed alias token back to Claude Code.
+///
+/// The refresh already rotated the refresh token server-side, so Claude Code's
+/// stored copy is dead either way. If the write-back failed, the only live
+/// copy was this call's local value: persist it in Flint's own credential
+/// store so Flint keeps using it past this process, and warn that Claude Code
+/// will have to sign in again rather than logging it at debug level only.
+fn keep_rotated_claude_token(writeback: Result<(), String>, fresh: &OAuthToken) {
+    let Err(error) = writeback else {
+        return;
+    };
+    log::warn!(
+        "Refreshed the Claude Code token but could not write it back ({error});          Claude Code will need to sign in again. Flint keeps the new token."
+    );
+    debug_log("claude alias: refreshed but could not write back to the Claude Code keychain");
+    if let Err(error) = store(AccountProvider::Claude, fresh) {
+        log::warn!("Could not keep the refreshed Claude token either: {error}");
+    }
+}
+
 fn write_claude_code_keychain(
     entry: &keyring::Entry,
     raw: &str,
@@ -814,6 +855,29 @@ fn write_claude_code_keychain(
 /// [`claude_code_access_token`]) so the enterprise subscription quota is the
 /// same one omp uses.
 pub async fn access_token(provider: &str) -> Result<Option<String>, String> {
+    access_token_via(provider, |kind, token| async move { refresh(kind, &token).await }).await
+}
+
+/// Serializes account-token refreshes within the process. Both providers
+/// rotate the refresh token and reject reuse, so callers that saw the same
+/// expired token at once (parallel subagents starting together) must not each
+/// send their own refresh: all but the first were rejected and aborted their
+/// run, and reuse detection could revoke the whole token family.
+static REFRESH_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+fn unix_now() -> Result<i64, String> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "could not read the system clock".to_string())?
+        .as_secs() as i64)
+}
+
+/// [`access_token`] with the network refresh injectable, for tests.
+async fn access_token_via<F, Fut>(provider: &str, refresh_with: F) -> Result<Option<String>, String>
+where
+    F: Fn(AccountProvider, OAuthToken) -> Fut,
+    Fut: std::future::Future<Output = Result<OAuthToken, String>>,
+{
     let Some(provider_kind) = AccountProvider::from_credential_provider(provider) else {
         return Ok(None);
     };
@@ -833,16 +897,24 @@ pub async fn access_token(provider: &str) -> Result<Option<String>, String> {
         // A stored API key is a deliberate choice; never substitute a token.
         return Ok(None);
     };
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| "could not read the system clock".to_string())?
-        .as_secs() as i64;
-    if token.expires_at.is_some_and(|expires_at| expires_at <= now) {
-        let refreshed = refresh(provider_kind, &token).await?;
-        store(provider_kind, &refreshed)?;
-        return Ok(Some(refreshed.access_token));
+    let expired = |token: &OAuthToken, now: i64| token.expires_at.is_some_and(|at| at <= now);
+    if !expired(&token, unix_now()?) {
+        return Ok(Some(token.access_token));
     }
-    Ok(Some(token.access_token))
+    let _refreshing = REFRESH_LOCK.lock().await;
+    // Re-read under the lock: whoever held it may already have refreshed and
+    // stored a new token (in this process, or another sharing the store), and
+    // refreshing again would spend the refresh token it just rotated out.
+    let token = match CredentialStore::load(provider)? {
+        Some(Credential::OAuthToken(current)) => current,
+        _ => return Ok(None),
+    };
+    if !expired(&token, unix_now()?) {
+        return Ok(Some(token.access_token));
+    }
+    let refreshed = refresh_with(provider_kind, token).await?;
+    store(provider_kind, &refreshed)?;
+    Ok(Some(refreshed.access_token))
 }
 /// Whether `provider` is authenticated with an OAuth account token rather
 /// than a plain API key. This is the discriminator for selecting the OAuth
@@ -1069,6 +1141,9 @@ async fn complete_code_login(login: AccountLogin, code: String) -> Result<Accoun
             .then_some("anthropic".to_string()),
         )
     };
+    // Keep what was stored before, so a failed config write restores it
+    // rather than signing the user out.
+    let previous = CredentialStore::snapshot(provider.credential_provider());
     store(provider, &token)?;
     if let Err(error) = crate::core::agent::global_config::set_provider(
         definition.id,
@@ -1081,7 +1156,7 @@ async fn complete_code_login(login: AccountLogin, code: String) -> Result<Accoun
             ..Default::default()
         },
     ) {
-        let _ = CredentialStore::delete(provider.credential_provider());
+        let _ = CredentialStore::restore(provider.credential_provider(), previous);
         return Err(format!(
             "could not save the provider configuration: {error}"
         ));
@@ -1106,6 +1181,71 @@ mod tests {
 
     async fn alias_test_lock() -> tokio::sync::MutexGuard<'static, ()> {
         ALIAS_TEST_LOCK.lock().await
+    }
+
+    /// #113: callers that find the same expired token at once send exactly
+    /// one refresh and all get the new token.
+    #[tokio::test]
+    async fn concurrent_expired_token_callers_refresh_once() {
+        let _tmp = TempSecrets::new();
+        let expired = OAuthToken {
+            access_token: "old".into(),
+            refresh_token: Some("r0".into()),
+            expires_at: Some(1),
+            token_type: "Bearer".into(),
+            scopes: Vec::new(),
+        };
+        store(AccountProvider::Claude, &expired).unwrap();
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let refresher = |_kind: AccountProvider, token: OAuthToken| {
+            let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            async move {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                if n > 0 || token.refresh_token.as_deref() != Some("r0") {
+                    return Err("refresh token reused".to_string());
+                }
+                Ok(OAuthToken {
+                    access_token: "fresh".into(),
+                    refresh_token: Some("r1".into()),
+                    expires_at: Some(4_000_000_000),
+                    token_type: "Bearer".into(),
+                    scopes: Vec::new(),
+                })
+            }
+        };
+        let provider = AccountProvider::Claude.credential_provider();
+        let results = futures::future::join_all(
+            (0..5).map(|_| access_token_via(provider, refresher)),
+        )
+        .await;
+        for result in results {
+            assert_eq!(result, Ok(Some("fresh".to_string())));
+        }
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    /// #132: when the write-back to Claude Code's keychain fails, the rotated
+    /// token survives in Flint's own credential store.
+    #[test]
+    fn a_failed_claude_code_writeback_keeps_the_rotated_token() {
+        let _tmp = TempSecrets::new();
+        let fresh = OAuthToken {
+            access_token: "fresh-access".into(),
+            refresh_token: Some("fresh-refresh".into()),
+            expires_at: Some(4_000_000_000),
+            token_type: "Bearer".into(),
+            scopes: Vec::new(),
+        };
+        keep_rotated_claude_token(Ok(()), &fresh);
+        assert!(
+            CredentialStore::load(AccountProvider::Claude.credential_provider())
+                .unwrap()
+                .is_none(),
+            "a successful write-back leaves the alias as the only copy"
+        );
+        keep_rotated_claude_token(Err("denied".into()), &fresh);
+        let kept = CredentialStore::load(AccountProvider::Claude.credential_provider()).unwrap();
+        assert_eq!(kept, Some(Credential::OAuthToken(fresh)));
     }
 
     struct TempSecrets {
@@ -1662,6 +1802,44 @@ mod tests {
             "Content-Type: application/x-www-form-urlencoded",
         )
         .await;
+    }
+
+    #[tokio::test]
+    async fn loopback_listener_survives_stray_requests_before_the_redirect() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let login = begin(AccountProvider::Codex).unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let state = login.state.clone();
+        let client = tokio::spawn(async move {
+            // A speculative connection that closes without a request.
+            drop(tokio::net::TcpStream::connect(address).await.unwrap());
+            // A PNA preflight, a favicon probe and a redirect with a foreign state.
+            for request in [
+                "OPTIONS /auth/callback HTTP/1.1\r\nHost: x\r\n\r\n".to_string(),
+                "GET /favicon.ico HTTP/1.1\r\nHost: x\r\n\r\n".to_string(),
+                "GET /auth/callback?code=evil&state=other HTTP/1.1\r\nHost: x\r\n\r\n"
+                    .to_string(),
+            ] {
+                let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+                stream.write_all(request.as_bytes()).await.unwrap();
+                let mut response = String::new();
+                stream.read_to_string(&mut response).await.unwrap();
+                assert!(response.starts_with("HTTP/1.1 404"), "{response}");
+            }
+            let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+            let callback = format!(
+                "GET /auth/callback?code=authorization-code&state={state} HTTP/1.1\r\nHost: x\r\n\r\n"
+            );
+            stream.write_all(callback.as_bytes()).await.unwrap();
+        });
+
+        assert_eq!(
+            accept_callback(&listener.into(), &login).await.unwrap(),
+            "authorization-code"
+        );
+        client.await.unwrap();
     }
 
     #[tokio::test]

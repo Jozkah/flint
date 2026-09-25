@@ -231,6 +231,7 @@ pub(crate) fn load_global_config() -> Result<HashMap<String, ProviderConfig>, St
                     custom_headers: Vec::new(),
                     models: entry.models,
                     api_type: entry.api_type,
+                    stored_credentials: crate::core::state::StoredCredentials::Allowed,
                 },
             )
         })
@@ -507,7 +508,10 @@ fn write_raw(config: &GlobalConfigToml) -> Result<PathBuf, String> {
     let path = dir.join("config.toml");
     let body =
         toml::to_string_pretty(config).map_err(|e| format!("Failed to serialize config: {e}"))?;
-    std::fs::write(&path, &body).map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
+    // Temp file plus rename (Jozkah/jan#36): a crash mid-write must not leave
+    // a truncated file that then fails to parse and blocks every later write.
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
+        .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     restrict_permissions(&path);
     Ok(path)
 }
@@ -578,6 +582,50 @@ pub(crate) fn set_default_model_if_unset(model: &str) -> Result<bool, String> {
     config.default_model = Some(model.to_string());
     write_raw(&config)?;
     Ok(true)
+}
+
+/// Why `default_model` was (re)pointed, so a caller can tell the user which of
+/// the two happened -- adopting a default is routine, replacing one needs
+/// saying out loud (upstream #9034).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DefaultModelChange {
+    /// There was no default; `model` was adopted.
+    Adopted,
+    /// The previous default is no longer offered by any provider, so it was
+    /// replaced by `model`.
+    Repointed,
+}
+
+/// Point `default_model` at `model` when there is no default, **or** when the
+/// current default is not offered by any configured provider. Returns what
+/// changed, or `None` when the existing default was left alone.
+///
+/// A sign-in replaces a provider's roster wholesale, so a re-login after the
+/// upstream retires a model leaves `default_model` pointing at something no
+/// provider serves, and every run fails on it. A default some provider still
+/// offers is a live choice and is left alone.
+pub(crate) fn adopt_default_model(model: &str) -> Result<Option<DefaultModelChange>, String> {
+    let model = model.trim();
+    if model.is_empty() {
+        return Ok(None);
+    }
+    let mut config = load_raw()?;
+    let current = config
+        .default_model
+        .as_deref()
+        .map(str::trim)
+        .filter(|m| !m.is_empty())
+        .map(str::to_string);
+    let change = match current {
+        None => DefaultModelChange::Adopted,
+        Some(current) if config.providers.values().any(|p| p.models.contains(&current)) => {
+            return Ok(None)
+        }
+        Some(_) => DefaultModelChange::Repointed,
+    };
+    config.default_model = Some(model.to_string());
+    write_raw(&config)?;
+    Ok(Some(change))
 }
 
 /// Server-assigned metadata for a provider's stored key, when a v5 device-flow
@@ -661,7 +709,8 @@ pub(crate) fn set_global_key(key: &str, value: Option<toml_edit::Item>) -> Resul
         }
     }
 
-    std::fs::write(&path, doc.to_string())
+    let body = doc.to_string();
+    tauri_plugin_agent_tools::atomic_file::write_atomic_private(&path, body.as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))?;
     restrict_permissions(&path);
     Ok(path)
@@ -1224,6 +1273,39 @@ models = ["gpt-4o"]
                 Some("https://api.openai.com/v1")
             );
             assert_eq!(openai.models, vec!["gpt-4o".to_string()]);
+        });
+    }
+
+    /// Jozkah/jan#36: config.toml is replaced through a temp file and a rename,
+    /// never truncated in place, so a crash mid-write cannot leave a partial
+    /// file that fails to parse. A handle opened before the write still reads
+    /// the old bytes, and no temp file is left in `~/.jan`.
+    #[test]
+    fn set_provider_replaces_config_toml_atomically() {
+        with_temp_home(|_| {
+            let path = ensure_global_config().expect("ensure");
+            let original = std::fs::read_to_string(&path).unwrap();
+            let mut before = std::fs::File::open(&path).unwrap();
+            set_provider(
+                "openai",
+                ProviderUpdate {
+                    api_key: Some("sk-1".into()),
+                    ..Default::default()
+                },
+            )
+            .expect("set");
+            let mut old = String::new();
+            std::io::Read::read_to_string(&mut before, &mut old).unwrap();
+            assert_eq!(old, original, "config.toml was truncated in place");
+            drop(before);
+            let dir = path.parent().unwrap();
+            let stray: Vec<_> = std::fs::read_dir(dir)
+                .unwrap()
+                .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|n| n.contains(".tmp-"))
+                .collect();
+            assert!(stray.is_empty(), "temp files left behind: {stray:?}");
+            assert!(load_global_config().expect("load").contains_key("openai"));
         });
     }
 

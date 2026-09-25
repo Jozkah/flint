@@ -20,14 +20,16 @@ pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod compaction;
+/// Request correlation with the provider's billing records (upstream #9034).
+pub mod correlation;
 pub mod compaction_policy;
 pub mod consensus;
 pub mod context;
 pub mod context_pressure;
 pub mod desktop_bridge;
+pub mod destructive;
 pub mod diagnostics;
 pub mod durable_subagent;
-pub mod hooks;
 pub mod events;
 pub mod extensions;
 pub mod fixtures;
@@ -37,14 +39,26 @@ pub mod git;
 pub mod global_config;
 pub mod github_pr;
 pub mod github_recovery;
+// `/goal` is a terminal-UI command; the desktop build compiles the module
+// but calls none of it.
+#[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub mod goal;
 pub mod health;
 pub mod impact;
 pub mod index;
+// Host tools are executed by a client over the headless stdio channel, so the
+// capability exists only where that channel does. The desktop build has no peer
+// that could answer a `tool_request`.
+#[cfg(feature = "cli")]
+pub mod host_tools;
+// Only host tools consume these helpers, so they share host_tools' gate.
+#[cfg(feature = "cli")]
+pub mod host_schema;
 pub mod interaction;
 pub mod licenses;
 pub mod r#loop;
 pub mod lsp;
+pub mod mcp_catalog;
 #[cfg(not(feature = "cli"))]
 pub mod memory_consolidation;
 pub mod notify;
@@ -54,6 +68,7 @@ pub mod plugins;
 pub mod project;
 pub(crate) mod projects_registry;
 pub mod proposals;
+pub mod provenance;
 pub mod pull_request;
 pub mod quota;
 pub mod reminder;
@@ -66,6 +81,7 @@ pub mod session;
 pub mod session_bundle;
 pub mod skill_hub;
 pub mod skills;
+pub mod slash;
 pub mod spend;
 pub mod state_schema;
 pub mod subagent;
@@ -79,3 +95,4 @@ pub mod vcs;
 pub mod verification;
 pub mod worktree;
 pub mod worktree_export;
+pub(crate) mod partial_dirs;

@@ -171,21 +171,23 @@ pub fn forbidden_by(policy: Option<&tauri_plugin_agent_tools::org_policy::OrgPol
         .map(|p| p.source.display().to_string())
 }
 
-/// Lexically normal form of an absolute path, for comparing it with what the
-/// filesystem resolves it to.
-fn normal_form(path: &Path) -> String {
-    let mut out = PathBuf::new();
+/// The first link on the way to `path` -- the file itself or any directory
+/// above it that is a symlink, junction or other name-surrogate reparse point.
+/// Each component is checked on disk rather than comparing the path with what
+/// `canonicalize` returns, which differs for UNC paths, mapped network drives
+/// and 8.3 short names without any link being involved.
+fn first_link(path: &Path) -> Option<PathBuf> {
+    let mut walked = PathBuf::new();
     for part in path.components() {
-        match part {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                out.pop();
-            }
-            other => out.push(other.as_os_str()),
+        walked.push(part.as_os_str());
+        if !matches!(part, std::path::Component::Normal(_)) {
+            continue;
+        }
+        if std::fs::symlink_metadata(&walked).is_ok_and(|m| m.file_type().is_symlink()) {
+            return Some(walked);
         }
     }
-    let text = out.to_string_lossy().trim_start_matches(r"\\?\").replace('/', "\\");
-    if cfg!(windows) { text.to_lowercase() } else { text }
+    None
 }
 
 /// [`load`], with the machine policy given.
@@ -218,18 +220,17 @@ pub fn load_with_policy(
     }
     // A link anywhere in the path -- the file itself, or a directory junction
     // on the way to it -- makes the trusted file whatever the link points to
-    // today. The resolved path must be the path that was named.
-    let is_link = std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(false);
-    let resolved = std::fs::canonicalize(path).map_err(|e| {
-        refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} cannot be resolved: {e}"))
-    })?;
-    if is_link || normal_form(&resolved) != normal_form(path) {
+    // today.
+    if let Some(link) = first_link(path) {
+        let target = std::fs::canonicalize(path)
+            .map(|r| r.to_string_lossy().trim_start_matches(r"\\?\").to_string())
+            .unwrap_or_default();
         return Err(refuse(
             CaErrorKind::Link,
             path,
             format!(
-                "the CA bundle {shown} is reached through a link or junction (it resolves to {}); name the file itself",
-                resolved.to_string_lossy().trim_start_matches(r"\\?\")
+                "the CA bundle {shown} is reached through a link or junction ({} resolves to {target}); name the file itself",
+                link.display()
             ),
         ));
     }
@@ -242,7 +243,14 @@ pub fn load_with_policy(
     }
     let pem = std::fs::read(path).map_err(|e| refuse(CaErrorKind::Unreadable, path, format!("the CA bundle {shown} cannot be read: {e}")))?;
     let text = String::from_utf8_lossy(&pem);
-    let blocks = pem_blocks(&text);
+    let (blocks, unterminated) = pem_blocks(&text);
+    if unterminated {
+        return Err(refuse(
+            CaErrorKind::Malformed,
+            path,
+            format!("the CA bundle {shown} ends inside a certificate that has no -----END CERTIFICATE----- line"),
+        ));
+    }
     if blocks.is_empty() {
         return Err(refuse(
             CaErrorKind::NoCertificates,
@@ -251,6 +259,10 @@ pub fn load_with_policy(
         ));
     }
     let mut fingerprints = Vec::with_capacity(blocks.len());
+    // What the HTTP clients are given is rebuilt from the blocks checked here,
+    // so a PEM layout their stricter parser reads differently (indented
+    // markers, say) cannot turn into a bundle that trusts nothing.
+    let mut normalized = String::new();
     for (index, block) in blocks.iter().enumerate() {
         use base64::Engine as _;
         let der = base64::engine::general_purpose::STANDARD.decode(block).map_err(|e| {
@@ -273,12 +285,14 @@ pub fn load_with_policy(
             ));
         }
         fingerprints.push(hex::encode(Sha256::digest(&der)));
+        normalized.push_str(&one);
     }
-    Ok(Bundle { path: path.to_path_buf(), source, fingerprints, pem })
+    Ok(Bundle { path: path.to_path_buf(), source, fingerprints, pem: normalized.into_bytes() })
 }
 
-/// The base64 bodies of the `CERTIFICATE` blocks in `text`.
-fn pem_blocks(text: &str) -> Vec<String> {
+/// The base64 bodies of the `CERTIFICATE` blocks in `text`, and whether the
+/// text ends inside a block.
+fn pem_blocks(text: &str) -> (Vec<String>, bool) {
     let mut out = Vec::new();
     let mut current: Option<String> = None;
     for line in text.lines().map(str::trim) {
@@ -292,7 +306,7 @@ fn pem_blocks(text: &str) -> Vec<String> {
             (None, _) => {}
         }
     }
-    out
+    (out, current.is_some())
 }
 
 /// A DER X.509 certificate is a SEQUENCE of three things: tbsCertificate (a
@@ -640,6 +654,19 @@ pub(crate) mod tests {
                 Ok(()) => assert_eq!(kind(&file_link), CaErrorKind::Link),
                 Err(e) => println!("file symbolic link not created here ({e}); the junction case stands"),
             }
+            // The same file named through a UNC path is not a link, though
+            // `canonicalize` spells it differently (\\?\UNC\...).
+            let canonical = std::fs::canonicalize(&real).unwrap();
+            let plain = canonical.to_string_lossy().trim_start_matches(r"\\?\").to_string();
+            if let Some((drive, rest)) = plain.split_once(":\\") {
+                let unc = PathBuf::from(format!(r"\\localhost\{drive}$\{rest}"));
+                if unc.is_file() {
+                    let loaded = load_with_policy(&unc, Source::Environment, none);
+                    assert!(loaded.is_ok(), "{:?}", loaded.err());
+                } else {
+                    println!("administrative share not reachable here; the UNC case is not checked");
+                }
+            }
         }
         let forbidding = tauri_plugin_agent_tools::org_policy::OrgPolicy {
             source: PathBuf::from("C:/ProgramData/Jan/policy.toml"),
@@ -654,6 +681,24 @@ pub(crate) mod tests {
         let _ = with_bundle12(reqwest::Client::builder(), Some(&Err(refused)));
         let allowing = tauri_plugin_agent_tools::org_policy::OrgPolicy { allow_ca_bundle: Some(true), ..Default::default() };
         assert!(load_with_policy(&real, Source::CliConfig, Some(&allowing)).is_ok());
+    }
+
+    #[test]
+    fn what_is_applied_is_what_was_validated() {
+        let ca = make_ca();
+        let good = std::fs::read_to_string(ca.path().join("ca.pem")).unwrap();
+        // Indented markers pass the lenient scan; the clients' parser must
+        // still see every certificate.
+        let indented = ca.path().join("indented.pem");
+        let shifted: String = good.lines().map(|l| format!("  {l}\n")).collect();
+        std::fs::write(&indented, shifted).unwrap();
+        let bundle = load(&indented, Source::Environment).unwrap();
+        assert_eq!(reqwest::Certificate::from_pem_bundle(&bundle.pem).unwrap().len(), 1);
+        assert_eq!(reqwest13::Certificate::from_pem_bundle(&bundle.pem).unwrap().len(), 1);
+        // A trailing block with no END line is refused, not dropped.
+        let truncated = ca.path().join("truncated.pem");
+        std::fs::write(&truncated, format!("{good}-----BEGIN CERTIFICATE-----\nMIIB\n")).unwrap();
+        assert_eq!(load(&truncated, Source::Environment).unwrap_err().kind, CaErrorKind::Malformed);
     }
 
     #[test]

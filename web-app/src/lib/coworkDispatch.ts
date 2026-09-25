@@ -1,4 +1,14 @@
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
+import { destructiveCommandReason } from '@/lib/destructiveCommand'
+import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
+import { normalizeEditInput } from '@/lib/coworkEditInput'
+import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import {
+  noteAutoApproved,
+  resetAutoApproveStreak,
+  autoApprovePauseReason,
+  useAutoApproveLimit,
+} from '@/hooks/useAutoApproveLimit'
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
@@ -7,6 +17,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
   missingReadGuidance,
@@ -64,7 +75,13 @@ export type DispatchContext = {
     /** The diff the call would make, when it changes a file. AH-146. */
     preview?: string,
     /** The run's signal: stopping the run withdraws the prompt. */
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    /**
+     * Set when the call must be put to the user even if a standing grant or
+     * the mode would allow it: a destructive command, or the pause after a
+     * long auto-approved streak. `reason` is shown in the prompt.
+     */
+    options?: { alwaysAsk: true; reason: string }
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -232,11 +249,15 @@ function scopedInstructionsOwed(
   path: string,
   owed: { scope: string; name: string; content: string }[]
 ): ToolOutcome {
+  // Neutralised exactly as the root-level files are in the system prompt: the
+  // content is a repository's, and must not be able to close its own envelope
+  // and speak as the harness, nor a directory name add attributes to the tag
+  // (Jozkah/jan#97).
   const blocks = owed
     .map((one) =>
       [
-        `<project_instructions path="${one.scope}/${one.name}" applies_to="${one.scope}/">`,
-        one.content.trim(),
+        `<project_instructions path="${attribute(`${one.scope}/${one.name}`)}" applies_to="${attribute(`${one.scope}/`)}">`,
+        sealed(one.content.trim()),
         '</project_instructions>',
       ].join('\n')
     )
@@ -323,6 +344,10 @@ async function routeCoworkTool(
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
+  // `edit` with one top-level `old_string`/`new_string` pair is the shape
+  // models reach for most often; it is the same request as a one-item
+  // `edits` list, so it is sent as that rather than refused.
+  if (toolName === 'edit') call = { ...call, input: normalizeEditInput(call.input) }
 
   // Stopping another session: asked every time, in every mode that offers it,
   // whatever grants exist; refused in review mode and where nothing can ask.
@@ -373,7 +398,46 @@ async function routeCoworkTool(
       }
     }
 
-    if (decision.needsApproval) {
+    // Asked regardless of mode or grants: a command that matches a destructive
+    // pattern, and -- in a mode that does not ask -- the call after a long
+    // streak of unasked ones, so an unattended run checks in now and then.
+    const command =
+      toolName === 'bash' &&
+      typeof (call.input as { command?: unknown } | undefined)?.command ===
+        'string'
+        ? (call.input as { command: string }).command
+        : undefined
+    const destructive = command
+      ? destructiveCommandReason(
+          command,
+          ctx.worktreePath ?? ctx.readOnlyFolder ?? ''
+        )
+      : null
+    // A shell line that only reads (listing, reading, `git status`, a tool's
+    // `--version`) is not a change, so "Ask before changes" does not ask for
+    // it, and it does not count toward the unasked streak either.
+    const readOnlyShell =
+      command !== undefined && !destructive && isReadOnlyCommand(command)
+    const needsApproval = decision.needsApproval && !readOnlyShell
+    const overLimit =
+      !needsApproval &&
+      !readOnlyShell &&
+      !destructive &&
+      noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
+    const forced: { alwaysAsk: true; reason: string } | undefined = destructive
+      ? {
+          alwaysAsk: true,
+          reason: `Destructive command: ${destructive}. Asked even though changes are otherwise allowed.`,
+        }
+      : overLimit
+        ? {
+            alwaysAsk: true,
+            reason: autoApprovePauseReason(useAutoApproveLimit.getState().limit),
+          }
+        : undefined
+
+    if (needsApproval || forced) {
+      resetAutoApproveStreak(ctx.sessionId)
       // Recorded separately from the outcome: "the user was asked" and "the
       // user said no" are different facts, and a refused call that was never
       // put to anyone is a bug worth being able to see.
@@ -413,13 +477,23 @@ async function routeCoworkTool(
               })
             : undefined
         allowed = await unlessStopped(
-          ctx.onApprove(
-            call.toolCallId,
-            toolName,
-            call.input,
-            preview,
-            signal
-          ),
+          // Only passed when set, so a plain prompt keeps its old arity.
+          forced
+            ? ctx.onApprove(
+                call.toolCallId,
+                toolName,
+                call.input,
+                preview,
+                signal,
+                forced
+              )
+            : ctx.onApprove(
+                call.toolCallId,
+                toolName,
+                call.input,
+                preview,
+                signal
+              ),
           signal
         )
       } catch {
@@ -565,6 +639,17 @@ async function routeCoworkTool(
         // which task is asking.
         ...(toolName === 'request_access'
           ? { signal, taskLabel: 'Cowork session' }
+          : {}),
+        // Live command output for the terminal card, as the chat surface
+        // does: raw, so it keeps the colours the model-facing result (which
+        // the backend strips) does not.
+        ...(toolName === 'bash'
+          ? {
+              onOutput: (text: string) =>
+                useToolCallRuntime
+                  .getState()
+                  .appendOutput(call.toolCallId, text),
+            }
           : {}),
       })
     } finally {

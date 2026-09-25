@@ -120,7 +120,7 @@ pub(crate) fn discover_user_plugins(project: &[SkillEntry]) -> Vec<SkillEntry> {
 }
 
 /// User skills, minus any a project skill of the same name shadows.
-fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
+pub(crate) fn discover_user(project: &[SkillEntry]) -> Vec<SkillEntry> {
     let Some(dir) = user_skills_dir() else {
         return Vec::new();
     };
@@ -539,6 +539,15 @@ pub(crate) fn global_catalog() -> Vec<SkillMeta> {
     let mut entries = discover_user(&[]);
     entries.extend(discover_user_plugins(&[]));
     catalog_from_entries(entries, &[], |p| p.model_invocable)
+}
+
+/// Global-only user-invocable catalog: the user's own skills and plugins,
+/// no project involved. What the slash popup offers on folderless surfaces
+/// (Home, Rooms); the user-side counterpart of `global_catalog`.
+pub(crate) fn global_user_catalog() -> Vec<SkillMeta> {
+    let mut entries = discover_user(&[]);
+    entries.extend(discover_user_plugins(&[]));
+    catalog_from_entries(entries, &[], |p| p.user_invocable)
 }
 
 /// Skills worth advertising in the system prompt: name + description, skipping

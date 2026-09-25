@@ -203,6 +203,9 @@ pub fn validate_server_name(name: &str) -> Result<(), String> {
 /// desktop's transport contract. `env`/`headers` are already parsed maps; the
 /// callers (`flint cli mcp add` flags and the TUI form) both funnel through here
 /// so neither re-implements the shape or its validation.
+// Mirrors the fields of one configured server; a struct for them would be
+// a second copy of the config type.
+#[allow(clippy::too_many_arguments)]
 pub fn build_server_config(
     transport: &str,
     command: Option<&str>,
@@ -461,7 +464,9 @@ async fn connect_in(
                 // capability: there is no second, unconfined way to start a local
                 // MCP server.
                 let build = || {
-                    let mut cmd = Command::new(&params.command);
+                    // A bare `npx`/`uvx` is a `.cmd` shim on Windows, which
+                    // CreateProcessW will not find by name (#224).
+                    let mut cmd = Command::new(crate::core::mcp::launch::launchable_program(&params.command));
                     #[cfg(windows)]
                     {
                         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW

@@ -328,12 +328,11 @@ fn execute_reuse(
         return;
     }
 
-    // Take (and immediately release) the lock to prove we can; the caller wires
-    // the profile and must hold the lock for the session's lifetime.
-    match super::lock::acquire(&reuse_path, if opts.holder.is_empty() { "flint-migration" } else { &opts.holder }) {
-        Ok(lock) => {
-            let _ = lock.release();
-        }
+    // Take the lock and keep it: the reused profile is this session's data
+    // folder, so it stays locked until the app exits (#168). It is released
+    // straight away only when the reuse then fails.
+    let lock = match super::lock::acquire(&reuse_path, if opts.holder.is_empty() { "flint-migration" } else { &opts.holder }) {
+        Ok(lock) => lock,
         Err(super::lock::LockError::Held(info)) => {
             m.mark_failed();
             let _ = manifest::write(flint_config, &m);
@@ -348,9 +347,10 @@ fn execute_reuse(
             result.error = Some(format!("reuse lock io error: {e}"));
             return;
         }
-    }
+    };
 
     if let Err(e) = std::fs::create_dir_all(flint_config) {
+        let _ = lock.release();
         result.status = Status::Failed;
         result.error = Some(format!("create flint config: {e}"));
         return;
@@ -358,15 +358,26 @@ fn execute_reuse(
     m.reuse_path = Some(reuse_path.clone());
     m.mark_complete();
     if let Err(e) = manifest::write(flint_config, &m) {
+        let _ = lock.release();
         result.status = Status::Failed;
         result.error = Some(e);
         return;
     }
+    super::lock::hold_for_session(lock);
     result.status = Status::Complete;
     result.reuse_path = Some(reuse_path);
 }
 
 fn execute_copy_or_move(plan: &MigrationPlan, opts: &ExecuteOpts, result: &mut MigrationResult) {
+    // #67: the same schema gate as execute_reuse. Refuse before creating or
+    // writing anything, so data from a newer, unsupported schema is never
+    // copied or moved into the profile.
+    if !plan.compatible {
+        result.status = Status::Failed;
+        result.error = Some("source schema newer than supported; copy/move refused".to_string());
+        return;
+    }
+
     let flint_config = plan.dest_config_dir.clone();
     let flint_data = plan.dest_data_folder.clone();
     let quarantine_dir = flint_config.join(QUARANTINE_DIR_NAME);
@@ -682,6 +693,11 @@ fn stage_tree(
         let entry = entry.map_err(|e| e.to_string())?;
         let child = entry.path();
         let child_staging = staging.join(entry.file_name());
+        // Never descend into a directory link: one pointing at an ancestor
+        // would recurse until the stack overflows (#173).
+        if fsutil::is_linked_dir(&child) {
+            continue;
+        }
         if child.is_dir() {
             stage_tree(
                 &child,
@@ -903,6 +919,25 @@ mod tests {
     }
 
     #[test]
+    fn an_incompatible_schema_refuses_copy_and_move() {
+        for mode in [Mode::Copy, Mode::Move] {
+            let (_td, roots) = setup();
+            let mut p = make_plan(&roots, mode, Conflict::KeepBoth);
+            p.compatible = false;
+            let r = execute(&p, &ExecuteOpts::with_holder("test"));
+            assert_eq!(r.status, Status::Failed, "mode={mode:?}");
+            assert!(r.error.as_deref().unwrap_or("").contains("schema"), "{:?}", r.error);
+
+            let f = flint_paths(&roots);
+            assert!(!f.data_folder.join("threads/thread_1/thread.json").exists());
+            assert!(!f.config_dir.join("settings.json").exists());
+            // A Move must leave the source where it was.
+            let l = legacy_paths(&roots);
+            assert!(l.data_folder.join("threads/thread_1/thread.json").is_file());
+        }
+    }
+
+    #[test]
     fn copy_populates_flint_and_leaves_jan() {
         let (_td, roots) = setup();
         let p = make_plan(&roots, Mode::Copy, Conflict::KeepBoth);
@@ -1033,6 +1068,13 @@ mod tests {
         let r = execute(&p, &ExecuteOpts::with_holder("test"));
         assert_eq!(r.status, Status::Complete, "err={:?}", r.error);
         assert_eq!(r.reuse_path.as_ref(), Some(&p.source_data_folder));
+
+        // #168: the reused profile stays locked by this process after the
+        // migration returns, so another process sees it as held.
+        let held = super::super::lock::read_lock(&p.source_data_folder)
+            .expect("the reused profile keeps its lock for the session");
+        assert_eq!(held.pid, std::process::id());
+        assert_eq!(held.holder, "test");
 
         // Now simulate another live process holding the lock -> refuse.
         let foreign = super::super::lock::LockInfo {

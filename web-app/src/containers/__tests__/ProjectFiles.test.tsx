@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // ---------- Module mocks (must come before importing the component) ----------
@@ -198,18 +198,39 @@ describe('ProjectFiles', () => {
     listAttachmentsForProjectMock.mockResolvedValueOnce([])
     deleteFileForProjectMock.mockResolvedValue(undefined)
 
-    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    render(<ProjectFiles projectId="p1" lng="en" />)
     await waitFor(() =>
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
 
-    // The trash button is the 2nd button (first is Upload)
-    const buttons = container.querySelectorAll('button')
-    // Last button in a file row is the delete button
-    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete a.md' }))
+
+    // The trash icon only asks (#255); nothing is deleted until confirmed.
+    const dialog = await screen.findByRole('dialog')
+    expect(deleteFileForProjectMock).not.toHaveBeenCalled()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'common:delete' }))
 
     await waitFor(() => expect(deleteFileForProjectMock).toHaveBeenCalledWith('p1', 'f1'))
     await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
+  })
+
+  it('does not delete a file when the confirmation is cancelled', async () => {
+    listAttachmentsForProjectMock.mockResolvedValue([
+      { id: 'f1', name: 'a.md', path: '/a.md', size: 10, chunk_count: 1 },
+    ])
+
+    render(<ProjectFiles projectId="p1" lng="en" />)
+    await waitFor(() =>
+      expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete a.md' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'common:cancel' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(deleteFileForProjectMock).not.toHaveBeenCalled()
   })
 
   it('toasts error when deletion fails', async () => {
@@ -218,12 +239,13 @@ describe('ProjectFiles', () => {
     ])
     deleteFileForProjectMock.mockRejectedValue(new Error('nope'))
 
-    const { container } = render(<ProjectFiles projectId="p1" lng="en" />)
+    render(<ProjectFiles projectId="p1" lng="en" />)
     await waitFor(() =>
       expect(screen.getAllByText('a.md').length).toBeGreaterThan(0)
     )
-    const buttons = container.querySelectorAll('button')
-    fireEvent.click(buttons[buttons.length - 1])
+    fireEvent.click(screen.getByRole('button', { name: 'common:delete a.md' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'common:delete' }))
     await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
   })
 

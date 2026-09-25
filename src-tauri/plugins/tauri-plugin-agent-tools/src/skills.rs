@@ -817,13 +817,19 @@ pub const DEFAULT_JAN_SKILL_NAME: &str = "flint";
 pub const LEGACY_DEFAULT_SKILL_NAME: &str = "jan";
 pub const DEFAULT_JAN_SKILL: &str = include_str!("default_jan_skill.md");
 
-/// Whether a name refers to the built-in Flint skill (primary `flint`, legacy
-/// alias `jan`), which is always available even with no project skills installed.
+/// Whether a name is the built-in Flint skill's own name, `flint`, which is
+/// always the built-in and always available even with no skills installed.
 fn is_default_jan_skill(name: &str) -> bool {
-    matches!(
-        safe_stem(name).ok().as_deref(),
-        Some(DEFAULT_JAN_SKILL_NAME) | Some(LEGACY_DEFAULT_SKILL_NAME)
-    )
+    safe_stem(name).ok().as_deref() == Some(DEFAULT_JAN_SKILL_NAME)
+}
+
+/// Whether a name is the legacy alias `jan`. Unlike `flint`, the alias is a
+/// fallback only: a real skill named `jan` is read like any other skill, and
+/// the alias answers only when no layer has one (Jozkah/jan#125). Resolving
+/// the alias first made such a skill unreadable, and saving it from the
+/// desktop editor (which showed the built-in body) overwrote it.
+fn is_legacy_alias(name: &str) -> bool {
+    safe_stem(name).ok().as_deref() == Some(LEGACY_DEFAULT_SKILL_NAME)
 }
 fn default_jan_skill_meta() -> SkillMeta {
     let parsed = parse(DEFAULT_JAN_SKILL);
@@ -942,6 +948,14 @@ fn user_layer<'a>(store: &Path, user: Option<&'a Path>) -> Option<&'a Path> {
 /// Raw SKILL.md text (frontmatter included) for the editor. Resolves store
 /// skills, then enabled plugin skills (qualified, or a unique plain name).
 pub fn read_raw(store: &Path, name: &str) -> Result<String, String> {
+    match read_raw_real(store, name) {
+        Err(_) if is_legacy_alias(name) => Ok(parse(DEFAULT_JAN_SKILL).body),
+        other => other,
+    }
+}
+
+/// [`read_raw`] without the legacy-alias fallback.
+fn read_raw_real(store: &Path, name: &str) -> Result<String, String> {
     if is_default_jan_skill(name) {
         return Ok(parse(DEFAULT_JAN_SKILL).body);
     }
@@ -954,12 +968,16 @@ pub fn read_raw(store: &Path, name: &str) -> Result<String, String> {
 /// none of that name (AH-121). No whitelist: this answers "is it installed",
 /// for dependency checks, not "may the model read it".
 pub fn read_raw_with_user(store: &Path, user: Option<&Path>, name: &str) -> Result<String, String> {
-    match read_raw(store, name) {
+    let found = match read_raw_real(store, name) {
         Ok(raw) => Ok(raw),
         Err(missing) => match user_layer(store, user) {
-            Some(user) => read_raw(user, name),
+            Some(user) => read_raw_real(user, name),
             None => Err(missing),
         },
+    };
+    match found {
+        Err(_) if is_legacy_alias(name) => Ok(parse(DEFAULT_JAN_SKILL).body),
+        other => other,
     }
 }
 
@@ -1050,6 +1068,15 @@ pub fn read_for_model_with_user(
     name: &str,
 ) -> Result<String, String> {
     let not_found = || format!("ERROR: skill '{name}' not found");
+    // No layer has a real skill of this name: the legacy alias still names
+    // the built-in, under the same whitelist rule as `flint`.
+    let missing = || {
+        if is_legacy_alias(name) && is_enabled(enabled, DEFAULT_JAN_SKILL_NAME) {
+            Ok(parse(DEFAULT_JAN_SKILL).body)
+        } else {
+            Err(not_found())
+        }
+    };
     if let Some(project) = project {
         let config = load_config(project);
         match read_in_layer(project, &config.enabled, name)? {
@@ -1067,9 +1094,10 @@ pub fn read_for_model_with_user(
     match user_layer(store, user) {
         Some(user) => match read_in_user_layer(user, enabled, name)? {
             LayerRead::Found(raw) => Ok(raw),
-            LayerRead::Hidden | LayerRead::Missing => Err(not_found()),
+            LayerRead::Hidden => Err(not_found()),
+            LayerRead::Missing => missing(),
         },
-        None => Err(not_found()),
+        None => missing(),
     }
 }
 
@@ -1170,7 +1198,7 @@ pub fn write(store: &Path, name: &str, content: &str) -> Result<(), String> {
         std::fs::create_dir_all(&folder).map_err(|e| format!("ERROR: {e}"))?;
         folder_skill
     };
-    std::fs::write(&target, content).map_err(|e| format!("ERROR: {e}"))
+    crate::workspace::write_atomic(&target, content.as_bytes()).map_err(|e| format!("ERROR: {e}"))
 }
 
 /// Delete a skill (folder or flat form). Idempotent: a missing skill is Ok.
@@ -1539,7 +1567,7 @@ mod tests {
         let model: Vec<_> = catalog(&root, &[]).into_iter().map(|m| m.name).collect();
         assert_eq!(
             model,
-            vec!["both", "model_only", "jan"],
+            vec!["both", "model_only", "flint"],
             "model side: {model:?}"
         );
 
@@ -1714,7 +1742,7 @@ mod tests {
         agent_toml(&store, "[plugins]\ndisabled = [\"release\"]\n");
 
         assert!(list_meta(&store).is_empty());
-        assert_eq!(names(&catalog(&store, &[])), vec!["jan"]);
+        assert_eq!(names(&catalog(&store, &[])), vec!["flint"]);
         assert!(read_raw(&store, "release:prepare").is_err());
         assert!(read_raw(&store, "prepare").is_err());
         assert!(read_for_model(None, &store, &[], "release:prepare").is_err());
@@ -1837,7 +1865,7 @@ mod tests {
         write(&store, "deploy", "store deploy").unwrap();
 
         let listed = names(&catalog_for_model(Some(&project), &store, &[]));
-        assert_eq!(listed, vec!["deploy", "release:prepare", "jan", "personal"]);
+        assert_eq!(listed, vec!["deploy", "release:prepare", "flint", "personal"]);
 
         let read = |name: &str| read_for_model(Some(&project), &store, &[], name);
         assert_eq!(read("deploy").unwrap(), "project deploy");
@@ -1861,6 +1889,42 @@ mod tests {
     /// name a higher layer knows -- enabled or hidden -- never falls through,
     /// the store shadows a same-named user skill, and the user layer answers
     /// only names neither higher layer knows.
+    /// Jozkah/jan#125: a real skill named `jan` is read as itself, in the
+    /// editor and by the model; the legacy alias answers only when no layer
+    /// has one, so saving from the editor can no longer overwrite it with
+    /// the built-in body.
+    #[test]
+    fn a_real_skill_named_jan_is_not_shadowed_by_the_legacy_alias() {
+        let store = plugin_store("jan_real");
+        let user = plugin_store("jan_user");
+        let builtin = parse(DEFAULT_JAN_SKILL).body;
+
+        // No real `jan` anywhere: the alias still names the built-in.
+        assert_eq!(read_raw(&store, "jan").unwrap(), builtin);
+        assert_eq!(
+            read_for_model_with_user(None, &store, Some(&user), &[], "jan").unwrap(),
+            builtin
+        );
+
+        // A user-layer `jan` is found before the alias.
+        write(&user, "jan", "user jan").unwrap();
+        assert_eq!(
+            read_for_model_with_user(None, &store, Some(&user), &[], "jan").unwrap(),
+            "user jan"
+        );
+        assert_eq!(read_raw_with_user(&store, Some(&user), "jan").unwrap(), "user jan");
+
+        // A store `jan` is what the editor and the model read.
+        write(&store, "jan", "my own jan skill").unwrap();
+        assert_eq!(read_raw(&store, "jan").unwrap(), "my own jan skill");
+        assert_eq!(
+            read_for_model_with_user(None, &store, Some(&user), &[], "jan").unwrap(),
+            "my own jan skill"
+        );
+        // `flint` is still always the built-in.
+        assert_eq!(read_raw(&store, "flint").unwrap(), builtin);
+    }
+
     #[test]
     fn three_layers_resolve_project_then_store_then_user() {
         let project = plugin_store("tri_project");
@@ -1875,7 +1939,7 @@ mod tests {
         write(&user, "deploy", "user deploy").unwrap();
         write(&user, "style", "user style").unwrap();
         write(&user, "personal", "user personal").unwrap();
-        write(&user, "jan", "user jan").unwrap();
+        write(&user, "flint", "user flint").unwrap();
 
         let read =
             |name: &str| read_for_model_with_user(Some(&project), &store, Some(&user), &[], name);
@@ -1899,16 +1963,16 @@ mod tests {
         assert_eq!(listed, vec!["deploy", "style", "personal"]);
 
         // Without a project: the store shadows the user, and a name the store
-        // hides (the built-in Jan skill, off by the whitelist) is not answered
+        // hides (the built-in Flint skill, off by the whitelist) is not answered
         // by the user's same-named skill.
         let bare = |enabled: &[String], name: &str| {
             read_for_model_with_user(None, &store, Some(&user), enabled, name)
         };
         assert_eq!(bare(&[], "off").unwrap(), "store off");
         assert_eq!(bare(&[], "deploy").unwrap(), "user deploy");
-        assert_ne!(bare(&[], "jan").unwrap(), "user jan");
+        assert_ne!(bare(&[], "flint").unwrap(), "user flint");
         let only_personal = vec!["personal".to_string()];
-        assert!(bare(&only_personal, "jan").is_err());
+        assert!(bare(&only_personal, "flint").is_err());
         assert_eq!(bare(&only_personal, "personal").unwrap(), "user personal");
         // The whitelist governs the user layer too.
         assert!(bare(&only_personal, "deploy").is_err());
@@ -1920,7 +1984,7 @@ mod tests {
         ));
         assert_eq!(listed, vec!["personal"]);
         let listed = names(&catalog_for_model_with_user(None, &store, Some(&user), &[]));
-        assert_eq!(listed, vec!["off", "style", "jan", "deploy", "personal"]);
+        assert_eq!(listed, vec!["off", "style", "flint", "deploy", "personal"]);
 
         // A user store equal to the store (the desktop) adds nothing twice.
         let same = names(&catalog_for_model_with_user(

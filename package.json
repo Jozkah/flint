@@ -6,13 +6,14 @@
     "packages": [
       "core",
       "web-app",
-      "extensions/*"
+      "extensions/*",
+      "packages/*"
     ]
   },
   "scripts": {
     "lint": "yarn workspace @janhq/web-app lint",
     "guard:local-only": "node scripts/local-only-guard.mjs",
-    "test:scripts": "node --test \"scripts/*.test.mjs\" \"scripts/agent-harness/*.test.mjs\"",
+    "test:scripts": "node --test scripts/*.test.mjs scripts/agent-harness/*.test.mjs",
     "dev": "yarn dev:tauri",
     "ios": "yarn tauri ios dev",
     "android": "yarn tauri android dev",
@@ -35,7 +36,6 @@
     "build:ios:device": "yarn build:icon && yarn copy:assets:mobile && cross-env IS_IOS=true yarn tauri ios build -- --no-default-features --features mobile --export-method debugging",
     "copy:assets:tauri": "cpx \"LICENSE\" \"src-tauri/resources/\"",
     "copy:assets:mobile": "cpx \"LICENSE\" \"src-tauri/resources/\"",
-    "download:lib": "node ./scripts/download-lib.mjs",
     "download:bin": "node ./scripts/download-bin.mjs",
     "check:resources": "node ./scripts/check-tauri-resources.mjs",
     "check:sidecars": "node ./scripts/check-sidecars.mjs",
@@ -54,7 +54,7 @@
     "build:tauri:plugin:api:darwin": "cd src-tauri/plugins && yarn workspaces foreach -Apt run build",
     "build:tauri:plugin:api:win32": "cd src-tauri/plugins && yarn workspaces foreach -Apt --exclude @janhq/tauri-plugin-mlx-api run build",
     "build:tauri:plugin:api:linux": "cd src-tauri/plugins && yarn workspaces foreach -Apt --exclude @janhq/tauri-plugin-mlx-api run build",
-    "build:icon": "tauri icon ./src-tauri/icons/icon.png",
+    "build:icon": "node scripts/build-icon.mjs",
     "build:core": "cd core && yarn build && yarn pack",
     "build:web": "yarn build:extensions && yarn workspace @janhq/web-app build",
     "build:extensions": "yarn build:tauri:plugin:api && yarn workspace @janhq/core build && yarn workspaces foreach -Apt --include '@janhq/*-extension' run build",
@@ -85,5 +85,5 @@
     "@types/react": "19.1.2",
     "@types/react-dom": "19.1.2"
   },
-  "packageManager": "yarn@4.5.3"
+  "packageManager": "yarn@4.10.3"
 }

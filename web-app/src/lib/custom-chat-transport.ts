@@ -58,9 +58,11 @@ import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
+import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import {
+  clampThinkingBudget,
   tokensForThinkingBudgetLevel,
   isThinkingBudgetLevelKey,
 } from '@/lib/thinkingBudget'
@@ -844,6 +846,15 @@ function prependContinuationToUIStream(
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
+  /**
+   * Record each request as part of a Chat turn (`run.started`/`run.ended`
+   * with `source: chat`). Cowork records its own run around every step it
+   * sends through this transport, so a second, chat-shaped run for the same
+   * requests only duplicated the record -- and ended `error` whenever a step
+   * was retried, timed out or superseded while the Cowork run went on to
+   * succeed.
+   */
+  protected recordsChatRun = true
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1088,25 +1099,38 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * still wrap into special tokens.
    */
   protected buildSystemPrompt(messages: UIMessage[]): string | undefined {
+    const files = this.buildFilesSystemInstruction(messages)
+    const web = this.buildWebSearchSystemInstruction()
+    const agentTools = this.buildAgentToolsSystemInstruction()
+    // Any tool, MCP included, returns outside content, and an MCP tool can act
+    // on the world as readily as the agent tools can.
+    const hasTools = Object.keys(this.tools ?? {}).length > 0
     const raw =
       [
         this.systemMessage,
-        // The precedence chain (AH-084), stated by the backend so every surface
-        // says the same thing, then the remembered facts it ranks. Remembered
-        // facts are data the model may use, not instructions it must follow;
-        // the block arrives delimited and sealed from the backend.
-        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
-        this.memorySelection?.block ?? undefined,
-        this.buildFilesSystemInstruction(messages),
-        this.buildWebSearchSystemInstruction(),
-        this.buildAgentToolsSystemInstruction(),
+        chatSafetyGuidelines({
+          readsExternalContent: Boolean(files || web || agentTools || hasTools),
+          canChangeThings: Boolean(agentTools || hasTools),
+        }),
+        files,
+        web,
+        agentTools,
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),
+        // The precedence chain (AH-084), stated by the backend so every surface
+        // says the same thing, then the remembered facts it ranks. Remembered
+        // facts are data the model may use, not instructions it must follow;
+        // the block arrives delimited and sealed from the backend. They change
+        // with retrieval, so they follow the stable blocks above.
+        this.memorySelection?.block ? this.memorySelection.precedence : undefined,
+        this.memorySelection?.block ?? undefined,
       ]
         .filter((s) => typeof s === 'string' && s.trim().length > 0)
         .join('\n\n') || undefined
-    return typeof raw === 'string' && raw.trim().length > 0 ? raw : undefined
+    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+    // Last, so a new day does not invalidate the cached prefix before it.
+    return `${raw}\n\n${todayLine()}`
   }
 
   /**
@@ -1198,22 +1222,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const selectedModel = this.getModelSelection().selectedModel
     const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
-    const cacheKey = JSON.stringify({
-      model: selectedModel?.id ?? '',
-      modelSupportsTools,
-      hasDocuments: this.hasDocuments,
-      ragFeatureAvailable: this.ragFeatureAvailable,
-      disabledToolKeys,
-      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
-      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
-    })
-    if (useCache && this.toolsCacheKey === cacheKey) return
-
-    // Only load tools if model supports them
+    // Whether there are documents is read live, before the cache check: a
+    // file attached to the thread's project mid-thread changes nothing else
+    // in the key, and `this.hasDocuments` is only refreshed by the thread
+    // view, so a key built from it kept the RAG tools away (#128).
+    let hasDocuments = this.hasDocuments
+    let ragFeatureAvailable = this.ragFeatureAvailable
     if (modelSupportsTools) {
-      let hasDocuments = this.hasDocuments
-      let ragFeatureAvailable = this.ragFeatureAvailable
-
       if (!hasDocuments && this.threadId) {
         const thread = useThreads.getState().threads[this.threadId]
         const hasThreadDocuments = Boolean(thread?.metadata?.hasDocuments)
@@ -1240,7 +1255,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (!ragFeatureAvailable) {
         ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
       }
+    }
+    const cacheKey = JSON.stringify({
+      model: selectedModel?.id ?? '',
+      modelSupportsTools,
+      hasDocuments,
+      ragFeatureAvailable,
+      disabledToolKeys,
+      webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
+      agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+    })
+    if (useCache && this.toolsCacheKey === cacheKey) return
 
+    // Only load tools if model supports them
+    if (modelSupportsTools) {
       // Load RAG tools if documents are available
       if (hasDocuments && ragFeatureAvailable) {
         try {
@@ -1523,6 +1551,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         reject(err)
       }
       if (abortSignal.aborted) {
+        // Nobody else awaits modelPromise on this path; observe it so a later
+        // load failure is not an unhandled rejection (#88).
+        modelPromise.catch(() => {})
         onAbort()
         return
       }
@@ -1537,6 +1568,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           reject(error)
         })
     })
+  }
+
+  /**
+   * The tool choice for the next request. A seam: Cowork asks for `none` on
+   * the closing turn after its loop guard stops a run.
+   */
+  protected toolChoiceForStep(): 'auto' | 'none' {
+    return 'auto'
   }
 
   async sendMessages(
@@ -1570,7 +1609,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // request goes out, so a turn cancelled before its first token is in the
     // record rather than missing from it, and continued -- not reopened --
     // when this request is the one carrying tool results back.
-    continueOrBeginChatRun(threadId, { model: modelId })
+    // Only this request's turn may be ended by its callbacks (#137).
+    const recordsChatRun = this.recordsChatRun
+    const myRun = recordsChatRun
+      ? continueOrBeginChatRun(threadId, { model: modelId }).run
+      : undefined
 
     try {
       const updatedProvider = useModelProvider
@@ -1621,7 +1664,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           modelId
         )
         if (thinkingBudgetTokens !== undefined) {
-          modelSamplingDefaults.thinking_budget_tokens = thinkingBudgetTokens
+          // Reasoning must leave room for the answer inside the output limit.
+          const rawMax =
+            inferenceParams?.max_output_tokens ??
+            inferenceParams?.max_tokens ??
+            modelSamplingDefaults.max_tokens
+          const maxOut = typeof rawMax === 'number' ? rawMax : Number(rawMax)
+          modelSamplingDefaults.thinking_budget_tokens = clampThinkingBudget(
+            thinkingBudgetTokens,
+            Number.isFinite(maxOut) ? maxOut : undefined
+          )
         }
       }
 
@@ -1912,7 +1964,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       messages: modelMessages,
       abortSignal: options.abortSignal,
       tools: shouldEnableTools ? this.tools : undefined,
-      toolChoice: shouldEnableTools ? 'auto' : undefined,
+      toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
       system: effectiveSystem,
       ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
       ...(reasoningProviderOptions
@@ -1968,10 +2020,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // One invocation per model request, minted when the step starts, so
         // everything the step does -- its tools, its usage, its message -- is
         // recorded against the request that asked for it.
-        if (part.type === 'start-step') {
+        if (recordsChatRun && part.type === 'start-step') {
           nextChatInvocation(threadId)
         }
-        if (part.type === 'finish-step') {
+        if (recordsChatRun && part.type === 'finish-step') {
           const step = part as { type: 'finish-step'; usage?: LanguageModelUsage }
           const invocation = chatRunOf(threadId)?.invocation ?? ''
           const reported = readTokenUsage(usageCollector.total(step.usage))
@@ -2094,6 +2146,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 }
               : {}),
             ...(() => {
+              if (!recordsChatRun) return {}
               // What the reply was made of: sizes and counts, never the words.
               recordChatMessage(threadId, chatRunOf(threadId)?.invocation ?? '', {
                 finishReason: finishPart.finishReason,
@@ -2102,7 +2155,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               })
               // A reply that asked for tools leaves the turn open: the tools
               // run next, and their results come back in another request.
-              markChatAwaitingTools(threadId, finishPart.finishReason === 'tool-calls')
+              markChatAwaitingTools(
+                threadId,
+                finishPart.finishReason === 'tool-calls',
+                myRun
+              )
               return {}
             })(),
             tokenSpeed: {
@@ -2133,7 +2190,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             useAppState.getState().setCurrentStreamThreadId(undefined)
           }
         }
-        endChatRun(threadId, 'error')
         const unwrapped = unwrapRetryError(error)
         const rawMessage = unwrapped == null
           ? 'Unknown error'
@@ -2143,6 +2199,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               ? unwrapped.message
               : JSON.stringify(unwrapped)
         const baseMessage = stripRetryErrorWrapper(rawMessage)
+        // Say why the turn failed, not only that it did.
+        if (myRun) endChatRun(threadId, 'error', baseMessage, myRun)
 
         const contextInfo = extractContextInfoFromError(unwrapped)
         if (contextInfo) {
@@ -2151,10 +2209,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         return baseMessage
       },
       onFinish: ({ responseMessage }) => {
-        if (options.abortSignal?.aborted) endChatRun(threadId, 'cancelled')
+        if (!myRun) {
+          // Not recording a chat turn: the caller records its own run.
+        } else if (options.abortSignal?.aborted)
+          endChatRun(threadId, 'cancelled', undefined, myRun)
         // Left open when tools are still to run: the turn ends with the reply
         // that needs none.
-        else if (!chatAwaitsTools(threadId)) endChatRun(threadId, 'done')
+        else if (!chatAwaitsTools(threadId, myRun))
+          endChatRun(threadId, 'done', undefined, myRun)
         if (this.streamGeneration === myGeneration) {
           useAppState.getState().updatePromptProgress(undefined)
           useAppState.getState().updateLoadingModel(false)
@@ -2347,6 +2409,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         useAgentToolsConfig.getState().bashNetworkEnabled
           ? 'It has network access.'
           : 'It has no network access, so commands that download or upload will fail.'
+      )
+      parts.push(
+        'git and Git Bash cannot run inside the bash sandbox. To clone a GitHub',
+        'repository, call the git_clone tool; to inspect a local clone, call',
+        'git_inspect. If a GitHub URL names only a user or organization and no',
+        'repository, ask the user which repository to clone before cloning.'
       )
     }
     return parts.join(' ')

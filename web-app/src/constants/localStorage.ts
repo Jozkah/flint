@@ -24,6 +24,8 @@ export const localStorageKey = {
   modelOrder: 'model-order',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
+  /** Conversation groups, one key per surface: `conversation-groups:home` etc. */
+  conversationGroups: 'conversation-groups',
   recentSearches: 'recent-searches',
   agentMode: 'agent-mode',
   coworkDisplay: 'cowork-display',

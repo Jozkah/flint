@@ -1,6 +1,5 @@
 {
   "sortNewest": "Mới nhất",
-  "sortMostDownloaded": "Tải nhiều nhất",
   "newChat": "Cuộc trò chuyện mới",
   "download": "Tải xuống",
   "downloaded": "Đã tải xuống",
@@ -11,7 +10,6 @@
   "variants": "Biến thể",
   "showVariants": "Hiển thị biến thể",
   "useModel": "Sử dụng mô hình này",
-  "downloadModel": "Tải xuống mô hình",
   "tools": "Công cụ",
   "searchPlaceholder": "Tìm kiếm các mô hình trên Hugging Face..."
 }

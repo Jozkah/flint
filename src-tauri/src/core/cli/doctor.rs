@@ -35,10 +35,33 @@ fn tail(path: &Path, max_lines: usize) -> Option<String> {
             content.push_str(&seg);
         }
     }
-    content.push_str(&read_opt(path)?);
+    // The active file can be missing right after a rotation; what the older
+    // segments hold is still the log, not nothing (Jozkah/jan#237).
+    let active = read_opt(path);
+    if active.is_none() && content.is_empty() {
+        return None;
+    }
+    content.push_str(&active.unwrap_or_default());
     let lines: Vec<&str> = content.lines().collect();
     let start = lines.len().saturating_sub(max_lines);
     Some(lines[start..].join("\n"))
+}
+
+#[cfg(test)]
+mod tail_tests {
+    #[test]
+    fn rotated_segments_are_kept_when_the_active_log_is_missing() {
+        let dir = std::env::temp_dir().join(format!("jan_doctor_tail_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let log = dir.join("jan.log");
+        std::fs::write(crate::core::cli::file_log::segment_path(&log, 1), "older line\n").unwrap();
+        assert_eq!(super::tail(&log, 10).as_deref(), Some("older line"));
+        let empty = dir.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(super::tail(&empty.join("jan.log"), 10).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// The thread to bundle: an explicit one when given (it must exist, and must

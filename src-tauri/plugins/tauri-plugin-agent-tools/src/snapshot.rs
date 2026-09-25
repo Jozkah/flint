@@ -498,16 +498,44 @@ pub fn append(data_folder: &Path, snapshot: &PromptSnapshot) {
         eprintln!("prompt snapshot: could not record a dispatch: {e}");
         return;
     }
-    // Bounded by count, checked cheaply: only a log big enough to possibly
-    // hold more than the cap is read back and counted.
+    // Bounded by bytes as well as by count, checked cheaply. A snapshot can be
+    // hundreds of KB, so the log passes the byte threshold long before the
+    // count cap; bounding only the count left it above the threshold, and
+    // every later dispatch re-parsed the whole file for nothing
+    // (Jozkah/jan#282). Trimming to half the threshold keeps the next
+    // thousands of dispatches on the cheap path.
     let big = std::fs::metadata(log_path(data_folder))
-        .map(|m| m.len() > 8 * 1024 * 1024)
+        .map(|m| m.len() > SNAPSHOT_LOG_MAX_BYTES)
         .unwrap_or(false);
     if big {
+        if let Err(e) = trim_bytes(data_folder, SNAPSHOT_LOG_MAX_BYTES / 2) {
+            eprintln!("prompt snapshot: could not apply retention: {e}");
+        }
         if let Err(e) = prune(data_folder, MAX_SNAPSHOTS) {
             eprintln!("prompt snapshot: could not apply retention: {e}");
         }
     }
+}
+
+/// The size past which the snapshot log is trimmed on append.
+const SNAPSHOT_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Keep only the newest whole lines of the log that fit in `keep` bytes.
+fn trim_bytes(data_folder: &Path, keep: u64) -> Result<(), String> {
+    let _guard = crate::retention::lock();
+    let path = log_path(data_folder);
+    let Ok(bytes) = std::fs::read(&path) else {
+        return Ok(());
+    };
+    if bytes.len() as u64 <= keep {
+        return Ok(());
+    }
+    let from = bytes.len() - keep as usize;
+    let start = bytes[from..]
+        .iter()
+        .position(|b| *b == b'\n')
+        .map_or(bytes.len(), |i| from + i + 1);
+    crate::workspace::write_atomic(&path, &bytes[start..]).map_err(|e| e.to_string())
 }
 
 fn try_append(data_folder: &Path, snapshot: &PromptSnapshot) -> Result<(), String> {
@@ -551,6 +579,9 @@ pub const MAX_SNAPSHOTS: usize = 2_000;
 /// file beside it, then a rename. A crash mid-rewrite leaves the old log whole.
 /// Lines that no longer parse cannot be attributed to anyone and are kept.
 fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) -> Result<usize, String> {
+    // The lock every append takes (Jozkah/jan#287): without it a snapshot
+    // appended between the read and the rename below is lost.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Ok(0);
@@ -599,6 +630,8 @@ fn rewrite(data_folder: &Path, keep: impl Fn(usize, &PromptSnapshot) -> bool) ->
 /// pass over this log; a line that no longer parses is left exactly as it is,
 /// because text that cannot be attributed must not be edited either.
 pub fn redact_text(data_folder: &Path, needles: &[&str], why: &str) -> Result<usize, String> {
+    // Same read-modify-rename as `rewrite`, under the same lock (Jozkah/jan#287).
+    let _guard = crate::retention::lock();
     let needles: Vec<&str> = needles
         .iter()
         .copied()
@@ -740,6 +773,32 @@ pub fn by_session(data_folder: &Path, session: &str) -> Vec<PromptSnapshot> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// Jozkah/jan#282: a log past the byte threshold with few (large)
+    /// records is trimmed on the next append, so the one after that does
+    /// not re-parse it; the newest record survives whole.
+    #[test]
+    fn a_log_of_few_large_records_is_trimmed_below_the_threshold() {
+        let dir = std::env::temp_dir().join(format!("jan_snap_trim_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let big = "x".repeat(400 * 1024);
+        for i in 0..25 {
+            let mut s = capture(
+                &json!({ "model": "m", "messages": [{ "role": "user", "content": big }] }),
+                &Identity { session: format!("s{i}"), ..Default::default() },
+            );
+            s.at = crate::audit::now();
+            append(&dir, &s);
+        }
+        let len = std::fs::metadata(log_path(&dir)).unwrap().len();
+        assert!(len <= SNAPSHOT_LOG_MAX_BYTES, "{len} bytes left over the threshold");
+        let all = read_all(&dir);
+        // The trim really ran: 25 records of ~400 KB do not all fit.
+        assert!(all.len() < 25, "only {} records; capture may have truncated", all.len());
+        assert!(!all.is_empty() && all.last().unwrap().session == "s24");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// AH-083: forgetting has to reach the prompts the memory was already
     /// sent in. What is left behind says a redaction happened, so the record

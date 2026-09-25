@@ -23,7 +23,7 @@ export function DeleteAssistantDialog({
   onConfirm,
 }: DeleteAssistantDialogProps) {
   const { t } = useTranslation()
-  const deleteButtonRef = useRef<HTMLButtonElement>(null)
+  const cancelButtonRef = useRef<HTMLButtonElement>(null)
 
   const handleConfirm = () => {
     onConfirm()
@@ -33,19 +33,14 @@ export function DeleteAssistantDialog({
     onOpenChange(false)
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleConfirm()
-    }
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="sm:max-w-[425px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
-          deleteButtonRef.current?.focus()
+          // Open on Cancel: a reflexive Enter must not delete (#78).
+          cancelButtonRef.current?.focus()
         }}
       >
         <DialogHeader>
@@ -56,6 +51,7 @@ export function DeleteAssistantDialog({
         </DialogHeader>
         <DialogFooter className={STICKY_DIALOG_FOOTER}>
           <Button
+            ref={cancelButtonRef}
             variant="ghost"
             size="sm"
             onClick={handleCancel}
@@ -64,11 +60,9 @@ export function DeleteAssistantDialog({
             {t('assistants:cancel')}
           </Button>
           <Button
-            ref={deleteButtonRef}
             variant="destructive"
             onClick={handleConfirm}
             size="sm"
-            onKeyDown={handleKeyDown}
             className="w-full sm:w-auto pointer-coarse:h-11"
             aria-label={t('assistants:delete')}
           >

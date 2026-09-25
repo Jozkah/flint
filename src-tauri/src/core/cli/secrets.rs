@@ -44,7 +44,10 @@ impl Redactor {
             Rule {
                 label: "authorization header",
                 re: Regex::new(
-                    r#"(?i)(["']?authorization["']?\s*[:=]\s*["']?(?:bearer|basic)\s+)[A-Za-z0-9._~+/\-=]+"#,
+                    // `\\?` before each quote: inside a JSON string (every
+                    // messages.jsonl message and tool argument) the quotes are
+                    // escaped (Jozkah/jan#276).
+                    r#"(?i)((?:\\?["'])?authorization(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?(?:bearer|basic)\s+)[A-Za-z0-9._~+/\-=]+"#,
                 )
                 .expect("auth header regex"),
             },
@@ -52,7 +55,7 @@ impl Redactor {
                 label: "api key / token value",
                 // Both `api_key="..."` and JSON `"api_key":"..."`.
                 re: Regex::new(
-                    r#"(?i)(["']?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)["']?\s*[:=]\s*["']?)[A-Za-z0-9._~+/\-=]{12,}"#,
+                    r#"(?i)((?:\\?["'])?(?:api[_-]?key|apikey|secret|token|access[_-]?token|refresh[_-]?token)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[A-Za-z0-9._~+/\-=]{12,}"#,
                 )
                 .expect("key regex"),
             },
@@ -63,7 +66,9 @@ impl Redactor {
                 // catches one quoted inside a JSON string, which a line-shape
                 // scanner reading the whole record does not.
                 re: Regex::new(
-                    r#"(?i)(["']?[A-Za-z0-9_]*(?:password|passwd|pwd)["']?\s*[:=]\s*["']?)[^\s"',;}]{6,}"#,
+                    // `\` is excluded from the value so the escape before a
+                    // closing quote stays and the JSON string stays valid.
+                    r#"(?i)((?:\\?["'])?[A-Za-z0-9_]*(?:password|passwd|pwd)(?:\\?["'])?\s*[:=]\s*(?:\\?["'])?)[^\s"',;}\\]{6,}"#,
                 )
                 .expect("password regex"),
             },
@@ -205,6 +210,24 @@ mod tests {
 
     /// A clean line is the common case on the log path: it comes back
     /// borrowed, with no allocation.
+    /// Jozkah/jan#276: `messages.jsonl` stores message text and tool
+    /// arguments as JSON strings, so a pasted config's credential arrives
+    /// escaped (`\"api_key\": \"...\"`). The rules must catch that form, and the
+    /// record must still parse afterwards.
+    #[test]
+    fn a_credential_inside_an_escaped_json_string_is_redacted() {
+        let record = serde_json::json!({
+            "role": "user",
+            "content": r#"my config is {"api_key": "abcdefghijklmnop1234", "token":"qrstuvwxyz567890abcd", "db_password":"hunter2seventeen", "Authorization": "Bearer zzzzzzzzzzzzzzzzzzzz"}"#,
+        })
+        .to_string();
+        let scrubbed = SHARED.scrub(&record);
+        for secret in ["abcdefghijklmnop1234", "qrstuvwxyz567890abcd", "hunter2seventeen", "zzzzzzzzzzzzzzzzzzzz"] {
+            assert!(!scrubbed.contains(secret), "{secret} survived: {scrubbed}");
+        }
+        serde_json::from_str::<serde_json::Value>(&scrubbed).expect("still valid JSON");
+    }
+
     #[test]
     fn scrub_borrows_a_clean_line() {
         let line = "agent: run finished outcome=ok elapsed=6022ms";

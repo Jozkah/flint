@@ -41,6 +41,7 @@ import {
 import { summarizeToolOutput } from '@/lib/toolOutputSummary'
 import {
   useToolApprovalRequests,
+  wasCommandAllowedOnce,
   usePendingApprovalCount,
 } from '@/hooks/useToolApprovalRequests'
 import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
@@ -514,6 +515,18 @@ export const ToolApprovalActions = memo(() => {
           ?.toolCallId === toolCallId
       : false
   )
+  // The user already allowed this exact command once here: say so, and put
+  // "Allow in this conversation" first. It is still their click.
+  const repeatedCommand = useToolApprovalRequests((s) =>
+    pending && !pending.origin
+      ? wasCommandAllowedOnce(
+          s,
+          pending.threadId,
+          pending.toolName,
+          pending.input
+        )
+      : false
+  )
   const request = useMemo(
     () =>
       pending
@@ -578,10 +591,19 @@ export const ToolApprovalActions = memo(() => {
         showTechnicalDetails={false}
         layout="rows"
       />
+      {repeatedCommand && (
+        <p
+          data-testid="approval-repeat-notice"
+          className="text-xs text-muted-foreground"
+        >
+          {t('permissions:repeat.allowedOnceBefore')}
+        </p>
+      )}
       {/* Answers name this request, so a click cannot land on the next one. */}
       <PermissionScopeChoices
         request={request}
         autoFocusDeny
+        preferredScope={repeatedCommand ? 'allow-thread' : undefined}
         disabled={!armed}
         onDecision={(decision) =>
           resolveApproval(toolCallId, decision, pending.requestId)

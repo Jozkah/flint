@@ -360,7 +360,7 @@ mod tests {
         let data = PathBuf::from("/home/dev/.jan");
         let policy = policy_for(&editing(), Some(&data));
 
-        assert_eq!(policy.hide_root.as_deref(), Some(data.as_path()));
+        assert_eq!(policy.hide_roots, vec![data.clone()]);
         assert!(
             !policy.home_readonly,
             "the home read denial must stay in force; relaxing it would hand \

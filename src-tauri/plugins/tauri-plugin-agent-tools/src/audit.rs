@@ -234,7 +234,17 @@ fn redact_word(word: &str) -> String {
 }
 
 fn names_a_secret(key: &str) -> bool {
-    let k = key.trim_start_matches('-').to_ascii_lowercase();
+    // The name right before `=`: `PGPASSWORD` in `PGPASSWORD=`, and also in
+    // `{"command":"PGPASSWORD=` (a command quoted inside JSON). A destructuring
+    // pattern -- `const {user,pass}=JSON.parse(...)` -- ends in `}`, so it has
+    // no name there and is not a secret assignment.
+    let name_start = key
+        .rfind(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+        .map_or(0, |i| i + 1);
+    let k = key[name_start..].trim_start_matches('-').to_ascii_lowercase();
+    if k.is_empty() {
+        return false;
+    }
     [
         "password",
         "passwd",
@@ -271,6 +281,15 @@ fn looks_like_a_token(word: &str) -> bool {
     if word.contains('/') || word.contains('\\') || word.contains(' ') {
         return false;
     }
+    // A key, JWT or base64 blob is made of token characters only. Source code
+    // with no spaces in it -- `test('t',()=>assert.equal(calcTotal(...)))` --
+    // is long and mixed-case too, and was redacted from the activity log.
+    if !word
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+' | '=' | '~'))
+    {
+        return false;
+    }
     let has_upper = word.chars().any(|c| c.is_ascii_uppercase());
     let has_lower = word.chars().any(|c| c.is_ascii_lowercase());
     let has_digit = word.chars().any(|c| c.is_ascii_digit());
@@ -294,6 +313,9 @@ pub fn append(data_folder: &Path, record: &PermissionRecord) {
 }
 
 fn try_append(data_folder: &Path, record: &PermissionRecord) -> Result<(), String> {
+    // The lock retention takes to rewrite this log (Jozkah/jan#234), so a
+    // decision recorded during a prune is not lost between read and rename.
+    let _guard = crate::retention::lock();
     let path = log_path(data_folder);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -529,6 +551,23 @@ mod tests {
             let out = redact(line);
             assert!(out.contains("[redacted]"), "{line} -> {out}");
         }
+    }
+
+    #[test]
+    fn long_code_without_spaces_is_not_a_token() {
+        for line in [
+            "test('t',()=>assert.equal(calcTotal([{price:2,qty:3}]),6))",
+            "fmt.Println(strings.Repeat(\"X\",40)+strconv.Itoa(12345))",
+            "const {user,pass}=JSON.parse(req.body);",
+        ] {
+            assert_eq!(redact(line), line);
+        }
+        // A secret assignment quoted inside JSON is still caught.
+        let json = "{\"command\":\"PGPASSWORD=hunter2 psql\"}";
+        assert!(!redact(json).contains("hunter2"), "{}", redact(json));
+        // A bare high-entropy key is still caught.
+        let key = "aB3dE5fG7hJ9kL1mN3pQ5rS7tU9vW1xY3zA5";
+        assert!(redact(key).contains("[redacted]"));
     }
 
     #[test]

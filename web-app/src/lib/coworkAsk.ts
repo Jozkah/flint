@@ -57,16 +57,21 @@ export function parseAskRequest(input: unknown): AskRequestPayload | string {
 }
 
 /**
- * The tool result for a settled ask. `null` answers mean the user dismissed the
- * card or the run was aborted; the model is told so plainly rather than being
- * left to infer it from an empty array.
+ * The tool result for a settled ask. `null` answers mean the card was never
+ * answered: dismissed, timed out, or the run was stopped. The model is told so
+ * plainly -- and that it is not approval. "Proceed with your best judgement"
+ * read as consent: a model that had offered "Execute plan" went on to tell the
+ * user the plan was approved while the card was still unanswered.
  */
+export const ASK_UNANSWERED_RESULT =
+  'The user did not answer this question. This is not approval: no option ' +
+  'was chosen, so do not act on any of them or say that anything was ' +
+  'approved or agreed. Continue only with work that does not depend on the ' +
+  'answer; otherwise end the turn and say you are waiting for their answer.'
+
 export function renderAskResult(answers: AskAnswer[] | null): ToolOutcome {
   if (answers === null) {
-    return {
-      output:
-        'The user did not answer. Proceed with your best judgement, and do not ask again unless something new depends on it.',
-    }
+    return { output: ASK_UNANSWERED_RESULT }
   }
   return { output: JSON.stringify(answers) }
 }

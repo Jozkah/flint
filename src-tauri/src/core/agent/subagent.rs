@@ -242,7 +242,47 @@ impl SubagentRegistry {
         scope: SubagentScope,
         overwrite: bool,
     ) -> Result<bool, SubagentError> {
-        validate_name(&def.name)?;
+        self.check_create(&def.name, scope, overwrite)?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
+        })?;
+        let file = SubagentFile {
+            name: def.name.clone(),
+            description: def.description.clone(),
+            system_prompt: def.system_prompt.clone(),
+            allowed_tools: def.allowed_tools.clone(),
+            model: def.model.clone(),
+        };
+        let body = toml::to_string_pretty(&file)
+            .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
+        let path = dir.join(format!("{}.toml", def.name));
+        tauri_plugin_agent_tools::atomic_file::write_atomic(&path, body.as_bytes()).map_err(|e| {
+            SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
+        })?;
+
+        let shadows_user = scope == SubagentScope::Project
+            && self
+                .defs
+                .iter()
+                .any(|d| d.name == def.name && d.scope == SubagentScope::User);
+        // Keep the in-memory view consistent: replace any same-scope entry.
+        self.defs
+            .retain(|d| !(d.name == def.name && d.scope == scope));
+        self.defs.push(SubagentDefinition { scope, ..def });
+        Ok(shadows_user)
+    }
+
+    /// Every refusal `create_in` can make before it writes: an illegal name, a
+    /// read-only scope, or a same-scope name that exists without `overwrite`.
+    /// A batch caller runs this over the whole batch first, so a refusal
+    /// arrives before anything is on disk.
+    pub fn check_create(
+        &self,
+        name: &str,
+        scope: SubagentScope,
+        overwrite: bool,
+    ) -> Result<(), SubagentError> {
+        validate_name(name)?;
         if scope == SubagentScope::Builtin {
             return Err(SubagentError::PermissionDenied(
                 "built-in roles are read-only".to_string(),
@@ -257,40 +297,13 @@ impl SubagentRegistry {
         let collides = self
             .defs
             .iter()
-            .any(|d| d.name == def.name && d.scope == scope);
+            .any(|d| d.name == name && d.scope == scope);
         if collides && !overwrite {
             return Err(SubagentError::PermissionDenied(format!(
-                "a {scope:?}-scope subagent named '{}' already exists; pass overwrite to replace it",
-                def.name
+                "a {scope:?}-scope subagent named '{name}' already exists; pass overwrite to replace it"
             )));
         }
-        std::fs::create_dir_all(dir).map_err(|e| {
-            SubagentError::Upstream(format!("failed to create {}: {e}", dir.display()))
-        })?;
-        let file = SubagentFile {
-            name: def.name.clone(),
-            description: def.description.clone(),
-            system_prompt: def.system_prompt.clone(),
-            allowed_tools: def.allowed_tools.clone(),
-            model: def.model.clone(),
-        };
-        let body = toml::to_string_pretty(&file)
-            .map_err(|e| SubagentError::Upstream(format!("failed to serialize subagent: {e}")))?;
-        let path = dir.join(format!("{}.toml", def.name));
-        std::fs::write(&path, body).map_err(|e| {
-            SubagentError::Upstream(format!("failed to write {}: {e}", path.display()))
-        })?;
-
-        let shadows_user = scope == SubagentScope::Project
-            && self
-                .defs
-                .iter()
-                .any(|d| d.name == def.name && d.scope == SubagentScope::User);
-        // Keep the in-memory view consistent: replace any same-scope entry.
-        self.defs
-            .retain(|d| !(d.name == def.name && d.scope == scope));
-        self.defs.push(SubagentDefinition { scope, ..def });
-        Ok(shadows_user)
+        Ok(())
     }
 }
 
@@ -431,13 +444,62 @@ fn scan_agent_dir(dir: &Path, out: &mut Vec<SubagentDefinition>) {
 }
 
 /// Frontmatter fields recognized in a Claude Code agent file; everything else
-/// is ignored.
+/// is ignored. `tools` is whatever YAML the author wrote: Claude Code accepts a
+/// list or a comma-separated string (`tools: Read, Grep, Bash`), and so must
+/// this, or the whole frontmatter fails to parse and the agent is dropped.
 #[derive(Debug, Default, Deserialize)]
 struct PluginAgentFrontmatter {
     name: Option<String>,
     description: Option<String>,
     #[serde(default)]
-    tools: Vec<String>,
+    tools: Option<serde_yaml::Value>,
+}
+
+/// Tool names from a `tools` value: a list, or one comma- or space-separated
+/// string.
+fn tool_names(value: Option<&serde_yaml::Value>) -> Vec<String> {
+    let split = |s: &str| -> Vec<String> {
+        s.split([',', ' '])
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+    match value {
+        Some(serde_yaml::Value::String(s)) => split(s),
+        Some(serde_yaml::Value::Sequence(items)) => items
+            .iter()
+            .filter_map(|v| v.as_str())
+            .flat_map(split)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// The frontmatter read line by line, for a file that is not valid YAML.
+///
+/// Claude Code reads agent frontmatter leniently, and plugin authors rely on
+/// it: a one-line description such as `Use this agent when... Context: ...`
+/// has a `: ` inside a plain scalar, which strict YAML rejects. Each top-level
+/// `key: value` line is taken as written, with surrounding quotes removed.
+fn lenient_frontmatter(yaml: &str) -> PluginAgentFrontmatter {
+    let mut fm = PluginAgentFrontmatter::default();
+    for line in yaml.lines() {
+        if line.starts_with([' ', '\t']) {
+            continue;
+        }
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim().trim_matches(|c| c == '"' || c == '\'').to_string();
+        match key.trim() {
+            "name" => fm.name = Some(value),
+            "description" => fm.description = Some(value),
+            "tools" => fm.tools = Some(serde_yaml::Value::String(value)),
+            _ => {}
+        }
+    }
+    fm
 }
 
 /// Parse a Claude Code agent markdown file into `(name, description, tools,
@@ -446,13 +508,14 @@ struct PluginAgentFrontmatter {
 fn parse_plugin_agent(raw: &str) -> Option<(String, String, Option<Vec<String>>, String)> {
     let (yaml, body) = crate::core::agent::skills::split_frontmatter(raw);
     let yaml = yaml?;
-    let fm: PluginAgentFrontmatter = serde_yaml::from_str(&yaml).unwrap_or_default();
+    let fm: PluginAgentFrontmatter =
+        serde_yaml::from_str(&yaml).unwrap_or_else(|_| lenient_frontmatter(&yaml));
     let name = fm
         .name
         .map(|n| n.trim().to_string())
         .filter(|n| !n.is_empty())?;
     let description = fm.description.unwrap_or_default();
-    Some((name, description, map_claude_tools(&fm.tools), body))
+    Some((name, description, map_claude_tools(&tool_names(fm.tools.as_ref())), body))
 }
 
 /// Claude Code tool names with a Flint equivalent, 1:1 where one exists. Unknown
@@ -1096,15 +1159,26 @@ impl BackgroundSubagents {
         let mut guard = self.inner.lock().unwrap();
         for (_, entry) in guard.drain() {
             entry.abort.abort();
-            // Cancelled on its own already: its end was announced and its
-            // checkout settled then, and announcing either twice would tell a
-            // consumer two different stories about the same child.
-            if entry
-                .phase
-                .swap(PHASE_CANCELLED, std::sync::atomic::Ordering::SeqCst)
-                == PHASE_CANCELLED
-            {
-                continue;
+            // Only a child still queued or running is cancelled here. One that
+            // already ended -- cancelled on its own, or finished but never
+            // awaited -- announced its end and settled its checkout then, and
+            // announcing either twice (or relabelling a finished child as
+            // cancelled) would tell a consumer two different stories about it.
+            let previous = match entry.phase.fetch_update(
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+                |p| matches!(p, PHASE_QUEUED | PHASE_RUNNING).then_some(PHASE_CANCELLED),
+            ) {
+                Ok(previous) => previous,
+                Err(_) => continue,
+            };
+            // A queued child's own task is what takes it off the queue count,
+            // after its wait -- and an aborted task never gets there, so the
+            // slot is released here instead (upstream janhq/jan#9046). A
+            // running child's permit is a local of its task and is returned
+            // when the abort drops that future.
+            if previous == PHASE_QUEUED {
+                self.queued.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
             }
             // An aborted task never reaches its own settle, so an isolated
             // child would stay "running" in its review record for the life of
@@ -1239,7 +1313,29 @@ async fn run_subagent(
     use crate::core::agent::r#loop::run_orchestration_streamed;
 
     let name = resolved.definition.name.clone();
-    let child_args = configure_child_args(parent_args, &resolved, &run_id);
+    // Host tools are the client's to execute, and a client answers only a
+    // `tool_request` it can see at the top level. A child's own events reach
+    // stdout wrapped in `Subagent { .. }`, a shape no client may answer, so the
+    // child keeps the parent's tool set, gate and -- crucially -- the *same*
+    // request registry, but emits its requests on the parent's sender instead,
+    // unwrapped and attributed by `run_id`. `events` is the root channel here
+    // (children cannot nest), so the printer's strand guard and the stdin
+    // reader see a child's request exactly as they see the main run's.
+    // `configure_child_args` clears the set for every other kind of child (a
+    // durable one has no route back to the client), so it is restored here.
+    #[cfg(feature = "cli")]
+    let parent_host_tools = (
+        parent_args.host_tools.clone(),
+        parent_args.host_tool_requests.clone(),
+    );
+    #[allow(unused_mut)]
+    let mut child_args = configure_child_args(parent_args, &resolved, &run_id);
+    #[cfg(feature = "cli")]
+    {
+        child_args.host_tools = parent_host_tools.0;
+        child_args.host_tool_requests = parent_host_tools.1;
+        child_args.host_tool_route = Some((events.clone(), run_id.clone()));
+    }
 
     let body = child_body(
         &resolved,
@@ -1299,6 +1395,14 @@ pub(crate) fn configure_child_args(
     // place the child can learn it -- and without it `message_send` has no
     // address to use.
     let mut child_prompt = resolved.definition.system_prompt.clone();
+    // A built-in role states what it hands back; a one-off prompt written by
+    // the parent model usually does not, so every child is told the contract.
+    child_prompt.push_str(
+        "\n\nYou are a subagent running one errand for another agent. You cannot see its conversation \
+         and cannot ask the user questions. Your final message is the entire result returned to it: \
+         make it self-contained -- what you found or changed (with file paths), what you could not \
+         do, and anything you did not verify.",
+    );
     if let Some(parent_run) = child_args.parent_run.as_deref() {
         child_prompt.push_str(&format!(
             "\n\nThe run that dispatched you is `{parent_run}`. While you work you can send it \
@@ -1312,6 +1416,10 @@ pub(crate) fn configure_child_args(
     // AH-008: the dispatch this run answers, so the parent's record of asking
     // for it and this run's own events name each other.
     child_args.dispatch_id = Some(run_id.to_string());
+    // Upstream #9056: every build gets the child's own id, not just the
+    // headless one: a provenance record has to name the run that made the
+    // request.
+    child_args.run_id = Some(run_id.to_string());
     // AH-007: the child asks the permission gate as itself, so a rule
     // qualified `agent:<name>` binds this subagent and not its parent. An
     // unqualified rule still covers every subject, so a project that never
@@ -1324,6 +1432,18 @@ pub(crate) fn configure_child_args(
     // Subagents cannot read or mutate the parent's todo list (isolated child
     // context, matching ask_requests above).
     child_args.todo_registry = None;
+    // Host tools are the client's to execute, and a client answers a
+    // `tool_request` it can see. A child's events reach stdout wrapped in
+    // `Subagent { .. }`, a shape no client is told it may answer, so a child
+    // that inherited the set would raise a request nobody could resolve: the
+    // strand guard matches only a top-level request, and the turn would park.
+    // A child therefore advertises no host tools at all, for the same reason
+    // `ask_requests` is cleared above -- no client is attached to a child run.
+    #[cfg(feature = "cli")]
+    {
+        child_args.host_tools = crate::core::agent::host_tools::HostToolSet::new();
+        child_args.host_tool_requests = crate::core::agent::host_tools::new_registry();
+    }
     child_args
 }
 
@@ -1432,6 +1552,13 @@ pub(crate) fn spawn_subagent(
     // stop its siblings.
     let child_token = tauri_plugin_agent_tools::lifecycle::current()
         .map(|parent| tauri_plugin_agent_tools::lifecycle::Token::new(parent.scope().clone()));
+    // Spawn and register under one hold of the registry lock (upstream
+    // janhq/jan#9046). Spawning first and inserting after left a window where
+    // the child was running but unowned: a teardown's `abort_all` walked the
+    // registry, missed it, and the child kept streaming into a run nobody was
+    // watching. With the lock held across both, a teardown either finds the
+    // entry or runs before the child exists.
+    let mut registry_guard = bg.inner.lock().unwrap();
     let handle = tokio::spawn(async move {
         // Registered for the life of the child so a scope-wide stop finds it.
         let _child_registered = child_token
@@ -1520,7 +1647,7 @@ pub(crate) fn spawn_subagent(
         let _ = tx.send(result);
     });
 
-    bg.inner.lock().unwrap().insert(
+    registry_guard.insert(
         run_id.clone(),
         BackgroundEntry {
             result: Some(rx),
@@ -1533,6 +1660,7 @@ pub(crate) fn spawn_subagent(
             phase,
         },
     );
+    drop(registry_guard);
     Ok(run_id)
 }
 
@@ -3055,6 +3183,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn abort_all_leaves_a_finished_child_alone() {
+        // A finished child that was never awaited already sent its own
+        // SubagentEnd. Teardown must neither announce it again nor relabel it
+        // as cancelled.
+        let bg = Arc::new(BackgroundSubagents::default());
+        let (_tx, rx) = tokio::sync::oneshot::channel::<Result<String, SubagentError>>();
+        let handle = tokio::spawn(async {});
+        let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel();
+        let phase = Arc::new(std::sync::atomic::AtomicU8::new(PHASE_FINISHED));
+        bg.inner.lock().unwrap().insert(
+            "r1".to_string(),
+            BackgroundEntry {
+                result: Some(rx),
+                abort: handle.abort_handle(),
+                run_id: "r1".to_string(),
+                name: "reviewer".to_string(),
+                events: ev_tx,
+                description: String::new(),
+                dispatched: std::time::Instant::now(),
+                phase: phase.clone(),
+            },
+        );
+        bg.abort_all();
+        assert!(ev_rx.try_recv().is_err(), "no second SubagentEnd for a finished child");
+        assert_eq!(
+            phase.load(std::sync::atomic::Ordering::SeqCst),
+            PHASE_FINISHED,
+            "a finished child stays finished"
+        );
+        assert!(bg.inner.lock().unwrap().is_empty(), "the entry is still drained");
+    }
+
+    #[tokio::test]
     async fn abort_on_drop_cancels_and_clears_children() {
         let bg = Arc::new(BackgroundSubagents::default());
         let (_tx, rx) = tokio::sync::oneshot::channel::<Result<String, SubagentError>>();
@@ -3249,6 +3410,10 @@ mod tests {
             permissions: ToolPermissions::allow_all(),
             project_root: Some(root.to_path_buf()),
             permission_requests: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            host_tools: crate::core::agent::host_tools::HostToolSet::new(),
+            host_tool_requests: crate::core::agent::host_tools::new_registry(),
+            host_owns_gate: false,
+            host_tool_route: None,
             ask_requests: None,
             todo_registry: None,
             system_prompt_override: None,
@@ -3257,6 +3422,7 @@ mod tests {
             auto_approve: false,
             run_mode: crate::core::agent::plan::RunMode::Normal,
             session_id: None,
+            run_id: None,
             subject: tauri_plugin_agent_tools::subject::Subject::MainAgent,
             sandbox: None,
         }
@@ -3678,6 +3844,13 @@ mod tests {
             bg.inner.lock().unwrap().is_empty(),
             "abort_all drains queued dispatches too"
         );
+        // Every queued child's slot is released by the teardown itself: an
+        // aborted task never reaches the decrement after its wait.
+        assert_eq!(
+            bg.queued.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "abort_all releases the queue slots it cancels"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -3923,6 +4096,37 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Two shapes Claude Code accepts and plugin packs ship: `tools` as a
+    /// comma-separated string, and a description with `Context:` mid-line,
+    /// which strict YAML rejects. Both used to drop the agent as "missing
+    /// frontmatter name" although it had one.
+    #[test]
+    fn plugin_agents_in_claude_code_frontmatter_shapes_are_loaded() {
+        let root = unique_root("plugin-lenient");
+        std::fs::create_dir_all(plugin_agents_dir(&root)).unwrap();
+        std::fs::write(
+            plugin_agents_dir(&root).join("tdd.md"),
+            "---\nname: tdd-guide\ndescription: Tests first.\ntools: Read, Write, Bash\nmodel: sonnet\n---\nWrite tests.",
+        )
+        .unwrap();
+        std::fs::write(
+            plugin_agents_dir(&root).join("hunter.md"),
+            "---\nname: silent-failure-hunter\ndescription: Use this agent when reviewing. Examples:\\n\\n<example>\\nContext: Daisy wrote code.\\nDaisy: \"Review it\"\\n</example>\nmodel: inherit\ncolor: yellow\n---\nHunt.",
+        )
+        .unwrap();
+
+        let reg = SubagentRegistry::load(&root);
+        let tdd = reg.get("tdd-guide").expect("comma-separated tools");
+        assert_eq!(
+            tdd.allowed_tools.as_deref(),
+            Some(&["read".to_string(), "write".to_string(), "bash".to_string()][..])
+        );
+        let hunter = reg.get("silent-failure-hunter").expect("description with Context:");
+        assert!(hunter.description.starts_with("Use this agent when reviewing."), "{}", hunter.description);
+        assert_eq!(hunter.system_prompt.trim(), "Hunt.");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn plugin_agent_with_only_unknown_tools_gets_no_allowlist() {
         let root = unique_root("plugin-unknown-tools");
@@ -3960,6 +4164,28 @@ mod tests {
         assert_eq!(def.scope, SubagentScope::Project);
         assert_eq!(def.system_prompt, "You are code-explorer.");
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A child's events reach stdout wrapped in `Subagent { .. }`, and the
+    /// forwarder is a *negative* match: anything not explicitly held back is
+    /// forwarded, so a nested `ToolRequest` would be handed to a client that is
+    /// told nothing about the wrapper and could not answer it. Nothing here
+    /// filters that shape, which is exactly why a child's host calls never
+    /// enter its own channel: `run_subagent` routes them to the root sender
+    /// (`host_tool_route`), unwrapped.
+    #[test]
+    fn a_nested_tool_request_would_reach_the_parent_unfiltered() {
+        use crate::core::agent::events::StreamEvent;
+        assert!(
+            forward_to_parent(&StreamEvent::ToolRequest {
+                request_id: "host-1".to_string(),
+                tool_name: "robot_arm_move".to_string(),
+                args: serde_json::json!({}),
+                run_id: None,
+            }),
+            "the forwarder does not hold back a nested tool_request, so a child's \
+             request must be routed around it"
+        );
     }
 
     #[test]

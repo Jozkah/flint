@@ -11,6 +11,7 @@ import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { buildSrcDoc } from '@/lib/htmlSandbox'
+import { usePreviewSource } from '@/hooks/usePreviewSource'
 import { cn } from '@/lib/utils'
 import {
   MAX_PREVIEW_BYTES,
@@ -26,6 +27,37 @@ import { errorText } from '@/lib/errorText'
 /** Held as a key, not a translated string: the loader must not depend on `t`,
  * whose identity changes on every render. */
 const TOO_LARGE = 'common:preview.tooLarge'
+
+/**
+ * Sandboxed HTML/SVG frame. In the desktop app the document is served from the
+ * flintpreview: scheme with its own CSP; an about:srcdoc frame would inherit
+ * the app's CSP, which blocks every inline script in a release build (#135).
+ */
+function PreviewFrame({
+  title,
+  content,
+  allowNetwork,
+  scripts,
+}: {
+  title: string
+  content: string
+  allowNetwork: boolean
+  scripts: boolean
+}) {
+  const doc = useMemo(
+    () => buildSrcDoc(content, allowNetwork, scripts),
+    [content, allowNetwork, scripts]
+  )
+  const source = usePreviewSource(doc, allowNetwork, scripts)
+  return (
+    <iframe
+      title={title}
+      {...source}
+      sandbox={scripts ? 'allow-scripts' : ''}
+      className="m-3 min-h-0 w-[calc(100%-1.5rem)] flex-1 rounded-lg border-0 bg-card shadow-lift"
+    />
+  )
+}
 
 type Props = {
   /** The session sandbox. Every previewed path must resolve inside it. */
@@ -240,11 +272,11 @@ function PreviewBody({
               })}
             </p>
           )}
-          <iframe
+          <PreviewFrame
             title={state.path}
-            srcDoc={buildSrcDoc(state.content ?? '', allowNetwork, scripts)}
-            sandbox={scripts ? 'allow-scripts' : ''}
-            className="m-3 min-h-0 w-[calc(100%-1.5rem)] flex-1 rounded-lg border-0 bg-card shadow-lift"
+            content={state.content ?? ''}
+            allowNetwork={allowNetwork}
+            scripts={scripts}
           />
         </div>
       )

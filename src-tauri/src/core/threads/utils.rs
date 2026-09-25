@@ -7,6 +7,29 @@ pub fn get_data_dir(data_folder: &Path) -> PathBuf {
     data_folder.join(THREADS_DIR)
 }
 
+/// Refuse a thread id that is not one plain path component.
+///
+/// Every thread and message command joins the caller's id onto the threads
+/// directory, and `delete_thread` then removes what it names recursively. An
+/// id is only ever a name `create_thread` (or the CLI) chose, so anything that
+/// could step out of that directory -- `..`, a separator, a drive or an
+/// absolute path -- is refused before the filesystem is touched
+/// (Jozkah/jan#35).
+pub fn validate_thread_id(thread_id: &str) -> Result<(), String> {
+    use std::path::Component;
+    let plain = !thread_id.is_empty()
+        && !thread_id.contains(['/', '\\', ':', '\0'])
+        && matches!(
+            Path::new(thread_id).components().collect::<Vec<_>>().as_slice(),
+            [Component::Normal(name)] if *name == std::ffi::OsStr::new(thread_id)
+        );
+    if plain {
+        Ok(())
+    } else {
+        Err(format!("invalid thread id {thread_id:?}"))
+    }
+}
+
 pub fn get_thread_dir(data_folder: &Path, thread_id: &str) -> PathBuf {
     get_data_dir(data_folder).join(thread_id)
 }
@@ -34,4 +57,19 @@ pub fn ensure_thread_dir_exists(data_folder: &Path, thread_id: &str) -> Result<(
         fs::create_dir_all(&thread_dir).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// The agent scratch dir of `thread_id`, or `None` when the id is not a single
+/// plain path component: a crafted id such as `x/../../dir` must never steer a
+/// recursive delete outside the temp folder.
+pub fn thread_scratch_dir(thread_id: &str) -> Option<std::path::PathBuf> {
+    let mut parts = std::path::Path::new(thread_id).components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(_)), None)
+            if !thread_id.contains(['/', '\\']) =>
+        {
+            Some(tauri_plugin_agent_tools::workspace::scratch_dir(thread_id))
+        }
+        _ => None,
+    }
 }

@@ -32,6 +32,46 @@ pub struct MlxConfig {
     pub ctx_size: i32,
 }
 
+/// Ports claimed by loads that have not reached the session map yet. The map
+/// is no longer locked across a load (#71), so without this two concurrent
+/// loads could both be handed, and both launch on, the same port.
+static PENDING_PORTS: std::sync::Mutex<Vec<u16>> = std::sync::Mutex::new(Vec::new());
+
+/// Ports reserved by in-flight loads, for the random-port picker to avoid.
+pub(crate) fn pending_ports() -> Vec<u16> {
+    PENDING_PORTS.lock().map(|p| p.clone()).unwrap_or_default()
+}
+
+/// A port held for one in-flight load; released when dropped.
+struct PortReservation(u16);
+
+impl Drop for PortReservation {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = PENDING_PORTS.lock() {
+            pending.retain(|p| *p != self.0);
+        }
+    }
+}
+
+/// Claim `port` for a load, or `None` when another load already holds it.
+fn reserve_port(port: u16) -> Option<PortReservation> {
+    let mut pending = PENDING_PORTS.lock().ok()?;
+    if pending.contains(&port) {
+        return None;
+    }
+    pending.push(port);
+    Some(PortReservation(port))
+}
+
+fn port_in_use(port: u16) -> ServerError {
+    MlxError::new(
+        ErrorCode::ModelLoadFailed,
+        format!("Port {port} is already used by another MLX model."),
+        None,
+    )
+    .into()
+}
+
 /// Core model-loading logic, decoupled from Tauri AppHandle.
 /// `binary_path` must point to the mlx-server executable.
 /// `process_map_arc` is the shared session map from MlxState.
@@ -47,7 +87,9 @@ pub async fn load_mlx_model_impl(
     is_embedding: bool,
     timeout: u64,
 ) -> ServerResult<SessionInfo> {
-    let mut process_map = process_map_arc.lock().await;
+    // The session map is locked only to insert the finished session (below).
+    // Holding it across the readiness wait would stall every other MLX
+    // command (lookup, unload, chat, shutdown cleanup) for up to `timeout`.
 
     log::info!("Attempting to launch MLX server at path: {:?}", binary_path);
     log::info!("Using MLX configuration: {:?}", config);
@@ -73,6 +115,22 @@ pub async fn load_mlx_model_impl(
         )
         .into());
     }
+
+    // Port 0 lets the OS choose, so there is nothing to collide on.
+    let _reservation = if port == 0 {
+        None
+    } else {
+        let reservation = reserve_port(port).ok_or_else(|| port_in_use(port))?;
+        let taken = process_map_arc
+            .lock()
+            .await
+            .values()
+            .any(|s| s.info.port == i32::from(port));
+        if taken {
+            return Err(port_in_use(port));
+        }
+        Some(reservation)
+    };
 
     let api_key: String = envs
         .get("MLX_API_KEY")
@@ -107,6 +165,9 @@ pub async fn load_mlx_model_impl(
     command.envs(envs);
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
+    // The map is not locked during the load, so an exit cleanup can run
+    // while this future is pending; dropping it must not orphan the server.
+    command.kill_on_drop(true);
 
     // Spawn the child process
     let mut child = command.spawn().map_err(ServerError::Io)?;
@@ -271,7 +332,7 @@ pub async fn load_mlx_model_impl(
         api_key,
     };
 
-    process_map.insert(
+    process_map_arc.lock().await.insert(
         pid,
         MlxBackendSession {
             child,
@@ -328,26 +389,43 @@ pub async fn unload_mlx_model<R: Runtime>(
     pid: i32,
 ) -> ServerResult<UnloadResult> {
     let state: State<MlxState> = app_handle.state();
-    let mut map = state.mlx_server_process.lock().await;
+    Ok(unload_mlx_model_impl(state.mlx_server_process.clone(), pid).await)
+}
 
-    if let Some(session) = map.remove(&pid) {
+/// Core unload logic, decoupled from Tauri AppHandle.
+///
+/// A PID that is not tracked is reported as a failure: the caller asked to
+/// unload something this plugin never started (or already unloaded), and a
+/// `success: true` there would be indistinguishable from a real termination.
+pub async fn unload_mlx_model_impl(
+    process_map_arc: Arc<Mutex<HashMap<i32, MlxBackendSession>>>,
+    pid: i32,
+) -> UnloadResult {
+    // Take the session out under the lock, then release it before waiting
+    // for the process to exit.
+    let session = process_map_arc.lock().await.remove(&pid);
+
+    if let Some(session) = session {
+        #[allow(unused_mut)]
         let mut child = session.child;
 
         #[cfg(unix)]
         {
             graceful_terminate_process(&mut child).await;
         }
+        #[cfg(not(unix))]
+        drop(child);
 
-        Ok(UnloadResult {
+        UnloadResult {
             success: true,
             error: None,
-        })
+        }
     } else {
         log::warn!("No MLX server with PID '{}' found", pid);
-        Ok(UnloadResult {
-            success: true,
-            error: None,
-        })
+        UnloadResult {
+            success: false,
+            error: Some(format!("No MLX server with PID '{}' found", pid)),
+        }
     }
 }
 
@@ -391,4 +469,112 @@ pub async fn get_mlx_all_sessions<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
 ) -> Result<Vec<SessionInfo>, String> {
     get_all_active_sessions(app_handle).await
+}
+
+#[cfg(all(test, unix))]
+mod load_lock_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    // Regression for #71: the session map must stay lockable while a model
+    // load is waiting for the server to become ready.
+    #[tokio::test]
+    async fn session_map_is_not_locked_during_the_readiness_wait() {
+        let dir = std::env::temp_dir().join(format!("mlx-lock-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("fake-mlx-server");
+        std::fs::write(&bin, "#!/bin/sh\nsleep 5\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let model = dir.join("model.safetensors");
+        std::fs::write(&model, b"").unwrap();
+
+        let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let (map2, bin2, model2) = (map.clone(), bin.clone(), model.display().to_string());
+        let load = tokio::spawn(async move {
+            load_mlx_model_impl(
+                map2,
+                &bin2,
+                "m".into(),
+                model2,
+                0,
+                MlxConfig { ctx_size: 0 },
+                HashMap::new(),
+                false,
+                2,
+            )
+            .await
+        });
+
+        // Give the load time to spawn the child and enter its wait loop.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let lock = tokio::time::timeout(Duration::from_millis(500), map.lock()).await;
+        assert!(lock.is_ok(), "session map stayed locked during the model load");
+        drop(lock);
+
+        let result = load.await.unwrap();
+        assert!(result.is_err(), "fake server never signals readiness");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // #71: releasing the lock during the load must not lose the session a
+    // successful load inserts.
+    #[tokio::test]
+    async fn a_successful_load_inserts_the_session() {
+        let dir = std::env::temp_dir().join(format!("mlx-insert-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let bin = dir.join("fake-mlx-server");
+        std::fs::write(&bin, "#!/bin/sh\necho 'http server listening'\nsleep 30\n").unwrap();
+        std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let model = dir.join("model.safetensors");
+        std::fs::write(&model, b"").unwrap();
+
+        let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let info = load_mlx_model_impl(
+            map.clone(),
+            &bin,
+            "m".into(),
+            model.display().to_string(),
+            0,
+            MlxConfig { ctx_size: 0 },
+            HashMap::new(),
+            false,
+            5,
+        )
+        .await
+        .expect("the fake server signals readiness");
+        assert!(map.lock().await.contains_key(&info.pid));
+
+        let unloaded = unload_mlx_model_impl(map, info.pid).await;
+        assert!(unloaded.success);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression for #160: unloading an untracked PID must not report success.
+    #[tokio::test]
+    async fn unloading_an_untracked_pid_reports_failure() {
+        let map: Arc<Mutex<HashMap<i32, MlxBackendSession>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let result = unload_mlx_model_impl(map, 4242).await;
+        assert!(!result.success);
+        assert!(result.error.as_deref().unwrap_or("").contains("4242"));
+    }
+
+    // #71: two in-flight loads cannot hold the same port.
+    #[test]
+    fn a_port_is_reserved_for_one_load_at_a_time() {
+        let port = 59_171;
+        let first = reserve_port(port).expect("free port");
+        assert!(reserve_port(port).is_none(), "second load got the same port");
+        assert!(pending_ports().contains(&port));
+        drop(first);
+        assert!(!pending_ports().contains(&port));
+        assert!(reserve_port(port).is_some(), "released on drop");
+    }
 }

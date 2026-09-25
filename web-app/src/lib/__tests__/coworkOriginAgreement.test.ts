@@ -137,9 +137,10 @@ describe('every surface describing the same run', () => {
     const { prompt, readiness, entries } = describeRun(managed)
 
     expect(readiness.writeDestination).toBe('managed')
-    // Editable, because it is: telling the model otherwise would have it
-    // spend the run proposing changes it could have made.
-    expect(promptFolderAccess(managed)).toBe('editable')
+    // Writable, because it is: telling the model otherwise would have it
+    // spend the run proposing changes it could have made. And a worktree, not
+    // the user's checkout, so it does not report changes as landing there.
+    expect(promptFolderAccess(managed)).toBe('worktree')
     // And the tree it is told about is the worktree, not the checkout it must
     // not touch.
     expect(prompt).toContain(WORKTREE)

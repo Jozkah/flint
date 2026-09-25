@@ -168,24 +168,24 @@ fn map_tools(value: Option<&serde_yaml::Value>, notes: &mut Vec<String>) -> Opti
         }
     };
     let mapped: Vec<String> = match value {
-        serde_yaml::Value::String(list) => list.split(',').filter_map(|n| take(n)).collect(),
+        serde_yaml::Value::String(list) => list.split(',').filter_map(&mut take).collect(),
         serde_yaml::Value::Sequence(items) => items
             .iter()
             .filter_map(|i| i.as_str())
-            .filter_map(|n| take(n))
+            .filter_map(&mut take)
             .collect(),
         serde_yaml::Value::Mapping(switches) => {
             let on: Vec<String> = switches
                 .iter()
                 .filter(|(_, v)| v.as_bool() == Some(true))
                 .filter_map(|(k, _)| k.as_str())
-                .filter_map(|n| take(n))
+                .filter_map(&mut take)
                 .collect();
             let off: Vec<String> = switches
                 .iter()
                 .filter(|(_, v)| v.as_bool() == Some(false))
                 .filter_map(|(k, _)| k.as_str())
-                .filter_map(|n| take(n))
+                .filter_map(take)
                 .collect();
             if on.is_empty() && !off.is_empty() {
                 notes.push(format!(
@@ -237,10 +237,9 @@ fn dialect_of(path: &Path, fm: &AgentFrontmatter) -> Dialect {
         path.components()
             .any(|c| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(needle))
     };
+    // `.qwen`, and any other folder, reads as Qwen's dialect.
     if in_dir(".opencode") {
         Dialect::OpenCode
-    } else if in_dir(".qwen") {
-        Dialect::Qwen
     } else {
         Dialect::Qwen
     }
@@ -528,17 +527,44 @@ pub fn import(
     if dry_run {
         return Ok(report);
     }
+    let refused = |e: crate::core::agent::subagent::SubagentError| match e {
+        crate::core::agent::subagent::SubagentError::PermissionDenied(m) => {
+            HarnessError::new(ErrorKind::PolicyViolation, m).at(Stage::Startup)
+        }
+        other => invalid(other.to_string()),
+    };
     let mut registry = crate::core::agent::subagent::SubagentRegistry::load_one(scope_dir, scope);
+    // Every refusal is found before anything is written (Jozkah/jan#208): an
+    // illegal name, a read-only scope, an existing name without `overwrite`,
+    // and two definitions in this batch that share a name -- `overwrite`
+    // governs what is already there, not which of two new files wins.
+    let mut seen = std::collections::HashSet::new();
+    for entry in &report.imported {
+        let name = entry.definition.name.as_str();
+        registry.check_create(name, scope, overwrite).map_err(refused)?;
+        if !seen.insert(name) {
+            return Err(invalid(format!(
+                "two definitions in this import are both named '{name}'; rename one"
+            )));
+        }
+    }
+    // A write can still fail (the disk, permissions). What this import
+    // already wrote is put back the way it was, so a failure writes nothing.
+    let mut undo: Vec<(std::path::PathBuf, Option<Vec<u8>>)> = Vec::new();
     for entry in report.imported.iter_mut() {
         entry.definition.scope = scope;
-        registry
-            .create_in(scope_dir, entry.definition.clone(), scope, overwrite)
-            .map_err(|e| match e {
-                crate::core::agent::subagent::SubagentError::PermissionDenied(m) => {
-                    HarnessError::new(ErrorKind::PolicyViolation, m).at(Stage::Startup)
-                }
-                other => invalid(other.to_string()),
-            })?;
+        let target = scope_dir.join(format!("{}.toml", entry.definition.name));
+        let before = std::fs::read(&target).ok();
+        if let Err(e) = registry.create_in(scope_dir, entry.definition.clone(), scope, overwrite) {
+            for (path, content) in undo.into_iter().rev() {
+                let _ = match content {
+                    Some(bytes) => std::fs::write(&path, bytes),
+                    None => std::fs::remove_file(&path),
+                };
+            }
+            return Err(refused(e));
+        }
+        undo.push((target, before));
     }
     Ok(report)
 }
@@ -805,6 +831,39 @@ mod tests {
         let again = import(&dir, &scope_dir, SubagentScope::User, false, false).unwrap_err();
         assert_eq!(again.kind(), ErrorKind::PolicyViolation);
         assert!(import(&dir, &scope_dir, SubagentScope::User, true, false).is_ok());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A name refused only when it is written (illegal characters) still
+    /// stops the import before the valid definitions ahead of it are written
+    /// (Jozkah/jan#208).
+    #[test]
+    fn an_illegal_name_late_in_the_batch_writes_nothing() {
+        let root = temp_root("late-refusal");
+        let dir = root.join(".qwen").join("agents");
+        write(&dir, "a.md", "---\nname: alpha\ndescription: Fine\n---\n\nbody\n");
+        write(&dir, "b.md", "---\nname: code reviewer\ndescription: Fine\n---\n\nbody\n");
+        let scope_dir = root.join("subagents");
+        let err = import(&dir, &scope_dir, SubagentScope::User, false, false).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::PolicyViolation, "{err}");
+        assert!(!scope_dir.join("alpha.toml").exists(), "a refused import still wrote");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Two definitions in one import with the same name are refused, with or
+    /// without overwrite, instead of the second silently replacing the first.
+    #[test]
+    fn two_definitions_with_one_name_are_refused() {
+        let root = temp_root("dupe");
+        let dir = root.join(".qwen").join("agents");
+        write(&dir, "a.md", "---\nname: helper\ndescription: One\n---\n\nfirst\n");
+        write(&dir, "b.md", "---\nname: helper\ndescription: Two\n---\n\nsecond\n");
+        let scope_dir = root.join("subagents");
+        for overwrite in [false, true] {
+            let err = import(&dir, &scope_dir, SubagentScope::User, overwrite, false).unwrap_err();
+            assert_eq!(err.kind(), ErrorKind::InvalidInput, "{err}");
+            assert!(!scope_dir.join("helper.toml").exists());
+        }
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -119,6 +119,8 @@ const h = vi.hoisted(() => {
 
   const toolAvailableState: any = {
     getDisabledToolsForThread: vi.fn(() => []),
+    // ThreadConversation checks the global list before running a tool.
+    getDisabledTools: vi.fn(() => []),
   }
   const useToolAvailableMock: any = (selector: any) => selector(toolAvailableState)
   useToolAvailableMock.getState = () => toolAvailableState
@@ -447,6 +449,7 @@ vi.mock('@/utils/error', async (importOriginal) => ({
 import { Route } from '../$threadId'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
+import { __testing as chatLoopGuard } from '@/lib/chatLoopGuard'
 
 // The global setup mock is a shared object, so an overridden factory has to be
 // put back or it leaks into every later test.
@@ -460,6 +463,9 @@ const renderComponent = () => {
 
 describe('ThreadDetail route', () => {
   beforeEach(() => {
+    // Every test reuses one thread and one assistant message id; the loop
+    // guard's per-turn history must not carry failures from one to the next.
+    chatLoopGuard.reset()
     vi.clearAllMocks()
     h.chatState.messages = []
     h.chatState.status = 'ready'

@@ -416,11 +416,15 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         "write" | "edit" | "memory_write" | "memory_propose" | "skill_write"
         // A message is written to a mailbox on disk, so it needs the same
         // thing writing a file needs.
-        | "message_send" => {
+        | "message_send"
+        // Clones in-process (no shell) into a directory it creates, so a
+        // writable disk is all it needs; the network is the gate's call, as
+        // for the web tools.
+        | "git_clone" => {
             vec![capability::FS_WRITE]
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
-        | "skill_list" | "skill_read" | "message_check" => vec![capability::FS_READ],
+        | "skill_list" | "skill_read" | "message_check" | "git_inspect" => vec![capability::FS_READ],
         // The mailbox is files under the data folder; nothing beyond a usable
         // local disk is needed. Scope (session only) is decided separately.
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {
@@ -564,7 +568,7 @@ pub fn probe_filesystem(project_root: Option<&Path>, now_ms: i64) -> ComponentRe
             Component::Filesystem,
             State::Ready,
             Reason::Ok,
-            "No folder is attached, so the file tools work in this conversation's              own private workspace. Attach a folder to work on your own files.",
+            "No folder is attached, so the file tools work in this conversation's own private workspace. Attach a folder to work on your own files.",
             now_ms,
         )
         .granting(&[capability::FS_READ, capability::FS_WRITE]);
@@ -843,12 +847,30 @@ fn cache() -> &'static Mutex<HashMap<String, EnvironmentReadiness>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// The cache key for a project root. Case-folded, because Windows paths are
-/// case-insensitive and two spellings of one folder must not probe twice.
+/// The cache key for a project root. Case-folded on Windows only, where two
+/// spellings are one folder and must not probe twice. Elsewhere `Proj` and
+/// `proj` are two folders and must not share an answer (Jozkah/jan#285).
 fn key(project_root: Option<&Path>) -> String {
     project_root
-        .map(|p| p.to_string_lossy().to_lowercase())
+        .map(|p| {
+            let text = p.to_string_lossy();
+            if cfg!(windows) {
+                text.to_lowercase()
+            } else {
+                text.into_owned()
+            }
+        })
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod key_tests {
+    #[test]
+    fn two_spellings_share_a_key_only_where_they_are_one_folder() {
+        let a = super::key(Some(std::path::Path::new("/home/u/Proj")));
+        let b = super::key(Some(std::path::Path::new("/home/u/proj")));
+        assert_eq!(a == b, cfg!(windows));
+    }
 }
 
 /// The readiness for `project_root`, probing only if it is not already known.

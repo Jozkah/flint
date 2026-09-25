@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
+import { formatCompactDuration } from '@/lib/duration'
 import {
   taskElapsedMs,
   type ActivityStatus,
@@ -44,6 +45,16 @@ export function CoworkWorkflowCard({
 }) {
   const { t } = useTranslation()
   const { workflow, progress, status, tasks } = view
+  // One line saying how long, how much, and what is happening right now:
+  // "50m 10s · 11.4k tokens · 1 running task · Running tools…".
+  const started = tasks.length ? Math.min(...tasks.map((task) => task.startedAt)) : null
+  const ended = tasks.length
+    ? Math.max(...tasks.map((task) => task.endedAt ?? now))
+    : null
+  const elapsedSeconds =
+    started != null && ended != null ? Math.max(0, (ended - started) / 1000) : null
+  const running = tasks.filter((task) => task.status === 'running')
+  const runningTools = running.some((task) => task.kind === 'shell')
 
   return (
     <div
@@ -55,23 +66,42 @@ export function CoworkWorkflowCard({
         <p className="min-w-0 truncate font-semibold" title={workflow.title}>
           {workflow.title}
         </p>
-        <p className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-          <span className="tabular-nums">
-            {t('common:tasks.progress', {
-              finished: progress.finished,
-              total: progress.total,
-            })}
-          </span>
-          {progress.tokens > 0 && (
-            <>
-              <span aria-hidden>·</span>
-              <span className="tabular-nums">
-                {t('common:tasks.tokens', {
-                  tokens: formatTokens(progress.tokens),
-                })}
+        <p
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
+          data-testid="workflow-summary"
+        >
+          {[
+            elapsedSeconds != null && (
+              <span key="time" className="tabular-nums">
+                {formatCompactDuration(elapsedSeconds, t)}
               </span>
-            </>
-          )}
+            ),
+            progress.tokens > 0 && (
+              <span key="tokens" className="tabular-nums">
+                {t('common:tasks.tokens', { tokens: formatTokens(progress.tokens) })}
+              </span>
+            ),
+            <span key="progress" className="tabular-nums">
+              {running.length > 0
+                ? t('common:tasks.runningTasks', { count: running.length })
+                : t('common:tasks.progress', {
+                    finished: progress.finished,
+                    total: progress.total,
+                  })}
+            </span>,
+            runningTools && <span key="tools">{t('common:tasks.runningTools')}</span>,
+          ]
+            .filter(Boolean)
+            .flatMap((part, i) =>
+              i === 0
+                ? [part]
+                : [
+                    <span key={`sep-${i}`} aria-hidden>
+                      ·
+                    </span>,
+                    part,
+                  ]
+            )}
         </p>
         <Button
           variant="surface"
@@ -132,8 +162,8 @@ export function CoworkWorkflowCard({
                 >
                   {task.title}
                 </span>
-                <span className="shrink-0 text-xs tabular-nums text-subtle-foreground">
-                  {Math.round(taskElapsedMs(task, now) / 1000)}s
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
+                  {formatCompactDuration(taskElapsedMs(task, now) / 1000, t)}
                 </span>
               </button>
             </li>

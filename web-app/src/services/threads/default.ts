@@ -128,12 +128,24 @@ export class DefaultThreadsService implements ThreadsService {
       .get<ConversationalExtension>(ExtensionTypeEnum.Conversational)
       ?.modifyThread({
         ...thread,
-        assistants: thread.assistants?.map((e) => ({
-          ...e,
-          model: toModelPayload(thread.model),
-        })) ?? [
-          { model: toModelPayload(thread.model), id: 'jan', name: 'Flint' },
-        ],
+        // The thread's model is stored on its assistant entry, and read back
+        // from assistants[0]. An empty list ("None" picked in the assistants
+        // menu) must still carry it, as the same model-only entry createThread
+        // writes; mapping [] to [] dropped the model on the next load (#89).
+        assistants: !thread.assistants
+          ? [{ model: toModelPayload(thread.model), id: 'jan', name: 'Flint' }]
+          : thread.assistants.length === 0
+            ? [
+                {
+                  id: 'model-only',
+                  name: 'Model',
+                  model: toModelPayload(thread.model),
+                },
+              ]
+            : thread.assistants.map((e) => ({
+                ...e,
+                model: toModelPayload(thread.model),
+              })),
         metadata: {
           ...thread.metadata,
           is_favorite: thread.isFavorite,

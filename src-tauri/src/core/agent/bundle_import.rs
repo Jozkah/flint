@@ -544,14 +544,10 @@ fn workdir(data_folder: &Path, id: &str) -> PathBuf {
     imports_dir(data_folder).join(format!("{id}.partial"))
 }
 
+/// Sweep leftover `.partial` copies, but never one a concurrent import in this
+/// process is still using (Jozkah/jan#202).
 fn sweep_partials(data_folder: &Path) {
-    if let Ok(entries) = std::fs::read_dir(imports_dir(data_folder)) {
-        for e in entries.flatten() {
-            if e.file_name().to_string_lossy().ends_with(".partial") {
-                let _ = std::fs::remove_dir_all(e.path());
-            }
-        }
-    }
+    super::partial_dirs::sweep(&imports_dir(data_folder));
 }
 
 /// Import a bundle for review. `step` runs after each piece; tests use it to
@@ -587,6 +583,7 @@ pub fn import(
     sweep_partials(data_folder);
     let id = new_id();
     let work = workdir(data_folder, &id);
+    let _claim = super::partial_dirs::claim(&work);
     let result = (|| {
         let entries = walk(bundle, &budget)?;
         for required in ["manifest.json", "changes.patch"] {
@@ -702,11 +699,10 @@ pub fn import(
             return Err(ImportError::new(ImportErrorKind::HashMismatch, "changes.patch does not match its hash"));
         }
         for (path, f) in &files {
-            if f.whole && f.change != "deleted" {
-                if Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
+            if f.whole && f.change != "deleted"
+                && Some(&hashes[&format!("files/{path}")]) != f.sha256.as_ref() {
                     return Err(ImportError::new(ImportErrorKind::HashMismatch, format!("files/{path} does not match its hash")));
                 }
-            }
         }
         let mut basis = String::new();
         for (rel, h) in &hashes {

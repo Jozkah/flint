@@ -11,6 +11,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Progress } from '@/components/ui/progress'
 import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -24,6 +33,7 @@ import { ExtensionTypeEnum, FileStat, VectorDBExtension } from '@janhq/core'
 import { ExtensionManager } from '@/lib/extension'
 import { Loader2, Paperclip } from 'lucide-react'
 import { useProjectUploads } from '@/stores/project-uploads-store'
+import { collectFilesFromDirectory } from '@/lib/directoryWalk'
 
 type ProjectFilesProps = {
   projectId: string
@@ -281,30 +291,14 @@ async function getFilesFromPaths(paths: string[]): Promise<string[]> {
   return files
 }
 
-async function getFilesFromDirectory(
+function getFilesFromDirectory(
   dirPath: string,
   fs: typeof import('@janhq/core').fs
 ): Promise<string[]> {
-  const files: string[] = []
-  try {
-    const entries = await fs.readdirSync(dirPath)
-    for (const entry of entries) {
-      console.log('Reading entry:', entry)
-      const stat = await fs.fileStat(entry)
-      if (stat?.isDirectory) {
-        const nestedFiles = await getFilesFromDirectory(entry, fs)
-        files.push(...nestedFiles)
-      } else if (!stat?.isDirectory) {
-        const ext = entry.split('.').pop()?.toLowerCase()
-        if (ext && SUPPORTED_EXTENSIONS.includes(ext)) {
-          files.push(entry)
-        }
-      }
-    }
-  } catch (e) {
-    console.warn(`Failed to read directory ${dirPath}:`, e)
-  }
-  return files
+  return collectFilesFromDirectory(dirPath, fs, (entry) => {
+    const ext = entry.split('.').pop()?.toLowerCase()
+    return !!ext && SUPPORTED_EXTENSIONS.includes(ext)
+  })
 }
 
 type FileRowProps = {
@@ -365,8 +359,10 @@ function FileRow({ file, onDelete, t }: FileRowProps) {
         size="icon-xs"
         className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 pointer-coarse:size-11 transition-opacity"
         onClick={() => onDelete(file.id)}
+        aria-label={`${t('common:delete')} ${file.name}`}
+        title={t('common:delete')}
       >
-        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+        <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" aria-hidden />
       </Button>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger className="sr-only" tabIndex={-1} />
@@ -634,6 +630,20 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
     }
   }
 
+  // Deleting drops the file's embeddings with no undo, so both row entry
+  // points (trash icon, context menu) only ask; the dialog does the delete.
+  const [pendingDelete, setPendingDelete] = useState<ProjectFile | null>(null)
+
+  const requestDeleteFile = (fileId: string) => {
+    setPendingDelete(files.find((f) => f.id === fileId) ?? null)
+  }
+
+  const confirmDeleteFile = () => {
+    const file = pendingDelete
+    setPendingDelete(null)
+    if (file) void handleDeleteFile(file.id)
+  }
+
   const handleDeleteFile = async (fileId: string) => {
     try {
       const ext = ExtensionManager.getInstance().get<VectorDBExtension>(
@@ -731,7 +741,7 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
             <FileRow
               key={file.id}
               file={file}
-              onDelete={handleDeleteFile}
+              onDelete={requestDeleteFile}
               t={t}
             />
           ))}
@@ -755,6 +765,39 @@ export default function ProjectFiles({ projectId, lng }: ProjectFilesProps) {
         </div>
         </div>
       )}
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null)
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('common:projects.deleteFileDialog.title')}</DialogTitle>
+            <DialogDescription>
+              {t('common:projects.deleteFileDialog.description', {
+                fileName: pendingDelete?.name ?? '',
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+            <DialogClose asChild>
+              <Button variant="ghost" size="sm" className="w-full sm:w-auto">
+                {t('common:cancel')}
+              </Button>
+            </DialogClose>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="w-full sm:w-auto"
+              onClick={confirmDeleteFile}
+            >
+              {t('common:delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

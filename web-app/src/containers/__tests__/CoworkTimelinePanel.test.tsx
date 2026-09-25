@@ -15,7 +15,8 @@ vi.mock('@/lib/eventLog', () => ({
     return { events, lastSeq: all.at(-1)?.seq ?? 0, truncated: false }
   }),
 }))
-vi.mock('@/lib/toolActivity', () => ({ loadToolDiff: vi.fn(async () => h.diff) }))
+const loadToolDiff = vi.hoisted(() => vi.fn(async (..._a: unknown[]): Promise<string | null> => h.diff))
+vi.mock('@/lib/toolActivity', () => ({ loadToolDiff }))
 // The app's own translator, so labels are asserted as a person reads them.
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const i18n = (await import('@/i18n/setup')).default
@@ -104,12 +105,34 @@ describe('CoworkTimelinePanel', () => {
     expect(screen.getByTestId('timeline-diff')).toHaveTextContent('New')
   })
 
+  // #244: a provider can reuse a call id across requests, so the diff is
+  // asked for by the edit's invocation as well as its call.
+  it('loads an edit\'s diff by its invocation, not by the call id alone', async () => {
+    render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    await waitFor(() => expect(rows()).toHaveLength(6))
+    const edit = rows().find((r) => r.dataset.categories?.includes('edits'))!
+    fireEvent.click(edit.querySelector('[data-row-toggle]')!)
+    await waitFor(() => expect(loadToolDiff).toHaveBeenCalled())
+    expect(loadToolDiff).toHaveBeenLastCalledWith('s1', 'e1', 'inv-1')
+  })
+
   it('shows a typed refusal in the row details', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
     await waitFor(() => expect(rows()).toHaveLength(6))
     const refused = rows().find((r) => r.dataset.status === 'refused')!
     fireEvent.click(refused.querySelector('[data-row-toggle]')!)
     expect(screen.getByTestId('timeline-detail-refusal')).toHaveTextContent('tool-not-offered')
+  })
+
+  // #170: opening the panel on an idle session read the log twice from the
+  // same point, and every phase in a row's history appeared twice.
+  it('lists each phase of a call once when opened on an idle session', async () => {
+    render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    await waitFor(() => expect(rows()).toHaveLength(6))
+    await act(async () => {})
+    const read = rows().find((r) => r.textContent?.includes('a.txt'))!
+    fireEvent.click(read.querySelector('[data-row-toggle]')!)
+    expect(screen.getByText('requested → succeeded')).toBeInTheDocument()
   })
 
   it('links everything from one model request', async () => {

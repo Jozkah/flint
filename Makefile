@@ -156,6 +156,27 @@ test-rust: stub-resources
 	cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-hardware/Cargo.toml
 	cargo test --locked --manifest-path src-tauri/plugins/tauri-plugin-llamacpp/Cargo.toml
 	cargo test --locked --manifest-path src-tauri/utils/Cargo.toml
+# Each plugin is its own workspace, so the app's test run never executes their
+# tests (#229). No --locked: these crates do not commit a Cargo.lock.
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-agent-tools/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-rag/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-vector-db/Cargo.toml
+	cargo test --manifest-path src-tauri/plugins/tauri-plugin-websearch/Cargo.toml
+
+# protocol/schema.json is committed, and core::cli::protocol_schema fails when it
+# no longer matches the types that define the channel. This is the fix for that
+# failure, not an optional extra: change a protocol type, run this, commit both.
+# The feature set matches build-cli, so this does not compile a second
+# configuration.
+protocol-schema:
+	cd src-tauri && cargo run --quiet --locked --no-default-features --features cli --bin flint -- cli agent schema --out ../protocol/schema.json
+
+# The same guard for the RPC surface: protocol/rpc-schema.json is committed, and
+# core::cli::rpc_schema fails when it no longer matches the types that define the
+# envelope. It covers this surface only - stream-json records are in
+# protocol/schema.json, and ACP has no document yet.
+protocol-rpc-schema:
+	cd src-tauri && cargo run --quiet --locked --no-default-features --features cli --bin flint -- cli agent rpc-schema --out ../protocol/rpc-schema.json
 
 test: test-prepare install-rust-targets
 	yarn build:mlx-server
@@ -593,8 +614,8 @@ else ifeq ($(DETECTED_OS),Linux)
 	rm -rf ./electron/pre-install/*.tgz
 	rm -rf ./src-tauri/resources
 	rm -rf ./src-tauri/target
-	rm -rf "~/jan/extensions"
-	rm -rf "~/.cache/jan*"
+	rm -rf ~/jan/extensions
+	rm -rf ~/.cache/jan*
 	rm -rf "./.cache"
 else
 	find . -name "node_modules" -type d -prune -exec rm -rfv '{}' +

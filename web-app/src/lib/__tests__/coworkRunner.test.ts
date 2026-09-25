@@ -889,3 +889,25 @@ describe('run guards', () => {
     expect(out.stoppedBy).toBe('timeout')
   })
 })
+
+describe('a call that ends the turn (#296)', () => {
+  it('finishes the run without calling the model again', async () => {
+    const d = deps(
+      [toolStep('ask'), textStep('should never be sent')],
+      vi.fn(async (): Promise<ToolOutcome> => ({
+        output: 'accepted',
+        endsTurn: true,
+      }))
+    )
+    const out = await runTurn({
+      messages: [user('look around')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(1)
+    // The ask and its answer are still in the history the next run reads.
+    expect(out.messages).toHaveLength(2)
+    expect(d.onStep).toHaveBeenCalledTimes(1)
+  })
+})

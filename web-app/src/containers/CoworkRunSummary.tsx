@@ -87,6 +87,8 @@ function headlineText(t: TFn, code: HeadlineCode): string {
       return t('results:headline.completedNoChanges')
     case 'completed-checks-failed':
       return t('results:headline.completedChecksFailed')
+    case 'finished-incomplete':
+      return t('results:headline.finishedIncomplete')
     case 'partial':
       return t('results:headline.partial')
     case 'failed':

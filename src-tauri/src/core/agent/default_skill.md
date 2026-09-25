@@ -9,10 +9,8 @@ naming for you.
 ## Skills
 
 A skill is a reusable procedure for this project: how to run the tests, how to
-deploy, a coding convention, a checklist. The "Available Skills" section of your
-system prompt is a catalog: it lists each skill's name and a one-line purpose,
-but NOT its full instructions. When a skill's purpose matches the task, call
-`skill_read` to load its complete instructions before applying it.
+deploy, a coding convention, a checklist. The "Available Skills" section lists
+each skill's name and purpose only.
 
 - `skill_list` - list skills with their descriptions. A skill with
   `disable-model-invocation: true` in its frontmatter is intentionally absent:
@@ -41,6 +39,4 @@ would otherwise forget.
 
 Record a memory when you learn something durable and non-obvious. Remove facts
 that become wrong by overwriting the note. Do not record transient details that
-only matter to the current turn. The "Available Memories" section of your
-system prompt is a catalog of these notes; call `memory_read` to load a note's
-full contents when it is relevant to the current task.
+only matter to the current turn.

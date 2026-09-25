@@ -5,14 +5,14 @@ use uuid::Uuid;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use super::db;
 use super::helpers::{
-    append_message_line, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
+    append_message_line_if_new, get_lock_for_thread, read_messages_from_file, should_use_sqlite,
     update_thread_metadata, write_file_atomically, write_messages_to_file,
 };
 use super::{
     constants::THREADS_FILE,
     utils::{
         ensure_data_dirs, ensure_thread_dir_exists, get_data_dir, get_messages_path,
-        get_thread_dir, get_thread_metadata_path,
+        get_thread_dir, get_thread_metadata_path, validate_thread_id,
     },
 };
 use crate::core::app::commands::get_jan_data_folder_path;
@@ -40,12 +40,26 @@ pub async fn list_threads<R: Runtime>(
     }
 
     for entry in fs::read_dir(&data_dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
+        let Ok(entry) = entry else {
+            continue;
+        };
         let path = entry.path();
         if path.is_dir() {
             let thread_metadata_path = path.join(THREADS_FILE);
             if thread_metadata_path.exists() {
-                let data = fs::read_to_string(&thread_metadata_path).map_err(|e| e.to_string())?;
+                // One thread that cannot be read (deleted between the check
+                // and the read, locked, permission denied) must not hide
+                // every other thread: skip it like an unparsable one.
+                let data = match fs::read_to_string(&thread_metadata_path) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        log::warn!(
+                            "Skipping unreadable thread file {}: {e}",
+                            thread_metadata_path.display()
+                        );
+                        continue;
+                    }
+                };
                 match serde_json::from_str(&data) {
                     Ok(thread) => threads.push(thread),
                     Err(e) => {
@@ -105,6 +119,7 @@ pub async fn modify_thread<R: Runtime>(
         .get("id")
         .and_then(|id| id.as_str())
         .ok_or("Missing thread id")?;
+    validate_thread_id(thread_id)?;
     let thread_dir = get_thread_dir(&data_folder, thread_id);
     if !thread_dir.exists() {
         return Err("Thread directory does not exist".to_string());
@@ -121,6 +136,7 @@ pub async fn delete_thread<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<(), String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_delete_thread(app_handle, &thread_id).await;
@@ -141,6 +157,17 @@ pub async fn delete_thread<R: Runtime>(
     {
         log::warn!("could not remove request records for a deleted thread: {e}");
     }
+    // The thread's agent scratch dir in the OS temp folder is ours to remove
+    // too (workspace::ensure_scratch_dir assigns its teardown to thread
+    // deletion on the desktop); without this it leaked until a restart sweep
+    // (Jozkah/jan#186).
+    if let Some(scratch) = super::utils::thread_scratch_dir(&thread_id) {
+        if let Err(e) = tokio::fs::remove_dir_all(&scratch).await {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                log::warn!("could not remove a deleted thread's scratch dir: {e}");
+            }
+        }
+    }
     Ok(())
 }
 
@@ -151,6 +178,7 @@ pub async fn list_messages<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<Vec<serde_json::Value>, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_list_messages(app_handle, &thread_id).await;
@@ -182,6 +210,7 @@ pub async fn create_message<R: Runtime>(
             .ok_or("Missing thread_id")?;
         id.to_string()
     };
+    validate_thread_id(&thread_id)?;
     let path = get_messages_path(&data_folder, &thread_id);
 
     if message.get("id").is_none() {
@@ -197,24 +226,14 @@ pub async fn create_message<R: Runtime>(
         // Ensure directory exists right before file operations to handle race conditions
         ensure_thread_dir_exists(&data_folder, &thread_id)?;
 
-        // Dedupe against a modify_message upsert that landed first.
+        // Dedupe against a modify_message upsert that landed first, and settle
+        // a torn tail an earlier interrupted write left so this message is not
+        // glued onto it (janhq/jan#8019) - from one read of the file.
         let message_id = message
             .get("id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        if let Some(ref id) = message_id {
-            let existing = read_messages_from_file(&data_folder, &thread_id)?;
-            if existing
-                .iter()
-                .any(|m| m.get("id").and_then(|v| v.as_str()) == Some(id.as_str()))
-            {
-                return Ok(message);
-            }
-        }
-
-        // Settles a torn tail an earlier interrupted write left, so this
-        // message is not glued onto it (janhq/jan#8019).
-        append_message_line(&path, &message)?;
+        append_message_line_if_new(&path, &message, message_id.as_deref())?;
     }
 
     Ok(message)
@@ -239,6 +258,7 @@ pub async fn modify_message<R: Runtime>(
         .get("thread_id")
         .and_then(|v| v.as_str())
         .ok_or("Missing thread_id")?;
+    validate_thread_id(thread_id)?;
     let message_id = message
         .get("id")
         .and_then(|v| v.as_str())
@@ -280,6 +300,7 @@ pub async fn delete_message<R: Runtime>(
     thread_id: String,
     message_id: String,
 ) -> Result<(), String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_delete_message(app_handle, &thread_id, &message_id).await;
@@ -310,6 +331,7 @@ pub async fn get_thread_assistant<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
     thread_id: String,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_get_thread_assistant(app_handle, &thread_id).await;
@@ -342,6 +364,7 @@ pub async fn create_thread_assistant<R: Runtime>(
     thread_id: String,
     assistant: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_create_thread_assistant(app_handle, &thread_id, assistant).await;
@@ -374,6 +397,7 @@ pub async fn modify_thread_assistant<R: Runtime>(
     thread_id: String,
     assistant: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
         return db::db_modify_thread_assistant(app_handle, &thread_id, assistant).await;

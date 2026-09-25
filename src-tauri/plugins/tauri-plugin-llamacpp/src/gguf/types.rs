@@ -70,6 +70,8 @@ pub enum KVCacheError {
     EmbeddingLengthInvalid,
     #[error("Invalid metadata: context_length not found or invalid")]
     ContextLengthInvalid,
+    #[error("Invalid metadata: KV cache size is implausibly large")]
+    SizeOverflow,
 }
 
 impl serde::Serialize for KVCacheError {

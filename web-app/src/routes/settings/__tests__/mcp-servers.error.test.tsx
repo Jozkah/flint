@@ -66,10 +66,16 @@ vi.mock('@/components/ui/button', () => ({
   Button: ({
     children,
     onClick,
+    'aria-label': ariaLabel,
   }: {
     children: React.ReactNode
     onClick?: () => void
-  }) => <button onClick={onClick}>{children}</button>,
+    'aria-label'?: string
+  }) => (
+    <button onClick={onClick} aria-label={ariaLabel}>
+      {children}
+    </button>
+  ),
 }))
 
 vi.mock('@/components/ui/switch', () => ({
@@ -363,6 +369,10 @@ describe('MCP server connection state on the row', () => {
     const Component = McpServersRoute.component as React.ComponentType
     await act(async () => {
       render(<Component />)
+    })
+    // Cards are compact by default; the explanation lives in the expanded card.
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'mcp-servers:expandServer' }))
     })
     const summary = screen.getByText('mcp-servers:details.toggle')
     expect(summary.tagName).toBe('SUMMARY')

@@ -51,6 +51,8 @@
   },
   "done": "Done",
   "webSources": "{{count}} source(s)",
+  "webSourcesRead": "{{count}} read",
+  "webSourcesReadFound": "{{read}} read · {{found}} found",
   "reasoning": {
     "label": "Reasoning...",
     "thinking": "Thinking",

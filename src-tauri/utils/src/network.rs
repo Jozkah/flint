@@ -476,10 +476,50 @@ pub fn is_orphaned_mcp_process(process_info: &ProcessUsingPort) -> bool {
 
     let is_js_runtime =
         name_lower.contains("node") || name_lower.contains("npx") || name_lower.contains("bun");
-    let is_jan_mcp_server = (cmd_str.contains("jan") && cmd_str.contains("mcp"))
-        || cmd_str.contains("bun");
+    // Being launched by Bun is not evidence of being Jan's MCP server: any
+    // Bun dev server or script on the port would be killed (#181). The server
+    // that owns the bridge port, search-mcp-server, is matched above whatever
+    // runtime started it.
+    let is_jan_mcp_server = cmd_str.contains("jan") && cmd_str.contains("mcp");
 
     is_js_runtime && is_jan_mcp_server
+}
+
+#[cfg(test)]
+mod orphan_tests {
+    use super::{is_orphaned_mcp_process, ProcessUsingPort};
+
+    fn process(name: &str, cmd: &[&str]) -> ProcessUsingPort {
+        ProcessUsingPort {
+            pid: 1,
+            name: name.to_string(),
+            cmd: cmd.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn an_unrelated_bun_process_is_not_an_orphan() {
+        assert!(!is_orphaned_mcp_process(&process(
+            "bun",
+            &["/home/u/.bun/bin/bun", "run", "dev"]
+        )));
+        assert!(!is_orphaned_mcp_process(&process(
+            "bun.exe",
+            &["C:\\tools\\bun.exe", "server.ts", "--port", "17389"]
+        )));
+    }
+
+    #[test]
+    fn jans_own_mcp_servers_still_match() {
+        assert!(is_orphaned_mcp_process(&process(
+            "bun.exe",
+            &["C:\\Users\\u\\AppData\\Roaming\\Jan\\bin\\bun.exe", "x", "some-mcp"]
+        )));
+        assert!(is_orphaned_mcp_process(&process(
+            "node",
+            &["node", "/x/search-mcp-server/index.js"]
+        )));
+    }
 }
 
 #[cfg(test)]

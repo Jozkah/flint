@@ -3,6 +3,7 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
 import type { ThreadFolder } from '@/services/projects/types'
 import { useEffect } from 'react'
+import { useConversationGroups } from '@/lib/groups/store'
 
 type ThreadManagementState = {
   folders: ThreadFolder[]
@@ -15,6 +16,11 @@ type ThreadManagementState = {
   getProjectById: (id: string) => Promise<ThreadFolder | undefined>
 }
 
+/**
+ * Legacy projects API. Home groups are the source of truth: these actions write
+ * the groups store, and `lib/groups/homeMirror` keeps `folders` and each
+ * thread's `metadata.project` in step.
+ */
 export const useThreadManagementStore = create<ThreadManagementState>()((set, get) => ({
   folders: [],
 
@@ -24,46 +30,36 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
 
   addFolder: async (name, assistantId) => {
     const projectsService = getServiceHub().projects()
-    const newFolder = await projectsService.addProject(name, assistantId)
-    const updatedProjects = await projectsService.getProjects()
-    set({ folders: updatedProjects })
-    return newFolder
+    const id = await useConversationGroups.getState().createGroup('home', name)
+    if (!id) throw new Error('Could not create the project')
+    const group = useConversationGroups.getState().state.surfaces.home.groups.find((g) => g.id === id)!
+    const folder: ThreadFolder = { id, name: group.name, updated_at: group.updatedAt, assistantId }
+    const others = (await projectsService.getProjects()).filter((f) => f.id !== id)
+    await projectsService.setProjects([...others, folder])
+    set({ folders: await projectsService.getProjects() })
+    return folder
   },
 
   updateFolder: async (id, name, assistantId) => {
+    await useConversationGroups.getState().renameGroup('home', id, name)
     const projectsService = getServiceHub().projects()
     await projectsService.updateProject(id, name, assistantId)
-    const updatedProjects = await projectsService.getProjects()
-    set({ folders: updatedProjects })
+    set({ folders: await projectsService.getProjects() })
   },
 
   deleteFolder: async (id) => {
-    // Remove project metadata from all threads that belong to this project
-    const threadsState = useThreads.getState()
-    const threadsToUpdate = Object.values(threadsState.threads).filter(
-      (thread) => thread.metadata?.project?.id === id
-    )
-
-    threadsToUpdate.forEach((thread) => {
-      threadsState.updateThread(thread.id, {
-        metadata: {
-          ...thread.metadata,
-          project: undefined,
-        },
-      })
-    })
-
+    // Members return to Recents; the mirror clears their `metadata.project`.
+    await useConversationGroups.getState().deleteGroup('home', id)
     const projectsService = getServiceHub().projects()
     await projectsService.deleteProject(id)
-    const updatedProjects = await projectsService.getProjects()
-    set({ folders: updatedProjects })
+    set({ folders: await projectsService.getProjects() })
   },
 
   deleteFolderWithThreads: async (id) => {
-    // Get all threads that belong to this project
     const threadsState = useThreads.getState()
+    const home = useConversationGroups.getState().state.surfaces.home
     const projectThreads = Object.values(threadsState.threads).filter(
-      (thread) => thread.metadata?.project?.id === id
+      (thread) => home.memberships[thread.id]?.groupId === id || thread.metadata?.project?.id === id
     )
 
     // Delete threads from backend first
@@ -71,18 +67,10 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
     for (const thread of projectThreads) {
       await serviceHub.threads().deleteThread(thread.id)
     }
-
-    // Delete threads from frontend state
     for (const thread of projectThreads) {
       threadsState.deleteThread(thread.id)
     }
-
-    // Delete the project from storage
-    const projectsService = serviceHub.projects()
-    await projectsService.deleteProject(id)
-
-    const updatedProjects = await projectsService.getProjects()
-    set({ folders: updatedProjects })
+    await get().deleteFolder(id)
   },
 
   getFolderById: (id) => {

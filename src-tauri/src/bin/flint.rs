@@ -11,6 +11,7 @@ use console::Style;
 // The lib target is named "app_lib" (see [lib] section in Cargo.toml).
 use app_lib::core::agent::plugins::InstalledPlugin;
 use app_lib::core::cli::mcp::{self, split_kv, McpServerEntry};
+use app_lib::core::cli::mcp_serve::{cli_mcp_serve, ServeFlags, ServeTransport};
 use app_lib::core::cli::providers::{load_provider_configs, ProviderOverrides};
 use app_lib::core::cli::run_report::OutputFormat;
 use app_lib::core::cli::stream_input::InputFormat;
@@ -78,6 +79,11 @@ struct Cli {
     plan: bool,
     #[command(flatten)]
     sandbox: SandboxArgs,
+    /// Log more: `info` on stderr instead of `warn`. Accepted before or after
+    /// any subcommand. The logger reads it from the raw arguments before this
+    /// parser runs; declaring it here keeps clap from rejecting it.
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
 }
 
 /// Whether this invocation confines the shell, shared by every surface that
@@ -87,6 +93,26 @@ struct Cli {
 /// (`sandbox` in `~/.jan/config.toml`, `[tools].sandbox` in agent.toml): with
 /// only `--sandbox` there would be no way to run unconfined once, and a user who
 /// turned it on permanently would have to edit a file to get out of it.
+/// Per-invocation cost limits for `flint cli agent run`. Both mirror the
+/// engine's own semantics: `0` means unbounded, and an unpassed flag leaves the
+/// config files (or, for turns, nothing at all) in charge.
+#[derive(Args, Clone, Copy)]
+struct BudgetArgs {
+    /// Fail the run after at most N agentic turns; bounds this run only, not
+    /// its subagents (0 = unbounded, the default)
+    #[arg(long, value_name = "N")]
+    max_turns: Option<u64>,
+    /// Token-spend ceiling for this run, overriding [budget].max_tokens
+    /// (0 = no ceiling)
+    #[arg(long, value_name = "N")]
+    max_session_tokens: Option<u64>,
+    /// Stop the run once it has spent this much in USD, overriding
+    /// [budget].max_usd. Priced from prices.toml, so a model with no declared
+    /// price is refused rather than run uncapped
+    #[arg(long, value_name = "USD")]
+    max_budget_usd: Option<f64>,
+}
+
 #[derive(Args, Clone, Copy)]
 struct SandboxArgs {
     /// Run shell commands under OS confinement (bubblewrap, Seatbelt, AppContainer)
@@ -204,6 +230,19 @@ enum Commands {
         #[command(subcommand)]
         cmd: AuthCommands,
     },
+    /// Read recorded usage and spend from the Tokamak usage API
+    #[command(display_order = 4)]
+    Usage {
+        // Optional so bare `flint usage` answers "what have I spent" with the
+        // account summary.
+        #[command(subcommand)]
+        cmd: Option<UsageCommands>,
+        /// Print the provider's response body verbatim instead of a table.
+        /// Reshaping it would mean re-serializing money fields, which is how a
+        /// figure loses digits, so this forwards the bytes as received.
+        #[arg(long, global = true)]
+        json: bool,
+    },
     /// Manage provider credentials in ~/.jan/config.toml (used by the TUI and CLI)
     #[command(display_order = 4)]
     Config {
@@ -239,6 +278,67 @@ enum Commands {
         /// Print as JSON instead of a human-readable table
         #[arg(long)]
         json: bool,
+    },
+    /// Serve Flint's built-in tools to another agent over MCP
+    #[command(display_order = 8)]
+    Mcp {
+        #[command(subcommand)]
+        cmd: McpServeCommands,
+    },
+}
+
+/// The server direction of MCP: Flint offered as a tool provider. The client
+/// direction (managing the servers Flint *connects to*) stays under
+/// `flint cli mcp`.
+#[derive(Subcommand)]
+enum McpServeCommands {
+    /// Run an MCP server exposing Flint's built-in tools for one project
+    Serve {
+        /// Project root the served tools are confined to
+        #[arg(long, default_value = ".")]
+        project: String,
+        /// Transport: stdio for a spawned child process, http for loopback Streamable HTTP
+        #[arg(long, value_enum, default_value_t = ServeTransport::Stdio)]
+        transport: ServeTransport,
+        /// Also serve the mutating filesystem tools (write, edit), confined to the project root
+        #[arg(long)]
+        allow_write: bool,
+        /// Also serve bash (runs under the same OS sandbox the agent's shell does)
+        #[arg(long)]
+        allow_exec: bool,
+        /// Serve only these tools, repeatable; never widens what the allow flags permit
+        #[arg(long = "tool")]
+        tools: Vec<String>,
+        /// Port for --transport http; 0 picks a free one
+        #[arg(long, default_value_t = 0)]
+        port: u16,
+        /// Bearer token for --transport http; a random one is generated and printed if omitted
+        #[arg(long)]
+        token: Option<String>,
+    },
+}
+
+/// Reads against the Tokamak usage API (upstream #9034). Every view reports
+/// figures the provider recorded, never a local estimate.
+#[derive(Subcommand)]
+enum UsageCommands {
+    /// Usage across this account's credentials, not only the key in use
+    Account,
+    /// Daily usage totals
+    Daily,
+    /// Recently recorded requests
+    Requests,
+    /// Current usage-limit status (separate from wallet credit)
+    Limits,
+    /// Inspect one execution by its X-Tokamak-Execution-Id
+    Generation {
+        /// The execution id, from the response header of an inference request
+        id: String,
+    },
+    /// Find every execution tagged with an X-Client-Request-Id
+    Correlate {
+        /// The correlation id sent on the original request
+        client_request_id: String,
     },
 }
 
@@ -411,7 +511,7 @@ impl ProviderArgs {
 
 #[derive(Subcommand)]
 enum AgentCommands {
-    /// Run the agent loop to completion or the session token budget
+    /// Run the agent loop to completion, the session token budget, or a --max-turns cap
     Run {
         /// Project root containing .jan/agent/agent.toml
         #[arg(long, default_value = ".")]
@@ -429,6 +529,8 @@ enum AgentCommands {
         #[command(flatten)]
         sandbox: SandboxArgs,
         #[command(flatten)]
+        budget: BudgetArgs,
+        #[command(flatten)]
         worktree: WorktreeArgs,
         #[command(flatten)]
         resume: ResumeRunArgs,
@@ -436,12 +538,26 @@ enum AgentCommands {
         /// object on stdout when the run finishes
         #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
         output_format: OutputFormat,
-        /// `stream-json` reads newline-delimited `user` and `permission`
-        /// messages from stdin while the run is in flight; it requires
-        /// `--output-format stream-json`. `text` (the default) does not read
-        /// stdin.
+        /// `stream-json` reads newline-delimited `user`, `permission`,
+        /// `abort` and `tool_result` messages on stdin while the run is in
+        /// flight, and requires `--output-format stream-json`; `text` (the
+        /// default) does not read stdin at all
         #[arg(long, value_enum, default_value_t = InputFormat::Text)]
         input_format: InputFormat,
+        /// JSON file declaring tools this host executes: a list of
+        /// `{"name", "description", "parameters", "capability"}`. The model
+        /// calls them as `host__<name>` (a name outside `[A-Za-z0-9_-]` is
+        /// mapped to a safe one); each call arrives as a `tool_request` on stdout and
+        /// must be answered with a `tool_result` on stdin, so this requires
+        /// `--input-format stream-json`
+        #[arg(long, value_name = "FILE")]
+        host_tools: Option<String>,
+        /// The host approves its own tool calls: no `permission_request` is
+        /// raised for any host tool (built-ins are unaffected). For a host
+        /// whose `tool_request` handler is itself the approval step; requires
+        /// `--host-tools`
+        #[arg(long, requires = "host_tools")]
+        host_gate: bool,
         /// Stream this run's canonical events as JSON lines, as they happen:
         /// a path, or `-` for stdout (AH-183)
         #[arg(long, value_name = "PATH")]
@@ -704,11 +820,12 @@ enum AgentCommands {
         /// The session it belongs to. Needed to send; a read does not use it.
         #[arg(long)]
         session: Option<String>,
-        /// Send instead of read: the run the message is from.
-        #[arg(long)]
+        /// Send instead of read: the run the message is from. Requires
+        /// `--body`: half a send must be refused, not read as a read (#150).
+        #[arg(long, requires = "body")]
         from: Option<String>,
         /// What to say. Requires `--from`.
-        #[arg(long)]
+        #[arg(long, requires = "from")]
         body: Option<String>,
         #[arg(long, default_value = "")]
         subject: String,
@@ -763,6 +880,22 @@ enum AgentCommands {
         /// Print one request in full: a snapshot id, or `last`
         #[arg(long)]
         show: Option<String>,
+    },
+    /// Print the protocol's JSON Schema, generated from the types that define
+    /// the channel (see `protocol/schema.json`)
+    Schema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
+    },
+    /// Serve addressable sessions over JSON-RPC on stdin/stdout
+    Rpc,
+    /// Print the RPC request and event schemas, generated from the types that
+    /// define the envelope (see `protocol/rpc-schema.json`)
+    RpcSchema {
+        /// Write to this file instead of stdout
+        #[arg(long)]
+        out: Option<std::path::PathBuf>,
     },
 }
 
@@ -1137,6 +1270,12 @@ async fn run() {
                 std::process::exit(1);
             }
         }
+        Commands::Usage { cmd, json } => {
+            if let Err(e) = handle_usage(cmd, json).await {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
+        }
         Commands::Config { cmd } => {
             if let Err(e) = handle_agent_config(cmd) {
                 eprintln!("Error: {e}");
@@ -1151,6 +1290,66 @@ async fn run() {
             out,
         } => handle_bug_report(thread, show, yes, out),
         Commands::Doctor { json } => handle_doctor(json),
+        Commands::Mcp { cmd } => handle_mcp_serve(cmd).await,
+    }
+}
+
+/// `flint usage` handler: read recorded spend from the Tokamak usage API.
+///
+/// Every view goes through one fetch so failures, timeouts and the
+/// not-signed-in case are reported identically. A failed lookup exits non-zero
+/// so a script cannot read it as a zero charge.
+async fn handle_usage(cmd: Option<UsageCommands>, json: bool) -> Result<(), String> {
+    use app_lib::core::cli::tokamak::usage::{self, Query};
+
+    let query = match &cmd {
+        None | Some(UsageCommands::Account) => Query::Summary,
+        Some(UsageCommands::Daily) => Query::Daily,
+        Some(UsageCommands::Requests) => Query::Requests,
+        Some(UsageCommands::Limits) => Query::Limits,
+        Some(UsageCommands::Generation { id }) => Query::Generation(id.clone()),
+        Some(UsageCommands::Correlate { client_request_id }) => {
+            Query::Correlated(client_request_id.clone())
+        }
+    };
+    let payload = usage::fetch(&query).await.map_err(|e| e.to_string())?;
+    if json {
+        println!("{}", payload.as_str());
+        return Ok(());
+    }
+    // `Fixed`: nothing is folded in a pipe, and there is no key to unfold it.
+    for line in app_lib::core::cli::usage_view::reported_usage_lines(
+        &query,
+        &payload,
+        app_lib::core::cli::usage_view::Fold::Fixed,
+    ) {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+// ── MCP server handler ─────────────────────────────────────────────────────
+
+async fn handle_mcp_serve(cmd: McpServeCommands) {
+    let McpServeCommands::Serve {
+        project,
+        transport,
+        allow_write,
+        allow_exec,
+        tools,
+        port,
+        token,
+    } = cmd;
+    let flags = ServeFlags {
+        allow_write,
+        allow_exec,
+        only: tools,
+        port,
+        token,
+    };
+    if let Err(e) = cli_mcp_serve(&project, transport, flags).await {
+        eprintln!("Error: {e}");
+        std::process::exit(1);
     }
 }
 
@@ -1361,6 +1560,8 @@ fn handle_bench(cmd: BenchCommands) {
                 eprintln!("  removed scratch left by an earlier benchmark: {}", swept.display());
             }
             let scratch = bench::scratch_dir(&temp, std::process::id());
+            bench::claim_scratch(&scratch)
+                .map_err(|e| HarnessError::new(ErrorKind::Io, format!("the scratch folder is not usable: {e}")))?;
             // The first Ctrl-C stops the task in flight -- its whole process
             // tree -- and the report is written as incomplete.
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -1494,8 +1695,14 @@ fn handle_job(cmd: JobCommands) {
             worker::start(&data, &me, &owner, &command, ("", "", "")).map(|record| {
                 println!("{}", record.id);
                 eprintln!(
-                    "\x1b[2m[job {} started; it keeps running if this process exits]\x1b[0m",
-                    record.id
+                    "{}",
+                    app_lib::core::cli::color::paint(
+                        "2",
+                        format_args!(
+                            "[job {} started; it keeps running if this process exits]",
+                            record.id,
+                        ),
+                    ),
                 );
             })
         }
@@ -1570,10 +1777,13 @@ async fn handle_agent(cmd: AgentCommands) {
             safe,
             providers,
             sandbox,
+            budget,
             worktree,
             resume,
             output_format,
             input_format,
+            host_tools,
+            host_gate,
             events,
             profile,
             output_density,
@@ -1616,11 +1826,16 @@ async fn handle_agent(cmd: AgentCommands) {
                         None => None,
                     },
                     interrupted: resume.interrupted,
+                    max_turns: budget.max_turns,
+                    max_session_tokens: budget.max_session_tokens,
+                    max_budget_usd: budget.max_budget_usd,
                     ..Default::default()
                 },
                 resume.into_request(),
                 output_format,
                 input_format,
+                host_tools.as_deref(),
+                host_gate,
             )
             .await
         }
@@ -2332,6 +2547,18 @@ async fn handle_agent(cmd: AgentCommands) {
                 Err(e) => Err(HarnessError::legacy(e)),
             }
         }
+        // No project and no provider: the schema comes from the types alone, so
+        // it is the same document on any machine and in any directory.
+        AgentCommands::Schema { out } => {
+            app_lib::core::cli::protocol_schema::run(out.as_deref()).map_err(HarnessError::legacy)
+        }
+        AgentCommands::Rpc => app_lib::core::cli::rpc::serve().await.map_err(HarnessError::legacy),
+        // Like `schema`: no project root and no provider are involved, so the
+        // artifact is the same one on any machine. `--out` is what CI and
+        // `make protocol-rpc-schema` use.
+        AgentCommands::RpcSchema { out } => {
+            app_lib::core::cli::rpc_schema::run(out.as_deref()).map_err(HarnessError::legacy)
+        }
     };
     if let Err(e) = result {
         // AH-009: what ended the run decides how it is reported and what the
@@ -2346,8 +2573,37 @@ async fn handle_agent(cmd: AgentCommands) {
                 eprintln!("  caused by [{}]: {}", cause.kind().tag(), cause.message());
             }
         }
-        std::process::exit(e.exit_code());
+        std::process::exit(run_exit_code(&e));
     }
+}
+
+/// Classify a failed agent run for the shell (upstream janhq/jan 5ae763e2e8).
+///
+/// Running out of turns with the model still calling tools is not the same
+/// outcome as a crash or a usage error: the run stopped where the caller asked
+/// it to stop, but it has no final answer, so a pipeline that only reads the
+/// exit code would take an unfinished task for a finished one. It exits `53`;
+/// every other failure keeps the kind's own code.
+fn run_exit_code(e: &HarnessError) -> i32 {
+    if is_turn_limit_exhaustion(e) {
+        53
+    } else {
+        e.exit_code()
+    }
+}
+
+/// Whether the run ended because `--max-turns` ran out with tool calls still in
+/// flight. The message is the only marker that separates it from the other
+/// budget exhaustions, so the match is anchored at both ends.
+fn is_turn_limit_exhaustion(e: &HarnessError) -> bool {
+    const TURN_LIMIT: &str = "-turn limit while the model was still calling tools";
+    e.chain().into_iter().any(|cause| {
+        matches!(
+            cause.kind(),
+            tauri_plugin_agent_tools::harness_error::ErrorKind::BudgetExhausted
+        ) && cause.message().starts_with("reached the ")
+            && cause.message().ends_with(TURN_LIMIT)
+    })
 }
 
 /// `flint cli agent prompts`: what a session sent to the model (AH-087).
@@ -2920,6 +3176,8 @@ async fn handle_mcp(cmd: McpCommands) -> Result<(), String> {
 /// Build the server config object for `mcp add` from the CLI flags. Funnels
 /// through the shared `core::cli::mcp::build_server_config` so the TUI form and
 /// the headless flags can never diverge on the config shape or validation.
+// One argument per `mcp add` flag, as clap hands them over.
+#[allow(clippy::too_many_arguments)]
 fn build_mcp_config(
     command: Option<String>,
     args: Vec<String>,
@@ -2954,7 +3212,202 @@ fn build_mcp_config(
 
 #[cfg(test)]
 mod tests {
+    /// Running out of turns while the model is still calling tools is the one
+    /// failure the shell can read as a limit rather than a crash. The message is
+    /// the only marker it has, so the classifier must match that message and not
+    /// some phrase inside a different one.
+    #[test]
+    fn turn_limit_exhaustion_has_its_own_exit_code() {
+        use tauri_plugin_agent_tools::harness_error::ErrorKind;
+        let limit = super::HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 8-turn limit while the model was still calling tools",
+        );
+        assert_eq!(super::run_exit_code(&limit), 53);
+        let tokens = super::HarnessError::new(ErrorKind::BudgetExhausted, "session token budget spent");
+        assert_eq!(super::run_exit_code(&tokens), tokens.exit_code());
+        let upstream = super::HarnessError::new(ErrorKind::Upstream, "upstream returned 500");
+        assert_eq!(super::run_exit_code(&upstream), upstream.exit_code());
+    }
+
+    #[test]
+    fn usage_subcommands_parse() {
+        let view = |argv: &[&str]| {
+            let mut full = vec!["flint", "usage"];
+            full.extend_from_slice(argv);
+            match Cli::parse_from(full).command {
+                Some(Commands::Usage { cmd, .. }) => cmd,
+                other => panic!("expected a usage command, got {:?}", other.is_some()),
+            }
+        };
+        assert!(matches!(view(&["account"]), Some(UsageCommands::Account)));
+        assert!(matches!(view(&["daily"]), Some(UsageCommands::Daily)));
+        assert!(matches!(view(&["requests"]), Some(UsageCommands::Requests)));
+        assert!(matches!(view(&["limits"]), Some(UsageCommands::Limits)));
+        match view(&["generation", "exec-1"]) {
+            Some(UsageCommands::Generation { id }) => assert_eq!(id, "exec-1"),
+            _ => panic!("expected a generation lookup"),
+        }
+        match view(&["correlate", "my-app-request-001"]) {
+            Some(UsageCommands::Correlate { client_request_id }) => {
+                assert_eq!(client_request_id, "my-app-request-001");
+            }
+            _ => panic!("expected a correlation lookup"),
+        }
+        assert!(view(&[]).is_none(), "the subcommand is optional");
+        assert!(Cli::try_parse_from(["flint", "usage", "generation"]).is_err());
+        assert!(Cli::try_parse_from(["flint", "usage", "correlate"]).is_err());
+        assert!(matches!(
+            Cli::parse_from(["flint", "usage", "account", "--json"]).command,
+            Some(Commands::Usage {
+                cmd: Some(UsageCommands::Account),
+                json: true
+            })
+        ));
+    }
+
+    /// Parse `flint cli agent run <task> <extra...>` and pull out its budget args.
+    fn parsed_budget(extra: &[&str]) -> BudgetArgs {
+        let mut argv = vec!["flint", "cli", "agent", "run", "task"];
+        argv.extend_from_slice(extra);
+        match Cli::parse_from(argv).command {
+            Some(Commands::Cli {
+                cmd:
+                    CliCommands::Agent {
+                        cmd: AgentCommands::Run { budget, .. },
+                    },
+            }) => budget,
+            _ => panic!("expected `cli agent run`"),
+        }
+    }
+
+    /// An unpassed limit is `None` so the config files (or nothing, for turns)
+    /// decide; `0` must survive parsing as the engine's unbounded marker.
+    #[test]
+    fn run_limits_parse_and_default_to_unset() {
+        let none = parsed_budget(&[]);
+        assert_eq!(none.max_turns, None);
+        assert_eq!(none.max_session_tokens, None);
+
+        let set = parsed_budget(&["--max-turns", "5", "--max-session-tokens", "20000"]);
+        assert_eq!(set.max_turns, Some(5));
+        assert_eq!(set.max_session_tokens, Some(20_000));
+
+        let zero = parsed_budget(&["--max-turns", "0", "--max-session-tokens", "0"]);
+        assert_eq!(zero.max_turns, Some(0));
+        assert_eq!(zero.max_session_tokens, Some(0));
+
+        // A decimal amount, not a token count, and `0` is a real ceiling.
+        assert_eq!(parsed_budget(&[]).max_budget_usd, None);
+        assert_eq!(
+            parsed_budget(&["--max-budget-usd", "2.50"]).max_budget_usd,
+            Some(2.50)
+        );
+        assert_eq!(
+            parsed_budget(&["--max-budget-usd", "0"]).max_budget_usd,
+            Some(0.0)
+        );
+    }
+
+    #[test]
+    fn mcp_serve_parses_and_defaults_to_read_only_stdio() {
+        let cli = Cli::parse_from(["flint", "mcp", "serve"]);
+        let Some(Commands::Mcp {
+            cmd:
+                McpServeCommands::Serve {
+                    project,
+                    transport,
+                    allow_write,
+                    allow_exec,
+                    tools,
+                    port,
+                    token,
+                },
+        }) = cli.command
+        else {
+            panic!("expected mcp serve");
+        };
+        assert_eq!(project, ".");
+        assert_eq!(transport, ServeTransport::Stdio);
+        assert!(!allow_write);
+        assert!(!allow_exec);
+        assert!(tools.is_empty());
+        assert_eq!(port, 0);
+        assert!(token.is_none());
+    }
+
+    #[test]
+    fn mcp_serve_http_flags_parse() {
+        let cli = Cli::parse_from([
+            "flint",
+            "mcp",
+            "serve",
+            "--transport",
+            "http",
+            "--port",
+            "7331",
+            "--token",
+            "abc",
+            "--allow-write",
+            "--allow-exec",
+            "--tool",
+            "read",
+            "--tool",
+            "grep",
+        ]);
+        let Some(Commands::Mcp {
+            cmd:
+                McpServeCommands::Serve {
+                    transport,
+                    allow_write,
+                    allow_exec,
+                    tools,
+                    port,
+                    token,
+                    ..
+                },
+        }) = cli.command
+        else {
+            panic!("expected mcp serve");
+        };
+        assert_eq!(transport, ServeTransport::Http);
+        assert!(allow_write);
+        assert!(allow_exec);
+        assert_eq!(tools, vec!["read".to_string(), "grep".to_string()]);
+        assert_eq!(port, 7331);
+        assert_eq!(token.as_deref(), Some("abc"));
+    }
+
+    /// The client direction keeps its own place; `flint mcp` must not shadow it.
+    #[test]
+    fn mcp_client_subcommand_still_lives_under_cli() {
+        let cli = Cli::parse_from(["flint", "cli", "mcp", "list"]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Cli {
+                cmd: CliCommands::Mcp {
+                    cmd: McpCommands::List { .. }
+                }
+            })
+        ));
+    }
+
     use super::*;
+
+    #[test]
+    fn verbose_flag_is_accepted_bare_and_after_a_subcommand() {
+        for args in [
+            vec!["jan", "--verbose"],
+            vec!["jan", "-v"],
+            vec!["jan", "plugin", "list", "--verbose"],
+            vec!["jan", "-v", "plugin", "list"],
+        ] {
+            let cli = Cli::try_parse_from(&args)
+                .unwrap_or_else(|e| panic!("{args:?} should parse: {e}"));
+            assert!(cli.verbose, "{args:?} should set verbose");
+        }
+        assert!(!Cli::try_parse_from(["jan", "plugin", "list"]).unwrap().verbose);
+    }
 
     #[test]
     fn bug_report_parses_its_flags_and_nothing_else() {
@@ -2983,6 +3436,22 @@ mod tests {
                 "{flag} must not exist"
             );
         }
+    }
+
+    /// `--from` without `--body` (or the reverse) is half a send; it must be
+    /// refused rather than fall through to reading the mailbox (#150).
+    #[test]
+    fn agent_mail_refuses_half_a_send() {
+        let base = ["jan", "cli", "agent", "mail", "--run", "r1"];
+        let with = |extra: &[&'static str]| {
+            let mut args = base.to_vec();
+            args.extend_from_slice(extra);
+            Cli::try_parse_from(args)
+        };
+        assert!(with(&["--from", "r2"]).is_err(), "--from alone was accepted");
+        assert!(with(&["--body", "hi"]).is_err(), "--body alone was accepted");
+        assert!(with(&[]).is_ok(), "a plain read must still parse");
+        assert!(with(&["--from", "r2", "--body", "hi", "--session", "s"]).is_ok());
     }
 
     // `--plan` is a per-invocation startup toggle mirroring `--safe`; it must

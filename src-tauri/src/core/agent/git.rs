@@ -136,13 +136,71 @@ fn exec(
     }
 }
 
-/// A unique throwaway index path so one-off git operations (restore) never
-/// disturb the real index.
-fn temp_index() -> PathBuf {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
-    std::env::temp_dir().join(format!("jan-agent-idx-{}-{n}", std::process::id()))
+/// A throwaway index for one-off git operations (restore, whole-tree
+/// staging), so they never disturb the real index.
+///
+/// The file lives inside a freshly created private directory (mode 0700 on
+/// Unix, with an unpredictable name made by exclusive creation), never
+/// directly in the shared temp directory. A predictable name there -- it used
+/// to be the pid plus a counter -- let another local user plant a symbolic
+/// link at it ahead of time; git's lockfile code follows such a link and
+/// renames the new index over its target, overwriting any file the user can
+/// write. The directory and the index are removed when this is dropped.
+struct TempIndex {
+    _dir: tempfile::TempDir,
+    path: PathBuf,
+}
+
+impl std::ops::Deref for TempIndex {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.path
+    }
+}
+
+fn temp_index() -> Result<TempIndex, String> {
+    let dir = tempfile::Builder::new()
+        .prefix("jan-agent-idx-")
+        .tempdir()
+        .map_err(|e| format!("scratch index directory: {e}"))?;
+    let path = dir.path().join("index");
+    Ok(TempIndex { _dir: dir, path })
+}
+
+/// The shared parent of every thread's snapshot index directory, created
+/// private to this user. Its path is fixed, so on a shared temp directory
+/// another user could create it first (or plant a link there) and redirect
+/// the index writes; a directory that is a link, belongs to someone else, or
+/// is open to group or others is refused rather than written through.
+fn private_snapshot_root(root: &Path) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        match std::fs::DirBuilder::new().mode(0o700).create(root) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(format!("snapshot index directory: {e}")),
+        }
+        let meta = std::fs::symlink_metadata(root)
+            .map_err(|e| format!("snapshot index directory: {e}"))?;
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        let me = unsafe { libc::geteuid() };
+        if !meta.file_type().is_dir() || meta.uid() != me || meta.mode() & 0o077 != 0 {
+            return Err(format!(
+                "refusing the snapshot index directory {}: it is not a private directory owned by this user",
+                root.display()
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir_all(root).map_err(|e| format!("snapshot index directory: {e}"))
+    }
+}
+
+fn snapshot_root() -> PathBuf {
+    std::env::temp_dir().join("jan-agent-snap-idx")
 }
 
 /// Where a thread's scratch indexes live: one directory per thread, one index
@@ -167,7 +225,7 @@ fn snapshot_index_dir(thread_id: &str) -> PathBuf {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
         .collect();
-    std::env::temp_dir().join("jan-agent-snap-idx").join(safe)
+    snapshot_root().join(safe)
 }
 
 /// A stable digest of the repository path, so the same repository maps to the
@@ -265,6 +323,7 @@ pub(crate) fn snapshot(
 ) -> Result<String, String> {
     crate::core::agent::vcs::refuse_filter_programs(repo)?;
     let idx = snapshot_index(repo, thread_id);
+    private_snapshot_root(&snapshot_root())?;
     if let Some(parent_dir) = idx.parent() {
         std::fs::create_dir_all(parent_dir)
             .map_err(|e| format!("snapshot index directory: {e}"))?;
@@ -342,7 +401,23 @@ pub(crate) fn update_ref(repo: &Path, thread_id: &str, sha: &str) -> Result<(), 
 /// here: these are real commit objects, and diffing them is what makes the
 /// patch exact rather than reconstructed from the working tree.
 pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, String> {
-    run(repo, None, &["diff", from, to])
+    run(repo, None, &["diff", "--no-ext-diff", "--no-textconv", from, to])
+}
+
+/// The change that would take the working tree as it stands back to `commit`,
+/// as a unified diff. Untracked (not ignored) files count as part of the tree,
+/// so a file a restore would delete shows up as a deletion. Nothing on disk,
+/// and not the user's index, is touched: the tree is staged into a scratch
+/// index seeded from `commit`.
+pub(crate) fn diff_worktree_to(repo: &Path, commit: &str) -> Result<String, String> {
+    let idx = temp_index()?;
+    let result = (|| {
+        stage_worktree(repo, &idx, commit)?;
+        let tree = run(repo, Some(&idx), &["write-tree"])?;
+        run_untrimmed(repo, None, &["diff", &tree, commit])
+    })();
+    drop(idx);
+    result
 }
 
 /// Stage the working tree exactly as it stands into a scratch index.
@@ -353,7 +428,12 @@ pub(crate) fn diff_between(repo: &Path, from: &str, to: &str) -> Result<String, 
 /// under `repo`, honouring `.gitignore`. The scratch index is the caller's to
 /// remove. The user's own index is never touched: everything goes through
 /// `GIT_INDEX_FILE`.
+///
+/// R22: `add -A` runs every clean filter the repository's config names, so
+/// the refusal gate runs here, in the one helper every whole-tree staging
+/// path shares, rather than being left to each caller to remember.
 fn stage_worktree(repo: &Path, idx: &Path, base: &str) -> Result<(), String> {
+    crate::core::agent::vcs::refuse_filter_programs(repo)?;
     run(repo, Some(idx), &["read-tree", base])?;
     run(repo, Some(idx), &["add", "-A", "--", "."])?;
     Ok(())
@@ -371,7 +451,7 @@ pub(crate) fn snapshot_worktree(
     parent: Option<&str>,
     msg: &str,
 ) -> Result<String, String> {
-    let idx = temp_index();
+    let idx = temp_index()?;
     let result = (|| {
         let base = match parent {
             Some(p) => p.to_string(),
@@ -391,7 +471,7 @@ pub(crate) fn snapshot_worktree(
         args.push(msg);
         run(repo, None, &args)
     })();
-    let _ = std::fs::remove_file(&idx);
+    drop(idx);
     result
 }
 
@@ -483,7 +563,7 @@ fn worktree_changes(repo: &Path, idx: &Path, commit: &str) -> Result<Vec<RawChan
 /// ignored files and nested repositories excluded. Nothing is written except
 /// loose objects for the scratch staging, which garbage collection reclaims.
 pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, String> {
-    let idx = temp_index();
+    let idx = temp_index()?;
     let result = worktree_changes(repo, &idx, commit).map(|changes| {
         changes
             .into_iter()
@@ -491,7 +571,7 @@ pub(crate) fn changed_since(repo: &Path, commit: &str) -> Result<Vec<String>, St
             .map(|c| c.path)
             .collect()
     });
-    let _ = std::fs::remove_file(&idx);
+    drop(idx);
     result
 }
 
@@ -614,8 +694,10 @@ pub(crate) fn restore_worktree(
     repo: &Path,
     target: &str,
 ) -> Result<RestoreOutcome, RestoreError> {
-    let current_idx = temp_index();
-    let target_idx = temp_index();
+    // R22: `checkout-index -f` runs every smudge filter the repository names.
+    crate::core::agent::vcs::refuse_filter_programs(repo).map_err(RestoreError::Refused)?;
+    let current_idx = temp_index().map_err(RestoreError::Refused)?;
+    let target_idx = temp_index().map_err(RestoreError::Refused)?;
     let result = (|| {
         let changes =
             worktree_changes(repo, &current_idx, target).map_err(RestoreError::Refused)?;
@@ -697,8 +779,7 @@ pub(crate) fn restore_worktree(
             Err(RestoreError::Incomplete(failures.join("; ")))
         }
     })();
-    let _ = std::fs::remove_file(&current_idx);
-    let _ = std::fs::remove_file(&target_idx);
+    drop((current_idx, target_idx));
     result
 }
 
@@ -727,7 +808,7 @@ pub(crate) fn drop_ref(repo: &Path, thread_id: &str) -> Result<(), String> {
 #[cfg_attr(not(feature = "cli"), allow(dead_code))]
 pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), String> {
     crate::core::agent::vcs::refuse_filter_programs(repo)?;
-    let idx = temp_index();
+    let idx = temp_index()?;
     let result = (|| {
         run(repo, Some(&idx), &["read-tree", target])?;
         run(repo, Some(&idx), &["checkout-index", "-a", "-f"])?;
@@ -751,7 +832,7 @@ pub(crate) fn restore(repo: &Path, target: &str, latest: &str) -> Result<(), Str
         }
         Ok(())
     })();
-    let _ = std::fs::remove_file(&idx);
+    drop(idx);
     result
 }
 
@@ -1040,6 +1121,7 @@ fn untracked_counts(root: &str, rel: &str) -> Option<(u32, bool)> {
 /// `project` is not inside a git work tree (or git is unavailable).
 pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
     let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
     let root_s = root.to_string_lossy().to_string();
 
     let raw = git(&[
@@ -1057,13 +1139,13 @@ pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
     // Counts come from numstat for the same scope. `HEAD`-relative scopes fall
     // back to `--cached` on an unborn repo, where there is no `HEAD` to diff.
     let numstat_args: Vec<&str> = match scope {
-        DiffScope::Staged => vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"],
-        DiffScope::Working => vec!["-C", &root_s, "diff", "--numstat", "-z", "-M"],
+        DiffScope::Staged => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--cached", "--numstat", "-z", "-M"],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--numstat", "-z", "-M"],
         DiffScope::All => {
             if head_born(&root_s) {
-                vec!["-C", &root_s, "diff", "HEAD", "--numstat", "-z", "-M"]
+                vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "HEAD", "--numstat", "-z", "-M"]
             } else {
-                vec!["-C", &root_s, "diff", "--cached", "--numstat", "-z", "-M"]
+                vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "--cached", "--numstat", "-z", "-M"]
             }
         }
     };
@@ -1243,6 +1325,7 @@ pub fn file_diff(
 ) -> Result<GitFileDiff, String> {
     safe_rel(path)?;
     let root = repo_root(project).ok_or_else(|| "not a git repository".to_string())?;
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
     let root_s = root.to_string_lossy().to_string();
 
     let args: Vec<&str> = match scope {
@@ -1250,19 +1333,23 @@ pub fn file_diff(
             "-C",
             &root_s,
             "diff",
+            "--no-ext-diff",
+            "--no-textconv",
             "--cached",
             "-M",
             "--no-color",
             "--",
             path,
         ],
-        DiffScope::Working => vec!["-C", &root_s, "diff", "-M", "--no-color", "--", path],
+        DiffScope::Working => vec!["-C", &root_s, "diff", "--no-ext-diff", "--no-textconv", "-M", "--no-color", "--", path],
         DiffScope::All => {
             if head_born(&root_s) {
                 vec![
                     "-C",
                     &root_s,
                     "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
                     "HEAD",
                     "-M",
                     "--no-color",
@@ -1274,6 +1361,8 @@ pub fn file_diff(
                     "-C",
                     &root_s,
                     "diff",
+                    "--no-ext-diff",
+                    "--no-textconv",
                     "--cached",
                     "-M",
                     "--no-color",
@@ -1324,12 +1413,12 @@ mod review_tests {
         let raw = "3\t1\t\0old/name.rs\0new/name.rs\0";
         let map = parse_numstat(raw);
         assert_eq!(map.get("new/name.rs"), Some(&(3, 1, false)));
-        assert!(map.get("old/name.rs").is_none());
+        assert!(!map.contains_key("old/name.rs"));
     }
 
     #[test]
     fn status_v2_reads_branch_and_ordinary_change() {
-        let raw = "# branch.oid abc123\0# branch.head feature/x\01 .M N... 100644 100644 100644 aaa bbb src/a.rs\0";
+        let raw = "# branch.oid abc123\0# branch.head feature/x\x001 .M N... 100644 100644 100644 aaa bbb src/a.rs\0";
         let (branch, records) = parse_status_v2(raw);
         assert_eq!(branch.as_deref(), Some("feature/x"));
         assert_eq!(records.len(), 1);
@@ -1671,6 +1760,75 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// R22 for managed worktrees: whole-tree checkpoint capture and restore
+    /// refuse a repository whose config names a filter program, even when the
+    /// attribute reaching it comes from `.git/info/attributes`, which the
+    /// empty `GIT_ATTR_SOURCE` does not neutralize.
+    #[test]
+    fn a_managed_checkpoint_runs_no_filter_program_the_repository_names() {
+        let Some(root) = init_repo() else { return };
+        let base = snapshot_worktree(&root, None, "base").expect("clean repo snapshots");
+        let marker = root.join("filter-ran.txt");
+        let marker_sh = marker.to_string_lossy().replace('\\', "/");
+        let info = root.join(".git").join("info");
+        std::fs::create_dir_all(&info).unwrap();
+        std::fs::write(info.join("attributes"), "*.txt filter=evil\n").unwrap();
+        let cmd = format!("sh -c 'echo ran > \"{marker_sh}\"; cat'");
+        run(&root, None, &["config", "--local", "filter.evil.clean", &cmd]).unwrap();
+        run(&root, None, &["config", "--local", "filter.evil.smudge", &cmd]).unwrap();
+        std::fs::write(root.join("a.txt"), "changed\n").unwrap();
+
+        let taken = snapshot_worktree(&root, Some(&base), "turn");
+        assert!(taken.as_ref().is_err_and(|e| e.contains("filter.evil")), "snapshot_worktree: {taken:?}");
+        assert!(changed_since(&root, &base).is_err(), "changed_since staged through the filter");
+        let restored = restore_worktree(&root, &base);
+        assert!(matches!(restored, Err(RestoreError::Refused(ref e)) if e.contains("filter.evil")), "restore_worktree was not refused");
+        assert!(!marker.exists(), "a managed checkpoint ran the repository's filter program");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A scratch index lives in its own fresh private directory, never at a
+    /// guessable path in the shared temp directory, and is gone once dropped.
+    #[test]
+    fn a_scratch_index_is_private_and_unpredictable() {
+        let a = temp_index().expect("scratch index");
+        let b = temp_index().expect("scratch index");
+        let dir = a.parent().unwrap().to_path_buf();
+        assert_ne!(dir, b.parent().unwrap(), "two scratch indexes shared a directory");
+        assert_ne!(dir, std::env::temp_dir(), "the index sits directly in the shared temp directory");
+        assert!(!a.exists(), "the index file is left for git to create inside the private directory");
+        let name = dir.file_name().unwrap().to_string_lossy().to_string();
+        assert!(!name.contains(&std::process::id().to_string()), "the name is derived from the pid: {name}");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dir).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o700, "the scratch directory is not private");
+        }
+        drop(a);
+        assert!(!dir.exists(), "the scratch directory outlived its index");
+    }
+
+    /// The fixed-path snapshot root is refused when it is not a private
+    /// directory of this user -- here, a symbolic link planted ahead of time.
+    #[cfg(unix)]
+    #[test]
+    fn a_planted_snapshot_root_is_refused() {
+        let base = tempfile::tempdir().unwrap();
+        let target = base.path().join("elsewhere");
+        std::fs::create_dir(&target).unwrap();
+        let root = base.path().join("jan-agent-snap-idx");
+        std::os::unix::fs::symlink(&target, &root).unwrap();
+        assert!(private_snapshot_root(&root).is_err(), "a symlinked root was accepted");
+        let open = base.path().join("open");
+        std::fs::create_dir(&open).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(private_snapshot_root(&open).is_err(), "a world-writable root was accepted");
+        let fresh = base.path().join("fresh");
+        private_snapshot_root(&fresh).expect("a fresh root is created private");
+    }
+
     #[test]
     fn a_worktree_is_added_registered_and_reports_its_changes() {
         let Some(root) = init_repo() else { return };
@@ -1901,5 +2059,127 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// A repository's own config can name programs git runs while it reads:
+/// `diff.external`, a `diff.<driver>.textconv`, or a `filter.<driver>.clean`
+/// selected by `.gitattributes`. The review panel reads status and diffs of
+/// whatever project is open, so none of those reads may run such a program.
+#[cfg(test)]
+mod program_config_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    fn sh(repo: &Path, args: &[&str]) {
+        let out = Command::new("git")
+            .arg("-C")
+            .arg(repo)
+            .args(args)
+            .output()
+            .expect("git runs in these tests");
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    }
+
+    /// A repository with a committed file, a staged change and an unstaged
+    /// change to it, whose own config sets `key` to a command that leaves a
+    /// marker file behind. Returns the repository and the marker path.
+    fn planted(key: &str, tail: &str) -> (PathBuf, PathBuf) {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let base = std::env::temp_dir().join(format!("jan_gitcfg_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let marker = base.join("marker");
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        sh(&repo, &["config", "user.email", "t@example.invalid"]);
+        sh(&repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join(".gitattributes"), "*.txt diff=evil filter=evil\n").unwrap();
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        sh(&repo, &["add", "-A"]);
+        sh(&repo, &["commit", "-qm", "first"]);
+        std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+        sh(&repo, &["add", "a.txt"]);
+        std::fs::write(repo.join("a.txt"), "three\n").unwrap();
+        let m = marker.to_string_lossy().replace('\\', "/");
+        sh(&repo, &["config", key, &format!(": > '{m}'; {tail}")]);
+        (base, marker)
+    }
+
+    fn cases() -> [(&'static str, &'static str); 3] {
+        [
+            ("diff.external", "true"),
+            ("diff.evil.textconv", "cat"),
+            ("filter.evil.clean", "cat"),
+        ]
+    }
+
+    #[test]
+    fn status_runs_no_program_the_repository_names() {
+        for (key, tail) in cases() {
+            for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+                let (base, marker) = planted(key, tail);
+                let result = status(&base.join("repo"), scope);
+                assert!(!marker.exists(), "status {scope:?} ran `{key}`");
+                assert!(result.is_err(), "status {scope:?} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
+    }
+
+    #[test]
+    fn file_diff_runs_no_program_the_repository_names() {
+        for (key, tail) in cases() {
+            for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+                let (base, marker) = planted(key, tail);
+                let result = file_diff(&base.join("repo"), "a.txt", scope, 1 << 20);
+                assert!(!marker.exists(), "file_diff {scope:?} ran `{key}`");
+                assert!(result.is_err(), "file_diff {scope:?} must refuse a repo setting `{key}`");
+                let _ = std::fs::remove_dir_all(&base);
+            }
+        }
+    }
+
+    /// With `extensions.worktreeConfig` on, git also reads
+    /// `.git/config.worktree`, which `git config --local` never lists. A
+    /// filter planted there must be refused like one in `.git/config`.
+    #[test]
+    fn a_filter_in_worktree_config_is_refused_too() {
+        let (base, marker) = planted("core.autocrlf", "false");
+        let repo = base.join("repo");
+        sh(&repo, &["config", "--unset", "core.autocrlf"]);
+        sh(&repo, &["config", "extensions.worktreeConfig", "true"]);
+        let m = marker.to_string_lossy().replace('\\', "/");
+        sh(&repo, &["config", "--worktree", "filter.evil.clean", &format!(": > '{m}'; cat")]);
+        for scope in [DiffScope::Staged, DiffScope::Working, DiffScope::All] {
+            assert!(status(&repo, scope).is_err(), "status {scope:?} must refuse");
+            assert!(file_diff(&repo, "a.txt", scope, 1 << 20).is_err(), "file_diff {scope:?} must refuse");
+        }
+        assert!(crate::core::agent::vcs::staged(&repo).is_err());
+        assert!(crate::core::agent::vcs::divergence(&repo).is_err());
+        assert!(!marker.exists(), "a read ran the worktree-config filter");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_ordinary_repository_still_reads() {
+        let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+        let repo = std::env::temp_dir().join(format!("jan_gitcfg_plain_{}_{n}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&repo);
+        std::fs::create_dir_all(&repo).unwrap();
+        sh(&repo, &["init", "-q", "-b", "main"]);
+        sh(&repo, &["config", "user.email", "t@example.invalid"]);
+        sh(&repo, &["config", "user.name", "Test"]);
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        sh(&repo, &["add", "-A"]);
+        sh(&repo, &["commit", "-qm", "first"]);
+        std::fs::write(repo.join("a.txt"), "two\n").unwrap();
+        let st = status(&repo, DiffScope::All).expect("status reads");
+        assert_eq!(st.files.len(), 1);
+        let d = file_diff(&repo, "a.txt", DiffScope::Working, 1 << 20).expect("diff reads");
+        assert!(d.diff.contains("+two"));
+        let _ = std::fs::remove_dir_all(&repo);
     }
 }

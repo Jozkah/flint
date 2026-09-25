@@ -17,7 +17,7 @@
  * that is gone, holds a link out of itself, or is no longer the one recorded
  * cannot be reviewed at all.
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, GitBranch, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CoworkProposalReview } from '@/containers/CoworkProposalReview'
@@ -222,11 +222,19 @@ export function CoworkTeamReviews({
   const [proposals, setProposals] = useState<ProposalRecord[]>([])
   const version = useTeamChildrenVersion((s) => s.version)
 
+  // `load` runs from the version effect and from `onApplied`, and both are
+  // IPC round trips whose answers can arrive out of order. Only the most
+  // recently issued call may write state; an older answer that lands late
+  // would otherwise revert an applied review to "waiting".
+  const loadSeq = useRef(0)
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     const found = await listTeamChildren(project, session)
+    if (seq !== loadSeq.current) return
     setViews(found)
     const roots = [...new Set(found.map((v) => v.sourceRoot))]
     const all = (await Promise.all(roots.map((r) => listProposals(r)))).flat()
+    if (seq !== loadSeq.current) return
     setProposals(all)
   }, [project, session])
 

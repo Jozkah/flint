@@ -11,16 +11,31 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   }),
 }))
 
-const approvalState: { pending: Record<string, unknown> } = { pending: {} }
+const approvalState: {
+  pending: Record<string, unknown>
+  allowedOnceCommands: Record<string, string[]>
+} = { pending: {}, allowedOnceCommands: {} }
 const resolveApproval = vi.fn()
-vi.mock('@/hooks/useToolApprovalRequests', () => ({
-  useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
-    selector({ ...approvalState, resolveApproval }),
-  usePendingApprovalCount: (threadId?: string) =>
-    Object.values(approvalState.pending).filter(
-      (e) => (e as { threadId?: string }).threadId === threadId
-    ).length,
-}))
+vi.mock('@/hooks/useToolApprovalRequests', async () => {
+  const { repeatCommandKey } = await import('@/lib/repeatedCommand')
+  return {
+    wasCommandAllowedOnce: (
+      s: { allowedOnceCommands: Record<string, string[]> },
+      threadId: string,
+      toolName: string,
+      input: unknown
+    ) => {
+      const key = repeatCommandKey(toolName, input)
+      return key !== null && !!s.allowedOnceCommands[threadId]?.includes(key)
+    },
+    useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
+      selector({ ...approvalState, resolveApproval }),
+    usePendingApprovalCount: (threadId?: string) =>
+      Object.values(approvalState.pending).filter(
+        (e) => (e as { threadId?: string }).threadId === threadId
+      ).length,
+  }
+})
 
 vi.mock('../code-block', () => ({
   CodeBlock: ({ code }: { code: string }) => (
@@ -50,6 +65,7 @@ const resolver = (input: string) => Promise.resolve(input)
 // every later header render as awaiting approval.
 beforeEach(() => {
   approvalState.pending = {}
+  approvalState.allowedOnceCommands = {}
   resolveApproval.mockClear()
 })
 
@@ -121,6 +137,51 @@ describe('ToolApprovalActions', () => {
       'aria-label',
       'tools:toolApproval.proposedChange'
     )
+  })
+
+  // A bash command the user already allowed once here comes back: the card
+  // says so and fills and focuses "Allow in this conversation". It does not
+  // answer the request itself.
+  it('marks a repeated command and prefers allowing it for the conversation', () => {
+    approvalState.allowedOnceCommands = { t1: ['bash\u0000ls -la'] }
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: '  ls -la\n' },
+      },
+    })
+    expect(screen.getByTestId('approval-repeat-notice')).toHaveTextContent(
+      'permissions:repeat.allowedOnceBefore'
+    )
+    const thread = screen
+      .getByText('permissions:scope.allowThread')
+      .closest('button')!
+    const once = screen.getByText('permissions:scope.allowOnce').closest('button')!
+    expect(thread).toHaveAttribute('data-variant', 'default')
+    expect(once).toHaveAttribute('data-variant', 'outline')
+    expect(thread).toHaveFocus()
+    expect(resolveApproval).not.toHaveBeenCalled()
+  })
+
+  it('does not mark a different command, or the same one in another thread', () => {
+    approvalState.allowedOnceCommands = { t1: ['bash\u0000ls -la'], t2: ['bash\u0000rm x'] }
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'rm x' },
+      },
+    })
+    expect(screen.queryByTestId('approval-repeat-notice')).not.toBeInTheDocument()
+    expect(
+      screen.getByText('permissions:scope.allowOnce').closest('button')
+    ).toHaveAttribute('data-variant', 'default')
+    expect(screen.getByText('permissions:scope.deny').closest('button')).toHaveFocus()
   })
 
   it('shows no diff for a call that has none', () => {

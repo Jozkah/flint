@@ -62,6 +62,42 @@ pub const DEFAULT_RETENTION: Retention = Retention {
 pub struct Removed {
     pub snapshots: usize,
     pub usage: usize,
+    /// Sessions whose stored tool-call diffs were removed (Jozkah/jan#234).
+    pub diff_sessions: usize,
+    /// Permission decisions removed from `audit/permissions.jsonl`.
+    pub permissions: usize,
+}
+
+/// The folder holding one session's stored diffs.
+fn diff_dir(data_folder: &Path, session: &str) -> Option<std::path::PathBuf> {
+    crate::activity::diff_path(data_folder, session, "_").parent().map(Path::to_path_buf)
+}
+
+/// Keep the permission-log lines `keep` accepts, by their parsed JSON. A line
+/// that does not parse is kept: deleting on a guess is worse than keeping.
+/// Rewritten only when something was dropped. Caller holds the log lock.
+fn filter_permissions(data_folder: &Path, keep: impl Fn(&serde_json::Value) -> bool) -> Result<usize, String> {
+    let path = crate::audit::log_path(data_folder);
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(0);
+    };
+    let mut out = String::with_capacity(text.len());
+    let mut dropped = 0;
+    for line in text.lines() {
+        let drop = serde_json::from_str::<serde_json::Value>(line)
+            .map(|v| !keep(&v))
+            .unwrap_or(false);
+        if drop {
+            dropped += 1;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if dropped > 0 {
+        crate::workspace::write_atomic(&path, out.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    Ok(dropped)
 }
 
 /// Parse the `YYYY-MM-DDTHH:MM:SSZ` form [`crate::audit::now`] writes.
@@ -171,6 +207,32 @@ pub fn compact(data_folder: &Path, policy: &Retention, now: i64) -> Result<Remov
         removed.usage = before - kept.len();
         rewrite_if_changed(&usage::log_path(data_folder), &kept, removed.usage)?;
     }
+    // The diff store and the permission log grew for the life of the install
+    // (Jozkah/jan#234): both are held to the same age limit.
+    let cutoff = now - policy.max_age_secs;
+    removed.permissions = filter_permissions(data_folder, |v| {
+        v.get("at")
+            .and_then(|a| a.as_str())
+            .and_then(parse_rfc3339)
+            .is_none_or(|t| t >= cutoff)
+    })?;
+    if let Some(root) = diff_dir(data_folder, "_").and_then(|d| d.parent().map(Path::to_path_buf)) {
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            for entry in entries.flatten() {
+                let modified = entry
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs() as i64);
+                if entry.path().is_dir() && modified.is_some_and(|m| m < cutoff) {
+                    if std::fs::remove_dir_all(entry.path()).is_ok() {
+                        removed.diff_sessions += 1;
+                    }
+                }
+            }
+        }
+    }
     Ok(removed)
 }
 
@@ -201,6 +263,17 @@ pub fn delete_session(data_folder: &Path, session: &str) -> Result<Removed, Stri
         removed.usage = before - kept.len();
         rewrite_if_changed(&usage::log_path(data_folder), &kept, removed.usage)?;
     }
+    // What the conversation's tool calls wrote and decided goes with it
+    // (Jozkah/jan#234): its stored diffs and its permission decisions.
+    // And its undo journal, with the file contents only it referred to
+    // (Jozkah/jan#294).
+    crate::undo::forget(data_folder, session);
+    if let Some(dir) = diff_dir(data_folder, session).filter(|d| d.is_dir()) {
+        std::fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        removed.diff_sessions = 1;
+    }
+    removed.permissions =
+        filter_permissions(data_folder, |v| v.get("session").and_then(|s| s.as_str()) != Some(session))?;
     Ok(removed)
 }
 
@@ -259,6 +332,61 @@ mod tests {
         s
     }
 
+    /// Jozkah/jan#234: deleting a conversation removes its stored diffs and
+    /// its permission decisions, and leaves every other conversation's.
+    #[test]
+    fn deleting_a_session_removes_its_diffs_and_decisions() {
+        let d = dir("diffs");
+        for session in ["gone", "kept"] {
+            let p = crate::activity::diff_path(&d, session, "call_0");
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "+x\n").unwrap();
+            crate::audit::append(
+                &d,
+                &crate::audit::PermissionRecord::new(
+                    crate::audit::now(),
+                    session,
+                    "write",
+                    "path",
+                    &crate::resource::Resource::command("ls"),
+                    crate::audit::Outcome::Allow,
+                    "test",
+                ),
+            );
+        }
+        let removed = delete_session(&d, "gone").unwrap();
+        assert_eq!((removed.diff_sessions, removed.permissions), (1, 1));
+        assert!(!crate::activity::diff_path(&d, "gone", "call_0").exists());
+        assert!(crate::activity::diff_path(&d, "kept", "call_0").exists());
+        let log = std::fs::read_to_string(crate::audit::log_path(&d)).unwrap();
+        assert!(!log.contains("\"gone\"") && log.contains("\"kept\""), "{log}");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Jozkah/jan#287: deleting one session's snapshots while another's are
+    /// being appended loses none of the appended ones.
+    #[test]
+    fn a_snapshot_rewrite_does_not_lose_concurrent_appends() {
+        let d = dir("race");
+        let now = crate::audit::now();
+        let writer = {
+            let (d, now) = (d.clone(), now.clone());
+            std::thread::spawn(move || {
+                for _ in 0..200 {
+                    snapshot::append(&d, &snap("keep", &now));
+                }
+            })
+        };
+        for _ in 0..200 {
+            snapshot::append(&d, &snap("gone", &now));
+            let _ = snapshot::delete_session(&d, "gone");
+        }
+        writer.join().unwrap();
+        let kept = snapshot::by_session(&d, "keep").len();
+        assert_eq!(kept, 200, "appends lost to a concurrent rewrite");
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     fn use_line(session: &str, at: &str) -> usage::PayloadUsage {
         let mut u = usage::record(format!("inv-{session}-{at}"), usage::UsageSource::Provider);
         u.session = session.into();
@@ -290,7 +418,7 @@ mod tests {
         usage::append(&d, &use_line("s-new", &fresh));
 
         let removed = compact(&d, &DEFAULT_RETENTION, now).unwrap();
-        assert_eq!(removed, Removed { snapshots: 1, usage: 1 });
+        assert_eq!(removed, Removed { snapshots: 1, usage: 1, ..Removed::default() });
         let left = snapshot::read_all(&d);
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].session, "s-new");
@@ -357,7 +485,7 @@ mod tests {
         usage::append(&d, &use_line("thread-b", &at));
 
         let removed = delete_session(&d, "thread-a").unwrap();
-        assert_eq!(removed, Removed { snapshots: 2, usage: 1 });
+        assert_eq!(removed, Removed { snapshots: 2, usage: 1, ..Removed::default() });
         assert!(snapshot::by_session(&d, "thread-a").is_empty());
         assert_eq!(snapshot::by_session(&d, "thread-b").len(), 1);
         assert_eq!(usage::read_all(&d).len(), 1);

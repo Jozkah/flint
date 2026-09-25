@@ -227,7 +227,7 @@ pub(crate) fn set_string_array_in_agent_toml(
     }
     table[key] = toml_edit::value(arr);
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
@@ -268,6 +268,11 @@ pub(crate) struct SkillsSection {
 pub(crate) struct BudgetSection {
     #[serde(default)]
     pub max_tokens: Option<u64>,
+    /// USD a run may spend before it stops (upstream #9034). Priced from the
+    /// declared `prices.toml`, so a model with no declared price cannot be
+    /// capped and a run that asks for one is refused rather than run uncapped.
+    #[serde(default)]
+    pub max_usd: Option<f64>,
 }
 
 /// `[agent]` — resolves the model and per-run knobs for CLI agent runs.
@@ -343,6 +348,18 @@ pub(crate) struct ToolsSection {
     pub deny: Vec<String>,
     #[serde(default)]
     pub allow_write: Vec<String>,
+    /// Rules that force a confirmation every time, even when an allow rule
+    /// also matches. Read here too, not only by the desktop's
+    /// `policy::load`, so the CLI honours them (Jozkah/jan#226).
+    #[serde(default)]
+    pub ask: Vec<String>,
+    /// Hosts the network tools may reach, when non-empty; capped by the
+    /// machine policy (AH-187).
+    #[serde(default)]
+    pub allow_domains: Vec<String>,
+    /// Hosts the network tools may never reach; the machine policy's are added.
+    #[serde(default)]
+    pub deny_domains: Vec<String>,
     /// Whether the sandboxed shell keeps its network namespace. `None` (unset)
     /// leaves the choice to the surface running the loop, which differ: the CLI
     /// prompts before every exec and allows it, the desktop's ephemeral chat
@@ -503,6 +520,10 @@ pub(crate) struct RunSettings {
     pub sandbox: Option<bool>,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
+    /// `[tools].allow_domains`, capped by the machine policy (Jozkah/jan#226).
+    pub allow_domains: Vec<String>,
+    /// `[tools].deny_domains` plus the machine policy's.
+    pub deny_domains: Vec<String>,
     /// `[agent].worktree`: give each session its own git checkout. Merged with
     /// the global setting and the `--worktree` flag by the caller. CLI-only,
     /// like the `[agent]` section it comes from.
@@ -520,10 +541,19 @@ pub(crate) fn run_settings(project_root: &Path) -> RunSettings {
 /// leaves the base settings: the run itself has already refused by then, and a
 /// second refusal from here would say the same thing twice.
 pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> RunSettings {
+    let (org, _) = tauri_plugin_agent_tools::org_policy::load();
+    let org = org.unwrap_or_default();
     let Ok(cfg) = load_agent_config_with_profile(project_root, profile) else {
-        return RunSettings::default();
+        // No readable project file still leaves the machine's lists in force.
+        return RunSettings {
+            allow_domains: org.clamp_allow_domains(&[]),
+            deny_domains: org.clamp_deny_domains(&[]),
+            ..RunSettings::default()
+        };
     };
     RunSettings {
+        allow_domains: org.clamp_allow_domains(&cfg.tools.allow_domains),
+        deny_domains: org.clamp_deny_domains(&cfg.tools.deny_domains),
         enabled_skills: cfg.skills.enabled,
         allow_network: cfg.tools.allow_network,
         allow_home_read: cfg.tools.allow_home_read,
@@ -618,6 +648,7 @@ pub(crate) fn permissions_under(
         &org.clamp_deny(&cfg.tools.deny),
         &cfg.tools.allow_write,
     )
+    .with_ask(&cfg.tools.ask)
 }
 
 /// Whether this run may reach the network, given what the project asked for.
@@ -673,7 +704,7 @@ pub(crate) fn set_model_in_agent_toml(path: &Path, model: &str) -> Result<(), St
     let agent = doc["agent"].or_insert(toml_edit::Item::Table(toml_edit::Table::new()));
     agent["model"] = toml_edit::value(model);
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
@@ -710,7 +741,7 @@ pub(crate) fn set_agent_key(
         }
     }
 
-    std::fs::write(path, doc.to_string())
+    tauri_plugin_agent_tools::atomic_file::write_atomic(path, doc.to_string().as_bytes())
         .map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
@@ -1222,6 +1253,36 @@ skills = ["two", "three"]
         std::fs::write(&path, raw).unwrap();
         let cfg = load_agent_config(&root).expect("load");
         assert_eq!(cfg.agent.max_tokens, Some(4096));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Jozkah/jan#226: the CLI reads the project's `[tools]` itself, and
+    /// `ask`, `allow_domains` and `deny_domains` were dropped on the floor. An
+    /// ask rule must still ask, and the domain lists -- capped by the machine
+    /// policy -- must reach the run.
+    #[test]
+    fn ask_rules_and_domain_lists_reach_a_cli_run() {
+        let root = unique_root("ask-domains");
+        ensure_project(&root).expect("scaffold");
+        std::fs::write(
+            root.join(".jan/agent/agent.toml"),
+            "[tools]\nallow = [\"bash\"]\nask = [\"bash(git push*)\"]\n\
+             allow_domains = [\"docs.rs\"]\ndeny_domains = [\"pastebin.com\"]\n",
+        )
+        .unwrap();
+        let cfg = load_agent_config(&root).expect("load");
+        let org = tauri_plugin_agent_tools::org_policy::OrgPolicy::default();
+        let perms = permissions_under(&cfg, &org);
+        let push = [tauri_plugin_agent_tools::resource::Resource::command("git push origin main")];
+        assert!(
+            perms
+                .asks_call("bash", &push, &tauri_plugin_agent_tools::subject::Subject::MainAgent)
+                .is_some(),
+            "the ask rule must ask"
+        );
+        let settings = run_settings_for(&root, None);
+        assert_eq!(settings.allow_domains, vec!["docs.rs".to_string()]);
+        assert!(settings.deny_domains.contains(&"pastebin.com".to_string()));
         let _ = std::fs::remove_dir_all(&root);
     }
 

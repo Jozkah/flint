@@ -25,6 +25,11 @@ use crate::core::app::constants::CONFIGURATION_FILE_NAME;
 /// How long to wait after the last mutation before flushing to disk. Bursts of
 /// writes within this window coalesce into one rewrite.
 const FLUSH_DEBOUNCE: Duration = Duration::from_millis(500);
+/// The longest a write may wait for disk however often the settings keep
+/// changing. Without a cap a key rewritten faster than the debounce -- the
+/// in-flight turn's checkpoint while a reply streams -- never flushes until
+/// the writes stop, so a crash mid-stream loses the whole turn.
+const FLUSH_MAX_DELAY: Duration = Duration::from_secs(2);
 
 /// In-memory settings map plus flush bookkeeping.
 struct SettingsMap {
@@ -32,11 +37,19 @@ struct SettingsMap {
     /// Set on mutation, cleared once the current contents reach disk.
     dirty: bool,
     /// Earliest instant at which the background thread may flush; pushed
-    /// forward on each write so rapid successive writes keep coalescing.
+    /// forward on each write so rapid successive writes keep coalescing, but
+    /// never past `dirty_since + FLUSH_MAX_DELAY`.
     flush_at: Option<Instant>,
+    /// When the oldest write not yet on disk was made.
+    dirty_since: Option<Instant>,
     /// Keys changed since the last flush, for the dev-build write log. Only
     /// populated under `debug_assertions`.
     pending_keys: BTreeSet<String>,
+    /// Every key this process set (`Some`) or removed (`None`) since the last
+    /// flush. A flush applies only these onto the file as it is on disk, so a
+    /// key another writer (the agent's `apply_settings`) changed in between is
+    /// not overwritten with this process's stale copy (#240).
+    changes: BTreeMap<String, Option<String>>,
 }
 
 impl SettingsMap {
@@ -47,6 +60,7 @@ impl SettingsMap {
         }
         #[cfg(debug_assertions)]
         self.pending_keys.insert(key.clone());
+        self.changes.insert(key.clone(), Some(value.clone()));
         self.map.insert(key, value);
         true
     }
@@ -58,12 +72,18 @@ impl SettingsMap {
         }
         #[cfg(debug_assertions)]
         self.pending_keys.insert(key.to_string());
+        self.changes.insert(key.to_string(), None);
         true
     }
 
     fn mark_dirty(&mut self) {
+        self.mark_dirty_at(Instant::now());
+    }
+
+    fn mark_dirty_at(&mut self, now: Instant) {
         self.dirty = true;
-        self.flush_at = Some(Instant::now() + FLUSH_DEBOUNCE);
+        let since = *self.dirty_since.get_or_insert(now);
+        self.flush_at = Some((now + FLUSH_DEBOUNCE).min(since + FLUSH_MAX_DELAY));
     }
 
     /// Snapshot the contents for disk and clear the dirty/pending state.
@@ -72,8 +92,105 @@ impl SettingsMap {
         let keys = std::mem::take(&mut self.pending_keys).into_iter().collect();
         self.dirty = false;
         self.flush_at = None;
+        self.dirty_since = None;
         (snapshot, keys)
     }
+
+    /// Like [`Self::take_flush_batch`], plus the changes to apply onto disk.
+    fn take_flush_batch_with_changes(
+        &mut self,
+    ) -> (FlushBatch, Vec<String>) {
+        let changes = std::mem::take(&mut self.changes);
+        let (snapshot, keys) = self.take_flush_batch();
+        (FlushBatch { snapshot, changes }, keys)
+    }
+
+    /// A flush failed: put its changes back unless a newer change superseded them.
+    fn restore_changes(&mut self, changes: BTreeMap<String, Option<String>>) {
+        for (key, change) in changes {
+            self.changes.entry(key).or_insert(change);
+        }
+    }
+
+    /// A flush wrote `merged`: adopt keys other writers changed on disk,
+    /// keeping any change this process made while the flush ran.
+    fn adopt_disk(&mut self, merged: BTreeMap<String, String>) {
+        let mut next = merged;
+        for (key, change) in &self.changes {
+            match change {
+                Some(value) => {
+                    next.insert(key.clone(), value.clone());
+                }
+                None => {
+                    next.remove(key);
+                }
+            }
+        }
+        self.map = next;
+    }
+}
+
+/// What a flush writes: the in-memory snapshot (used only when the file on
+/// disk cannot be read as a settings map) and the changes since the last flush.
+struct FlushBatch {
+    snapshot: BTreeMap<String, String>,
+    changes: BTreeMap<String, Option<String>>,
+}
+
+/// The map to write: the file as it is on disk with this process's changes
+/// applied, so keys only another writer touched keep that writer's value.
+fn merge_changes(
+    disk: BTreeMap<String, String>,
+    changes: &BTreeMap<String, Option<String>>,
+) -> BTreeMap<String, String> {
+    let mut merged = disk;
+    for (key, change) in changes {
+        match change {
+            Some(value) => {
+                merged.insert(key.clone(), value.clone());
+            }
+            None => {
+                merged.remove(key);
+            }
+        }
+    }
+    merged
+}
+
+/// The file's map, `Some(empty)` when missing or blank, `None` when it exists
+/// but is not a JSON object (then the flush keeps the old whole-snapshot
+/// behaviour rather than merging into nothing).
+fn read_map_for_merge(path: &PathBuf) -> Option<BTreeMap<String, String>> {
+    match fs::read_to_string(path) {
+        Ok(content) if !content.trim().is_empty() => {
+            // The agent's apply_settings may write non-string JSON values;
+            // keep them as their JSON text rather than failing the whole map.
+            let object: serde_json::Map<String, serde_json::Value> =
+                serde_json::from_str(&content).ok()?;
+            Some(
+                object
+                    .into_iter()
+                    .map(|(k, v)| match v {
+                        serde_json::Value::String(s) => (k, s),
+                        other => (k, other.to_string()),
+                    })
+                    .collect(),
+            )
+        }
+        Ok(_) => Some(BTreeMap::new()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(BTreeMap::new()),
+        Err(_) => None,
+    }
+}
+
+/// Write one flush batch to `path`. Returns the map that was written.
+fn write_batch(path: &PathBuf, batch: &FlushBatch) -> Result<BTreeMap<String, String>, String> {
+    let to_write = match read_map_for_merge(path) {
+        Some(disk) => merge_changes(disk, &batch.changes),
+        None => batch.snapshot.clone(),
+    };
+    write_map_atomic(path, &to_write)?;
+    Ok(to_write)
 }
 
 /// Dev-only: report which settings keys just hit disk. Compiled out of release
@@ -124,7 +241,9 @@ fn store() -> &'static Store {
             map: read_map(&settings_file_path()),
             dirty: false,
             flush_at: None,
+            dirty_since: None,
             pending_keys: BTreeSet::new(),
+            changes: BTreeMap::new(),
         };
         std::thread::Builder::new()
             .name("settings-flush".into())
@@ -160,14 +279,20 @@ fn flush_loop() {
                 _ => break,
             }
         }
-        let (snapshot, keys) = guard.take_flush_batch();
+        let (batch, keys) = guard.take_flush_batch_with_changes();
         drop(guard);
-        if let Err(e) = write_map_atomic(&settings_file_path(), &snapshot) {
-            log::warn!("settings flush failed: {}", e);
-            // Re-arm so a later write (or exit flush) retries.
-            lock(store).dirty = true;
-        } else {
-            log_flushed_keys(&keys);
+        match write_batch(&settings_file_path(), &batch) {
+            Err(e) => {
+                log::warn!("settings flush failed: {}", e);
+                // Re-arm so a later write (or exit flush) retries.
+                let mut guard = lock(store);
+                guard.restore_changes(batch.changes);
+                guard.dirty = true;
+            }
+            Ok(written) => {
+                lock(store).adopt_disk(written);
+                log_flushed_keys(&keys);
+            }
         }
     }
 }
@@ -181,13 +306,19 @@ pub fn flush_settings() {
     if !guard.dirty {
         return;
     }
-    let (snapshot, keys) = guard.take_flush_batch();
+    let (batch, keys) = guard.take_flush_batch_with_changes();
     drop(guard);
-    if let Err(e) = write_map_atomic(&settings_file_path(), &snapshot) {
-        log::warn!("settings exit flush failed: {}", e);
-        lock(store).dirty = true;
-    } else {
-        log_flushed_keys(&keys);
+    match write_batch(&settings_file_path(), &batch) {
+        Err(e) => {
+            log::warn!("settings exit flush failed: {}", e);
+            let mut guard = lock(store);
+            guard.restore_changes(batch.changes);
+            guard.dirty = true;
+        }
+        Ok(written) => {
+            lock(store).adopt_disk(written);
+            log_flushed_keys(&keys);
+        }
     }
 }
 
@@ -228,8 +359,55 @@ mod tests {
             map: BTreeMap::new(),
             dirty: false,
             flush_at: None,
+            dirty_since: None,
             pending_keys: BTreeSet::new(),
+            changes: BTreeMap::new(),
         }
+    }
+
+    /// #240: the agent's apply_settings writes settings.json directly. A flush
+    /// of the webview store made right after must keep that key instead of
+    /// writing back the store's stale copy of the whole file.
+    #[test]
+    fn a_flush_keeps_a_key_another_writer_just_wrote() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let mut initial = BTreeMap::new();
+        initial.insert("editor.fontSize".to_string(), "12".to_string());
+        initial.insert("theme".to_string(), "\"light\"".to_string());
+        write_map_atomic(&path, &initial).unwrap();
+
+        let mut m = new_map();
+        m.map = initial.clone();
+        m.set("theme".into(), "\"dark\"".into());
+        m.mark_dirty();
+
+        // The other writer changes a key the store did not touch.
+        let mut external = initial.clone();
+        external.insert("editor.fontSize".to_string(), "16".to_string());
+        write_map_atomic(&path, &external).unwrap();
+
+        let (batch, _) = m.take_flush_batch_with_changes();
+        let written = write_batch(&path, &batch).unwrap();
+        m.adopt_disk(written);
+
+        let on_disk = read_map(&path);
+        assert_eq!(on_disk.get("editor.fontSize"), Some(&"16".to_string()));
+        assert_eq!(on_disk.get("theme"), Some(&"\"dark\"".to_string()));
+        // The store now serves the other writer's value too.
+        assert_eq!(m.map.get("editor.fontSize"), Some(&"16".to_string()));
+    }
+
+    #[test]
+    fn a_flush_applies_removals_onto_disk() {
+        let mut disk = BTreeMap::new();
+        disk.insert("a".to_string(), "1".to_string());
+        disk.insert("b".to_string(), "2".to_string());
+        let mut changes = BTreeMap::new();
+        changes.insert("a".to_string(), None);
+        let merged = merge_changes(disk, &changes);
+        assert!(!merged.contains_key("a"));
+        assert_eq!(merged.get("b"), Some(&"2".to_string()));
     }
 
     #[test]
@@ -258,6 +436,32 @@ mod tests {
         m.mark_dirty();
         assert!(m.dirty);
         assert!(m.flush_at.is_some());
+    }
+
+    /// A key rewritten more often than the debounce -- the in-flight turn's
+    /// checkpoint while a reply streams -- must still reach disk: the flush is
+    /// deferred at most FLUSH_MAX_DELAY after the first unflushed write, or a
+    /// crash mid-stream loses the whole turn.
+    #[test]
+    fn a_steady_stream_of_writes_still_flushes_within_the_max_delay() {
+        let mut m = new_map();
+        let t0 = Instant::now();
+        let mut now = t0;
+        while now < t0 + Duration::from_secs(10) {
+            m.mark_dirty_at(now);
+            now += Duration::from_millis(200);
+        }
+        let deadline = m.flush_at.expect("armed");
+        assert!(
+            deadline <= t0 + FLUSH_MAX_DELAY,
+            "flush deferred {:?} past the first write",
+            deadline - t0
+        );
+        // A lone write still waits out the ordinary debounce.
+        let (_, _) = m.take_flush_batch();
+        let later = t0 + Duration::from_secs(60);
+        m.mark_dirty_at(later);
+        assert_eq!(m.flush_at, Some(later + FLUSH_DEBOUNCE));
     }
 
     #[test]

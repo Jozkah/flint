@@ -7,9 +7,11 @@ use std::path::{Path, PathBuf};
 /// the argv it builds stays unit-testable.
 pub mod appcontainer;
 pub mod cmdscan;
+pub mod fuzzy_edit;
 pub mod gate;
 pub mod git_native;
 pub mod handlers;
+pub mod host_tools;
 pub mod image;
 pub mod jail;
 pub mod mcp_confine;
@@ -494,14 +496,6 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Exec,
         path_args: &[],
     },
-    // Read-only: inspects an already-attached local clone with native Git and
-    // writes nothing. Scoped to the run's read roots inside the handler; it
-    // takes a repository URL, not a filesystem path, so there is no `path_args`.
-    BuiltinTool {
-        name: "git_inspect",
-        capability: Capability::Read,
-        path_args: &[],
-    },
     // Dedicated skill/memory tools. They operate on `.jan/agent/{skills,memory}/`
     // by name (never a path), so they are always workspace-scoped and never
     // prompt. `path_args` is empty: there is no path to sandbox-check.
@@ -570,6 +564,22 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         name: "web_fetch",
         capability: Capability::Net,
         path_args: &[],
+    },
+    // Read-only: inspects an already-attached local clone with native Git and
+    // writes nothing. Scoped to the run's read roots inside the handler; it
+    // takes a repository URL, not a filesystem path, so there is no `path_args`.
+    BuiltinTool {
+        name: "git_inspect",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Write: clones a GitHub repository into the workspace with host Git (git
+    // cannot run in the bash sandbox). Gated and approved like `write`; the
+    // destination is checked against the write roots here and in the handler.
+    BuiltinTool {
+        name: "git_clone",
+        capability: Capability::Write,
+        path_args: &["dest"],
     },
     // Cross-session messaging (docs/SESSION_MESSAGING.md). They touch only the
     // mailbox under the Jan data folder -- no project file, no network -- so
@@ -695,7 +705,8 @@ mod tests {
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
         // + request_access and list_plugins, which the desktop answers itself.
-        assert_eq!(BUILTIN_TOOLS.len(), 26);
+        // + git_inspect and git_clone, host Git the bash sandbox cannot run.
+        assert_eq!(BUILTIN_TOOLS.len(), 28);
     }
 
     #[test]
