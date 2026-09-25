@@ -224,7 +224,10 @@ function DropdownMenuSubContent({
   className,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
+  // Portalled like the top-level content: rendered inside it, the parent's
+  // overflow clipping hid every submenu except a sliver at its edge.
   return (
+    <DropdownMenuPrimitive.Portal>
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
       className={cn(
@@ -233,6 +236,7 @@ function DropdownMenuSubContent({
       )}
       {...props}
     />
+    </DropdownMenuPrimitive.Portal>
   )
 }
 

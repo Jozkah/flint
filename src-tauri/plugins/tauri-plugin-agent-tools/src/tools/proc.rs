@@ -773,10 +773,12 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let ws = ps_literal(&without_verbatim_prefix(&cwd.to_string_lossy()));
             let body = ps_literal(&format!("{command}\n$global:__JanOk = $?"));
             let nested = NESTED_SHELL;
+            let web = POWERSHELL_WEB_DEFAULTS;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
                  $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
+                 {web}\n\
                  {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
@@ -789,6 +791,19 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
         _ => command.to_string(),
     }
 }
+
+/// Makes the web commands a model reaches for behave in Windows PowerShell 5.1.
+///
+/// There `curl` is an alias of `Invoke-WebRequest`, so `curl -s URL` fails on
+/// its parameters, and `Invoke-WebRequest` without `-UseBasicParsing` goes
+/// through the Internet Explorer engine, which can stop on a security prompt no
+/// one will answer: the tool call then sat on "Working..." until it timed out.
+/// `curl` now reaches the real `curl.exe` when Windows ships one, and
+/// `Invoke-WebRequest` uses basic parsing with the progress bar off.
+pub(crate) const POWERSHELL_WEB_DEFAULTS: &str = "if (Get-Command curl.exe -CommandType Application -ErrorAction SilentlyContinue) \
+     { Remove-Item Alias:curl -Force -ErrorAction SilentlyContinue }; \
+     $global:ProgressPreference = 'SilentlyContinue'; \
+     $global:PSDefaultParameterValues['Invoke-WebRequest:UseBasicParsing'] = $true";
 
 /// A canonicalized Windows path without its verbatim `\\?\` prefix.
 ///
@@ -900,6 +915,27 @@ mod located_tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(log.trim(), "ok");
         assert_eq!(status.code(), Some(0));
+    }
+
+    /// `curl` in Windows PowerShell reaches the real curl.exe, not the
+    /// `Invoke-WebRequest` alias, which failed on `curl -s URL` in the app.
+    #[cfg(windows)]
+    #[test]
+    fn powershell_curl_is_the_real_curl() {
+        let windir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        if !std::path::Path::new(&windir).join(r"System32\curl.exe").exists() {
+            return; // Windows builds before 1803 ship no curl.exe
+        }
+        let dir = std::env::temp_dir();
+        let script = located(ShellFlavor::PowerShell, "curl --version", &dir);
+        let out = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .current_dir(&dir)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert!(text.starts_with("curl "), "got: {text}");
+        assert_eq!(out.status.code(), Some(0));
     }
 
     /// A nested `powershell -File` runs at the workspace: its relative write

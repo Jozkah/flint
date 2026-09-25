@@ -222,7 +222,7 @@ impl JanToolServer {
         if !self.opts.served.is_served(name) {
             return (
                 format!(
-                    "ERROR: tool '{name}' is not served by this Jan MCP server. \
+                    "ERROR: tool '{name}' is not served by this Flint MCP server. \
                      Mutating filesystem tools and bash are opt-in."
                 ),
                 Vec::new(),

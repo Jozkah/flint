@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { startHomeProjectsMirror } from '@/lib/groups/homeMirror'
 import {
   DndContext,
   PointerSensor,
@@ -95,6 +96,9 @@ function DropTarget({ id, children }: { id: string; children: ReactNode }) {
  */
 export function ChatsNav() {
   const { t } = useTranslation()
+  // Keeps each chat's metadata.project and the projects list in step with its
+  // Home group; without it a chat moved into a group stayed in Ungrouped.
+  useEffect(() => startHomeProjectsMirror(), [])
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
   const threads = useThreads((s) => s.threads)

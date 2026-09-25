@@ -1,18 +1,18 @@
-//! The `jan` wordmark, shared by `jan --help` and the TUI splash so the two
+//! The `flint` wordmark, shared by `flint --help` and the TUI splash so the two
 //! can't drift.
 
 /// "Flint" in ANSI Shadow block letters. Each glyph cell is one terminal column,
 /// so `LOGO_WIDTH` is the rendered width.
 pub const LOGO: [&str; 6] = [
-    r"     ██╗ █████╗ ███╗  ██╗",
-    r"     ██║██╔══██╗████╗ ██║",
-    r"     ██║███████║██╔██╗██║",
-    r"██   ██║██╔══██║██║╚████║",
-    r"╚█████╔╝██║  ██║██║ ╚███║",
-    r" ╚════╝ ╚═╝  ╚═╝╚═╝  ╚══╝",
+    r"███████╗██╗     ██╗███╗   ██╗████████╗",
+    r"██╔════╝██║     ██║████╗  ██║╚══██╔══╝",
+    r"█████╗  ██║     ██║██╔██╗ ██║   ██║   ",
+    r"██╔══╝  ██║     ██║██║╚██╗██║   ██║   ",
+    r"██║     ███████╗██║██║ ╚████║   ██║   ",
+    r"╚═╝     ╚══════╝╚═╝╚═╝  ╚═══╝   ╚═╝   ",
 ];
 
-pub const LOGO_WIDTH: u16 = 25;
+pub const LOGO_WIDTH: u16 = 38;
 
 /// The hand-wave mark as a single glyph, for the header's leading column where
 /// the block art has no room. No VS16: the emoji is already presentation-default

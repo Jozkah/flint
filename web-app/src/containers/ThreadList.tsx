@@ -152,6 +152,7 @@ const ThreadItem = memo(
     )
     const currentGroupId = thread.metadata?.project?.id ?? null
     const [newGroupOpen, setNewGroupOpen] = useState(false)
+    const [previewOpen, setPreviewOpen] = useState(false)
 
     /** Move the thread into a group, or out of every group with `null`. */
     const moveToGroup = (groupId: string | null) => {
@@ -169,6 +170,25 @@ const ThreadItem = memo(
               : t('common:projects.movedToUngrouped')
           )
         })
+    }
+
+    const [groupMenuOpen, setGroupMenuOpen] = useState(false)
+
+    /**
+     * Numbered like the design's group picker: while "Move to group" is open,
+     * a digit picks the row with that number. Wired on both menu levels, since
+     * opening the submenu with a click leaves focus on its trigger.
+     */
+    const pickGroupByDigit = (e: React.KeyboardEvent) => {
+      const n = Number(e.key)
+      if (!Number.isInteger(n) || n < 1) return
+      const choices: (string | null)[] = [...groupChoices.map((g) => g.id), null, 'new']
+      if (n > choices.length) return
+      const pick = choices[n - 1]
+      e.preventDefault()
+      if (pick === 'new') setNewGroupOpen(true)
+      else moveToGroup(pick)
+      setMenuOpen(false)
     }
 
     const createGroupAndMove = async (name: string, assistantId?: string) => {
@@ -253,7 +273,14 @@ const ThreadItem = memo(
             ) : null}
           </Link>
           :
-          <HoverCard openDelay={650} closeDelay={80}>
+          <HoverCard
+            openDelay={650}
+            closeDelay={80}
+            // Shut while the row's menu is open; it used to open over the menu
+            // and hide its submenus.
+            open={previewOpen && !menuOpen}
+            onOpenChange={setPreviewOpen}
+          >
             <HoverCardTrigger asChild>
               <NavButton asChild size="sm" isActive={isSelected}>
                 <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
@@ -298,6 +325,9 @@ const ThreadItem = memo(
             className="w-48"
             side={isMobile ? 'bottom' : 'right'}
             align={isMobile ? 'end' : 'start'}
+            onKeyDown={(e) => {
+              if (groupMenuOpen) pickGroupByDigit(e)
+            }}
           >
             <DropdownMenuItem onSelect={() => toggleFavorite(thread.id)}>
               {thread.isFavorite ? <PinOff className="size-4" /> : <Pin className="size-4" />}
@@ -307,26 +337,14 @@ const ThreadItem = memo(
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
             </DropdownMenuItem>
-            <DropdownMenuSub>
+            <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />
                 <span>{t('common:projects.moveToGroup')}</span>
               </DropdownMenuSubTrigger>
-              {/* Numbered like the design's group picker: a digit key picks
-                  the row with that number while the submenu is open. */}
               <DropdownMenuSubContent
                 className="max-h-72 min-w-48 overflow-y-auto"
-                onKeyDown={(e) => {
-                  const n = Number(e.key)
-                  if (!Number.isInteger(n) || n < 1) return
-                  const choices = [...groupChoices.map((g) => g.id), null, 'new'] as const
-                  const pick = choices[n - 1]
-                  if (pick === undefined) return
-                  e.preventDefault()
-                  if (pick === 'new') setNewGroupOpen(true)
-                  else moveToGroup(pick)
-                  setMenuOpen(false)
-                }}
+                onKeyDown={pickGroupByDigit}
               >
                 {groupChoices.map((group, i) => (
                   <DropdownMenuItem
