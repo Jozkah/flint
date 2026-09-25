@@ -68,6 +68,12 @@ export interface RoomsUiApi {
   addParticipant(room: Room, input: NewParticipantInput): Promise<Room>
   removeParticipant(room: Room, participantId: string): Promise<Room>
   deleteRoom(roomId: string): Promise<void>
+  /**
+   * Read a room and its journal without opening it (the store's current room
+   * is untouched), for overviews such as the rooms list. Optional: an API
+   * without it shows summaries only.
+   */
+  peekRoom?(roomId: string): Promise<{ room: Room; journal: RoomJournalRecord[] }>
 }
 
 export const EMPTY_ROOMS_STATE: RoomsUiState = {
@@ -208,6 +214,14 @@ export function adaptEngine(exports: Record<string, unknown>): RoomsUiApi | null
     deleteRoom: async (roomId) => {
       await call('deleteRoom', roomId)
     },
+    ...(typeof exports.getRoomPersistence === 'function'
+      ? {
+          peekRoom: (roomId: string) =>
+            (exports.getRoomPersistence as () => {
+              getRoom(id: string): Promise<{ room: Room; journal: RoomJournalRecord[] }>
+            })().getRoom(roomId),
+        }
+      : {}),
   }
 }
 
@@ -219,6 +233,7 @@ export function loadEngineApi(): Promise<RoomsUiApi> {
     enginePromise = Promise.all([
       import('@/lib/rooms/store'),
       import('@/lib/rooms/controller'),
+      import('@/lib/rooms/persistence'),
     ])
       .then((mods) => {
         const merged = Object.assign({}, ...(mods as Record<string, unknown>[]))
