@@ -80,6 +80,9 @@ vi.mock('@/lib/platform/const', () => ({
 // Mock UI components
 vi.mock('@/components/ui/popover', () => ({
   Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  PopoverAnchor: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   PopoverTrigger: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="popover-trigger">{children}</div>
   ),
