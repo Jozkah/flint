@@ -242,9 +242,9 @@ pub fn grant(program: &str) -> Result<ToolchainGrant, String> {
     let store = store().ok_or("toolchain grants are not available here")?;
     let report = host_tools::probe_toolchains()
         .ok_or("toolchain grants exist only for the Windows sandbox")?;
-    if !report.unavailable.iter().any(|p| p == program) {
+    if !report.grantable.iter().any(|c| c.program == program) {
         return Err(format!(
-            "`{program}` is not a toolchain the sandbox reports as installed but unrunnable"
+            "`{program}` is not a toolchain a grant would make runnable in the sandbox"
         ));
     }
     let host = std::env::var_os("PATH").unwrap_or_default();

@@ -966,6 +966,11 @@ export type SandboxStatus = {
 export type ToolchainReport = {
   runnable: string[]
   unavailable: string[]
+  /**
+   * The unavailable programs a toolchain grant would fix, with the folder it
+   * would change. MSYS2 tools and the `py` launcher are never here.
+   */
+  grantable?: { program: string; folder: string }[]
 }
 
 /** A toolchain folder the user let the Windows sandbox use. */

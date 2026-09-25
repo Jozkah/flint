@@ -266,6 +266,53 @@ pub const PROBED_PROGRAMS: &[&str] = &[
 pub struct ToolchainReport {
     pub runnable: Vec<String>,
     pub unavailable: Vec<String>,
+    /// The unavailable programs a grant would fix, with the one folder it
+    /// would change. Leaves out an MSYS2 program (it cannot run in the sandbox
+    /// whatever its folder allows), the `py` launcher (it lives in the Windows
+    /// folder, which already admits app packages; it needs a runnable Python),
+    /// and any folder a grant must never touch.
+    #[serde(default)]
+    pub grantable: Vec<GrantCandidate>,
+}
+
+/// One program a toolchain grant would make runnable.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantCandidate {
+    pub program: String,
+    /// The install folder whose permissions the grant would change.
+    pub folder: PathBuf,
+}
+
+/// Which of `report.unavailable` a grant would fix: the program resolves on
+/// the host `PATH` into a folder that app packages may not run from today and
+/// that [`crate::tools::toolchain_grants::validate_folder`] accepts.
+pub fn grant_candidates(
+    unavailable: &[String],
+    host_path: &OsString,
+    pathext: &str,
+    profile: Option<&Path>,
+    can_execute: impl Fn(&Path) -> Option<bool>,
+) -> Vec<GrantCandidate> {
+    let mut out: Vec<GrantCandidate> = Vec::new();
+    for name in unavailable {
+        let Some(exe) = locate_on_host(name, host_path, pathext) else {
+            continue;
+        };
+        let Some(folder) = exe.parent().map(Path::to_path_buf) else {
+            continue;
+        };
+        if can_execute(&folder) != Some(false)
+            || crate::tools::toolchain_grants::validate_folder(&folder, &exe, profile).is_err()
+        {
+            continue;
+        }
+        out.push(GrantCandidate {
+            program: name.clone(),
+            folder,
+        });
+    }
+    out
 }
 
 /// Classify `names` without starting the sandbox: a program is runnable when
@@ -368,13 +415,21 @@ fn compute_toolchains() -> Option<ToolchainReport> {
     dirs.extend(extra);
     let sandbox = std::env::join_paths(&dirs).ok()?;
     let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
-    Some(classify_programs(
+    let mut report = classify_programs(
         PROBED_PROGRAMS,
         &sandbox,
         &host,
         &pathext,
         container_can_execute,
-    ))
+    );
+    report.grantable = grant_candidates(
+        &report.unavailable,
+        &host,
+        &pathext,
+        profile.as_deref(),
+        container_can_execute,
+    );
+    Some(report)
 }
 
 #[cfg(windows)]
@@ -480,6 +535,55 @@ mod win {
         };
         unsafe { LocalFree(sd) };
         result
+    }
+}
+
+#[cfg(test)]
+mod grant_candidate_tests {
+    use super::*;
+
+    /// Only a folder a grant would fix is offered: not Git for Windows, not
+    /// the `py` launcher's Windows folder, not the profile root.
+    #[test]
+    fn only_fixable_folders_are_offered() {
+        let root = std::env::temp_dir().join(format!("grant-cand-{}", std::process::id()));
+        let profile = root.join("Users").join("me");
+        let python = profile.join("AppData").join("Local").join("Programs").join("Python311");
+        let git = root.join("Git");
+        let windows = root.join("Windows");
+        for d in [&python, &git.join("cmd"), &git.join("usr").join("bin"), &windows] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        std::fs::write(git.join("usr").join("bin").join("msys-2.0.dll"), "x").unwrap();
+        let ext = if cfg!(windows) { ".exe" } else { "" };
+        for (dir, name) in [
+            (&python, "python"),
+            (&python, "python3"),
+            (&git.join("cmd"), "git"),
+            (&windows, "py"),
+            (&profile, "loose"),
+        ] {
+            std::fs::write(dir.join(format!("{name}{ext}")), "").unwrap();
+        }
+        let host = std::env::join_paths([
+            python.clone(),
+            git.join("cmd"),
+            windows.clone(),
+            profile.clone(),
+        ])
+        .unwrap();
+        let names: Vec<String> = ["python", "python3", "git", "py", "loose"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // Everything but the Windows folder refuses app packages today.
+        let got = grant_candidates(&names, &host, ".EXE", Some(&profile), |d| {
+            Some(d == windows.as_path())
+        });
+        let offered: Vec<&str> = got.iter().map(|c| c.program.as_str()).collect();
+        assert_eq!(offered, vec!["python", "python3"]);
+        assert!(got.iter().all(|c| c.folder == python));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

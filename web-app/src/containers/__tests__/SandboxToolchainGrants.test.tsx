@@ -58,7 +58,11 @@ describe('SandboxToolchainGrants', () => {
   })
 
   it('grants only after the user confirms the permission change', async () => {
-    getSandboxToolchains.mockResolvedValue({ runnable: [], unavailable: ['python'] })
+    getSandboxToolchains.mockResolvedValue({
+      runnable: [],
+      unavailable: ['python', 'git', 'py'],
+      grantable: [{ program: 'python', folder: 'C:\\Users\\me\\Python311' }],
+    })
     sandboxToolchainGrants.mockResolvedValue([])
     sandboxToolchainGrant.mockResolvedValue({
       program: 'python',
@@ -67,7 +71,13 @@ describe('SandboxToolchainGrants', () => {
     })
     render(<SandboxToolchainGrants />)
     fireEvent.click(await screen.findByTestId('toolchain-grant-python'))
+    // MSYS tools and the launcher are explained, never offered.
+    expect(screen.queryByTestId('toolchain-grant-git')).toBeNull()
+    expect(screen.queryByTestId('toolchain-grant-py')).toBeNull()
     expect(sandboxToolchainGrant).not.toHaveBeenCalled()
+    expect(screen.getByTestId('toolchain-grant-folder')).toHaveTextContent(
+      'C:\\Users\\me\\Python311'
+    )
     expect(
       screen.getByText('settings:agentTools.toolchains.confirmBody')
     ).toBeInTheDocument()

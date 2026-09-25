@@ -37,7 +37,10 @@ export function SandboxToolchainGrants() {
   const { t } = useTranslation()
   const [report, setReport] = useState<ToolchainReport | null>(null)
   const [grants, setGrants] = useState<ToolchainGrant[]>([])
-  const [confirming, setConfirming] = useState<string | null>(null)
+  const [confirming, setConfirming] = useState<{
+    program: string
+    folder: string
+  } | null>(null)
   const [busy, setBusy] = useState(false)
 
   const refresh = useCallback(async () => {
@@ -57,9 +60,11 @@ export function SandboxToolchainGrants() {
     if (!confirming) return
     setBusy(true)
     try {
-      await sandboxToolchainGrant(confirming)
+      await sandboxToolchainGrant(confirming.program)
       toast.success(
-        t('settings:agentTools.toolchains.granted', { program: confirming })
+        t('settings:agentTools.toolchains.granted', {
+          program: confirming.program,
+        })
       )
       setConfirming(null)
       await refresh()
@@ -86,6 +91,9 @@ export function SandboxToolchainGrants() {
   // to grant, and no grant to revoke either.
   if (!report && grants.length === 0) return null
   const unavailable = report?.unavailable ?? []
+  const grantable = report?.grantable ?? []
+  const candidate = (program: string) =>
+    grantable.find((c) => c.program === program)
 
   return (
     <>
@@ -99,24 +107,37 @@ export function SandboxToolchainGrants() {
             : t('settings:agentTools.toolchains.description')
         }
       />
-      {unavailable.map((program) => (
-        <CardItem
-          key={`u-${program}`}
-          title={<code>{program}</code>}
-          description={t('settings:agentTools.toolchains.unrunnable')}
-          actions={
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy}
-              data-testid={`toolchain-grant-${program}`}
-              onClick={() => setConfirming(program)}
-            >
-              {t('settings:agentTools.toolchains.grant')}
-            </Button>
-          }
-        />
-      ))}
+      {unavailable.map((program) => {
+        const offer = candidate(program)
+        return (
+          <CardItem
+            key={`u-${program}`}
+            title={<code>{program}</code>}
+            description={
+              offer
+                ? t('settings:agentTools.toolchains.unrunnable', {
+                    folder: offer.folder,
+                  })
+                : program === 'py'
+                  ? t('settings:agentTools.toolchains.launcher')
+                  : t('settings:agentTools.toolchains.notGrantable')
+            }
+            actions={
+              offer ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  data-testid={`toolchain-grant-${program}`}
+                  onClick={() => setConfirming(offer)}
+                >
+                  {t('settings:agentTools.toolchains.grant')}
+                </Button>
+              ) : undefined
+            }
+          />
+        )
+      })}
       {grants.map((g) => (
         <CardItem
           key={`g-${g.folder}`}
@@ -146,14 +167,20 @@ export function SandboxToolchainGrants() {
           <DialogHeader>
             <DialogTitle>
               {t('settings:agentTools.toolchains.confirmTitle', {
-                program: confirming ?? '',
+                program: confirming?.program ?? '',
               })}
             </DialogTitle>
             <DialogDescription>
               {t('settings:agentTools.toolchains.confirmBody', {
-                program: confirming ?? '',
+                program: confirming?.program ?? '',
               })}
             </DialogDescription>
+            <code
+              className="block break-all rounded bg-muted px-2 py-1 text-xs"
+              data-testid="toolchain-grant-folder"
+            >
+              {confirming?.folder}
+            </code>
           </DialogHeader>
           <DialogFooter className={STICKY_DIALOG_FOOTER}>
             <Button

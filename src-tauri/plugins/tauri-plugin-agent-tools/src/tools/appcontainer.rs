@@ -34,6 +34,7 @@
 //! has a single writable root and a binary network switch, which AppContainer
 //! expresses directly.
 
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 /// Marks a re-exec of this binary as the confined-spawn helper. Must be the
@@ -48,6 +49,11 @@ const WRITE_ROOT: &str = "--write-root=";
 /// that is not the workspace. It must be one of the write roots (see
 /// [`parse_request`]): the container can only start somewhere it was granted.
 const START_DIR: &str = "--start-dir=";
+/// Prefix of a helper argument naming one toolchain folder the user let the
+/// sandbox use. The helper is a fresh process that has not read the app's
+/// grant record, so the grants travel with the request (see
+/// [`crate::tools::toolchain_grants`]).
+const PATH_DIR: &str = "--path-dir=";
 
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
@@ -124,6 +130,9 @@ pub fn helper_args_at(
     if let Some(start) = start.filter(|s| *s != workspace) {
         out.push(format!("{START_DIR}{}", start.to_string_lossy()));
     }
+    for dir in crate::tools::toolchain_grants::granted_folders() {
+        out.push(format!("{PATH_DIR}{}", dir.to_string_lossy()));
+    }
     out.push("--".to_string());
     out.push(program.to_string_lossy().to_string());
     out.extend(args.iter().cloned());
@@ -189,6 +198,8 @@ struct Request {
     /// Where the shell starts: the workspace, or one of `write_roots`.
     start_dir: PathBuf,
     allow_network: bool,
+    /// Toolchain folders the user granted, for the sandbox `PATH`.
+    path_dirs: Vec<PathBuf>,
     program: PathBuf,
     args: Vec<String>,
 }
@@ -212,11 +223,16 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         s => Some(PathBuf::from(s)),
     };
     let mut write_roots = Vec::new();
+    let mut path_dirs = Vec::new();
     let mut start_dir = None;
     loop {
         let next = it.next()?;
         if next == "--" {
             break;
+        }
+        if let Some(dir) = next.strip_prefix(PATH_DIR) {
+            path_dirs.push(PathBuf::from(dir));
+            continue;
         }
         if let Some(start) = next.strip_prefix(START_DIR) {
             if start_dir.is_some() {
@@ -241,6 +257,7 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         write_roots,
         start_dir,
         allow_network,
+        path_dirs,
         program,
         args: it.collect(),
     })
@@ -543,6 +560,54 @@ pub fn shell_runtime_dirs(program: &Path) -> Vec<PathBuf> {
         }
     }
     out
+}
+
+/// `PATH` for the confined shell: the system directories, then the shell's own
+/// installation, then the host's toolchain folders the container may run.
+///
+/// Built rather than inherited so a host `PATH` entry under the user's profile
+/// -- which the sandbox cannot read -- does not turn into an unexplained
+/// "command not found" inside it. Host folders come after the system ones so
+/// none can shadow a system program; folders in the profile, or whose ACL does
+/// not admit app packages, stay out -- except `granted`, the folders the user
+/// explicitly let the sandbox use. Those arrive with the helper request: the
+/// helper is a separate process and never reads the grant record itself.
+pub fn build_sandbox_path(
+    system_root: Option<PathBuf>,
+    runtime_dirs: Vec<PathBuf>,
+    host_path: Option<OsString>,
+    profile: Option<PathBuf>,
+    granted: &[PathBuf],
+    can_execute: impl Fn(&Path) -> Option<bool>,
+) -> OsString {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    if let Some(root) = system_root {
+        let system32 = root.join("system32");
+        dirs.push(system32.clone());
+        dirs.push(root.clone());
+        dirs.push(system32.join("Wbem"));
+        dirs.push(system32.join("WindowsPowerShell").join("v1.0"));
+    }
+    for dir in runtime_dirs {
+        if dir.is_dir() && !dirs.contains(&dir) {
+            dirs.push(dir);
+        }
+    }
+    let host = host_path.unwrap_or_default();
+    let extra = crate::tools::host_tools::usable_host_dirs(
+        &host,
+        profile.as_deref(),
+        &dirs,
+        granted,
+        can_execute,
+    );
+    dirs.extend(extra);
+    OsString::from(
+        dirs.iter()
+            .map(|d| d.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(";"),
+    )
 }
 
 /// Run the confined spawn and exit with the child's status, when this process
@@ -1375,45 +1440,14 @@ mod win {
     /// installation. Built rather than inherited so a host `PATH` entry under the
     /// user's profile -- which the sandbox cannot read -- does not turn into an
     /// unexplained "command not found" inside it.
-    fn sandbox_path(program: &Path) -> OsString {
-        let mut dirs: Vec<PathBuf> = Vec::new();
-        if let Some(root) = std::env::var_os("SystemRoot") {
-            let root = PathBuf::from(root);
-            let system32 = root.join("system32");
-            dirs.push(system32.clone());
-            dirs.push(root.clone());
-            dirs.push(system32.join("Wbem"));
-            dirs.push(system32.join("WindowsPowerShell").join("v1.0"));
-        }
-        for dir in shell_runtime_dirs(program) {
-            if dir.is_dir() && !dirs.contains(&dir) {
-                dirs.push(dir);
-            }
-        }
-        // Then the host's own toolchain folders the container is allowed to
-        // run (Git, Node, Python installed for all users), after the system
-        // folders so none of them can shadow a system program. Folders in the
-        // user profile, or whose ACL does not admit app packages, stay out: in
-        // the sandbox they would only fail, and confusingly.
-        if let Some(host) = std::env::var_os("PATH") {
-            let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
-            // Folders the user explicitly let the sandbox use are carried even
-            // when they sit in the profile.
-            let granted = crate::tools::toolchain_grants::granted_folders();
-            let extra = crate::tools::host_tools::usable_host_dirs(
-                &host,
-                profile.as_deref(),
-                &dirs,
-                &granted,
-                crate::tools::host_tools::container_can_execute,
-            );
-            dirs.extend(extra);
-        }
-        OsString::from(
-            dirs.iter()
-                .map(|d| d.to_string_lossy().to_string())
-                .collect::<Vec<_>>()
-                .join(";"),
+    fn sandbox_path(program: &Path, granted: &[PathBuf]) -> OsString {
+        super::build_sandbox_path(
+            std::env::var_os("SystemRoot").map(PathBuf::from),
+            shell_runtime_dirs(program),
+            std::env::var_os("PATH"),
+            std::env::var_os("USERPROFILE").map(PathBuf::from),
+            granted,
+            crate::tools::host_tools::container_can_execute,
         )
     }
 
@@ -1425,7 +1459,7 @@ mod win {
             &SandboxEnvSpec {
                 home,
                 temp: &temp,
-                path: Some(sandbox_path(&req.program)),
+                path: Some(sandbox_path(&req.program, &req.path_dirs)),
                 extra: &[],
             },
         )
@@ -1697,6 +1731,55 @@ mod win {
             .with_code(last_error_code()));
         }
         Ok(code as i32)
+    }
+}
+
+#[cfg(test)]
+mod granted_path_tests {
+    use super::*;
+
+    /// The live failure: a granted Python folder under the profile, first on
+    /// the host PATH, never reached the shell's PATH because the helper
+    /// process had not loaded the grants. They now travel in the request, and
+    /// the PATH built from it carries the folder.
+    #[test]
+    fn a_granted_profile_folder_reaches_the_sandbox_path() {
+        let root = std::env::temp_dir().join(format!("granted-path-{}", std::process::id()));
+        let profile = root.join("Users").join("me");
+        let python = profile.join("AppData").join("Local").join("Programs").join("Python311");
+        std::fs::create_dir_all(&python).unwrap();
+        let host = std::env::join_paths([python.clone()]).unwrap();
+
+        let argv = [
+            SANDBOX_EXEC_FLAG.to_string(),
+            NET_OFF.to_string(),
+            "C:\\ws".to_string(),
+            String::new(),
+            format!("{PATH_DIR}{}", python.display()),
+            "--".to_string(),
+            "powershell.exe".to_string(),
+        ];
+        let req = parse_request(argv).expect("a helper request");
+        assert_eq!(req.path_dirs, vec![python.clone()]);
+
+        let can_execute = |_: &Path| Some(true);
+        let with = build_sandbox_path(
+            None,
+            Vec::new(),
+            Some(host.clone()),
+            Some(profile.clone()),
+            &req.path_dirs,
+            can_execute,
+        );
+        assert!(
+            std::env::split_paths(&with).any(|d| d == python),
+            "{with:?}"
+        );
+        // Without the grant, the profile folder stays out.
+        let without =
+            build_sandbox_path(None, Vec::new(), Some(host), Some(profile), &[], can_execute);
+        assert!(!std::env::split_paths(&without).any(|d| d == python), "{without:?}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 
