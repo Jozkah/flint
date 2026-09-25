@@ -1,13 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 
-import { useEffect, useMemo, useState, useRef } from 'react'
-import { ScrollText } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { SystemPageHeader } from '@/containers/SystemPageHeader'
-import { CopyLogsButton, LogToolbar, LogViewer } from '@/containers/LogViewer'
-import { filterLogs, type LogLevelFilter } from '@/lib/logFilter'
+import { LogsDashboard } from '@/containers/LogViewer'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.appLogs as any)({
@@ -17,27 +14,16 @@ export const Route = createFileRoute(route.appLogs as any)({
 function LogsViewer() {
   const { t } = useTranslation()
   const [logs, setLogs] = useState<LogEntry[]>([])
-  const [query, setQuery] = useState('')
-  const [level, setLevel] = useState<LogLevelFilter>('all')
-  const logsContainerRef = useRef<HTMLDivElement>(null)
   const serviceHub = useServiceHub()
 
   useEffect(() => {
-    let lastLogsLength = 0
+    // The viewer keeps the newest line in view while it follows the log.
     function updateLogs() {
       serviceHub
         .app()
         .readLogs()
         .then((logData) => {
-          let needScroll = false
-          const filteredLogs = logData.filter(Boolean) as LogEntry[]
-          if (filteredLogs.length > lastLogsLength) needScroll = true
-
-          lastLogsLength = filteredLogs.length
-          setLogs(filteredLogs)
-
-          // Scroll to bottom after initial logs are loaded
-          if (needScroll) setTimeout(() => scrollToBottom(), 100)
+          setLogs(logData.filter(Boolean) as LogEntry[])
         })
     }
     updateLogs()
@@ -50,43 +36,12 @@ function LogsViewer() {
     }
   }, [serviceHub])
 
-  // Function to scroll to the bottom of the logs container
-  const scrollToBottom = () => {
-    if (logsContainerRef.current) {
-      const { scrollHeight, clientHeight } = logsContainerRef.current
-      logsContainerRef.current.scrollTop = scrollHeight - clientHeight
-    }
-  }
-
-  const shown = useMemo(
-    () => filterLogs(logs, query, level),
-    [logs, query, level]
-  )
-
   return (
-    <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background">
-      <SystemPageHeader
-        title={t('logs:title')}
-        icon={<ScrollText className="size-4" />}
-        actions={<CopyLogsButton logs={shown} />}
-      />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 md:p-4">
-        {logs.length > 0 && (
-          <LogToolbar
-            query={query}
-            onQueryChange={setQuery}
-            level={level}
-            onLevelChange={setLevel}
-            shown={shown.length}
-            total={logs.length}
-          />
-        )}
-        <LogViewer
-          ref={logsContainerRef}
-          logs={shown}
-          emptyText={logs.length === 0 ? t('logs:noLogs') : t('logs:noMatch')}
-        />
-      </div>
-    </div>
+    <LogsDashboard
+      title={t('logs:title')}
+      description={t('logs:description')}
+      fileName="app.log"
+      logs={logs}
+    />
   )
 }

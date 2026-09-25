@@ -26,5 +26,7 @@
   "active": "Active",
   "performance": "Performance",
   "resources": "Resources",
-  "refresh": "Refresh"
+  "refresh": "Refresh",
+  "description": "Live usage on this device. Updates every 5 seconds.",
+  "live": "Live"
 }
