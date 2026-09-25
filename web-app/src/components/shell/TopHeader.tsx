@@ -20,6 +20,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { useThreads } from '@/hooks/useThreads'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useRoomsState } from '@/containers/rooms/roomsBindings'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -42,7 +43,10 @@ function useCurrentName(crumb: ReturnType<typeof crumbForPath>) {
   )
   const { folders } = useThreadManagement()
   const providers = useModelProvider((s) => s.providers)
+  const { summaries } = useRoomsState()
   if (crumb.dynamic === 'thread') return thread?.title
+  if (crumb.dynamic === 'room')
+    return summaries.find((r) => r.id === crumb.param)?.title
   if (crumb.dynamic === 'project')
     return folders.find((f) => f.id === crumb.param)?.name
   if (crumb.dynamic === 'provider') {
@@ -66,7 +70,14 @@ export function TopHeader() {
   const headerSlot = useHeaderSlot()
   const crumb = crumbForPath(pathname)
   const dynamicName = useCurrentName(crumb)
-  const current = crumb.currentKey ? t(crumb.currentKey) : (dynamicName || t('common:newThread'))
+  const current = crumb.currentKey
+    ? t(crumb.currentKey)
+    : dynamicName ||
+      (crumb.dynamic === 'room'
+        ? t('common:appRail.rooms')
+        : crumb.dynamic === 'thread'
+          ? t('common:newThread')
+          : (crumb.param ?? ''))
 
   const isDark = useTheme((s) => s.isDark)
   const setTheme = useTheme((s) => s.setTheme)
