@@ -191,11 +191,11 @@ describe('the mode a repository-bound session starts in', () => {
   const sessionOf = (id: string) =>
     useCoworkSessions.getState().sessions.find((x) => x.id === id)!
 
-  it('is review when a repository is attached to a fresh session', () => {
+  it('is ask when a repository is attached to a fresh session', () => {
     const id = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().setFolder(id, '/home/dev/project')
 
-    expect(sessionOf(id).mode).toBe('review')
+    expect(sessionOf(id).mode).toBe('ask')
   })
 
   it('leaves a session with no repository alone', () => {

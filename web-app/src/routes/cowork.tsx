@@ -4114,10 +4114,12 @@ function CoworkPage() {
       />
       <CoworkModeSelector
         mode={mode}
-        onChange={(next) => {
-          if (session?.id)
-            useCoworkSessions.getState().setMode(session.id, next)
-        }}
+        // A choice made before the first message still needs a session to
+        // live on; dropping it left the session in its default mode while the
+        // user believed they had picked another.
+        onChange={(next) =>
+          useCoworkSessions.getState().setMode(ensureCurrentSession(), next)
+        }
       />
       <CoworkAccessSelector
         effective={effective}

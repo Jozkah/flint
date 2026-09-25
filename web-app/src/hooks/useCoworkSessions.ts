@@ -539,8 +539,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                   ...x,
                   folder,
                   // Attaching a repository to a session that has not run yet
-                  // puts it in Review first: the turn that binds a repository
-                  // must not be the turn that edits it. A mode the user chose,
+                  // puts it in Ask: every change waits for the user, and the
+                  // opening turn is read-only on its own. A mode the user chose,
                   // or one a legacy session already implies, is left alone —
                   // and so is detaching, which must not stamp a mode that
                   // would then suppress this default on the next attach.

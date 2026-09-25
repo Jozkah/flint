@@ -59,10 +59,11 @@ describe('what each mode permits', () => {
 })
 
 describe('the mode a session starts in', () => {
-  // The whole point: the turn that attaches a repository must not be the turn
-  // that edits it.
-  it('is review once a repository is attached', () => {
-    expect(defaultModeFor('/home/dev/project')).toBe('review')
+  // Every change waits for the user. The opening turn is kept read-only by
+  // `decideOpening`, not by the stored mode: a stored `review` outlived that
+  // turn and withheld write and edit from a later "refactor this".
+  it('is ask once a repository is attached', () => {
+    expect(defaultModeFor('/home/dev/project')).toBe('ask')
   })
 
   it('is unchanged when there is no repository to protect', () => {
