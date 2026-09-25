@@ -3,7 +3,6 @@ import { route } from '@/constants/routes'
 import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
 import { CardItem } from '@/containers/Card'
 import {
-  Activity,
   Braces,
   ChevronDown,
   ChevronUp,
@@ -11,11 +10,8 @@ import {
   Pencil,
   Plus,
   Power,
-  ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Trash2,
-  Workflow,
 } from 'lucide-react'
 import {
   useMCPServers,
@@ -87,6 +83,7 @@ import {
   useEngineActivity,
 } from '@/stores/engine-activity-store'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 
 type ToolsTab = 'servers' | 'routing'
 
@@ -95,20 +92,21 @@ const CHART_BUCKETS = 20
 
 const SERVER_COLORS = [
   '#3b82f6',
-  '#8b5cf6',
-  '#22c55e',
+  '#6e40c9',
+  '#2ead33',
   '#0891b2',
   '#f59e0b',
+  '#64748b',
   '#ec4899',
   '#10b981',
-  '#64748b',
 ]
 
-/** A stable colour per server name, so a server keeps its colour across visits. */
-function serverColor(name: string): string {
-  let h = 0
-  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0
-  return SERVER_COLORS[Math.abs(h) % SERVER_COLORS.length]
+/**
+ * A colour per server by its place in the configuration, so the servers on
+ * screen never share one and each keeps its colour until the list is edited.
+ */
+function serverColor(position: number): string {
+  return SERVER_COLORS[Math.max(0, position) % SERVER_COLORS.length]
 }
 
 
@@ -955,7 +953,7 @@ function MCPServersDesktop() {
     const toolNames = snapshot.connected ? serverTools[key] : undefined
     const expanded = expandedServers.has(key)
     const off = snapshot.state === 'disabled' || snapshot.state === 'not-installed'
-    const color = serverColor(key)
+    const color = serverColor(serverEntries.findIndex(([k]) => k === key))
     const series = bucketCounts(
       toolCalls.filter((c) => c.server === key),
       CHART_BUCKETS,
@@ -1251,7 +1249,7 @@ function MCPServersDesktop() {
                   className="pointer-coarse:h-11"
                   onClick={() => handleOpenDialog()}
                 >
-                  <Plus aria-hidden />
+                  <Icon name="x-plus-w" size={14} />
                   {t('mcp-servers:addServer')}
                 </Button>
               </>
@@ -1261,7 +1259,7 @@ function MCPServersDesktop() {
           <KpiRow>
             <KpiTile
               title={t('engine:mcp.kpiServers')}
-              icon={<Workflow />}
+              icon={<Icon name="flow" />}
               value={serverEntries.length}
               sub={t('engine:mcp.kpiServersSub', {
                 connected: connectedCount,
@@ -1271,14 +1269,14 @@ function MCPServersDesktop() {
             />
             <KpiTile
               title={t('engine:mcp.kpiTools')}
-              icon={<Sparkles />}
+              icon={<Icon name="x-sparkle" />}
               value={toolCount}
               sub={t('engine:mcp.kpiToolsSub', { count: connectedCount })}
               delay={90}
             />
             <KpiTile
               title={t('engine:mcp.kpiCalls')}
-              icon={<Activity />}
+              icon={<Icon name="x-activity" />}
               value={callsToday.length}
               sub={
                 callsToday.length > 0
@@ -1291,7 +1289,7 @@ function MCPServersDesktop() {
             />
             <KpiTile
               title={t('engine:mcp.kpiApproved')}
-              icon={<ShieldCheck />}
+              icon={<Icon name="x-shield" />}
               value={approvedCount}
               sub={
                 allowAllMCPPermissions
@@ -1351,7 +1349,7 @@ function MCPServersDesktop() {
             <Frame>
               <FrameBody>
                 <EmptyState
-                  icon={<Workflow />}
+                  icon={<Icon name="flow" size={20} />}
                   title={t('mcp-servers:noServers')}
                   action={
                     <Button size="sm" onClick={() => handleOpenDialog()}>
@@ -1366,7 +1364,7 @@ function MCPServersDesktop() {
             <Frame>
               <FrameBody>
                 <EmptyState
-                  icon={<Workflow />}
+                  icon={<Icon name="flow" />}
                   title={t('mcp-servers:noSearchResults', { query: searchQuery })}
                 />
               </FrameBody>
@@ -1380,7 +1378,7 @@ function MCPServersDesktop() {
                 style={{ animationDelay: `${60 + filtered.length * 50}ms` }}
                 className="flex min-h-[150px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-strong text-[13px] text-muted-foreground transition-colors hover:bg-hover-row hover:text-foreground motion-safe:animate-rise-in"
               >
-                <Plus className="size-4" aria-hidden />
+                <Icon name="x-plus" />
                 {t('engine:mcp.addTile')}
                 <small className="text-[11.5px] text-muted-foreground">
                   {t('engine:mcp.addTileHint')}
