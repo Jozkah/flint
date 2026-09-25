@@ -239,7 +239,7 @@ export function CoworkTasksPanel({
       title={t('common:tasks.title')}
       summary={
         totals.total > 0 ? (
-          <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+          <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
             {totals.tokens > 0
               ? t('common:tasks.summary', {
                   count: totals.total,
@@ -253,14 +253,14 @@ export function CoworkTasksPanel({
     >
       <div className="flex h-full min-h-0 flex-col">
         {workflows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+          <p className="px-4 py-10 text-center text-xs text-muted-foreground motion-safe:animate-rise-in">
             {t('common:tasks.empty')}
           </p>
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin]">
             {running.length > 0 && (
               <>
-                <p className="px-3 pb-1 pt-3 text-xs font-medium text-muted-foreground">
+                <p className="px-3 pt-3 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:tasks.running', { count: running.length })}
                 </p>
                 {running.map(section)}
@@ -283,7 +283,7 @@ export function CoworkTasksPanel({
                         !showFinished && '-rotate-90'
                       )}
                     />
-                    <span className="text-xs font-medium text-muted-foreground">
+                    <span className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                       {t('common:tasks.finished', { count: finished.length })}
                     </span>
                   </button>
@@ -381,7 +381,7 @@ function WorkflowSection({
 
   return (
     <section
-      className="border-b last:border-b-0"
+      className="border-b border-dashed border-border last:border-b-0"
       ref={isFocus ? focusRef : undefined}
       tabIndex={isFocus ? -1 : undefined}
     >
@@ -390,7 +390,7 @@ function WorkflowSection({
         type="button"
         onClick={onToggle}
         aria-expanded={expanded}
-        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2 text-left hover:bg-accent"
+        className="flex min-w-0 flex-1 items-start gap-2 px-3 py-2.5 text-left outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
       >
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
@@ -445,7 +445,7 @@ function WorkflowSection({
           variant="ghost"
           size="xs"
           disabled={stopping}
-          className="mr-2 mt-2 shrink-0"
+          className="mt-2 mr-2 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
           aria-label={t('common:tasks.stopWorkflow', { name: workflow.title })}
           onClick={onCancelWorkflow}
         >
@@ -462,7 +462,7 @@ function WorkflowSection({
         <div className="pb-1">
           {view.phases.map(({ phase, tasks }) => (
             <div key={phase.id}>
-              <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+              <p className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                 {t('common:tasks.phase', { name: phase.name })}
               </p>
               {tasks.map(taskRow)}
@@ -471,7 +471,7 @@ function WorkflowSection({
           {view.unphased.length > 0 && (
             <div>
               {view.phases.length > 0 && (
-                <p className="px-3 pb-1 pt-2 text-xs font-medium text-muted-foreground">
+                <p className="px-3 pt-2 pb-1 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
                   {t('common:tasks.unphased')}
                 </p>
               )}
@@ -494,13 +494,15 @@ function ProgressBar({ progress }: { progress: ActivityProgress }) {
       aria-valuemin={0}
       aria-valuemax={progress.total}
       aria-valuenow={progress.finished}
-      className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-sunken"
+      className="mt-1.5 block h-1.5 w-full overflow-hidden rounded-full bg-track"
     >
-      {/* Neutral: progress is not selection, so it never takes the accent. */}
+      {/* The design's meter: the primary gradient, red once anything failed. */}
       <span
         className={cn(
-          'block h-full rounded-full motion-safe:transition-[width]',
-          progress.error > 0 ? 'bg-destructive' : 'bg-ink-2'
+          'block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo',
+          progress.error > 0
+            ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
+            : 'bg-grad'
         )}
         style={{ width: `${Math.round(progress.fraction * 100)}%` }}
       />
@@ -619,14 +621,14 @@ export function TeamMemberControls({ task, control }: { task: ActivityTask; cont
           <textarea
             aria-label={t('common:tasks.replaceBrief')}
             data-testid="team-member-replace-brief"
-            className="min-h-12 rounded-md border bg-transparent px-2 py-1 text-[11px]"
+            className="min-h-12 rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[11px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
           />
           <input
             aria-label={t('common:tasks.replaceAgent')}
             data-testid="team-member-replace-agent"
-            className="rounded-md border bg-transparent px-2 py-1 text-[11px]"
+            className="rounded-lg border-[0.8px] border-input bg-card px-2 py-1 text-[11px] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
             value={agent}
             onChange={(e) => setAgent(e.target.value)}
           />
@@ -677,9 +679,9 @@ function TaskItem({
       // The open row is the selected one: a neutral fill and the 2px accent
       // marker, never the accent as a fill.
       className={cn(
-        'relative border-t',
+        'relative border-t border-dashed border-border',
         expanded &&
-          'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
+          'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-acc'
       )}
     >
       <div className="flex items-start">
@@ -687,7 +689,7 @@ function TaskItem({
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-start gap-2 py-2 pl-5 pr-2 text-left hover:bg-accent"
+          className="flex min-w-0 flex-1 items-start gap-2 py-2 pr-2 pl-6 text-left text-[12.5px] outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
         >
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -710,7 +712,7 @@ function TaskItem({
             <span className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
               {/* Kind in words as well as the icon, so it is read out and
                 does not rest on telling two glyphs apart. */}
-              <span className="text-ink-2">
+              <span className="text-fg-2">
                 {task.kind === 'shell'
                   ? t('common:tasks.kindShell')
                   : t('common:tasks.kindAgent')}
@@ -720,7 +722,7 @@ function TaskItem({
               {task.kind === 'agent' &&
                 task.agentName &&
                 task.agentName !== task.title && (
-                  <span className="truncate text-ink-2">{task.agentName}</span>
+                  <span className="truncate text-fg-2">{task.agentName}</span>
                 )}
               {task.status === 'queued' && task.waiting != null && (
                 <span>
@@ -757,7 +759,7 @@ function TaskItem({
                 </span>
               )}
               {task.jobId && (
-                <span className="rounded-sm bg-sunken px-1 font-mono text-ink-2">
+                <span className="rounded-sm bg-muted px-1 font-mono text-fg-2">
                   {t('common:tasks.background', { jobId: task.jobId })}
                 </span>
               )}
@@ -798,7 +800,7 @@ function TaskItem({
             variant="ghost"
             size="xs"
             disabled={cancelling}
-            className="mr-2 mt-2 shrink-0"
+            className="mt-2 mr-2 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
             aria-label={t('common:tasks.stopTask', { name: task.title })}
             onClick={onCancel}
           >
@@ -820,7 +822,7 @@ function TaskItem({
         </p>
       )}
       {expanded && (
-        <div className="border-t bg-background px-3 py-2 pl-5">
+        <div className="border-t border-dashed border-border bg-muted/40 px-3 py-2.5 pl-6 motion-safe:animate-tree-in">
           <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
             <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
             {task.endedAt != null && (
@@ -831,7 +833,7 @@ function TaskItem({
             )}
           </p>
           {task.description && (
-            <p className="mb-2 text-[11px] text-ink-2">
+            <p className="mb-2 text-[11px] text-fg-2">
               {task.description}
             </p>
           )}
@@ -927,7 +929,7 @@ function TaskOutput({ task }: { task: ActivityTask }) {
           </span>
         </Button>
       </div>
-      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-sm bg-code p-2 font-mono text-[11px]">
+      <pre className="max-h-48 overflow-auto rounded-lg border-[0.8px] border-term-border bg-term-bg p-2.5 font-mono text-[11px] leading-[1.55] break-words whitespace-pre-wrap text-term-fg [scrollbar-width:thin]">
         {shown.join('\n')}
       </pre>
     </>

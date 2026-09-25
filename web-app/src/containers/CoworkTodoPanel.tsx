@@ -18,7 +18,7 @@ function StatusDot({ status }: { status: TodoStatus }) {
   }
   if (status === 'abandoned') {
     return (
-      <span className={cn(base, 'bg-line-strong text-ink-2')}>
+      <span className={cn(base, 'bg-border-strong text-fg-2')}>
         <Minus size={11} strokeWidth={3} />
       </span>
     )
@@ -26,12 +26,12 @@ function StatusDot({ status }: { status: TodoStatus }) {
   if (status === 'in_progress') {
     // In progress is work, not selection, so it is never the accent.
     return (
-      <span className={cn(base, 'text-ink-2')}>
+      <span className={cn(base, 'text-fg-2')}>
         <Loader2 size={13} className="motion-safe:animate-spin" aria-hidden />
       </span>
     )
   }
-  return <span className={cn(base, 'border-[1.5px] border-line-strong')} />
+  return <span className={cn(base, 'border-[1.5px] border-border-strong')} />
 }
 
 /**
@@ -79,9 +79,9 @@ export function CoworkTodoPanel({
         {tasks.length > 0 && (
           // Thin progress bar under the header, so overall completion reads at
           // a glance without parsing the list.
-          <div className="h-0.5 shrink-0 bg-sunken">
+          <div className="h-1 shrink-0 bg-track">
             <div
-              className="h-full bg-ink-2 motion-safe:transition-[width] motion-safe:duration-300"
+              className="h-full bg-grad motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -112,7 +112,7 @@ export function CoworkTodoPanel({
                           isCollapsed && '-rotate-90'
                         )}
                       />
-                      <span className="truncate text-xs font-semibold text-ink-2">
+                      <span className="truncate text-xs font-semibold text-fg-2">
                         {phase.name}
                       </span>
                       <span className="ml-auto shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">

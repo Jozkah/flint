@@ -559,7 +559,7 @@ export function CoworkCodePanel({
                   type="button"
                   onClick={() => onStateChange(toggleDir(state, entry.relPath))}
                   aria-expanded={expanded}
-                  className="flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs hover:bg-muted/50"
+                  className="flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row"
                   style={indent(depth)}
                 >
                   {expanded ? (
@@ -575,18 +575,27 @@ export function CoworkCodePanel({
                   )}
                   {expanded ? (
                     <FolderOpen
-                      size={13}
+                      size={14}
                       className="shrink-0 text-muted-foreground"
                     />
                   ) : (
                     <Folder
-                      size={13}
+                      size={14}
                       className="shrink-0 text-muted-foreground"
                     />
                   )}
                   <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                 </button>
-                {expanded && renderTree(entry.relPath, depth + 1)}
+                {/* A guide line down the open folder's children, as the
+                    design's file trees draw them. */}
+                {expanded && (
+                  <div
+                    className="relative motion-safe:animate-tree-in before:pointer-events-none before:absolute before:inset-y-0 before:left-[var(--guide)] before:w-px before:bg-border"
+                    style={guide(depth)}
+                  >
+                    {renderTree(entry.relPath, depth + 1)}
+                  </div>
+                )}
               </div>
             )
           }
@@ -604,16 +613,16 @@ export function CoworkCodePanel({
                   : undefined
               }
               className={cn(
-                'flex w-full items-center gap-1 px-2 py-0.5 text-left text-xs',
-                viewable ? 'hover:bg-muted/50' : 'opacity-50',
+                'flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row',
+                !viewable && 'opacity-50',
                 state.activeTabId ===
                   tabId(projectTab(entry.relPath, projectKey ?? '')) &&
-                  'bg-secondary'
+                  'bg-accent font-medium text-foreground'
               )}
               style={indent(depth)}
             >
               <span className="w-3 shrink-0" />
-              <FileIcon size={13} className="shrink-0 text-muted-foreground" />
+              <FileIcon size={14} className="shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{entry.name}</span>
             </button>
           )
@@ -631,9 +640,11 @@ export function CoworkCodePanel({
   }
 
   const body = !folder && state.tabs.length === 0 ? (
-    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-      <FolderTree size={24} className="text-muted-foreground" />
-      <p className="text-sm text-muted-foreground">
+    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center motion-safe:animate-rise-in">
+      <span className="grid size-10 place-items-center rounded-xl bg-card text-muted-foreground shadow-lift">
+        <FolderTree size={18} />
+      </span>
+      <p className="max-w-xs text-xs text-muted-foreground">
         {t('common:codePanel.noProject')}
       </p>
       <Button size="sm" onClick={onAttach}>
@@ -647,7 +658,7 @@ export function CoworkCodePanel({
         <div
           role="tablist"
           aria-label={t('common:codePanel.openFiles')}
-          className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b px-1"
+          className="flex min-h-[38px] shrink-0 flex-wrap items-center gap-1 border-b border-dashed border-border px-2 py-1.5"
         >
           <Button
             variant="ghost"
@@ -657,7 +668,7 @@ export function CoworkCodePanel({
             onClick={() => setExplorerOpen((v) => !v)}
             className={cn(
               'shrink-0',
-              explorerOpen ? 'text-brand-text' : 'text-muted-foreground'
+              explorerOpen ? 'bg-accent text-foreground' : 'text-muted-foreground'
             )}
           >
             <FolderTree className="size-3.5" />
@@ -672,10 +683,10 @@ export function CoworkCodePanel({
                 role="tab"
                 aria-selected={isActive}
                 className={cn(
-                  'group flex shrink-0 cursor-pointer items-center gap-1 rounded-sm px-2 py-0.5 text-xs',
+                  'group flex h-[26px] shrink-0 cursor-pointer items-center gap-1 rounded-md border-[0.8px] pr-1 pl-2.5 font-mono text-xs outline-none transition-[background-color,border-color] duration-150 focus-visible:ring-[3px] focus-visible:ring-ring/40',
                   isActive
-                    ? 'bg-secondary text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50'
+                    ? 'border-border bg-card text-foreground shadow-[0_1px_3px_rgba(0,0,0,.06)]'
+                    : 'border-transparent text-muted-foreground hover:bg-hover-row'
                 )}
                 title={`${tab.path} — ${originTitle(tab, t)}`}
                 onClick={() => onStateChange(focusTab(state, id))}
@@ -716,9 +727,9 @@ export function CoworkCodePanel({
                     e.stopPropagation()
                     onStateChange(closeTab(state, id))
                   }}
-                  className="rounded-sm text-muted-foreground hover:text-foreground"
+                  className="grid h-[22px] w-[18px] place-items-center rounded-sm text-muted-foreground opacity-50 transition-opacity hover:text-foreground hover:opacity-100"
                 >
-                  <X size={12} />
+                  <X size={11} />
                 </button>
               </div>
             )
@@ -756,7 +767,7 @@ export function CoworkCodePanel({
       {folder != null && (explorerOpen || state.tabs.length === 0) && (
         <div
           className={cn(
-            'shrink-0 overflow-y-auto border-b py-1',
+            'shrink-0 overflow-y-auto border-b border-dashed border-border py-1.5 [scrollbar-width:thin]',
             state.tabs.length > 0 ? 'max-h-[45%]' : 'flex-1 border-b-0'
           )}
           data-testid="code-explorer"
@@ -781,15 +792,15 @@ export function CoworkCodePanel({
               {active.origin.kind === 'external' && (
                 <div
                   role="status"
-                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-ink-2"
+                  className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
                 >
                   <span className="min-w-0 flex-1">
                     {t('common:codePanel.externalNote')}
                   </span>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 shrink-0 px-2 text-xs"
+                    size="xs"
+                    variant="link"
+                    className="h-auto shrink-0 px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
                     onClick={chooseExternalAgain}
                   >
                     {t('common:codePanel.chooseAgainAction')}
@@ -799,15 +810,15 @@ export function CoworkCodePanel({
               {isTabStale(active, loadedAt.get(activeId), writeCounts) && (
                 <div
                   role="status"
-                  className="flex shrink-0 items-center gap-2 border-b bg-muted/40 px-3 py-1.5 text-xs text-ink-2"
+                  className="mx-3 mb-2 flex shrink-0 items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
                 >
                   <span className="min-w-0 flex-1">
                     {t('common:codePanel.stale')}
                   </span>
                   <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-6 shrink-0 px-2 text-xs"
+                    size="xs"
+                    variant="link"
+                    className="h-auto shrink-0 px-0 text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
                     onClick={() => void loadFile(active)}
                   >
                     {t('common:codePanel.reload')}
@@ -937,7 +948,7 @@ export function CoworkCodePanel({
       >
         {dragOver && (
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center p-2">
-            <span className="rounded-full border bg-background/95 px-3 py-1 text-xs shadow-sm">
+            <span className="rounded-full bg-popover px-3 py-1 text-xs shadow-pop motion-safe:animate-dd-in">
               {t(dropLabelKey('code'))}
             </span>
           </div>
@@ -963,13 +974,16 @@ export function CoworkCodePanel({
 
 function Notice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+    <div className="flex h-full items-center justify-center p-6 text-center text-xs text-muted-foreground">
       <div>{children}</div>
     </div>
   )
 }
 
-const indent = (depth: number) => ({ paddingLeft: `${8 + depth * 12}px` })
+const indent = (depth: number) => ({ paddingLeft: `${10 + depth * 14}px` })
+/** Where a folder's guide line sits: under its own chevron. */
+const guide = (depth: number) =>
+  ({ '--guide': `${16 + depth * 14}px` }) as React.CSSProperties
 
 /** Marker the Rust side puts on an error the OS refused for permissions. */
 /** A human phrase for where a tab's file lives, for its tooltip. */

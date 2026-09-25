@@ -115,11 +115,11 @@ export function CoworkTurnUndo({
   const ordered = [...turns].reverse()
   return (
     <section
-      className="border-b border-border px-3 py-2.5"
+      className="px-3 pt-2.5 pb-1"
       aria-label={t('common:turnUndo.title')}
       data-testid="turn-undo"
     >
-      <p className="text-xs font-medium text-ink-2">
+      <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
         {t('common:turnUndo.title')}
       </p>
       {/* The recovery boundary, stated before the buttons rather than learned
@@ -127,7 +127,7 @@ export function CoworkTurnUndo({
       <p className="mt-0.5 mb-1.5 text-xs text-muted-foreground">
         {t('common:turnUndo.scope')}
       </p>
-      <ul className="flex flex-col gap-1">
+      <ul className="-mx-3 flex flex-col">
         {ordered.map((turn, i) => {
           const undone = turn.state === 'undone'
           const label = t('common:turnUndo.turn', {
@@ -142,7 +142,7 @@ export function CoworkTurnUndo({
           return (
             <li
               key={turn.run}
-              className="flex items-center gap-2 text-xs"
+              className="flex items-center gap-2 border-b border-dashed border-border px-3 py-2 text-xs text-fg-2 last:border-b-0"
               data-testid="turn-undo-row"
               data-run={turn.run}
               data-state={turn.state}
@@ -167,9 +167,9 @@ export function CoworkTurnUndo({
               </span>
               {undone ? (
                 <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 pointer-coarse:h-11"
+                  size="xs"
+                  variant="surface"
+                  className="h-[26px] pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, false)}
                   aria-label={`${t('common:turnUndo.redo')}: ${label}. ${who}`}
@@ -180,9 +180,9 @@ export function CoworkTurnUndo({
                 </Button>
               ) : (
                 <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 pointer-coarse:h-11"
+                  size="xs"
+                  variant="surface"
+                  className="h-[26px] pointer-coarse:h-11"
                   disabled={busy !== null}
                   onClick={() => void act(turn, true)}
                   aria-label={`${t('common:turnUndo.undo')}: ${label}. ${who}`}
@@ -203,7 +203,7 @@ export function CoworkTurnUndo({
         className={
           status?.ok === false
             ? 'mt-1 text-xs text-destructive'
-            : 'mt-1 text-xs text-ink-2'
+            : 'mt-1 text-xs text-fg-2'
         }
         data-testid="turn-undo-status"
       >

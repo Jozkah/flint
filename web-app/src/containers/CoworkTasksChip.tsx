@@ -46,7 +46,7 @@ export function CoworkTasksChip({
             finished: totals.finished,
           })}
           onClick={onToggle}
-          className={cn('shrink-0', open && 'text-brand-text')}
+          className={cn('shrink-0', open && 'text-acc-text')}
         >
           {inFlight > 0 ? (
             <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" />

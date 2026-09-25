@@ -45,7 +45,7 @@ function ImportRow({
   const pending = view.state === 'pending'
   return (
     <li
-      className="rounded-md border border-border p-2 text-xs"
+      className="rounded-[10px] border-[0.8px] border-border bg-card p-2.5 text-xs"
       data-testid="bundle-import-row"
       data-id={view.id}
       data-state={view.state}
@@ -151,13 +151,13 @@ export function CoworkBundleImport({
 
   return (
     <section
-      className="mb-2 rounded-md border border-border p-2"
+      className="mx-3 mb-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] p-3 motion-safe:animate-rise-in"
       data-testid="bundle-imports"
       aria-label="Imported patch bundles"
     >
       <div className="flex items-center gap-2">
         <PackageOpen size={14} className="text-muted-foreground" />
-        <p className="flex-1 text-xs font-medium text-ink-2">
+        <p className="flex-1 text-[12.5px] font-medium text-foreground">
           Patch bundles for this project
         </p>
         {running ? (

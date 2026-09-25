@@ -15,8 +15,8 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
  * I have open" is the question a diff exists to answer, and a single column
  * cannot answer it for a hunk that adds and removes.
  *
- * Restrained on purpose: a tinted row and a coloured marker, not a saturated
- * block. And the marker column is the reason the colours are not the only
+ * Restrained on purpose: a tinted row, a deeper tint on its gutter and a
+ * coloured marker, not a saturated block. And the marker column is the reason the colours are not the only
  * signal — a `+` and a `-` survive a greyscale screen.
  *
  * This surface reviews changes that have already been made. It has no staging,
@@ -39,25 +39,28 @@ export function DiffView({
   if (parsed.hunks.length === 0) return null
 
   const gutter = { minWidth: `${width}ch` }
+  // The hunk header starts where the code does, past both number columns.
+  const vars = { '--diff-gutter': `${width}ch` } as React.CSSProperties
 
   return (
     <div
       className={cn(
         // Long lines scroll sideways inside the diff rather than wrapping into
         // the gutter or widening whatever panel holds it.
-        'max-h-96 overflow-auto rounded-md border border-border bg-card font-mono text-xs',
+        'max-h-96 overflow-auto rounded-lg border-[0.8px] border-border bg-code-bg font-mono text-xs leading-[1.6] [scrollbar-width:thin]',
         className
       )}
+      style={vars}
     >
       <table className="w-max min-w-full border-collapse">
         <tbody>
           {parsed.hunks.map((hunk, hunkIndex) => (
             <Fragment key={`hunk-${hunkIndex}`}>
               {hunk.header && (
-                <tr className="bg-sunken">
+                <tr>
                   <td
                     colSpan={3}
-                    className="select-none px-2 py-0.5 text-muted-foreground"
+                    className="select-none px-2 py-0.5 pl-[calc(var(--diff-gutter)*2+1.5rem)] text-muted-foreground"
                   >
                     {hunk.header}
                     {hunk.heading && (
@@ -92,10 +95,18 @@ export function DiffView({
 }
 
 const ROW_TONE: Record<DiffLine['kind'], string> = {
-  add: 'bg-diff-add-bg text-diff-add',
-  remove: 'bg-diff-del-bg text-diff-del',
-  context: '',
+  add: 'bg-diff-add-bg text-foreground',
+  remove: 'bg-diff-del-bg text-foreground',
+  context: 'text-fg-2',
   meta: 'text-muted-foreground italic',
+}
+
+/** The number columns carry the stronger tint, as a margin bar would. */
+const GUTTER_TONE: Record<DiffLine['kind'], string> = {
+  add: 'bg-diff-add-ln text-diff-add',
+  remove: 'bg-diff-del-ln text-diff-del',
+  context: 'text-subtle-foreground',
+  meta: 'text-subtle-foreground',
 }
 
 const MARKER: Record<DiffLine['kind'], string> = {
@@ -115,13 +126,19 @@ function DiffRow({
   return (
     <tr className={ROW_TONE[line.kind]}>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
+        className={cn(
+          'select-none px-1.5 text-right align-top text-[11px] tabular-nums',
+          GUTTER_TONE[line.kind]
+        )}
         style={gutter}
       >
         {line.oldNumber ?? ''}
       </td>
       <td
-        className="select-none border-r px-1.5 text-right align-top text-muted-foreground tabular-nums"
+        className={cn(
+          'select-none px-1.5 text-right align-top text-[11px] tabular-nums',
+          GUTTER_TONE[line.kind]
+        )}
         style={gutter}
       >
         {line.newNumber ?? ''}
@@ -131,7 +148,7 @@ function DiffRow({
         <span
           aria-hidden
           className={cn(
-            'select-none pr-1',
+            'select-none pr-2',
             line.kind === 'add' && 'text-diff-add',
             line.kind === 'remove' && 'text-diff-del'
           )}
