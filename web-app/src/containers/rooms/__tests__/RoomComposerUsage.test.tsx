@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { createFakeApi, makeRoom, renderWithApi } from './roomsTestUtils'
@@ -32,10 +32,12 @@ describe('RoomComposer', () => {
       <RoomComposer room={makeRoom({ moderator: { enabled: true, name: 'Chair', model: null } })} />,
       api
     )
-    const to = screen.getByLabelText('Send to')
-    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Everyone', 'Chair', 'Alice', 'Bob'])
+    const to = screen.getByRole('radiogroup', { name: 'Send to' })
+    expect(within(to).getAllByRole('radio').map((o) => o.textContent)).toEqual(['Everyone', 'Chair', 'Alice', 'Bob'])
+    expect(within(to).getByRole('radio', { name: 'Everyone' })).toHaveAttribute('aria-checked', 'true')
 
-    await user.selectOptions(to, 'Bob')
+    await user.click(within(to).getByRole('radio', { name: 'Bob' }))
+    expect(screen.getByLabelText('Message to the room')).toHaveAttribute('placeholder', 'Write to Bob…')
     await user.type(screen.getByLabelText('Message to the room'), 'Your view?')
     await user.keyboard('{Control>}{Enter}{/Control}')
     expect(controller.sendUserMessage).toHaveBeenLastCalledWith('r1', 'Your view?', {
@@ -43,7 +45,7 @@ describe('RoomComposer', () => {
       participantId: 'p2',
     })
 
-    await user.selectOptions(to, 'Chair')
+    await user.click(within(to).getByRole('radio', { name: 'Chair' }))
     await user.type(screen.getByLabelText('Message to the room'), 'Wrap up')
     await user.click(screen.getByRole('button', { name: 'Send' }))
     expect(controller.sendUserMessage).toHaveBeenLastCalledWith('r1', 'Wrap up', { kind: 'moderator' })
@@ -52,7 +54,7 @@ describe('RoomComposer', () => {
   it('omits the moderator when disabled', () => {
     const { api } = createFakeApi()
     renderWithApi(<RoomComposer room={makeRoom()} />, api)
-    expect(screen.queryByRole('option', { name: 'Mod' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: 'Mod' })).not.toBeInTheDocument()
   })
 })
 

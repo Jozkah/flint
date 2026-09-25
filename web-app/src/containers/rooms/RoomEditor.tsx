@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { ChevronDown, Lock, Pencil, Plus, Settings2, Users } from 'lucide-react'
 import type {
   ModeratorConfig,
   Participant,
@@ -12,16 +13,26 @@ import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Chip } from '@/components/ui/chip'
+import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Input } from '@/components/ui/input'
+import { Segmented } from '@/components/ui/segmented'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { normalizeError, useRoomsApi, useRoomsState, type RoomsUiError } from './roomsBindings'
-import { activeParticipants, clampLimit, isEditable, limitCeiling } from './roomUi'
+import {
+  activeParticipants,
+  clampLimit,
+  isEditable,
+  limitCeiling,
+  participantColor,
+} from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
-import { RoomSection } from './RoomSection'
+import { RoomAvatar } from './RoomAvatar'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -150,11 +161,23 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   )
 }
 
+
+type SettingsTab = 'general' | 'discussion' | 'limits'
+
+const TOOL_PILL: Record<ToolAccess, string> = {
+  none: 'bg-accent text-muted-foreground',
+  read: 'bg-info-tint text-info',
+  edit: 'bg-warning-tint text-warning',
+}
+
+const toolKey = (v: ToolAccess) =>
+  v === 'none' ? 'rooms:editor.toolNone' : v === 'read' ? 'rooms:editor.toolRead' : 'rooms:editor.toolEdit'
+
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
   const serviceHub = useServiceHub()
-  const { pendingAction } = useRoomsState()
+  const { pendingAction, liveTurn } = useRoomsState()
   const providers = useModelProvider((s) => s.providers)
   const uid = useId()
   const locked = !isEditable(room.status)
@@ -171,6 +194,11 @@ export function RoomEditor({ room }: { room: Room }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<RoomsUiError | null>(null)
+  const [tab, setTab] = useState<SettingsTab>('general')
+  // Participant rows fold to one line; these are the ones opened for editing.
+  const [openIds, setOpenIds] = useState<Set<string>>(() => new Set())
+  // A room without enough participants opens straight onto the add form.
+  const [addOpen, setAddOpen] = useState(() => activeParticipants(room).length < 2)
   const dirty = useRef(false)
 
   const [newName, setNewName] = useState('')
@@ -214,6 +242,19 @@ export function RoomEditor({ room }: { room: Room }) {
   const disabled = locked || busy
   const atMax = participants.length >= ROOM_LIMIT_CEILINGS.maxParticipants
   const missingPricing = participants.some((p) => !parsePricing(p))
+  const speakingId =
+    liveTurn?.roomId === room.id && liveTurn.author.kind === 'participant'
+      ? liveTurn.author.participantId
+      : null
+
+  const setOpen = (id: string, open: boolean) =>
+    setOpenIds((prev) => {
+      if (prev.has(id) === open) return prev
+      const next = new Set(prev)
+      if (open) next.add(id)
+      else next.delete(id)
+      return next
+    })
 
   const updateParticipant = (id: string, patch: Partial<DraftParticipant>) => {
     dirty.current = true
@@ -223,7 +264,15 @@ export function RoomEditor({ room }: { room: Room }) {
 
   const save = async () => {
     setShowErrors(true)
-    if (Object.keys(errors).length > 0) return
+    const keys = Object.keys(errors)
+    if (keys.length > 0) {
+      // Bring every problem into view: open the participants that have one and
+      // switch to the settings tab that holds the first settings error.
+      const bad = participants.filter((p) => keys.some((k) => k.startsWith(`${p.id}:`)))
+      if (bad.length) setOpenIds((prev) => new Set([...prev, ...bad.map((p) => p.id)]))
+      if (keys.some((k) => k === 'mode' || k.startsWith('moderator:'))) setTab('discussion')
+      return
+    }
     setSaving(true)
     setError(null)
     try {
@@ -317,427 +366,549 @@ export function RoomEditor({ room }: { room: Room }) {
     }
   }
 
+  const pause = async () => {
+    setError(null)
+    try {
+      await api.controller.pause(room.id)
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+
   return (
     <form
-      aria-labelledby={`${uid}-heading`}
-      className="flex min-w-0 flex-col gap-5"
+      aria-label={t('rooms:editor.heading')}
+      className="flex min-w-0 flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault()
         void save()
       }}
     >
-      <div className="px-1">
-        <h2 id={`${uid}-heading`} className="text-sm font-semibold text-foreground">
-          {t('rooms:editor.heading')}
-        </h2>
-      </div>
-      {locked && (
-        <p
-          role="note"
-          className="rounded-lg border border-border bg-muted/60 p-2.5 text-xs text-muted-foreground"
-        >
-          {t('rooms:editor.lockedWhileRunning')}
-        </p>
-      )}
-
-      <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-3">
-        <RoomSection title={t('rooms:editor.sectionGeneral')} collapsible defaultOpen>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
-            <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
-            <Textarea
-              id={`${uid}-objective`}
-              rows={3}
-              value={objective}
-              onChange={(e) => edit(setObjective)(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label>{t('rooms:editor.workingFolder')}</Label>
-            <p className="text-xs text-muted-foreground">
-              {t('rooms:editor.workingFolderHint')}
-            </p>
-            {room.folder ? (
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-md border border-border bg-background px-2 py-1 text-xs">
-                  {room.folder}
-                </code>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="outline"
-                  onClick={() => void attachFolder()}
-                >
-                  {t('rooms:editor.changeFolder')}
-                </Button>
-                <Button
-                  type="button"
-                  size="xs"
-                  variant="ghost"
-                  onClick={() => void detachFolder()}
-                >
-                  {t('rooms:editor.detachFolder')}
-                </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="self-start"
-                onClick={() => void attachFolder()}
-              >
-                {t('rooms:editor.attachFolder')}
-              </Button>
-            )}
-          </div>
-        </RoomSection>
-
-        <RoomSection title={t('rooms:editor.sectionDiscussion')} collapsible>
-        <div className="flex flex-col gap-2">
-          <span id={`${uid}-mode`} className="text-sm font-medium">
-            {t('rooms:editor.speakingMode')}
-          </span>
-          <RadioGroup
-            aria-labelledby={`${uid}-mode`}
-            aria-describedby={visibleErrors.mode ? `${uid}-mode-error` : undefined}
-            value={mode}
-            disabled={disabled}
-            onValueChange={(v) => edit(setMode)(v as SpeakingMode)}
-            className="gap-2"
-          >
-            {MODES.map((m) => (
-              <div key={m} className="flex items-start gap-2">
-                <RadioGroupItem id={`${uid}-mode-${m}`} value={m} className="mt-0.5" />
-                <div className="min-w-0">
-                  <Label htmlFor={`${uid}-mode-${m}`}>{t(`rooms:mode.${m}`)}</Label>
-                  <p className="text-xs text-muted-foreground">{t(`rooms:mode.${m}Hint`)}</p>
-                </div>
-              </div>
-            ))}
-          </RadioGroup>
-          <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
-        </div>
-
-        <section
-          className="flex flex-col gap-2 border-t border-border pt-4"
-          aria-labelledby={`${uid}-mod-heading`}
-        >
-          <h3 id={`${uid}-mod-heading`} className="text-sm font-medium">
-            {t('rooms:editor.moderator')}
-          </h3>
-          <div className="flex items-center gap-2">
-            <Switch
-              id={`${uid}-mod-enabled`}
-              checked={moderator.enabled}
-              disabled={disabled}
-              onCheckedChange={(enabled) => edit(setModerator)({ ...moderator, enabled })}
-            />
-            <Label htmlFor={`${uid}-mod-enabled`}>{t('rooms:editor.moderatorEnable')}</Label>
-          </div>
-          {moderator.enabled && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor={`${uid}-mod-name`}>{t('rooms:editor.moderatorName')}</Label>
-                <Input
-                  id={`${uid}-mod-name`}
-                  value={moderator.name}
-                  aria-invalid={Boolean(visibleErrors['moderator:name']) || undefined}
-                  aria-describedby={`${uid}-mod-name-error`}
-                  onChange={(e) => edit(setModerator)({ ...moderator, name: e.target.value })}
-                />
-                <FieldError id={`${uid}-mod-name-error`} message={visibleErrors['moderator:name']} />
-              </div>
-              <div className="flex min-w-0 flex-col gap-1.5">
-                <Label htmlFor={`${uid}-mod-model`}>{t('rooms:editor.moderatorModel')}</Label>
-                <RoomModelSelect
-                  id={`${uid}-mod-model`}
-                  value={moderator.model}
-                  disabled={disabled}
-                  invalid={Boolean(visibleErrors['moderator:model'])}
-                  describedBy={`${uid}-mod-model-error`}
-                  onChange={(model) => edit(setModerator)({ ...moderator, model })}
-                />
-                <FieldError id={`${uid}-mod-model-error`} message={visibleErrors['moderator:model']} />
-              </div>
-              <p className="text-xs text-muted-foreground sm:col-span-2">
-                {t('rooms:editor.moderatorNoTools')}
-              </p>
-            </div>
-          )}
-        </section>
-        </RoomSection>
-
-        <RoomSection
+      <Frame className="motion-safe:animate-rise-in [animation-delay:100ms]">
+        <FrameHeader
+          icon={<Users />}
           title={`${t('rooms:editor.participants')} · ${participants.length}`}
-          description={t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-          collapsible
-          defaultOpen
-          contentClassName="gap-2"
-        >
-        <section className="flex flex-col gap-2">
-          {participants.length === 0 && (
-            <p className="text-sm text-muted-foreground">{t('rooms:editor.noParticipants')}</p>
-          )}
-          <ul className="flex flex-col gap-3">
+          actions={
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              aria-expanded={addOpen}
+              aria-controls={`${uid}-add`}
+              disabled={disabled || atMax}
+              onClick={() => setAddOpen((v) => !v)}
+            >
+              <Plus aria-hidden />
+              {t('rooms:editor.addShort')}
+            </Button>
+          }
+        />
+        <FrameBody className="gap-0 p-2">
+          <fieldset disabled={disabled} className="flex min-w-0 flex-col gap-0.5">
+            {participants.length === 0 && (
+              <p className="px-1.5 py-2 text-xs text-muted-foreground">
+                {t('rooms:editor.noParticipants')}
+              </p>
+            )}
             {participants.map((p) => {
               const pid = `${uid}-p-${p.id}`
               const model = findModel(providers, p.model)
               const tools = modelSupportsTools(model)
+              // Until the provider's model list resolves, show the access that was
+              // chosen rather than claiming the model has none.
+              const access = model && !tools ? 'none' : p.toolAccess
               const availability = p.source.availability
+              const open = openIds.has(p.id)
+              const speaking = speakingId === p.id
+              const hasError = Object.keys(visibleErrors).some((k) => k.startsWith(`${p.id}:`))
               return (
-                <li
+                <details
                   key={p.id}
                   data-testid="room-participant"
-                  className="flex min-w-0 flex-col gap-2 rounded-lg border border-border bg-background p-3"
+                  data-speaking={speaking || undefined}
+                  open={open}
+                  onToggle={(e) => setOpen(p.id, e.currentTarget.open)}
+                  className={cn(
+                    'group/prt min-w-0 rounded-[10px] transition-colors duration-150',
+                    open && 'bg-muted/60 shadow-[inset_0_0_0_0.8px_var(--border)]',
+                    speaking &&
+                      'bg-[color-mix(in_oklab,var(--primary)_7%,transparent)] shadow-[inset_2px_0_0_var(--primary)]'
+                  )}
                 >
+                  <summary
+                    className={cn(
+                      'flex cursor-pointer list-none items-center gap-2.5 rounded-[10px] px-1.5 py-2 outline-hidden hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-details-marker]:hidden',
+                      open && 'hover:bg-transparent'
+                    )}
+                  >
+                    <RoomAvatar
+                      model={p.model}
+                      name={p.name}
+                      color={participantColor(p.id)}
+                      size={30}
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <b
+                        className="truncate text-[13px] font-semibold"
+                        style={{ color: participantColor(p.id) }}
+                      >
+                        {p.name || t('rooms:editor.unnamed')}
+                      </b>
+                      <small className="truncate text-[11.5px] text-muted-foreground">
+                        {[p.role.trim(), model?.displayName || model?.name || p.model.id]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </small>
+                    </span>
+                    {(availability.state === 'unavailable' || hasError) && (
+                      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-destructive" />
+                    )}
+                    <span
+                      className={cn(
+                        'shrink-0 rounded-full px-[7px] py-0.5 text-[10.5px] whitespace-nowrap',
+                        TOOL_PILL[access]
+                      )}
+                    >
+                      {t(toolKey(access))}
+                    </span>
+                    <span
+                      aria-hidden
+                      className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground group-hover/prt:text-foreground [&_svg]:size-3.5"
+                    >
+                      {open ? <ChevronDown /> : <Pencil />}
+                    </span>
+                  </summary>
+
+                  <div className="flex min-w-0 flex-col gap-3 px-2 pt-1 pb-3">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor={`${pid}-name`}>{t('rooms:editor.participantName')}</Label>
+                        <Input
+                          id={`${pid}-name`}
+                          value={p.name}
+                          aria-invalid={Boolean(visibleErrors[`${p.id}:name`]) || undefined}
+                          aria-describedby={`${pid}-name-error`}
+                          onChange={(e) => updateParticipant(p.id, { name: e.target.value })}
+                        />
+                        <FieldError id={`${pid}-name-error`} message={visibleErrors[`${p.id}:name`]} />
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        <Label htmlFor={`${pid}-role`}>{t('rooms:editor.participantRole')}</Label>
+                        <Input
+                          id={`${pid}-role`}
+                          value={p.role}
+                          placeholder={t('rooms:editor.participantRolePlaceholder')}
+                          onChange={(e) => updateParticipant(p.id, { role: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-1.5">
+                      <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
+                      <RoomModelSelect
+                        id={`${pid}-model`}
+                        value={p.model}
+                        disabled={disabled}
+                        invalid={Boolean(visibleErrors[`${p.id}:model`])}
+                        describedBy={`${pid}-model-error ${pid}-availability`}
+                        onChange={(ref) => updateParticipant(p.id, { model: ref })}
+                      />
+                      <FieldError id={`${pid}-model-error`} message={visibleErrors[`${p.id}:model`]} />
+                      {availability.state === 'unavailable' && (
+                        <p
+                          id={`${pid}-availability`}
+                          data-testid="participant-availability"
+                          className="text-xs text-destructive"
+                        >
+                          {t(`rooms:availability.${availability.reason}`)}
+                          {availability.message ? ` — ${availability.message}` : ''}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-col gap-1.5">
+                      <span id={`${pid}-tools`} className="text-[12.5px] font-medium">
+                        {t('rooms:editor.toolAccess')}
+                      </span>
+                      <RadioGroup
+                        aria-labelledby={`${pid}-tools`}
+                        aria-describedby={`${pid}-tools-hint`}
+                        value={tools ? p.toolAccess : 'none'}
+                        disabled={disabled || !tools}
+                        onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
+                        className="flex flex-wrap gap-4"
+                      >
+                        {(['none', 'read', 'edit'] as const).map((v) => (
+                          <div key={v} className="flex items-center gap-2">
+                            <RadioGroupItem id={`${pid}-tools-${v}`} value={v} />
+                            <Label htmlFor={`${pid}-tools-${v}`}>{t(toolKey(v))}</Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                      <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
+                        {!tools
+                          ? t('rooms:editor.toolUnsupported')
+                          : p.toolAccess === 'edit'
+                            ? t('rooms:editor.toolEditHint')
+                            : t('rooms:editor.toolReadHint')}
+                      </p>
+                    </div>
+
+                    <details className="group/price text-sm">
+                      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">
+                        <ChevronDown
+                          aria-hidden
+                          className="size-3 -rotate-90 transition-transform duration-200 group-open/price:rotate-0"
+                        />
+                        {t('rooms:editor.pricing')}
+                      </summary>
+                      <p className="mt-1 text-xs text-muted-foreground">{t('rooms:editor.pricingHint')}</p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div className="flex min-w-0 flex-col gap-1.5">
+                          <Label htmlFor={`${pid}-price-in`}>{t('rooms:editor.priceInput')}</Label>
+                          <Input
+                            id={`${pid}-price-in`}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={p.priceIn}
+                            onChange={(e) => updateParticipant(p.id, { priceIn: e.target.value })}
+                          />
+                        </div>
+                        <div className="flex min-w-0 flex-col gap-1.5">
+                          <Label htmlFor={`${pid}-price-out`}>{t('rooms:editor.priceOutput')}</Label>
+                          <Input
+                            id={`${pid}-price-out`}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={p.priceOut}
+                            onChange={(e) => updateParticipant(p.id, { priceOut: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </details>
+
+                    <div>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="destructive"
+                        aria-label={t('rooms:editor.removeLabel', { name: p.name })}
+                        onClick={() => void remove(p.id)}
+                      >
+                        {t('rooms:editor.remove')}
+                      </Button>
+                    </div>
+                  </div>
+                </details>
+              )
+            })}
+
+            <div
+              id={`${uid}-add`}
+              hidden={!addOpen}
+              className="mt-1.5 flex min-w-0 flex-col gap-2 rounded-[10px] border border-dashed border-border-strong p-3 motion-safe:animate-dd-in"
+            >
+              <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
+              <p className="text-xs text-muted-foreground">
+                {t('rooms:editor.participantsHint', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
+              </p>
+              {atMax ? (
+                <p className="text-xs text-muted-foreground">
+                  {t('rooms:editor.maxReached', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
+                </p>
+              ) : (
+                <>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${pid}-name`}>{t('rooms:editor.participantName')}</Label>
+                      <Label htmlFor={`${uid}-new-name`}>{t('rooms:editor.participantName')}</Label>
                       <Input
-                        id={`${pid}-name`}
-                        value={p.name}
-                        aria-invalid={Boolean(visibleErrors[`${p.id}:name`]) || undefined}
-                        aria-describedby={`${pid}-name-error`}
-                        onChange={(e) => updateParticipant(p.id, { name: e.target.value })}
+                        id={`${uid}-new-name`}
+                        value={newName}
+                        aria-invalid={Boolean(newErrors.name) || undefined}
+                        aria-describedby={`${uid}-new-name-error`}
+                        onChange={(e) => setNewName(e.target.value)}
                       />
-                      <FieldError id={`${pid}-name-error`} message={visibleErrors[`${p.id}:name`]} />
+                      <FieldError id={`${uid}-new-name-error`} message={newErrors.name} />
                     </div>
                     <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${pid}-role`}>{t('rooms:editor.participantRole')}</Label>
+                      <Label htmlFor={`${uid}-new-role`}>{t('rooms:editor.participantRole')}</Label>
                       <Input
-                        id={`${pid}-role`}
-                        value={p.role}
+                        id={`${uid}-new-role`}
+                        value={newRole}
                         placeholder={t('rooms:editor.participantRolePlaceholder')}
-                        onChange={(e) => updateParticipant(p.id, { role: e.target.value })}
+                        onChange={(e) => setNewRole(e.target.value)}
                       />
                     </div>
                   </div>
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
+                    <Label htmlFor={`${uid}-new-model`}>{t('rooms:editor.participantModel')}</Label>
                     <RoomModelSelect
-                      id={`${pid}-model`}
-                      value={p.model}
+                      id={`${uid}-new-model`}
+                      value={newModel}
                       disabled={disabled}
-                      invalid={Boolean(visibleErrors[`${p.id}:model`])}
-                      describedBy={`${pid}-model-error ${pid}-availability`}
-                      onChange={(ref) => updateParticipant(p.id, { model: ref })}
+                      invalid={Boolean(newErrors.model)}
+                      describedBy={`${uid}-new-model-error`}
+                      onChange={setNewModel}
                     />
-                    <FieldError id={`${pid}-model-error`} message={visibleErrors[`${p.id}:model`]} />
-                    {availability.state === 'unavailable' && (
-                      <p
-                        id={`${pid}-availability`}
-                        data-testid="participant-availability"
-                        className="text-xs text-destructive"
-                      >
-                        {t(`rooms:availability.${availability.reason}`)}
-                        {availability.message ? ` — ${availability.message}` : ''}
-                      </p>
-                    )}
+                    <FieldError id={`${uid}-new-model-error`} message={newErrors.model} />
                   </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <span id={`${pid}-tools`} className="text-sm font-medium">
-                      {t('rooms:editor.toolAccess')}
-                    </span>
-                    <RadioGroup
-                      aria-labelledby={`${pid}-tools`}
-                      aria-describedby={`${pid}-tools-hint`}
-                      value={tools ? p.toolAccess : 'none'}
-                      disabled={disabled || !tools}
-                      onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
-                      className="flex flex-wrap gap-4"
-                    >
-                      {(['none', 'read', 'edit'] as const).map((v) => (
-                        <div key={v} className="flex items-center gap-2">
-                          <RadioGroupItem id={`${pid}-tools-${v}`} value={v} />
-                          <Label htmlFor={`${pid}-tools-${v}`}>
-                            {t(
-                              v === 'none'
-                                ? 'rooms:editor.toolNone'
-                                : v === 'read'
-                                  ? 'rooms:editor.toolRead'
-                                  : 'rooms:editor.toolEdit'
-                            )}
-                          </Label>
-                        </div>
-                      ))}
-                    </RadioGroup>
-                    <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
-                      {!tools
-                        ? t('rooms:editor.toolUnsupported')
-                        : p.toolAccess === 'edit'
-                          ? t('rooms:editor.toolEditHint')
-                          : t('rooms:editor.toolReadHint')}
-                    </p>
-                  </div>
-
-                  <details className="text-sm">
-                    <summary className="cursor-pointer text-xs text-muted-foreground">
-                      {t('rooms:editor.pricing')}
-                    </summary>
-                    <p className="mt-1 text-xs text-muted-foreground">{t('rooms:editor.pricingHint')}</p>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <div className="flex min-w-0 flex-col gap-1.5">
-                        <Label htmlFor={`${pid}-price-in`}>{t('rooms:editor.priceInput')}</Label>
-                        <Input
-                          id={`${pid}-price-in`}
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={p.priceIn}
-                          onChange={(e) => updateParticipant(p.id, { priceIn: e.target.value })}
-                        />
-                      </div>
-                      <div className="flex min-w-0 flex-col gap-1.5">
-                        <Label htmlFor={`${pid}-price-out`}>{t('rooms:editor.priceOutput')}</Label>
-                        <Input
-                          id={`${pid}-price-out`}
-                          type="number"
-                          min={0}
-                          step="0.01"
-                          value={p.priceOut}
-                          onChange={(e) => updateParticipant(p.id, { priceOut: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </details>
-
-                  <div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('rooms:editor.removeLabel', { name: p.name })}
-                      onClick={() => void remove(p.id)}
-                    >
-                      {t('rooms:editor.remove')}
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" onClick={() => void add()}>
+                      {t('rooms:editor.add')}
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setAddOpen(false)}>
+                      {t('rooms:controls.cancel')}
                     </Button>
                   </div>
-                </li>
-              )
-            })}
-          </ul>
+                </>
+              )}
+            </div>
+          </fieldset>
+        </FrameBody>
+      </Frame>
 
-          <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-dashed border-border bg-background/60 p-3">
-            <h4 className="text-xs font-medium text-muted-foreground">{t('rooms:editor.addHeading')}</h4>
-            {atMax ? (
-              <p className="text-xs text-muted-foreground">
-                {t('rooms:editor.maxReached', { max: ROOM_LIMIT_CEILINGS.maxParticipants })}
-              </p>
-            ) : (
-              <>
+      <Frame className="motion-safe:animate-rise-in [animation-delay:150ms]">
+        <FrameHeader
+          icon={<Settings2 />}
+          title={t('rooms:editor.heading')}
+          actions={
+            locked ? (
+              <Chip>
+                <Lock aria-hidden />
+                {t('rooms:editor.locked')}
+              </Chip>
+            ) : undefined
+          }
+        />
+        <FrameBody className="gap-3 p-3.5">
+          <Segmented<SettingsTab>
+            aria-label={t('rooms:editor.sections')}
+            value={tab}
+            onValueChange={setTab}
+            options={[
+              { value: 'general', label: t('rooms:editor.tabGeneral') },
+              { value: 'discussion', label: t('rooms:editor.tabDiscussion') },
+              { value: 'limits', label: t('rooms:editor.tabLimits') },
+            ]}
+          />
+
+          <fieldset
+            disabled={disabled}
+            className={cn(
+              'flex min-w-0 flex-col gap-2.5 transition-opacity',
+              locked && 'opacity-55'
+            )}
+          >
+            <div hidden={tab !== 'general'} className="flex min-w-0 flex-col gap-2.5">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${uid}-title`}>{t('rooms:editor.title')}</Label>
+                <Input id={`${uid}-title`} value={title} onChange={(e) => edit(setTitle)(e.target.value)} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`${uid}-objective`}>{t('rooms:editor.objective')}</Label>
+                <Textarea
+                  id={`${uid}-objective`}
+                  rows={2}
+                  value={objective}
+                  onChange={(e) => edit(setObjective)(e.target.value)}
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t('rooms:editor.workingFolder')}</Label>
+                {room.folder ? (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11.5px]">
+                      {room.folder}
+                    </code>
+                    <Button type="button" size="xs" variant="outline" onClick={() => void attachFolder()}>
+                      {t('rooms:editor.changeFolder')}
+                    </Button>
+                    <Button type="button" size="xs" variant="ghost" onClick={() => void detachFolder()}>
+                      {t('rooms:editor.detachFolder')}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="self-start"
+                    onClick={() => void attachFolder()}
+                  >
+                    {t('rooms:editor.attachFolder')}
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground">{t('rooms:editor.workingFolderHint')}</p>
+              </div>
+            </div>
+
+            <div hidden={tab !== 'discussion'} className="flex min-w-0 flex-col gap-2.5">
+              <span id={`${uid}-mode`} className="text-[12.5px] font-medium">
+                {t('rooms:editor.speakingMode')}
+              </span>
+              <RadioGroup
+                aria-labelledby={`${uid}-mode`}
+                aria-describedby={visibleErrors.mode ? `${uid}-mode-error` : undefined}
+                value={mode}
+                disabled={disabled}
+                onValueChange={(v) => edit(setMode)(v as SpeakingMode)}
+                className="gap-1"
+              >
+                {MODES.map((m) => (
+                  <label
+                    key={m}
+                    htmlFor={`${uid}-mode-${m}`}
+                    className={cn(
+                      'flex cursor-pointer items-start gap-2.5 rounded-[10px] border-[0.8px] border-transparent p-2 transition-colors hover:bg-hover-row',
+                      mode === m && 'border-border bg-card shadow-lift'
+                    )}
+                  >
+                    <RadioGroupItem
+                      id={`${uid}-mode-${m}`}
+                      value={m}
+                      aria-labelledby={`${uid}-mode-${m}-name`}
+                      aria-describedby={`${uid}-mode-${m}-hint`}
+                      className="mt-0.5"
+                    />
+                    <span className="min-w-0">
+                      <span id={`${uid}-mode-${m}-name`} className="block text-[13px] font-medium">
+                        {t(`rooms:mode.${m}`)}
+                      </span>
+                      <span id={`${uid}-mode-${m}-hint`} className="block text-xs text-muted-foreground">
+                        {t(`rooms:mode.${m}Hint`)}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
+              <FieldError id={`${uid}-mode-error`} message={visibleErrors.mode} />
+
+              <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
+                <div className="min-w-0">
+                  <Label htmlFor={`${uid}-mod-enabled`}>{t('rooms:editor.moderatorEnable')}</Label>
+                  <p className="text-xs text-muted-foreground">{t('rooms:editor.moderatorNoTools')}</p>
+                </div>
+                <Switch
+                  id={`${uid}-mod-enabled`}
+                  checked={moderator.enabled}
+                  disabled={disabled}
+                  onCheckedChange={(enabled) => edit(setModerator)({ ...moderator, enabled })}
+                />
+              </div>
+              {moderator.enabled && (
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <Label htmlFor={`${uid}-new-name`}>{t('rooms:editor.participantName')}</Label>
+                    <Label htmlFor={`${uid}-mod-name`}>{t('rooms:editor.moderatorName')}</Label>
                     <Input
-                      id={`${uid}-new-name`}
-                      value={newName}
-                      aria-invalid={Boolean(newErrors.name) || undefined}
-                      aria-describedby={`${uid}-new-name-error`}
-                      onChange={(e) => setNewName(e.target.value)}
+                      id={`${uid}-mod-name`}
+                      value={moderator.name}
+                      aria-invalid={Boolean(visibleErrors['moderator:name']) || undefined}
+                      aria-describedby={`${uid}-mod-name-error`}
+                      onChange={(e) => edit(setModerator)({ ...moderator, name: e.target.value })}
                     />
-                    <FieldError id={`${uid}-new-name-error`} message={newErrors.name} />
+                    <FieldError id={`${uid}-mod-name-error`} message={visibleErrors['moderator:name']} />
                   </div>
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <Label htmlFor={`${uid}-new-role`}>{t('rooms:editor.participantRole')}</Label>
-                    <Input
-                      id={`${uid}-new-role`}
-                      value={newRole}
-                      placeholder={t('rooms:editor.participantRolePlaceholder')}
-                      onChange={(e) => setNewRole(e.target.value)}
+                    <Label htmlFor={`${uid}-mod-model`}>{t('rooms:editor.moderatorModel')}</Label>
+                    <RoomModelSelect
+                      id={`${uid}-mod-model`}
+                      value={moderator.model}
+                      disabled={disabled}
+                      invalid={Boolean(visibleErrors['moderator:model'])}
+                      describedBy={`${uid}-mod-model-error`}
+                      onChange={(model) => edit(setModerator)({ ...moderator, model })}
                     />
+                    <FieldError id={`${uid}-mod-model-error`} message={visibleErrors['moderator:model']} />
                   </div>
                 </div>
-                <div className="flex min-w-0 flex-col gap-1.5">
-                  <Label htmlFor={`${uid}-new-model`}>{t('rooms:editor.participantModel')}</Label>
-                  <RoomModelSelect
-                    id={`${uid}-new-model`}
-                    value={newModel}
-                    disabled={disabled}
-                    invalid={Boolean(newErrors.model)}
-                    describedBy={`${uid}-new-model-error`}
-                    onChange={setNewModel}
-                  />
-                  <FieldError id={`${uid}-new-model-error`} message={newErrors.model} />
-                </div>
-                <div>
-                  <Button type="button" size="sm" variant="outline" onClick={() => void add()}>
-                    {t('rooms:editor.add')}
-                  </Button>
-                </div>
-              </>
-            )}
-          </div>
-        </section>
+              )}
+            </div>
 
-        </RoomSection>
+            <div hidden={tab !== 'limits'} className="flex min-w-0 flex-col gap-2.5">
+              <p className="text-xs text-muted-foreground">{t('rooms:editor.limitsHint')}</p>
+              <div className="grid gap-x-2.5 gap-y-3 sm:grid-cols-2">
+                {LIMIT_KEYS.map((key) => {
+                  const lid = `${uid}-limit-${key}`
+                  const ceiling = displayCeiling(key)
+                  const raw = limits[key]
+                  const parsed = parseLimit(key, raw)
+                  return (
+                    <div
+                      key={key}
+                      className={cn('flex min-w-0 flex-col gap-1.5', key === 'maxCostUsd' && 'sm:col-span-2')}
+                    >
+                      <Label htmlFor={lid}>{t(`rooms:limits.${key}`)}</Label>
+                      <Input
+                        id={lid}
+                        type="number"
+                        className="tabular-nums"
+                        min={key === 'maxCostUsd' || key === 'repetitionSimilarity' ? 0 : 1}
+                        max={ceiling ?? undefined}
+                        step={key === 'repetitionSimilarity' ? '0.05' : key === 'maxCostUsd' ? '0.01' : '1'}
+                        value={raw}
+                        placeholder={key === 'maxCostUsd' ? t('rooms:editor.costNone') : undefined}
+                        aria-describedby={`${lid}-hint`}
+                        onChange={(e) => edit(setLimits)({ ...limits, [key]: e.target.value })}
+                        onBlur={() => edit(setLimits)({ ...limits, [key]: showLimit(key, parsed.value) })}
+                      />
+                      <p id={`${lid}-hint`} className="text-[11.5px] text-muted-foreground">
+                        {parsed.capped && ceiling !== null ? (
+                          <span className="text-destructive">{t('rooms:editor.clamped', { max: ceiling })}</span>
+                        ) : key === 'maxCostUsd' ? (
+                          t('rooms:editor.costHint')
+                        ) : (
+                          ceiling !== null && t('rooms:editor.ceiling', { max: ceiling })
+                        )}
+                      </p>
+                      {key === 'maxCostUsd' && missingPricing && (
+                        <p className="text-xs text-destructive" data-testid="cost-missing-pricing">
+                          {t('rooms:editor.costMissingPricing')}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </fieldset>
 
-        <RoomSection
-          title={t('rooms:editor.limits')}
-          description={t('rooms:editor.limitsHint')}
-          collapsible
-        >
-          <div className="grid gap-3 sm:grid-cols-2">
-            {LIMIT_KEYS.map((key) => {
-              const lid = `${uid}-limit-${key}`
-              const ceiling = displayCeiling(key)
-              const raw = limits[key]
-              const parsed = parseLimit(key, raw)
-              return (
-                <div key={key} className="flex min-w-0 flex-col gap-1.5">
-                  <Label htmlFor={lid}>{t(`rooms:limits.${key}`)}</Label>
-                  <Input
-                    id={lid}
-                    type="number"
-                    min={key === 'maxCostUsd' || key === 'repetitionSimilarity' ? 0 : 1}
-                    max={ceiling ?? undefined}
-                    step={key === 'repetitionSimilarity' ? '0.05' : key === 'maxCostUsd' ? '0.01' : '1'}
-                    value={raw}
-                    placeholder={key === 'maxCostUsd' ? t('rooms:editor.costNone') : undefined}
-                    aria-describedby={`${lid}-hint`}
-                    onChange={(e) => edit(setLimits)({ ...limits, [key]: e.target.value })}
-                    onBlur={() => edit(setLimits)({ ...limits, [key]: showLimit(key, parsed.value) })}
-                  />
-                  <p id={`${lid}-hint`} className="text-xs text-muted-foreground">
-                    {parsed.capped && ceiling !== null ? (
-                      <span className="text-destructive">{t('rooms:editor.clamped', { max: ceiling })}</span>
-                    ) : key === 'maxCostUsd' ? (
-                      t('rooms:editor.costHint')
-                    ) : (
-                      ceiling !== null && t('rooms:editor.ceiling', { max: ceiling })
-                    )}
-                  </p>
-                  {key === 'maxCostUsd' && missingPricing && (
-                    <p className="text-xs text-destructive" data-testid="cost-missing-pricing">
-                      {t('rooms:editor.costMissingPricing')}
-                    </p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </RoomSection>
-
-        <div className="flex flex-col items-stretch gap-2 pt-1">
-          <Button type="submit" className="w-full">
-            {t('rooms:editor.save')}
-          </Button>
-          {saved && (
-            <span role="status" className="text-center text-xs text-muted-foreground">
-              {t('rooms:editor.saved')}
-            </span>
+          {locked ? (
+            <div
+              role="note"
+              className="flex items-center gap-2 rounded-[10px] bg-muted px-2.5 py-2 text-xs text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+            >
+              <Lock aria-hidden className="size-3.5 shrink-0" />
+              <span className="min-w-0 flex-1">{t('rooms:editor.lockedWhileRunning')}</span>
+              <Button
+                type="button"
+                size="xs"
+                variant="outline"
+                disabled={pendingAction !== null}
+                onClick={() => void pause()}
+              >
+                {t('rooms:controls.pause')}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-stretch gap-2">
+              <Button type="submit" className="w-full" disabled={busy}>
+                {t('rooms:editor.save')}
+              </Button>
+              {saved && (
+                <span role="status" className="text-center text-xs text-muted-foreground">
+                  {t('rooms:editor.saved')}
+                </span>
+              )}
+            </div>
           )}
-        </div>
-      </fieldset>
-      {error && (
-        <p role="alert" className="text-xs text-destructive">
-          {error.message}
-        </p>
-      )}
+          {error && (
+            <p role="alert" className="text-xs text-destructive">
+              {error.message}
+            </p>
+          )}
+        </FrameBody>
+      </Frame>
     </form>
   )
 }

@@ -54,7 +54,7 @@
     "heading": "Room settings",
     "sectionGeneral": "General",
     "sectionDiscussion": "Discussion & moderator",
-    "lockedWhileRunning": "Settings are locked while the room is running. Pause or stop it to edit.",
+    "lockedWhileRunning": "Pause the room to change settings.",
     "title": "Title",
     "objective": "Objective",
     "workingFolder": "Working folder",
@@ -107,7 +107,14 @@
       "modelRequired": "Choose a model.",
       "moderatorModelRequired": "Choose a model for the moderator.",
       "moderatorRequired": "Moderator-chosen mode needs an enabled moderator."
-    }
+    },
+    "addShort": "Add",
+    "unnamed": "Unnamed",
+    "locked": "Locked",
+    "sections": "Settings section",
+    "tabGeneral": "General",
+    "tabDiscussion": "Discussion",
+    "tabLimits": "Limits"
   },
   "limits": {
     "maxRounds": "Rounds",
@@ -195,7 +202,37 @@
     "stopTitle": "Stop the discussion?",
     "stopDescription": "The current turn is aborted and the room stops. You can start it again later.",
     "stopConfirm": "Stop room",
-    "needParticipants": "Add at least two participants to start."
+    "needParticipants": "Add at least two participants to start.",
+    "discussion": "Discussion",
+    "steer": "Steer the discussion",
+    "next": "Next",
+    "whoNext": "Who speaks next",
+    "upNext": "Up next",
+    "order": "Speaking order",
+    "pickNext": "Let {{name}} speak next",
+    "callVoteHint": "Everyone agrees, disagrees or abstains",
+    "finalPositionsHint": "Each participant states where they stand",
+    "synthesizeHint": "Summary of the outcome, with dissent",
+    "cancelTurnHint": "Stop only the reply in progress",
+    "steerLocked": "These unlock once the discussion is running."
+  },
+  "stage": {
+    "speaking": "{{name}} is speaking",
+    "compacting": "{{name}} is catching up",
+    "draft": "Ready to start",
+    "draftHint": "{{count}} participants · {{mode}}",
+    "running": "Discussion running",
+    "runningHint": "The next speaker is getting ready.",
+    "awaiting-user": "Your turn to choose",
+    "awaitingHint": "Pick who speaks next, or write to the room.",
+    "paused": "Paused",
+    "pausedHint": "Resume to continue from here.",
+    "stopped": "Stopped",
+    "stoppedHint": "Start again to continue from here.",
+    "completed": "Discussion finished",
+    "completedHint": "Start again to reopen it.",
+    "failed": "Discussion failed",
+    "failedHint": "Start again to retry."
   },
   "usage": {
     "label": "Usage",
@@ -224,7 +261,7 @@
   },
   "composer": {
     "label": "Message to the room",
-    "placeholder": "Write to the room…",
+    "placeholder": "Write to the room… use @ to mention someone",
     "placeholderExtend": "Add a message for the participants (optional)…",
     "to": "Send to",
     "toRoom": "Everyone",
@@ -233,6 +270,9 @@
     "hint": "Ctrl+Enter to send",
     "limitReached": "The {{limit}} limit was reached. Continue the discussion?",
     "extendBy": "More rounds",
-    "continue": "Continue"
+    "continue": "Continue",
+    "toShort": "To",
+    "placeholderTo": "Write to {{name}}…",
+    "mention": "Mention a participant"
   }
 }

@@ -43,6 +43,12 @@ describe('RoomEditor', () => {
     const { api } = createFakeApi()
     renderWithApi(<RoomEditor room={makeRoom()} />, api)
 
+    // The add form folds behind the Participants header's Add button.
+    const toggle = screen.getByRole('button', { name: 'Add' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await user.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
     const nameInputs = screen.getAllByLabelText('Name')
     const newName = nameInputs[nameInputs.length - 1]
     await user.type(newName, 'ALICE')
@@ -128,11 +134,17 @@ describe('RoomEditor', () => {
   it('is disabled while the room is running', () => {
     const { api } = createFakeApi()
     renderWithApi(<RoomEditor room={makeRoom({ status: 'running' })} />, api)
-    expect(screen.getByText(/Settings are locked while the room is running/)).toBeInTheDocument()
+    expect(screen.getByText('Pause the room to change settings.')).toBeInTheDocument()
     expect(screen.getByLabelText('Title')).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Add participant' })).toBeDisabled()
-    screen.getAllByRole('radio').forEach((r) => expect(r).toBeDisabled())
+    // Locked: the save button gives way to a Pause shortcut.
+    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled()
+    // The settings tabs stay usable so the locked values can still be read.
+    screen
+      .getAllByRole('radio')
+      .filter((r) => !r.closest('[data-slot="segmented"]'))
+      .forEach((r) => expect(r).toBeDisabled())
   })
 
   it('shows participant availability problems', () => {
@@ -162,6 +174,8 @@ describe('RoomEditor', () => {
     const { api } = createFakeApi()
     renderWithApi(<RoomEditor room={makeRoom({ mode: 'moderator-selected' })} />, api)
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    // Saving jumps to the tab that holds the problem.
+    expect(screen.getByRole('radio', { name: 'Discussion' })).toHaveAttribute('aria-checked', 'true')
     expect(screen.getByText('Moderator-chosen mode needs an enabled moderator.')).toBeInTheDocument()
     expect(api.updateRoomSettings).not.toHaveBeenCalled()
   })
@@ -170,6 +184,7 @@ describe('RoomEditor', () => {
     const user = userEvent.setup()
     const { api } = createFakeApi()
     renderWithApi(<RoomEditor room={makeRoom()} />, api)
+    await user.click(screen.getByRole('radio', { name: 'Discussion' }))
     const group = screen.getByRole('radiogroup', { name: 'Speaking mode' })
     const rr = within(group).getByRole('radio', { name: 'Round-robin' })
     expect(rr).toBeChecked()
