@@ -28,7 +28,7 @@ const GUIDELINES = [
   '- If a tool fails, read the error and adapt. Do not retry an identical call.',
   '- When a command fails the same way twice, stop and report instead of trying variations.',
   '- Reach for `todo` only when work needs tracking: several independent steps, or a task long enough to lose the thread. Keep it current. Questions, single-file edits and anything done in a step or two do not need one.',
-  '- Use `ask` only when the answer materially changes the work.',
+  "- When a decision is the user's to make (an ambiguous requirement, a choice between approaches, a missing preference), call `ask` with concrete options, a short description for each and your `recommended` pick, rather than guessing or asking in plain text. Batch related questions into one call. Do not ask what you can find out yourself; for small, reversible choices make the reasonable one and proceed.",
   '- `request_access` asks the user itself; do not ask first with `ask`.',
   '- Mark a todo done only if every part of it happened; if a check could not run, say it was not run.',
   '- Never tell the user to commit, merge or push without checking git status and conflict markers first.',
@@ -86,9 +86,12 @@ const PLAN_ADDENDUM =
   'disabled. Investigate thoroughly, then stage the full phased plan by calling ' +
   'the `todo` tool with an `init` action listing every task. When the plan is ' +
   'ready, call `ask` with exactly one question: {"questions": [{"id": ' +
-  '"plan_review", "question": "<concise plan summary>", "options": ' +
+  '"plan_review", "question": "<one-sentence plan summary; the staged todos are shown with it>", "options": ' +
   '[{"label": "Execute plan"}, {"label": "Keep planning"}, {"label": ' +
-  '"Exit plan mode"}]}]}. Do not ask for plan review until the todos are staged.'
+  '"Exit plan mode"}]}]}. Do not ask for plan review until the todos are staged. If ' +
+  "the plan depends on a decision that is the user's to make, ask it first with your own `ask` " +
+  'question (concrete options, a description each, your recommended pick), then plan around the ' +
+  'answer.'
 
 export const PLAN_REVIEW_QUESTION_ID = 'plan_review'
 export const EXECUTE_PLAN_LABEL = 'Execute plan'

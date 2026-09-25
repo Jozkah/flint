@@ -69,9 +69,34 @@ export const ASK_UNANSWERED_RESULT =
   'approved or agreed. Continue only with work that does not depend on the ' +
   'answer; otherwise end the turn and say you are waiting for their answer.'
 
-export function renderAskResult(answers: AskAnswer[] | null): ToolOutcome {
+/**
+ * One answered question as the model reads it: the question in its own words,
+ * then what the user chose (option labels) or wrote (their own text). Matches
+ * `AskRequest::render_results` in interaction.rs.
+ */
+export function formatAskAnswers(
+  answers: AskAnswer[],
+  request?: AskRequestPayload | null
+): string {
+  return answers
+    .map((a) => {
+      const question =
+        request?.questions.find((q) => q.id === a.id)?.question ?? ''
+      const text = a.custom_input?.trim()
+      const answer = text
+        ? `User wrote: ${text}`
+        : `User chose: ${a.selected.join(', ')}`
+      return `Question ${JSON.stringify(a.id)}: ${question}\n${answer}`
+    })
+    .join('\n\n')
+}
+
+export function renderAskResult(
+  answers: AskAnswer[] | null,
+  request?: AskRequestPayload | null
+): ToolOutcome {
   if (answers === null) {
     return { output: ASK_UNANSWERED_RESULT }
   }
-  return { output: JSON.stringify(answers) }
+  return { output: formatAskAnswers(answers, request) }
 }

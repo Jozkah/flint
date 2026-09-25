@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { parseAskRequest, renderAskResult } from '../coworkAsk'
+import { ASK_TOOL_DESCRIPTION } from '../coworkTools'
 
 const q = (over = {}) => ({
   id: 'q1',
@@ -54,9 +55,24 @@ describe('parseAskRequest', () => {
 })
 
 describe('renderAskResult', () => {
-  it('serialises the answers', () => {
-    const answers = [{ id: 'q1', selected: ['A'] }]
-    expect(JSON.parse(renderAskResult(answers).output)).toEqual(answers)
+  it('pairs each question with the chosen labels or typed text', () => {
+    const request = {
+      questions: [
+        q({ id: 'db', question: 'Which database?' }),
+        q({ id: 'extras', question: 'Which extras?', multi: true }),
+      ],
+    }
+    const out = renderAskResult(
+      [
+        { id: 'db', selected: [], custom_input: 'DuckDB' },
+        { id: 'extras', selected: ['A', 'B'] },
+      ],
+      request
+    ).output
+    expect(out).toBe(
+      'Question "db": Which database?\nUser wrote: DuckDB\n\n' +
+        'Question "extras": Which extras?\nUser chose: A, B'
+    )
   })
 
   // An empty array reads as "the user chose nothing", which is different from
@@ -69,5 +85,21 @@ describe('renderAskResult', () => {
     expect(out.output).toMatch(/not approval/)
     expect(out.output).not.toMatch(/best judgement/)
     expect(out.isError).toBeUndefined()
+  })
+})
+
+describe('ASK_TOOL_DESCRIPTION', () => {
+  it('teaches when and how to ask', () => {
+    for (const needle of [
+      'ambiguous',
+      '2-4 concrete options',
+      'recommended',
+      'multi',
+      'type their own answer',
+      'Batch related questions',
+      'find out yourself',
+    ]) {
+      expect(ASK_TOOL_DESCRIPTION).toContain(needle)
+    }
   })
 })

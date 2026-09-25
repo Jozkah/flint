@@ -5,7 +5,12 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { answerFor, buildOptions } from '@/lib/askOptions'
-import type { AskAnswer, AskRequestPayload } from '@/types/coworkSession'
+import { PLAN_REVIEW_QUESTION_ID } from '@/lib/coworkPrompt'
+import type {
+  AskAnswer,
+  AskRequestPayload,
+  TodoList,
+} from '@/types/coworkSession'
 
 /**
  * The option mark: a radio dot for a single choice, a square for several. No
@@ -33,6 +38,42 @@ function OptionMark({ checked, multi }: { checked: boolean; multi: boolean }) {
   )
 }
 
+/** The staged plan, phase by phase, under a plan review question. */
+function PlanSteps({ plan }: { plan?: TodoList | null }) {
+  const phases = (plan?.phases ?? []).filter((p) => p.tasks.length > 0)
+  if (phases.length === 0) return null
+  const named = phases.length > 1 || !!phases[0].name.trim()
+  return (
+    <div
+      data-testid="ask-plan-steps"
+      className="mb-1 max-h-64 overflow-y-auto rounded-lg border-[0.8px] border-border bg-muted/40 px-3 py-2 text-[12.5px] leading-5"
+    >
+      {phases.map((phase, pi) => (
+        <div key={pi} className={cn(pi > 0 && 'mt-1.5')}>
+          {named && phase.name.trim() && (
+            <p className="font-medium text-foreground">{phase.name}</p>
+          )}
+          <ol className="list-decimal pl-5 text-muted-foreground marker:text-muted-foreground/70">
+            {phase.tasks.map((task, ti) => (
+              <li
+                key={ti}
+                className={cn(
+                  'text-pretty',
+                  (task.status === 'completed' ||
+                    task.status === 'abandoned') &&
+                    'line-through opacity-60'
+                )}
+              >
+                {task.content}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /**
  * Inline card for the agent core's `ask` tool (see interaction.rs), rendered in
  * the transcript at the point the run asked -- the run is paused, but the user
@@ -44,10 +85,14 @@ export function CoworkAskCard({
   requestId,
   request,
   onRespond,
+  plan,
 }: {
   requestId: string | null
   request: AskRequestPayload | null
   onRespond: (requestId: string, answers: AskAnswer[] | null) => void
+  /** The session's staged todos, shown under a plan review question so the
+   * user reviews the plan itself rather than a one-sentence summary. */
+  plan?: TodoList | null
 }) {
   const { t } = useTranslation()
   const [index, setIndex] = useState(0)
@@ -200,6 +245,8 @@ export function CoworkAskCard({
           </button>
         </div>
       </div>
+
+      {question.id === PLAN_REVIEW_QUESTION_ID && <PlanSteps plan={plan} />}
 
       {/* Choices: one consistent vertical rhythm, inset from the card edge so
           nothing touches it, and the descriptions indented under their own

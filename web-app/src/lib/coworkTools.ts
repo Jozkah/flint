@@ -79,36 +79,70 @@ const todoTool: Tool = {
   }),
 } as Tool
 
+/**
+ * What the model is told about `ask`. Mirrors `ASK_TOOL_DESCRIPTION` in
+ * src-tauri/src/core/agent/interaction.rs; keep the two in step.
+ */
+export const ASK_TOOL_DESCRIPTION =
+  'Ask the user one or more multiple-choice questions and wait for the answers. ' +
+  "Use it when you need the user's input to proceed well: the request is ambiguous, there are several reasonable approaches " +
+  'and the choice is theirs, or a preference (naming, scope, library, style) is missing. ' +
+  'Do not ask what you can find out yourself by reading files or searching, and do not ask for permission to use tools. ' +
+  'For each question propose 2-4 concrete options, each a short label with a one-line description of what it means or costs. ' +
+  'Set `recommended` to the index of the option you would pick. Set `multi` when the choices are not exclusive. ' +
+  'The user can always type their own answer instead, so never add an "Other" option. ' +
+  'Batch related questions into one call rather than asking one at a time. ' +
+  "Each answer comes back as the question followed by the chosen label(s) or the user's own text."
+
 const askTool: Tool = {
-  description:
-    'Ask the user one or more structured questions. Use only when the answer materially changes the work.',
+  description: ASK_TOOL_DESCRIPTION,
   inputSchema: jsonSchema({
     type: 'object',
     properties: {
       questions: {
         type: 'array',
         minItems: 1,
+        description: 'One or more questions; batch related questions into one call.',
         items: {
           type: 'object',
           properties: {
-            id: { type: 'string' },
-            question: { type: 'string' },
+            id: {
+              type: 'string',
+              description:
+                'Short stable key for this question, unique in the call (e.g. "db"). The answer comes back under it.',
+            },
+            question: {
+              type: 'string',
+              description: 'The full question, one decision, ending with a question mark.',
+            },
             options: {
               type: 'array',
               minItems: 2,
               maxItems: 5,
+              description:
+                '2-4 concrete choices you propose (at most 5). Do not add an "Other" option; the user can always type their own answer.',
               items: {
                 type: 'object',
                 properties: {
-                  label: { type: 'string' },
-                  description: { type: 'string' },
+                  label: { type: 'string', description: 'A few words naming the choice.' },
+                  description: {
+                    type: 'string',
+                    description: 'One short line: what this choice means or its trade-off.',
+                  },
                 },
                 required: ['label'],
                 additionalProperties: false,
               },
             },
-            multi: { type: 'boolean' },
-            recommended: { type: 'integer', minimum: 0 },
+            multi: {
+              type: 'boolean',
+              description: 'true when choices are not exclusive and the user may pick several.',
+            },
+            recommended: {
+              type: 'integer',
+              minimum: 0,
+              description: '0-based index of the option you recommend; it is marked in the UI.',
+            },
           },
           required: ['id', 'question', 'options'],
           additionalProperties: false,
