@@ -43,6 +43,8 @@ import {
   participantColor,
 } from './roomUi'
 import { RoomAvatar } from './RoomAvatar'
+import { findModel } from './RoomModelSelect'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { RoomStatusBadge } from './RoomStatusBadge'
 import './rooms.css'
 
@@ -51,7 +53,12 @@ type T = (key: string, options?: Record<string, unknown>) => string
 const ACTIVE = ['running', 'awaiting-user', 'paused']
 
 /** Who is on stage right now, in words, for the top of the panel. */
-function stageFor(room: Room, live: LiveTurn | null, t: T) {
+function stageFor(
+  room: Room,
+  live: LiveTurn | null,
+  t: T,
+  modelName: (p: Participant) => string
+) {
   if (live && live.author.kind !== 'system') {
     const p =
       live.author.kind === 'participant'
@@ -63,7 +70,7 @@ function stageFor(room: Room, live: LiveTurn | null, t: T) {
         : live.author.name || p?.name || t('rooms:transcript.moderator')
     return {
       title: t(live.compacting ? 'rooms:stage.compacting' : 'rooms:stage.speaking', { name }),
-      hint: p ? [p.role.trim(), p.model.id].filter(Boolean).join(' · ') : '',
+      hint: p ? [p.role.trim(), modelName(p)].filter(Boolean).join(' · ') : '',
       speaker: p,
       speakerName: name,
     }
@@ -144,7 +151,7 @@ function ActionTile({
       className="flex cursor-pointer flex-col items-start gap-1 rounded-[10px] border-[0.8px] border-border bg-card p-2.5 text-left outline-hidden transition-[transform,box-shadow,border-color] duration-250 ease-expo hover:-translate-y-px hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 aria-expanded:border-border-strong disabled:pointer-events-none disabled:opacity-45 disabled:shadow-none"
       {...props}
     >
-      <span className="mb-0.5 grid size-[26px] place-items-center rounded-lg bg-accent text-secondary-foreground [&_svg]:size-3.5">
+      <span className="mb-0.5 grid size-[26px] place-items-center rounded-lg bg-muted text-secondary-foreground shadow-[inset_0_0_0_0.8px_var(--border)] [&_svg]:size-3.5">
         {icon}
       </span>
       <b className="text-[12.5px] font-semibold text-foreground">{label}</b>
@@ -158,6 +165,7 @@ function ActionTile({
 export function RoomControls({ room }: { room: Room }) {
   const { t } = useTranslation()
   const api = useRoomsApi()
+  const providers = useModelProvider((s) => s.providers)
   const { liveTurn, pendingAction, lastError } = useRoomsState()
   const [localError, setLocalError] = useState<RoomsUiError | null>(null)
   const [voteOpen, setVoteOpen] = useState(false)
@@ -185,7 +193,10 @@ export function RoomControls({ room }: { room: Room }) {
   }
 
   const speakers = availableParticipants(room)
-  const stage = stageFor(room, live, t)
+  const stage = stageFor(room, live, t, (p) => {
+    const m = findModel(providers, p.model)
+    return m?.displayName || m?.name || p.model.id
+  })
   const queue = speakingQueue(
     room,
     live?.author.kind === 'participant' ? live.author.participantId : null
@@ -289,12 +300,14 @@ export function RoomControls({ room }: { room: Room }) {
           <div className="mt-3 flex flex-col gap-1.5">
             <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
               <span>
-                {t('rooms:usage.rounds')}{' '}
-                <b className="font-semibold text-foreground">{usage.rounds}</b> / {limits.maxRounds}
+                {t('rooms:stage.round')}{' '}
+                <b className="font-semibold text-foreground">{usage.rounds}</b>{' '}
+                {t('rooms:stage.of')} {limits.maxRounds}
               </span>
               <span>
-                {t('rooms:usage.turns')}{' '}
-                <b className="font-semibold text-foreground">{usage.turns}</b> / {limits.maxTurns}
+                {t('rooms:stage.turn')}{' '}
+                <b className="font-semibold text-foreground">{usage.turns}</b>{' '}
+                {t('rooms:stage.of')} {limits.maxTurns}
               </span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-track">

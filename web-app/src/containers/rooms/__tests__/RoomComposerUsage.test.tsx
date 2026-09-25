@@ -77,7 +77,7 @@ describe('RoomUsageBar', () => {
     render(<RoomUsageBar room={room} />)
     const bar = screen.getByRole('region', { name: 'Usage' })
     expect(bar).toHaveTextContent('Turns3 / 40')
-    expect(bar).toHaveTextContent('1,234 / 200,000(estimated)')
+    expect(bar).toHaveTextContent('1.2k / 200k(estimated)')
     expect(bar).toHaveTextContent('not available without pricing')
     expect(bar).toHaveTextContent('1:05 / 30:00')
     expect(screen.getByTestId('room-stop-reason')).toHaveTextContent('Stopped: limit reached (Turns)')

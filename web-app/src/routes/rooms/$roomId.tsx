@@ -7,6 +7,8 @@ import HeaderPage from '@/containers/HeaderPage'
 import { Chip } from '@/components/ui/chip'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Segmented } from '@/components/ui/segmented'
+import { cn } from '@/lib/utils'
 import {
   normalizeError,
   useRoomsApi,
@@ -33,6 +35,8 @@ function RoomPage() {
   const api = useRoomsApi()
   const state = useRoomsState()
   const [error, setError] = useState<RoomsUiError | null>(null)
+  // Narrow widths show one pane at a time; wide ones show both.
+  const [pane, setPane] = useState<'talk' | 'controls'>('talk')
 
   useEffect(() => {
     if (api.status !== 'ready') return
@@ -103,12 +107,33 @@ function RoomPage() {
       </HeaderPage>
       {/*
         Wide: the conversation fills the left column and the controls scroll in
-        their own right column. Narrow: one column; the conversation gets a
-        fixed 70vh block so its transcript still scrolls, and the page scroll
-        reaches the controls below it.
+        their own right column. Narrow (phones, small windows): one pane at a
+        time, switched by the tabs above; the conversation fills the height so
+        its composer stays at the bottom, and the controls scroll on their own.
       */}
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto px-1 py-4 lg:grid-cols-[minmax(0,1fr)_370px] lg:overflow-hidden">
-        <Frame className="h-[70vh] min-h-0 motion-safe:animate-rise-in lg:h-full">
+      <div className="px-1 pt-3 lg:hidden">
+        <Segmented
+          aria-label={t('rooms:page.panes')}
+          value={pane}
+          onValueChange={setPane}
+          options={[
+            { value: 'talk', label: t('rooms:page.talk'), testId: 'room-pane-talk' },
+            { value: 'controls', label: t('rooms:page.controls'), testId: 'room-pane-controls' },
+          ]}
+        />
+      </div>
+      <div
+        className={cn(
+          'grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 px-1 py-3 lg:grid-cols-[minmax(0,1fr)_370px] lg:overflow-hidden lg:py-4',
+          pane === 'controls' ? 'overflow-y-auto' : 'overflow-hidden'
+        )}
+      >
+        <Frame
+          className={cn(
+            'h-full min-h-0 motion-safe:animate-rise-in',
+            pane === 'controls' && 'max-lg:hidden'
+          )}
+        >
           <FrameHeader
             icon={<MessagesSquare />}
             title={room.title || t('rooms:list.untitled')}
@@ -128,7 +153,10 @@ function RoomPage() {
         </Frame>
         <aside
           data-testid="room-side-panel"
-          className="flex w-full min-w-0 shrink-0 flex-col gap-4 pb-0.5 [scrollbar-width:none] lg:min-h-0 lg:w-[370px] lg:overflow-y-auto"
+          className={cn(
+            'flex w-full min-w-0 shrink-0 flex-col gap-4 pb-0.5 [scrollbar-width:none] lg:min-h-0 lg:w-[370px] lg:overflow-y-auto',
+            pane === 'talk' && 'max-lg:hidden'
+          )}
         >
           <RoomControls room={room} />
           <RoomEditor room={room} />
