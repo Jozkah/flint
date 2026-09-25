@@ -73,6 +73,7 @@
     "panes": "Conversation panes",
     "primary": "Main",
     "secondary": "Second",
+    "secondTitle": "Second conversation",
     "streaming": "Replying",
     "active": "Active pane",
     "pickTitle": "Open a conversation here",

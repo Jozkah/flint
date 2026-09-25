@@ -2106,6 +2106,13 @@ export function ThreadConversation({
     'conversation'
   )
   const detailsPanelId = useId()
+  // Splitting halves the width; the inspector gives its room to the panes.
+  useEffect(() => {
+    if (isSplit) {
+      setDetailsOpen(false)
+      setNarrowView('conversation')
+    }
+  }, [isSplit])
   const toggleDetails = useCallback(() => {
     const next = !detailsOpen
     setDetailsOpen(next)
