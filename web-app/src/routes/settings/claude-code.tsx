@@ -326,7 +326,7 @@ function ClaudeCodeIntegration() {
           </div>
 
           {(helperModels.customCli || helperModels.envVars.length > 0) && (
-            <div className="mt-3 space-y-1 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
+            <div className="mt-3 space-y-1 rounded-md bg-muted px-3 py-2 text-sm text-fg-2">
               {helperModels.customCli && (
                 <div className="break-all">
                   Command:{' '}
@@ -453,7 +453,7 @@ function HelperModelSelector({
                     'text-[10px] px-1.5 py-0.5 rounded-full shrink-0',
                     currentModel.isLocal
                       ? 'bg-success-tint text-success'
-                      : 'bg-sunken text-ink-2'
+                      : 'bg-muted text-fg-2'
                   )}
                 >
                   {currentModel.isLocal ? 'Local' : 'Remote'}
@@ -509,7 +509,7 @@ function HelperModelSelector({
                   return (
                     <div
                       key={providerKey}
-                      className="mx-1.5 my-1.5 rounded-md bg-sunken/50 py-1 first:mt-1"
+                      className="mx-1.5 my-1.5 rounded-md bg-muted/50 py-1 first:mt-1"
                     >
                       <div className="flex items-center gap-1.5 px-2 py-1">
                         <ProvidersAvatar provider={providerInfo} />
@@ -531,7 +531,7 @@ function HelperModelSelector({
                               'mx-1 mb-1 flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 transition-colors pointer-coarse:min-h-11',
                               'hover:bg-card',
                               isSelected &&
-                                'bg-brand-tint shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand-tint'
+                                'bg-accent shadow-[inset_2px_0_0_var(--primary)] hover:bg-accent'
                             )}
                           >
                             <div className="flex items-center gap-2 flex-1 min-w-0">

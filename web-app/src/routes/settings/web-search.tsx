@@ -32,7 +32,7 @@ export const Route = createFileRoute(route.settings.web_search as any)({
 })
 
 const ProviderFavicon = ({ initial }: { initial: string }) => (
-  <span aria-hidden className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-line-strong bg-sunken text-[0.5rem] font-medium uppercase text-ink-2">
+  <span aria-hidden className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border-strong bg-muted text-[0.5rem] font-medium uppercase text-fg-2">
     {initial}
   </span>
 )
@@ -97,7 +97,7 @@ function WebSearchContent() {
                       key={p.id}
                       className={cn(
                         'cursor-pointer my-0.5 gap-2',
-                        searchProvider === p.id && 'bg-brand-tint'
+                        searchProvider === p.id && 'bg-accent'
                       )}
                       onClick={() => setSearchProvider(p.id)}
                     >
@@ -182,7 +182,7 @@ function WebSearchContent() {
                         }
                         aria-pressed={showKey}
                         onClick={() => setShowKey(!showKey)}
-                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-sunken hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
+                        className="grid size-8 place-items-center rounded-md text-muted-foreground hover:bg-hover-row hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-10"
                       >
                         {showKey ? (
                           <EyeOff size={16} />

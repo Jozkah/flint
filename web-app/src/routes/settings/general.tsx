@@ -272,11 +272,11 @@ function General() {
                   &nbsp;
                 </span>
                 <div className="mt-1 flex min-w-0 items-center gap-2">
-                  <div className="min-w-0 max-w-100 rounded-sm bg-sunken px-1.5 py-0.5">
+                  <div className="min-w-0 max-w-100 rounded-sm bg-muted px-1.5 py-0.5">
                     <span
                       data-testid="app-data-folder-path"
                       title={janDataFolder}
-                      className="line-clamp-1 break-all font-mono text-xs text-ink-2"
+                      className="line-clamp-1 break-all font-mono text-xs text-fg-2"
                     >
                       {janDataFolder}
                     </span>
@@ -285,7 +285,7 @@ function General() {
                     onClick={() =>
                       janDataFolder && copyToClipboard(janDataFolder)
                     }
-                    className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-sunken focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+                    className="flex shrink-0 cursor-pointer items-center justify-center rounded-sm p-1 transition-colors hover:bg-hover-row focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11 pointer-coarse:min-w-11"
                     title={
                       isCopied
                         ? t('settings:general.copied')

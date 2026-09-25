@@ -9,8 +9,10 @@ import { useHardware, type GPU } from '@/hooks/useHardware'
 import { useLlamacppDevices } from '@/hooks/useLlamacppDevices'
 import { useEffect, useState } from 'react'
 import { Activity, RefreshCw } from 'lucide-react'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
-import { WidePageBody } from '@/containers/WidePageBody'
+import {
+  SettingsPageBody,
+  SettingsPageHeader,
+} from '@/containers/SettingsPageHeader'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import type {
   DeviceList,
@@ -71,12 +73,12 @@ function BackendChip({ label, active }: { label: string; active: boolean }) {
   return (
     <span
       title={t('settings:hardware.backendApiDesc')}
-      className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-0.5 font-mono text-xs text-foreground"
+      className="inline-flex h-[22px] items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-xs text-foreground"
     >
       <span
         className={cn(
           'size-1.5 rounded-full',
-          active ? 'bg-success' : 'bg-line-strong'
+          active ? 'bg-success' : 'bg-border-strong'
         )}
       />
       {label}
@@ -86,7 +88,7 @@ function BackendChip({ label, active }: { label: string; active: boolean }) {
 
 function SpecChip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="rounded border border-border bg-sunken px-1.5 py-0.5 font-mono text-xs text-ink-2">
+    <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-fg-2">
       {children}
     </span>
   )
@@ -221,17 +223,15 @@ function GpuGroupCard({
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-lg border border-border p-4 transition-colors',
+        'relative overflow-hidden rounded-[10px] border-[0.8px] border-border p-3 transition-[background-color,box-shadow] duration-200',
         // The device in use reads as the selected row: a neutral fill and a
-        // 2px accent marker. One that is off sits back on the sunken fill.
-        activated
-          ? 'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail'
-          : 'bg-sunken'
+        // 3px accent marker. One that is off stays on the plain card.
+        activated && 'bg-hover-row shadow-[inset_3px_0_0_var(--primary)]'
       )}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="truncate font-medium text-foreground">{group.name}</h2>
+          <h2 className="truncate text-[13px] font-medium text-foreground">{group.name}</h2>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             {group.devices.length > 1 ? (
               group.devices.map((groupDevice) => {
@@ -245,8 +245,8 @@ function GpuGroupCard({
                     className={cn(
                       'inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11',
                       isSelected
-                        ? 'border-brand bg-card text-foreground'
-                        : 'border-border text-muted-foreground hover:border-line-strong hover:bg-card hover:text-foreground'
+                        ? 'border-primary bg-card text-foreground'
+                        : 'border-border text-muted-foreground hover:border-border-strong hover:bg-card hover:text-foreground'
                     )}
                   >
                     <span
@@ -254,7 +254,7 @@ function GpuGroupCard({
                         'size-1.5 rounded-full',
                         isSelected && activated
                           ? 'bg-success'
-                          : 'bg-line-strong'
+                          : 'bg-border-strong'
                       )}
                     />
                     {backendLabel(parseDeviceId(groupDevice.id).backend)}
@@ -319,9 +319,9 @@ function AppleSiliconGpuCard({
   const usedPercent = totalMemory > 0 ? (usedMemory / totalMemory) * 100 : 0
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-accent p-4 before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-brand-rail">
+    <div className="relative overflow-hidden rounded-[10px] border-[0.8px] border-border bg-hover-row p-3 shadow-[inset_3px_0_0_var(--primary)]">
       <div className="min-w-0">
-        <h2 className="truncate font-medium text-foreground">{name}</h2>
+        <h2 className="truncate text-[13px] font-medium text-foreground">{name}</h2>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           <BackendChip label="Metal" active />
         </div>
@@ -491,28 +491,32 @@ function HardwareContent() {
 
   return (
     <div className="flex flex-col h-full w-full">
-      <SettingsPageHeader>
-        <Button
-          variant="outline"
-          size="sm"
-          className="pointer-coarse:h-11"
-          onClick={handleClickSystemMonitor}
-        >
-          <Activity className="text-muted-foreground" aria-hidden />
-          <span>{t('settings:hardware.systemMonitor')}</span>
-        </Button>
-      </SettingsPageHeader>
-      <WidePageBody>
+      <SettingsPageHeader title={t('common:hardware')} />
+      <SettingsPageBody
+        title={t('common:hardware')}
+        width="wide"
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={handleClickSystemMonitor}
+          >
+            <Activity className="text-muted-foreground" aria-hidden />
+            <span>{t('settings:hardware.systemMonitor')}</span>
+          </Button>
+        }
+      >
           {isLoading ? (
-            <div role="status" className="flex h-32 items-center justify-center rounded-lg border border-border bg-card">
+            <div role="status" className="flex h-32 items-center justify-center rounded-xl bg-muted text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)]">
               <div className="text-muted-foreground">
                 Loading hardware information...
               </div>
             </div>
           ) : (
-            // Two columns on a wide pane, so the facts fill the width instead
-            // of one long column; the GPU list spans both.
-            <div className="grid w-full min-w-0 grid-cols-1 items-start gap-4 xl:grid-cols-2">
+            // As many columns as fit, so the facts fill the width instead of
+            // one long column; the GPU list spans them all.
+            <div className="grid w-full min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] items-start gap-4">
               {/* OS Information */}
               <SettingTarget anchor="settings-hardware-os">
               <Card title={t('settings:hardware.os')}>
@@ -626,7 +630,7 @@ function HardwareContent() {
               </SettingTarget>
 
               {isAppleSilicon && (
-                <div className="min-w-0 xl:col-span-2">
+                <div className="col-span-full min-w-0">
                 <Card title={t('settings:hardware.gpus')}>
                   <AppleSiliconGpuCard
                     name={hardwareData.cpu?.name || 'Apple Silicon'}
@@ -638,14 +642,15 @@ function HardwareContent() {
               )}
 
               {!IS_MACOS && llamacpp && (
-                <div className="min-w-0 xl:col-span-2">
+                <div className="col-span-full min-w-0">
                 <Card
                   title={t('settings:hardware.gpus')}
-                  header={
-                    <div className="-mt-2 mb-4 flex justify-end">
+                  bodyClassName="py-3.5"
+                  aside={
+                    <>
                       <Button
                         variant="outline"
-                        size="sm"
+                        size="xs"
                         onClick={handleRefreshHardware}
                         disabled={isLoading}
                         className="pointer-coarse:h-11"
@@ -653,7 +658,7 @@ function HardwareContent() {
                         <RefreshCw className="text-muted-foreground" aria-hidden />
                         {t('settings:hardware.refresh')}
                       </Button>
-                    </div>
+                    </>
                   }
                 >
                   {llamacppDevicesLoading ? (
@@ -698,7 +703,7 @@ function HardwareContent() {
               )}
             </div>
           )}
-      </WidePageBody>
+      </SettingsPageBody>
     </div>
   )
 }

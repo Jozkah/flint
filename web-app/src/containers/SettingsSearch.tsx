@@ -208,7 +208,7 @@ export function SettingsSearch() {
                       className={cn(
                         'relative cursor-pointer rounded-sm px-2 py-1.5 pointer-coarse:py-2.5',
                         i === active &&
-                          'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand-rail'
+                          'bg-accent before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-primary'
                       )}
                     >
                       <span className="block truncate text-[13px] text-foreground">
