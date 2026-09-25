@@ -12,7 +12,12 @@ The Jan name and identifiers are retained wherever they carry legal attribution 
   <a href="#install">Install</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#features">Features</a> ·
+  <a href="#screenshots">Screenshots</a> ·
   <a href="#build-from-source">Build from source</a>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/01-overview.png" alt="Flint's Overview: tokens generated, generation speed and tool-call success, token throughput by day, latest activity and agent runs" width="100%">
 </p>
 
 ---
@@ -42,7 +47,7 @@ This build does not phone home. There is no telemetry, no analytics, no update c
 
 Signed native installers for Windows, macOS, and Linux are attached to each release on the [Releases](https://github.com/Jozkah/jan/releases) page once a release build has run. If no installer is attached yet (the Flint 0.9 release is prepared but its signed artifacts are produced by CI), build Flint from source (below); the result is a normal desktop app for Windows, macOS or Linux.
 
-**You bring your own models.** Use a GGUF model file you already have (Settings → Model Providers → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
+**You bring your own models.** Use a GGUF model file you already have (Models → llama.cpp → Import), an MLX model on Apple silicon, or a cloud provider with your own key. Nothing is downloaded for you.
 
 ## Getting started
 
@@ -321,6 +326,24 @@ Everything below is implemented in this fork, on top of upstream Jan. Open a sec
 - Custom CA certificates are verified on Windows only.
 - The desktop app has no slash commands or marketplace browsing; those are available from the command line or as agent tools only.
 - A full screen-reader pass has not been done.
+
+## Screenshots
+
+Flint's interface in dark and light themes, captured at 2560x1440. The conversations, runs and figures shown are example content.
+
+| | |
+|---|---|
+| <img src="docs/screenshots/02-new-chat.png" alt="New chat" width="100%"><br>New chat | <img src="docs/screenshots/03-chat.png" alt="Chat with tool calls, a terminal block and pull-request status" width="100%"><br>Chat with tool calls, a terminal block and pull-request status |
+| <img src="docs/screenshots/04-cowork.png" alt="Cowork: an agent working in a project folder" width="100%"><br>Cowork: an agent working in a project folder | <img src="docs/screenshots/05-rooms.png" alt="Rooms" width="100%"><br>Rooms |
+| <img src="docs/screenshots/06-room.png" alt="A room with several models discussing" width="100%"><br>A room with several models discussing | <img src="docs/screenshots/07-library.png" alt="Library" width="100%"><br>Library |
+| <img src="docs/screenshots/08-models.png" alt="Models" width="100%"><br>Models | <img src="docs/screenshots/09-provider-llamacpp.png" alt="A local provider (llama.cpp)" width="100%"><br>A local provider (llama.cpp) |
+| <img src="docs/screenshots/10-provider-openai.png" alt="A cloud provider" width="100%"><br>A cloud provider | <img src="docs/screenshots/11-tools-mcp.png" alt="Tools & MCP" width="100%"><br>Tools & MCP |
+| <img src="docs/screenshots/12-extensions.png" alt="Extensions" width="100%"><br>Extensions | <img src="docs/screenshots/13-system-monitor.png" alt="System Monitor" width="100%"><br>System Monitor |
+| <img src="docs/screenshots/14-logs.png" alt="Logs" width="100%"><br>Logs | <img src="docs/screenshots/15-settings-appearance.png" alt="Settings: Appearance" width="100%"><br>Settings: Appearance |
+| <img src="docs/screenshots/16-settings-memory.png" alt="Settings: Memory" width="100%"><br>Settings: Memory | <img src="docs/screenshots/17-settings-permissions.png" alt="Settings: Permissions" width="100%"><br>Settings: Permissions |
+| <img src="docs/screenshots/20-overview-light.png" alt="Overview, light theme" width="100%"><br>Overview, light theme | <img src="docs/screenshots/21-chat-light.png" alt="Chat, light theme" width="100%"><br>Chat, light theme |
+| <img src="docs/screenshots/22-cowork-light.png" alt="Cowork, light theme" width="100%"><br>Cowork, light theme | <img src="docs/screenshots/23-room-light.png" alt="A room, light theme" width="100%"><br>A room, light theme |
+| <img src="docs/screenshots/24-models-light.png" alt="Models, light theme" width="100%"><br>Models, light theme | |
 
 ## Build from source
 
