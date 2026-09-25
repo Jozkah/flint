@@ -26,13 +26,10 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
-  ChevronUp,
   DoorOpen,
-  MessagesSquare,
   MoreHorizontal,
   Plus,
   Trash2,
-  type LucideIcon,
 } from 'lucide-react'
 import {
   normalizeError,
@@ -41,6 +38,7 @@ import {
 } from '@/containers/rooms/roomsBindings'
 import type { RoomSummary } from '@/lib/rooms/types'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 import { memo, useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -117,7 +115,7 @@ const RoomItem = memo(function RoomItem({
  * The Rooms row with its room tree. The row itself opens the rooms page (there
  * is no separate "All rooms" entry); the chevron shows or hides the rooms.
  */
-export function RoomsNav({ icon: Icon = MessagesSquare }: { icon?: LucideIcon }) {
+export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { pathname } = useLocation()
@@ -170,7 +168,7 @@ export function RoomsNav({ icon: Icon = MessagesSquare }: { icon?: LucideIcon })
           onClick={() => navigate({ to: route.rooms })}
           data-testid="nav-rooms"
         >
-          <Icon aria-hidden />
+          {icon}
           <span className="flex-1 truncate">{t('common:appRail.rooms')}</span>
         </NavButton>
         <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
@@ -181,12 +179,14 @@ export function RoomsNav({ icon: Icon = MessagesSquare }: { icon?: LucideIcon })
             onClick={() => setTreeOpen(!expanded)}
             className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&>svg]:size-3"
           >
-            <ChevronUp
+            <span
               className={cn(
-                'transition-transform duration-300 ease-expo',
+                'inline-flex transition-transform duration-300 ease-expo',
                 !expanded && 'rotate-180'
               )}
-            />
+            >
+              <Icon name="arrow-up" size={12} />
+            </span>
           </button>
         </span>
       </NavItem>

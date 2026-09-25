@@ -1,16 +1,11 @@
 import { useMemo } from 'react'
 import { Link, useLocation } from '@tanstack/react-router'
 import {
-  Bell,
-  LayoutGrid,
   Loader2,
   Menu,
-  Moon,
-  PanelLeft,
-  Settings,
   ShieldAlert,
-  Sun,
 } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
@@ -139,7 +134,7 @@ export function TopHeader() {
             aria-label={t('common:shell.expandSidebar')}
             title={t('common:shell.expandSidebar')}
           >
-            <PanelLeft />
+            <Icon name="sidebar-right" className="rotate-180" />
           </button>
         )
       )}
@@ -153,7 +148,7 @@ export function TopHeader() {
           to={crumb.parentTo}
           className="group/bc flex shrink-0 items-center gap-2 rounded-md text-muted-foreground transition-colors outline-hidden hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
-          <LayoutGrid className="size-4" aria-hidden />
+          <Icon name="hd-dashboard" />
           <span className="hidden sm:inline">{t(crumb.parentKey)}</span>
         </Link>
         <span aria-hidden className="text-subtle-foreground">/</span>
@@ -199,18 +194,20 @@ export function TopHeader() {
           title={isDark ? t('common:shell.lightMode') : t('common:shell.darkMode')}
           data-testid="header-theme"
         >
-          {isDark ? <Sun /> : <Moon />}
+          <Icon name={isDark ? 'x-sun' : 'x-moon'} />
         </button>
         <Popover>
           <PopoverTrigger asChild>
             <button
               type="button"
-              className={cn(iconBtn, 'relative')}
+              className={cn(iconBtn, 'group/bell relative')}
               aria-label={t('common:shell.activity')}
               title={t('common:shell.activity')}
               data-testid="header-activity"
             >
-              <Bell className="origin-top transition-transform duration-500 ease-expo hover:[animation:ring_.6s_ease]" />
+              <span className="inline-flex origin-top group-hover/bell:[animation:ring_.6s_ease]">
+                <Icon name="bell" />
+              </span>
               {(approvals > 0 || runs > 0) && (
                 <span
                   aria-hidden
@@ -257,7 +254,9 @@ export function TopHeader() {
           aria-label={t('common:settings')}
           title={t('common:settings')}
         >
-          <Settings className="transition-transform duration-500 ease-expo group-hover/set:rotate-90" />
+          <span className="inline-flex transition-transform duration-500 ease-expo group-hover/set:rotate-90">
+            <Icon name="hd-settings" />
+          </span>
         </Link>
       </div>
     </header>

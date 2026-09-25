@@ -2,21 +2,8 @@ import { useMemo } from 'react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
   Activity,
-  Box,
-  ChevronsUpDown,
-  Handshake,
-  LayoutDashboard,
-  Library,
-  MessagesSquare,
-  PanelLeft,
-  Puzzle,
-  ScrollText,
-  Search,
   Server,
   Settings,
-  SquarePen,
-  Workflow,
-  type LucideIcon,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -39,6 +26,7 @@ import { CoworkNav } from '@/components/shell/nav/CoworkNav'
 import { RoomsNav } from '@/components/shell/nav/RoomsNav'
 import { ChatsNav } from '@/components/shell/nav/ChatsNav'
 import { FlintMark } from '@/components/shell/FlintMark'
+import { Icon, type IconName } from '@/components/ui/icon'
 import { ShortcutHint } from '@/containers/ShortcutHint'
 import { PlatformMetaKey } from '@/containers/PlatformMetaKey'
 import { ShortcutAction } from '@/lib/shortcuts'
@@ -57,7 +45,7 @@ import { cn } from '@/lib/utils'
 type LinkRow = {
   to: string
   label: string
-  icon: LucideIcon
+  icon: IconName
   active: boolean
   count?: number
   testId?: string
@@ -67,7 +55,6 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
   return (
     <>
       {rows.map((row) => {
-        const Icon = row.icon
         return (
           <NavItem key={row.to}>
             <NavButton asChild isActive={row.active}>
@@ -77,7 +64,7 @@ function LinkRows({ rows, onNavigate }: { rows: LinkRow[]; onNavigate?: () => vo
                 aria-current={row.active ? 'page' : undefined}
                 onClick={onNavigate}
               >
-                <Icon aria-hidden />
+                <Icon name={row.icon} />
                 <span className="flex-1 truncate">{row.label}</span>
                 {row.count !== undefined && row.count > 0 && (
                   <span className="mr-1.5 text-[11px] text-muted-foreground tabular-nums">
@@ -149,7 +136,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     {
       to: route.settings.model_providers,
       label: t('common:appRail.models'),
-      icon: Box,
+      icon: 'x-cube',
       active: area === 'models',
       count: modelCount,
       testId: 'rail-models',
@@ -157,21 +144,21 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     {
       to: route.settings.mcp_servers,
       label: t('common:shell.toolsAndMcp'),
-      icon: Workflow,
+      icon: 'flow',
       active: area === 'tools',
       testId: 'rail-tools',
     },
     {
       to: route.extensions,
       label: t('common:appRail.extensions'),
-      icon: Puzzle,
+      icon: 'x-puzzle',
       active: area === 'extensions',
       testId: 'rail-extensions',
     },
     {
       to: route.systemMonitor,
       label: t('common:shell.systemMonitor'),
-      icon: Activity,
+      icon: 'x-monitor',
       active: within(route.systemMonitor) || within(route.localApiServerlogs),
       testId: 'rail-system',
     },
@@ -180,13 +167,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     {
       to: route.appLogs,
       label: t('common:shell.logs'),
-      icon: ScrollText,
+      icon: 'x-terminal',
       active: within(route.appLogs),
     },
     {
       to: route.settings.general,
       label: t('common:appRail.settings'),
-      icon: Settings,
+      icon: 'sb-settings',
       active: area === 'settings',
       testId: 'cowork-settings',
     },
@@ -207,7 +194,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           aria-label={t('common:appRail.home')}
           className="group/brand flex items-center gap-3 rounded-md text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
-          <FlintMark className="size-6 transition-transform duration-300 ease-expo group-hover/brand:-rotate-6 group-hover/brand:scale-105" />
+          <FlintMark className="size-[26px] drop-shadow-[0_1px_1px_rgba(0,0,0,.25)] transition-transform duration-500 ease-expo group-hover/brand:-rotate-12 group-hover/brand:scale-110 group-active/brand:rotate-[8deg] group-active/brand:scale-90 dark:brightness-125 dark:drop-shadow-[0_0_1px_rgba(255,255,255,.35)]" />
           <span className="text-base font-semibold tracking-[-0.01em]">Flint</span>
         </Link>
         {!isMobile && (
@@ -218,7 +205,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             title={t('common:shell.collapseSidebar')}
             className="-m-1 grid cursor-pointer place-items-center rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground [&>svg]:size-4"
           >
-            <PanelLeft />
+            <Icon name="sidebar-right" />
           </button>
         )}
       </div>
@@ -234,7 +221,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           }}
           className="flex h-8 w-full shrink-0 cursor-text items-center gap-2 overflow-clip rounded-lg border-[0.8px] border-border bg-card py-2 pr-2 pl-2.5 text-left text-muted-foreground shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow] duration-150 outline-hidden hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40"
         >
-          <Search className="size-4 shrink-0" aria-hidden />
+          <Icon name="search" />
           <span className="flex-1 truncate text-[0.8125rem]">{t('common:shell.searchAnything')}</span>
           <span className="flex items-center gap-1 text-[11px] font-medium" aria-hidden>
             <PlatformMetaKey />
@@ -257,7 +244,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   {
                     to: route.overview,
                     label: t('common:shell.overview'),
-                    icon: LayoutDashboard,
+                    icon: 'sb-dashboard',
                     active: pathname === route.overview,
                     testId: 'nav-overview',
                   },
@@ -269,22 +256,22 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                   onClick={newChat}
                   data-testid="nav-new-chat"
                 >
-                  <SquarePen aria-hidden />
+                  <Icon name="x-edit" />
                   <span className="flex-1 truncate">{t('common:newChat')}</span>
                   <span className="text-[10.5px] text-subtle-foreground [&_kbd]:shadow-none [&_kbd]:text-subtle-foreground">
                     <ShortcutHint action={ShortcutAction.NEW_CHAT} />
                   </span>
                 </NavButton>
               </NavItem>
-              <CoworkNav icon={Handshake} />
-              <RoomsNav icon={MessagesSquare} />
+              <CoworkNav icon={<Icon name="x-cowork" />} />
+              <RoomsNav icon={<Icon name="x-rooms" />} />
               <LinkRows
                 onNavigate={onNavigate}
                 rows={[
                   {
                     to: route.artifacts,
                     label: t('common:appRail.library'),
-                    icon: Library,
+                    icon: 'x-library',
                     active: area === 'library',
                     testId: 'rail-library',
                   },
@@ -353,7 +340,7 @@ function StatusCard({ onNavigate }: { onNavigate?: () => void }) {
               {t('common:statusBar.modelsLoaded', { count: loaded })}
             </small>
           </span>
-          <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <Icon name="chevron-selector" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="start" className="w-(--radix-dropdown-menu-trigger-width) min-w-56">

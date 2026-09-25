@@ -27,8 +27,6 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
-  ChevronUp,
-  Handshake,
   Plus,
   SlidersHorizontal,
   Copy,
@@ -44,6 +42,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 import {
   ThreadStatusMark,
   useThreadStatus,
@@ -323,7 +322,7 @@ function SessionMark({ session, running }: { session: CoworkSession; running: bo
  * the chevron shows or hides the sessions, and the row menu holds the less
  * frequent actions (artifacts, customize, import, plugins).
  */
-export function CoworkNav({ icon: Icon = Handshake }: { icon?: LucideIcon }) {
+export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const { pathname } = useLocation()
   const onCowork = isCoworkRoute(pathname)
   const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
@@ -452,7 +451,7 @@ export function CoworkNav({ icon: Icon = Handshake }: { icon?: LucideIcon }) {
           onClick={goCowork}
           data-testid="nav-cowork"
         >
-          <Icon aria-hidden />
+          {icon}
           <span className="flex-1 truncate">{t('common:cowork')}</span>
         </NavButton>
         <span className="absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-1">
@@ -494,12 +493,14 @@ export function CoworkNav({ icon: Icon = Handshake }: { icon?: LucideIcon }) {
             onClick={() => setTreeOpen(!expanded)}
             className="grid size-5 cursor-pointer place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground [&>svg]:size-3"
           >
-            <ChevronUp
+            <span
               className={cn(
-                'transition-transform duration-300 ease-expo',
+                'inline-flex transition-transform duration-300 ease-expo',
                 !expanded && 'rotate-180'
               )}
-            />
+            >
+              <Icon name="arrow-up" size={12} />
+            </span>
           </button>
         </span>
       </NavItem>

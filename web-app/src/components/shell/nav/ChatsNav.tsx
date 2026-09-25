@@ -18,8 +18,6 @@ import {
   Pencil,
   Pin,
   Plus,
-  Search,
-  SlidersHorizontal,
   Trash2,
   FolderOpen,
 } from 'lucide-react'
@@ -57,6 +55,7 @@ import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { Icon } from '@/components/ui/icon'
 import type { ThreadFolder } from '@/services/projects/types'
 
 type ChatFilter = 'all' | 'active'
@@ -218,7 +217,7 @@ export function ChatsNav() {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <NavGroupAction aria-label={t('common:shell.newChatOrGroup')} title={t('common:shell.newChatOrGroup')}>
-                <Plus />
+                <Icon name="x-plus" size={14} />
               </NavGroupAction>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-48">
@@ -237,7 +236,7 @@ export function ChatsNav() {
             title={t('common:shell.searchChats')}
             onClick={() => useSearchDialog.getState().setOpen(true)}
           >
-            <Search />
+            <Icon name="x-search" size={14} />
           </NavGroupAction>
           <DropdownMenu open={filterMenuOpen} onOpenChange={setFilterMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -246,7 +245,7 @@ export function ChatsNav() {
                 title={t('common:shell.filter')}
                 data-pressed={filter !== 'all'}
               >
-                <SlidersHorizontal />
+                <Icon name="x-sliders" size={14} />
               </NavGroupAction>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" side={isMobile ? 'bottom' : 'right'} className="w-60">

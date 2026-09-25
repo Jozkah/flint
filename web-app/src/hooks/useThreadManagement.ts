@@ -15,7 +15,7 @@ type ThreadManagementState = {
   getProjectById: (id: string) => Promise<ThreadFolder | undefined>
 }
 
-const useThreadManagementStore = create<ThreadManagementState>()((set, get) => ({
+export const useThreadManagementStore = create<ThreadManagementState>()((set, get) => ({
   folders: [],
 
   setFolders: (folders) => {

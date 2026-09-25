@@ -119,6 +119,15 @@ const boot = async () => {
     // Storage unavailable: stay on the default page.
   }
 
+  // Development only: `?preview` fills the stores with example content so the
+  // interface can be looked at in a plain browser (see dev/previewSeed.ts).
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('preview')) {
+    const { seedPreview } = await import('./dev/previewSeed')
+    // Again after start-up hydration, which replaces the stores' contents.
+    seedPreview()
+    for (const ms of [1500, 4000, 8000]) window.setTimeout(seedPreview, ms)
+  }
+
   const rootElement = document.getElementById('root')!
   if (!rootElement.innerHTML) {
     const root = ReactDOM.createRoot(rootElement)

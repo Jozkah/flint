@@ -374,6 +374,11 @@ html {
   background: var(--background);
 }
 
+/* The design's duotone icons flip for the dark theme (components/ui/icon). */
+.dark .ic {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 /* Hidden while a phone keyboard is open (see hooks/useAppViewport). */
 html.kb-open .kb-hidden {
   display: none;

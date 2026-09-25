@@ -1,0 +1,292 @@
+/**
+ * Development-only preview data for looking at the interface in a plain
+ * browser (`yarn dev:web`, then open any page with `?preview`). Outside Tauri
+ * there are no providers, chats or sessions, and the first-run setup screen
+ * covers the chat pages; this fills the stores with the same example content
+ * the design mockup used, so pages can be compared screen for screen.
+ *
+ * Never imported in production builds (see main.tsx), and it writes to the
+ * in-memory stores only.
+ */
+import type { ThreadMessage } from '@janhq/core'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { useThreads } from '@/hooks/useThreads'
+import { useMessages } from '@/hooks/useMessages'
+import { useAppState } from '@/hooks/useAppState'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useUsageStats, dayKey } from '@/stores/usage-stats-store'
+import { useServiceStore } from '@/hooks/useServiceHub'
+
+const MIN = 60_000
+const now = Date.now()
+
+const model = (id: string, name: string, caps: string[] = ['tools']) =>
+  ({ id, name, capabilities: caps, settings: {} }) as unknown as Model
+
+function providers(): ModelProvider[] {
+  return [
+    {
+      provider: 'llamacpp',
+      active: true,
+      api_key: '',
+      base_url: '',
+      settings: [],
+      models: [
+        model('Qwen3-14B-Q4_K_M', 'Qwen3 14B', ['tools', 'reasoning']),
+        model('gemma-3-12b-it-Q5_K_M', 'Gemma 3 12B', ['tools', 'vision']),
+        model('Llama-4-Scout-17B-Q3_K_M', 'Llama 4 Scout', ['tools', 'vision']),
+        model('Mistral-Small-3.2-24B-Q4_K_S', 'Mistral Small 3.2', ['tools']),
+        model('jan-nano-4b-Q8_0', 'Jan Nano 4B', ['tools']),
+      ],
+    },
+    {
+      provider: 'anthropic',
+      active: true,
+      api_key: 'sk-preview',
+      base_url: 'https://api.anthropic.com/v1',
+      settings: [],
+      models: [
+        model('claude-sonnet-5', 'Claude Sonnet 5', ['tools', 'vision', 'reasoning']),
+        model('claude-opus-5-5', 'Claude Opus 5.5', ['tools', 'vision', 'reasoning']),
+        model('claude-haiku-4-5', 'Claude Haiku 4.5', ['tools', 'vision']),
+      ],
+    },
+    {
+      provider: 'openai',
+      active: true,
+      api_key: 'sk-preview',
+      base_url: 'https://api.openai.com/v1',
+      settings: [],
+      models: [
+        model('gpt-5', 'GPT-5', ['tools', 'vision', 'reasoning']),
+        model('gpt-5-mini', 'GPT-5 mini', ['tools', 'vision']),
+      ],
+    },
+    {
+      provider: 'gemini',
+      active: true,
+      api_key: 'sk-preview',
+      base_url: '',
+      settings: [],
+      models: [model('gemini-3-pro', 'Gemini 3 Pro', ['tools', 'vision', 'reasoning'])],
+    },
+    {
+      provider: 'openrouter',
+      active: true,
+      api_key: 'sk-preview',
+      base_url: 'https://openrouter.ai/api/v1',
+      settings: [],
+      models: [
+        model('deepseek/deepseek-v3.2', 'DeepSeek V3.2', ['tools', 'reasoning']),
+        model('x-ai/grok-4', 'Grok 4', ['tools', 'vision']),
+      ],
+    },
+  ] as unknown as ModelProvider[]
+}
+
+const FOLDERS = [
+  { id: 'flint', name: 'Jan / Flint', updated_at: now },
+  { id: 're', name: 'RE research', updated_at: now - 60 * MIN },
+  { id: 'energy', name: 'Energy monitoring', updated_at: now - 300 * MIN },
+]
+
+type ChatSeed = [id: string, title: string, ageMin: number, folder?: string, pinned?: boolean]
+const CHATS: ChatSeed[] = [
+  ['release', 'Release build fix', 2, 'flint', true],
+  ['kravio', 'Kravio style preview', 20, undefined, true],
+  ['escape', 'JSON escape tracking', 90, 'flint'],
+  ['pr418', 'main | issue #412 | PR #418', 240, 'flint'],
+  ['toolargs', 'Tool-call argument recovery', 30, 'flint'],
+  ['sandbox', 'Windows sandbox failures', 1500, 'flint'],
+  ['draft', 'Draggable conversation panes', 2900, 'flint'],
+  ['notes', 'RE notes cleanup', 600, 're'],
+  ['offsets', 'Offset table v3', 4000, 're'],
+  ['provider', 'Provider adapter refactor', 45, 'energy'],
+  ['trip', 'Weekend trip ideas', 6000],
+  ['cmdwin', 'CMD windows opening for bash commands', 8000],
+  ['vllm', 'vLLM Qwen3-Next-80B configuration', 9000],
+  ['clutter', 'Windows PC clutter audit', 12000],
+  ['test', 'Test', 20000],
+]
+
+function threads(): Thread[] {
+  return CHATS.map(([id, title, age, folder, pinned]) => {
+    const f = FOLDERS.find((x) => x.id === folder)
+    return {
+      id,
+      title,
+      updated: (now - age * MIN) / 1000,
+      isFavorite: !!pinned,
+      assistants: [],
+      model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+      metadata: f ? { project: { id: f.id, name: f.name, updated_at: f.updated_at } } : {},
+    } as unknown as Thread
+  })
+}
+
+const text = (value: string) => ({ type: 'text', text: { value, annotations: [] } })
+const tool = (name: string, id: string, input: object, output: string) => ({
+  type: 'tool_call',
+  tool_name: name,
+  tool_call_id: id,
+  input,
+  output,
+})
+
+const ESC = '\u001b['
+const g = (s: string) => `${ESC}1;32m${s}${ESC}0m`
+const r = (s: string) => `${ESC}1;31m${s}${ESC}0m`
+const y = (s: string) => `${ESC}33m${s}${ESC}0m`
+
+function releaseMessages(): ThreadMessage[] {
+  const base = { object: 'thread.message', thread_id: 'release', status: 'ready' }
+  const t = (m: number) => now - m * MIN
+  return [
+    {
+      ...base,
+      id: 'm1',
+      role: 'user',
+      created_at: t(3),
+      completed_at: t(3),
+      content: [text('The release build fails on Windows with exit 101. Can you find out why and fix it?')],
+    },
+    {
+      ...base,
+      id: 'm2',
+      role: 'assistant',
+      created_at: t(2),
+      completed_at: t(2),
+      metadata: {
+        tokenSpeed: { tokenSpeed: 42.3, tokenCount: 1284, durationMs: 30350 },
+        model: { id: 'claude-sonnet-5', provider: 'anthropic' },
+      },
+      content: [
+        { type: 'reasoning', text: { value: "The tests spawn a helper binary. If nothing builds it first, every bash test fails before it starts. I'll check where it is built.", annotations: [] } },
+        tool('read_file', 'c1', { path: 'src-tauri/Cargo.toml' }, '48 lines · [workspace] members = ["sandbox-helper", …]'),
+        tool('grep', 'c2', { pattern: 'jan-sandbox-helper', path: 'src-tauri' }, '12 matches'),
+        tool('web_search', 'c3', { query: 'cargo test exit code 101 windows', top: 4 }, JSON.stringify([
+          { title: "cargo test: process didn't exit successfully (exit code: 101)", url: 'https://doc.rust-lang.org' },
+          { title: "Integration tests can't find binary built by another crate", url: 'https://github.com' },
+        ])),
+        tool('bash', 'c4', { command: 'cargo test --lib agent_tools::bash', cwd: 'src-tauri' },
+          `${g('   Compiling')} app_lib v0.9.0 (C:\\Coding\\jan\\src-tauri)\n${g('    Finished')} \`test\` profile [unoptimized + debuginfo] target(s) in 38.21s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${r('FAILED')}\ntest agent_tools::bash::respects_cwd ... ${r('FAILED')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${r('FAILED')}\ntest agent_tools::bash::kills_tree ... ${r('FAILED')}\n\n${y('helper not found: target\\debug\\jan-sandbox-helper.exe')}\n\ntest result: ${r('FAILED')}. 1 passed; 4 failed; 0 ignored; finished in 0.84s\nexit code: 101`),
+        text("Confirmed. I'll make `build.rs` build the helper."),
+        tool('edit_file', 'c5', {
+          path: 'src-tauri/build.rs',
+          old_string: '    // helper is built separately',
+          new_string: '    // Build the sandbox helper so tests can spawn it.\n    let status = std::process::Command::new("cargo")\n        .args(["build", "-p", "jan-sandbox-helper"])\n        .status().expect("failed to build jan-sandbox-helper");\n    assert!(status.success());',
+        }, 'Edited src-tauri/build.rs (+6 −1)'),
+        tool('bash', 'c6', { command: 'cargo test --lib agent_tools::bash', cwd: 'src-tauri' },
+          `${g('   Compiling')} jan-sandbox-helper v0.9.0\n${g('    Finished')} \`test\` profile in 44.87s\n\nrunning 5 tests\ntest agent_tools::bash::runs_echo ... ${g('ok')}\ntest agent_tools::bash::respects_cwd ... ${g('ok')}\ntest agent_tools::bash::times_out ... ${g('ok')}\ntest agent_tools::bash::streams_stderr ... ${g('ok')}\ntest agent_tools::bash::kills_tree ... ${g('ok')}\n\ntest result: ${g('ok')}. 5 passed; 0 failed; 0 ignored; finished in 1.12s`),
+        text('Fixed. `build.rs` now builds `jan-sandbox-helper` before the tests run, and all 5 bash tests pass. I also added a smoke test so a missing helper fails with a clear message instead of exit 101.'),
+      ],
+    },
+  ] as unknown as ThreadMessage[]
+}
+
+function seedUsage() {
+  const days: Record<string, ReturnType<typeof useUsageStats.getState>['days'][string]> = {}
+  const shape = [520, 610, 360, 480, 584, 470, 640, 600, 560, 620, 380, 690, 540, 500]
+  shape.forEach((k, i) => {
+    const tok = k * 1000 * 0.12
+    days[dayKey(now - (shape.length - 1 - i) * 86_400_000)] = {
+      tokens: Math.round(tok),
+      genMs: Math.round((tok / 48.6) * 1000),
+      timedTokens: Math.round(tok),
+      replies: 30 + i,
+      toolOk: 60 + i,
+      toolFail: 2,
+    }
+  })
+  const act = (m: number, kind: never, title: string, detail: string) => ({
+    id: `p${m}`,
+    kind,
+    title,
+    detail,
+    at: now - m * MIN,
+  })
+  useUsageStats.setState({
+    days,
+    activity: [
+      act(20, 'tool-approved' as never, 'Tool call approved', 'Ran cargo build -j 4 in jan'),
+      act(25, 'run-finished' as never, 'Assistant created', 'Release Captain with 6 tools'),
+      act(40, 'model-swapped' as never, 'Model swapped', 'Chat moved to Qwen3 14B'),
+      act(55, 'warning' as never, 'VRAM pressure', '11.4 / 12 GB used during load'),
+      act(70, 'knowledge' as never, 'Knowledge indexed', 'Added 214 files from jan/web-app'),
+      act(70, 'compaction' as never, 'Context compacted', 'Release build fix went from 31.2k to 6.4k tokens'),
+    ],
+  })
+}
+
+function seedCowork() {
+  const session = (id: string, title: string, age: number, folder: string | null) => ({
+    id,
+    title,
+    folder,
+    turns: [
+      { role: 'user', content: title, startedAt: now - age * MIN },
+      { role: 'assistant', content: 'Working on it.', startedAt: now - age * MIN, endedAt: now - (age - 1) * MIN, usage: { completion_tokens: 18_400 } },
+    ],
+    messages: [],
+    updated: now - age * MIN,
+    model: { provider: 'anthropic', id: 'claude-sonnet-5' },
+  })
+  const sessions = [
+    session('escape', 'Fix JSON escape tracking', 3, 'C:\\Coding\\jan'),
+    session('changelog', 'Draft 0.9.0 changelog', 50, 'C:\\Coding\\jan'),
+    session('paths', 'Heal Windows paths', 400, 'C:\\Coding\\jan'),
+    session('sync', 'Sync RE findings', 3000, null),
+  ]
+  useCoworkSessions.setState({ sessions: sessions as never, currentId: 'escape' } as never)
+  useCoworkRun.setState({ runs: { escape: { startedAt: now } } } as never)
+}
+
+/**
+ * The web services start empty and the app re-reads them on mount, which
+ * would replace the seeded stores; answer those reads with the example data.
+ * The hub keeps one instance per service, so the instances are patched, again
+ * on every pass in case the hub was replaced.
+ */
+let subscribed = false
+function patchServices() {
+  const hub = useServiceStore.getState().serviceHub as unknown as Record<string, Record<string, unknown>> | null
+  if (!subscribed) {
+    subscribed = true
+    useServiceStore.subscribe(() => patchServices())
+  }
+  if (!hub) return
+  const set = (service: string, method: string, fn: (...a: never[]) => Promise<unknown>) => {
+    const target = hub[service]
+    if (target) target[method] = fn
+  }
+  set('messagesService', 'fetchMessages', async (id: string) => (id === 'release' ? releaseMessages() : []))
+  set('projectsService', 'getProjects', async () => FOLDERS)
+  set('threadsService', 'fetchThreads', async () => threads())
+}
+
+export function seedPreview() {
+  patchServices()
+  useModelProvider.setState({
+    providers: providers(),
+    selectedProvider: 'anthropic',
+    selectedModel: model('claude-sonnet-5', 'Claude Sonnet 5', ['tools', 'vision', 'reasoning']),
+  } as never)
+  useThreads.getState().setThreads(threads())
+  useThreads.setState({ isLoadingThreads: false } as never)
+  useMessages.getState().setMessages('release', releaseMessages())
+  useAppState.setState({ activeModels: ['Qwen3-14B-Q4_K_M', 'claude-sonnet-5', 'gpt-5-mini'] } as never)
+  seedUsage()
+  seedCowork()
+  // Folders live in a store the hook reads through the projects service; the
+  // hook's own setter is reached from its module.
+  void import('@/hooks/useThreadManagement').then((m) => {
+    const store = (m as unknown as { useThreadManagementStore?: { setState: (s: object) => void } }).useThreadManagementStore
+    store?.setState({ folders: FOLDERS })
+  })
+  try {
+    localStorage.setItem('setup-completed', 'true')
+  } catch {
+    // Storage may be unavailable; the providers alone pass the setup gate.
+  }
+}
