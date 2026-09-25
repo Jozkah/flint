@@ -380,7 +380,8 @@ function patchServices() {
 
 /** Read by hooks that would otherwise ask the backend (dev builds only). */
 function seedBackendAnswers() {
-  ;(window as unknown as { __flintPreview?: object }).__flintPreview = {
+  const w = window as unknown as { __flintPreview?: object }
+  w.__flintPreview = {
     memoryProposals: [
       {
         id: 'prop-1',

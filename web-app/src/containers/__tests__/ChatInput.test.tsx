@@ -303,6 +303,7 @@ vi.mock('@/components/ui/dropdown-menu', () => {
     ),
     DropdownMenuTrigger: Pass,
     DropdownMenuSeparator: () => null,
+    DropdownMenuLabel: Pass,
     DropdownMenuSub: Pass,
     DropdownMenuSubContent: Pass,
     DropdownMenuSubTrigger: Pass,

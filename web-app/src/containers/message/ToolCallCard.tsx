@@ -69,21 +69,15 @@ const PASSED = /\b(\d+) passed\b/
 const ResultSection = ({
   label,
   failed,
-  bleedBottom,
   children,
 }: {
   label: string
   failed?: boolean
-  /** The content runs to the card's edges (a terminal): no padding under it. */
-  bleedBottom?: boolean
   children: ReactNode
 }) => (
   <div
     data-slot="tool-result"
-    className={cn(
-      'flex min-w-0 flex-col gap-2 border-t border-dashed border-border px-2.5 pt-2',
-      bleedBottom ? 'pb-0' : 'pb-2'
-    )}
+    className="flex min-w-0 flex-col gap-2 border-t border-dashed border-border px-2.5 py-2"
   >
     <h4
       data-failed={failed || undefined}
@@ -239,8 +233,8 @@ export const ToolCallCard = memo(
         />
       </ResultSection>
     ) : bar.variant === 'terminal' ? (
-      <ResultSection label={resultLabel} failed={failed} bleedBottom>
-        <div className="-mx-2.5">
+      <ResultSection label={resultLabel} failed={failed}>
+        <div className="overflow-hidden">
           <TerminalWidget
             embedded
             bar={bar}
