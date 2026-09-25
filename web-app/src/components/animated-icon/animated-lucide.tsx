@@ -2,7 +2,8 @@
 
 import type { LucideIcon } from 'lucide-react'
 import type { Variants } from 'motion/react'
-import { motion, useAnimation, useReducedMotion } from 'motion/react'
+import { motion, useAnimation } from 'motion/react'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import type { HTMLAttributes, MouseEvent } from 'react'
 import { forwardRef, useCallback, useImperativeHandle, useRef } from 'react'
 
@@ -69,7 +70,7 @@ export const AnimatedLucideIcon = forwardRef<
   ref
 ) {
   const controls = useAnimation()
-  const reducedMotion = useReducedMotion()
+  const reducedMotion = useInterfaceSettings((s) => s.reduceMotion)
   const isControlledRef = useRef(false)
 
   useImperativeHandle(ref, () => {

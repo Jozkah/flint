@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="bg-app">
+<html lang="en" class="preload">
   <head>
     <meta charset="UTF-8" />
     <link
@@ -37,13 +37,13 @@
         align-items: center;
         justify-content: center;
         gap: 1.5rem;
-        background: hsl(0, 0%, 100%);
+        background: #f8f8f8;
         z-index: 9999;
         opacity: 1;
         transition: opacity 0.3s ease-in-out;
       }
       .dark #initial-loader {
-        background: rgb(25, 25, 25);
+        background: #0a0b0d;
       }
       #initial-loader img {
         width: 5rem;
@@ -82,13 +82,13 @@
           sans-serif;
         font-size: 0.875rem;
         font-weight: 400;
-        color: hsl(0, 0%, 45%);
+        color: #6b7280;
         opacity: 0;
         /* Delayed so fast starts never flash the caption. */
         animation: caption-fade-in 0.3s ease-in-out 1s forwards;
       }
       .dark #initial-loader-caption {
-        color: hsl(0, 0%, 65%);
+        color: #8a909a;
       }
       @keyframes caption-fade-in {
         to {
@@ -101,26 +101,35 @@
       }
     </style>
     <script>
-      // Apply dark class synchronously before first paint to avoid a
-      // light-mode flash when the user's effective theme is dark. Truth is
-      // re-resolved by ThemeProvider once React mounts (and, on Linux, after
-      // the XDG portal read completes).
+      // Apply the theme, accent, font size and motion setting before first
+      // paint. The settings stores hydrate from the backend after boot, so
+      // they mirror their resolved values into localStorage 'flint-boot'
+      // (lib/bootAppearance.ts) for this script; keep the two in step.
+      // ThemeProvider re-resolves the real theme once React mounts.
       (function () {
+        var d = document.documentElement
+        var b = null
         try {
-          var raw = localStorage.getItem('theme')
-          var active = 'auto'
-          if (raw) {
-            var parsed = JSON.parse(raw)
-            var s = parsed && parsed.state
-            if (s && typeof s.activeTheme === 'string') active = s.activeTheme
-          }
-          var dark =
-            active === 'dark' ||
-            (active === 'auto' &&
-              window.matchMedia &&
-              window.matchMedia('(prefers-color-scheme: dark)').matches)
-          if (dark) document.documentElement.classList.add('dark')
+          b = JSON.parse(localStorage.getItem('flint-boot') || 'null')
         } catch (_) {}
+        var t = (b && b.theme) || 'auto'
+        var dark =
+          t === 'dark' ||
+          (t === 'auto' &&
+            (window.matchMedia
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              : !!(b && b.dark)))
+        if (dark) d.classList.add('dark')
+        d.style.colorScheme = dark ? 'dark' : 'light'
+        d.style.background = dark ? '#0a0b0d' : '#f8f8f8'
+        if (!b) return
+        var vars = b.vars && b.vars[dark ? 'dark' : 'light']
+        if (vars)
+          for (var k in vars)
+            if (Object.prototype.hasOwnProperty.call(vars, k))
+              d.style.setProperty(k, vars[k])
+        if (b.fontSize) d.style.setProperty('--font-size-base', b.fontSize)
+        if (b.reduceMotion) d.classList.add('reduce-motion')
       })()
     </script>
     <script>

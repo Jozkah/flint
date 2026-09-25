@@ -48,6 +48,9 @@ interface InterfaceSettingsState {
   /** The chosen accent: a preset or a custom hex. Tokens are derived from it
    * per theme (lib/accent.ts). */
   accent: AccentSelection
+  /** Flint's own Reduce motion setting. Animations follow this, not the OS
+   * preference, so the app animates unless it is turned off here. */
+  reduceMotion: boolean
   notificationPosition: NotificationPosition
   showTokenSpeed: boolean
   coloredUserBubble: boolean
@@ -63,6 +66,7 @@ interface InterfaceSettingsState {
    * without writing settings on every intermediate colour. */
   previewAccent: (accent: AccentSelection) => void
   resetAccent: () => void
+  setReduceMotion: (reduce: boolean) => void
   setNotificationPosition: (position: NotificationPosition) => void
   setShowTokenSpeed: (show: boolean) => void
   setColoredUserBubble: (colored: boolean) => void
@@ -76,6 +80,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'fontSize'
   | 'messageZoom'
   | 'accent'
+  | 'reduceMotion'
   | 'notificationPosition'
   | 'showTokenSpeed'
   | 'coloredUserBubble'
@@ -98,6 +103,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     fontSize: defaultFontSize,
     messageZoom: defaultMessageZoom,
     accent: DEFAULT_ACCENT,
+    reduceMotion: false,
     notificationPosition: getDefaultNotificationPosition(),
     showTokenSpeed: true,
     coloredUserBubble: true,
@@ -150,6 +156,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             fontSize: defaultFontSize,
             messageZoom: defaultMessageZoom,
             accent: DEFAULT_ACCENT,
+            reduceMotion: false,
             notificationPosition: getDefaultNotificationPosition(),
             showTokenSpeed: true,
             coloredUserBubble: true,
@@ -175,6 +182,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         resetAccent: () => {
           applyAccent(DEFAULT_ACCENT)
           set({ accent: DEFAULT_ACCENT })
+        },
+
+        setReduceMotion: (reduce) => {
+          set({ reduceMotion: reduce })
         },
 
         setFontSize: (size: FontSize) => {
@@ -220,15 +231,23 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
       name: localStorageKey.settingInterface,
       storage: interfaceStorage,
       skipHydration: true,
-      version: 1,
+      version: 2,
       // v0 stored `accentColor` (one of eleven preset names). The chosen
-      // colour is carried over: the old default becomes Vermilion, the others
-      // keep their exact hex as a custom accent.
+      // colour is carried over: the old default becomes today's default, the
+      // others keep their exact hex as a custom accent.
+      // v1 defaulted to Vermilion, the previous design's accent. The redesign's
+      // default is the neutral Slate, so a saved Vermilion moves to it once;
+      // every other preset and any custom hex is kept.
       migrate: (persisted, version) => {
         const state = (persisted ?? {}) as Record<string, unknown>
         if (version < 1) {
           state.accent = sanitizeAccentSelection(state.accent, state.accentColor)
           delete state.accentColor
+        }
+        if (version < 2) {
+          const accent = state.accent as { preset?: unknown } | undefined
+          if (accent?.preset === 'vermilion') state.accent = DEFAULT_ACCENT
+          if (typeof state.reduceMotion !== 'boolean') state.reduceMotion = false
         }
         return state as unknown as InterfaceSettingsPersistedSlice
       },
@@ -236,6 +255,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         fontSize: state.fontSize,
         messageZoom: state.messageZoom,
         accent: state.accent,
+        reduceMotion: state.reduceMotion,
         notificationPosition: state.notificationPosition,
         showTokenSpeed: state.showTokenSpeed,
         coloredUserBubble: state.coloredUserBubble,
@@ -263,6 +283,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             (state as unknown as Record<string, unknown>).accentColor
           )
           applyAccent(state.accent)
+
+          if (typeof state.reduceMotion !== 'boolean') {
+            state.reduceMotion = false
+          }
 
           if (
             !state.notificationPosition ||

@@ -1,19 +1,27 @@
 /**
- * Accent colour engine for the Flint Graphite Studio design.
+ * Accent colour engine for the Flint design.
  *
- * The user picks one base colour: a preset (Vermilion, Ink, Moss, Slate blue) or any
- * custom hex value. That base stays the fill of primary actions. Everything
- * that must stay readable against the app's own surfaces is derived from it
- * per theme and checked with WCAG contrast: focus rings and selection markers
- * reach 3:1 against the page, accent-coloured text reaches 4.5:1, the marker on
- * the graphite rail reaches 3:1 against the rail, and text placed on the fill
- * is whichever of white or near-black contrasts more.
+ * The default accent is Slate: the neutral ink of the interface itself, which
+ * the stylesheet already defines, so choosing it clears every inline override.
+ * Any other choice (a preset or a custom hex) becomes the fill and gradient of
+ * primary actions. Everything that must stay readable against the app's own
+ * surfaces is derived from it per theme and checked with WCAG contrast: focus
+ * rings and selection markers reach 3:1 against the page, accent-coloured text
+ * reaches 4.5:1, and text placed on the fill is whichever of white or
+ * near-black contrasts more. In dark mode a custom colour is lifted 12%
+ * towards white so it keeps its presence on the near-black surfaces.
  *
  * Semantic colours (success, warning, danger, diff additions and removals) are
  * separate tokens and are never derived from the accent.
  */
 
-export type AccentPresetId = 'vermilion' | 'ink' | 'moss' | 'slate'
+export type AccentPresetId =
+  | 'neutral'
+  | 'vermilion'
+  | 'ink'
+  | 'moss'
+  | 'slate'
+  | 'violet'
 export type AccentSelection = { preset: AccentPresetId } | { custom: string }
 export type AccentTheme = 'light' | 'dark'
 
@@ -22,27 +30,30 @@ export type AccentPreset = {
   name: string
   light: string
   dark: string
+  /** The interface's own ink: applying it removes the inline overrides. */
+  neutral?: boolean
 }
 
 export const ACCENT_PRESETS: readonly AccentPreset[] = [
+  { id: 'neutral', name: 'Slate', light: '#1F2937', dark: '#E6E8EB', neutral: true },
   { id: 'vermilion', name: 'Vermilion', light: '#C0412B', dark: '#E0654D' },
   { id: 'ink', name: 'Ink', light: '#2F5D8A', dark: '#7FA8D1' },
   { id: 'moss', name: 'Moss', light: '#4E6E3A', dark: '#97B77F' },
   { id: 'slate', name: 'Slate blue', light: '#46618A', dark: '#94AACB' },
+  { id: 'violet', name: 'Violet', light: '#6D4AFF', dark: '#8C70FF' },
 ]
 
-export const DEFAULT_ACCENT: AccentSelection = { preset: 'vermilion' }
+export const DEFAULT_ACCENT: AccentSelection = { preset: 'neutral' }
 
-/** The surfaces the derived tokens must stay readable on, per theme: the
- * working pane (ground), raised content (paper), the navigation sidebar, the
- * secondary pane (sunken) and the rail. These mirror `index.css`; a test keeps
- * the two in step. */
+/** The surfaces the derived tokens must stay readable on, per theme: the page
+ * behind every frame (ground), raised content (paper) and the inset wells
+ * (muted). These mirror `index.css`; a test keeps the two in step. */
 export const ACCENT_SURFACES: Record<
   AccentTheme,
-  { ground: string; paper: string; sidebar: string; sunken: string; rail: string }
+  { ground: string; paper: string; muted: string }
 > = {
-  light: { ground: '#F7F8F9', paper: '#FFFFFF', sidebar: '#ECEEF1', sunken: '#EFF1F3', rail: '#E3E6EA' },
-  dark: { ground: '#191919', paper: '#1F1F1F', sidebar: '#141414', sunken: '#161616', rail: '#0F0F0F' },
+  light: { ground: '#F8F8F8', paper: '#FFFFFF', muted: '#F6F6F6' },
+  dark: { ground: '#0A0B0D', paper: '#131519', muted: '#0F1114' },
 }
 
 const HEX_RE = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i
@@ -170,8 +181,8 @@ export type AccentTokens = {
   indicator: string
   /** Accent-coloured text and links: 4.5:1 against the page. */
   text: string
-  /** Selection marker on the graphite rail: 3:1 against the rail. */
-  rail: string
+  /** Top of the fill gradient: the fill lifted towards white. */
+  gradTop: string
   /** Subtle selected background. */
   tint: string
   /** Stronger selected background and borders. */
@@ -194,9 +205,9 @@ export function deriveAccentTokens(base: string, theme: AccentTheme): AccentToke
     fillHover: step(0.07),
     fillPressed: step(0.13),
     onFill,
-    indicator: adjustForContrast(base, [T.ground, T.paper, T.sidebar, T.sunken], 3),
-    text: adjustForContrast(base, [T.ground, T.paper, T.sidebar, T.sunken], 4.5),
-    rail: adjustForContrast(base, [T.rail], 3),
+    indicator: adjustForContrast(base, [T.ground, T.paper, T.muted], 3),
+    text: adjustForContrast(base, [T.ground, T.paper, T.muted], 4.5),
+    gradTop: mix(base, WHITE, 0.84),
     tint: mix(base, T.paper, theme === 'light' ? 0.13 : 0.22),
     soft: mix(base, T.paper, theme === 'light' ? 0.3 : 0.4),
   }
@@ -206,17 +217,27 @@ export function presetById(id: unknown): AccentPreset | undefined {
   return ACCENT_PRESETS.find((p) => p.id === id)
 }
 
+/** A custom colour as shown in dark mode: 12% of the way to white. */
+export function liftForDark(hex: string): string {
+  return mix(hex, WHITE, 0.88)
+}
+
+export function isNeutralSelection(selection: AccentSelection): boolean {
+  return 'preset' in selection && !!presetById(selection.preset)?.neutral
+}
+
 /** The base colour a selection uses in a theme, and the name shown for it. */
 export function accentBase(
   selection: AccentSelection,
   theme: AccentTheme
 ): { name: string; hex: string; light: string; dark: string } {
   if ('custom' in selection) {
+    const dark = liftForDark(selection.custom)
     return {
       name: 'Custom',
-      hex: selection.custom,
+      hex: theme === 'dark' ? dark : selection.custom,
       light: selection.custom,
-      dark: selection.custom,
+      dark,
     }
   }
   const p = presetById(selection.preset) ?? ACCENT_PRESETS[0]
@@ -224,8 +245,7 @@ export function accentBase(
 }
 
 /** Accent values written by earlier versions (`accentColor` preset names). The
- * old default, `gray`, used the vermilion-like `#f17455` as its primary, so it
- * maps to Vermilion; every other old preset keeps its exact colour as a custom
+ * old default, `gray`, maps to today's default; every other old preset keeps its exact colour as a custom
  * accent, so an upgrade does not silently change what the user chose. */
 const LEGACY_PRIMARY: Record<string, string> = {
   red: '#F0614B',
@@ -253,6 +273,7 @@ export function sanitizeAccentSelection(
     if (presetById(r.preset)) return { preset: r.preset as AccentPresetId }
   }
   if (typeof legacyAccentColor === 'string') {
+    if (legacyAccentColor === 'gray') return DEFAULT_ACCENT
     if (presetById(legacyAccentColor))
       return { preset: legacyAccentColor as AccentPresetId }
     const legacy = LEGACY_PRIMARY[legacyAccentColor]
@@ -284,21 +305,46 @@ export function accentCssVariables(tokens: AccentTokens): Record<string, string>
   return {
     '--primary': tokens.fill,
     '--primary-foreground': tokens.onFill,
+    '--primary-hover': tokens.fillHover,
+    '--primary-pressed': tokens.fillPressed,
+    '--grad': `linear-gradient(180deg, ${tokens.gradTop} 0%, ${tokens.fill} 64.697%)`,
+    '--on-grad': tokens.onFill,
     '--ring': tokens.indicator,
-    '--sidebar-primary': tokens.fill,
-    '--sidebar-primary-foreground': tokens.onFill,
-    '--sidebar-ring': tokens.indicator,
-    '--brand': tokens.indicator,
-    '--brand-fill': tokens.fill,
-    '--brand-fill-hover': tokens.fillHover,
-    '--brand-fill-pressed': tokens.fillPressed,
-    '--brand-foreground': tokens.onFill,
-    '--brand-text': tokens.text,
-    '--brand-rail': tokens.rail,
-    '--brand-tint': tokens.tint,
-    '--brand-soft': tokens.soft,
+    '--acc': tokens.indicator,
+    '--acc-text': tokens.text,
+    '--acc-soft': tokens.soft,
+    '--acc-tint': tokens.tint,
   }
 }
+
+/** Every property an accent can have written inline, including the ones older
+ * versions wrote, so switching back to the neutral default clears them all. */
+const ACCENT_PROPERTIES = [
+  '--primary',
+  '--primary-foreground',
+  '--primary-hover',
+  '--primary-pressed',
+  '--grad',
+  '--on-grad',
+  '--ring',
+  '--acc',
+  '--acc-text',
+  '--acc-soft',
+  '--acc-tint',
+  '--sidebar',
+  '--sidebar-primary',
+  '--sidebar-primary-foreground',
+  '--sidebar-ring',
+  '--brand',
+  '--brand-fill',
+  '--brand-fill-hover',
+  '--brand-fill-pressed',
+  '--brand-foreground',
+  '--brand-text',
+  '--brand-rail',
+  '--brand-tint',
+  '--brand-soft',
+]
 
 /** Write the derived tokens for the effective theme onto the document root. */
 export function applyAccentToDocument(
@@ -306,12 +352,11 @@ export function applyAccentToDocument(
   isDark: boolean,
   root: HTMLElement = document.documentElement
 ): void {
+  for (const k of ACCENT_PROPERTIES) root.style.removeProperty(k)
+  if (isNeutralSelection(selection)) return
   const theme: AccentTheme = isDark ? 'dark' : 'light'
   const vars = accentCssVariables(
     deriveAccentTokens(accentBase(selection, theme).hex, theme)
   )
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v)
-  // Earlier versions wrote a tinted sidebar inline; the Graphite sidebar is a
-  // neutral surface from the stylesheet.
-  root.style.removeProperty('--sidebar')
 }

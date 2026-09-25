@@ -43,7 +43,7 @@ export function AccentSettings() {
   const defaultPresetId =
     'preset' in DEFAULT_ACCENT ? DEFAULT_ACCENT.preset : undefined
   const defaultName =
-    ACCENT_PRESETS.find((p) => p.id === defaultPresetId)?.name ?? 'Vermilion'
+    ACCENT_PRESETS.find((p) => p.id === defaultPresetId)?.name ?? 'Slate'
 
   const hexId = useId()
   const msgId = useId()

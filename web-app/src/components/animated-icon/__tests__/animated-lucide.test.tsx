@@ -25,7 +25,13 @@ vi.mock('motion/react', () => ({
     },
   },
   useAnimation: () => ({ start: motionState.start }),
-  useReducedMotion: () => motionState.reduced,
+}))
+
+// Reduced motion is Flint's own setting, not the OS preference.
+vi.mock('@/hooks/useInterfaceSettings', () => ({
+  useInterfaceSettings: (
+    select: (s: { reduceMotion: boolean }) => unknown
+  ) => select({ reduceMotion: motionState.reduced }),
 }))
 
 import {
@@ -84,7 +90,7 @@ describe('AnimatedLucideIcon', () => {
     expect(motionState.start).toHaveBeenNthCalledWith(2, 'normal')
   })
 
-  it('does not start transforms when reduced motion is enabled', () => {
+  it('does not start transforms when Reduce motion is on in settings', () => {
     motionState.reduced = true
     const ref = createRef<AnimatedLucideIconHandle>()
 

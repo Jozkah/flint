@@ -2,8 +2,10 @@ import { createRootRoute, Outlet } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 
 import { Fragment } from 'react/jsx-runtime'
+import { MotionConfig } from 'motion/react'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { KeyboardShortcutsProvider } from '@/providers/KeyboardShortcuts'
 import { DataProvider } from '@/providers/DataProvider'
 import { route } from '@/constants/routes'
@@ -117,6 +119,8 @@ const LogsLayout = () => {
 function RootLayout() {
   const searchOpen = useSearchDialog((s) => s.open)
   const setSearchOpen = useSearchDialog((s) => s.setOpen)
+  // Motion components follow Flint's Reduce motion setting, not the OS.
+  const reduceMotion = useInterfaceSettings((s) => s.reduceMotion)
   const getInitialLayoutType = () => {
     const pathname = window.location.pathname
     return (
@@ -129,7 +133,7 @@ function RootLayout() {
   const IS_LOGS_ROUTE = getInitialLayoutType()
 
   return (
-    <Fragment>
+    <MotionConfig reducedMotion={reduceMotion ? 'always' : 'never'}>
       <ServiceHubProvider>
         <ThemeProvider />
         <InterfaceProvider />
@@ -157,6 +161,6 @@ function RootLayout() {
           <AccessRequestDialog />
         </TranslationProvider>
       </ServiceHubProvider>
-    </Fragment>
+    </MotionConfig>
   )
 }

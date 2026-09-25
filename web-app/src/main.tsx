@@ -8,9 +8,7 @@ import {
 } from '@/services/app/reset-localstorage'
 import { installConsoleLogForwarding } from '@/services/app/console-logger'
 
-// Flint Graphite Studio typefaces, bundled with the app so nothing is fetched at runtime.
-import '@fontsource-variable/geist'
-import '@fontsource-variable/geist-mono'
+// Inter is bundled under public/fonts (styles/font.css), so nothing is fetched at runtime.
 import './index.css'
 
 // Mobile-specific viewport and styling setup

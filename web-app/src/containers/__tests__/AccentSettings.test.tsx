@@ -28,8 +28,10 @@ describe('AccentSettings', () => {
 
   it('shows the current accent and marks the selected preset', () => {
     render(<AccentSettings />)
-    expect(screen.getByText('settings:accent.current:Vermilion')).toBeInTheDocument()
-    expect(screen.getByTestId('accent-preset-vermilion')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('settings:accent.current:Slate')).toBeInTheDocument()
+    expect(screen.getByTestId('accent-preset-neutral')).toHaveAttribute('aria-checked', 'true')
+    // The neutral default is the stylesheet's own ink: nothing is written inline.
+    expect(primary()).toBe('')
     expect(screen.getByTestId('accent-reset')).toBeDisabled()
   })
 
@@ -73,7 +75,7 @@ describe('AccentSettings', () => {
     expect(document.documentElement.style.getPropertyValue('--primary-foreground')).toBe('#141210')
   })
 
-  it('re-derives tokens for the dark theme and resets to Vermilion', () => {
+  it('re-derives tokens for the dark theme and resets to the neutral default', () => {
     render(<AccentSettings />)
     fireEvent.click(screen.getByTestId('accent-preset-moss'))
     act(() => {
@@ -81,7 +83,7 @@ describe('AccentSettings', () => {
     })
     expect(primary()).toBe('#97B77F')
     fireEvent.click(screen.getByTestId('accent-reset'))
-    expect(useInterfaceSettings.getState().accent).toEqual({ preset: 'vermilion' })
-    expect(primary()).toBe('#E0654D')
+    expect(useInterfaceSettings.getState().accent).toEqual({ preset: 'neutral' })
+    expect(primary()).toBe('')
   })
 })

@@ -48,7 +48,8 @@ describe('useInterfaceSettings', () => {
     const { result } = renderHook(() => useInterfaceSettings())
 
     expect(result.current.fontSize).toBe('16px')
-    expect(result.current.accent).toEqual({ preset: 'vermilion' })
+    expect(result.current.accent).toEqual({ preset: 'neutral' })
+    expect(result.current.reduceMotion).toBe(false)
     expect(result.current.notificationPosition).toBe('top-right')
     expect(typeof result.current.setFontSize).toBe('function')
     expect(typeof result.current.setAccent).toBe('function')
@@ -94,7 +95,7 @@ describe('useInterfaceSettings', () => {
       expect(result.current.accent).toEqual({ preset: 'ink' })
     })
 
-    it('resets the accent alone to Vermilion', () => {
+    it('resets the accent alone to the neutral default', () => {
       const { result } = renderHook(() => useInterfaceSettings())
 
       act(() => {
@@ -105,7 +106,7 @@ describe('useInterfaceSettings', () => {
         result.current.resetAccent()
       })
 
-      expect(result.current.accent).toEqual({ preset: 'vermilion' })
+      expect(result.current.accent).toEqual({ preset: 'neutral' })
       expect(result.current.fontSize).toBe('18px')
     })
   })
@@ -125,8 +126,23 @@ describe('useInterfaceSettings', () => {
     })
 
     expect(result.current.fontSize).toBe('16px')
-    expect(result.current.accent).toEqual({ preset: 'vermilion' })
+    expect(result.current.accent).toEqual({ preset: 'neutral' })
+    expect(result.current.reduceMotion).toBe(false)
     expect(result.current.notificationPosition).toBe('top-right')
+  })
+
+  it('toggles reduce motion and resets it with the interface', () => {
+    const { result } = renderHook(() => useInterfaceSettings())
+
+    act(() => {
+      result.current.setReduceMotion(true)
+    })
+    expect(result.current.reduceMotion).toBe(true)
+
+    act(() => {
+      result.current.resetInterface()
+    })
+    expect(result.current.reduceMotion).toBe(false)
   })
 
   it('should update notification position', () => {

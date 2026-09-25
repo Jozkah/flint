@@ -18,6 +18,10 @@
 @source '../node_modules/streamdown/dist/**/*.js';
 
 @custom-variant dark (&:is(.dark *));
+/* Motion follows the in-app Reduce motion setting (html.reduce-motion), not the
+   OS media query: the app animates unless the user turns it off in Flint. */
+@custom-variant motion-safe (&:where(html:not(.reduce-motion) *));
+@custom-variant motion-reduce (&:where(html.reduce-motion *));
 
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -32,71 +36,107 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-pressed: var(--primary-pressed);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
+  --color-fg-2: var(--fg-2);
+  --color-cell: var(--cell-fg);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-acc: var(--acc);
+  --color-acc-text: var(--acc-text);
+  --color-acc-soft: var(--acc-soft);
+  --color-acc-tint: var(--acc-tint);
+  --color-on-grad: var(--on-grad);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-tint: var(--destructive-tint);
+  --color-success: var(--success);
+  --color-success-tint: var(--success-tint);
+  --color-warning: var(--warning);
+  --color-warning-tint: var(--warning-tint);
+  --color-info: var(--info);
+  --color-merged: var(--merged);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-hover-row: var(--hover-row);
+  --color-hover-btn: var(--hover-btn);
+  --color-nav-hover: var(--nav-hover);
+  --color-track: var(--track);
+  --color-knob: var(--knob);
+  --color-sk: var(--sk);
+  --color-sk-2: var(--sk2);
+  --color-mark: var(--mark);
+  --color-code-bg: var(--code-bg);
+  --color-term-bg: var(--term-bg);
+  --color-term-fg: var(--term-fg);
+  --color-term-border: var(--term-border);
+  --color-av-bg: var(--av-bg);
+  --color-av-border: var(--av-border);
+  --color-bar: var(--bar);
+  --color-bar-border: var(--bar-border);
+  --color-scrim: var(--scrim);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
-  /* Aliased to the base surface so the alpha modifiers the `bg-main-view` /
-     `text-main-view-fg/60` call sites were written against actually resolve. */
-  --color-main-view: var(--background);
-  --color-main-view-fg: var(--foreground);
-  /* Flint Graphite Studio: accent (derived per theme in lib/accent.ts), semantic
-     states, diff colours, the rail and the tonal surfaces. */
-  --color-brand: var(--brand);
-  --color-brand-fill: var(--brand-fill);
-  --color-brand-fill-hover: var(--brand-fill-hover);
-  --color-brand-fill-pressed: var(--brand-fill-pressed);
-  --color-brand-foreground: var(--brand-foreground);
-  --color-brand-text: var(--brand-text);
-  --color-brand-rail: var(--brand-rail);
-  --color-brand-tint: var(--brand-tint);
-  --color-brand-soft: var(--brand-soft);
-  --color-success: var(--success);
-  --color-success-tint: var(--success-tint);
-  --color-warning: var(--warning);
-  --color-warning-tint: var(--warning-tint);
-  --color-destructive-tint: var(--destructive-tint);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-rail: var(--rail);
-  --color-rail-hover: var(--rail-hover);
-  --color-rail-active: var(--rail-active);
-  --color-rail-foreground: var(--rail-foreground);
-  --color-rail-muted: var(--rail-muted);
-  --color-paper: var(--card);
-  --color-sunken: var(--sunken);
-  --color-ink-2: var(--ink-2);
-  --color-line-strong: var(--line-strong);
-  --color-code: var(--code);
-  --color-scrim: var(--scrim);
+  /* Diff colours: --diff-add / --diff-del are the +/- text, the -bg tokens the
+     line fill and the -ln tokens the gutter. Never the accent or the error colour. */
   --color-diff-add: var(--diff-add);
   --color-diff-add-bg: var(--diff-add-bg);
+  --color-diff-add-ln: var(--diff-add-ln);
   --color-diff-del: var(--diff-del);
   --color-diff-del-bg: var(--diff-del-bg);
+  --color-diff-del-ln: var(--diff-del-ln);
+  --shadow-lift: var(--lift);
+  --shadow-pop: var(--pop-shadow);
+  --shadow-overlay: var(--pop-shadow);
+  --ease-expo: var(--expo);
   --animate-hue-rotate: hue-rotate 4s infinite;
-  --font-studio: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-display: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-sans: "Geist Variable", "Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --shadow-overlay: var(--overlay-shadow);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+
+  /* LEGACY ALIASES (deleted in Phase 11): utility names the previous design's
+     components still use, pointed at the new tokens until they are rewritten. */
+  --color-brand: var(--acc);
+  --color-brand-fill: var(--primary);
+  --color-brand-fill-hover: var(--primary-hover);
+  --color-brand-fill-pressed: var(--primary-pressed);
+  --color-brand-foreground: var(--primary-foreground);
+  --color-brand-text: var(--acc-text);
+  --color-brand-rail: var(--acc);
+  --color-brand-tint: var(--acc-tint);
+  --color-brand-soft: var(--acc-soft);
+  --color-rail: var(--background);
+  --color-rail-hover: var(--nav-hover);
+  --color-rail-active: var(--card);
+  --color-rail-foreground: var(--foreground);
+  --color-rail-muted: var(--muted-foreground);
+  --color-sidebar: var(--background);
+  --color-sidebar-foreground: var(--foreground);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-primary-foreground: var(--primary-foreground);
+  --color-sidebar-accent: var(--nav-hover);
+  --color-sidebar-accent-foreground: var(--foreground);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-ring: var(--ring);
+  --color-main-view: var(--background);
+  --color-main-view-fg: var(--foreground);
+  --color-paper: var(--card);
+  --color-sunken: var(--muted);
+  --color-ink-2: var(--fg-2);
+  --color-line-strong: var(--border-strong);
+  --color-code: var(--code-bg);
+  --font-studio: var(--font-sans);
+  --font-display: var(--font-sans);
+  /* END LEGACY ALIASES */
 
   /* Font scale based on --font-size-base */
   --text-xs: calc(var(--font-size-base) * 0.75); /* ~12px */
@@ -115,6 +155,12 @@
 
 }
 
+/* The primary-action gradient. The neutral default is the interface's own
+   slate; lib/accent.ts rewrites --grad inline for any other accent. */
+@utility bg-grad {
+  background-image: var(--grad);
+}
+
 /* Chat message zoom. --font-size-base is set inline on this element; the scale
    has to be redeclared here because the :root copies substitute the root's
    --font-size-base before inheriting, so overriding it alone changes nothing
@@ -130,151 +176,196 @@
   --text-4xl: calc(var(--font-size-base) * 2.25);
 }
 
-/* Flint Graphite Studio tokens. Charcoal and cool mineral-grey surfaces separated
-   by tone, one sans-serif family, compact controls. Accent values below are the
-   Vermilion defaults; lib/accent.ts rewrites them inline for the chosen accent
-   and the effective theme. Semantic colours (success, warning, destructive) and
-   diff colours are never derived from the accent. Hex values are kept so
-   lib/__tests__/accent.test.ts can check contrast against the same numbers.
-
-   Surfaces: --sidebar (navigation) < --background (working pane) < --card
-   (raised content) in light; the dark theme keeps the same order by tone.
-   --sunken is the secondary pane (inspectors, plan strips). */
+/* Flint tokens. A near-white page (--background) holds white frames (--card)
+   whose inset wells are --muted; the dark theme keeps the same order by tone.
+   Text steps down foreground > fg-2 > secondary-foreground > muted-foreground >
+   subtle-foreground. The default accent is the neutral slate below;
+   lib/accent.ts writes --primary, --grad, --on-grad, --ring and --acc* inline
+   for any other accent. Semantic colours (success, warning, destructive) and
+   diff colours are never derived from the accent. Surface hex values are kept
+   so lib/__tests__/accent.test.ts can check contrast against the same numbers. */
 :root {
-  --radius: 0.375rem;
-  --background: #F7F8F9;
-  --foreground: #15171A;
+  --radius: 0.5rem;
+  --expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --background: #F8F8F8;
+  --foreground: #1F2937;
+  --fg-2: #374151;
   --card: #FFFFFF;
-  --card-foreground: #15171A;
+  --card-foreground: #1F2937;
   --popover: #FFFFFF;
-  --popover-foreground: #15171A;
-  --primary: #C0412B;
+  --popover-foreground: #1F2937;
+  --primary: #1F2937;
   --primary-foreground: #FFFFFF;
-  --secondary: #ECEEF1;
-  --secondary-foreground: #15171A;
-  --muted: #ECEEF1;
-  --muted-foreground: #565B63;
-  --accent: #E6E9ED;
-  --accent-foreground: #15171A;
-  --destructive: #B0183F;
+  --primary-hover: #2B384B;
+  --primary-pressed: #111827;
+  --grad: linear-gradient(180deg, #37475D 0%, #1F2937 64.697%);
+  --on-grad: #FFFFFF;
+  --acc: #1F2937;
+  --acc-text: #1F2937;
+  --acc-soft: #E5E7EB;
+  --acc-tint: #F3F4F6;
+  --secondary: #F7F7F7;
+  --secondary-foreground: #4B5563;
+  --muted: #F6F6F6;
+  --muted-foreground: #6B7280;
+  --subtle-foreground: #9CA3AF;
+  --cell-fg: #52525B;
+  --accent: #F3F4F6;
+  --accent-foreground: #1F2937;
+  --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
-  --destructive-tint: #F7E3E8;
-  --success: #23774A;
-  --success-tint: #E1EFE7;
-  --warning: #8A5A00;
-  --warning-tint: #F6EDDA;
-  --border: #D7DBE0;
-  --line-strong: #BFC5CC;
-  --input: #858B94;
-  --ring: #C0412B;
-  --chart-1: #46618A;
-  --chart-2: #4E6E3A;
-  --chart-3: #8A5A00;
-  --chart-4: #7B8390;
-  --chart-5: #C0412B;
-  --sidebar: #ECEEF1;
-  --sidebar-foreground: #15171A;
-  --sidebar-primary: #C0412B;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #E0E3E8;
-  --sidebar-accent-foreground: #15171A;
-  --sidebar-border: #D7DBE0;
-  --sidebar-ring: #C0412B;
-  --rail: #E3E6EA;
-  --rail-hover: #D8DCE1;
-  --rail-active: #CFD4DA;
-  --rail-foreground: #15171A;
-  --rail-muted: #52575F;
-  --sunken: #EFF1F3;
-  --ink-2: #474D55;
-  --code: #EBEEF1;
-  --scrim: rgba(15, 17, 20, 0.38);
-  --overlay-shadow: 0 1px 2px rgba(20, 24, 30, 0.08), 0 10px 30px rgba(20, 24, 30, 0.16);
-  --brand: #C0412B;
-  --brand-fill: #C0412B;
-  --brand-fill-hover: #A93826;
-  --brand-fill-pressed: #93301F;
-  --brand-foreground: #FFFFFF;
-  --brand-text: #AE3A26;
-  --brand-rail: #C0412B;
-  --brand-tint: #F6E4E0;
-  --brand-soft: #EBC9C1;
-  /* Diff colours: their own tokens, never the accent or the error colour. */
-  --diff-add: #1C6A40;
-  --diff-add-bg: rgba(35, 119, 74, 0.11);
-  --diff-del: #9C1537;
-  --diff-del-bg: rgba(176, 24, 63, 0.08);
-  /* Shell geometry. Defaults, not limits: panels shrink before they clip. */
+  --destructive-tint: #FEF2F2;
+  --success: #059669;
+  --success-tint: #ECFDF5;
+  --warning: #B45309;
+  --warning-tint: #FFFBEB;
+  --info: #2563EB;
+  --merged: #7C3AED;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+  --input: rgba(0, 0, 0, 0.1);
+  --ring: #9CA3AF;
+  --hover-row: #FAFAFA;
+  --hover-btn: #FCFCFC;
+  --nav-hover: rgba(255, 255, 255, 0.7);
+  --track: #EEF0F3;
+  --knob: #FFFFFF;
+  --sk: #E8EAEE;
+  --sk2: #D6DAE1;
+  --mark: #FEF3C7;
+  --code-bg: #FBFBFB;
+  --term-bg: #0D1117;
+  --term-fg: #C9D1D9;
+  --term-border: #1F2937;
+  --av-bg: #F7F7F7;
+  --av-border: #D9D9D9;
+  --cb: #E1E4EA;
+  --cb-h: #D4D8E0;
+  --bar: #E6E6E6;
+  --bar-2: rgba(230, 230, 230, 0.6);
+  --bar-border: #D8D8D8;
+  --bar-inner: #FFFFFF;
+  --edge-0: rgba(255, 255, 255, 0);
+  --edge: rgba(255, 255, 255, 0.6);
+  --lite-a: #CFD4DC;
+  --lite-b: #B9C0CB;
+  --scrim: rgba(10, 11, 13, 0.4);
+  --lift: 0 2px 3px -1px rgba(0, 0, 0, 0.1), 0 1px 0 0 rgba(25, 28, 33, 0.02), 0 0 0 1px rgba(25, 28, 33, 0.08);
+  --pop-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06), 0 1px 1px -0.5px rgba(0, 0, 0, 0.06), 0 3px 3px -1.5px rgba(0, 0, 0, 0.06), 0 6px 6px -3px rgba(0, 0, 0, 0.06), 0 12px 12px -6px rgba(0, 0, 0, 0.06), 0 24px 24px -12px rgba(0, 0, 0, 0.06);
+  --chart-1: #37475D;
+  --chart-2: #9CA3AF;
+  --chart-3: #059669;
+  --chart-4: #B45309;
+  --chart-5: #6D4AFF;
+  --diff-add: #067647;
+  --diff-add-bg: #ECFDF3;
+  --diff-add-ln: #D1FADF;
+  --diff-del: #B42318;
+  --diff-del-bg: #FEF2F2;
+  --diff-del-ln: #FEE2E2;
+  /* Shell geometry. */
+  --sidebar-w: 250px;
+  /* Reading width for conversation text; data views are not capped by it. */
+  --read-w: 46rem;
+  /* LEGACY ALIASES (deleted in Phase 11). */
+  --brand: var(--acc);
+  --brand-fill: var(--primary);
+  --brand-foreground: var(--primary-foreground);
+  --sunken: var(--muted);
+  --ink-2: var(--fg-2);
+  --line-strong: var(--border-strong);
+  --code: var(--code-bg);
+  --sidebar: var(--background);
+  --sidebar-border: var(--border);
+  --overlay-shadow: var(--pop-shadow);
   --rail-w: 64px;
   --ctx-h: 46px;
   --status-h: 26px;
   --inspector-w: 328px;
-  /* Reading width for conversation text; data views are not capped by it. */
-  --read-w: 46rem;
+  /* END LEGACY ALIASES */
 }
 
 .dark {
-  --background: #191919;
-  --foreground: #EAEAEA;
-  --card: #1F1F1F;
-  --card-foreground: #EAEAEA;
-  --popover: #242424;
-  --popover-foreground: #EAEAEA;
-  --primary: #E0654D;
-  --primary-foreground: #141210;
-  --secondary: #232323;
-  --secondary-foreground: #EAEAEA;
-  --muted: #232323;
-  --muted-foreground: #A3A3A3;
-  --accent: #282828;
-  --accent-foreground: #EAEAEA;
-  --destructive: #F0708F;
-  --destructive-foreground: #141210;
-  --destructive-tint: #3A1F28;
-  --success: #5DB47F;
-  --success-tint: #1B3125;
-  --warning: #E2A94E;
-  --warning-tint: #3A2F1A;
-  --border: #2C2C2C;
-  --line-strong: #3C3C3C;
-  --input: #767676;
-  --ring: #E0654D;
-  --chart-1: #94AACB;
-  --chart-2: #97B77F;
-  --chart-3: #E2A94E;
-  --chart-4: #8F8F8F;
-  --chart-5: #E0654D;
-  --sidebar: #141414;
-  --sidebar-foreground: #EAEAEA;
-  --sidebar-primary: #E0654D;
-  --sidebar-primary-foreground: #141210;
-  --sidebar-accent: #222222;
-  --sidebar-accent-foreground: #EAEAEA;
-  --sidebar-border: #282828;
-  --sidebar-ring: #E0654D;
-  --rail: #0F0F0F;
-  --rail-hover: #1B1B1B;
-  --rail-active: #252525;
-  --rail-foreground: #EAEAEA;
-  --rail-muted: #A3A3A3;
-  --sunken: #161616;
-  --ink-2: #BABABA;
-  --code: #111111;
-  --scrim: rgba(0, 0, 0, 0.55);
-  --overlay-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 14px 36px rgba(0, 0, 0, 0.5);
-  --brand: #E0654D;
-  --brand-fill: #E0654D;
-  --brand-fill-hover: #EB7B64;
-  --brand-fill-pressed: #F18E79;
-  --brand-foreground: #141210;
-  --brand-text: #E97A63;
-  --brand-rail: #E0654D;
-  --brand-tint: #3A2520;
-  --brand-soft: #56342B;
-  --diff-add: #82CDA0;
-  --diff-add-bg: rgba(93, 180, 127, 0.13);
-  --diff-del: #F496AD;
-  --diff-del-bg: rgba(240, 112, 143, 0.12);
+  color-scheme: dark;
+  --background: #0A0B0D;
+  --foreground: #E6E8EB;
+  --fg-2: #C9CED6;
+  --card: #131519;
+  --card-foreground: #E6E8EB;
+  --popover: #181A1F;
+  --popover-foreground: #E6E8EB;
+  --primary: #E6E8EB;
+  --primary-foreground: #111318;
+  --primary-hover: #FFFFFF;
+  --primary-pressed: #D9DDE3;
+  --grad: linear-gradient(180deg, #FFFFFF 0%, #D9DDE3 64.697%);
+  --on-grad: #111318;
+  --acc: #E6E8EB;
+  --acc-text: #E6E8EB;
+  --acc-soft: #2A2E35;
+  --acc-tint: #1D2025;
+  --secondary: #171A1E;
+  --secondary-foreground: #B3B9C2;
+  --muted: #0F1114;
+  --muted-foreground: #8A909A;
+  --subtle-foreground: #646A74;
+  --cell-fg: #C3C8CF;
+  --accent: #1D2025;
+  --accent-foreground: #E6E8EB;
+  --destructive: #F87171;
+  --destructive-foreground: #111318;
+  --destructive-tint: rgba(248, 113, 113, 0.1);
+  --success: #34D399;
+  --success-tint: rgba(52, 211, 153, 0.1);
+  --warning: #FBBF24;
+  --warning-tint: rgba(251, 191, 36, 0.1);
+  --info: #60A5FA;
+  --merged: #A78BFA;
+  --border: #23262C;
+  --border-strong: #353A42;
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #6B7280;
+  --hover-row: #171A1E;
+  --hover-btn: #1A1D22;
+  --nav-hover: rgba(255, 255, 255, 0.045);
+  --track: #22252B;
+  --knob: #E6E8EB;
+  --sk: #22252B;
+  --sk2: #2E323A;
+  --mark: rgba(245, 158, 11, 0.28);
+  --code-bg: #0F1114;
+  --term-bg: #0B0D10;
+  --term-border: #23262C;
+  --av-bg: #1D2025;
+  --av-border: #30343B;
+  --cb: #2A2E35;
+  --cb-h: #353A42;
+  --bar: #24272D;
+  --bar-2: rgba(36, 39, 45, 0.55);
+  --bar-border: #30343B;
+  --bar-inner: rgba(255, 255, 255, 0.03);
+  --edge-0: rgba(19, 21, 25, 0);
+  --edge: rgba(19, 21, 25, 0.6);
+  --lite-a: #3A3F48;
+  --lite-b: #2D3139;
+  --scrim: rgba(0, 0, 0, 0.6);
+  --lift: 0 2px 3px -1px rgba(0, 0, 0, 0.5), 0 1px 0 0 rgba(255, 255, 255, 0.02), 0 0 0 1px rgba(255, 255, 255, 0.09);
+  --pop-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 1px 1px -0.5px rgba(0, 0, 0, 0.3), 0 3px 3px -1.5px rgba(0, 0, 0, 0.3), 0 6px 6px -3px rgba(0, 0, 0, 0.3), 0 12px 12px -6px rgba(0, 0, 0, 0.3), 0 24px 24px -12px rgba(0, 0, 0, 0.35);
+  --chart-1: #E6E8EB;
+  --chart-2: #6B7280;
+  --chart-3: #34D399;
+  --chart-4: #FBBF24;
+  --chart-5: #A78BFA;
+  --diff-add: #6EE7B7;
+  --diff-add-bg: rgba(52, 211, 153, 0.07);
+  --diff-add-ln: rgba(52, 211, 153, 0.12);
+  --diff-del: #FCA5A5;
+  --diff-del-bg: rgba(248, 113, 113, 0.07);
+  --diff-del-ln: rgba(248, 113, 113, 0.12);
+}
+
+html {
+  background: var(--background);
 }
 
 /* Hidden while a phone keyboard is open (see hooks/useAppViewport). */
@@ -282,15 +373,23 @@ html.kb-open .kb-hidden {
   display: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* Settings > Appearance > Reduce motion. Durations collapse rather than being
+   removed so animationend/transitionend listeners still fire. */
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+
+/* Set by index.html before first paint and removed two frames after mount, so
+   the initial theme and accent apply without every surface transitioning in. */
+html.preload *,
+html.preload *::before,
+html.preload *::after {
+  transition: none !important;
 }
 
 @layer base {
@@ -372,31 +471,22 @@ html.kb-open .kb-hidden {
   }
 
   ::-webkit-scrollbar-thumb {
-    background: oklch(0.708 0 0 / 30%);
+    background: var(--border-strong);
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.708 0 0 / 50%);
+    background: var(--subtle-foreground);
   }
 
-  .dark ::-webkit-scrollbar-thumb {
-    background: oklch(0.985 0 0 / 20%);
-  }
 
-  .dark ::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.985 0 0 / 35%);
-  }
 
   /* Firefox scrollbar */
   * {
     scrollbar-width: thin;
-    scrollbar-color: oklch(0.708 0 0 / 30%) transparent;
+    scrollbar-color: var(--border-strong) transparent;
   }
 
-  .dark * {
-    scrollbar-color: oklch(0.985 0 0 / 20%) transparent;
-  }
 
 }
 

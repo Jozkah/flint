@@ -6,11 +6,12 @@ export function ThemeProvider() {
   const { isDark, setIsDark, activeTheme } = useTheme()
 
   useEffect(() => {
-    if (isDark) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
+    const root = document.documentElement
+    root.classList.toggle('dark', isDark)
+    // index.html paints the first frame with inline values; from here the
+    // stylesheet's html background and .dark color-scheme take over.
+    root.style.removeProperty('background')
+    root.style.removeProperty('color-scheme')
     if (IS_LINUX && isPlatformTauri()) {
       import('@tauri-apps/api/core')
         .then(({ invoke }) => invoke('set_gtk_prefer_dark', { dark: isDark }))

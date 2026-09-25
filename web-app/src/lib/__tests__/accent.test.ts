@@ -7,6 +7,8 @@ import {
   applyAccentToDocument,
   contrastRatio,
   deriveAccentTokens,
+  isNeutralSelection,
+  liftForDark,
   normalizeHex,
   readHexInput,
   sanitizeAccentSelection,
@@ -46,10 +48,8 @@ describe('deriveAccentTokens', () => {
       expect(contrastRatio(t.indicator, S.paper)).toBeGreaterThanOrEqual(3)
       expect(contrastRatio(t.text, S.ground)).toBeGreaterThanOrEqual(4.5)
       expect(contrastRatio(t.text, S.paper)).toBeGreaterThanOrEqual(4.5)
-      expect(contrastRatio(t.text, S.sidebar)).toBeGreaterThanOrEqual(4.5)
-      expect(contrastRatio(t.text, S.sunken)).toBeGreaterThanOrEqual(4.5)
-      expect(contrastRatio(t.indicator, S.sidebar)).toBeGreaterThanOrEqual(3)
-      expect(contrastRatio(t.rail, S.rail)).toBeGreaterThanOrEqual(3)
+      expect(contrastRatio(t.text, S.muted)).toBeGreaterThanOrEqual(4.5)
+      expect(contrastRatio(t.indicator, S.muted)).toBeGreaterThanOrEqual(3)
       // The better of white and near-black is always at least 4.5:1 on a fill.
       expect(contrastRatio(t.onFill, base)).toBeGreaterThanOrEqual(4.5)
       expect(t.fillHover).not.toBe(base)
@@ -69,7 +69,9 @@ describe('deriveAccentTokens', () => {
 })
 
 describe('sanitizeAccentSelection', () => {
-  it('defaults to Vermilion', () => {
+  it('defaults to the neutral Slate', () => {
+    expect(DEFAULT_ACCENT).toEqual({ preset: 'neutral' })
+    expect(isNeutralSelection(DEFAULT_ACCENT)).toBe(true)
     expect(sanitizeAccentSelection(undefined)).toEqual(DEFAULT_ACCENT)
     expect(sanitizeAccentSelection({ preset: 'nope' })).toEqual(DEFAULT_ACCENT)
     expect(sanitizeAccentSelection({ custom: '#zz' })).toEqual(DEFAULT_ACCENT)
@@ -77,10 +79,12 @@ describe('sanitizeAccentSelection', () => {
   it('keeps valid selections', () => {
     expect(sanitizeAccentSelection({ preset: 'moss' })).toEqual({ preset: 'moss' })
     expect(sanitizeAccentSelection({ preset: 'slate' })).toEqual({ preset: 'slate' })
+    expect(sanitizeAccentSelection({ preset: 'violet' })).toEqual({ preset: 'violet' })
+    expect(sanitizeAccentSelection({ preset: 'vermilion' })).toEqual({ preset: 'vermilion' })
     expect(sanitizeAccentSelection({ custom: '#abc' })).toEqual({ custom: '#AABBCC' })
   })
   it('migrates the previous accent presets without changing the colour', () => {
-    expect(sanitizeAccentSelection(undefined, 'gray')).toEqual({ preset: 'vermilion' })
+    expect(sanitizeAccentSelection(undefined, 'gray')).toEqual(DEFAULT_ACCENT)
     expect(sanitizeAccentSelection(undefined, 'blue')).toEqual({ custom: '#456BDE' })
     expect(sanitizeAccentSelection(undefined, 'rose')).toEqual({ custom: '#F655B8' })
     // A saved new-style selection wins over the legacy field.
@@ -94,6 +98,8 @@ describe('accentBase and semanticProximity', () => {
     expect(accentBase({ preset: 'slate' }, 'light').hex).toBe('#46618A')
     expect(accentBase({ preset: 'slate' }, 'dark').name).toBe('Slate blue')
     expect(accentBase({ custom: '#123456' }, 'light').hex).toBe('#123456')
+    expect(accentBase({ custom: '#123456' }, 'dark').hex).toBe(liftForDark('#123456'))
+    expect(liftForDark('#000000')).toBe('#1F1F1F')
   })
   it('warns near success and danger hues only', () => {
     expect(semanticProximity('#2E7A4C')).toBe('success')
@@ -110,8 +116,21 @@ describe('applyAccentToDocument', () => {
     expect(el.style.getPropertyValue('--primary')).toBe('#4E6E3A')
     expect(el.style.getPropertyValue('--primary-foreground')).toBe('#FFFFFF')
     expect(el.style.getPropertyValue('--sidebar')).toBe('')
+    expect(el.style.getPropertyValue('--grad')).toContain('#4E6E3A 64.697%')
+    expect(el.style.getPropertyValue('--on-grad')).toBe('#FFFFFF')
     applyAccentToDocument({ preset: 'moss' }, true, el)
     expect(el.style.getPropertyValue('--primary')).toBe('#97B77F')
+  })
+
+  it('clears every inline override for the neutral default', () => {
+    const el = document.createElement('div')
+    el.style.setProperty('--brand-fill', '#C0412B')
+    applyAccentToDocument({ preset: 'violet' }, false, el)
+    expect(el.style.getPropertyValue('--primary')).toBe('#6D4AFF')
+    applyAccentToDocument(DEFAULT_ACCENT, false, el)
+    expect(el.style.getPropertyValue('--primary')).toBe('')
+    expect(el.style.getPropertyValue('--grad')).toBe('')
+    expect(el.style.getPropertyValue('--brand-fill')).toBe('')
   })
 })
 
@@ -123,13 +142,17 @@ describe('stylesheet surfaces', () => {
       block.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`))?.[1]?.toUpperCase()
     expect(read(light, 'background')).toBe(ACCENT_SURFACES.light.ground)
     expect(read(light, 'card')).toBe(ACCENT_SURFACES.light.paper)
-    expect(read(light, 'rail')).toBe(ACCENT_SURFACES.light.rail)
-    expect(read(light, 'sidebar')).toBe(ACCENT_SURFACES.light.sidebar)
-    expect(read(light, 'sunken')).toBe(ACCENT_SURFACES.light.sunken)
-    expect(read(dark, 'sidebar')).toBe(ACCENT_SURFACES.dark.sidebar)
-    expect(read(dark, 'sunken')).toBe(ACCENT_SURFACES.dark.sunken)
+    expect(read(light, 'muted')).toBe(ACCENT_SURFACES.light.muted)
     expect(read(dark, 'background')).toBe(ACCENT_SURFACES.dark.ground)
     expect(read(dark, 'card')).toBe(ACCENT_SURFACES.dark.paper)
-    expect(read(dark, 'rail')).toBe(ACCENT_SURFACES.dark.rail)
+    expect(read(dark, 'muted')).toBe(ACCENT_SURFACES.dark.muted)
+  })
+
+  it('keeps the neutral preset equal to the stylesheet primary', () => {
+    const light = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    const dark = css.match(/\n\.dark\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
+    const neutral = ACCENT_PRESETS.find((p) => p.neutral)!
+    expect(light).toContain(`--primary: ${neutral.light};`)
+    expect(dark).toContain(`--primary: ${neutral.dark};`)
   })
 })
