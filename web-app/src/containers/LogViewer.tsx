@@ -6,19 +6,10 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import {
-  AlertTriangle,
-  BarChart3,
-  Check,
-  Copy,
-  FileText,
-  Layers,
-  Search,
-  ShieldAlert,
-  SquareTerminal,
-  Waypoints,
-  X,
-} from 'lucide-react'
+import { Check, Copy, Search, X } from 'lucide-react'
+import { Icon } from '@/components/ui/icon'
+import { KpiRow, KpiTile } from '@/containers/engine/EngineKit'
+import { useServiceHub } from '@/hooks/useServiceHub'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -371,43 +362,6 @@ const HOUR = 3_600_000
 
 const toTime = (ts: string | number) => new Date(ts).getTime()
 
-/** A headline number in a small frame. */
-function Kpi({
-  title,
-  icon,
-  value,
-  sub,
-  delay,
-}: {
-  title: string
-  icon: ReactNode
-  value: ReactNode
-  sub: ReactNode
-  delay: number
-}) {
-  return (
-    <Frame
-      className="motion-safe:animate-rise-in"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <FrameHeader
-        title={title}
-        actions={
-          <span className="text-muted-foreground [&_svg]:size-4" aria-hidden>
-            {icon}
-          </span>
-        }
-      />
-      <FrameBody className="min-h-[92px] justify-between gap-2.5 rounded-[10px] border-border p-3">
-        <b className="text-2xl leading-none font-medium tabular-nums text-foreground">
-          {value}
-        </b>
-        <span className="truncate text-xs text-muted-foreground">{sub}</span>
-      </FrameBody>
-    </Frame>
-  )
-}
-
 type Bucket = { start: number; info: number; warn: number; error: number }
 
 /** Lines per hour over the last day, split by level, newest bucket last. */
@@ -444,7 +398,7 @@ function ActivityChart({ logs }: { logs: LogEntry[] }) {
   const any = buckets.some((b) => b.info + b.warn + b.error > 0)
   return (
     <div className="flex h-full min-h-[150px] flex-col">
-      <div className="relative flex h-[120px] items-end gap-1 py-1">
+      <div className="relative flex min-h-[120px] flex-1 items-end gap-1 py-1">
         {!any && (
           <p className="absolute inset-0 grid place-items-center text-xs text-muted-foreground">
             {t('logs:activityEmpty')}
@@ -544,36 +498,65 @@ export function LogsDashboard({
 
   const stats = useMemo(() => {
     const hourAgo = Date.now() - HOUR
+    const today = new Date().toDateString()
+    let lines = 0
     let errors = 0
     let warnings = 0
     let recentErrors = 0
-    let recentWarnings = 0
     const sources = new Map<string, number>()
+    const warnSources = new Map<string, number>()
     for (const log of logs) {
-      const recent = toTime(log.timestamp) >= hourAgo
+      const at = toTime(log.timestamp)
+      if (new Date(at).toDateString() === today) lines++
+      const s = logSource(log)
       if (log.level === 'error') {
         errors++
-        if (recent) recentErrors++
+        if (at >= hourAgo) recentErrors++
       } else if (log.level === 'warn') {
         warnings++
-        if (recent) recentWarnings++
+        warnSources.set(s, (warnSources.get(s) ?? 0) + 1)
       }
-      const s = logSource(log)
       sources.set(s, (sources.get(s) ?? 0) + 1)
     }
     const top = [...sources.entries()].sort((a, b) => b[1] - a[1])
-    return { errors, warnings, recentErrors, recentWarnings, top }
+    const topWarn = [...warnSources.entries()].sort((a, b) => b[1] - a[1])[0]
+    return { lines, errors, warnings, recentErrors, top, topWarn: topWarn?.[0] }
   }, [logs])
 
+  const serviceHub = useServiceHub()
+  const openFolder = async () => {
+    try {
+      const folder = await serviceHub.app().getJanDataFolder()
+      if (!folder) return
+      await serviceHub.opener().openPath(await serviceHub.path().join(folder, 'logs'))
+    } catch (error) {
+      console.error('Failed to open the logs folder:', error)
+    }
+  }
+
   const copy = <CopyLogsButton logs={shown} />
+  const actions = (
+    <>
+      {copy}
+      <Button
+        variant="outline"
+        className="pointer-coarse:h-11"
+        onClick={() => void openFolder()}
+        data-testid="open-logs-folder"
+      >
+        <Icon name="x-folder" size={14} />
+        {t('logs:openFolder')}
+      </Button>
+    </>
+  )
   const topMax = stats.top[0]?.[1] ?? 1
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-card">
       <SystemPageHeader
         title={title}
-        icon={<FileText className="size-4" />}
-        actions={inShell ? undefined : copy}
+        icon={<Icon name="sb-file" size={16} />}
+        actions={inShell ? undefined : actions}
       />
       <div
         className={cn(
@@ -591,35 +574,41 @@ export function LogsDashboard({
               )}
               <p className="text-[13px] text-muted-foreground">{description}</p>
             </div>
-            {inShell && copy}
+            {inShell && (
+              <div className="flex flex-wrap items-center gap-2">{actions}</div>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <Kpi
+          <KpiRow>
+            <KpiTile
               title={t('logs:kpiLines')}
-              icon={<FileText />}
-              value={logs.length.toLocaleString()}
+              icon={<Icon name="sb-file" size={16} />}
+              value={stats.lines.toLocaleString()}
               sub={t('logs:kpiLinesSub', { count: shown.length })}
               delay={40}
             />
-            <Kpi
+            <KpiTile
               title={t('logs:kpiErrors')}
-              icon={<ShieldAlert />}
+              icon={<Icon name="x-shield" size={16} />}
               value={stats.errors.toLocaleString()}
               sub={t('logs:kpiLastHour', { count: stats.recentErrors })}
               delay={80}
             />
-            <Kpi
+            <KpiTile
               title={t('logs:kpiWarnings')}
-              icon={<AlertTriangle />}
+              icon={<Icon name="feed-alert" size={16} />}
               value={stats.warnings.toLocaleString()}
-              sub={t('logs:kpiLastHour', { count: stats.recentWarnings })}
+              sub={
+                stats.topWarn
+                  ? t('logs:kpiWarningsSub', { name: stats.topWarn })
+                  : t('logs:kpiWarningsNone')
+              }
               delay={120}
             />
-            <Kpi
+            <KpiTile
               title={t('logs:kpiSources')}
-              icon={<Layers />}
-              value={stats.top.length}
+              icon={<Icon name="flow" size={16} />}
+              value={String(stats.top.length)}
               sub={
                 stats.top[0]
                   ? t('logs:kpiSourcesSub', { name: stats.top[0][0] })
@@ -627,7 +616,7 @@ export function LogsDashboard({
               }
               delay={160}
             />
-          </div>
+          </KpiRow>
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Frame
@@ -635,7 +624,7 @@ export function LogsDashboard({
               style={{ animationDelay: '200ms' }}
             >
               <FrameHeader
-                icon={<BarChart3 />}
+                icon={<Icon name="analytics" size={16} />}
                 title={t('logs:activity')}
                 actions={
                   <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
@@ -648,7 +637,7 @@ export function LogsDashboard({
                   </span>
                 }
               />
-              <FrameBody className="p-3.5">
+              <FrameBody className="flex-1 p-3.5">
                 <ActivityChart logs={logs} />
               </FrameBody>
             </Frame>
@@ -656,7 +645,10 @@ export function LogsDashboard({
               className="motion-safe:animate-rise-in"
               style={{ animationDelay: '240ms' }}
             >
-              <FrameHeader icon={<Waypoints />} title={t('logs:topSources')} />
+              <FrameHeader
+                icon={<Icon name="flow" size={16} />}
+                title={t('logs:topSources')}
+              />
               <FrameBody className="gap-0.5 p-2.5">
                 {stats.top.length === 0 && (
                   <p className="px-1 py-6 text-center text-xs text-muted-foreground">
@@ -702,7 +694,7 @@ export function LogsDashboard({
             style={{ animationDelay: '280ms' }}
           >
             <FrameHeader
-              icon={<SquareTerminal />}
+              icon={<Icon name="x-terminal" size={16} />}
               title={fileName}
               actions={
                 <>
@@ -711,7 +703,8 @@ export function LogsDashboard({
                   </Chip>
                   <Button
                     variant="outline"
-                    size="xs"
+                    size="sm"
+                    className="pointer-coarse:h-11"
                     onClick={() => {
                       if (follow) setFrozen(logs)
                       setFollow(!follow)

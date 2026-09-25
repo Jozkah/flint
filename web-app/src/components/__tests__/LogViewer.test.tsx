@@ -96,7 +96,7 @@ describe('LogViewer', () => {
     expect(screen.queryByText('Should not appear')).not.toBeInTheDocument()
   })
 
-  it('color codes error level as red', async () => {
+  it('draws an error line in the destructive colour', async () => {
     mockReadLogs.mockResolvedValue([
       {
         timestamp: '2024-01-01T10:00:00Z',
@@ -109,12 +109,13 @@ describe('LogViewer', () => {
     render(<LogViewer />)
 
     await waitFor(() => {
+      // An error line is red throughout.
       const levelEl = screen.getByText('ERROR')
-      expect(levelEl.className).toContain('text-red-500')
+      expect(levelEl.parentElement?.className).toContain('text-destructive')
     })
   })
 
-  it('color codes warn level as yellow', async () => {
+  it('draws a warning level in the warning colour', async () => {
     mockReadLogs.mockResolvedValue([
       {
         timestamp: '2024-01-01T10:00:00Z',
@@ -128,11 +129,11 @@ describe('LogViewer', () => {
 
     await waitFor(() => {
       const levelEl = screen.getByText('WARN')
-      expect(levelEl.className).toContain('text-yellow-500')
+      expect(levelEl.className).toContain('text-warning')
     })
   })
 
-  it('color codes info level as blue', async () => {
+  it('keeps an info line in the plain log colour', async () => {
     mockReadLogs.mockResolvedValue([
       {
         timestamp: '2024-01-01T10:00:00Z',
@@ -145,12 +146,14 @@ describe('LogViewer', () => {
     render(<LogViewer />)
 
     await waitFor(() => {
+      // Info keeps the log's plain colour.
       const levelEl = screen.getByText('INFO')
-      expect(levelEl.className).toContain('text-blue-500')
+      expect(levelEl.parentElement?.className).not.toContain('text-destructive')
+      expect(levelEl.parentElement?.className).not.toContain('text-muted-foreground')
     })
   })
 
-  it('color codes debug level as gray', async () => {
+  it('mutes a debug line', async () => {
     mockReadLogs.mockResolvedValue([
       {
         timestamp: '2024-01-01T10:00:00Z',
@@ -164,7 +167,7 @@ describe('LogViewer', () => {
 
     await waitFor(() => {
       const levelEl = screen.getByText('DEBUG')
-      expect(levelEl.className).toContain('text-gray-500')
+      expect(levelEl.parentElement?.className).toContain('text-muted-foreground')
     })
   })
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import type { LogEntry } from '@/services/app/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { cn } from '@/lib/utils'
 
 const SERVER_LOG_TARGET = 'app_lib::core::server::proxy'
 const LOG_EVENT_NAME = 'log://log'
@@ -15,7 +16,8 @@ export function LogViewer() {
   const scrollToBottom = useCallback(() => {
     const el = logsContainerRef.current
     if (el) {
-      el.scrollTop = el.scrollHeight - el.clientHeight
+      // Newest first: the latest line is at the top.
+      el.scrollTop = 0
     }
   }, [])
 
@@ -54,22 +56,6 @@ export function LogViewer() {
       }
     }, [serviceHub, scrollToBottom])
 
-    // Function to get appropriate color for log level
-    const getLogLevelColor = (level: string) => {
-      switch (level) {
-        case 'error':
-          return 'text-red-500'
-        case 'warn':
-          return 'text-yellow-500'
-        case 'info':
-          return 'text-blue-500'
-        case 'debug':
-          return 'text-gray-500'
-        default:
-          return 'text-gray-500'
-      }
-    }
-
     // Format timestamp to be more readable
     const formatTimestamp = (timestamp: string | number) => {
       const date = new Date(timestamp)
@@ -82,34 +68,42 @@ export function LogViewer() {
       })
     }
 
+  // The design's plain log: time, level and message on one wrapping line;
+  // an error line is red throughout, a warning's level amber.
   return (
-    <div ref={logsContainerRef} className="border h-full rounded-md bg-background p-4 px-2 block overflow-y-auto overflow-hidden">
-      <div
-      >
-        <div className="font-mono text-xs">
-          {logs.length === 0 ? (
-            <div className="text-center text-muted-foreground py-4">
-              {t('logs:noLogs')}
-            </div>
-          ) : (
-            logs.map((log, index) => (
-              <div key={index} className="mb-1 flex">
-                <span className="text-muted-foreground mr-2 shrink-0">
-                  [{formatTimestamp(log.timestamp)}]
-                </span>
-                <span
-                  className={`mr-2 font-semibold shrink-0 ${getLogLevelColor(
-                    log.level
-                  )}`}
-                >
-                  {log.level.toUpperCase()}
-                </span>
-                <span className="break-all">{log.message}</span>
-              </div>
-            ))
-          )}
+    <div
+      ref={logsContainerRef}
+      className="h-full overflow-x-hidden overflow-y-auto px-3 py-2 font-mono text-xs leading-[1.7] text-fg-2 [scrollbar-width:thin]"
+    >
+      {logs.length === 0 ? (
+        <div className="py-4 text-center font-sans text-muted-foreground">
+          {t('logs:noLogs')}
         </div>
-      </div>
+      ) : (
+        [...logs].reverse().map((log, index) => (
+          <div
+            key={index}
+            className={cn(
+              'break-words whitespace-pre-wrap',
+              log.level === 'error' && 'text-destructive',
+              log.level === 'debug' && 'text-muted-foreground'
+            )}
+          >
+            <span className="text-subtle-foreground">
+              [{formatTimestamp(log.timestamp)}]
+            </span>{' '}
+            <b
+              className={cn(
+                'font-bold',
+                log.level === 'warn' && 'text-warning'
+              )}
+            >
+              {log.level.toUpperCase()}
+            </b>{' '}
+            {log.message}
+          </div>
+        ))
+      )}
     </div>
   )
 }
