@@ -4210,7 +4210,7 @@ function CoworkPage() {
             // access pills drop their labels to icons when the row is tight,
             // and anything still too wide is clipped at the right edge.
             <div className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5">
-              <div className="flex min-w-24 max-w-56 shrink">
+              <div className="flex min-w-28 max-w-56 shrink">
                 {modelSelector}
               </div>
               {sessionControls}
