@@ -1,5 +1,6 @@
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
+import { useUsageStats } from '@/stores/usage-stats-store'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
@@ -31,6 +32,21 @@ import type {
 // The transcript/todo/subagent shapes live in a store-free module so panels and
 // pure helpers can import them without pulling in zustand. Re-exported here
 // because this store is still their most natural import site.
+/** Counts a committed run's replies for the Overview dashboard. */
+function recordCoworkUsage(turns: CoworkTurn[]) {
+  const stats = useUsageStats.getState()
+  for (const turn of turns) {
+    if (turn.role !== 'assistant') continue
+    const tokens = turn.tokenSpeed?.tokenCount ?? turn.usage?.completion_tokens ?? 0
+    const speed = turn.tokenSpeed?.tokenSpeed ?? 0
+    stats.recordGeneration({
+      tokens,
+      durationMs: speed > 0 && tokens > 0 ? (tokens / speed) * 1000 : 0,
+      at: turn.endedAt ?? Date.now(),
+    })
+  }
+}
+
 export type {
   CoworkTurn,
   Usage,
@@ -667,7 +683,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
-      commitTurns: (id, turns, messages, subagents, usage) =>
+      commitTurns: (id, turns, messages, subagents, usage) => {
+        recordCoworkUsage(turns)
         set((s) => ({
           sessions: s.sessions.map((x) => {
             if (x.id !== id) return x
@@ -689,7 +706,8 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               updated: now(),
             }
           }),
-        })),
+        }))
+      },
 
       appendTurns: (id, turns) =>
         set((s) => ({

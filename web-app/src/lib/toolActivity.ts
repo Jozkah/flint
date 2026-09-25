@@ -16,6 +16,7 @@
  * sequence with `recordLifecycle`, so there is one execution-event model and
  * not several stores that can disagree.
  */
+import { useUsageStats } from '@/stores/usage-stats-store'
 import type { ChangeActorInput } from '@janhq/tauri-plugin-agent-tools-api'
 import { invoke } from '@tauri-apps/api/core'
 import { summarizeToolInput } from '@/lib/toolInputSummary'
@@ -298,6 +299,33 @@ export function actorFor(
 }
 
 /**
+ * Tool outcomes and notable run events for the Overview dashboard, counted
+ * locally. Only ends of calls count, so a retried call is one outcome.
+ */
+function noteForOverview(
+  event: Partial<ToolActivityEvent> & Pick<ToolActivityEvent, 'tool' | 'phase'>,
+  at: number
+) {
+  try {
+    const stats = useUsageStats.getState()
+    const isTool = !event.event_type || event.event_type === 'tool'
+    if (isTool && event.phase === 'succeeded') stats.recordToolCall(true, at)
+    if (isTool && (event.phase === 'failed' || event.phase === 'timed-out'))
+      stats.recordToolCall(false, at)
+    if (event.lifecycle === 'compaction' && event.phase === 'succeeded')
+      stats.pushActivity({ kind: 'compaction', title: 'Context compacted', detail: event.summary || undefined, at })
+    else if (isTool && event.phase === 'allowed')
+      stats.pushActivity({ kind: 'tool-approved', title: 'Tool call approved', detail: event.summary || event.tool, at })
+    else if (isTool && event.phase === 'refused')
+      stats.pushActivity({ kind: 'tool-denied', title: 'Tool call refused', detail: event.summary || event.tool, at })
+    else if (isTool && event.phase === 'failed')
+      stats.pushActivity({ kind: 'tool-failed', title: 'Tool call failed', detail: event.summary || event.tool, at })
+  } catch {
+    // The dashboard is a convenience; it must never break recording.
+  }
+}
+
+/**
  * Events are appended in the order they were reported, whoever reported them.
  *
  * Recording is not allowed to hold up the tool it is recording, so callers
@@ -321,6 +349,7 @@ export function recordToolActivity(
 ): Promise<void> {
   // Stamped when the event happened, not when its turn in the queue comes up.
   const atMs = Date.now()
+  noteForOverview(event, atMs)
   const at = new Date(atMs).toISOString()
   const write = async () => {
     try {

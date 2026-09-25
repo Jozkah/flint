@@ -103,6 +103,21 @@ const boot = async () => {
   await import('./i18n')
 
   const router = createRouter({ routeTree })
+  // The app opens on the Overview once the first-run setup is done; until
+  // then the new-chat page carries the setup guide. Only the main window's
+  // start: a deep link or a logs window keeps its own path.
+  try {
+    if (
+      window.location.pathname === '/' &&
+      localStorage.getItem('setup-completed') &&
+      !sessionStorage.getItem('flint-started')
+    ) {
+      window.history.replaceState(null, '', '/overview')
+    }
+    sessionStorage.setItem('flint-started', '1')
+  } catch {
+    // Storage unavailable: stay on the default page.
+  }
 
   const rootElement = document.getElementById('root')!
   if (!rootElement.innerHTML) {

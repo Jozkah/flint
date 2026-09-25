@@ -1,6 +1,7 @@
 export const route = {
   // home as new chat or thread
   home: '/',
+  overview: '/overview',
   cowork: '/cowork',
   artifacts: '/artifacts',
   extensions: '/extensions',

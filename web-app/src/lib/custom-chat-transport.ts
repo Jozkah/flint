@@ -1,4 +1,5 @@
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
+import { useUsageStats } from '@/stores/usage-stats-store'
 import { type UIMessage } from '@ai-sdk/react'
 import {
   convertToModelMessages,
@@ -2017,6 +2018,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           } else {
             tokenSpeed = 0
           }
+
+          // Counted for the Overview dashboard, on this computer only.
+          useUsageStats.getState().recordGeneration({
+            tokens: outputTokens,
+            durationMs: tokenSpeed > 0 ? (outputTokens / tokenSpeed) * 1000 : 0,
+          })
 
           // AH-083: where each carried memory was used -- now naming the
           // exact request it went out in, the way Cowork's does, because the

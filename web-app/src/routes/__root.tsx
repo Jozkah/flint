@@ -5,6 +5,7 @@ import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
 import { ThemeProvider } from '@/providers/ThemeProvider'
 import { InterfaceProvider } from '@/providers/InterfaceProvider'
+import { UsageActivityRecorder } from '@/providers/UsageActivityRecorder'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { KeyboardShortcutsProvider } from '@/providers/KeyboardShortcuts'
 import { DataProvider } from '@/providers/DataProvider'
@@ -128,6 +129,7 @@ function RootLayout() {
       <ServiceHubProvider>
         <ThemeProvider />
         <InterfaceProvider />
+        <UsageActivityRecorder />
         <ToasterProvider />
         <TranslationProvider>
           <ExtensionProvider>

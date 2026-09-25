@@ -29,6 +29,7 @@ export function crumbForPath(pathname: string): Crumb {
   const support = { parentKey: 'common:shell.support', parentTo: route.appLogs }
 
   if (path === '/') return { ...ws, currentKey: 'common:newChat' }
+  if (path === route.overview) return { ...ws, currentKey: 'common:shell.usageOverview' }
   if (path.startsWith('/threads/'))
     return {
       parentKey: 'common:chats',

@@ -1610,7 +1610,9 @@
       "draft": "Draft pull request",
       "merged": "Merged",
       "closed": "Closed without merging"
-    }
+    },
+    "overview": "Overview",
+    "usageOverview": "Usage overview"
   },
   "systemNav": {
     "label": "Diagnostics",

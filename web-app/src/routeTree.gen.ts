@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
+import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as CoworkRouteImport } from './routes/cowork'
@@ -41,6 +42,11 @@ import { Route as SettingsProvidersProviderNameRouteImport } from './routes/sett
 const SystemMonitorRoute = SystemMonitorRouteImport.update({
   id: '/system-monitor',
   path: '/system-monitor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OverviewRoute = OverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LogsRoute = LogsRouteImport.update({
@@ -186,6 +192,7 @@ export interface FileRoutesByFullPath {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -247,6 +255,7 @@ export interface FileRoutesById {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
@@ -279,6 +288,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/overview'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -309,6 +319,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/overview'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -339,6 +350,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/overview'
     | '/system-monitor'
     | '/local-api-server/logs'
     | '/project/$projectId'
@@ -370,6 +382,7 @@ export interface RootRouteChildren {
   CoworkRoute: typeof CoworkRoute
   ExtensionsRoute: typeof ExtensionsRoute
   LogsRoute: typeof LogsRoute
+  OverviewRoute: typeof OverviewRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
@@ -402,6 +415,13 @@ declare module '@tanstack/react-router' {
       path: '/system-monitor'
       fullPath: '/system-monitor'
       preLoaderRoute: typeof SystemMonitorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/overview': {
+      id: '/overview'
+      path: '/overview'
+      fullPath: '/overview'
+      preLoaderRoute: typeof OverviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/logs': {
@@ -602,6 +622,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoworkRoute: CoworkRoute,
   ExtensionsRoute: ExtensionsRoute,
   LogsRoute: LogsRoute,
+  OverviewRoute: OverviewRoute,
   SystemMonitorRoute: SystemMonitorRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,

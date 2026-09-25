@@ -5,6 +5,7 @@ import {
   Box,
   ChevronsUpDown,
   Handshake,
+  LayoutDashboard,
   Library,
   MessagesSquare,
   PanelLeft,
@@ -181,7 +182,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         data-tauri-drag-region
       >
         <Link
-          to={route.home}
+          to={route.overview}
           onClick={onNavigate}
           aria-label={t('common:appRail.home')}
           className="group/brand flex items-center gap-3 rounded-md text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
@@ -229,6 +230,18 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           <NavGroup>
             <NavGroupLabel>{t('common:appRail.workspace')}</NavGroupLabel>
             <NavList>
+              <LinkRows
+                onNavigate={onNavigate}
+                rows={[
+                  {
+                    to: route.overview,
+                    label: t('common:shell.overview'),
+                    icon: LayoutDashboard,
+                    active: pathname === route.overview,
+                    testId: 'nav-overview',
+                  },
+                ]}
+              />
               <NavItem>
                 <NavButton
                   isActive={pathname === route.home}
