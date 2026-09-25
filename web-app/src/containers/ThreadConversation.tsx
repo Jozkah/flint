@@ -1108,7 +1108,8 @@ export function ThreadConversation({
               const title = await generateThreadTitle(
                 inputText,
                 controller.signal,
-                threadId
+                threadId,
+                titleSource
               )
               if (controller.signal.aborted) return
               // Recorded even when no title came back, so a model that cannot

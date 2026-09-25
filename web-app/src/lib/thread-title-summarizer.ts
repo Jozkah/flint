@@ -58,17 +58,85 @@ export function cleanTitle(raw: string): string | null {
   return text
 }
 
+const FALLBACK_TITLE_WORDS = 6
+const FALLBACK_TITLE_CHARS = 60
+
+/**
+ * A short title cut from the user's own text, for when the model gives none:
+ * the first few words, at most 60 characters, so a whole pasted prompt never
+ * becomes the chat's title.
+ */
+export function fallbackTitle(source: string): string | null {
+  const words = source
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, FALLBACK_TITLE_WORDS)
+  let text = words.join(' ')
+  if (text.length > FALLBACK_TITLE_CHARS) {
+    text = text.slice(0, FALLBACK_TITLE_CHARS).replace(/\s+\S*$/, '')
+  }
+  text = text.replace(/[\s,.;:!?-]+$/, '')
+  return text.length >= 2 ? text : null
+}
+
+/**
+ * Title runs per chat, keyed by chat and the first message the title comes
+ * from. Guarded here, at the one call that reaches the model, so no caller
+ * can title the same chat twice at once or again once it is done -- the audit
+ * saw the helper run 51 times for one thread in under four minutes.
+ */
+const titleInFlight = new Map<string, Promise<string | null>>()
+const titleDone = new Set<string>()
+
+/** Forget every guard (tests). */
+export function resetTitleGuards(): void {
+  titleInFlight.clear()
+  titleDone.clear()
+}
+
 /**
  * Generate a summarized thread title from the user's first message.
  * Uses the currently selected model via a non-streaming generateText call.
- * Returns null on failure or if the signal is aborted.
+ * Returns null when aborted, when this chat and source were already titled,
+ * or when there is nothing to title from; a model that returns nothing usable
+ * yields a short title cut from `source` instead.
  */
-export async function generateThreadTitle(
+export function generateThreadTitle(
   transcript: string,
   abortSignal: AbortSignal,
   /** The conversation being titled, for the utility-agent record. */
-  session = ''
+  session = '',
+  /** The first user message the title is for; defaults to the transcript. */
+  source = transcript
 ): Promise<string | null> {
+  const key = session ? `${session}\u0000${source}` : ''
+  if (key) {
+    if (titleDone.has(key)) return Promise.resolve(null)
+    const running = titleInFlight.get(key)
+    if (running) return running
+  }
+  const run = (async () => {
+    const title = await requestTitle(transcript, abortSignal, session)
+    if (title === ABORTED || abortSignal.aborted) return null
+    if (key) titleDone.add(key)
+    return title ?? fallbackTitle(source)
+  })()
+  if (!key) return run
+  titleInFlight.set(key, run)
+  return run.finally(() => {
+    if (titleInFlight.get(key) === run) titleInFlight.delete(key)
+  })
+}
+
+const ABORTED = Symbol('aborted')
+
+async function requestTitle(
+  transcript: string,
+  abortSignal: AbortSignal,
+  session: string
+): Promise<string | null | typeof ABORTED> {
   try {
     const { selectedModel, selectedProvider, getProviderByName } =
       useModelProvider.getState()
@@ -118,7 +186,7 @@ export async function generateThreadTitle(
     return cleanTitle(text)
   } catch (error) {
     // Silently swallow abort errors — this is expected when the user sends a new message
-    if ((error as Error).name === 'AbortError') return null
+    if ((error as Error).name === 'AbortError') return ABORTED
     console.error(
       '[ThreadTitle] Failed to generate title:',
       (error as Error).name
