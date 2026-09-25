@@ -18,6 +18,11 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **A redesigned interface.** A sidebar and top header in place of the rail and status bar, an Overview dashboard as the start page, a neutral Slate default accent, Inter, duotone icons, restrained motion, phone layouts, chat groups with drag and undo delete, and pull-request status in Cowork — keeping the intention-led first run, global settings search, command palette and system monitor with filterable logs.
 - **Agent SDK and slash commands.** JavaScript and Python SDK clients speak a frozen protocol v1 over JSON-RPC. A host tool contract lets a client declare tools that it runs itself. Flint's built-in tools are also available over MCP. Slash commands now work in the Home, Cowork and Rooms composers.
 - **A sandbox that can reach the network, safely.** Agent runs now have network access by default through a LAN-capable sandbox, with a toggle that policy can restrict and a native `git_clone`. A long round of security hardening covers bash rules, symlinks, secrets, `web_fetch` to private addresses and repository git config.
+- **A git tool with real approvals.** Git and `gh` run outside the sandbox through a dedicated `git` tool: reads run freely, local changes follow the session's mode, and every push, pull request, issue or repository change shows an approval naming the exact command and remote. Repository config that would run programs is refused, and MCP tools that approve their own commands are never offered.
+- **Toolchains in the Windows sandbox.** Settings → Agent Tools lets the sandbox use a toolchain installed in your profile (such as Python) by granting one folder, revocable at any time; folders that need an administrator show the exact command instead.
+- **Agents that ask, verify and stop looping.** The agent asks structured questions with its own suggested options, is told the shell, sandbox limits and access mode up front, reruns existing tests after a change, and a loop guard now catches repeated approve/execute cycles.
+- **A richer System Monitor.** Drives, network rates, temperatures, per-core CPU, swap, uptime and host details, with usage bars throughout.
+- **AI-written MCP descriptions.** Generate "About this server" text for your MCP servers with a model you choose, reviewing each one before it is saved.
 
 ## Migration
 
@@ -32,6 +37,72 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 ---
 
 ## What's Changed
+
+### Testing round before release
+- feat(web-app): show a command's non-zero exit as an amber failed check
+- feat(agent): rerun existing tests after a change, and test with real files
+- build: rebuild the Tauri plugin APIs before the web-app typecheck
+- fix(agent-tools): offer toolchain grants only for real install folders
+- fix(cowork): say a turn was read-only, and make Continue start a run
+- fix(cowork): a repository-bound session starts in Ask, not Review
+- fix(agent-tools): drop a repeated sentence from the read path description
+- fix(tools): name close matches, drop dead MCP tools, show expected shapes
+- fix(git-tool): accept gh -R before the subcommand and teach gh shapes
+- fix(agent-tools): recover paths whose backslash JSON turned into a TAB
+- fix(activity): keep finished calls finished across a restart
+- fix: rank shells for the model and stop offering self-approval tools
+- feat(web-app): remind about waiting approvals, never drop them silently
+- fix(web-app): cap web_fetch text and skip a URL that just failed
+- fix(web-app): title a chat once, and never keep the raw prompt
+- fix(web-app): name continued runs after the request, and amber for command failures
+- fix(agent-tools): file tools and the shell share one working folder
+- fix(web-app): keep tool results and failures in saved chats
+- fix(agent-tools): carry toolchain grants into the sandbox helper
+- fix(agent-tools): refuse repo config that runs programs, and .git writes
+- feat: a first-class git tool, and no self-approving MCP tools
+- fix(web-app): say so when a chat turn returns nothing at all
+- fix(web-app): let the Chat loop guard see approve/execute loops
+- feat(agent): state the shell, sandbox limits and working rules up front
+- feat(agent): teach the agent when and how to use `ask`
+- feat(cowork): state the shell, sandbox limits and working rules up front
+- feat(cowork): teach the agent to ask, and show the plan in plan review
+- feat(web-app): drive cards and usage bars across System Monitor
+- feat(hardware): CPU and drive temperatures on Windows
+- fix(cowork): do not stall Auto mode on writes inside the session's own tree
+- feat(agent-tools): let the Windows sandbox use a user-installed toolchain
+- feat(web-app): drives, network, temperatures and more on System Monitor
+- feat(web-app): generate MCP server descriptions with AI
+- feat(hardware): a detailed system snapshot for the System Monitor
+- fix(web-app): responsive overview cards and a bounded activity feed
+- fix(web-app): sidebar dots clear once seen; collapsed groups keep running items
+- fix(web-app): Cowork header drops pill labels sooner
+- fix(web-app): tool approvals stand out as something to answer
+- fix(cli): honest reachability, --provider by name, default policy export, closed pipes
+- fix(agent): give checkpoint commits a short Cowork subject
+- fix(agent-tools): let plain tool output through the credential filter
+- feat(cowork): apply a Review only file to the attached folder
+- fix(cowork): keep the inspector drawer off the composer
+- fix(web-app): list unreachable providers' models last, muted
+- fix(web-app): show a fallback reply when a run ends after tools with no text
+- fix(web-app): make the composer tools control a single button
+- fix(rooms): settings panel hint and control names
+- fix(web-app): title a chat once, and again when its first message is edited
+- fix(rooms): allow wrap-up actions on a completed room
+- fix(web-app): give the delete-message confirm button its own name
+- fix(web-app): say group, not collection, in the chat row's New group dialog
+- fix(web-app): hide tokens/sec for tiny or instant replies
+- fix(web-app): Cowork header pills no longer overlap on narrow windows
+- feat(web-app): collapsible Details sections and richer Activity rows
+- fix(web-app): uniform timeline dots and a full-size live tool timeline
+- fix(web-app): steady chat header title, status dot and model pill
+- fix(web-app): read the rooms ?new flag with useSearch
+- fix(rooms): the sidebar's New room opens the create dialog
+- fix(a11y): name every settings control, valid lists and ARIA, focusable log
+- docs(readme): build the bundled extensions before yarn dev
+- fix(server): say the Local API port is taken when another app holds it
+- fix(chat): a new chat gets its own transport; servers named in a message are routed
+- fix: submenus, chat groups, curl in the Windows shell, Flint branding
+- fix(web-app): a web preview drag no longer crashes the app; Move to group
 
 ### Local-first and privacy
 - fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing "Expected 'function.name' to be a string" generation failures
