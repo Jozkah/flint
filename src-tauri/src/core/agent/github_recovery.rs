@@ -149,7 +149,7 @@ pub fn discover_git() -> Option<PathBuf> {
 
 /// Resolve `name` against `PATH` in-process (honouring `PATHEXT` on Windows),
 /// without launching `where`/`which` -- a shell is never composed.
-fn on_path(name: &str) -> Option<PathBuf> {
+pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     #[cfg(windows)]
     let exts: Vec<String> = std::env::var("PATHEXT")
