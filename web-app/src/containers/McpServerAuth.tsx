@@ -146,7 +146,7 @@ export function McpServerAuth({
           href={consentUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-xs text-brand-text underline-offset-4 hover:underline"
+          className="text-xs text-acc-text underline-offset-4 hover:underline"
         >
           {t('mcp-servers:auth.openSignInPage')}
         </a>

@@ -36,7 +36,7 @@ export default function DeleteMCPServerConfirm({
         {/* Deleting revokes every approval for the name (renderer and backend
             trust) and clears its OAuth tokens, so a server added later under
             the same name inherits nothing. Audit history is kept. */}
-        <div className="space-y-2 rounded-md bg-sunken px-3 py-2 text-sm text-ink-2">
+        <div className="space-y-2 rounded-lg bg-muted px-3 py-2 text-sm text-fg-2">
           <p>{t('mcp-servers:deleteServer.approvalsRemoved')}</p>
           <p>{t('mcp-servers:deleteServer.disableInstead')}</p>
         </div>

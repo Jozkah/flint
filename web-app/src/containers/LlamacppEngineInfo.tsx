@@ -50,12 +50,12 @@ export function LlamacppEngineInfo() {
   if (!engine) return null
 
   return (
-    <div className="rounded-lg border border-main-view-fg/10 bg-main-view-fg/5 p-4">
+    <div className="rounded-xl bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] px-3.5 py-3 text-[13px] shadow-[inset_0_0_0_0.8px_var(--border)]">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-2">
           <IconCpu size={18} className="shrink-0 text-muted-foreground" />
           <span className="font-medium text-foreground">llama.cpp</span>
-          <span className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-xs tabular-nums text-foreground">
+          <span className="inline-flex h-[22px] items-center rounded-md border-[0.8px] border-border bg-card px-2 font-mono text-xs tabular-nums text-secondary-foreground">
             {engine.version}
           </span>
         </div>
@@ -69,10 +69,10 @@ export function LlamacppEngineInfo() {
           <IconExternalLink size={14} />
         </a>
       </div>
-      <p className="mt-1.5 text-xs leading-normal text-muted-foreground">
+      <p className="mt-1 mb-2 text-[12.5px] leading-normal text-muted-foreground">
         {t('providers:engineBundled')}
       </p>
-      <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1">
+      <dl className="flex flex-wrap gap-x-6 gap-y-1">
         <Fact label={t('providers:engineBuild')} value={engine.tag} />
         <Fact
           label={t('providers:engineCommit')}

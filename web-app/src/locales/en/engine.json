@@ -1,0 +1,156 @@
+{
+  "live": "Live",
+  "chart": {
+    "peak": "peak",
+    "avg": "avg"
+  },
+  "models": {
+    "title": "Models",
+    "description": "Local models run on this machine. Remote providers use your API keys.",
+    "importGguf": "Import GGUF",
+    "startFailed": "Could not start {{model}}"
+  },
+  "kpi": {
+    "installed": "Installed",
+    "installedSub": "{{local}} local · {{remote}} remote",
+    "loaded": "Loaded now",
+    "loadedSub": "of {{count}} local models",
+    "disk": "Disk used",
+    "diskSub": "{{count}} model files",
+    "fastest": "Fastest",
+    "fastestNone": "No replies measured yet",
+    "embeddingSub": "{{count}} embedding models",
+    "addedSub": "added to Flint",
+    "repliesToday": "Replies today",
+    "repliesSub": "{{count}} replies measured",
+    "apiKeys": "API keys",
+    "fallbackSub": "{{count}} fallback keys",
+    "noFallbackSub": "no fallback key",
+    "avgSpeed": "Average speed"
+  },
+  "loaded": {
+    "title": "Loaded now",
+    "empty": "No model is loaded",
+    "emptyHint": "Start a local model from the table below, or send it a message.",
+    "unload": "Unload"
+  },
+  "speed": {
+    "title": "Generation speed",
+    "label": "tokens / second",
+    "window": "last {{count}} replies",
+    "empty": "No replies measured yet",
+    "emptyHint": "Speeds appear here after a model answers a chat.",
+    "noneYet": "no replies yet"
+  },
+  "providers": {
+    "onDevice": "On this device",
+    "remote": "Remote",
+    "modelsCount": "{{count}} models",
+    "notSetUp": "not set up",
+    "custom": "Custom provider",
+    "customHint": "OpenAI- or Anthropic-compatible"
+  },
+  "status": {
+    "running": "Running",
+    "connected": "Connected",
+    "verified": "Verified",
+    "off": "Off",
+    "loaded": "Loaded",
+    "ready": "Ready",
+    "noKey": "No API key"
+  },
+  "installed": {
+    "title": "Installed models",
+    "filter": "Show models",
+    "search": "Search models",
+    "none": "No models yet",
+    "noneHint": "Import a GGUF file or add models to a provider.",
+    "noMatch": "No models match"
+  },
+  "filter": {
+    "all": "All",
+    "local": "Local",
+    "remote": "Remote"
+  },
+  "table": {
+    "name": "Model",
+    "provider": "Provider",
+    "capabilities": "Capabilities",
+    "size": "Size",
+    "context": "Context",
+    "speed": "Speed",
+    "status": "Status",
+    "remote": "remote"
+  },
+  "menu": {
+    "modelActions": "Actions for {{model}}",
+    "start": "Start",
+    "stop": "Unload",
+    "openProvider": "Open provider",
+    "copyId": "Copy model id",
+    "copied": "Model id copied"
+  },
+  "provider": {
+    "enabled": "Enabled",
+    "remoteNote": "Remote · messages leave this computer",
+    "api": "API",
+    "connection": "Connection",
+    "engineSettings": "Engine settings",
+    "memorySettings": "Memory & cache",
+    "danger": "Danger zone"
+  },
+  "mcp": {
+    "title": "Tools & MCP",
+    "description": "Servers and the tools your models can call through them.",
+    "autoApprove": "Auto-approve",
+    "editJson": "Edit JSON",
+    "kpiServers": "MCP servers",
+    "kpiServersSub": "{{connected}} connected · {{connecting}} connecting",
+    "kpiTools": "Tools available",
+    "kpiToolsSub": "from {{count}} connected servers",
+    "kpiCalls": "Calls today",
+    "kpiCallsSub": "{{pct}}% failed",
+    "kpiCallsNone": "No tool calls yet today",
+    "kpiApproved": "Auto-approved",
+    "kpiApprovedSub": "{{count}} servers ask first",
+    "kpiApprovedAll": "All tool calls are allowed",
+    "tabServers": "Servers",
+    "tabRouting": "Routing & limits",
+    "toolsCount": "{{count}} tools",
+    "callsPerMin": "calls / min",
+    "window": "last {{count}} min",
+    "needsExtension": "Requires the Jan Browser Extension",
+    "moreActions": "More actions for {{serverName}}",
+    "addTile": "Add MCP server",
+    "addTileHint": "STDIO, HTTP or SSE"
+  },
+  "extensions": {
+    "description": "Plugins, skills and the engine pieces Flint is built from.",
+    "engine": "Engine",
+    "engineEmpty": "No built-in extensions are loaded.",
+    "builtIn": "Built in",
+    "active": "Active",
+    "skillsCount": "{{count}} skills",
+    "commandsCount": "{{count}} commands",
+    "agentsCount": "{{count}} agents",
+    "pluginActions": "Actions for {{name}}",
+    "details": "Details",
+    "enable": "Enable",
+    "disable": "Disable",
+    "closePanel": "Close panel",
+    "fromPlugin": "from {{name}}",
+    "standaloneSkill": "Standalone skill",
+    "projectSkill": "Project skill",
+    "edit": "Edit",
+    "view": "View"
+  },
+  "library": {
+    "description": "Documents, code, pages and media your Cowork runs produced.",
+    "kpiArtifacts": "Artifacts",
+    "kpiArtifactsSub": "{{count}} new this week",
+    "kpiSessions": "From Cowork",
+    "kpiSessionsSub": "of {{count}} sessions",
+    "kpiLatest": "Latest",
+    "kpiLatestNone": "Nothing made yet"
+  }
+}

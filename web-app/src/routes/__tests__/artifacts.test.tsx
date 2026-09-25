@@ -182,9 +182,10 @@ describe('Library route (/artifacts)', () => {
 
   it('narrows the list by kind', async () => {
     await renderPage()
-    fireEvent.click(screen.getByRole('button', { name: 'Image' }))
+    // The kind filter is a segmented control: one radio per kind.
+    fireEvent.click(screen.getByRole('radio', { name: 'Image' }))
     expect(screen.queryByTestId('artifact-card')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'common:artifactsAll' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'common:artifactsAll' }))
     expect(screen.getByTestId('artifact-card')).toBeInTheDocument()
   })
 

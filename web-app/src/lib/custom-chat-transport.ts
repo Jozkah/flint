@@ -93,6 +93,7 @@ import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
 import { CHAT_SLOT_ID } from '@/constants/models'
 import { usableContextValue } from '@/lib/modelCapabilities'
+import { recordGeneration } from '@/stores/engine-activity-store'
 import {
   createUsageCollector,
   readTokenUsage,
@@ -2017,6 +2018,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               tokensPerSecond > 0 ? tokensPerSecond : outputTokens / durationSec
           } else {
             tokenSpeed = 0
+          }
+          // The Models page charts speed from replies this machine measured.
+          if (tokenSpeed > 0 && modelId) {
+            recordGeneration({ model: modelId, provider: providerId, tps: tokenSpeed })
           }
 
           // Counted for the Overview dashboard, on this computer only.
