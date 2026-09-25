@@ -537,6 +537,7 @@ export const ToolApprovalActions = memo(() => {
             workspaceLabel: pending.workspaceLabel,
             taskContext: pending.taskContext,
             threadIsEphemeral: pending.threadIsEphemeral,
+            alwaysAsk: pending.alwaysAsk,
           })
         : undefined,
     [pending]

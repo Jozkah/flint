@@ -3556,12 +3556,22 @@ impl CompositeToolInvoker {
                     .get(name)
                     .cloned()
                     .unwrap_or_default();
-                if self.auto_approve || self.grants.lock().unwrap().covers_mcp(&server, name) {
+                // A tool that lets the model approve its own commands on the
+                // server (`approve_command`, `whitelist_add`, ...) is asked
+                // about every time: no auto-approval and no grant answers for
+                // it, or the model could approve past Flint's own prompt.
+                let self_approval =
+                    tauri_plugin_agent_tools::mcp_trust::is_self_approval_tool(name);
+                if !self_approval
+                    && (self.auto_approve
+                        || self.grants.lock().unwrap().covers_mcp(&server, name))
+                {
                     mcp_calls.push(tc.clone());
                     continue;
                 }
                 match self.prompt_mcp_permission(name).await {
                     PermissionDecision::AllowOnce => mcp_calls.push(tc.clone()),
+                    PermissionDecision::AllowAlways if self_approval => mcp_calls.push(tc.clone()),
                     PermissionDecision::AllowAlways => {
                         self.grants.lock().unwrap().grant_mcp(&server, name);
                         mcp_calls.push(tc.clone());
@@ -3653,7 +3663,11 @@ impl CompositeToolInvoker {
             // (`rm -rf ~`, `git push --force`, ...), whatever grant or mode
             // would otherwise allow it; and the call after a long streak of
             // auto-approved ones, so an unattended run checks in periodically.
-            let destructive = (name == "bash")
+            let git_destructive = (name == "git")
+                .then(|| tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args).ok())
+                .flatten()
+                .and_then(|p| p.destructive);
+            let destructive = git_destructive.or_else(|| (name == "bash")
                 .then(|| args.get("command").and_then(|v| v.as_str()))
                 .flatten()
                 .and_then(|c| {
@@ -3667,7 +3681,7 @@ impl CompositeToolInvoker {
                             &self.scratch_root,
                         ]),
                     )
-                });
+                }));
             use std::sync::atomic::Ordering as StreakOrdering;
             // Said in the prompt, so the person knows why a call that would
             // otherwise have run on its own is in front of them. A forced prompt
@@ -3789,10 +3803,18 @@ impl CompositeToolInvoker {
                         .and_then(|k| args.get(*k))
                         .and_then(|v| v.as_str())
                         .map(String::from);
-                    let command = matches!(tool.capability, Capability::Exec)
-                        .then(|| args.get("command").and_then(|v| v.as_str()))
-                        .flatten()
-                        .map(String::from);
+                    let command = if name == "git" {
+                        // The exact command line, so the prompt names what
+                        // will run rather than a blob of arguments.
+                        tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args)
+                            .ok()
+                            .map(|p| p.display())
+                    } else {
+                        matches!(tool.capability, Capability::Exec)
+                            .then(|| args.get("command").and_then(|v| v.as_str()))
+                            .flatten()
+                            .map(String::from)
+                    };
                     let diff = preview_diff(tool, &args, &self.tool_context()).await;
                     // AH-146/AH-148. Staged against the file as it is at the
                     // moment the question is asked. Kept until the answer comes

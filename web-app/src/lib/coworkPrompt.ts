@@ -235,8 +235,9 @@ function environmentBlock(opts: CoworkPromptOptions): string | null {
   if (opts.runnable?.length) facts.push(`Runnable here: ${opts.runnable.join(', ')}.`)
   if (opts.unavailable?.length) facts.push(
       `Installed but not runnable in the sandbox: ${opts.unavailable.join(', ')} ` +
-        '(use `git_inspect` for repository info; tell the user to run the rest or ' +
-        'grant it in Settings > Agent Tools).'
+        '(use the `git` tool for all Git and GitHub work -- status, commit, push, pull ' +
+        'requests -- never `bash git` or an MCP shell, which bypasses approval; tell the ' +
+        'user to run the rest or grant it in Settings > Agent Tools).'
     )
   if (opts.networkFromShell === false) facts.push('The shell has no network access.')
   if (opts.mcpServers) {

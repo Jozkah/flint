@@ -649,6 +649,7 @@ pub(crate) async fn execute_text(
         "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,
+        "git" => crate::tools::git_tool::run(args, ctx).await,
         // Cross-session messaging. Refuses unless the dispatcher bound this
         // call to a session and a mailbox (desktop, session scope only).
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {

@@ -155,7 +155,7 @@ pub fn discover_git() -> Option<PathBuf> {
     }
 }
 
-fn on_path(name: &str) -> Option<PathBuf> {
+pub(crate) fn on_path(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     #[cfg(windows)]
     let exts: Vec<String> = std::env::var("PATHEXT")

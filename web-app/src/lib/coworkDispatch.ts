@@ -42,6 +42,12 @@ import {
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { gateStopSession } from '@/lib/sessionStopGate'
+import {
+  GIT_TOOL_NAME,
+  gitApproval,
+  gitInsideSessionTree,
+  gitRemoteFacts,
+} from '@/lib/gitTool'
 
 export type DispatchContext = {
   sessionId: string
@@ -357,9 +363,13 @@ async function routeCoworkTool(
     if (refused) return refused
   }
 
+  // `git`: a read runs straight away; anything else is a mutation and goes
+  // through the same policy as `write` and `bash` below.
+  const git = toolName === GIT_TOOL_NAME ? gitApproval(call.input) : null
+
   // Every mutating call goes through the one policy, so the run mode and the
   // access mode cannot be answered differently in different places.
-  if (PLAN_DENIED_TOOLS.has(toolName)) {
+  if (PLAN_DENIED_TOOLS.has(toolName) || git) {
     const unresolved = ctx.unresolvedSkills ?? []
     const decision = decideMutation({
       runMode: ctx.mode,
@@ -419,7 +429,16 @@ async function routeCoworkTool(
     // it, and it does not count toward the unasked streak either.
     const readOnlyShell =
       command !== undefined && !destructive && isReadOnlyCommand(command)
-    const needsApproval = decision.needsApproval && !readOnlyShell
+    // A local git change inside the session's own worktree or sandbox is the
+    // run's ordinary work in Auto mode; anywhere else it is asked about. A
+    // push, a pull request or a destructive command is asked about always.
+    const gitOwnTree =
+      !!git &&
+      ctx.mode === 'auto' &&
+      gitInsideSessionTree(git.plan.cwd, ctx.worktreePath, !!ctx.writeGrant)
+    const needsApproval = git
+      ? !git.alwaysAsk && (decision.needsApproval || !gitOwnTree)
+      : decision.needsApproval && !readOnlyShell
     // In Auto mode, a file write inside the session's own worktree or sandbox
     // is the run's ordinary work: it never pauses the run to ask.
     const ownTree =
@@ -431,12 +450,35 @@ async function routeCoworkTool(
         ctx.worktreePath
       )
     const overLimit =
+      !git?.alwaysAsk &&
       !needsApproval &&
       !readOnlyShell &&
       !destructive &&
       !ownTree &&
       noteAutoApproved(ctx.sessionId, useAutoApproveLimit.getState().limit)
-    const forced: { alwaysAsk: true; reason: string } | undefined = destructive
+    const gitReason = git?.alwaysAsk
+      ? [
+          git.reason,
+          await gitRemoteFacts(git.plan, async (args) => {
+            const r = await executeAgentTool(
+              GIT_TOOL_NAME,
+              { args, ...(git.plan.cwd ? { cwd: git.plan.cwd } : {}) },
+              ctx.sessionId,
+              {
+                readOnlyProject: ctx.readOnlyFolder,
+                scope: 'session',
+                writeGrant: ctx.writeGrant,
+              }
+            )
+            return r.error ? null : String(r.content ?? '')
+          }),
+        ]
+          .filter(Boolean)
+          .join(' ')
+      : undefined
+    const forced: { alwaysAsk: true; reason: string } | undefined = gitReason
+      ? { alwaysAsk: true, reason: gitReason }
+      : destructive
       ? {
           alwaysAsk: true,
           reason: `Destructive command: ${destructive}. Asked even though changes are otherwise allowed.`,

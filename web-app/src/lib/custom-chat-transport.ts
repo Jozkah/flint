@@ -2411,10 +2411,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           : 'It has no network access, so commands that download or upload will fail.'
       )
       parts.push(
-        'git and Git Bash cannot run inside the bash sandbox. To clone a GitHub',
-        'repository, call the git_clone tool; to inspect a local clone, call',
-        'git_inspect. If a GitHub URL names only a user or organization and no',
-        'repository, ask the user which repository to clone before cloning.'
+        'git and Git Bash cannot run inside the bash sandbox. For all Git and',
+        'GitHub work (status, commit, branch, push, pull requests, clone) call the',
+        'git tool, which runs the real git and gh outside the sandbox and asks the',
+        'user before anything changes or reaches a remote. Never use an MCP shell',
+        'or terminal tool for git: it bypasses that approval. If a GitHub URL names',
+        'only a user or organization and no repository, ask the user which',
+        'repository to clone before cloning.'
       )
     }
     return parts.join(' ')

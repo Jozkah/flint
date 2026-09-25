@@ -23,6 +23,49 @@ type Translate = (key: string, options?: Record<string, unknown>) => string
 export const formatPermissionMessage = (t: Translate, msg: PermissionMessage) =>
   t(msg.key, msg.values)
 
+const BADGE_TONE = {
+  neutral: 'neutral',
+  warning: 'warning',
+  danger: 'destructive',
+} as const
+
+/** Chips such as "Reaches GitHub", and the stronger warning, when present. */
+function RequestFlags({
+  request,
+  t,
+}: {
+  request: PermissionRequestDescription
+  t: Translate
+}) {
+  if (!request.badges?.length && !request.warning) return null
+  return (
+    <div className="space-y-1.5" data-testid="permission-flags">
+      {request.badges && request.badges.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {request.badges.map((badge) => (
+            <StatusChip
+              key={badge.message.key}
+              tone={BADGE_TONE[badge.tone]}
+              data-testid="permission-badge"
+            >
+              {formatPermissionMessage(t, badge.message)}
+            </StatusChip>
+          ))}
+        </div>
+      )}
+      {request.warning && (
+        <p
+          role="alert"
+          data-testid="permission-warning"
+          className="rounded-md bg-destructive-tint px-2.5 py-1.5 text-xs font-medium text-destructive"
+        >
+          {formatPermissionMessage(t, request.warning)}
+        </p>
+      )}
+    </div>
+  )
+}
+
 /** Sentence-case label for a part of the request (no uppercase tracking). */
 const LABEL = 'text-xs font-medium text-muted-foreground'
 
@@ -60,43 +103,46 @@ export function PermissionRequestDetails({
 
   if (layout === 'rows') {
     return (
-      <dl
-        className={cn(
-          'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[12.5px] text-foreground',
-          className
-        )}
-      >
-        {request.resources.length > 0 && (
-          <>
-            <dt className="text-muted-foreground">
-              {t('permissions:request.affects')}
-            </dt>
-            <dd className="min-w-0 font-mono text-xs leading-[19px] break-all">
-              {request.resources.join(' · ')}
-            </dd>
-          </>
-        )}
-        {request.reason && (
-          <>
-            <dt className="text-muted-foreground">
-              {t('permissions:request.reason')}
-            </dt>
-            <dd className="min-w-0 break-words">{request.reason}</dd>
-          </>
-        )}
-        {request.consequences.length > 0 && (
-          <>
-            <dt className="text-muted-foreground">
-              {t('permissions:request.consequences')}
-            </dt>
-            <dd className="min-w-0 break-words">
-              {request.consequences
-                .map((msg) => formatPermissionMessage(t, msg))
-                .join(' ')}
-            </dd>
-          </>
-        )}
-      </dl>
+      <>
+        <RequestFlags request={request} t={t} />
+        <dl
+          className={cn(
+            'grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1.5 text-[12.5px] text-foreground',
+            className
+          )}
+        >
+          {request.resources.length > 0 && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.affects')}
+              </dt>
+              <dd className="min-w-0 font-mono text-xs leading-[19px] break-all">
+                {request.resources.join(' · ')}
+              </dd>
+            </>
+          )}
+          {request.reason && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.reason')}
+              </dt>
+              <dd className="min-w-0 break-words">{request.reason}</dd>
+            </>
+          )}
+          {request.consequences.length > 0 && (
+            <>
+              <dt className="text-muted-foreground">
+                {t('permissions:request.consequences')}
+              </dt>
+              <dd className="min-w-0 break-words">
+                {request.consequences
+                  .map((msg) => formatPermissionMessage(t, msg))
+                  .join(' ')}
+              </dd>
+            </>
+          )}
+        </dl>
+      </>
     )
   }
 
@@ -112,6 +158,8 @@ export function PermissionRequestDetails({
           </span>
         )}
       </div>
+
+      <RequestFlags request={request} t={t} />
 
       {request.resources.length > 0 && (
         <div className="space-y-1">

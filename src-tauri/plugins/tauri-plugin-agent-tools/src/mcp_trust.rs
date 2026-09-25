@@ -619,8 +619,83 @@ pub fn permits(
     }
 }
 
+/// Whether an MCP tool, by its name, lets the model approve its own commands.
+///
+/// Some shell servers (super-shell and the like) publish a tool such as
+/// `approve_command` or `whitelist_add` so a command that server would
+/// otherwise hold for confirmation can be waved through -- by whoever calls
+/// the tool, which is the model. Flint's own prompt is the only approval that
+/// counts, so such a tool is put to the user on every call: never answered by
+/// "allow always", a server trust, "allow all MCP permissions" or an
+/// auto-approving run. The web app applies the same rule
+/// (`web-app/src/lib/selfApprovalTools.ts`); both are tested against one table.
+///
+/// A name, not a proof: a server can call its approval tool anything. This
+/// catches the ones that say what they do; the rest are still external tools,
+/// asked about like any other.
+pub fn is_self_approval_tool(name: &str) -> bool {
+    // The tool's own name, without a `server__` or `server.` prefix.
+    let base = name.rsplit("__").next().unwrap_or(name);
+    let base = base.rsplit('.').next().unwrap_or(base);
+    // Words: split on separators and at lower-to-upper case changes.
+    let mut words: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut prev_lower = false;
+    for c in base.chars() {
+        if !c.is_ascii_alphanumeric() {
+            if !cur.is_empty() {
+                words.push(std::mem::take(&mut cur));
+            }
+            prev_lower = false;
+            continue;
+        }
+        if c.is_ascii_uppercase() && prev_lower && !cur.is_empty() {
+            words.push(std::mem::take(&mut cur));
+        }
+        prev_lower = c.is_ascii_lowercase() || c.is_ascii_digit();
+        cur.push(c.to_ascii_lowercase());
+    }
+    if !cur.is_empty() {
+        words.push(cur);
+    }
+    let Some(first) = words.first() else {
+        return false;
+    };
+    // Reading an approval list approves nothing.
+    if matches!(
+        first.as_str(),
+        "list" | "get" | "show" | "read" | "view" | "check" | "is" | "search" | "find" | "query"
+    ) {
+        return false;
+    }
+    let any = |set: &[&str]| words.iter().any(|w| set.contains(&w.as_str()));
+    let approving = any(&[
+        "approve", "approves", "approved", "approval", "autoapprove", "whitelist", "allowlist",
+        "authorize", "authorise", "permit", "grant", "confirm",
+    ]);
+    let allowing = any(&["allow", "trust", "unblock"])
+        && any(&["command", "commands", "cmd", "tool", "tools", "exec", "execution", "shell"]);
+    approving || allowing
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn self_approval_tools_are_detected() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../web-app/src/lib/__tests__/selfApprovalCases.json"
+        ))
+        .unwrap();
+        for case in table.as_array().unwrap() {
+            let name = case["name"].as_str().unwrap();
+            assert_eq!(
+                super::is_self_approval_tool(name),
+                case["flagged"].as_bool().unwrap(),
+                "{name}"
+            );
+        }
+    }
+
     use super::*;
     use crate::mcp_identity::fingerprint;
     use serde_json::json;

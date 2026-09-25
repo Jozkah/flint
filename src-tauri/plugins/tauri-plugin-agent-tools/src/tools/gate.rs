@@ -517,6 +517,20 @@ pub fn resolve_decision(
             return Decision::Allow;
         }
     }
+    // The `git` tool is classified per call (tools/git_tool.rs): a read runs
+    // without asking; a local change is gated like a write, so a session grant
+    // or auto-approval inside the run's own folders covers it; anything that
+    // writes to a remote or can lose work is an `Ask`, which no grant and no
+    // auto-approval ever covers. A call the classifier refuses is let through
+    // to the handler, which refuses it with the reason and runs nothing.
+    if tool.name == "git" {
+        return match crate::tools::git_tool::plan_from_args(args) {
+            Ok(plan) if plan.always_asks() => Decision::Prompt(PromptKind::Ask),
+            Ok(plan) if plan.class == crate::tools::git_tool::GitClass::Read => Decision::Allow,
+            Ok(_) => gated(PromptKind::Write, grants),
+            Err(_) => Decision::Allow,
+        };
+    }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
     // sanitized name, so they never prompt (deny above still wins).
     if crate::tools::is_workspace_tool(tool.name) {
@@ -672,6 +686,54 @@ mod tests {
 
     fn s(items: &[&str]) -> Vec<String> {
         items.iter().map(|v| v.to_string()).collect()
+    }
+
+    #[test]
+    fn git_calls_are_gated_by_class() {
+        let root = unique_root();
+        let mut grants = SessionGrants::default();
+        let with = |perms: &ToolPermissions, args: serde_json::Value, grants: &SessionGrants| {
+            resolve_decision(
+                lookup("git").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                perms,
+                grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let decide = |args: serde_json::Value, grants: &SessionGrants| with(&plain, args, grants);
+        assert_eq!(decide(json!({"args": ["status"]}), &grants), Decision::Allow);
+        assert_eq!(
+            decide(json!({"args": ["commit", "-m", "x"]}), &grants),
+            Decision::Prompt(PromptKind::Write)
+        );
+        assert_eq!(
+            decide(json!({"args": ["push", "origin", "main"]}), &grants),
+            Decision::Prompt(PromptKind::Ask)
+        );
+        assert_eq!(
+            decide(json!({"args": ["reset", "--hard"]}), &grants),
+            Decision::Prompt(PromptKind::Ask)
+        );
+        // A write grant covers a local change, never a push.
+        grants.grant(PromptKind::Write);
+        assert_eq!(decide(json!({"args": ["commit", "-m", "x"]}), &grants), Decision::Allow);
+        assert_eq!(
+            decide(json!({"program": "gh", "args": ["pr", "create", "--fill"]}), &grants),
+            Decision::Prompt(PromptKind::Ask)
+        );
+        // An agent.toml deny still wins.
+        let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["git"]), &[]);
+        assert_eq!(
+            with(&deny, json!({"args": ["status"]}), &grants),
+            Decision::HardDeny(DenyReason::Policy)
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

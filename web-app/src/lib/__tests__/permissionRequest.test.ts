@@ -265,3 +265,79 @@ describe('sanitizing', () => {
     expect(workspaceName(undefined)).toBeUndefined()
   })
 })
+
+describe('git tool prompts', () => {
+  it('names the command, remote and branch of a push, and that it reaches the remote', () => {
+    const req = describePermissionRequest({
+      toolName: 'git',
+      input: { args: ['push', 'origin', 'feature/x'] },
+    })
+    expect(req.category).toBe('git')
+    expect(text(req.categoryLabel)).toBe('Git')
+    expect(req.resources).toEqual([
+      'git push origin feature/x',
+      'remote origin',
+      'branch feature/x',
+    ])
+    expect(text(req.action)).toBe(
+      'Flint wants to run git push origin feature/x, which changes origin'
+    )
+    expect(req.badges?.map((b) => text(b.message))).toEqual(['Reaches remote'])
+    expect(req.warning).toBeUndefined()
+    // Asked every time: nothing broader than "Allow once" is offered.
+    expect(req.scopesOffered).toEqual(['allow-once'])
+    req.consequences.forEach((c) => text(c))
+  })
+
+  it('shows the stronger warning for a force push', () => {
+    const req = describePermissionRequest({
+      toolName: 'git',
+      input: { args: ['push', '--force', 'origin', 'main'] },
+    })
+    expect(req.badges?.map((b) => [text(b.message), b.tone])).toEqual([
+      ['Reaches remote', 'warning'],
+      ['Destructive', 'danger'],
+    ])
+    expect(text(req.warning!)).toMatch(/^Destructive: force push/)
+    expect(req.scopesOffered).toEqual(['allow-once'])
+  })
+
+  it('says GitHub for gh', () => {
+    const req = describePermissionRequest({
+      toolName: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--base', 'main', '--repo', 'o/r'] },
+    })
+    expect(req.resources).toContain('repo o/r')
+    expect(req.resources).toContain('branch --base main')
+    expect(text(req.badges![0].message)).toBe('Reaches GitHub')
+  })
+
+  it('offers the usual scopes for a local change', () => {
+    const req = describePermissionRequest({
+      toolName: 'git',
+      input: { args: ['commit', '-m', 'x'] },
+      workspaceLabel: 'C:/code/Forma',
+    })
+    expect(text(req.action)).toBe('Flint wants to run git commit -m x in Forma')
+    expect(req.badges).toBeUndefined()
+    expect(req.scopesOffered).toEqual(['allow-once', 'allow-thread', 'allow-always'])
+  })
+
+  it('offers only "Allow once" when the caller always asks', () => {
+    const req = describePermissionRequest({ toolName: 'bash', input: {}, alwaysAsk: true })
+    expect(req.scopesOffered).toEqual(['allow-once'])
+  })
+})
+
+describe('self-approval MCP tools', () => {
+  it('is flagged, warned about, and never offered a standing grant', () => {
+    const req = describePermissionRequest({
+      toolName: 'approve_command',
+      serverName: 'super-shell',
+      input: { command: 'rm -rf x' },
+    })
+    expect(req.scopesOffered).toEqual(['allow-once'])
+    expect(text(req.badges![0].message)).toBe('Approves its own commands')
+    expect(text(req.warning!)).toContain('super-shell')
+  })
+})

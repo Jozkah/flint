@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
+import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
 import {
   autoApprovePauseReason,
@@ -104,6 +105,12 @@ export type PendingApproval = {
   taskContext?: string
   workspaceLabel?: string
   threadIsEphemeral?: boolean
+  /**
+   * Asked every time: no answer to this prompt records a grant, and the
+   * prompt offers only "Allow once" (a push, a destructive command, a tool
+   * that approves commands itself).
+   */
+  alwaysAsk?: boolean
   resolve: (approved: boolean) => void
 }
 
@@ -322,15 +329,22 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         const destructive = context?.destructiveChecked
           ? null
           : bashDestructiveReason(toolName, context?.input, context)
+        // A server tool that approves commands on that server (super-shell's
+        // `approve_command`, a `whitelist_add`) would let the model answer
+        // for the user; only this prompt may, every time.
+        const selfApproval = !!serverName && isSelfApprovalTool(toolName)
         let alwaysAsk =
           ALWAYS_ASK_TOOLS.has(toolName) ||
+          selfApproval ||
           context?.alwaysAsk === true ||
           destructive !== null
         let taskContext =
           context?.taskContext ??
           (destructive
             ? `Destructive command: ${destructive}. Asked even though this tool is otherwise allowed.`
-            : undefined)
+            : selfApproval
+              ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
+              : undefined)
         // A call a standing grant would answer counts toward the limit on
         // consecutive unasked calls; past it, this one is put to the user.
         const streakKey = context?.autoApproveStreak
@@ -385,6 +399,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             ? { workspaceLabel: context.workspaceLabel }
             : {}),
           ...(context?.threadIsEphemeral ? { threadIsEphemeral: true } : {}),
+          ...(alwaysAsk ? { alwaysAsk: true } : {}),
           resolve,
         }
         set((s) =>
@@ -429,7 +444,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       if (!entry) return
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
-      if (ALWAYS_ASK_TOOLS.has(entry.toolName)) {
+      if (
+        ALWAYS_ASK_TOOLS.has(entry.toolName) ||
+        (serverName && isSelfApprovalTool(entry.toolName)) ||
+        entry.alwaysAsk
+      ) {
         // Allowed this once whatever was clicked: no grant is ever recorded
         // for a tool that must be asked about every time.
       } else if (decision === 'allow-thread') {

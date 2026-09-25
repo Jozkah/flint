@@ -425,6 +425,9 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
         | "skill_list" | "skill_read" | "message_check" | "git_inspect" => vec![capability::FS_READ],
+        // Runs the host's git/gh directly (no shell, no sandbox); each call is
+        // confined and classified by the tool itself and the gate.
+        "git" => vec![capability::FS_READ],
         // The mailbox is files under the data folder; nothing beyond a usable
         // local disk is needed. Scope (session only) is decided separately.
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {

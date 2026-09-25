@@ -1140,6 +1140,16 @@ async fn execute_tool_inner(
             )
             .into());
         }
+        // A `git` call that writes to a remote or can lose work. The renderer
+        // puts every one of these to the user, naming the command, remote and
+        // branch, before it calls this (web-app `gitTool.ts`), the same way it
+        // answers for `write` above. A project `ask` rule is different: the
+        // renderer does not know about it, so that one is still refused here.
+        Decision::Prompt(PromptKind::Ask)
+            if name == "git"
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
         Decision::Prompt(kind) => {
             return Err(format!(
                 "tool '{name}' needs user approval ({kind:?}) and is not available yet"

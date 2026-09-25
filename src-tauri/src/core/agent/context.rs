@@ -408,8 +408,9 @@ fn toolchain_line(runnable: &[String], unavailable: &[String]) -> String {
         }
     };
     format!(
-        "Sandbox programs: available: {} / not runnable in the sandbox: {} (use `git_inspect` \
-for repository info; tell the user to run the rest or grant it in Settings > Agent Tools).",
+        "Sandbox programs: available: {} / not runnable in the sandbox: {} (use the `git` tool \
+for all Git and GitHub work -- status, commit, push, pull requests -- rather than `bash git` or an \
+MCP shell, which bypasses approval; tell the user to run the rest or grant it in Settings > Agent Tools).",
         list(runnable),
         list(unavailable)
     )
@@ -1295,7 +1296,7 @@ We build with make.")
     fn toolchain_line_names_both_lists_and_the_way_out() {
         let line = toolchain_line(&["git".into(), "python".into()], &["node".into()]);
         assert!(line.contains("available: git, python / not runnable in the sandbox: node"), "{line}");
-        assert!(line.contains("`git_inspect`") && line.contains("Settings > Agent Tools"), "{line}");
+        assert!(line.contains("the `git` tool") && line.contains("Settings > Agent Tools"), "{line}");
         assert!(toolchain_line(&[], &[]).contains("available: none / not runnable in the sandbox: none"));
     }
 

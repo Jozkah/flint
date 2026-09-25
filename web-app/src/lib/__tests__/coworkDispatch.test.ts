@@ -1019,3 +1019,83 @@ describe('dispatchCoworkTool: Auto mode writes inside the session tree', () => {
     }
   })
 })
+
+describe('the git tool', () => {
+  beforeEach(() => {
+    executeAgentTool.mockReset()
+    executeAgentTool.mockImplementation(async (_n: string, input: { args: string[] }) => {
+      if (input.args[0] === 'rev-parse') return { content: '$ git rev-parse\nfeature/x' }
+      if (input.args[0] === 'remote') return { content: '$ git remote get-url\nhttps://github.com/o/r.git' }
+      return { content: 'ok' }
+    })
+  })
+
+  it('runs a read without asking, even in ask and review mode', async () => {
+    for (const mode of ['ask', 'review'] as CoworkMode[]) {
+      const onApprove = vi.fn(async () => true)
+      const out = await dispatchCoworkTool(
+        call('git', { args: ['status'] }),
+        ctx({ mode, onApprove })
+      )
+      expect(onApprove).not.toHaveBeenCalled()
+      expect(out.isError).toBeUndefined()
+    }
+  })
+
+  it('refuses a commit in review mode', async () => {
+    const out = await dispatchCoworkTool(
+      call('git', { args: ['commit', '-m', 'x'] }),
+      ctx({ mode: 'review' })
+    )
+    expect(out.isError).toBe(true)
+    expect(executeAgentTool).not.toHaveBeenCalled()
+  })
+
+  it('asks about a commit in ask mode', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(call('git', { args: ['commit', '-m', 'x'] }), ctx({ mode: 'ask', onApprove }))
+    expect(onApprove).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not ask about a commit in auto mode inside the session worktree', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('git', { args: ['commit', '-m', 'x'] }),
+      ctx({ mode: 'auto', onApprove, worktreePath: 'C:\wt\s1', writeGrant: 'g1' })
+    )
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalledWith(
+      'git',
+      { args: ['commit', '-m', 'x'] },
+      's1',
+      expect.objectContaining({ scope: 'session', writeGrant: 'g1' })
+    )
+  })
+
+  it('asks about a commit in auto mode in the user\u2019s own folder', async () => {
+    const onApprove = vi.fn(async () => true)
+    await dispatchCoworkTool(
+      call('git', { args: ['commit', '-m', 'x'] }),
+      ctx({ mode: 'auto', onApprove, writeGrant: 'g1' })
+    )
+    expect(onApprove).toHaveBeenCalledTimes(1)
+  })
+
+  it('always asks about a push, naming the remote and branch', async () => {
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('git', { args: ['push'] }),
+      ctx({ mode: 'auto', onApprove, worktreePath: 'C:\wt\s1', writeGrant: 'g1' })
+    )
+    expect(onApprove).toHaveBeenCalledTimes(1)
+    const forced = (onApprove.mock.calls[0] as unknown[])[5] as { alwaysAsk: boolean; reason: string }
+    expect(forced.alwaysAsk).toBe(true)
+    expect(forced.reason).toContain('Remote origin (https://github.com/o/r.git), branch feature/x.')
+    expect(out.isError).toBe(true)
+    // Only the two read-only fact lookups ran; the push did not.
+    expect(executeAgentTool.mock.calls.map((c) => (c[1] as { args: string[] }).args[0])).toEqual([
+      'rev-parse',
+      'remote',
+    ])
+  })
+})

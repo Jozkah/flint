@@ -40,6 +40,7 @@ import { errorText } from '@/lib/errorText'
 import { resolveServerFingerprints } from '@/lib/mcpServerIdentity'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAppState } from '@/hooks/useAppState'
+import { selfApprovalToolsOf } from '@/lib/selfApprovalTools'
 import { listen } from '@tauri-apps/api/event'
 import { SystemEvent } from '@/types/events'
 import { Button } from '@/components/ui/button'
@@ -1072,6 +1073,17 @@ function MCPServersDesktop() {
                 ? t('engine:mcp.needsExtension')
                 : t('mcp-servers:connection.toolsWhenConnected')}
           </p>
+          {selfApprovalToolsOf(toolNames).length > 0 && (
+            <p
+              role="note"
+              data-testid={`mcp-self-approval-${idSafe}`}
+              className="m-0 rounded-md bg-warning-tint px-2 py-1 text-[11.5px] leading-normal text-warning"
+            >
+              {t('mcp-servers:selfApproval.note', {
+                names: selfApprovalToolsOf(toolNames).join(', '),
+              })}
+            </p>
+          )}
           {expanded && (
             <div className="min-w-0 border-t border-dashed border-border pt-2 text-xs text-muted-foreground">
               <div className="mb-1">

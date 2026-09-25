@@ -15,12 +15,21 @@ import {
   ALWAYS_ASK_TOOLS,
   STOP_SESSION_TOOL_NAME,
 } from '@/lib/sessionMessagingTools'
+import {
+  GIT_TOOL_NAME,
+  gitAlwaysAsks,
+  gitCommandLine,
+  planGitTool,
+  type GitPlan,
+} from '@/lib/gitTool'
+import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 
 export type PermissionCategory =
   | 'file-change'
   | 'command'
   | 'network'
   | 'external-tool'
+  | 'git'
   | 'read'
   | 'other'
 
@@ -46,6 +55,18 @@ export type PermissionRequestInput = {
    * so a "this conversation" grant would silently carry over. Not offered then.
    */
   threadIsEphemeral?: boolean
+  /**
+   * The caller will ask about this call every time (a push, a destructive
+   * command, the auto-approve pause), so nothing broader than "Allow once"
+   * can be recorded from the answer.
+   */
+  alwaysAsk?: boolean
+}
+
+/** A short fact shown as a chip beside the category. */
+export type PermissionBadge = {
+  message: PermissionMessage
+  tone: 'neutral' | 'warning' | 'danger'
 }
 
 export type ScopeExplanation = {
@@ -62,6 +83,10 @@ export type PermissionRequestDescription = {
   /** Paths, command, URL or server, sanitized and truncated. */
   resources: string[]
   reason?: string
+  /** Chips such as "Reaches GitHub" or "Destructive". */
+  badges?: PermissionBadge[]
+  /** The stronger warning shown above the answers for a destructive call. */
+  warning?: PermissionMessage
   consequences: PermissionMessage[]
   /** Least broad first. */
   scopesOffered: ApprovalScope[]
@@ -233,6 +258,7 @@ export function categorizeTool(
   // A server's tool name is chosen by the server, so it says nothing reliable
   // about what the call does; where it goes is the fact that matters.
   if (serverName) return 'external-tool'
+  if (toolName === GIT_TOOL_NAME) return 'git'
   if (FILE_CHANGE_TOOLS.has(toolName)) return 'file-change'
   if (COMMAND_TOOLS.has(toolName)) return 'command'
   if (NETWORK_TOOLS.has(toolName)) return 'network'
@@ -354,6 +380,20 @@ function actionFor(
       : { key: `permissions:action.${key}`, values }
 
   switch (category) {
+    case 'git': {
+      const plan = gitPlanOf(args)
+      const command = resources[0] ?? toolName
+      if (!plan) return { key: 'permissions:action.gitLocal', values: { command } }
+      if (plan.destructive) {
+        return { key: 'permissions:action.gitDestructive', values: { command } }
+      }
+      return plan.class === 'remote'
+        ? {
+            key: 'permissions:action.gitRemote',
+            values: { command, target: plan.program === 'gh' ? 'GitHub' : (plan.remote ?? 'the remote') },
+          }
+        : within('gitLocal', { command })
+    }
     case 'file-change':
       if (toolName === 'memory_write') return { key: 'permissions:action.saveMemory' }
       if (toolName === 'skill_write') return { key: 'permissions:action.saveSkill' }
@@ -401,9 +441,20 @@ function actionFor(
 
 function consequencesFor(
   category: PermissionCategory,
-  toolName: string
+  toolName: string,
+  args: Record<string, unknown> = {}
 ): PermissionMessage[] {
   switch (category) {
+    case 'git': {
+      const plan = gitPlanOf(args)
+      const out: PermissionMessage[] = [
+        plan?.class === 'remote'
+          ? { key: 'permissions:consequence.gitRemote' }
+          : { key: 'permissions:consequence.gitLocal' },
+      ]
+      if (plan?.destructive) out.push({ key: 'permissions:consequence.gitDestructive' })
+      return out
+    }
     case 'file-change':
       return toolName === 'memory_write' || toolName === 'skill_write'
         ? [
@@ -442,7 +493,19 @@ function consequencesFor(
 export function scopesFor(req: PermissionRequestInput): ApprovalScope[] {
   const scopes: ApprovalScope[] = ['allow-once']
   // Decided call by call: nothing broader can be recorded for these.
-  if (ALWAYS_ASK_TOOLS.has(req.toolName)) return scopes
+  if (ALWAYS_ASK_TOOLS.has(req.toolName) || req.alwaysAsk) return scopes
+  // A tool that approves commands on its own server: only this prompt may.
+  if (req.serverName && isSelfApprovalTool(req.toolName)) return scopes
+  // A push, a pull request, a destructive git command: asked every time.
+  if (!req.serverName && req.toolName === GIT_TOOL_NAME) {
+    const plan = gitPlanOf(
+      (() => {
+        const parsed = parseToolInput(req.input)
+        return isPlainObject(parsed) ? parsed : {}
+      })()
+    )
+    if (plan && gitAlwaysAsks(plan)) return scopes
+  }
   if (!req.threadIsEphemeral) scopes.push('allow-thread')
   scopes.push('allow-always')
   return scopes
@@ -493,6 +556,57 @@ function explain(
   }
 }
 
+function gitPlanOf(args: Record<string, unknown>): GitPlan | undefined {
+  const result = planGitTool(args)
+  return result.ok ? result.plan : undefined
+}
+
+/** Command, remote, branch and folder of a `git` call, for "Affects". */
+function gitResources(args: Record<string, unknown>): string[] {
+  const plan = gitPlanOf(args)
+  if (!plan) {
+    const argv = Array.isArray(args.args) ? args.args.filter((a) => typeof a === 'string') : []
+    return [sanitizeResource(gitCommandLine({ program: 'git', args: argv as string[] }))]
+  }
+  const out = [sanitizeResource(gitCommandLine(plan))]
+  if (plan.remote) out.push(sanitizeResource(`${plan.program === 'gh' ? 'repo' : 'remote'} ${plan.remote}`))
+  if (plan.branch) out.push(sanitizeResource(`branch ${plan.branch}`))
+  if (plan.cwd) out.push(sanitizeResource(`in ${plan.cwd}`))
+  return out
+}
+
+function gitBadges(args: Record<string, unknown>): PermissionBadge[] {
+  const plan = gitPlanOf(args)
+  if (!plan) return []
+  const badges: PermissionBadge[] = []
+  if (plan.reachesRemote && plan.class !== 'read') {
+    badges.push({
+      message: {
+        key: 'permissions:badge.reachesRemote',
+        values: { target: plan.program === 'gh' ? 'GitHub' : 'remote' },
+      },
+      tone: plan.class === 'remote' ? 'warning' : 'neutral',
+    })
+  }
+  if (plan.destructive) {
+    badges.push({ message: { key: 'permissions:badge.destructive' }, tone: 'danger' })
+  }
+  return badges
+}
+
+function gitExtras(
+  args: Record<string, unknown>
+): Pick<PermissionRequestDescription, 'badges' | 'warning'> {
+  const plan = gitPlanOf(args)
+  const badges = gitBadges(args)
+  return {
+    ...(badges.length ? { badges } : {}),
+    ...(plan?.destructive
+      ? { warning: { key: 'permissions:warning.gitDestructive', values: { why: plan.destructive } } }
+      : {}),
+  }
+}
+
 function argumentsJson(input: unknown): string {
   if (input === undefined) return ''
   const parsed = parseToolInput(input)
@@ -515,7 +629,10 @@ export function describePermissionRequest(
   const parsed = parseToolInput(req.input)
   const args = isPlainObject(parsed) ? parsed : {}
   const category = categorizeTool(toolName, serverName)
-  const resources = resourcesFor(category, toolName, args, serverName)
+  const resources =
+    category === 'git'
+      ? gitResources(args)
+      : resourcesFor(category, toolName, args, serverName)
   const workspace = workspaceName(req.workspaceLabel)
   const scopesOffered = scopesFor(req)
   const scopeExplanations: Partial<Record<ApprovalScope, ScopeExplanation>> = {}
@@ -534,7 +651,22 @@ export function describePermissionRequest(
     action: actionFor(category, toolName, args, resources, serverName, workspace),
     resources,
     ...(reason ? { reason } : {}),
-    consequences: consequencesFor(category, toolName),
+    ...(category === 'git' ? gitExtras(args) : {}),
+    ...(serverName && isSelfApprovalTool(toolName)
+      ? {
+          badges: [
+            {
+              message: { key: 'permissions:badge.selfApproval' },
+              tone: 'danger' as const,
+            },
+          ],
+          warning: {
+            key: 'permissions:warning.selfApproval',
+            values: { tool: toolName, server: serverName },
+          },
+        }
+      : {}),
+    consequences: consequencesFor(category, toolName, args),
     scopesOffered,
     scopeExplanations,
     technicalDetails: {

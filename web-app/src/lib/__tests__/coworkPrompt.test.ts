@@ -562,7 +562,7 @@ describe('agent working rules and environment facts', () => {
     expect(out).toContain('`$env:NAME`')
     expect(out).toContain('`2>$null`')
     expect(out).toContain('not runnable in the sandbox: node')
-    expect(out).toContain('`git_inspect`')
+    expect(out).toContain('the `git` tool')
     expect(out).toContain('Settings > Agent Tools')
   })
 

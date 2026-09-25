@@ -5,7 +5,8 @@
     "network": "Internet access",
     "external-tool": "External tool",
     "read": "Read",
-    "other": "Other"
+    "other": "Other",
+    "git": "Git"
   },
   "action": {
     "changeFiles": "Flint wants to change files",
@@ -25,7 +26,11 @@
     "readFiles": "Flint wants to look at files",
     "startHelper": "Flint wants to start a helper agent",
     "stopSession": "Flint wants to stop the run in session {{session}}",
-    "useTool": "Flint wants to use {{tool}}"
+    "useTool": "Flint wants to use {{tool}}",
+    "gitLocal": "Flint wants to run {{command}}",
+    "gitLocalIn": "Flint wants to run {{command}} in {{workspace}}",
+    "gitRemote": "Flint wants to run {{command}}, which changes {{target}}",
+    "gitDestructive": "Flint wants to run {{command}}, which can lose work"
   },
   "consequence": {
     "fileChange": "It can create, overwrite or change the contents of files.",
@@ -36,7 +41,10 @@
     "read": "The contents it reads become part of the conversation.",
     "helper": "The helper works on its own with the tools this session has.",
     "stopSession": "That session's current run stops at once, as if its Stop button were pressed. Its transcript records that this session stopped it and why. Flint asks every time.",
-    "unknown": "Flint cannot tell what this tool does. Check the technical details before allowing it."
+    "unknown": "Flint cannot tell what this tool does. Check the technical details before allowing it.",
+    "gitLocal": "It changes this repository's files, branches or history on this computer.",
+    "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time.",
+    "gitDestructive": "What it removes or overwrites may not be recoverable."
   },
   "repeat": {
     "allowedOnceBefore": "You allowed this command once already in this conversation."
@@ -77,7 +85,7 @@
     "mcpNotTrustedNext": "Allow the request when Flint asks, or trust the server.",
     "mcpConfigurationChanged": "{{server}} changed its configuration since you approved it, so nothing was sent to it.",
     "mcpConfigurationChangedNext": "Check the server's command, URL and settings, then allow the request again if it is what you expect.",
-    "mcpTicketRejected":"The one-time permission for {{server}} was no longer valid, so nothing was sent.",
+    "mcpTicketRejected": "The one-time permission for {{server}} was no longer valid, so nothing was sent.",
     "mcpTicketRejectedNext": "A one-time permission works for one call and expires after 5 minutes. Allow the request again.",
     "policy": "A rule in this project's settings blocks this tool.",
     "policyNext": "Edit the deny rules in .jan/agent/agent.toml to change this.",
@@ -154,7 +162,7 @@
     "historyScope": "Scope",
     "decisionAllowed": "Allowed",
     "decisionDenied": "Denied",
-    "historyRow":"{{decision}} · {{tool}} · {{at}}",
+    "historyRow": "{{decision}} · {{tool}} · {{at}}",
     "historyLimit": "Last {{count}}",
     "stateTrusted": "Trusted",
     "stateChanged": "Invalidated",
@@ -166,5 +174,14 @@
     "autoApproveLimitLabel": "Check in after this many calls in a row",
     "autoApproveLimitDesc": "When tool calls run without asking, Flint stops and asks you after {{count}} in a row. 0 turns the pause off (maximum {{max}}).",
     "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in."
+  },
+  "badge": {
+    "reachesRemote": "Reaches {{target}}",
+    "destructive": "Destructive",
+    "selfApproval": "Approves its own commands"
+  },
+  "warning": {
+    "gitDestructive": "Destructive: {{why}}. Check the command, remote and branch before allowing it.",
+    "selfApproval": "{{tool}} approves commands on {{server}} itself, which would let the model answer for you. Flint asks about it every time and never remembers the answer."
   }
 }

@@ -118,6 +118,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
 import { chatForcedPrompt } from '@/lib/chatToolGuard'
+import { GIT_TOOL_NAME, gitApproval, gitRemoteFacts } from '@/lib/gitTool'
 import { chatLoopStop, chatTurnId, noteChatToolCall } from '@/lib/chatLoopGuard'
 import {
   recordToolActivity,
@@ -766,10 +767,33 @@ export function ThreadConversation({
             // command looks destructive in this thread's workspace, or when it
             // would be one call past the consecutive auto-approval limit --
             // the same two checks Cowork makes (see chatToolGuard.ts).
-            const forced = isAutoAllowedTool(toolName)
-              ? await chatForcedPrompt(toolName, toolCall.input, threadId)
-              : null
-            const needsApproval = !isAutoAllowedTool(toolName) || forced !== null
+            // `git` runs a read straight away, asks about a local change, and
+            // asks about a push or pull request every time, naming the
+            // remote and branch it reaches (read with read-only git calls).
+            const git =
+              toolName === GIT_TOOL_NAME ? gitApproval(toolCall.input) : null
+            const forced = git?.alwaysAsk
+              ? {
+                  reason: [
+                    git.reason,
+                    await gitRemoteFacts(git.plan, async (args) => {
+                      const r = await executeAgentTool(
+                        GIT_TOOL_NAME,
+                        { args, ...(git.plan.cwd ? { cwd: git.plan.cwd } : {}) },
+                        threadId,
+                        { signal }
+                      )
+                      return r.error ? null : String(r.content ?? '')
+                    }),
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                }
+              : isAutoAllowedTool(toolName) && !git
+                ? await chatForcedPrompt(toolName, toolCall.input, threadId)
+                : null
+            const needsApproval =
+              !isAutoAllowedTool(toolName) || forced !== null || git !== null
             if (needsApproval) {
               void recordToolActivity({
                 ...permissionEvent,

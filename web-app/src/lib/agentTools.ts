@@ -63,6 +63,12 @@ export const AGENT_TOOL_NAMES = new Set([
   // Flint's own plugin state. See `executeAgentTool`.
   'request_access',
   'list_plugins',
+  // The host's git and gh, outside the sandbox (tools/git_tool.rs). Reads run
+  // without asking; everything else is put to the user by the dispatcher
+  // (see `gitApproval`), and a push or pull request every time.
+  'git',
+  // Read-only facts about an attached clone.
+  'git_inspect',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat

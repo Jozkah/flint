@@ -62,6 +62,37 @@ describe('useToolApprovalRequests', () => {
     expect(result.current.pending['tc1']).toBeUndefined()
   })
 
+  it('never auto-approves a tool that approves commands on its own server', () => {
+    // super-shell's `approve_command` would let the model answer for the
+    // user: allow-all, a trusted server and an "always" grant all miss it.
+    useToolApproval.setState({
+      allowAllMCPPermissions: true,
+      approvedToolsGlobal: ['approve_command'],
+    })
+    const { result } = renderHook(() => useToolApprovalRequests())
+
+    act(() => {
+      void result.current.requestApproval(
+        'tc-self',
+        'approve_command',
+        'thread-1',
+        'super-shell',
+        GH
+      )
+    })
+
+    const pending = result.current.pending['tc-self']
+    expect(pending).toBeDefined()
+    expect(pending.alwaysAsk).toBe(true)
+    expect(pending.taskContext).toContain('super-shell')
+
+    // Answering "always" records nothing for it.
+    act(() => {
+      result.current.resolveApproval('tc-self', 'allow-always')
+    })
+    expect(useToolApproval.getState().approvedServers).toEqual([])
+  })
+
   it('allow-all does NOT auto-approve a built-in tool with no server (must be asked)', () => {
     // "Allow all MCP permissions" is an MCP setting; a server-less agent tool
     // (write/edit/bash) still has to be approved in Ask mode.

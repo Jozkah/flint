@@ -10,6 +10,7 @@ pub mod cmdscan;
 pub mod fuzzy_edit;
 pub mod gate;
 pub mod git_native;
+pub mod git_tool;
 pub mod handlers;
 pub mod host_tools;
 pub mod image;
@@ -582,6 +583,16 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Write,
         path_args: &["dest"],
     },
+    // The host's real `git` and `gh`, outside the sandbox, confined to the
+    // run's folders (tools/git_tool.rs). `Write` because it can change the
+    // repository; the gate classifies each call -- reads run without asking,
+    // local changes prompt like a write, and anything that reaches a remote
+    // or can lose work is asked about every time.
+    BuiltinTool {
+        name: "git",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     // Cross-session messaging (docs/SESSION_MESSAGING.md). They touch only the
     // mailbox under the Jan data folder -- no project file, no network -- so
     // they are `Read` with no path arguments, and always allowed by the gate.
@@ -707,7 +718,8 @@ mod tests {
         // than the app parsing an intention out of prose.
         // + request_access and list_plugins, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
-        assert_eq!(BUILTIN_TOOLS.len(), 28);
+        // + git, the host's git and gh with per-call classification.
+        assert_eq!(BUILTIN_TOOLS.len(), 29);
     }
 
     #[test]
