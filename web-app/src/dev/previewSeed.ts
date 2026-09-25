@@ -427,6 +427,7 @@ export function seedPreview() {
   })
   try {
     localStorage.setItem('setup-completed', 'true')
+    localStorage.setItem('recent-searches', JSON.stringify(['release', 'kravio', 'escape', 'pr418']))
   } catch {
     // Storage may be unavailable; the providers alone pass the setup gate.
   }

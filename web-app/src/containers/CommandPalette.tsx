@@ -33,6 +33,15 @@ import {
   type PaletteSection,
 } from '@/lib/commandPalette'
 import { cn } from '@/lib/utils'
+import { Icon, type IconName } from '@/components/ui/icon'
+
+/** The design's row marks: actions, places, settings, conversations. */
+const SECTION_ICON: Record<PaletteSection, IconName> = {
+  actions: 'zap',
+  navigation: 'arrow-up',
+  settings: 'sb-settings',
+  threads: 'comment',
+}
 
 type PaletteState = {
   open: boolean
@@ -187,7 +196,7 @@ export function CommandPalette() {
       <DialogContent
         // Phone: a full-screen sheet rather than a bottom sheet under the
         // keyboard.
-        className="flex flex-col gap-0 overflow-hidden bg-popover p-0 sm:max-w-xl sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
+        className="flex flex-col gap-0 overflow-hidden rounded-[14px] bg-popover p-0 sm:max-w-[560px] lg:max-w-[560px] xl:max-w-[560px] sm:pb-0 max-sm:top-0 max-sm:h-(--app-vvh,100dvh) max-sm:max-h-none max-sm:rounded-none max-sm:border-0 max-sm:pb-[env(safe-area-inset-bottom)]"
         showCloseButton={false}
         aria-describedby={undefined}
         data-testid="command-palette"
@@ -209,7 +218,7 @@ export function CommandPalette() {
         <VisuallyHidden>
           <DialogTitle>{t('common:commandPalette.title')}</DialogTitle>
         </VisuallyHidden>
-        <div className="flex shrink-0 items-center gap-1 border-b border-border px-3">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-dashed border-border px-4">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             ref={inputRef}
@@ -218,7 +227,7 @@ export function CommandPalette() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder={t('common:commandPalette.placeholder')}
-            className="h-11 min-w-0 flex-1 bg-transparent px-2 text-base placeholder:text-muted-foreground focus:outline-none md:text-sm"
+            className="h-[50px] min-w-0 flex-1 bg-transparent text-base text-foreground placeholder:text-muted-foreground focus:outline-none md:text-sm"
             data-testid="command-palette-input"
             role="combobox"
             aria-expanded
@@ -237,7 +246,7 @@ export function CommandPalette() {
           id="command-palette-list"
           role="listbox"
           aria-label={t('common:commandPalette.title')}
-          className="min-h-0 flex-1 overflow-y-auto px-1.5 py-1.5 sm:max-h-80 sm:flex-none"
+          className="min-h-0 flex-1 overflow-y-auto p-1.5 sm:max-h-[50vh] sm:flex-none"
         >
           {results.length === 0 ? (
             <li
@@ -258,7 +267,7 @@ export function CommandPalette() {
                 {startsGroup && (
                   <li
                     role="presentation"
-                    className="px-2.5 pb-0.5 pt-2 text-xs font-medium text-muted-foreground"
+                    className="px-2.5 pt-2 pb-1 text-[11px] font-medium text-subtle-foreground uppercase"
                   >
                     {t(`common:commandPalette.group.${command.section}`)}
                   </li>
@@ -272,17 +281,20 @@ export function CommandPalette() {
                   onMouseEnter={() => setActive(index)}
                   onClick={() => runAt(index)}
                   className={cn(
-                    'relative flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] text-foreground pointer-coarse:min-h-11',
-                    selected &&
-                      'bg-accent before:absolute before:inset-y-1.5 before:left-0 before:w-0.5 before:rounded-full before:bg-acc'
+                    'relative flex h-[34px] cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-[13px] text-secondary-foreground transition-[background-color,color,transform] duration-150 ease-expo active:scale-[.965] pointer-coarse:h-11',
+                    selected && 'bg-accent text-foreground'
                   )}
                 >
+                  <Icon name={SECTION_ICON[command.section]} size={16} />
                   <span className="min-w-0 flex-1 truncate">
                     {command.title}
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {command.hint ?? sectionLabel(command.section)}
-                  </span>
+                  {command.hint && (
+                    <span className="shrink-0 text-xs text-subtle-foreground">
+                      {command.hint}
+                    </span>
+                  )}
+                  <span className="sr-only">{sectionLabel(command.section)}</span>
                 </li>
               </Fragment>
             )
