@@ -23,6 +23,7 @@ import {
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
 import { parseBashOutput } from '@/lib/toolPresentation'
+import { describeToolCall, toolCallFailed } from '@/lib/activityDetail'
 import { cn } from '@/lib/utils'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 
@@ -188,7 +189,7 @@ export function ChatChangesFrame({
     { add: 0, del: 0 }
   )
   return (
-    <Frame className={className} data-testid="chat-changes">
+    <Frame collapseId="details-changes" className={className} data-testid="chat-changes">
       <FrameHeader
         icon={<Icon name="x-edit" />}
         title={t('context:cards.changes')}
@@ -259,7 +260,7 @@ export function ChatToolsFrame({ className }: { className?: string }) {
   if (servers.length === 0) return null
 
   return (
-    <Frame className={className} data-testid="chat-tools">
+    <Frame collapseId="details-tools" className={className} data-testid="chat-tools">
       <FrameHeader icon={<Icon name="flow" />} title={t('context:cards.tools')} />
       <FrameBody className="px-4 py-1">
         <ul className="flex flex-col">
@@ -339,6 +340,12 @@ export function ChatActivityFrame({
   const { t } = useTranslation()
   const timings = useToolCallRuntime((s) => s.timings)
   const diffs = useToolCallRuntime((s) => s.diffs)
+  const allTools = useAppState((s) => s.tools)
+  const serverOf = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const tool of allTools) map.set(tool.name, tool.server)
+    return map
+  }, [allTools])
 
   const entries = useMemo(() => {
     const list: ActivityEntry[] = []
@@ -433,22 +440,35 @@ export function ChatActivityFrame({
           })
           continue
         }
+        const failed = toolCallFailed(part.state, part.output)
+        const timing = part.toolCallId ? timings[part.toolCallId] : undefined
         list.push({
           key,
-          icon: 'feed-ticket',
+          icon: failed ? 'feed-alert' : 'feed-ticket',
           title: t('context:cards.usedTool', { tool: name }),
-          detail: '',
+          detail: describeToolCall({
+            input: part.input,
+            output: part.output,
+            state: part.state,
+            startedAt: timing?.startedAt,
+            endedAt: timing?.endedAt,
+            server: serverOf.get(name),
+            labels: {
+              ok: t('context:cards.toolOk'),
+              failed: t('context:cards.toolFailed'),
+            },
+          }),
           at,
         })
       }
     }
     return list.reverse().slice(0, 6)
-  }, [messages, timings, diffs, modelId, t])
+  }, [messages, timings, diffs, modelId, serverOf, t])
 
   if (entries.length <= 1) return null
 
   return (
-    <Frame className={className} data-testid="chat-activity">
+    <Frame collapseId="details-activity" className={className} data-testid="chat-activity">
       <FrameHeader icon={<Icon name="x-activity" />} title={t('context:cards.activity')} />
       <FrameBody className="px-4 py-4">
         <ul className="relative m-0 flex list-none flex-col gap-4 p-0">

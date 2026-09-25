@@ -720,7 +720,10 @@ export function WhatJanIsUsingPanel({
         className
       )}
     >
-      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:120ms]">
+      <Frame
+        collapseId="details-context"
+        className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:120ms]"
+      >
         <FrameHeader
           icon={<Icon name="analytics" />}
           title={t('context:cards.context')}
@@ -757,7 +760,10 @@ export function WhatJanIsUsingPanel({
         messages={messages}
         className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:170ms]"
       />
-      <Frame className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:220ms]">
+      <Frame
+        collapseId="details-using"
+        className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:220ms]"
+      >
         <FrameHeader
           icon={<Icon name="x-sparkle" />}
           title={t('context:open')}
