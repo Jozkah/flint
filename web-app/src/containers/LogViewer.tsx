@@ -421,7 +421,7 @@ function ActivityChart({ logs }: { logs: LogEntry[] }) {
               {(
                 [
                   ['info', 'bg-[linear-gradient(var(--sk2),var(--sk))]'],
-                  ['warn', 'bg-warning'],
+                  ['warn', 'bg-[#f59e0b]'],
                   ['error', 'bg-destructive'],
                 ] as const
               ).map(([k, cls]) =>
@@ -630,7 +630,7 @@ export function LogsDashboard({
                   <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
                     <i className="ml-1.5 size-2 rounded-[2px] bg-sk-2" />
                     {t('logs:levelInfo')}
-                    <i className="ml-1.5 size-2 rounded-[2px] bg-warning" />
+                    <i className="ml-1.5 size-2 rounded-[2px] bg-[#f59e0b]" />
                     {t('logs:levelWarn')}
                     <i className="ml-1.5 size-2 rounded-[2px] bg-destructive" />
                     {t('logs:levelError')}
