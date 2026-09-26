@@ -471,5 +471,52 @@
     "state": {
       "absent": "Tidak ada"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Sesi baru di folder Git bekerja di worktree sendiri",
+    "settingDescription": "Setiap sesi baru di repositori Git mendapat worktree dan branch sendiri (flint/<title>), sehingga banyak sesi dapat bekerja di satu folder sekaligus tanpa saling mengganggu atau menyentuh checkout Anda. Tinjau, gabungkan, atau buang setiap branch dari sesi.",
+    "branchTitle": "Sesi ini bekerja di branch {{branch}}, di worktree sendiri",
+    "basedOn": "dari {{base}}",
+    "openFolder": "Buka folder",
+    "merge": "Gabungkan ke {{base}}",
+    "mergeNoBase": "Gabungkan",
+    "createPr": "Buat pull request",
+    "discard": "Buang",
+    "mergeTitle": "Gabungkan {{branch}} ke {{base}}?",
+    "mergeBody": "Maju cepat jika bisa dan membuat commit merge jika perlu. Jika terjadi konflik, tidak ada yang diubah dan file yang berkonflik dicantumkan.",
+    "mergePending": "Perubahan sesi yang belum di-commit akan di-commit ke branch-nya terlebih dahulu:",
+    "mergeConfirm": "Gabungkan",
+    "merged": "Digabungkan ke {{base}}",
+    "mergedFf": "{{base}} dimajukan cepat",
+    "alreadyMerged": "{{base}} sudah memiliki semua isi branch ini",
+    "conflicts": "Menggabungkan ke {{base}} akan menimbulkan konflik di {{files}}. Tidak ada yang diubah.",
+    "discardTitle": "Buang pekerjaan sesi ini?",
+    "discardBody": "Menghapus {{path}} dan branch {{branch}}.",
+    "discardLoses": "Ini menghancurkan pekerjaan yang tidak ada di tempat lain:",
+    "discardNothing": "Tidak ada yang belum di-commit atau belum digabungkan.",
+    "discardConfirm": "Buang",
+    "discarded": "Worktree sesi dihapus",
+    "notCarried": "Tidak dibawa ke worktree: perubahan yang belum di-commit di {{files}}.",
+    "prPrompt": "Commit perubahan yang tersisa, push branch {{branch}}, dan buka pull request ke {{base}} yang merangkum perubahan sesi ini.",
+    "copyOffer": "Folder ini bukan repositori Git. Bekerjalah di salinan agar sesi lain dan suntingan Anda sendiri tidak tersentuh; terapkan perubahan kembali saat siap.",
+    "workOnCopy": "Bekerja di salinan",
+    "copyLabel": "Bekerja di salinan",
+    "copyTitle": "Perubahan masuk ke salinan {{folder}}; terapkan kembali saat siap",
+    "applyBack": "Terapkan perubahan kembali",
+    "applyTitle": "Terapkan perubahan ke {{folder}}",
+    "applyNone": "Salinan tidak memiliki perubahan untuk diterapkan.",
+    "applySelected": "Terapkan {{count}} file",
+    "applyForce": "Timpa file yang juga berubah di aslinya",
+    "applied": "{{count}} file diterapkan",
+    "skipped": "Dilewati karena juga berubah di aslinya: {{files}}",
+    "conflict": "juga berubah di aslinya",
+    "binary": "File biner atau besar; tanpa pratinjau.",
+    "kind": {
+      "added": "ditambahkan",
+      "modified": "diubah",
+      "deleted": "dihapus"
+    },
+    "deleteKeep": "Simpan worktree dan branch-nya ({{name}})",
+    "deleteRemove": "Hapus juga worktree dan branch-nya ({{name}})"
   }
 }

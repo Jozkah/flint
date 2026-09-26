@@ -473,5 +473,52 @@
     "state": {
       "absent": "Brak"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Nowe sesje w folderze Git pracują we własnym worktree",
+    "settingDescription": "Każda nowa sesja w repozytorium Git dostaje własny worktree i gałąź (flint/<title>), dzięki czemu wiele sesji może pracować w jednym folderze naraz, nie wchodząc sobie w drogę ani nie zmieniając twojego checkoutu. Przejrzyj, scal lub odrzuć każdą gałąź z poziomu sesji.",
+    "branchTitle": "Ta sesja pracuje na gałęzi {{branch}} we własnym worktree",
+    "basedOn": "z {{base}}",
+    "openFolder": "Otwórz folder",
+    "merge": "Scal do {{base}}",
+    "mergeNoBase": "Scal",
+    "createPr": "Utwórz pull request",
+    "discard": "Odrzuć",
+    "mergeTitle": "Scalić {{branch}} do {{base}}?",
+    "mergeBody": "Przewija do przodu, gdy się da, a w przeciwnym razie tworzy commit scalający. Przy konfliktach nic się nie zmienia, a pliki z konfliktami są wypisywane.",
+    "mergePending": "Niezatwierdzone zmiany sesji zostaną najpierw zatwierdzone w jej gałęzi:",
+    "mergeConfirm": "Scal",
+    "merged": "Scalono do {{base}}",
+    "mergedFf": "Przewinięto {{base}} do przodu",
+    "alreadyMerged": "{{base}} ma już wszystko z tej gałęzi",
+    "conflicts": "Scalenie do {{base}} spowodowałoby konflikty w {{files}}. Nic nie zmieniono.",
+    "discardTitle": "Odrzucić pracę tej sesji?",
+    "discardBody": "Usuwa {{path}} i jego gałąź {{branch}}.",
+    "discardLoses": "To zniszczy pracę, która nie istnieje nigdzie indziej:",
+    "discardNothing": "Nie ma w nim nic niezatwierdzonego ani nie scalonego.",
+    "discardConfirm": "Odrzuć",
+    "discarded": "Usunięto worktree sesji",
+    "notCarried": "Nie przeniesiono do worktree: niezatwierdzone zmiany w {{files}}.",
+    "prPrompt": "Zatwierdź pozostałe zmiany, wypchnij gałąź {{branch}} i otwórz pull request do {{base}} podsumowujący zmiany z tej sesji.",
+    "copyOffer": "Ten folder nie jest repozytorium Git. Pracuj na kopii, aby nie naruszać innych sesji ani własnych zmian; zastosuj zmiany, gdy będziesz gotowy.",
+    "workOnCopy": "Pracuj na kopii",
+    "copyLabel": "Praca na kopii",
+    "copyTitle": "Zmiany trafiają do kopii {{folder}}; zastosuj je, gdy będziesz gotowy",
+    "applyBack": "Zastosuj zmiany",
+    "applyTitle": "Zastosuj zmiany w {{folder}}",
+    "applyNone": "Kopia nie ma zmian do zastosowania.",
+    "applySelected": "Zastosuj pliki: {{count}}",
+    "applyForce": "Nadpisz pliki zmienione także w oryginale",
+    "applied": "Zastosowano plików: {{count}}",
+    "skipped": "Pominięto, bo zmieniły się także w oryginale: {{files}}",
+    "conflict": "zmienione także w oryginale",
+    "binary": "Plik binarny lub duży; brak podglądu.",
+    "kind": {
+      "added": "dodany",
+      "modified": "zmieniony",
+      "deleted": "usunięty"
+    },
+    "deleteKeep": "Zachowaj worktree i gałąź ({{name}})",
+    "deleteRemove": "Usuń także worktree i gałąź ({{name}})"
   }
 }

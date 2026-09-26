@@ -541,5 +541,52 @@
     "state": {
       "absent": "मौजूद नहीं"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git फ़ोल्डर में नए सत्र अपने अलग worktree में काम करते हैं",
+    "settingDescription": "Git रिपॉज़िटरी से जुड़े हर नए सत्र को अपना worktree और ब्रांच (flint/<title>) मिलता है, ताकि कई सत्र एक ही फ़ोल्डर में एक साथ काम कर सकें और न एक-दूसरे को छुएँ, न आपके checkout को। हर ब्रांच की समीक्षा, merge या उसे त्यागना सत्र से ही करें।",
+    "branchTitle": "यह सत्र अपने worktree में ब्रांच {{branch}} पर काम करता है",
+    "basedOn": "{{base}} से",
+    "openFolder": "फ़ोल्डर खोलें",
+    "merge": "{{base}} में merge करें",
+    "mergeNoBase": "Merge करें",
+    "createPr": "Pull request बनाएँ",
+    "discard": "त्यागें",
+    "mergeTitle": "{{branch}} को {{base}} में merge करें?",
+    "mergeBody": "संभव हो तो fast-forward करता है, वरना merge commit बनाता है। टकराव होने पर कुछ नहीं बदलता और टकराव वाली फ़ाइलें सूचीबद्ध होती हैं।",
+    "mergePending": "सत्र के uncommitted बदलाव पहले उसकी ब्रांच में commit किए जाएँगे:",
+    "mergeConfirm": "Merge करें",
+    "merged": "{{base}} में merge हुआ",
+    "mergedFf": "{{base}} fast-forward हुआ",
+    "alreadyMerged": "{{base}} में इस ब्रांच का सब कुछ पहले से है",
+    "conflicts": "{{base}} में merge करने से {{files}} में टकराव होगा। कुछ नहीं बदला।",
+    "discardTitle": "इस सत्र का काम त्यागें?",
+    "discardBody": "{{path}} और उसकी ब्रांच {{branch}} हटाता है।",
+    "discardLoses": "इससे वह काम नष्ट होगा जो कहीं और मौजूद नहीं है:",
+    "discardNothing": "इसमें कुछ भी uncommitted या unmerged नहीं है।",
+    "discardConfirm": "त्यागें",
+    "discarded": "सत्र का worktree हटाया गया",
+    "notCarried": "worktree में नहीं लाया गया: {{files}} में uncommitted बदलाव।",
+    "prPrompt": "बचे हुए बदलाव commit करो, ब्रांच {{branch}} push करो और {{base}} में एक pull request खोलो जो इस सत्र के बदलावों का सारांश दे।",
+    "copyOffer": "यह फ़ोल्डर Git रिपॉज़िटरी नहीं है। एक कॉपी पर काम करें ताकि दूसरे सत्र और आपके अपने बदलाव प्रभावित न हों; तैयार होने पर बदलाव वापस लागू करें।",
+    "workOnCopy": "कॉपी पर काम करें",
+    "copyLabel": "कॉपी पर काम हो रहा है",
+    "copyTitle": "बदलाव {{folder}} की कॉपी में जाते हैं; तैयार होने पर उन्हें वापस लागू करें",
+    "applyBack": "बदलाव वापस लागू करें",
+    "applyTitle": "{{folder}} में बदलाव लागू करें",
+    "applyNone": "कॉपी में लागू करने के लिए कोई बदलाव नहीं है।",
+    "applySelected": "{{count}} फ़ाइल लागू करें",
+    "applyForce": "उन फ़ाइलों को ओवरराइट करें जो मूल में भी बदली हैं",
+    "applied": "{{count}} फ़ाइल लागू हुईं",
+    "skipped": "छोड़ी गईं क्योंकि मूल में भी बदली हैं: {{files}}",
+    "conflict": "मूल में भी बदली",
+    "binary": "बाइनरी या बड़ी फ़ाइल; पूर्वावलोकन नहीं।",
+    "kind": {
+      "added": "जोड़ी गई",
+      "modified": "बदली गई",
+      "deleted": "हटाई गई"
+    },
+    "deleteKeep": "इसका worktree और ब्रांच रखें ({{name}})",
+    "deleteRemove": "इसका worktree और ब्रांच ({{name}}) भी हटाएँ"
   }
 }

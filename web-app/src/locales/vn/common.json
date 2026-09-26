@@ -471,5 +471,52 @@
     "state": {
       "absent": "Không có"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Phiên mới trong thư mục Git làm việc trong worktree riêng",
+    "settingDescription": "Mỗi phiên mới gắn với một kho Git có worktree và nhánh riêng (flint/<title>), để nhiều phiên có thể làm việc cùng lúc trong một thư mục mà không đụng vào nhau hay vào bản checkout của bạn. Xem lại, hợp nhất hoặc bỏ từng nhánh ngay trong phiên.",
+    "branchTitle": "Phiên này làm việc trên nhánh {{branch}}, trong worktree riêng",
+    "basedOn": "từ {{base}}",
+    "openFolder": "Mở thư mục",
+    "merge": "Hợp nhất vào {{base}}",
+    "mergeNoBase": "Hợp nhất",
+    "createPr": "Tạo pull request",
+    "discard": "Bỏ",
+    "mergeTitle": "Hợp nhất {{branch}} vào {{base}}?",
+    "mergeBody": "Tua nhanh khi có thể và tạo commit hợp nhất khi cần. Nếu có xung đột, không có gì thay đổi và các tệp xung đột sẽ được liệt kê.",
+    "mergePending": "Các thay đổi chưa commit của phiên sẽ được commit vào nhánh của nó trước:",
+    "mergeConfirm": "Hợp nhất",
+    "merged": "Đã hợp nhất vào {{base}}",
+    "mergedFf": "Đã tua nhanh {{base}}",
+    "alreadyMerged": "{{base}} đã có mọi thứ trên nhánh này",
+    "conflicts": "Hợp nhất vào {{base}} sẽ xung đột ở {{files}}. Không có gì thay đổi.",
+    "discardTitle": "Bỏ công việc của phiên này?",
+    "discardBody": "Xóa {{path}} và nhánh {{branch}}.",
+    "discardLoses": "Việc này hủy công việc không tồn tại ở đâu khác:",
+    "discardNothing": "Không có gì chưa commit hoặc chưa hợp nhất.",
+    "discardConfirm": "Bỏ",
+    "discarded": "Đã xóa worktree của phiên",
+    "notCarried": "Không mang vào worktree: thay đổi chưa commit trong {{files}}.",
+    "prPrompt": "Commit các thay đổi còn lại, push nhánh {{branch}} và mở pull request vào {{base}} tóm tắt các thay đổi của phiên này.",
+    "copyOffer": "Thư mục này không phải kho Git. Hãy làm việc trên một bản sao để không đụng tới các phiên khác và chỉnh sửa của bạn; áp dụng thay đổi trở lại khi sẵn sàng.",
+    "workOnCopy": "Làm việc trên bản sao",
+    "copyLabel": "Đang làm việc trên bản sao",
+    "copyTitle": "Thay đổi được ghi vào bản sao của {{folder}}; áp dụng lại khi sẵn sàng",
+    "applyBack": "Áp dụng thay đổi trở lại",
+    "applyTitle": "Áp dụng thay đổi vào {{folder}}",
+    "applyNone": "Bản sao không có thay đổi nào để áp dụng.",
+    "applySelected": "Áp dụng {{count}} tệp",
+    "applyForce": "Ghi đè các tệp cũng đã thay đổi ở bản gốc",
+    "applied": "Đã áp dụng {{count}} tệp",
+    "skipped": "Bỏ qua vì cũng đã thay đổi ở bản gốc: {{files}}",
+    "conflict": "cũng thay đổi ở bản gốc",
+    "binary": "Tệp nhị phân hoặc lớn; không có xem trước.",
+    "kind": {
+      "added": "đã thêm",
+      "modified": "đã sửa",
+      "deleted": "đã xóa"
+    },
+    "deleteKeep": "Giữ worktree và nhánh ({{name}})",
+    "deleteRemove": "Xóa cả worktree và nhánh ({{name}})"
   }
 }

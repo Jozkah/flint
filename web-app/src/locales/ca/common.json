@@ -473,5 +473,52 @@
     "state": {
       "absent": "No present"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Les sessions noves en una carpeta Git treballen en el seu propi worktree",
+    "settingDescription": "Cada sessió nova en un repositori Git obté el seu propi worktree i branca (flint/<title>), perquè moltes sessions treballin alhora a la mateixa carpeta sense tocar-se entre elles ni tocar la teva còpia de treball. Revisa, fusiona o descarta cada branca des de la sessió.",
+    "branchTitle": "Aquesta sessió treballa a la branca {{branch}}, en el seu propi worktree",
+    "basedOn": "des de {{base}}",
+    "openFolder": "Obre la carpeta",
+    "merge": "Fusiona a {{base}}",
+    "mergeNoBase": "Fusiona",
+    "createPr": "Crea una pull request",
+    "discard": "Descarta",
+    "mergeTitle": "Fusionar {{branch}} a {{base}}?",
+    "mergeBody": "Avança ràpid quan pot i crea un commit de fusió quan cal. Si hi ha conflictes, no es canvia res i es llisten els fitxers en conflicte.",
+    "mergePending": "Els canvis sense confirmar de la sessió es confirmaran primer a la seva branca:",
+    "mergeConfirm": "Fusiona",
+    "merged": "Fusionat a {{base}}",
+    "mergedFf": "{{base}} avançat ràpid",
+    "alreadyMerged": "{{base}} ja té tot el que hi ha en aquesta branca",
+    "conflicts": "Fusionar a {{base}} provocaria conflictes a {{files}}. No s'ha canviat res.",
+    "discardTitle": "Descartar la feina d'aquesta sessió?",
+    "discardBody": "Elimina {{path}} i la seva branca {{branch}}.",
+    "discardLoses": "Això destrueix feina que no existeix enlloc més:",
+    "discardNothing": "No hi ha res sense confirmar ni sense fusionar.",
+    "discardConfirm": "Descarta",
+    "discarded": "S'ha eliminat el worktree de la sessió",
+    "notCarried": "No s'ha portat al worktree: canvis sense confirmar a {{files}}.",
+    "prPrompt": "Confirma els canvis restants, puja la branca {{branch}} i obre una pull request cap a {{base}} que resumeixi els canvis d'aquesta sessió.",
+    "copyOffer": "Aquesta carpeta no és un repositori Git. Treballa en una còpia perquè no es toquin altres sessions ni els teus canvis; aplica els canvis quan estiguis a punt.",
+    "workOnCopy": "Treballa en una còpia",
+    "copyLabel": "Treballant en una còpia",
+    "copyTitle": "Els canvis van a una còpia de {{folder}}; aplica'ls quan estiguis a punt",
+    "applyBack": "Aplica els canvis",
+    "applyTitle": "Aplica els canvis a {{folder}}",
+    "applyNone": "La còpia no té canvis per aplicar.",
+    "applySelected": "Aplica {{count}} fitxer(s)",
+    "applyForce": "Sobreescriu els fitxers que també han canviat a l'original",
+    "applied": "{{count}} fitxer(s) aplicat(s)",
+    "skipped": "Omesos perquè també han canviat a l'original: {{files}}",
+    "conflict": "també ha canviat a l'original",
+    "binary": "Fitxer binari o gran; sense previsualització.",
+    "kind": {
+      "added": "afegit",
+      "modified": "modificat",
+      "deleted": "eliminat"
+    },
+    "deleteKeep": "Conserva el seu worktree i branca ({{name}})",
+    "deleteRemove": "Elimina també el seu worktree i branca ({{name}})"
   }
 }

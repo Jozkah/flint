@@ -540,5 +540,52 @@
     "state": {
       "absent": "없음"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git 폴더의 새 세션은 자체 worktree에서 작업",
+    "settingDescription": "Git 저장소에 연결된 새 세션마다 자체 worktree와 브랜치(flint/<title>)가 생겨, 여러 세션이 서로나 내 체크아웃을 건드리지 않고 한 폴더에서 동시에 작업할 수 있습니다. 각 브랜치는 세션에서 검토, 병합 또는 폐기하세요.",
+    "branchTitle": "이 세션은 자체 worktree에서 {{branch}} 브랜치로 작업합니다",
+    "basedOn": "{{base}}에서",
+    "openFolder": "폴더 열기",
+    "merge": "{{base}}에 병합",
+    "mergeNoBase": "병합",
+    "createPr": "풀 리퀘스트 만들기",
+    "discard": "폐기",
+    "mergeTitle": "{{branch}}을(를) {{base}}에 병합할까요?",
+    "mergeBody": "가능하면 빨리 감기하고, 필요하면 병합 커밋을 만듭니다. 충돌이 있으면 아무것도 바꾸지 않고 충돌 파일을 나열합니다.",
+    "mergePending": "세션의 커밋되지 않은 변경 사항이 먼저 해당 브랜치에 커밋됩니다:",
+    "mergeConfirm": "병합",
+    "merged": "{{base}}에 병합됨",
+    "mergedFf": "{{base}} 빨리 감기됨",
+    "alreadyMerged": "{{base}}에 이 브랜치의 모든 내용이 이미 있습니다",
+    "conflicts": "{{base}}에 병합하면 {{files}}에서 충돌이 납니다. 아무것도 바뀌지 않았습니다.",
+    "discardTitle": "이 세션의 작업을 폐기할까요?",
+    "discardBody": "{{path}}와 브랜치 {{branch}}를 제거합니다.",
+    "discardLoses": "다른 곳에 없는 작업이 삭제됩니다:",
+    "discardNothing": "커밋되지 않았거나 병합되지 않은 내용이 없습니다.",
+    "discardConfirm": "폐기",
+    "discarded": "세션의 worktree를 제거했습니다",
+    "notCarried": "worktree로 옮겨지지 않음: {{files}}의 커밋되지 않은 변경 사항.",
+    "prPrompt": "남은 변경 사항을 커밋하고 {{branch}} 브랜치를 푸시한 뒤, 이 세션의 변경 사항을 요약한 {{base}} 대상 풀 리퀘스트를 여세요.",
+    "copyOffer": "이 폴더는 Git 저장소가 아닙니다. 다른 세션과 내 편집을 건드리지 않도록 복사본에서 작업하고, 준비되면 변경 사항을 되돌려 적용하세요.",
+    "workOnCopy": "복사본에서 작업",
+    "copyLabel": "복사본에서 작업 중",
+    "copyTitle": "변경 사항은 {{folder}}의 복사본에 기록됩니다. 준비되면 되돌려 적용하세요",
+    "applyBack": "변경 사항 되돌려 적용",
+    "applyTitle": "{{folder}}에 변경 사항 적용",
+    "applyNone": "복사본에 적용할 변경 사항이 없습니다.",
+    "applySelected": "파일 {{count}}개 적용",
+    "applyForce": "원본에서도 바뀐 파일 덮어쓰기",
+    "applied": "파일 {{count}}개를 적용했습니다",
+    "skipped": "원본에서도 바뀌어 건너뜀: {{files}}",
+    "conflict": "원본에서도 변경됨",
+    "binary": "바이너리 또는 큰 파일이라 미리 보기가 없습니다.",
+    "kind": {
+      "added": "추가됨",
+      "modified": "수정됨",
+      "deleted": "삭제됨"
+    },
+    "deleteKeep": "worktree와 브랜치 유지 ({{name}})",
+    "deleteRemove": "worktree와 브랜치({{name}})도 제거"
   }
 }
