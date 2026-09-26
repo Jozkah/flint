@@ -26,6 +26,12 @@ import { isToolPart, type MessagePartLike } from './types'
 import { RagToolWidget } from './RagToolWidget'
 import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
+import { OpenablePath } from './OpenablePath'
+import {
+  lineOfToolInput,
+  toolChangesFile,
+  toolTargetIsPath,
+} from '@/lib/codeOpen'
 
 const identityResolver = (input: string) => Promise.resolve(input)
 
@@ -251,8 +257,20 @@ export const ToolCallCard = memo(
       </ResultSection>
     ) : bar.variant === 'workspace' ? (
       showDiff && diff ? (
-        // The change itself is the result: edge to edge, under a dashed rule.
-        <ChangeDiff diff={diff} bleed />
+        <>
+          {/* Which file, openable, with the change a click away in Changes. */}
+          {bar.target && (
+            <div className="flex min-w-0 items-center gap-1.5 px-2.5 pt-2 font-mono text-xs text-muted-foreground">
+              <OpenablePath
+                path={bar.target}
+                line={lineOfToolInput(part.input)}
+                diffable={toolChangesFile(bar.tool)}
+              />
+            </div>
+          )}
+          {/* The change itself is the result: edge to edge, under a dashed rule. */}
+          <ChangeDiff diff={diff} bleed />
+        </>
       ) : (
         <ResultSection label={resultLabel} failed={failed}>
           <AgentToolWidget
@@ -297,6 +315,22 @@ export const ToolCallCard = memo(
           state={part.state}
           origin={originLabel}
           arg={bar ? headerArg(bar) : undefined}
+          argNode={
+            // A finished call's path opens in the Code panel from the header,
+            // at the line it read when it names one.
+            bar?.variant === 'workspace' &&
+            !running &&
+            bar.target &&
+            toolTargetIsPath(bar.tool) ? (
+              <OpenablePath
+                path={bar.target}
+                line={lineOfToolInput(part.input)}
+                diffable={toolChangesFile(bar.tool) && done}
+              >
+                {headerArg(bar)}
+              </OpenablePath>
+            ) : undefined
+          }
           input={bar ? undefined : part.input}
           badge={badge}
           failed={hardFailed}

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { useCodeOpen } from '@/lib/codeOpen'
+import { openInBackground, useCodeOpen } from '@/lib/codeOpen'
 import { parseFileRefHref } from '@/lib/coworkFileRefs'
 import { cn } from '@/lib/utils'
 
@@ -40,7 +40,17 @@ export function CoworkFileRef({
   return (
     <button
       type="button"
-      onClick={() => open(ref.path)}
+      onClick={(e) =>
+        open(ref.path, {
+          line: ref.line ?? undefined,
+          background: openInBackground(e),
+        })
+      }
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        open(ref.path, { line: ref.line ?? undefined, background: true })
+      }}
       title={label}
       className={cn(
         'cursor-pointer rounded bg-accent px-1 font-mono text-[0.9em] text-acc-text underline decoration-dotted underline-offset-2 hover:bg-acc-tint focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring',
