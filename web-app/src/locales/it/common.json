@@ -609,5 +609,12 @@
     },
     "deleteKeep": "Mantieni worktree e branch ({{name}})",
     "deleteRemove": "Rimuovi anche worktree e branch ({{name}})"
+  },
+  "paramSearch": {
+    "addParameter": "Aggiungi parametro",
+    "placeholder": "Cerca parametri",
+    "noMatches": "Nessun parametro corrisponde",
+    "noneForProvider": "Nessun parametro regolabile per questo provider.",
+    "maybeUnsupported": "Potrebbe non essere supportato da {{providers}}"
   }
 }

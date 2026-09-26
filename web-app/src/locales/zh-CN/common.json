@@ -801,5 +801,12 @@
     },
     "deleteKeep": "保留其 worktree 和分支（{{name}}）",
     "deleteRemove": "同时删除其 worktree 和分支（{{name}}）"
+  },
+  "paramSearch": {
+    "addParameter": "添加参数",
+    "placeholder": "搜索参数",
+    "noMatches": "没有匹配的参数",
+    "noneForProvider": "此提供商没有可调参数。",
+    "maybeUnsupported": "{{providers}} 可能不支持"
   }
 }

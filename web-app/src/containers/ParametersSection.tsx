@@ -1,15 +1,13 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent } from 'react'
 import { Trash2, Plus, TriangleAlert } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
   paramsSettings,
   paramGroups,
@@ -319,10 +317,16 @@ function AddParameterMenu({
   onAddGroup,
   modelRejects,
 }: AddParameterMenuProps) {
-  const items = useMemo(() => {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIdx, setActiveIdx] = useState(0)
+  const listRef = useRef<HTMLDivElement>(null)
+
+  const items = useMemo<Array<{ cat: ParamCategory; entries: MenuEntry[] }>>(() => {
     return paramCategories
       .map((cat) => {
-        const standalone = cat.paramKeys
+        const standalone: MenuEntry[] = cat.paramKeys
           .map((k) => paramsSettings[k])
           .filter((def): def is ParamDef => Boolean(def))
           .filter((def) => isCapabilitySupported(def, providers))
@@ -333,7 +337,7 @@ function AddParameterMenu({
             active: def.key in params,
             support: providerSupportFor(def, providers),
           }))
-        const groups = cat.groupIds
+        const groups: MenuEntry[] = cat.groupIds
           .map((id) => paramGroups.find((g) => g.id === id))
           .filter((g): g is ParamGroup => Boolean(g))
           .filter((g) => isGroupCapabilitySupported(g, providers))
@@ -348,69 +352,256 @@ function AddParameterMenu({
       .filter(({ entries }) => entries.length > 0)
   }, [params, providers, modelRejects])
 
+  const filtered = useMemo(() => filterMenuItems(items, query), [items, query])
+  // Only enabled rows take part in keyboard navigation.
+  const selectable = useMemo(
+    () => filtered.flatMap(({ entries }) => entries.filter((e) => !e.active)),
+    [filtered]
+  )
+
+  useEffect(() => {
+    setActiveIdx(0)
+  }, [query])
+
+  const current: MenuEntry | undefined =
+    selectable[Math.min(activeIdx, selectable.length - 1)]
+  const currentId = current ? entryId(current) : undefined
+
+  useEffect(() => {
+    if (!currentId) return
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-entry-id="${currentId}"]`
+    )
+    el?.scrollIntoView?.({ block: 'nearest' })
+  }, [currentId])
+
   if (items.length === 0) {
     return (
       <div className="text-xs text-muted-foreground">
-        No tunable parameters for this provider.
+        {t('common:paramSearch.noneForProvider')}
       </div>
     )
   }
 
+  const add = (entry: MenuEntry) => {
+    if (entry.active) return
+    if (entry.kind === 'param') onAddStandalone(entry.def)
+    else onAddGroup(entry.group)
+    setOpen(false)
+    setQuery('')
+  }
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (selectable.length) setActiveIdx((i) => (i + 1) % selectable.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (selectable.length)
+        setActiveIdx((i) => (i - 1 + selectable.length) % selectable.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      if (current) add(current)
+    }
+  }
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setQuery('')
+      }}
+    >
+      <PopoverTrigger asChild>
         <Button variant="outline" size="sm" className="w-full justify-start">
           <Plus size={14} className="mr-1" />
-          Add parameter
+          {t('common:paramSearch.addParameter')}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-72 max-h-[60vh] overflow-y-auto">
-        {items.map(({ cat, entries }, catIdx) => (
-          <div key={cat.id}>
-            {catIdx > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
-              {cat.title}
-            </DropdownMenuLabel>
-            {entries.map((entry) =>
-              entry.kind === 'param' ? (
-                <DropdownMenuItem
-                  key={`p:${entry.def.key}`}
-                  disabled={entry.active}
-                  onSelect={() => onAddStandalone(entry.def)}
-                  className="flex flex-col items-start gap-0.5 py-1.5"
-                >
-                  <div className="flex items-center gap-1 w-full">
-                    <span className="text-sm">{entry.def.title}</span>
-                    {entry.support.supportedBy.length === 0 &&
-                      entry.support.maybeBy.length > 0 && (
-                        <TriangleAlert
-                          size={11}
-                          className="text-amber-500 ml-auto"
-                        />
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-72 p-0 flex flex-col max-h-[60vh]"
+        onEscapeKeyDown={(e) => {
+          // The first Esc clears the query; the next one closes the menu.
+          if (query) {
+            e.preventDefault()
+            setQuery('')
+          }
+        }}
+      >
+        <div className="p-2 border-b">
+          <Input
+            autoFocus
+            role="combobox"
+            aria-expanded
+            aria-controls="add-param-list"
+            aria-activedescendant={currentId ? `add-param-${currentId}` : undefined}
+            aria-label={t('common:paramSearch.placeholder')}
+            placeholder={t('common:paramSearch.placeholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="h-8 text-sm"
+          />
+        </div>
+        <div
+          ref={listRef}
+          id="add-param-list"
+          role="listbox"
+          className="overflow-y-auto p-1"
+        >
+          {filtered.length === 0 && (
+            <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+              {t('common:paramSearch.noMatches')}
+            </div>
+          )}
+          {filtered.map(({ cat, entries }, catIdx) => (
+            <div key={cat.id} role="group" aria-label={cat.title}>
+              {catIdx > 0 && <div className="-mx-1 my-1 h-px bg-border" />}
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                {cat.title}
+              </div>
+              {entries.map((entry) => {
+                const id = entryId(entry)
+                const highlighted = currentId === id
+                const title = entry.kind === 'param' ? entry.def.title : entry.group.title
+                const desc =
+                  entry.kind === 'param'
+                    ? (entry.def.effectHint ?? entry.def.description)
+                    : entry.group.description
+                const maybeBy =
+                  entry.kind === 'param' &&
+                  entry.support.supportedBy.length === 0 &&
+                  entry.support.maybeBy.length > 0
+                    ? entry.support.maybeBy
+                    : null
+                const warning = maybeBy
+                  ? t('common:paramSearch.maybeUnsupported', {
+                      providers: maybeBy.join(', '),
+                    })
+                  : ''
+                return (
+                  <div
+                    key={id}
+                    id={`add-param-${id}`}
+                    data-entry-id={id}
+                    role="option"
+                    aria-selected={highlighted}
+                    aria-disabled={entry.active || undefined}
+                    onMouseMove={() => {
+                      if (entry.active) return
+                      const i = selectable.findIndex((s) => entryId(s) === id)
+                      if (i >= 0 && i !== activeIdx) setActiveIdx(i)
+                    }}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => add(entry)}
+                    className={cn(
+                      'flex flex-col items-start gap-0.5 rounded-md px-2 py-1.5 cursor-default select-none',
+                      highlighted && 'bg-accent text-accent-foreground',
+                      entry.active && 'opacity-50'
+                    )}
+                  >
+                    <div className="flex items-center gap-1 w-full">
+                      <span className="text-sm">
+                        <Highlight text={title} query={query} />
+                      </span>
+                      {maybeBy && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="ml-auto" aria-label={warning}>
+                              <TriangleAlert size={11} className="text-amber-500" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">{warning}</TooltipContent>
+                        </Tooltip>
                       )}
+                    </div>
+                    <span className="text-xs text-muted-foreground line-clamp-1">
+                      <Highlight text={desc} query={query} />
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground line-clamp-1">
-                    {entry.def.effectHint ?? entry.def.description}
-                  </span>
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem
-                  key={`g:${entry.group.id}`}
-                  disabled={entry.active}
-                  onSelect={() => onAddGroup(entry.group)}
-                  className="flex flex-col items-start gap-0.5 py-1.5"
-                >
-                  <span className="text-sm">{entry.group.title}</span>
-                  <span className="text-xs text-muted-foreground line-clamp-1">
-                    {entry.group.description}
-                  </span>
-                </DropdownMenuItem>
-              )
-            )}
-          </div>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+type MenuEntry =
+  | {
+      kind: 'param'
+      def: ParamDef
+      active: boolean
+      support: { supportedBy: string[]; maybeBy: string[] }
+    }
+  | { kind: 'group'; group: ParamGroup; active: boolean }
+
+type ParamCategory = (typeof paramCategories)[number]
+
+function entryId(entry: MenuEntry): string {
+  return entry.kind === 'param' ? `p-${entry.def.key}` : `g-${entry.group.id}`
+}
+
+function queryTerms(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean)
+}
+
+function entryHaystack(entry: MenuEntry): string {
+  const parts =
+    entry.kind === 'param'
+      ? [entry.def.title, entry.def.description, entry.def.effectHint ?? '', entry.def.key]
+      : [entry.group.title, entry.group.description, entry.group.id, ...entry.group.members]
+  let text = parts.join(' ').toLowerCase()
+  // Common shorthand people type for context settings.
+  if (text.includes('context')) text += ' ctx'
+  // Let "top k" find top_k and "topk" find Top K.
+  return `${text} ${text.replace(/_/g, ' ')} ${text.replace(/[\s_-]+/g, '')}`
+}
+
+/**
+ * Filter the Add parameter menu by a search query. Every whitespace-separated
+ * term must appear (case-insensitive substring) in the entry's name,
+ * description or key. Categories left without entries are dropped.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function filterMenuItems<C, E extends MenuEntry>(
+  items: Array<{ cat: C; entries: E[] }>,
+  query: string
+): Array<{ cat: C; entries: E[] }> {
+  const terms = queryTerms(query)
+  if (terms.length === 0) return items
+  return items
+    .map(({ cat, entries }) => ({
+      cat,
+      entries: entries.filter((e) => {
+        const hay = entryHaystack(e)
+        return terms.every((term) => hay.includes(term))
+      }),
+    }))
+    .filter(({ entries }) => entries.length > 0)
+}
+
+function Highlight({ text, query }: { text: string; query: string }) {
+  const terms = queryTerms(query)
+  if (terms.length === 0 || !text) return <>{text}</>
+  const escaped = terms.map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const parts = text.split(new RegExp(`(${escaped.join('|')})`, 'gi'))
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={i} className="bg-transparent text-foreground font-semibold underline">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
   )
 }
 

@@ -530,5 +530,12 @@
     },
     "deleteKeep": "Сохранить worktree и ветку ({{name}})",
     "deleteRemove": "Удалить также worktree и ветку ({{name}})"
+  },
+  "paramSearch": {
+    "addParameter": "Добавить параметр",
+    "placeholder": "Поиск параметров",
+    "noMatches": "Нет подходящих параметров",
+    "noneForProvider": "У этого провайдера нет настраиваемых параметров.",
+    "maybeUnsupported": "Может не поддерживаться {{providers}}"
   }
 }

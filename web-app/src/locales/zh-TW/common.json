@@ -518,5 +518,12 @@
     },
     "deleteKeep": "保留其 worktree 與分支（{{name}}）",
     "deleteRemove": "一併移除其 worktree 與分支（{{name}}）"
+  },
+  "paramSearch": {
+    "addParameter": "新增參數",
+    "placeholder": "搜尋參數",
+    "noMatches": "沒有相符的參數",
+    "noneForProvider": "此供應商沒有可調整的參數。",
+    "maybeUnsupported": "{{providers}} 可能不支援"
   }
 }

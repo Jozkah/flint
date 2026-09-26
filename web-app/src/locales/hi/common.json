@@ -588,5 +588,12 @@
     },
     "deleteKeep": "इसका worktree और ब्रांच रखें ({{name}})",
     "deleteRemove": "इसका worktree और ब्रांच ({{name}}) भी हटाएँ"
+  },
+  "paramSearch": {
+    "addParameter": "पैरामीटर जोड़ें",
+    "placeholder": "पैरामीटर खोजें",
+    "noMatches": "कोई पैरामीटर मेल नहीं खाता",
+    "noneForProvider": "इस प्रदाता के लिए कोई समायोज्य पैरामीटर नहीं है।",
+    "maybeUnsupported": "{{providers}} द्वारा समर्थित नहीं हो सकता"
   }
 }
