@@ -91,6 +91,16 @@ pub struct ToolResult {
     pub unsandboxed_retry: Option<String>,
 }
 
+/// How the renderer came to allow a call before sending it here: the user
+/// answered a prompt, or a mode or standing grant allowed it without asking.
+/// Recorded in the audit so an allowed call no longer reads as an open prompt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ApprovalSource {
+    Prompted,
+    Auto,
+}
+
 /// Everything `execute_tool_inner` needs to run a call again, kept by an
 /// unsandboxed-retry offer. The command is the one that failed, not one the
 /// renderer names at redemption time.
@@ -872,6 +882,9 @@ pub async fn execute_tool(
     // The session's additional attached folders, each readable exactly like
     // `read_only_project` and validated the same way.
     extra_projects: Option<Vec<String>>,
+    // Whether the renderer asked the user before sending this call, or a mode
+    // or grant allowed it. Only recorded; it never widens what the gate allows.
+    approval: Option<ApprovalSource>,
 ) -> Result<ToolResult, AgentToolsError> {
     execute_tool_inner(
         data_folder,
@@ -890,6 +903,7 @@ pub async fn execute_tool(
         extra_projects,
         None,
         false,
+        approval,
     )
     .await
 }
@@ -921,6 +935,7 @@ pub async fn execute_tool_streaming(
     // without an actor, which reads as unknown rather than as anyone.
     actor: Option<ActorInput>,
     extra_projects: Option<Vec<String>>,
+    approval: Option<ApprovalSource>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
     let sink = output_sink(on_output, call_id.clone());
@@ -941,6 +956,7 @@ pub async fn execute_tool_streaming(
         extra_projects,
         Some(sink),
         false,
+        approval,
     )
     .await
 }
@@ -982,6 +998,7 @@ pub async fn execute_tool_unsandboxed_retry(
         call.extra_projects,
         None,
         true,
+        None,
     )
     .await
 }
@@ -1027,6 +1044,7 @@ async fn execute_tool_inner(
     // True only for a call the user approved to run outside the sandbox,
     // redeemed through `execute_tool_unsandboxed_retry`.
     unsandboxed: bool,
+    approval: Option<ApprovalSource>,
 ) -> Result<ToolResult, AgentToolsError> {
     // Kept before anything consumes the arguments, in case this call ends in
     // the one failure the user can be offered an unsandboxed retry for.
@@ -1191,6 +1209,7 @@ async fn execute_tool_inner(
             project: read_only_project.as_deref(),
             renderer_approved_git,
             unsandboxed,
+            approval,
             sandbox_enforces: matches!(decision, Decision::Prompt(PromptKind::Exec))
                 && jail::backend().enforces(),
         },
@@ -1857,6 +1876,8 @@ struct DecisionContext<'a> {
     unsandboxed: bool,
     /// An `Exec` prompt the enforcing sandbox makes unnecessary.
     sandbox_enforces: bool,
+    /// How the renderer allowed this call before sending it, when it says.
+    approval: Option<ApprovalSource>,
 }
 
 /// The outcome to record for `decision`, given what already happened before
@@ -1879,6 +1900,17 @@ fn recorded_outcome(
         Decision::Prompt(PromptKind::Exec) if cx.sandbox_enforces => {
             Some((Outcome::Allow, "confined by the sandbox".to_string()))
         }
+        // The renderer answered this prompt before sending the call: say
+        // whether the user was actually asked, instead of "prompt:Write".
+        Decision::Prompt(_) => match cx.approval? {
+            ApprovalSource::Prompted => {
+                Some((Outcome::Granted, "approved in the prompt".to_string()))
+            }
+            ApprovalSource::Auto => Some((
+                Outcome::Allow,
+                "allowed without asking (mode or standing grant)".to_string(),
+            )),
+        },
         _ => None,
     }
 }
@@ -2228,6 +2260,38 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
     }
 
+    /// An edit the renderer already allowed was logged as "prompt:Write". The
+    /// record now says whether the user was asked or a mode allowed it; with
+    /// no source given it stays an open prompt.
+    #[test]
+    fn a_renderer_allowed_write_records_whether_the_user_was_asked() {
+        let data = unique_data_folder();
+        std::fs::create_dir_all(&data).unwrap();
+        let root = data.join("ws");
+        let write = lookup("write").unwrap();
+        let args = json!({"path": "a.txt", "content": "x"});
+        for approval in [Some(ApprovalSource::Prompted), Some(ApprovalSource::Auto), None] {
+            record_permission_decision(
+                &data,
+                "s1",
+                write,
+                &args,
+                &root,
+                &Decision::Prompt(PromptKind::Write),
+                &DecisionContext { approval, ..Default::default() },
+            );
+        }
+        let all = crate::audit::read_all(&data);
+        assert_eq!(all.len(), 3, "{all:?}");
+        assert_eq!(all[0].decision, crate::audit::Outcome::Granted);
+        assert_eq!(all[0].reason, "approved in the prompt");
+        assert_eq!(all[1].decision, crate::audit::Outcome::Allow);
+        assert!(all[1].reason.contains("without asking"), "{}", all[1].reason);
+        assert_eq!(all[2].decision, crate::audit::Outcome::Prompt);
+        assert_eq!(all[2].reason, "prompt:Write");
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
     /// The output sink test's shared ledger: what was sent, tagged with call id.
     type Seen = Arc<Mutex<Vec<(u64, Option<String>, String)>>>;
 
@@ -2334,6 +2398,7 @@ mod tests {
             Some("run-1".into()),
             actor("agent", ""),
             None,
+            None,
         )
         .await
         .expect("the write runs");
@@ -2353,6 +2418,7 @@ mod tests {
             None,
             Some("run-1".into()),
             actor("agent:explorer", "Explorer"),
+            None,
             None,
         )
         .await
@@ -2391,6 +2457,7 @@ mod tests {
             Some("run-1".into()),
             actor("session:s-actor", "The user"),
             None,
+            None,
         )
         .await
         .expect_err("an identity that is not an agent is refused");
@@ -2417,6 +2484,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "a.txt", "content": "hello"}),
+            None,
             None,
             None,
             None,
@@ -2539,6 +2607,7 @@ mod tests {
             Some("run-1".into()),
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -2586,6 +2655,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -2609,6 +2679,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -2658,6 +2729,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -2697,6 +2769,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             )
             .await
             .expect_err("an escaping write must be refused");
@@ -2739,6 +2812,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -2756,6 +2830,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -2798,6 +2873,7 @@ mod tests {
             None,
             "bash".into(),
             json!({"command": "echo hi"}),
+            None,
             None,
             None,
             None,
@@ -2861,6 +2937,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             )
         };
 
@@ -2958,6 +3035,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3022,6 +3100,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3044,6 +3123,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -3087,6 +3167,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../isolation-thread-one/secret.txt"}),
+            None,
             None,
             None,
             None,
@@ -3145,6 +3226,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         {
@@ -3191,6 +3273,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3207,6 +3290,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -3243,6 +3327,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -3314,6 +3399,7 @@ mod tests {
                     None,
                     None,
                     None,
+            None,
                 )
                 .await
                 .is_err(),
@@ -3345,6 +3431,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -3367,6 +3454,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -3458,6 +3546,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3471,6 +3560,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -3514,6 +3604,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3529,6 +3620,7 @@ mod tests {
             None,
             None,
             attached,
+            None,
             None,
             None,
             None,
@@ -3575,6 +3667,7 @@ mod tests {
                 None,
                 None,
                 extras,
+            None,
             )
         };
 
@@ -3615,6 +3708,7 @@ mod tests {
                 None,
                 None,
                 None,
+            None,
             )
         };
         let read_args = json!({"path": repo.join("notes.md").to_string_lossy()});
@@ -3689,6 +3783,7 @@ mod tests {
             read_args.clone(),
             None, None, None, None, None, None, None, None,
             None,
+            None,
         )
         .await;
         assert!(other.is_err(), "grant leaked to another session");
@@ -3751,6 +3846,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -3781,6 +3877,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
             None,
@@ -3856,5 +3953,65 @@ mod tests {
                 payload,
             ));
         })
+    }
+    /// A plain chat (thread scope, no Cowork session, no write grant) reads
+    /// the folders it attached: the first as `read_only_project`, the rest as
+    /// `extra_projects`. It cannot write to them, and without them the same
+    /// read is refused.
+    #[tokio::test]
+    async fn a_chat_thread_reads_its_attached_folders_read_only() {
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let outside = unique_data_folder();
+        let a = outside.join("a");
+        let b = outside.join("b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(a.join("one.txt"), "from a").unwrap();
+        std::fs::write(b.join("two.txt"), "from b").unwrap();
+        let a_str = a.to_string_lossy().to_string();
+        let b_str = b.to_string_lossy().to_string();
+        let call = |name: &str, args: serde_json::Value, attached: bool| {
+            execute_tool(
+                df.clone(),
+                "chat-thread".into(),
+                None,
+                name.into(),
+                args,
+                None,
+                None,
+                attached.then(|| a_str.clone()),
+                None,
+                Some(WorkspaceScope::Thread),
+                None,
+                None,
+                None,
+                attached.then(|| vec![b_str.clone()]),
+            None,
+            )
+        };
+
+        let read_a = json!({"path": a.join("one.txt").to_string_lossy()});
+        let out = call("read", read_a.clone(), true).await.expect("read a");
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("from a"), "{}", out.content);
+
+        let read_b = json!({"path": b.join("two.txt").to_string_lossy()});
+        let out = call("read", read_b, true).await.expect("read b");
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("from b"), "{}", out.content);
+
+        // Read-only: no write grant, so a write there is refused.
+        let write = json!({"path": a.join("new.txt").to_string_lossy(), "content": "x"});
+        let out = call("write", write, true).await;
+        assert!(out.map(|r| r.is_error).unwrap_or(true));
+        assert!(!a.join("new.txt").exists());
+
+        // Without the attachment, the same read is refused.
+        let out = call("read", read_a, false).await;
+        assert!(out.map(|r| r.is_error).unwrap_or(true));
+
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&outside);
     }
 }

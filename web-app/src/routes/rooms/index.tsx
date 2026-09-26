@@ -39,14 +39,24 @@ import {
 } from '@/containers/rooms/roomUi'
 import { RoomAvatar } from '@/containers/rooms/RoomAvatar'
 import { AvatarStack, RoomCard } from '@/containers/rooms/RoomCard'
+import { roomFolderAdapter } from '@/lib/groups/adapters'
+import { addNewItemToGroup } from '@/lib/groups/inherit'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.rooms as any)({
   component: RoomsList,
   // `?new=1` opens the create dialog: the sidebar's "New room" lands here, and
-  // navigating to the page it is already on did nothing.
-  validateSearch: (search: Record<string, unknown>): { new?: 1 } =>
-    search.new === 1 || search.new === '1' ? { new: 1 } : {},
+  // navigating to the page it is already on did nothing. `group` names the
+  // sidebar group whose "+" opened it: the new room joins that group.
+  validateSearch: (search: Record<string, unknown>): { new?: 1; group?: string } =>
+    search.new === 1 || search.new === '1'
+      ? {
+          new: 1,
+          ...(typeof search.group === 'string' && search.group
+            ? { group: search.group }
+            : {}),
+        }
+      : {},
 })
 
 type Filter = 'all' | 'active' | 'finished' | 'draft'
@@ -77,6 +87,8 @@ function RoomsList() {
   const uid = useId()
   const [error, setError] = useState<RoomsUiError | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  // The group the room being created joins, when "+" on a group opened it.
+  const [createGroup, setCreateGroup] = useState<string | null>(null)
   const [title, setTitle] = useState('')
   const [objective, setObjective] = useState('')
   const [titleError, setTitleError] = useState(false)
@@ -121,13 +133,16 @@ function RoomsList() {
     setTitle(preset?.title ?? '')
     setObjective(preset?.objective ?? '')
     setTitleError(false)
+    setCreateGroup(null)
     setCreateOpen(true)
   }
 
-  const wantsNew = (useSearch({ strict: false }) as { new?: 1 }).new === 1
+  const search = useSearch({ strict: false }) as { new?: 1; group?: string }
+  const wantsNew = search.new === 1
   useEffect(() => {
     if (!wantsNew) return
     openCreate()
+    setCreateGroup(search.group ?? null)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     navigate({ to: route.rooms as any, search: {} as any, replace: true })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -142,6 +157,9 @@ function RoomsList() {
     setError(null)
     try {
       const room = await api.createRoom({ title: title.trim(), objective: objective.trim() })
+      if (createGroup)
+        await addNewItemToGroup('rooms', room.id, createGroup, roomFolderAdapter(api))
+      setCreateGroup(null)
       setCreateOpen(false)
       setTitle('')
       setObjective('')
@@ -206,7 +224,7 @@ function RoomsList() {
   const templates = (
     <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
       <FrameHeader icon={<Icon name="x-sparkle" />} title={t('rooms:templates.title')} />
-      <FrameBody className="grid grid-cols-1 gap-2 p-2 sm:grid-cols-2 xl:grid-cols-4">
+      <FrameBody className="grid grid-cols-1 gap-2 p-2 @[40rem]/rooms:grid-cols-2 @7xl/rooms:grid-cols-4">
         {TEMPLATES.map((tpl) => (
           <button
             key={tpl.id}
@@ -238,7 +256,7 @@ function RoomsList() {
   )
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="@container/rooms flex h-full flex-col">
       <HeaderPage />
       <div className="h-full overflow-y-auto">
         <div className="flex w-full flex-col gap-5 px-1 py-4">
@@ -267,7 +285,7 @@ function RoomsList() {
           )}
 
           {loading ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 @5xl/rooms:grid-cols-2 @[96rem]/rooms:grid-cols-3">
               <p role="status" className="sr-only">
                 {t('rooms:loading')}
               </p>
@@ -396,7 +414,7 @@ function RoomsList() {
                                 : t('rooms:stage.awaitingHint')}
                             </span>
                           </div>
-                          <span className="hidden text-xs text-subtle-foreground sm:inline">
+                          <span className="hidden text-xs text-subtle-foreground @[40rem]/rooms:inline">
                             {timeAgo(s.updatedAt, lang)}
                           </span>
                           <Button size="sm" variant="outline" className="pointer-coarse:h-11" asChild>
@@ -421,7 +439,7 @@ function RoomsList() {
                   <Segmented
                     size="sm"
                     aria-label={t('rooms:filter.label')}
-                    className="w-full sm:w-[380px]"
+                    className="w-full @[40rem]/rooms:w-[380px]"
                     value={filter}
                     onValueChange={setFilter}
                     options={(Object.keys(FILTERS) as Filter[]).map((f) => ({
@@ -435,7 +453,7 @@ function RoomsList() {
                     {t('rooms:filter.none')}
                   </p>
                 ) : (
-                  <ul className="grid grid-cols-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                  <ul className="grid grid-cols-1 gap-4 @5xl/rooms:grid-cols-2 @[96rem]/rooms:grid-cols-3">
                     {shown.map((s, i) => (
                       <RoomCard
                         key={s.id}

@@ -96,15 +96,15 @@ export function RoomView({ roomId }: { roomId: string }) {
   const people = activeParticipants(room)
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="@container/room flex h-full flex-col" data-testid="room-page">
       <HeaderPage>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <RoomStatusBadge status={room.status} />
-          <Chip className="hidden sm:inline-flex">{t(`rooms:mode.${room.mode}`)}</Chip>
+          <Chip className="hidden @[40rem]/room:inline-flex">{t(`rooms:mode.${room.mode}`)}</Chip>
           <span className="flex-1" />
           {people.length > 0 && (
             <span
-              className="hidden items-center pr-1 sm:flex"
+              className="hidden items-center pr-1 @[40rem]/room:flex"
               title={people.map((p) => p.name).join(', ')}
             >
               {people.map((p, i) => (
@@ -127,7 +127,7 @@ export function RoomView({ roomId }: { roomId: string }) {
         time, switched by the tabs above; the conversation fills the height so
         its composer stays at the bottom, and the controls scroll on their own.
       */}
-      <div className="px-1 pt-3 lg:hidden">
+      <div className="px-1 pt-3 @5xl/room:hidden">
         <Segmented
           aria-label={t('rooms:page.panes')}
           value={pane}
@@ -140,14 +140,14 @@ export function RoomView({ roomId }: { roomId: string }) {
       </div>
       <div
         className={cn(
-          'grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 px-1 py-3 lg:grid-cols-[minmax(0,1fr)_370px] lg:overflow-hidden lg:py-4',
+          'grid h-full min-h-0 grid-cols-[minmax(0,1fr)] gap-4 px-1 py-3 @5xl/room:grid-cols-[minmax(0,1fr)_370px] @5xl/room:overflow-hidden @5xl/room:py-4',
           pane === 'controls' ? 'overflow-y-auto' : 'overflow-hidden'
         )}
       >
         <Frame
           className={cn(
             'h-full min-h-0 motion-safe:animate-rise-in',
-            pane === 'controls' && 'max-lg:hidden'
+            pane === 'controls' && '@max-5xl/room:hidden'
           )}
         >
           <FrameHeader
@@ -170,8 +170,8 @@ export function RoomView({ roomId }: { roomId: string }) {
         <aside
           data-testid="room-side-panel"
           className={cn(
-            'flex w-full min-w-0 shrink-0 flex-col gap-4 pb-0.5 [scrollbar-width:none] lg:min-h-0 lg:w-[370px] lg:overflow-y-auto',
-            pane === 'talk' && 'max-lg:hidden'
+            'flex w-full min-w-0 shrink-0 flex-col gap-4 pb-0.5 [scrollbar-width:none] @5xl/room:min-h-0 @5xl/room:w-[370px] @5xl/room:overflow-y-auto',
+            pane === 'talk' && '@max-5xl/room:hidden'
           )}
         >
           <RoomControls room={room} />

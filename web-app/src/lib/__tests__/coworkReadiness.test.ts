@@ -11,6 +11,7 @@ import {
   measured,
   mutationBlockers,
   parseSkillRequests,
+  parseSkillRequestTriggers,
   resolveSkills,
   sameBinding,
   unresolvedSkills,
@@ -23,6 +24,23 @@ const registry = (over: Partial<SkillRegistry> = {}): SkillRegistry => ({
   available: [{ name: 'superpowers' }, { name: 'brainstorming' }],
   enabled: new Set(['superpowers']),
   ...over,
+})
+
+describe('parseSkillRequestTriggers', () => {
+  it('keeps the text each request was read from', () => {
+    expect(
+      parseSkillRequestTriggers('/deploy now, then ask @reviewer and use the tdd skill')
+    ).toEqual([
+      { name: 'deploy', trigger: '/deploy' },
+      { name: 'reviewer', trigger: '@reviewer' },
+      { name: 'tdd', trigger: 'use the tdd skill' },
+    ])
+  })
+
+  it('carries the trigger through resolution', () => {
+    const [one] = resolveSkills(parseSkillRequestTriggers('@ghost'), registry())
+    expect(one).toMatchObject({ requested: 'ghost', state: 'missing', trigger: '@ghost' })
+  })
 })
 
 function emptyContext(): ContextAccounting {
@@ -196,6 +214,27 @@ describe('finding a skill request in a message', () => {
     'see @src/index.ts:24-48',
   ])('does not read the file reference in %s as a skill request', (text) => {
     expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  // A "Continue" request quoted a failed robocopy command; its switches read as
+  // seven missing skills and every write in the retried run was refused.
+  it.each([
+    'robocopy $src $dst /E /XD .jan .git /XF KewScraper.exe /NFL /NDL /NJH /NP',
+    'Continue with the previous request:\n- bash robocopy a b /E /NP (failed)',
+    'list it with dir /s /b',
+    'run `/fake-cmd` in the shell',
+    '```\n/E /XD\n```',
+  ])('does not read command switches as skill requests: %s', (text) => {
+    expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  it('reads a slash command at the start of any line, and a known one anywhere', () => {
+    expect(parseSkillRequests('first this\n/telekinesis now', known)).toEqual([
+      'telekinesis',
+    ])
+    expect(parseSkillRequests('then run /brainstorming on it', known)).toEqual([
+      'brainstorming',
+    ])
   })
 
   it('reads the typed @skill: form, and never @agent: or @alias:', () => {

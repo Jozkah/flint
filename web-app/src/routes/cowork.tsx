@@ -333,6 +333,7 @@ import {
   classifyInstruction,
   isMissingFileError,
   parseSkillRequests,
+  parseSkillRequestTriggers,
   resolveSkills,
   unresolvedSkills,
   type ContextAccounting,
@@ -2194,7 +2195,7 @@ export function CoworkPage() {
     const runSkills =
       text == null
         ? (runSkillsRef.current[sid] ?? [])
-        : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
+        : resolveSkills(parseSkillRequestTriggers(text, skillNames), runRegistry)
     runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
@@ -3049,7 +3050,12 @@ export function CoworkPage() {
                   .requestApproval(callId, toolName, sid, undefined, {
                     input,
                     ...(forced
-                      ? { alwaysAsk: true, taskContext: forced.reason }
+                      ? {
+                          alwaysAsk: true,
+                          taskContext: forced.reason,
+                          conversationProgram: forced.conversationProgram,
+                          onDecision: forced.onDecision,
+                        }
                       : {}),
                     workspaceLabel:
                       (destination ? destination.path : current?.folder) ??
@@ -3370,7 +3376,12 @@ export function CoworkPage() {
                     .requestApproval(callId, toolName, sid, undefined, {
                       input,
                       ...(forced
-                        ? { alwaysAsk: true, taskContext: forced.reason }
+                        ? {
+                          alwaysAsk: true,
+                          taskContext: forced.reason,
+                          conversationProgram: forced.conversationProgram,
+                          onDecision: forced.onDecision,
+                        }
                         : {}),
                       workspaceLabel: current?.folder ?? undefined,
                       preview,

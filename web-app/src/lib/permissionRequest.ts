@@ -61,6 +61,12 @@ export type PermissionRequestInput = {
    * can be recorded from the answer.
    */
   alwaysAsk?: boolean
+  /**
+   * With `alwaysAsk`: the one program a "this conversation" answer may cover
+   * (an unsandboxed NUL rerun of `go`, say). Offers that scope, and only it,
+   * besides "Allow once"; the caller keeps the grant, never a standing one.
+   */
+  conversationProgram?: string
 }
 
 /** A short fact shown as a chip beside the category. */
@@ -493,6 +499,14 @@ function consequencesFor(
 export function scopesFor(req: PermissionRequestInput): ApprovalScope[] {
   const scopes: ApprovalScope[] = ['allow-once']
   // Decided call by call: nothing broader can be recorded for these.
+  if (
+    req.alwaysAsk &&
+    req.conversationProgram &&
+    !req.threadIsEphemeral &&
+    !ALWAYS_ASK_TOOLS.has(req.toolName)
+  ) {
+    return [...scopes, 'allow-thread']
+  }
   if (ALWAYS_ASK_TOOLS.has(req.toolName) || req.alwaysAsk) return scopes
   // A tool that approves commands on its own server: only this prompt may.
   if (req.serverName && isSelfApprovalTool(req.toolName)) return scopes
@@ -638,6 +652,16 @@ export function describePermissionRequest(
   const scopeExplanations: Partial<Record<ApprovalScope, ScopeExplanation>> = {}
   for (const scope of scopesOffered) {
     scopeExplanations[scope] = explain(scope, toolName, serverName)
+  }
+  if (req.alwaysAsk && req.conversationProgram && scopeExplanations['allow-thread']) {
+    scopeExplanations['allow-thread'] = {
+      label: { key: 'permissions:scope.allowThread' },
+      explanation: {
+        key: 'permissions:scope.threadProgramExplanation',
+        values: { program: req.conversationProgram },
+      },
+      broader: false,
+    }
   }
   // A stop request carries its own reason, written by the agent asking. Shown
   // as the "why" so the user decides with it in front of them.

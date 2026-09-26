@@ -43,6 +43,8 @@ import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import {
   NULL_DEVICE_RETRY_REASON,
   offerUnsandboxedRetry,
+  commandProgram,
+  nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { gateStopSession } from '@/lib/sessionStopGate'
@@ -105,7 +107,13 @@ export type DispatchContext = {
      * the mode would allow it: a destructive command, or the pause after a
      * long auto-approved streak. `reason` is shown in the prompt.
      */
-    options?: { alwaysAsk: true; reason: string }
+    options?: {
+      alwaysAsk: true
+      reason: string
+      /** Offer "Allow for this conversation" for this program only. */
+      conversationProgram?: string
+      onDecision?: (decision: string) => void
+    }
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -124,7 +132,11 @@ export type DispatchContext = {
    * files while ignoring the instructions those changes were meant to follow
    * is not. Empty when everything resolved, which is the ordinary case.
    */
-  unresolvedSkills?: readonly { requested: string; state: string }[]
+  unresolvedSkills?: readonly {
+    requested: string
+    state: string
+    trigger?: string
+  }[]
   /** Where this session may write. Absent is Review only. */
   access?: AccessMode
   /** The user's confirmation to edit the attached folder, when given. */
@@ -228,16 +240,30 @@ function detachedRefusal(toolName: string): ToolOutcome {
 /** A skill the user asked for is not in play, so nothing may change. */
 function skillRefusal(
   toolName: string,
-  unresolved: readonly { requested: string; state: string }[]
+  unresolved: readonly { requested: string; state: string; trigger?: string }[]
 ): ToolOutcome {
   const named = unresolved
     .map((skill) => `${skill.requested} (${skill.state})`)
+    .join(', ')
+  // Name the text that was read as a request: a robocopy switch quoted in a
+  // Continue request once read as seven "missing" skills, and neither the
+  // model nor the user could tell where they came from.
+  const triggers = unresolved
+    .map((skill) =>
+      skill.trigger
+        ? `\`${skill.trigger}\``
+        : `\`/${skill.requested}\` or \`@${skill.requested}\``
+    )
     .join(', ')
   return {
     output:
       `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
       'that is not in effect. Do not work around it. Say which skill is ' +
-      'unavailable and what the user can do about it, then stop.',
+      'unavailable and what the user can do about it, then stop. ' +
+      `This was read from ${triggers} in the user's message. If that text ` +
+      'is a command switch, a path or a file name rather than a skill, tell ' +
+      'the user to put it in backticks or code, or to write it without the ' +
+      'leading / or @, and send the request again.',
     isError: true,
   }
 }
@@ -785,12 +811,14 @@ async function routeCoworkTool(
         retry: result.unsandboxedRetry,
         failure: result.error,
         failureResources: result.resources,
+        program: commandProgram(call.input),
         ask: onApprove
           ? () =>
               unlessStopped(
                 onApprove(call.toolCallId, toolName, call.input, undefined, signal, {
                   alwaysAsk: true,
                   reason: NULL_DEVICE_RETRY_REASON,
+                  ...nullRerunApprovalScope(ctx.sessionId, call.input),
                 }),
                 signal
               )

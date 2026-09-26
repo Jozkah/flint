@@ -19,7 +19,11 @@ import {
   RETRY_DECLINED_NOTE,
   RETRY_UNAVAILABLE_NOTE,
   offerUnsandboxedRetry,
+  commandProgram,
+  nullRerunApprovalScope,
+  clearNullRerunGrants,
 } from '../nullDeviceRetry'
+import { scopesFor } from '../permissionRequest'
 import { dispatchCoworkTool } from '../coworkDispatch'
 import type { CoworkMode } from '../coworkMode'
 
@@ -144,7 +148,11 @@ describe('dispatchCoworkTool, a bash call the null device refused', () => {
       { command: 'go build' },
       undefined,
       undefined,
-      { alwaysAsk: true, reason: NULL_DEVICE_RETRY_REASON }
+      expect.objectContaining({
+        alwaysAsk: true,
+        reason: NULL_DEVICE_RETRY_REASON,
+        conversationProgram: 'go',
+      })
     )
     expect(retryAgentToolUnsandboxed).toHaveBeenCalledWith('s1', 'r1')
     expect(out.isError).toBeFalsy()
@@ -170,5 +178,62 @@ describe('dispatchCoworkTool, a bash call the null device refused', () => {
     )
     expect(onApprove).not.toHaveBeenCalled()
     expect(out).toMatchObject({ output: 'exit 1', isError: true })
+  })
+})
+
+describe('allow NUL reruns for this conversation', () => {
+  beforeEach(() => {
+    clearNullRerunGrants()
+    retryAgentToolUnsandboxed.mockReset()
+    retryAgentToolUnsandboxed.mockResolvedValue({ content: 'ok', ran: true })
+  })
+
+  it('names the program a command runs', () => {
+    expect(commandProgram({ command: 'go test ./...' })).toBe('go')
+    expect(commandProgram({ command: 'CGO=0 C:\\Go\\bin\\go.exe build' })).toBe('go')
+    expect(commandProgram({})).toBeUndefined()
+  })
+
+  it('offers the conversation scope only for a rerun with a program', () => {
+    expect(
+      scopesFor({ toolName: 'bash', alwaysAsk: true, conversationProgram: 'go' })
+    ).toEqual(['allow-once', 'allow-thread'])
+    expect(scopesFor({ toolName: 'bash', alwaysAsk: true })).toEqual(['allow-once'])
+    expect(
+      scopesFor({
+        toolName: 'bash',
+        alwaysAsk: true,
+        conversationProgram: 'go',
+        threadIsEphemeral: true,
+      })
+    ).toEqual(['allow-once'])
+  })
+
+  it('skips the prompt for later reruns of that program in that conversation only', async () => {
+    const scope = nullRerunApprovalScope('s1', { command: 'go test ./...' })
+    expect(scope.conversationProgram).toBe('go')
+    scope.onDecision?.('allow-thread')
+    const ask = vi.fn(async () => false)
+    const same = await offerUnsandboxedRetry({
+      threadId: 's1', retry: 'r2', failure: FAILURE, ask, program: 'go',
+    })
+    expect(same.isError).toBe(false)
+    expect(ask).not.toHaveBeenCalled()
+    await offerUnsandboxedRetry({
+      threadId: 's1', retry: 'r3', failure: FAILURE, ask, program: 'cargo',
+    })
+    await offerUnsandboxedRetry({
+      threadId: 's2', retry: 'r4', failure: FAILURE, ask, program: 'go',
+    })
+    expect(ask).toHaveBeenCalledTimes(2)
+  })
+
+  it('records nothing for Allow once', async () => {
+    nullRerunApprovalScope('s1', { command: 'go vet' }).onDecision?.('allow-once')
+    const ask = vi.fn(async () => true)
+    await offerUnsandboxedRetry({
+      threadId: 's1', retry: 'r5', failure: FAILURE, ask, program: 'go',
+    })
+    expect(ask).toHaveBeenCalledTimes(1)
   })
 })

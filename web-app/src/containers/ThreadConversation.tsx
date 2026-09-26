@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { useTextOverflow } from '@/hooks/useTextOverflow'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -129,6 +130,8 @@ import {
 import {
   NULL_DEVICE_RETRY_REASON,
   offerUnsandboxedRetry,
+  commandProgram,
+  nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import {
   ThreadStatusMark,
@@ -137,6 +140,8 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { chatFolderToolOptions } from '@/lib/chatFolders'
+import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import {
   deadToolNote,
   deadToolRefusal,
@@ -951,6 +956,9 @@ export function ThreadConversation({
                 toolCall.input,
                 threadId,
                 {
+                  // The chat's attached folders, read-only, as Cowork
+                  // passes its own.
+                  ...chatFolderToolOptions(threadId),
                   // Stopping the conversation withdraws a pending
                   // `request_access` prompt instead of leaving it answerable.
                   signal,
@@ -986,6 +994,7 @@ export function ThreadConversation({
                   retry: unsandboxedRetry,
                   failure: rest.error,
                   failureResources: rest.resources,
+                  program: commandProgram(toolCall.input),
                   ask: () =>
                     useToolApprovalRequests
                       .getState()
@@ -998,6 +1007,7 @@ export function ThreadConversation({
                           input: toolCall.input,
                           alwaysAsk: true,
                           taskContext: NULL_DEVICE_RETRY_REASON,
+                          ...nullRerunApprovalScope(threadId, toolCall.input),
                           destructiveChecked: true,
                           threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
                           signal,
@@ -2475,6 +2485,9 @@ export function ThreadConversation({
   const detailsPanelId = useId()
   // A phone's page header has room for one button (see controlsWith).
   const isPhone = useMediaQuery('(max-width: 639px)')
+  // The split pane's title fades only when it is too long to fit.
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useTextOverflow(titleRef)
   // Splitting halves the width; the inspector gives its room to the panes.
   useEffect(() => {
     if (isSplit) {
@@ -2499,6 +2512,7 @@ export function ThreadConversation({
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <Icon name="comment" size={16} />
       <h1
+        ref={titleRef}
         data-testid="conversation-title"
         // In a split pane the title fades out, as the sidebar's do, and the
         // pane being worked in has it in the foreground colour. text-fade is
@@ -2517,6 +2531,7 @@ export function ThreadConversation({
       >
         {plainThreadTitle}
       </h1>
+      {threadId !== TEMPORARY_CHAT_ID && <ChatFoldersChip threadId={threadId} />}
     </div>
   )
 

@@ -57,6 +57,7 @@
     "allowAlwaysTool": "Always allow {{tool}}",
     "onceExplanation": "Only this request. Flint asks again next time.",
     "threadExplanation": "This tool, in this conversation, until you revoke it.",
+    "threadProgramExplanation": "Reruns of {{program}} outside the sandbox, in this conversation only. Nothing is remembered after it.",
     "alwaysServerExplanation": "Every tool from {{server}}, in every conversation, until you revoke it.",
     "alwaysToolExplanation": "{{tool}}, in every conversation, until you revoke it.",
     "broader": "Broader"

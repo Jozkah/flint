@@ -165,9 +165,11 @@ export function getProviderLogo(provider: string) {
   }
 }
 
-export const getProviderTitle = (provider: string) => {
-  const renamed = providerDisplayName(provider)
-  if (renamed) return renamed
+export const getProviderTitle = (provider: string) =>
+  providerDisplayName(provider) ?? getDefaultProviderTitle(provider)
+
+/** The built-in title for a provider key, ignoring any rename. */
+export const getDefaultProviderTitle = (provider: string) => {
   switch (provider) {
     case 'jan':
       return 'Jan'

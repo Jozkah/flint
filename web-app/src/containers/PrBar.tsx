@@ -13,7 +13,7 @@ import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { usePrStatus, usePrStatusStore, type PrStatus } from '@/stores/pr-status-store'
+import { usePrStatusView, usePrStatusStore, type PrStatus } from '@/stores/pr-status-store'
 
 const fmt = (n: number) => n.toLocaleString()
 
@@ -46,9 +46,33 @@ export function PrBar({
   className?: string
 }) {
   const { t } = useTranslation()
-  const pr = usePrStatus(folder, sessionId)
+  const view = usePrStatusView(folder, sessionId)
+  const pr = view?.pr
   const [dismissed, setDismissed] = useState<string | null>(null)
   if (!pr || !folder || dismissed === `${folder}#${pr.number}`) return null
+
+  // Opened outside Flint on a checkout this session only shares: named, muted,
+  // and nothing more -- it is not this session's work.
+  if (view.relation === 'foreign') {
+    return (
+      <div
+        data-testid="pr-bar-foreign"
+        className={cn(
+          'flex min-h-[30px] items-center gap-2 px-3 text-xs text-muted-foreground',
+          className
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => void getServiceHub().opener().openUrl(pr.url)}
+          className="min-w-0 cursor-pointer truncate hover:underline"
+          title={pr.title}
+        >
+          {t('common:pr.notOpenedHere', { number: pr.number, branch: pr.head })}
+        </button>
+      </div>
+    )
+  }
 
   const repo = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder
   const open = () => void getServiceHub().opener().openUrl(pr.url)

@@ -373,6 +373,40 @@ describe('a requested skill that is not in play', () => {
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
+  it('names the text read as a request and how to phrase it otherwise', async () => {
+    const out = await dispatchCoworkTool(
+      call('bash', { command: 'robocopy a b /E' }),
+      ctx({
+        mode: 'auto',
+        unresolvedSkills: [
+          { requested: 'E', state: 'missing' },
+          { requested: 'XD', state: 'missing' },
+        ],
+      })
+    )
+
+    expect(out.output).toContain("read from `/E` or `@E`, `/XD` or `@XD` in the user's message")
+    expect(out.output).toContain('put it in backticks')
+    expect(out.output).toContain('without the leading / or @')
+  })
+
+  it('names only what the user typed when the trigger is known', async () => {
+    const out = await dispatchCoworkTool(
+      call('bash', { command: 'robocopy a b /E' }),
+      ctx({
+        mode: 'auto',
+        unresolvedSkills: [
+          { requested: 'E', state: 'missing', trigger: '/E' },
+          { requested: 'tdd', state: 'missing', trigger: '@tdd' },
+        ],
+      })
+    )
+
+    expect(out.output).toContain("read from `/E`, `@tdd` in the user's message")
+    expect(out.output).not.toContain('`@E`')
+    expect(out.output).not.toContain('`/tdd`')
+  })
+
   it.each(['write', 'edit', 'bash', 'memory_write', 'skill_write', 'task'])(
     'stops %s',
     async (tool) => {

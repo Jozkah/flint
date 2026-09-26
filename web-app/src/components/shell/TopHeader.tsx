@@ -22,7 +22,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useRoomsState } from '@/containers/rooms/roomsBindings'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
-import { useActiveSidePaneTitle } from '@/hooks/useSplitPaneTitle'
+import { useSplitViewOpen } from '@/hooks/useSplitPaneTitle'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getProviderTitle, cn } from '@/lib/utils'
@@ -149,17 +149,17 @@ export function TopHeader() {
   const headerSlot = useHeaderSlot()
   const crumb = crumbForPath(pathname)
   const routeName = useCurrentName(crumb)
-  // In split view the breadcrumb names the pane being worked in.
-  const sidePaneName = useActiveSidePaneTitle()
-  const dynamicName =
-    crumb.dynamic === 'session' ||
-    crumb.dynamic === 'thread' ||
-    crumb.dynamic === 'room'
-      ? (sidePaneName ?? routeName)
-      : routeName
+  // In split view every pane has its own header with its title, so the
+  // breadcrumb names only the section.
+  const splitOpen = useSplitViewOpen()
+  const hideCurrent =
+    splitOpen &&
+    (crumb.dynamic === 'session' ||
+      crumb.dynamic === 'thread' ||
+      crumb.dynamic === 'room')
   const current = crumb.currentKey
     ? t(crumb.currentKey)
-    : dynamicName ||
+    : routeName ||
       (crumb.dynamic === 'room'
         ? t('common:appRail.rooms')
         : crumb.dynamic === 'thread'
@@ -241,15 +241,19 @@ export function TopHeader() {
           <Icon name="hd-dashboard" />
           <span className="hidden sm:inline">{t(crumb.parentKey)}</span>
         </Link>
-        <span aria-hidden className="text-subtle-foreground">/</span>
-        <span
-          aria-current="page"
-          data-testid="breadcrumb-current"
-          className="min-w-0 truncate font-medium text-foreground"
-          title={current}
-        >
-          {current}
-        </span>
+        {!hideCurrent && (
+          <>
+            <span aria-hidden className="text-subtle-foreground">/</span>
+            <span
+              aria-current="page"
+              data-testid="breadcrumb-current"
+              className="min-w-0 truncate font-medium text-foreground"
+              title={current}
+            >
+              {current}
+            </span>
+          </>
+        )}
       </nav>
 
       <div

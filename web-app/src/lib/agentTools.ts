@@ -1,3 +1,5 @@
+import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
+import { approvalSourceFor } from '@/hooks/useToolApprovalRequests'
 import type {
   ChangeActorInput,
   ToolResources,
@@ -413,7 +415,8 @@ export async function executeAgentTool(
             options.callId,
             options.undoRun,
             options.actor,
-            extraProjectsOf(options)
+            extraProjectsOf(options),
+            approvalOf(options)
           )
     const resources = result.resources ?? undefined
     if (result.isError) {
@@ -500,8 +503,16 @@ async function runStreaming(
     undoRun: options.undoRun,
     actor: options.actor,
     extraProjects: extraProjectsOf(options),
+    approval: approvalOf(options),
   })
 }
+
+/**
+ * Whether the user was asked before this call ran, for the backend's audit
+ * record: an allowed edit used to be logged as an open "prompt:Write".
+ */
+const approvalOf = (options: AgentToolOptions): ApprovalSource | undefined =>
+  options.callId ? approvalSourceFor(options.callId) : undefined
 
 /** The extra folders as the binding takes them: absent when there are none. */
 const extraProjectsOf = (options: AgentToolOptions): string[] | undefined =>

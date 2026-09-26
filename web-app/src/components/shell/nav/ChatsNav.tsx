@@ -1,5 +1,11 @@
+import { FadeText } from '@/components/ui/fade-text'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { startHomeProjectsMirror } from '@/lib/groups/homeMirror'
+import { useConversationGroups } from '@/lib/groups/store'
+import { chatFolderAdapter } from '@/lib/chatFolders'
+import { useMoveToGroup } from '@/hooks/useMoveToGroup'
+import { GroupFoldersDialog } from '@/components/shell/nav/GroupFoldersDialog'
+import { GroupPrompts } from '@/components/shell/nav/GroupPrompts'
 import {
   DndContext,
   PointerSensor,
@@ -8,7 +14,6 @@ import {
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { toast } from 'sonner'
 import { usePendingDeletes } from '@/lib/undoableAction'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import {
@@ -21,6 +26,7 @@ import {
   Plus,
   Trash2,
   FolderOpen,
+  Folders,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -116,7 +122,6 @@ export function ChatsNav() {
   })
 
   const pendingDeletes = usePendingDeletes((s) => s.ids)
-  const updateThread = useThreads((s) => s.updateThread)
   const toggleFavorite = useThreads((s) => s.toggleFavorite)
   // A small movement starts a drag, so a click on a row still opens it.
   const sensors = useSensors(
@@ -128,6 +133,12 @@ export function ChatsNav() {
   const [editing, setEditing] = useState<ThreadFolder | null>(null)
   const [deleting, setDeleting] = useState<ThreadFolder | null>(null)
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
+  // A chat group is the Home group of the same id; its folders live there.
+  const [foldersOf, setFoldersOf] = useState<string | null>(null)
+  const foldersGroup = useConversationGroups((s) =>
+    foldersOf ? s.state.surfaces.home.groups.find((g) => g.id === foldersOf) : undefined
+  )
+  const moveChat = useMoveToGroup('home', chatFolderAdapter)
 
   const groups = useMemo<Group[]>(() => {
     const now = Date.now()
@@ -179,19 +190,14 @@ export function ChatsNav() {
     }
     if (target === 'ungrouped') {
       if (thread.isFavorite) toggleFavorite(threadId)
-      if (thread.metadata?.project)
-        updateThread(threadId, { metadata: { ...thread.metadata, project: undefined } })
+      // Through the groups store (the mirror clears metadata.project), so
+      // the folders the chat got from its group are asked about.
+      if (thread.metadata?.project) void moveChat(threadId, null)
       return
     }
     const folder = folders.find((f) => f.id === target)
     if (!folder || thread.metadata?.project?.id === folder.id) return
-    updateThread(threadId, {
-      metadata: {
-        ...thread.metadata,
-        project: { id: folder.id, name: folder.name, updated_at: folder.updated_at },
-      },
-    })
-    toast.success(t('common:shell.movedTo', { name: folder.name }))
+    void moveChat(threadId, folder.id)
   }
 
   const toggleGroup = (id: string, isOpen: boolean) =>
@@ -329,7 +335,7 @@ export function ChatsNav() {
                     className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
                   >
                     {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
-                    <span className="text-fade">{g.name}</span>
+                    <FadeText>{g.name}</FadeText>
                     <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
                       {g.threads.length}
                     </span>
@@ -374,6 +380,10 @@ export function ChatsNav() {
                           <DropdownMenuItem onSelect={() => setEditing(g.folder!)}>
                             <Pencil />
                             <span>{t('common:shell.editGroup')}</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => setFoldersOf(g.folder!.id)}>
+                            <Folders />
+                            <span>{t('common:groups.folders')}</span>
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(g.folder!)}>
@@ -432,6 +442,15 @@ export function ChatsNav() {
           setEditing(null)
         }}
       />
+      <GroupPrompts surface="home" />
+      {foldersGroup && (
+        <GroupFoldersDialog
+          surface="home"
+          group={foldersGroup}
+          open
+          onOpenChange={(o) => !o && setFoldersOf(null)}
+        />
+      )}
       <DeleteProjectDialog
         open={deleting !== null}
         onOpenChange={(o) => !o && setDeleting(null)}

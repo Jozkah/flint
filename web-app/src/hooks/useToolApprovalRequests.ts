@@ -27,6 +27,10 @@ export type ApprovalRequestContext = {
    * the run has gone a long time without asking.
    */
   alwaysAsk?: boolean
+  /** See `PermissionRequestInput.conversationProgram`. */
+  conversationProgram?: string
+  /** Told which answer the user gave, before the request resolves. */
+  onDecision?: (decision: ApprovalDecision) => void
   /** Why the call is being made, only when the caller actually knows. */
   taskContext?: string
   /** Folder or project the call works in. */
@@ -111,6 +115,8 @@ export type PendingApproval = {
    * that approves commands itself).
    */
   alwaysAsk?: boolean
+  conversationProgram?: string
+  onDecision?: (decision: ApprovalDecision) => void
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
   resolve: (approved: boolean) => void
@@ -160,6 +166,12 @@ type ToolApprovalRequestsState = {
    * definition. Bounded; read with {@link takeApprovedFingerprint}.
    */
   approvedFingerprints: Record<string, string>
+  /**
+   * Calls the user allowed by answering a prompt, as opposed to calls a mode
+   * or standing grant let through. Read by `approvalSourceFor` so the audit
+   * can tell the two apart.
+   */
+  answeredByPrompt: Record<string, true>
   /**
    * threadId -> keys ({@link repeatCommandKey}) of the shell commands the
    * user answered "Allow once" for in that conversation. In memory only, so
@@ -285,6 +297,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     queued: {},
     refusals: {},
     approvedFingerprints: {},
+    answeredByPrompt: {},
     allowedOnceCommands: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
@@ -409,6 +422,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
           ...(context?.threadIsEphemeral ? { threadIsEphemeral: true } : {}),
           ...(alwaysAsk ? { alwaysAsk: true } : {}),
+          ...(context?.conversationProgram
+            ? { conversationProgram: context.conversationProgram }
+            : {}),
+          ...(context?.onDecision ? { onDecision: context.onDecision } : {}),
           requestedAt: Date.now(),
           resolve,
         }
@@ -452,6 +469,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
+      entry.onDecision?.(decision)
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
       if (
@@ -516,7 +534,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           : {}),
         ...(decision === 'deny'
           ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
-          : {}),
+          : {
+              answeredByPrompt: remember(s.answeredByPrompt, [
+                [toolCallId, true as const],
+              ]),
+            }),
         ...(decision !== 'deny' && serverName && serverFingerprint
           ? {
               approvedFingerprints: remember(s.approvedFingerprints, [
@@ -638,4 +660,15 @@ export function wasCommandAllowedOnce(
 ): boolean {
   const key = repeatCommandKey(toolName, input)
   return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
+}
+
+/**
+ * How a call about to run was allowed: `prompted` when the user answered its
+ * prompt, `auto` when nothing asked (a mode, a standing grant, or a tool that
+ * needs no approval). Passed to the backend for its audit record only.
+ */
+export function approvalSourceFor(toolCallId: string): 'prompted' | 'auto' {
+  return useToolApprovalRequests.getState().answeredByPrompt[toolCallId]
+    ? 'prompted'
+    : 'auto'
 }

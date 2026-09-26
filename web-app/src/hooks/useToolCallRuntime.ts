@@ -1,3 +1,4 @@
+import { archiveFirstAttempt } from '@/lib/firstAttemptArchive'
 import { create } from 'zustand'
 
 export type ToolCallTiming = {
@@ -208,7 +209,8 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       },
     })),
 
-  recordFirstAttempt: (toolCallId, attempt) =>
+  recordFirstAttempt: (toolCallId, attempt) => {
+    archiveFirstAttempt(toolCallId, attempt)
     set((s) => {
       const output = { ...s.output }
       delete output[toolCallId]
@@ -216,7 +218,8 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
         firstAttempts: { ...s.firstAttempts, [toolCallId]: attempt },
         output,
       }
-    }),
+    })
+  },
 
   settleRemaining: (owner) =>
     set((s) => {

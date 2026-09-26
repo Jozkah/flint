@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { backendStorage } from '@/lib/backendStorage'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 
 /**
  * Pull-request status per project folder, read through the GitHub CLI by the
@@ -85,6 +86,34 @@ export function prVisibleTo(
 }
 
 /**
+ * How `sessionId` relates to `pr`:
+ * - `mine`: it claimed the pull request, or nobody did and the session's own
+ *   branch or worktree is the pull request's head;
+ * - `foreign`: nobody claimed it (opened outside Flint) and the session only
+ *   shares the checkout, so it is shown muted as "not opened here";
+ * - `hidden`: another session claimed it.
+ * Without a session (nothing to tell apart) an unclaimed one is `mine`.
+ */
+export type PrRelation = 'mine' | 'foreign' | 'hidden'
+
+export function prRelation(
+  pr: PrStatus,
+  folder: string,
+  claims: Record<string, string>,
+  sessionId: string | null | undefined,
+  ownWorktree?: { path?: string; branch?: string } | null
+): PrRelation {
+  if (!prVisibleTo(pr, folder, claims, sessionId)) return 'hidden'
+  if (claims[claimKey(folder, pr.number)] || !sessionId) return 'mine'
+  const norm = (p: string) => p.replace(/[\\/]+$/, '').replace(/\\/g, '/').toLowerCase()
+  const ownsHead =
+    !!ownWorktree &&
+    ((!!ownWorktree.path && norm(ownWorktree.path) === norm(folder)) ||
+      (!!ownWorktree.branch && ownWorktree.branch === pr.head))
+  return ownsHead ? 'mine' : 'foreign'
+}
+
+/**
  * Folders a forced refresh arrived for while a lookup was already running.
  * That lookup may have started before the pull request existed, so its
  * answer is followed by one more.
@@ -145,19 +174,38 @@ export const usePrStatusStore = create<PrStatusState>()(
 )
 
 /**
- * The pull request for `folder`'s current branch, or null -- also null when
- * another session than `sessionId` claimed it.
+ * The pull request for `folder`'s current branch and how `sessionId` relates
+ * to it (see `prRelation`), or null when there is none or another session
+ * claimed it.
  */
-export function usePrStatus(
+export function usePrStatusView(
   folder: string | null | undefined,
   sessionId?: string | null
-): PrStatus | null {
+): { pr: PrStatus; relation: 'mine' | 'foreign' } | null {
   const entry = usePrStatusStore((s) => (folder ? s.byFolder[folder] : undefined))
   const claims = usePrStatusStore((s) => s.claims)
+  const ownWorktree = useCoworkWorktrees((s) =>
+    sessionId ? s.bySession[sessionId] : undefined
+  )
   useEffect(() => {
     if (!folder || !isPlatformTauri()) return
     void usePrStatusStore.getState().refresh(folder)
   }, [folder])
   if (!folder || entry?.lookup?.kind !== 'found') return null
-  return prVisibleTo(entry.lookup.pr, folder, claims, sessionId) ? entry.lookup.pr : null
+  const pr = entry.lookup.pr
+  const relation = prRelation(pr, folder, claims, sessionId, ownWorktree)
+  return relation === 'hidden' ? null : { pr, relation }
+}
+
+/**
+ * The pull request this session owns for `folder`'s current branch, or null:
+ * also null when another session claimed it, or when it was opened outside
+ * Flint and this session only shares the checkout.
+ */
+export function usePrStatus(
+  folder: string | null | undefined,
+  sessionId?: string | null
+): PrStatus | null {
+  const view = usePrStatusView(folder, sessionId)
+  return view?.relation === 'mine' ? view.pr : null
 }

@@ -1209,7 +1209,12 @@ export async function executeTool(
   /** Who is making this call (AH-110); journaled with every file it changes. */
   actor?: ChangeActorInput,
   /** The session's additional attached folders, readable like `readOnlyProject`. */
-  extraProjects?: string[]
+  extraProjects?: string[],
+  /**
+   * How the caller allowed this call: the user answered a prompt, or a mode
+   * or grant allowed it unasked. Recorded in the audit only.
+   */
+  approval?: ApprovalSource
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
@@ -1226,8 +1231,12 @@ export async function executeTool(
     undoRun,
     actor,
     extraProjects,
+    approval,
   })
 }
+
+/** See `executeTool`'s `approval`. */
+export type ApprovalSource = 'prompted' | 'auto'
 
 /**
  * Run a failed `bash` call again outside the sandbox, after the user approved
@@ -1421,6 +1430,8 @@ export async function executeToolStreaming(
     actor?: ChangeActorInput
     /** The session's additional attached folders, readable like `readOnlyProject`. */
     extraProjects?: string[]
+    /** See `executeTool`'s `approval`. */
+    approval?: ApprovalSource
   }
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
@@ -1439,6 +1450,7 @@ export async function executeToolStreaming(
     callId: options?.callId,
     actor: options?.actor,
     extraProjects: options?.extraProjects,
+    approval: options?.approval,
   })
 }
 
