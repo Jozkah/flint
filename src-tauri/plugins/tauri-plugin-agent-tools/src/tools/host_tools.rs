@@ -329,6 +329,14 @@ pub fn unquoted_assignment(command: &str, name: &str) -> Option<String> {
 /// the result was recorded as a passing check. Only called for output the
 /// shell reported as successful.
 pub fn masked_failure_note(output: &str) -> Option<String> {
+    masked_failure(output).map(|(_, note)| note)
+}
+
+/// The real exit code of a command that reported success after a step inside
+/// it failed, with the note explaining it. The code is the failing step's
+/// `EXIT=<n>` when the output printed one, else 1 (an error record carries no
+/// code). Only called for output the shell reported as successful.
+pub fn masked_failure(output: &str) -> Option<(i32, String)> {
     let reported = output
         .match_indices("EXIT=")
         .filter_map(|(i, _)| {
@@ -342,17 +350,40 @@ pub fn masked_failure_note(output: &str) -> Option<String> {
     let native_error = output.contains("NativeCommandError")
         || output.contains("UnauthorizedAccessException")
         || output.contains("ItemNotFoundException");
-    let what = match (reported, native_error) {
-        (Some(code), _) => format!("a command inside it exited with {code}"),
-        (None, true) => "a command inside it wrote an error record".to_string(),
+    let (code, what) = match (reported, native_error) {
+        (Some(code), _) => (
+            i32::try_from(code).unwrap_or(1),
+            format!("a command inside it exited with {code}"),
+        ),
+        (None, true) => (1, "a command inside it wrote an error record".to_string()),
         (None, false) => return None,
     };
-    Some(format!(
-        "\n[shell: reported exit 0, but {what}. PowerShell reports only the last \
-         statement's status, so a trailing `\"EXIT=$LASTEXITCODE\"` or `; echo` hides the \
-         failure. Treat this command as failed, and check `$LASTEXITCODE` with `if` or run \
-         the step on its own.]"
+    Some((
+        code,
+        format!(
+            "\n[shell: reported exit 0, but {what}. PowerShell reports only the last \
+             statement's status, so a trailing `\"EXIT=$LASTEXITCODE\"` or `; echo` hides the \
+             failure. The result carries exit {code}. Treat this command as failed, and check \
+             `$LASTEXITCODE` with `if` or run the step on its own.]"
+        ),
     ))
+}
+
+/// Replace the final `[exit 0]` marker line of a `bash` result with
+/// `[exit <code>]`, so the exit code every reader takes from the marker is
+/// the failing command's rather than the shell's masked 0.
+pub fn set_exit_marker(output: &mut String, code: i32) {
+    let mut end = output.len();
+    while let Some(i) = output[..end].rfind("[exit 0]") {
+        let line_start = i == 0 || output[..i].ends_with('\n');
+        let rest = &output[i + "[exit 0]".len()..];
+        let line_end = rest.is_empty() || rest.starts_with('\n') || rest.starts_with("\r\n");
+        if line_start && line_end {
+            output.replace_range(i..i + "[exit 0]".len(), &format!("[exit {code}]"));
+            return;
+        }
+        end = i;
+    }
 }
 
 /// A one-line hint for Go's `-C` flag-order error. `go` accepts `-C <dir>`
@@ -925,6 +956,27 @@ mod missing_hint_tests {
         let copy = "Copy-Item : Access is denied\n UnauthorizedAccessException\nCOPIED\n[exit 0]";
         assert!(masked_failure_note(copy).unwrap().contains("error record"));
         assert!(masked_failure_note("go version go1.26\nEXIT=0\n[exit 0]").is_none());
+    }
+
+    #[test]
+    fn a_masked_failure_carries_the_failing_commands_exit_code() {
+        let vet = "go: vet failed\nEXIT=2\n[exit 0]";
+        let (code, note) = masked_failure(vet).unwrap();
+        assert_eq!(code, 2);
+        assert!(note.contains("[shell: reported exit 0, but"), "{note}");
+        assert!(note.contains("carries exit 2"), "{note}");
+        let (code, _) = masked_failure("x NativeCommandError\n[exit 0]").unwrap();
+        assert_eq!(code, 1);
+
+        // Only the real marker line is rewritten: not an echoed one mid-line,
+        // and a truncation note after it stays.
+        let mut out = "echo [exit 0] inline\n[exit 0]\n[output truncated at 1 of 2 bytes]".to_string();
+        set_exit_marker(&mut out, 2);
+        assert_eq!(out, "echo [exit 0] inline\n[exit 2]\n[output truncated at 1 of 2 bytes]");
+        let mut out = "EXIT=3\n[exit 0]".to_string();
+        set_exit_marker(&mut out, 3);
+        assert!(crate::tools::handlers::bash_result_failed(&out));
+        assert!(out.ends_with("[exit 3]"));
     }
 
     #[test]

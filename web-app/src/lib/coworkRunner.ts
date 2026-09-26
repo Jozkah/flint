@@ -870,7 +870,7 @@ export type RunOutcome = {
  * shell tool marks it. Counted as a failure by the loop guard, since the model
  * was told to treat it as one.
  */
-const maskedFailure = (output: unknown): boolean =>
+export const maskedFailure = (output: unknown): boolean =>
   typeof output === 'string' && output.includes('[shell: reported exit 0, but')
 
 export async function runTurn(opts: {

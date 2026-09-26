@@ -2171,7 +2171,8 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             out.push_str(hint);
         }
         if shell_flavor == proc::ShellFlavor::PowerShell && !bash_result_failed(&out) {
-            if let Some(note) = super::host_tools::masked_failure_note(&out) {
+            if let Some((code, note)) = super::host_tools::masked_failure(&out) {
+                super::host_tools::set_exit_marker(&mut out, code);
                 out.push_str(&note);
             }
         }
