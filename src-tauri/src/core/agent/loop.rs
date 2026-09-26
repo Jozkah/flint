@@ -11906,6 +11906,67 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The CLI's y/n prompt for a command the null device refused: the loop
+    /// asks once (no "always"), naming the command and why. "n" leaves the
+    /// failure standing with the declined note; "y" runs it again outside the
+    /// sandbox and hands the model that run, led by the unsandboxed note.
+    #[tokio::test]
+    async fn null_device_refusal_asks_once_and_reruns_only_on_yes() {
+        use tauri_plugin_agent_tools::unsandboxed_retry::{
+            NULL_DEVICE_RETRY_REASON, RAN_UNSANDBOXED_NOTE, RETRY_DECLINED_NOTE,
+        };
+        let root = std::env::temp_dir().join(format!("jan_loop_nul_{}", std::process::id()));
+        std::fs::create_dir_all(&root).expect("create root");
+        let (tx, mut rx) = mpsc::unbounded_channel::<StreamEvent>();
+        let registry: PermissionRegistry = Arc::new(Mutex::new(HashMap::new()));
+        let mut invoker = build_invoker_for(
+            root.clone(),
+            tx,
+            registry.clone(),
+            ToolPermissions::new(PermissionDefault::Allow, &[], &[], &[]),
+            tauri_plugin_agent_tools::subject::Subject::MainAgent,
+        );
+        // Something can put the question, as the CLI's prompt does.
+        invoker.ask_requests = Some(Arc::new(Mutex::new(HashMap::new())));
+        // Answers "n" to the first prompt and "y" to the second.
+        let answering = registry.clone();
+        let asked = tokio::spawn(async move {
+            let mut asked = Vec::new();
+            let mut answers = [PermissionDecision::Deny, PermissionDecision::AllowOnce].into_iter();
+            while let Some(event) = rx.recv().await {
+                if let StreamEvent::PermissionRequest {
+                    request_id, command, offers_always, reason, ..
+                } = event
+                {
+                    asked.push((command.unwrap_or_default(), offers_always, reason.unwrap_or_default()));
+                    if let Some(sender) = answering.lock().await.remove(&request_id) {
+                        let _ = sender.send(answers.next().unwrap_or(PermissionDecision::Deny));
+                    }
+                }
+            }
+            asked
+        });
+        let args = serde_json::json!({ "command": "echo nul-rerun-ok" });
+        let failure = "open NUL: Access is denied.".to_string();
+
+        let declined = invoker.settle_null_device_refusal("call-1", &args, failure.clone()).await;
+        assert_eq!(declined, format!("{failure}{RETRY_DECLINED_NOTE}"));
+
+        let ran = invoker.settle_null_device_refusal("call-2", &args, failure.clone()).await;
+        assert!(ran.starts_with(RAN_UNSANDBOXED_NOTE), "{ran}");
+        assert!(ran.contains("nul-rerun-ok"), "{ran}");
+
+        drop(invoker);
+        let asked = asked.await.expect("listener");
+        assert_eq!(asked.len(), 2, "{asked:?}");
+        for (command, offers_always, reason) in &asked {
+            assert_eq!(command, "echo nul-rerun-ok");
+            assert!(!offers_always, "a rerun prompt offered always");
+            assert_eq!(reason, NULL_DEVICE_RETRY_REASON);
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// R16: the loop's own tools are hidden when the project denies them, but a
     /// model can name a tool it was not shown. The deny holds at dispatch: a
     /// denied git_branch, git_history or git_split is refused and nothing in
