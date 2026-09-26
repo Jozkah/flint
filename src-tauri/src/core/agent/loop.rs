@@ -2063,7 +2063,7 @@ impl CompositeToolInvoker {
         let ctx = self
             .streaming_tool_context(id)
             .with_cancel(registered.token().clone())
-            .with_sandbox(false);
+            .with_unsandboxed_retry();
         let (output, _, _) =
             tauri_plugin_agent_tools::tools::handlers::execute_builtin_with_diff(tool, &call, &ctx)
                 .await;

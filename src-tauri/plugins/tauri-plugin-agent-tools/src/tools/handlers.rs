@@ -1976,24 +1976,32 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         }
         selected.wrapped
     } else {
-        // Off-sandbox the resolved shell can be Windows PowerShell 5.1 on a bare
-        // Windows host with no bash. Prefer an unconfined chaining-capable shell
-        // (cmd) for a chaining command, and only refuse if none exists.
-        let mut bare = proc::shell().clone();
-        if proc::requires_and_or_chaining(command).is_some() && !proc::supports_and_or_chaining(&bare)
-        {
-            match proc::candidates()
-                .into_iter()
-                .find(proc::supports_and_or_chaining)
-            {
-                Some(capable) => bare = capable,
-                None => {
-                    let operator = proc::requires_and_or_chaining(command).unwrap_or("&&");
-                    return proc::chaining_unavailable_error(operator, &bare);
+        // An approved null-device rerun keeps the shell the sandbox chose, so
+        // the command means what the model wrote it to mean (see
+        // `ToolContext::sandbox_shell_parity`). Everything else unconfined
+        // gets the host's preferred shell.
+        let parity = ctx.sandbox_shell_parity && jail::backend().enforces();
+        let sandbox_choice = if parity {
+            jail::select_shell(&policy).ok().map(|s| s.report.cfg)
+        } else {
+            None
+        };
+        match unsandboxed_shell(
+            command,
+            sandbox_choice,
+            || {
+                if parity {
+                    jail::select_chaining_capable(&policy).map(|s| s.report.cfg)
+                } else {
+                    None
                 }
-            }
+            },
+            proc::shell().clone(),
+            proc::candidates,
+        ) {
+            Ok(cfg) => cfg,
+            Err(refusal) => return refusal,
         }
-        bare
     };
 
     let sandbox_tmp = if ctx.sandbox {
@@ -2771,6 +2779,35 @@ pub(crate) fn native_fallback_note(spawn_error: &str, shell: &str) -> String {
          ({spawn_error}), so this ran in {shell} in the same sandbox. Write commands in \
          {shell} syntax, not POSIX/bash.]\n"
     )
+}
+
+/// The shell an unconfined `bash` call runs in.
+///
+/// `sandbox_choice` is the shell the sandbox picked for the same command,
+/// given only for an approved null-device rerun: the model wrote the command
+/// for that shell, so the rerun must not switch to `host` (the host's
+/// preferred shell, Git Bash on Windows). A chaining command (`&&`/`||`) that
+/// the chosen shell cannot parse moves to `sandbox_chaining` for a rerun --
+/// what the sandbox itself would have used -- and otherwise to the first host
+/// candidate that chains. `Err` is the refusal when nothing can chain.
+pub(crate) fn unsandboxed_shell(
+    command: &str,
+    sandbox_choice: Option<proc::ShellConfig>,
+    sandbox_chaining: impl FnOnce() -> Option<proc::ShellConfig>,
+    host: proc::ShellConfig,
+    host_candidates: impl FnOnce() -> Vec<proc::ShellConfig>,
+) -> Result<proc::ShellConfig, String> {
+    let rerun = sandbox_choice.is_some();
+    let bare = sandbox_choice.unwrap_or(host);
+    let Some(operator) = proc::requires_and_or_chaining(command) else {
+        return Ok(bare);
+    };
+    if proc::supports_and_or_chaining(&bare) {
+        return Ok(bare);
+    }
+    let capable = if rerun { sandbox_chaining() } else { None }
+        .or_else(|| host_candidates().into_iter().find(proc::supports_and_or_chaining));
+    capable.ok_or_else(|| proc::chaining_unavailable_error(operator, &bare))
 }
 
 /// The folder a run's shell starts in when it is not the workspace: the
@@ -5145,6 +5182,70 @@ on_failure = \"warn\"
         assert_eq!(img[0].name, "pic.png");
         assert!(img[0].data_url.starts_with("data:image/png;base64,"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn shell_cfg(program: &str, flavor: proc::ShellFlavor) -> proc::ShellConfig {
+        proc::ShellConfig {
+            program: PathBuf::from(program),
+            args: Vec::new(),
+            via_stdin: false,
+            description: "test shell",
+            flavor,
+        }
+    }
+
+    /// Session b6343e27: the sandbox ran PowerShell, the approved rerun ran Git
+    /// Bash, and every PowerShell command the model wrote failed there
+    /// ("Push-Location: command not found", `cd .\KewScraper` read as
+    /// `cd .KewScraper`). A rerun keeps the sandbox's shell.
+    #[test]
+    fn an_approved_rerun_keeps_the_shell_the_sandbox_chose() {
+        let ps = shell_cfg("powershell.exe", proc::ShellFlavor::PowerShell);
+        let bash = shell_cfg("bash.exe", proc::ShellFlavor::Posix);
+        let cmd = shell_cfg("cmd.exe", proc::ShellFlavor::Cmd);
+
+        let got = unsandboxed_shell(
+            "Push-Location .\\KewScraper; go mod download; Pop-Location",
+            Some(ps.clone()),
+            || panic!("no chaining in this command"),
+            bash.clone(),
+            || vec![bash.clone()],
+        );
+        assert_eq!(got, Ok(ps.clone()));
+
+        // `&&` under PowerShell 5.1 moves to what the sandbox would chain
+        // with (cmd), not to the host's bash.
+        let got = unsandboxed_shell(
+            "cd .\\KewScraper && go mod download",
+            Some(ps.clone()),
+            || Some(cmd.clone()),
+            bash.clone(),
+            || vec![bash.clone(), cmd.clone()],
+        );
+        assert_eq!(got, Ok(cmd.clone()));
+    }
+
+    #[test]
+    fn an_ordinary_unsandboxed_call_still_uses_the_host_shell() {
+        let bash = shell_cfg("bash.exe", proc::ShellFlavor::Posix);
+        let ps = shell_cfg("powershell.exe", proc::ShellFlavor::PowerShell);
+        let cmd = shell_cfg("cmd.exe", proc::ShellFlavor::Cmd);
+        assert_eq!(
+            unsandboxed_shell("ls", None, || None, bash.clone(), Vec::new),
+            Ok(bash)
+        );
+        assert_eq!(
+            unsandboxed_shell("a && b", None, || None, ps.clone(), || vec![cmd.clone()]),
+            Ok(cmd)
+        );
+        assert!(unsandboxed_shell("a && b", None, || None, ps.clone(), Vec::new).is_err());
+
+        let root = PathBuf::from("root");
+        let store = PathBuf::from("store");
+        let plain = ToolContext::new(&root, &store, &[]).with_sandbox(false);
+        assert!(!plain.sandbox && !plain.sandbox_shell_parity);
+        let rerun = ToolContext::new(&root, &store, &[]).with_unsandboxed_retry();
+        assert!(!rerun.sandbox && rerun.sandbox_shell_parity);
     }
 
     /// #9044: the fallback note names the shell and why bash was not used,

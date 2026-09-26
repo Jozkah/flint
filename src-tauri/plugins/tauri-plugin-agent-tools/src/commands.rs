@@ -1368,7 +1368,7 @@ async fn execute_tool_inner(
         ctx = ctx.with_output_sink(sink);
     }
     if unsandboxed {
-        ctx = ctx.with_sandbox(false);
+        ctx = ctx.with_unsandboxed_retry();
     }
     // A Cowork session is a conversation with a stable id and a messaging
     // identity; bind both so `memory_propose` attributes to it and the mailbox
