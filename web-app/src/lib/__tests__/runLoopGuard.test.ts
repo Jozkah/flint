@@ -4,6 +4,7 @@ import {
   canonicalKey,
   detectLoop,
   loopStopMessage,
+  loopStopNotice,
   type ObservedCall,
 } from '../runLoopGuard'
 
@@ -124,4 +125,18 @@ it('tells the model to stop rather than to try again', () => {
   const message = loopStopMessage(verdict as never)
   expect(message).toContain('not making progress')
   expect(message).toContain('wait for instructions')
+})
+
+it('tells the user, in their terms, why the run stopped', () => {
+  const notice = loopStopNotice({
+    tripped: true,
+    reason: 'shell-failure-budget',
+    detail: '8 shell commands failed in this run',
+  } as never)
+  expect(notice).toBe(
+    '8 shell commands failed in this run, so Flint stopped the run. The last ' +
+      'reply says what it was trying to do and what got in the way. Answer it, ' +
+      'or change the request, to carry on.'
+  )
+  expect(notice).not.toMatch(/Say what you were trying|wait for instructions/)
 })

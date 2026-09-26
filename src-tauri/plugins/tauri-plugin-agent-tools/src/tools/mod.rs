@@ -157,6 +157,14 @@ pub struct ToolContext<'a> {
     /// gate is then the only thing between the model and the machine, which is
     /// why nothing else about the gate changes when this is off.
     pub sandbox: bool,
+    /// Set only for a command the user approved to run again outside the
+    /// sandbox after the null device refused it. The rerun uses the shell the
+    /// sandbox would have picked (on Windows usually PowerShell, since Git
+    /// Bash cannot start in an AppContainer), just unconfined: the model wrote
+    /// the command for that shell, and handing it to the host's preferred
+    /// shell instead made `Push-Location` "command not found" in Git Bash and
+    /// turned `cd .\dir` into `cd .dir`.
+    pub sandbox_shell_parity: bool,
     /// Programs besides [`nul_programs::DEFAULT_NUL_PROGRAMS`] that open
     /// Windows' null device themselves (`[tools].nul_programs`). A sandboxed
     /// command naming one is not run where the null device refuses the
@@ -271,6 +279,7 @@ impl<'a> ToolContext<'a> {
             available_tools: None,
             temporary: false,
             sandbox: true,
+            sandbox_shell_parity: false,
             nul_programs: &[],
             on_output: None,
             read_roots: &[],
@@ -443,6 +452,14 @@ impl<'a> ToolContext<'a> {
     pub fn with_nul_programs(mut self, programs: &'a [String]) -> Self {
         self.nul_programs = programs;
         self
+    }
+
+    /// Unconfined, for an approved null-device rerun, in the shell the
+    /// sandboxed run would have used. See [`Self::sandbox_shell_parity`].
+    pub fn with_unsandboxed_retry(self) -> Self {
+        let mut ctx = self.with_sandbox(false);
+        ctx.sandbox_shell_parity = true;
+        ctx
     }
 
     pub fn with_sandbox(mut self, sandbox: bool) -> Self {

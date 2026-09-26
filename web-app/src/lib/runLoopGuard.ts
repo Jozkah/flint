@@ -395,6 +395,22 @@ export function loopStopMessage(verdict: LoopVerdict & { tripped: true }): strin
 }
 
 /**
+ * What the user reads under the "stopped for repeating itself" notice when the
+ * guard ends a Cowork run. Written to the user, not the model: the
+ * model-directed wording of `loopStopMessage` ("Say what you were trying to
+ * do... and wait for instructions") read as if Flint were asking the user to
+ * explain themselves. The model gets its own note on the last tool result.
+ */
+export function loopStopNotice(verdict: LoopVerdict & { tripped: true }): string {
+  const detail = verdict.detail.charAt(0).toUpperCase() + verdict.detail.slice(1)
+  return (
+    `${detail}, so Flint stopped the run. The last reply says what it was ` +
+    'trying to do and what got in the way. Answer it, or change the request, ' +
+    'to carry on.'
+  )
+}
+
+/**
  * The note the model gets for its one last, tool-less turn after the guard
  * stops a run, so the user hears from it instead of the run just ending.
  */
