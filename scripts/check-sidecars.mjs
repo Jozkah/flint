@@ -25,7 +25,7 @@
  */
 
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -120,6 +120,10 @@ for (const target of targets) {
     continue
   }
   for (const path of paths) {
+    // A `.bundle` (mlx-swift's Metal shader library) is a directory of
+    // resources, not a program: nothing in it is executed, so there is no
+    // image to inspect. Leave it to Tauri's resource copy.
+    if (existsSync(path) && statSync(path).isDirectory()) continue
     // A shared library is loaded, not executed: on unix it legitimately has no
     // execute bit, and requiring one would fail every correct build. Decided
     // from the resolved filename, never the declared pattern -- the config says

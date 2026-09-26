@@ -220,7 +220,7 @@ ifeq ($(DETECTED_OS),Darwin)
 	# binary with no default.metallib and the app fails at runtime. See
 	# https://github.com/ml-explore/mlx-swift README ("SwiftPM (command
 	# line) cannot build the Metal shaders").
-	cd mlx-server && xcodebuild build -scheme mlx-server -destination 'platform=OS X' -configuration Release OTHER_LDFLAGS="-dead_strip"
+	cd mlx-server && xcodebuild build -skipPackagePluginValidation -skipMacroValidation -scheme mlx-server -destination 'platform=OS X' -configuration Release OTHER_LDFLAGS="-dead_strip"
 	@echo "Finding build products..."
 	@DERIVED_DATA=$$(find ~/Library/Developer/Xcode/DerivedData/mlx-server-*/Build/Products/Release -maxdepth 0 2>/dev/null | head -1); \
 	if [ -z "$$DERIVED_DATA" ] || [ ! -f "$$DERIVED_DATA/mlx-server" ]; then \
