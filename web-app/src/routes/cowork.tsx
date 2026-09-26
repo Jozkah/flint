@@ -220,6 +220,7 @@ import {
   type CodeRef,
   type CodeTab,
 } from '@/lib/coworkCode'
+import { extraFoldersOf, isInsideAnyFolder } from '@/lib/coworkFolders'
 import {
   CoworkRailToolbar,
   type RailMode,
@@ -482,6 +483,12 @@ function CoworkPage() {
     [sessions, currentId]
   )
   const folder = session?.folder ?? null
+  // Folders attached beside the primary, like a multi-root workspace.
+  const sessionExtraFolders = session?.extraFolders
+  const extraFolders = useMemo(
+    () => extraFoldersOf({ folder, extraFolders: sessionExtraFolders }),
+    [folder, sessionExtraFolders]
+  )
   const mode = modeOf(session ?? {})
 
   /**
@@ -951,9 +958,11 @@ function CoworkPage() {
       if (treeRoot && relativeToRoot(treeRoot, path) !== path) return 'project'
       if (workspacePath && relativeToRoot(workspacePath, path) !== path)
         return 'sandbox'
+      // Every attached folder is inside, not only the primary one.
+      if (isInsideAnyFolder(extraFolders, path)) return 'project'
       return 'external'
     },
-    [treeRoot, workspacePath]
+    [treeRoot, workspacePath, extraFolders]
   )
 
   /**
@@ -987,7 +996,13 @@ function CoworkPage() {
             event.origin === 'project' && tree
               ? relativeToRoot(tree, event.path)
               : event.path,
-          destination: destinationOfOrigin(event.origin, destination),
+          // An extra folder is attached directly, never worktreed, so a
+          // write there landed in the user's own folder even in a managed run.
+          destination:
+            destination === 'managed' &&
+            isInsideAnyFolder(extraFolders, event.path)
+              ? 'repository'
+              : destinationOfOrigin(event.origin, destination),
           ok: true,
         }))
 
@@ -1018,7 +1033,7 @@ function CoworkPage() {
         at: Date.now(),
       })
     },
-    [originOfPath]
+    [originOfPath, extraFolders]
   )
 
   // Source artifacts open as code, not as a plain-text preview dump.
@@ -1265,6 +1280,33 @@ function CoworkPage() {
     useCoworkSessions.getState().setFolder(session.id, null)
   }, [session?.id, folderHeld])
 
+  /**
+   * Attach or detach one of the session's extra folders.
+   *
+   * The grant covers the folders it was issued for, so changing the set
+   * withdraws it first and the session returns to Review only until the user
+   * confirms again -- the same as changing the primary folder.
+   */
+  const addExtraFolder = useCallback(async () => {
+    if (!session?.id || folderHeld(session.id)) return
+    const picked = await serviceHub.dialog().open({ directory: true })
+    if (typeof picked !== 'string') return
+    if (folderHeld(session.id)) return
+    const sid = session.id
+    await useDirectEditGrants.getState().revokeSession(sid)
+    useCoworkSessions.getState().addExtraFolder(sid, picked)
+  }, [serviceHub, session?.id, folderHeld])
+
+  const removeExtraFolder = useCallback(
+    async (extra: string) => {
+      if (!session?.id || folderHeld(session.id)) return
+      const sid = session.id
+      await useDirectEditGrants.getState().revokeSession(sid)
+      useCoworkSessions.getState().removeExtraFolder(sid, extra)
+    },
+    [session?.id, folderHeld]
+  )
+
   // `liveTurns` holds only the rows this run has produced — `commitTurns`
   // appends them — so the committed transcript has to be shown alongside it or
   // the conversation disappears the moment a follow-up run starts.
@@ -1501,7 +1543,9 @@ function CoworkPage() {
         binding: { sessionId: sid, folder },
         dataFolder: dataFolder ?? null,
         authorize: (sessionId, target, data) =>
-          useDirectEditGrants.getState().authorize(sessionId, target, data),
+          useDirectEditGrants
+            .getState()
+            .authorize(sessionId, target, data, extraFolders),
         revokeSession: (sessionId) =>
           useDirectEditGrants.getState().revokeSession(sessionId),
         // Read after the await, so it sees where the user actually is.
@@ -1514,7 +1558,14 @@ function CoworkPage() {
     } finally {
       done()
     }
-  }, [session?.id, folder, serviceHub, effective.access, effective.destination])
+  }, [
+    session?.id,
+    folder,
+    extraFolders,
+    serviceHub,
+    effective.access,
+    effective.destination,
+  ])
 
   /**
    * Create or find this session's worktree, authorize it, then switch.
@@ -1555,9 +1606,13 @@ function CoworkPage() {
       const now = bindingRef.current
       if (now.sessionId !== sid || now.folder !== folder) return false
 
+      // Only the primary folder is worktreed. The session's extra folders are
+      // attached directly, beside the worktree, under the same grant -- where
+      // the platform can confine a run to them at all (not on Windows, where
+      // only Flint-owned worktrees can be written).
       const granted = await useDirectEditGrants
         .getState()
-        .authorize(sid, created.record.path, dataFolder)
+        .authorize(sid, created.record.path, dataFolder, extraFolders)
       if (!granted.ok) {
         if (granted.reason !== 'superseded') toast.error(granted.reason)
         return false
@@ -1567,7 +1622,14 @@ function CoworkPage() {
     } finally {
       done()
     }
-  }, [session?.id, folder, serviceHub, effective.access, effective.destination])
+  }, [
+    session?.id,
+    folder,
+    extraFolders,
+    serviceHub,
+    effective.access,
+    effective.destination,
+  ])
 
   /**
    * Withdraw first, then downgrade.
@@ -2346,6 +2408,13 @@ function CoworkPage() {
       capabilityState.known && capabilityState.managedWorktree
     const canEditDirectly = capabilityState.known && capabilityState.directEdit
     /**
+     * The session's extra attached folders, frozen with the run. Readable
+     * always; writable only under the run's grant and where the platform can
+     * confine a run to a user folder (the grant leaves them out otherwise).
+     */
+    const runExtraFolders = extraFoldersOf(current ?? { folder: null })
+    const runExtraFoldersWritable = !!runGrant && canEditDirectly
+    /**
      * The second gate's inputs, frozen with the first.
      *
      * The dispatcher re-decides every mutation from the access mode, the
@@ -2386,6 +2455,8 @@ function CoworkPage() {
       webSearch,
       workspacePath,
       readOnlyFolder: runReadRoot,
+      extraFolders: runExtraFolders,
+      extraFoldersWritable: runExtraFoldersWritable,
       // Read from the run's frozen snapshot, not re-derived here: the model
       // must be told exactly what the gate and the ledger will act on.
       folderAccess: promptFolderAccess(origins),
@@ -2956,6 +3027,7 @@ function CoworkPage() {
                 },
                 sessionId: sid,
                 readOnlyFolder: runReadRoot,
+                extraFolders: runExtraFolders,
                 mode: runMode,
                 readFailures: runReadFailures,
                 writeGrant: runGrant,
@@ -4112,6 +4184,9 @@ function CoworkPage() {
         gitBranch={gitBranch}
         onAttach={() => void attachFolder()}
         onDetach={detachFolder}
+        extraFolders={extraFolders}
+        onAddExtra={() => void addExtraFolder()}
+        onRemoveExtra={(extra) => void removeExtraFolder(extra)}
       />
       <CoworkModeSelector
         mode={mode}

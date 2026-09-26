@@ -7,6 +7,7 @@ import {
   FolderPlus,
   GitBranch,
   Lock,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -28,6 +29,11 @@ type Props = {
   gitBranch?: string | null
   onAttach: () => void
   onDetach: () => void
+  /** Folders attached beside `folder`, like a multi-root workspace. */
+  extraFolders?: readonly string[]
+  /** Pick another folder to attach beside the primary one. */
+  onAddExtra?: () => void
+  onRemoveExtra?: (folder: string) => void
 }
 
 /**
@@ -48,6 +54,9 @@ export function CoworkWorkspacePill({
   gitBranch,
   onAttach,
   onDetach,
+  extraFolders = [],
+  onAddExtra,
+  onRemoveExtra,
 }: Props) {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -86,6 +95,11 @@ export function CoworkWorkspacePill({
                   className="hidden max-w-[96px] truncate font-normal text-muted-foreground xl:inline"
                 >
                   · {gitBranch}
+                </span>
+              ) : null}
+              {extraFolders.length > 0 ? (
+                <span aria-hidden className="font-normal text-muted-foreground">
+                  +{extraFolders.length}
                 </span>
               ) : null}
               <Lock
@@ -151,6 +165,61 @@ export function CoworkWorkspacePill({
                 </p>
               )}
             </section>
+
+            {/* Folders attached beside the primary one. Each is treated like
+                it; the shell still starts in the primary. */}
+            {extraFolders.length > 0 || onAddExtra ? (
+              <section className="px-2.5 pb-2.5">
+                {extraFolders.length > 0 ? (
+                  <>
+                    <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                      {t('common:workspace.alsoAttached')}
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {extraFolders.map((extra) => (
+                        <li key={extra} className="flex items-center gap-2">
+                          <Folder
+                            size={13}
+                            className="shrink-0 text-muted-foreground"
+                            aria-hidden
+                          />
+                          <span
+                            className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                            title={extra}
+                          >
+                            {truncateMiddle(extra, 40)}
+                          </span>
+                          {onRemoveExtra ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="shrink-0"
+                              aria-label={t('common:workspace.removeFolder', {
+                                folder: basenameOf(extra),
+                              })}
+                              onClick={() => onRemoveExtra(extra)}
+                            >
+                              <X size={12} aria-hidden />
+                            </Button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {onAddExtra ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1.5 h-7 px-1.5 text-xs text-muted-foreground"
+                    onClick={onAddExtra}
+                  >
+                    <FolderPlus size={13} aria-hidden />
+                    {t('common:workspace.addFolder')}
+                  </Button>
+                ) : null}
+              </section>
+            ) : null}
 
             <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
