@@ -1,8 +1,8 @@
-# Contributing to Jan Extensions
+# Contributing to Flint Extensions
 
 [← Back to Main Contributing Guide](../CONTRIBUTING.md)
 
-Extensions add specific features to Jan as self-contained modules.
+Extensions add specific features to Flint as self-contained modules.
 
 ## Current Extensions
 
@@ -88,7 +88,7 @@ async onLoad() {
 
 ## Extension Lifecycle
 
-1. **Jan starts** → Discovers extensions
+1. **Flint starts** → Discovers extensions
 2. **Loading** → Calls `onLoad()` method  
 3. **Active** → Extension responds to events
 4. **Unloading** → Calls `onUnload()` on shutdown

@@ -1,8 +1,8 @@
-# Contributing to Jan
+# Contributing to Flint
 
-First off, thank you for considering contributing to Jan. It's people like you that make Jan such an amazing project.
+Thank you for considering a contribution to Flint.
 
-Jan is an AI assistant that can run 100% offline on your device. Think ChatGPT, but private, local, and under your complete control. If you're thinking about contributing, you're already awesome - let's make AI accessible to everyone, one commit at a time.
+Flint is a private, local-first AI workspace for the desktop: chat with local or cloud models, and let an agent work on your files and projects with your approval. It is an independent fork of [Jan](https://github.com/janhq/jan), so much of the architecture below is shared with upstream, and internal package names still use the `@janhq/` scope.
 
 ## Quick Links to Component Guides
 
@@ -12,9 +12,9 @@ Jan is an AI assistant that can run 100% offline on your device. Think ChatGPT, 
 - **[Tauri Backend](./src-tauri/CONTRIBUTING.md)** - Rust native integration
 - **[Tauri Plugins](./src-tauri/plugins/CONTRIBUTING.md)** - Hardware and system plugins
 
-## How Jan Actually Works
+## How Flint Works
 
-Jan is a desktop app that runs local AI models. Here's how the components actually connect:
+Flint is a Tauri desktop app that runs local AI models. Here's how the components actually connect:
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -96,33 +96,34 @@ Jan is a desktop app that runs local AI models. Here's how the components actual
 
 ### Real-World Example: Loading a Model
 
-Here's what actually happens when you click "Download Llama 3":
+Here's what happens when you import a GGUF model and start a chat:
 
-1. **Web App** (`web-app/`) - User clicks download button
-2. **Extension** (`extensions/download-extension`) - Handles the download logic
-3. **Tauri Backend** (`src-tauri/`) - Actually downloads the file to disk
-4. **Extension** (`extensions/llamacpp-extension`) - Prepares model for loading
-5. **Tauri Plugin** (`src-tauri/plugins/llamacpp`) - Starts llama.cpp process
-6. **Hardware Plugin** (`src-tauri/plugins/hardware`) - Detects GPU, optimizes settings
-7. **Model ready!** - User can start chatting
+1. **Web App** (`web-app/`) - User picks a file under Models -> llama.cpp -> Import
+2. **Extension** (`extensions/llamacpp-extension`) - Registers the model and its settings
+3. **Tauri Backend** (`src-tauri/`) - Copies or links the file into the data folder
+4. **Tauri Plugin** (`src-tauri/plugins/tauri-plugin-llamacpp`) - Starts the llama.cpp server process
+5. **Hardware Plugin** (`src-tauri/plugins/tauri-plugin-hardware`) - Reports CPU/GPU and memory for offload settings
+6. **Model ready** - User can start chatting
 
 ## Project Structure
 
 ```
-jan/
+flint/
 ├── web-app/              # React frontend (what users see)
 ├── src-tauri/            # Rust backend (system integration)
 │   ├── src/core/         # Core Tauri commands
-│   └── plugins/          # Tauri plugins (hardware, llamacpp)
+│   └── plugins/          # Tauri plugins (agent-tools, hardware, llamacpp, mlx, rag, ...)
 ├── core/                 # TypeScript SDK (API layer)
 ├── extensions/           # JavaScript extensions
 │   ├── assistant-extension/
 │   ├── conversational-extension/
-│   ├── download-extension/
-│   └── llamacpp-extension/
-├── docs/                 # Documentation website
-├── website/              # Marketing website
-├── autoqa/               # Automated testing
+│   ├── llamacpp-extension/
+│   ├── mlx-extension/
+│   ├── rag-extension/
+│   └── vector-db-extension/
+├── packages/agent-sdk/   # Agent SDK
+├── docs/                 # Build guide, feature list, screenshots
+├── e2e/, autoqa/         # End-to-end and automated testing
 ├── scripts/              # Build utilities
 │
 ├── package.json          # Root workspace configuration
@@ -133,28 +134,32 @@ jan/
 
 ## Development Setup
 
-### The Scenic Route (Build from Source)
+[docs/BUILDING.md](docs/BUILDING.md) is the step-by-step guide for every OS (toolchain install, first build, installers, troubleshooting).
 
 **Prerequisites:**
-- Node.js ≥ 20.0.0
-- Yarn ≥ 4.10.0
-- Make ≥ 3.81
-- Rust (for Tauri)
+- Git, Node.js ≥ 20 and Yarn 4 (via `corepack enable`)
+- Rust (for Tauri); on Windows also the MSVC build tools, LLVM and CMake
 - (macOS Apple Silicon only) MetalToolchain `xcodebuild -downloadComponent MetalToolchain`
 
-**Option 1: The Easy Way (Make)**
 ```bash
-git clone https://github.com/janhq/jan
-cd jan
-make dev
+git clone https://github.com/Jozkah/flint.git
+cd flint
+corepack enable
+yarn install
+yarn build:tauri:plugin:api
+yarn build:core
+yarn build:extensions
+yarn download:bin
+yarn dev
 ```
 
 ## How Can I Contribute?
 
 ### Reporting Bugs
 
-- **Ensure the bug was not already reported** by searching on GitHub under [Issues](https://github.com/janhq/jan/issues)
-- If you're unable to find an open issue addressing the problem, [open a new one](https://github.com/janhq/jan/issues/new)
+- **Ensure the bug was not already reported** by searching [Issues](https://github.com/Jozkah/flint/issues)
+- If you can't find an open issue for the problem, [open a new one](https://github.com/Jozkah/flint/issues/new/choose)
+- Security problems go through [private vulnerability reporting](https://github.com/Jozkah/flint/security/advisories/new), not public issues (see [SECURITY.md](SECURITY.md))
 - Include your system specs and error logs - it helps a ton
 - Provide clear steps to reproduce the issue so we can quickly identify the root cause
 - Attach screenshots or screen recordings whenever possible - a visual is worth a thousand words when debugging
@@ -232,10 +237,10 @@ docs: update installation instructions
 
 If things go sideways:
 
-1. **Check our [troubleshooting docs](https://jan.ai/docs/desktop/troubleshooting)**
+1. **Check the troubleshooting section of [docs/BUILDING.md](docs/BUILDING.md)**
 2. **Clear everything and start fresh:** `make clean` then `make dev`
 3. **Copy your error logs and system specs**
-4. **Ask for help in our [Discord](https://discord.gg/FTk2MvZwJH)** `#🆘|jan-help` channel
+4. **Open an [issue](https://github.com/Jozkah/flint/issues)** with the logs and steps
 
 Common issues:
 - **Build failures**: Check Node.js and Rust versions
@@ -244,17 +249,10 @@ Common issues:
 
 ## Getting Help
 
-- [Documentation](https://jan.ai/docs) - The manual you should read
-- [Discord Community](https://discord.gg/FTk2MvZwJH) - Where the community lives
-- [GitHub Issues](https://github.com/janhq/jan/issues) - Report bugs here
-- [GitHub Discussions](https://github.com/janhq/jan/discussions) - Ask questions
+- [README](README.md) and [docs/FEATURES.md](docs/FEATURES.md) - What Flint does
+- [docs/BUILDING.md](docs/BUILDING.md) - Building from source
+- [GitHub Issues](https://github.com/Jozkah/flint/issues) - Bugs, questions and ideas
 
 ## License
 
-Apache 2.0 - Because sharing is caring. See [LICENSE](./LICENSE) for the legal stuff.
-
-## Additional Notes
-
-We're building something pretty cool here - an AI assistant that respects your privacy and runs entirely on your machine. Every contribution, no matter how small, helps make AI more accessible to everyone.
-
-Thanks for being part of the journey. Let's build the future of local AI together! 🚀
+Flint is licensed under the Apache License 2.0. By contributing, you agree that your contributions are licensed under the same terms. See [LICENSE](./LICENSE) and [NOTICE](./NOTICE).
