@@ -221,14 +221,40 @@ pub fn store(path: &Path, state: &StateFile) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// Wait for a burst of pokes on `rx` to go quiet for `quiet`, then call
+/// `flush` once; repeat until every sender is gone. One thread and one write
+/// per burst, however many events the burst had.
+#[cfg_attr(not(all(windows, not(feature = "cli"))), allow(dead_code))]
+pub(crate) fn debounce_loop(
+    rx: &std::sync::mpsc::Receiver<()>,
+    quiet: std::time::Duration,
+    mut flush: impl FnMut(),
+) {
+    use std::sync::mpsc::RecvTimeoutError;
+    while rx.recv().is_ok() {
+        loop {
+            match rx.recv_timeout(quiet) {
+                Ok(()) => continue,
+                Err(RecvTimeoutError::Timeout) => {
+                    flush();
+                    break;
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    flush();
+                    return;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(all(windows, not(feature = "cli")))]
 pub use tauri_glue::{install, restore_and_show};
 
 #[cfg(all(windows, not(feature = "cli")))]
 mod tauri_glue {
     use super::*;
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{mpsc, Arc, Mutex};
     use std::time::Duration;
     use tauri::{Manager, Runtime, WebviewWindow, WindowEvent};
     use windows_sys::Win32::Foundation::{HWND, POINT, RECT};
@@ -368,32 +394,20 @@ mod tauri_glue {
     /// Record the window's placement as it changes.
     ///
     /// Moves and resizes arrive dozens of times a second while a frame is being
-    /// dragged, so writes are debounced; closing writes at once. What is
-    /// written is always read back from the operating system's placement, so
-    /// the timing of events never decides what the normal frame was.
+    /// dragged, and the handler runs on the UI thread, so it only pokes one
+    /// long-lived worker; the worker writes once the events have been quiet for
+    /// a moment. Closing writes at once. What is written is always read back
+    /// from the operating system's placement, so the timing of events never
+    /// decides what the normal frame was.
     pub fn install<R: Runtime>(window: &WebviewWindow<R>, data_folder: PathBuf) {
         let path = state_path(&data_folder);
         let label = window.label().to_string();
         let last: Arc<Mutex<Option<SavedWindow>>> =
             Arc::new(Mutex::new(load(&path).get(&label).copied()));
-        let generation = Arc::new(AtomicU64::new(0));
 
-        let win = window.clone();
-        window.on_window_event(move |event| {
-            let immediate = match event {
-                WindowEvent::Moved(_)
-                | WindowEvent::Resized(_)
-                | WindowEvent::ScaleFactorChanged { .. } => false,
-                WindowEvent::CloseRequested { .. } => true,
-                _ => return,
-            };
-            let gen = generation.fetch_add(1, Ordering::SeqCst) + 1;
-            let win = win.clone();
-            let last = last.clone();
-            let generation = generation.clone();
-            let path = path.clone();
-            let label = label.clone();
-            let flush = move || {
+        let flush = {
+            let win = window.clone();
+            move || {
                 let Some(record) = read_record(&win) else { return };
                 let mut slot = last.lock().unwrap_or_else(|e| e.into_inner());
                 if *slot == Some(record) {
@@ -405,17 +419,29 @@ mod tauri_glue {
                 if let Err(e) = store(&path, &file) {
                     log::warn!("window-state: could not save {label}: {e}");
                 }
-            };
-            if immediate {
-                flush();
-            } else {
-                std::thread::spawn(move || {
-                    std::thread::sleep(Duration::from_millis(400));
-                    if generation.load(Ordering::SeqCst) == gen {
-                        flush();
-                    }
-                });
             }
+        };
+        let flush = Arc::new(flush);
+
+        let (tx, rx) = mpsc::channel::<()>();
+        {
+            let flush = flush.clone();
+            let spawned = std::thread::Builder::new()
+                .name("window-state".into())
+                .spawn(move || debounce_loop(&rx, Duration::from_millis(400), || flush()));
+            if let Err(e) = spawned {
+                log::warn!("window-state: could not start saver: {e}");
+            }
+        }
+
+        window.on_window_event(move |event| match event {
+            WindowEvent::Moved(_)
+            | WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. } => {
+                let _ = tx.send(());
+            }
+            WindowEvent::CloseRequested { .. } => flush(),
+            _ => {}
         });
     }
 
@@ -460,6 +486,27 @@ mod tauri_glue {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_burst_of_events_is_written_once() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let (tx, rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            let mut writes = 0;
+            debounce_loop(&rx, Duration::from_millis(60), || writes += 1);
+            writes
+        });
+        for _ in 0..50 {
+            tx.send(()).unwrap();
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+        tx.send(()).unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        drop(tx);
+        assert_eq!(worker.join().unwrap(), 2);
+    }
 
     const MIN: (f64, f64) = (1024.0, 740.0);
 
