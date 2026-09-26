@@ -1783,7 +1783,8 @@
     "pending_other": "{{count}} checks running",
     "refresh": "Refresh status",
     "open": "Open pull request",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "notOpenedHere": "PR #{{number}} on {{branch}} (not opened here)"
   },
   "undo": "Undo",
   "coworkParallel": {
