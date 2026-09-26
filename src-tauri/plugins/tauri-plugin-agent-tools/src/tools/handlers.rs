@@ -2058,7 +2058,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             }
             .or_else(|| super::host_tools::python_launcher_missing(&command_text, &out));
             if sandboxed {
-                if let Some(name) = missing {
+                // An unquoted assignment value, not a missing program.
+                let quoting = missing
+                    .as_deref()
+                    .and_then(|name| super::host_tools::unquoted_assignment(&command_text, name));
+                if let Some(note) = quoting {
+                    out.push_str(&note);
+                } else if let Some(name) = missing {
                     let host = std::env::var_os("PATH").unwrap_or_default();
                     let pathext =
                         std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());

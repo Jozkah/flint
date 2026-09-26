@@ -281,6 +281,47 @@ pub fn not_installed_hint(name: &str) -> String {
     )
 }
 
+/// The assignment in `command` whose unquoted value PowerShell ran as a
+/// program called `name`: `$env:GOTOOLCHAIN=local` makes PowerShell look up a
+/// command `local`, and saying "`local` is not available in this sandbox"
+/// then sent the model to tell the user a program was missing when the
+/// command only needed quotes.
+pub fn unquoted_assignment(command: &str, name: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(i) = command[from..].find('=') {
+        let eq = from + i;
+        from = eq + 1;
+        // The bare word right after `=`, up to a separator. A quoted value
+        // starts with a quote and so never equals a program name.
+        let value: String = command[eq + 1..]
+            .trim_start()
+            .chars()
+            .take_while(|c| !c.is_whitespace() && !matches!(c, ';' | '|' | ')' | '&'))
+            .collect();
+        if !value.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        // The target left of `=` must be a variable: `$name` or `$env:NAME`.
+        let head = command[..eq].trim_end();
+        let start = head.rfind(|c: char| c.is_whitespace() || c == ';').map_or(0, |s| s + 1);
+        let target = &head[start..];
+        let is_var = target.starts_with('$')
+            && target.len() > 1
+            && target[1..]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':'));
+        if is_var {
+            return Some(format!(
+                "\n[shell: `{name}` was run as a command because the value in `{target}={value}` \
+                 is not quoted. PowerShell needs quotes around a text value: \
+                 `{target}=\"{value}\"`. Fix the quoting and run it again; nothing is missing \
+                 from the sandbox.]"
+            ));
+        }
+    }
+    None
+}
+
 /// The note appended when a download fails on name resolution inside a
 /// sandbox that has no network: retrying cannot succeed.
 pub const NO_NETWORK_HINT: &str =
@@ -816,6 +857,19 @@ mod missing_hint_tests {
         assert!(h.contains("`node` is not available in this sandbox"), "{h}");
         assert!(h.contains("do not download or install it"), "{h}");
         assert!(h.contains("treat the check as not run"), "{h}");
+    }
+
+    #[test]
+    fn an_unquoted_assignment_is_a_quoting_note_not_a_missing_program() {
+        let cmd = r#"Push-Location "C:\p"; $env:GOTOOLCHAIN=local; $env:GODEBUG="x=0"; go list ./..."#;
+        let h = unquoted_assignment(cmd, "local").expect("names the assignment");
+        assert!(h.contains(r#"`$env:GOTOOLCHAIN="local"`"#), "{h}");
+        assert!(h.contains("nothing is missing"), "{h}");
+        // A quoted value, a genuinely missing program, or a flag value is not it.
+        assert!(unquoted_assignment(r#"$env:A="local"; local"#, "local").is_none());
+        assert!(unquoted_assignment("node --version", "node").is_none());
+        assert!(unquoted_assignment("go build -tags=local ./...", "local").is_none());
+        assert!(unquoted_assignment("$x = local", "local").is_some());
     }
 
     #[test]
