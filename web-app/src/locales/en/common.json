@@ -244,6 +244,8 @@
     "a11y": "Changes: {{files}} files, {{additions}} added, {{deletions}} removed",
     "projectWorkingTree": "Project · Working tree",
     "sandboxOutput": "Cowork output · Session sandbox",
+    "changedIn": "Changed in {{folder}} · edited in place",
+    "changedInPlace": "Edited in place · outside the sandbox",
     "noRepo": "The attached folder isn't a Git repository.",
     "cleanWorkingTree": "No uncommitted changes in the working tree.",
     "loadError": "Couldn't read the repository status.",

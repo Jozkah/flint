@@ -149,6 +149,56 @@ function LazyGitDiff({
   )
 }
 
+type SessionGroup = {
+  key: string
+  title: string
+  files: CoworkFileDiff[]
+  /** The row label: in-place paths are shown relative to their folder. */
+  show: (path: string) => string
+}
+
+const splitPath = (path: string) => path.split(/[\\/]/).filter(Boolean)
+
+/** The deepest folder every path shares, as segments. */
+function commonFolder(paths: readonly string[]): string[] {
+  const split = paths.map((p) => splitPath(p).slice(0, -1))
+  const first = split[0] ?? []
+  let n = 0
+  while (n < first.length && split.every((s) => s[n] === first[n])) n += 1
+  return first.slice(0, n)
+}
+
+function groupSessionFiles(
+  files: CoworkFileDiff[],
+  isSandboxPath: ((path: string) => boolean) | undefined,
+  t: (key: string, vars?: Record<string, unknown>) => string
+): SessionGroup[] {
+  const inSandbox = files.filter((f) => !isSandboxPath || isSandboxPath(f.path))
+  const inPlace = files.filter((f) => isSandboxPath && !isSandboxPath(f.path))
+  const groups: SessionGroup[] = []
+  if (inPlace.length > 0) {
+    const common = commonFolder(inPlace.map((f) => f.path))
+    const folder = common[common.length - 1]
+    groups.push({
+      key: 'in-place',
+      title: folder
+        ? t('common:changes.changedIn', { folder })
+        : t('common:changes.changedInPlace'),
+      files: inPlace,
+      show: (path) => splitPath(path).slice(common.length).join('/') || path,
+    })
+  }
+  if (inSandbox.length > 0) {
+    groups.push({
+      key: 'sandbox',
+      title: t('common:changes.sandboxOutput'),
+      files: inSandbox,
+      show: (path) => path,
+    })
+  }
+  return groups
+}
+
 /** A single expandable row shared by the project and sandbox lists. */
 function FileRow({
   path,
@@ -391,6 +441,7 @@ export function CoworkDiffPanel({
   onOpenFile,
   onApplyFile,
   applyPlanFor,
+  isSandboxPath,
   header,
   footer,
   branch,
@@ -427,6 +478,11 @@ export function CoworkDiffPanel({
    * one that can only fail is worse than none.
    */
   applyPlanFor?: (path: string) => SandboxApplyPlan | null
+  /**
+   * Whether a changed file is in the session sandbox. Files that are not were
+   * edited in place and get their own section. Absent: all are sandbox files.
+   */
+  isSandboxPath?: (path: string) => boolean
   folder: string | null
   git: CoworkGitState
   onClose: () => void
@@ -451,7 +507,13 @@ export function CoworkDiffPanel({
   )
   const showProject = !!folder
   const showSandbox = sandboxFiles.length > 0
-  const labelled = showProject && showSandbox
+  // Files Flint edited where they live are not sandbox output: listing them
+  // under "Session sandbox" said the real project was untouched.
+  const sessionGroups = useMemo(
+    () => groupSessionFiles(sandboxFiles, isSandboxPath, t),
+    [sandboxFiles, isSandboxPath, t]
+  )
+  const labelled = (showProject ? 1 : 0) + sessionGroups.length > 1
 
   // Combined totals across both sources for the header summary.
   const sandboxAdds = sandboxFiles.reduce((s, f) => s + f.additions, 0)
@@ -676,22 +738,25 @@ export function CoworkDiffPanel({
           ) : null}
 
           {/* Cowork output · Session sandbox */}
-          {showSandbox ? (
-            <section>
+          {sessionGroups.map((group) => (
+            <section key={group.key}>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-                  {t('common:changes.sandboxOutput')}
+                <h3 className="sticky top-0 z-[1] truncate bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
+                  {group.title}
                 </h3>
               ) : null}
               <div>
-                {sandboxFiles.map((file) => {
+                {group.files.map((file) => {
                   const id = `sandbox:${file.path}`
                   const isExpanded = expanded.has(id)
-                  const plan = onApplyFile ? applyPlanFor?.(file.path) : null
+                  const plan =
+                    onApplyFile && group.key === 'sandbox'
+                      ? applyPlanFor?.(file.path)
+                      : null
                   return (
                     <FileRow
                       key={id}
-                      path={file.path}
+                      path={group.show(file.path)}
                       onOpen={
                         onOpenFile ? () => onOpenFile(file.path) : undefined
                       }
@@ -734,7 +799,7 @@ export function CoworkDiffPanel({
                 })}
               </div>
             </section>
-          ) : null}
+          ))}
 
           {/* Nothing anywhere. */}
           {!showProject && !showSandbox ? (

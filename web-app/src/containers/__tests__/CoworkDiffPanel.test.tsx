@@ -492,6 +492,29 @@ describe('what the Changes panel claims about each file', () => {
     expect(onApplyFile).toHaveBeenCalledWith('KewScraper/go.mod', false)
   })
 
+  it('lists files edited in place apart from sandbox output', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[
+          { ...sandboxFiles[0], path: 'C:\\Coding\\KewScraper\\main.go' },
+          { ...sandboxFiles[0], path: 'C:\\Coding\\KewScraper\\utils\\utils.go' },
+          sandboxFiles[1],
+        ]}
+        folder={null}
+        git={noGit}
+        onClose={vi.fn()}
+        isSandboxPath={(path) => !path.startsWith('C:')}
+      />
+    )
+    expect(
+      screen.getByText(/common:changes\.changedIn .*KewScraper/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('common:changes.sandboxOutput')).toBeInTheDocument()
+    // Shown relative to the folder they were changed in.
+    expect(screen.getByText('utils/utils.go')).toBeInTheDocument()
+    expect(screen.getByText('main.go')).toBeInTheDocument()
+  })
+
   it('offers the comparison scope only for a Git repository', () => {
     render(
       <CoworkDiffPanel

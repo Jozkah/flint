@@ -202,6 +202,7 @@ import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import {
   applySandboxFile,
   planSandboxApply,
+  sandboxRelativePath,
 } from '@/lib/coworkSandboxApply'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
@@ -4943,6 +4944,9 @@ function CoworkPage() {
             // Review only leaves the run's output in the sandbox; this is the
             // explicit per-file step that brings one file into the folder.
             // One folder today; a list so more attached folders slot in.
+            isSandboxPath={(path) =>
+              sandboxRelativePath(workspacePath, path) !== null
+            }
             applyPlanFor={(path) =>
               planSandboxApply(workspacePath, folder ? [folder] : [], path)
             }
