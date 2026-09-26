@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Добавлять Flint как соавтора коммитов",
+    "attributionCommitsDesc": "Коммиты агента заканчиваются трейлером Co-Authored-By с упоминанием Flint и модели, которая их написала.",
+    "attributionPullRequests": "Добавлять «Generated with Flint» в pull request",
+    "attributionPullRequestsDesc": "Описания pull request, написанные агентом, заканчиваются строкой «Generated with Flint»."
+  },
   "autoDownload": "Автоматически загружать новые обновления",
   "checkForUpdates": "Проверить обновления",
   "checkForUpdatesDesc": "Проверить, доступна ли более новая версия Flint.",

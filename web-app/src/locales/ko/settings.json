@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "커밋에 Flint를 공동 작성자로 추가",
+    "attributionCommitsDesc": "에이전트가 만든 커밋 끝에 Flint와 작성한 모델을 명시하는 Co-Authored-By 트레일러를 붙입니다.",
+    "attributionPullRequests": "풀 리퀘스트에 'Generated with Flint' 추가",
+    "attributionPullRequestsDesc": "에이전트가 작성한 풀 리퀘스트 설명 끝에 'Generated with Flint' 줄을 붙입니다."
+  },
   "autoDownload": "새 업데이트 자동 다운로드",
   "checkForUpdates": "업데이트 확인",
   "checkForUpdatesDesc": "새 버전의 Jan이 있는지 확인합니다.",

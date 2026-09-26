@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Tambahkan Flint sebagai rekan penulis pada commit",
+    "attributionCommitsDesc": "Commit yang dibuat agen diakhiri trailer Co-Authored-By yang menyebut Flint dan model yang menulisnya.",
+    "attributionPullRequests": "Tambahkan 'Generated with Flint' ke pull request",
+    "attributionPullRequestsDesc": "Deskripsi pull request yang ditulis agen diakhiri baris 'Generated with Flint'."
+  },
   "autoDownload": "Unduh pembaruan baru secara otomatis",
   "checkForUpdates": "Periksa Pembaruan",
   "checkForUpdatesDesc": "Periksa apakah versi Flint yang lebih baru tersedia.",

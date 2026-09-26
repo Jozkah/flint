@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Přidat Flint jako spoluautora commitů",
+    "attributionCommitsDesc": "Commity vytvořené agentem končí trailerem Co-Authored-By, který uvádí Flint a model, jenž je napsal.",
+    "attributionPullRequests": "Přidat 'Generated with Flint' do pull requestů",
+    "attributionPullRequestsDesc": "Popisy pull requestů, které agent napíše, končí řádkem 'Generated with Flint'."
+  },
   "autoDownload": "Automatické stahování nových aktualizací",
   "checkForUpdates": "Zkontrolovat aktualizace",
   "checkForUpdatesDesc": "Zkontrolujte, zda je k dispozici novější verze Flint.",

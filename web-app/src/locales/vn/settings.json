@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Thêm Flint làm đồng tác giả trong commit",
+    "attributionCommitsDesc": "Các commit do tác tử tạo kết thúc bằng trailer Co-Authored-By ghi tên Flint và mô hình đã viết chúng.",
+    "attributionPullRequests": "Thêm 'Generated with Flint' vào pull request",
+    "attributionPullRequestsDesc": "Mô tả pull request do tác tử viết kết thúc bằng dòng 'Generated with Flint'."
+  },
   "autoDownload": "Tự động tải xuống các bản cập nhật mới",
   "checkForUpdates": "Kiểm tra Cập nhật",
   "checkForUpdatesDesc": "Kiểm tra xem có phiên bản Flint mới hơn không.",

@@ -31,7 +31,19 @@ describe('gitAttribution', () => {
       input: { args: ['commit', '-m', 'Fix'] },
       model: 'm',
       base: '/repo',
+      threadId: null,
+      session: null,
     })
+  })
+
+  it('names the thread so a relative -F resolves where the tool runs', async () => {
+    invoke.mockResolvedValue({})
+    await attributeGitInput({ args: ['commit', '-F', 'm.txt'] }, 'm', null, { id: 't1' })
+    expect(invoke).toHaveBeenCalledWith('attribute_git_call', expect.objectContaining({
+      base: null,
+      threadId: 't1',
+      session: null,
+    }))
   })
 
   it('leaves the call as written when the backend fails or the input is not an object', async () => {

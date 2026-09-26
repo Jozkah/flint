@@ -262,9 +262,17 @@ fn attribute_commit(args: &mut Vec<String>, trailer: &str, base: &Path) {
     }
     if let Some(slot) = file {
         // The message as it will be committed, inline, so the prompt shows it.
-        let Some(text) = read_file(base, slot.get(args)) else { return };
-        let span = slot.span();
-        args.splice(span, ["-m".to_string(), add_trailer(&text, trailer)]);
+        match read_file(base, slot.get(args)) {
+            Some(text) => {
+                let span = slot.span();
+                args.splice(span, ["-m".to_string(), add_trailer(&text, trailer)]);
+            }
+            // Not readable from here (no folder to resolve it against, or
+            // stdin): git reads the file and adds the trailer itself.
+            None => {
+                args.splice(end..end, ["--trailer".to_string(), trailer.to_string()]);
+            }
+        }
         return;
     }
     if let Some(last) = messages.last() {
@@ -285,10 +293,90 @@ fn attribute_commit(args: &mut Vec<String>, trailer: &str, base: &Path) {
     }
 }
 
+/// How `gh pr create` was asked to fill the body from the branch's commits.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fill {
+    /// `--fill` / `-f`.
+    Default,
+    /// `--fill-first`.
+    First,
+    /// `--fill-verbose`.
+    Verbose,
+}
+
+/// A read-only git query in `repo`, with nothing the repository names run.
+fn git_output(repo: &Path, args: &[&str]) -> Option<String> {
+    let bin = crate::tools::git_native::discover_git()?;
+    let mut cmd = std::process::Command::new(bin);
+    cmd.args(["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.pager=cat"])
+        .args(args)
+        .current_dir(repo)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);
+    }
+    let out = cmd.output().ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// The body `gh pr create --fill*` would write, built the way gh builds it:
+/// one commit (or `--fill-first`) gives that commit's body; several give a
+/// `- subject` line per commit, oldest first, with each body under it for
+/// `--fill-verbose`. `None` when the branch's commits cannot be read.
+fn fill_body(repo: &Path, base: Option<&str>, fill: Fill) -> Option<String> {
+    if !repo.is_absolute() {
+        return None;
+    }
+    let base = match base {
+        Some(b) => b.to_string(),
+        None => git_output(repo, &["rev-parse", "--abbrev-ref", "origin/HEAD"])?.trim().to_string(),
+    };
+    // gh compares against the remote's copy of the base when there is one.
+    let remote = format!("origin/{base}");
+    let verified =
+        |r: &str| git_output(repo, &["rev-parse", "--verify", "-q", &format!("{r}^{{commit}}")]).is_some();
+    let base_ref = if !base.starts_with("origin/") && verified(&remote) {
+        remote
+    } else if verified(&base) {
+        base
+    } else {
+        return None;
+    };
+    let log = git_output(
+        repo,
+        &["log", "--reverse", "--no-color", "--format=%s%x1f%b%x1e", &format!("{base_ref}..HEAD")],
+    )?;
+    let commits: Vec<(String, String)> = log
+        .split('\u{1e}')
+        .map(|c| c.trim_start_matches(['\n', '\r']))
+        .filter_map(|c| c.split_once('\u{1f}'))
+        .map(|(s, b)| (s.trim().to_string(), b.trim().to_string()))
+        .collect();
+    let first = commits.first()?;
+    if commits.len() == 1 || fill == Fill::First {
+        return Some(first.1.clone());
+    }
+    let mut body = String::new();
+    for (subject, text) in &commits {
+        body.push_str(&format!("- {subject}\n"));
+        if fill == Fill::Verbose && !text.is_empty() {
+            body.push_str(&format!("\n{text}\n\n"));
+        }
+    }
+    Some(body.trim_end().to_string())
+}
+
 /// Add the footer to a `gh pr create|edit` argv (`args[..2] == ["pr", _]`).
 fn attribute_pr(args: &mut Vec<String>, base: &Path) {
     let mut body: Option<Slot> = None;
     let mut file: Option<Slot> = None;
+    let mut fill: Option<Fill> = None;
+    let mut base_branch: Option<String> = None;
     let mut i = 2;
     while i < args.len() {
         let a = args[i].as_str();
@@ -307,6 +395,15 @@ fn attribute_pr(args: &mut Vec<String>, base: &Path) {
                 i += 2;
                 continue;
             }
+            "-B" | "--base" => {
+                base_branch = args.get(i + 1).cloned();
+                i += 2;
+                continue;
+            }
+            "-f" | "--fill" => fill = fill.or(Some(Fill::Default)),
+            "--fill-first" => fill = Some(Fill::First),
+            "--fill-verbose" => fill = Some(Fill::Verbose),
+            _ if a.starts_with("--base=") => base_branch = Some(a["--base=".len()..].to_string()),
             _ if a.starts_with("--body=") => body = Some(Slot::Joined(i, "--body=".into())),
             _ if a.starts_with("--body-file=") => file = Some(Slot::Joined(i, "--body-file=".into())),
             _ => {}
@@ -320,6 +417,12 @@ fn attribute_pr(args: &mut Vec<String>, base: &Path) {
     } else if let Some(slot) = body {
         let value = add_footer(slot.get(args));
         slot.set(args, value);
+    } else if let (Some(fill), true) = (fill, args[1] == "create") {
+        // gh still fills the title; the body it would have written is given
+        // explicitly, with the footer, so the prompt shows it.
+        if let Some(text) = fill_body(base, base_branch.as_deref(), fill) {
+            args.extend(["--body".to_string(), add_footer(&text)]);
+        }
     }
 }
 
@@ -438,8 +541,12 @@ mod tests {
         let got = run_with("git", &["commit", "--file=msg.txt"], Settings::default(), &dir);
         assert_eq!(got, vec!["commit", "-m", &format!("Subject\n\nBody.\n\n{T}")]);
         // A file that cannot be read is left for git to report.
+        // Not readable here: git reads it and adds the trailer itself.
         let got = run_with("git", &["commit", "-F", "missing.txt"], Settings::default(), &dir);
-        assert_eq!(got, vec!["commit", "-F", "missing.txt"]);
+        assert_eq!(got, vec!["commit", "-F", "missing.txt", "--trailer", T]);
+        // Relative with nothing to resolve it against (Chat): the same.
+        let got = run_with("git", &["commit", "-F", "msg.txt"], Settings::default(), Path::new(""));
+        assert_eq!(got, vec!["commit", "-F", "msg.txt", "--trailer", T]);
         std::fs::write(dir.join("body.md"), "Details").unwrap();
         let got = run_with("gh", &["pr", "create", "--title", "T", "--body-file", "body.md"], Settings::default(), &dir);
         assert_eq!(got, vec!["pr", "create", "--title", "T", "--body", &format!("Details\n\n{PR_FOOTER}")]);
@@ -482,6 +589,54 @@ mod tests {
         // An edit that does not set the body, and other gh calls, are untouched.
         assert_eq!(run("gh", &["pr", "edit", "5", "--title", "X"]), vec!["pr", "edit", "5", "--title", "X"]);
         assert_eq!(run("gh", &["issue", "create", "--body", "B"]), vec!["issue", "create", "--body", "B"]);
+    }
+
+    #[test]
+    fn pr_fill_gets_the_body_gh_would_write_plus_the_footer() {
+        let dir = std::env::temp_dir().join(format!("flint-attr-fill-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let g = |a: &[&str]| {
+            let ok = std::process::Command::new(crate::tools::git_native::discover_git().unwrap())
+                .args(["-c", "user.name=T", "-c", "user.email=t@x", "-c", "commit.gpgsign=false"])
+                .args(a)
+                .current_dir(&dir)
+                .output()
+                .unwrap()
+                .status
+                .success();
+            assert!(ok, "{a:?}");
+        };
+        g(&["init", "-q", "-b", "main"]);
+        g(&["commit", "-q", "--allow-empty", "-m", "base"]);
+        g(&["switch", "-q", "-c", "feat"]);
+        g(&["commit", "-q", "--allow-empty", "-m", "Add parser\n\nWhy it exists."]);
+        let fill = |extra: &[&str]| {
+            let mut a = vec!["pr", "create", "--base", "main"];
+            a.extend_from_slice(extra);
+            run_with("gh", &a, Settings::default(), &dir)
+        };
+        // One commit: its body.
+        assert_eq!(
+            fill(&["--fill"]),
+            vec!["pr", "create", "--base", "main", "--fill", "--body", &format!("Why it exists.\n\n{PR_FOOTER}")]
+        );
+        g(&["commit", "-q", "--allow-empty", "-m", "Test parser"]);
+        // Several: a line per commit, oldest first.
+        assert_eq!(
+            fill(&["-f"]).last().unwrap(),
+            &format!("- Add parser\n- Test parser\n\n{PR_FOOTER}")
+        );
+        assert_eq!(fill(&["--fill-first"]).last().unwrap(), &format!("Why it exists.\n\n{PR_FOOTER}"));
+        assert_eq!(
+            fill(&["--fill-verbose"]).last().unwrap(),
+            &format!("- Add parser\n\nWhy it exists.\n\n- Test parser\n\n{PR_FOOTER}")
+        );
+        // A body given explicitly wins, and a base that does not exist leaves the call alone.
+        assert_eq!(fill(&["--fill", "--body", "B"]).last().unwrap(), &format!("B\n\n{PR_FOOTER}"));
+        let got = run_with("gh", &["pr", "create", "--base", "nope", "--fill"], Settings::default(), &dir);
+        assert_eq!(got, vec!["pr", "create", "--base", "nope", "--fill"]);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

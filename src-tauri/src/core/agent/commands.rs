@@ -124,11 +124,24 @@ pub async fn attribute_git_call(
     input: serde_json::Value,
     model: String,
     base: Option<String>,
+    thread_id: Option<String>,
+    session: Option<bool>,
 ) -> serde_json::Value {
-    let settings =
-        tauri_plugin_agent_tools::tools::git_attribution::load(Some(&get_jan_data_folder_path(app)));
+    let data = get_jan_data_folder_path(app);
+    let settings = tauri_plugin_agent_tools::tools::git_attribution::load(Some(&data));
     let mut input = input;
-    let base = std::path::PathBuf::from(base.unwrap_or_default());
+    // With no folder named, the one the git tool itself runs in: the Chat
+    // thread's workspace, or the Cowork session's sandbox.
+    let base = match (base.filter(|b| !b.is_empty()), thread_id) {
+        (Some(b), _) => std::path::PathBuf::from(b),
+        (None, Some(id)) if session == Some(true) => {
+            tauri_plugin_agent_tools::workspace::session_workspace(&data, &id).unwrap_or_default()
+        }
+        (None, Some(id)) => {
+            tauri_plugin_agent_tools::workspace::thread_workspace(&data, &id).unwrap_or_default()
+        }
+        (None, None) => std::path::PathBuf::new(),
+    };
     tauri_plugin_agent_tools::tools::git_attribution::attribute_call(&mut input, &model, settings, &base);
     input
 }

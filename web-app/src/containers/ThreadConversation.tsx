@@ -759,7 +759,9 @@ export function ThreadConversation({
             if (toolName === GIT_TOOL_NAME) {
               toolCall.input = await attributeGitInput(
                 toolCall.input,
-                getModelSelection().selectedModel?.id
+                getModelSelection().selectedModel?.id,
+                null,
+                { id: threadId }
               )
             }
             // The same record Cowork writes (AH-050): Chat's tool calls are

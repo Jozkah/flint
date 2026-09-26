@@ -388,7 +388,8 @@ async function routeCoworkTool(
       input: await attributeGitInput(
         call.input,
         ctx.modelId,
-        ctx.worktreePath ?? ctx.readOnlyFolder
+        ctx.worktreePath ?? ctx.readOnlyFolder,
+        { id: ctx.sessionId, session: true }
       ),
     }
   }

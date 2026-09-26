@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "कमिट पर Flint को सह-लेखक के रूप में जोड़ें",
+    "attributionCommitsDesc": "एजेंट के कमिट एक Co-Authored-By ट्रेलर के साथ समाप्त होते हैं, जिसमें Flint और उन्हें लिखने वाले मॉडल का नाम होता है।",
+    "attributionPullRequests": "पुल रिक्वेस्ट में 'Generated with Flint' जोड़ें",
+    "attributionPullRequestsDesc": "एजेंट द्वारा लिखे गए पुल रिक्वेस्ट विवरण 'Generated with Flint' पंक्ति के साथ समाप्त होते हैं।"
+  },
   "autoDownload": "अपडेट्स स्वचालित रूप से डाउनलोड करें",
   "checkForUpdates": "अपडेट्स जांचें",
   "checkForUpdatesDesc": "देखें कि Flint का कोई नया संस्करण उपलब्ध है या नहीं।",

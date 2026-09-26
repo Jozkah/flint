@@ -48,7 +48,12 @@ export async function setAttributionSettings(
 export async function attributeGitInput(
   input: unknown,
   model: string | undefined,
-  base?: string | null
+  base?: string | null,
+  /**
+   * With no `base`, the folder the git tool itself defaults to: this Chat
+   * thread's workspace, or (`session`) this Cowork session's sandbox.
+   */
+  owner?: { id: string; session?: boolean }
 ): Promise<unknown> {
   const parsed = parseToolInput(input)
   if (!inTauri() || !isPlainObject(parsed)) return input
@@ -57,6 +62,8 @@ export async function attributeGitInput(
       input: parsed,
       model: model ?? '',
       base: base ?? null,
+      threadId: owner?.id ?? null,
+      session: owner?.session ?? null,
     })
   } catch {
     return input
