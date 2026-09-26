@@ -1232,6 +1232,34 @@ fn available_tool_names(
         .collect()
 }
 
+type Attribution = (String, tauri_plugin_agent_tools::tools::git_attribution::Settings);
+
+/// Flint's attribution on a `git` tool call (a commit's co-author trailer, a
+/// pull request body's footer), added before the call is judged or put to the
+/// user so the prompt shows what will be committed or posted.
+fn attribute_git_args(
+    attribution: Option<&Attribution>,
+    name: &str,
+    args: &mut serde_json::Value,
+    project_root: &std::path::Path,
+) {
+    if name != "git" {
+        return;
+    }
+    if let Some((model, settings)) = attribution {
+        tauri_plugin_agent_tools::tools::git_attribution::attribute_call(args, model, *settings, project_root);
+    }
+}
+
+/// The co-author trailer on each commit of a `git_split`.
+fn attribute_split(attribution: Option<&Attribution>, groups: &mut [crate::core::agent::vcs::SplitGroup]) {
+    let Some((model, _)) = attribution.filter(|(_, s)| s.commits) else { return };
+    let trailer = tauri_plugin_agent_tools::tools::git_attribution::trailer(model);
+    for g in groups {
+        g.message = tauri_plugin_agent_tools::tools::git_attribution::add_trailer(&g.message, &trailer);
+    }
+}
+
 /// Context the invoker needs to dispatch subagents. `None` when subagents are
 /// disabled for this run (a child run, or the proxy path), in which case a
 /// subagent tool call returns an error instead of spawning a nested run.
@@ -1325,6 +1353,10 @@ struct CompositeToolInvoker {
     grants: std::sync::Mutex<tauri_plugin_agent_tools::tools::gate::SessionGrants>,
     subagents: Option<SubagentContext>,
     auto_approve: bool,
+    /// The run's model id and the user's attribution settings: a `git`
+    /// commit or pull request is rewritten to carry Flint's attribution before
+    /// it is put to the user. `None` leaves calls as the model wrote them.
+    attribution: Option<(String, tauri_plugin_agent_tools::tools::git_attribution::Settings)>,
     /// The autonomous-mode safety policy (AH: findings F1), resolved once per
     /// run from `[auto_mode]`. Off by default, so with no section its
     /// `block_reason` is always `None` and auto-approval is unchanged. Only ever
@@ -2729,7 +2761,8 @@ impl CompositeToolInvoker {
                         if let Err(refused) = self.approve_forge_mutation("open", &forge.api.origin().ascii_serialization()).await {
                             return refused;
                         }
-                        match forge.create(&data, &root, &change, &text("title"), &text("body")).await {
+                        let footer = self.attribution.as_ref().is_some_and(|(_, s)| s.pull_requests);
+                        match forge.create(&data, &root, &change, &text("title"), &text("body"), footer).await {
                             Ok((record, how)) => format!("{how} pull request #{}: {}", record.number, record.url),
                             Err(e) => failed(&e),
                         }
@@ -2778,7 +2811,10 @@ impl CompositeToolInvoker {
                                 "ERROR [invalid_input]: `groups` must be a list of {{files, message}}: {e}"
                             )
                         }
-                        Ok(groups) => {
+                        Ok(mut groups) => {
+                            // Each commit of the split carries Flint's co-author
+                            // trailer, as a `git commit` through the git tool does.
+                            attribute_split(self.attribution.as_ref(), &mut groups);
                             let scope = tauri_plugin_agent_tools::lifecycle::current();
                             vcs::apply_split(&root, &groups, &|| {
                                 scope.as_ref().is_some_and(|t| t.is_stopped())
@@ -3722,6 +3758,10 @@ impl CompositeToolInvoker {
                 out.push(ToolOutcome::plain(id, format!("ERROR: {e}")));
                 continue;
             }
+            // Flint's attribution on a commit or pull request, added before the
+            // call is judged or put to the user, so the prompt shows exactly
+            // what will be committed or posted.
+            attribute_git_args(self.attribution.as_ref(), name, &mut args, &self.project_root);
             // Plan mode: mutation-capable builtins (Write/Exec) are hard-denied
             // BEFORE the normal gate, without a permission prompt, and auto-approval
             // cannot override this (unlike the normal prompt suppression below).
@@ -5608,6 +5648,12 @@ async fn orchestrate_inner(
             ),
             subagents,
             auto_approve: *auto_approve,
+            attribution: Some((
+                model_id.clone(),
+                tauri_plugin_agent_tools::tools::git_attribution::load(
+                    (!jan_data_folder.is_empty()).then(|| std::path::Path::new(jan_data_folder.as_str())),
+                ),
+            )),
             run_mode,
             #[cfg(feature = "cli")]
             host_tools: host_tools.clone(),
@@ -7275,6 +7321,51 @@ async fn run_turn_cycle(
 
 #[cfg(test)]
 mod tests {
+    /// The dispatcher's git rewrite: a commit gets the trailer for the run's
+    /// model, only the `git` tool is touched, and the switches are honoured.
+    #[test]
+    fn git_calls_and_split_commits_carry_the_attribution() {
+        use tauri_plugin_agent_tools::tools::git_attribution::{Settings, PR_FOOTER};
+        let trailer = "Co-Authored-By: Flint (qwen3.8-27b) <334201045+flint-desktop@users.noreply.github.com>";
+        let on: super::Attribution = ("llamacpp/qwen3.8-27b".into(), Settings::default());
+        let root = std::path::Path::new(".");
+
+        let mut args = serde_json::json!({ "args": ["commit", "-m", "Fix"] });
+        super::attribute_git_args(Some(&on), "git", &mut args, root);
+        assert_eq!(args["args"][2], format!("Fix\n\n{trailer}"));
+        // Run twice (a retry): still one trailer.
+        super::attribute_git_args(Some(&on), "git", &mut args, root);
+        assert_eq!(args["args"][2], format!("Fix\n\n{trailer}"));
+
+        let mut pr = serde_json::json!({ "program": "gh", "args": ["pr", "create", "--title", "T", "--body", "B"] });
+        super::attribute_git_args(Some(&on), "git", &mut pr, root);
+        assert_eq!(pr["args"][5], format!("B\n\n{PR_FOOTER}"));
+
+        // Another tool with the same shape, no attribution, or switched off: untouched.
+        let original = serde_json::json!({ "args": ["commit", "-m", "Fix"] });
+        for (attribution, name) in [
+            (Some(&on), "bash"),
+            (None, "git"),
+        ] {
+            let mut a = original.clone();
+            super::attribute_git_args(attribution, name, &mut a, root);
+            assert_eq!(a, original);
+        }
+        let off: super::Attribution = (on.0.clone(), Settings { commits: false, pull_requests: false });
+        let mut a = original.clone();
+        super::attribute_git_args(Some(&off), "git", &mut a, root);
+        assert_eq!(a, original);
+
+        let group = |m: &str| crate::core::agent::vcs::SplitGroup { files: vec!["a".into()], message: m.into() };
+        let mut groups = vec![group("One"), group(&format!("Two\n\n{trailer}"))];
+        super::attribute_split(Some(&on), &mut groups);
+        assert_eq!(groups[0].message, format!("One\n\n{trailer}"));
+        assert_eq!(groups[1].message, format!("Two\n\n{trailer}"));
+        let mut groups = vec![group("One")];
+        super::attribute_split(Some(&off), &mut groups);
+        assert_eq!(groups[0].message, "One");
+    }
+
     /// #247: blocking work started for a call (the symbol index build) stops
     /// when the run is stopped, and does not hold the async worker meanwhile.
     #[tokio::test(flavor = "current_thread")]
@@ -10444,6 +10535,7 @@ mod tests {
             subagents: None,
             subject,
             auto_approve: false,
+            attribution: None,
             auto_mode: crate::core::agent::auto_mode::AutoModePolicy::default(),
             run_mode: crate::core::agent::plan::RunMode::Normal,
             #[cfg(feature = "cli")]

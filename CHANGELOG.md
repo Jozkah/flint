@@ -177,6 +177,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): commit splitting, guided rebase and cherry-pick (AH-160, AH-166, AH-167)
 - feat(agent): open pull requests and keep their descriptions in step (AH-162, AH-163)
 - feat(review): work a review one comment at a time, and check that each is addressed (AH-164)
+- feat(agent): the agent's commits carry a `Co-Authored-By: Flint (<model>)` trailer and its pull requests end with "Generated with Flint", shown in the approval prompt and switchable in Settings → Agent tools
 - feat(tools): gate destructive git apart from safe git usage
 - feat(agent): check dependencies against the licences a project allows (AH-158)
 - feat(hooks): the project's own commands run around a tool call (AH-127/128/129), and command hooks on lifecycle events receive a redacted JSON payload

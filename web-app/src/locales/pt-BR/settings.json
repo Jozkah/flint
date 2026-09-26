@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Adicionar Flint como coautor nos commits",
+    "attributionCommitsDesc": "Os commits do agente terminam com um trailer Co-Authored-By que cita o Flint e o modelo que os escreveu.",
+    "attributionPullRequests": "Adicionar 'Generated with Flint' aos pull requests",
+    "attributionPullRequestsDesc": "As descrições de pull request escritas pelo agente terminam com a linha 'Generated with Flint'."
+  },
   "autoDownload": "Download automático de novas atualizações",
   "checkForUpdates": "Verificar Atualizações",
   "checkForUpdatesDesc": "Verificar se uma versão mais nova do Flint está disponível.",

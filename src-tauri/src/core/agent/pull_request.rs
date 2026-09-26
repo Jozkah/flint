@@ -489,8 +489,13 @@ impl Forge {
         change: &Change,
         title: &str,
         body: &str,
+        footer: bool,
     ) -> Result<(Record, &'static str), HarnessError> {
-        let (title, full) = compose(title, body, change)?;
+        let (title, mut full) = compose(title, body, change)?;
+        // After Jan's section, so it is the last line; `resync` keeps it.
+        if footer {
+            full = tauri_plugin_agent_tools::tools::git_attribution::add_footer(&full);
+        }
         if let Some(existing) = self.open_pull_for(change).await? {
             let (number, url, current) = pull_fields(&existing)?;
             let mut record = Record {
@@ -766,7 +771,7 @@ mod tests {
         });
         let started = std::time::Instant::now();
         let project = Path::new("C:/projects/widgets");
-        let result = forge.create(&data, project, &change_of(&["src/app.py"]), "t", "b").await;
+        let result = forge.create(&data, project, &change_of(&["src/app.py"]), "t", "b", false).await;
         assert_eq!(result.unwrap_err().kind(), ErrorKind::Cancelled);
         assert!(started.elapsed() < Duration::from_secs(5), "cancellation waited for the forge");
         assert!(!dir_for(&data, project).exists(), "a cancelled create wrote a record");

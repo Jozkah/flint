@@ -94,6 +94,9 @@ macro_rules! invoke_commands_with_extras {
         // Agent commands
         core::agent::commands::agent_emergency_stop,
         core::agent::commands::get_compaction_policy,
+        core::agent::commands::get_attribution_settings,
+        core::agent::commands::set_attribution_settings,
+        core::agent::commands::attribute_git_call,
         core::agent::commands::set_compaction_policy,
         // One provider transport: every OpenAI-compatible request resolves
         // and dials through here, so there is one address-selection rule.

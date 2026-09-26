@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "Commit'lere Flint'i ortak yazar olarak ekle",
+    "attributionCommitsDesc": "Ajanın yaptığı commit'ler, Flint'i ve onları yazan modeli belirten bir Co-Authored-By satırıyla biter.",
+    "attributionPullRequests": "Pull request'lere 'Generated with Flint' ekle",
+    "attributionPullRequestsDesc": "Ajanın yazdığı pull request açıklamaları 'Generated with Flint' satırıyla biter."
+  },
   "autoDownload": "Yeni güncellemeleri otomatik indir",
   "checkForUpdates": "Güncellemeleri kontrol et",
   "checkForUpdatesDesc": "Jan'in daha yeni bir sürümünün mevcut olup olmadığını kontrol edin.",

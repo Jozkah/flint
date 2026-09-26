@@ -226,6 +226,10 @@
     "endpointSearchDesc": "The base URL of your self-hosted search instance."
   },
   "agentTools": {
+    "attributionCommits": "Add Flint as co-author on commits",
+    "attributionCommitsDesc": "Commits the agent makes end with a Co-Authored-By trailer naming Flint and the model that wrote them.",
+    "attributionPullRequests": "Add 'Generated with Flint' to pull requests",
+    "attributionPullRequestsDesc": "Pull request descriptions the agent writes end with a 'Generated with Flint' line.",
     "toolchains": {
       "title": "Sandbox toolchains",
       "description": "These are installed but the sandbox cannot run them: their folder does not allow sandboxed apps to read and run what is inside. You can allow it for one toolchain at a time.",

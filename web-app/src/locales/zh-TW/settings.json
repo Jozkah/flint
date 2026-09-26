@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "在提交中新增 Flint 為共同作者",
+    "attributionCommitsDesc": "代理建立的提交結尾會附上 Co-Authored-By 尾註，註明 Flint 及撰寫它們的模型。",
+    "attributionPullRequests": "在拉取請求中新增「Generated with Flint」",
+    "attributionPullRequestsDesc": "代理撰寫的拉取請求描述結尾會附上「Generated with Flint」一行。"
+  },
   "autoDownload": "自動下載新更新",
   "checkForUpdates": "檢查更新",
   "checkForUpdatesDesc": "檢查是否有更新版本的 Flint 可用。",

@@ -1,4 +1,10 @@
 {
+  "agentTools": {
+    "attributionCommits": "コミットに Flint を共同作成者として追加",
+    "attributionCommitsDesc": "エージェントのコミットの末尾に、Flint と作成したモデルを示す Co-Authored-By トレーラーを付けます。",
+    "attributionPullRequests": "プルリクエストに「Generated with Flint」を追加",
+    "attributionPullRequestsDesc": "エージェントが書くプルリクエストの説明の末尾に「Generated with Flint」の行を付けます。"
+  },
   "autoDownload": "新しいアップデートを自動的にダウンロード",
   "checkForUpdates": "アップデートを確認",
   "checkForUpdatesDesc": "Janの新しいバージョンが利用可能かどうかを確認します。",
