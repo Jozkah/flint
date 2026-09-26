@@ -43,6 +43,8 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
+import { roomNavStatus } from '@/lib/rooms/navStatus'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 const RoomItem = memo(function RoomItem({
   room,
@@ -61,6 +63,16 @@ const RoomItem = memo(function RoomItem({
 }) {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  // Waiting on the user: a pending tool approval for the room, or every
+  // participant waiting on the user's reply or choice of speaker.
+  const awaitingApproval = useToolApprovalRequests((s) =>
+    Object.values(s.pending ?? {}).some((p) => p.threadId === room.id)
+  )
+  const status = roomNavStatus({
+    status: room.status,
+    running: !!running,
+    awaitingApproval,
+  })
 
   const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault()
@@ -82,7 +94,7 @@ const RoomItem = memo(function RoomItem({
         onClick={() => onSelect(room.id)}
         data-testid="room-nav-item"
       >
-        <ThreadStatusMark status={running ? 'active' : 'none'} />
+        <ThreadStatusMark status={status} />
         <span className="truncate">{room.title}</span>
       </NavButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
