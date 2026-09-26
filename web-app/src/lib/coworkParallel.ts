@@ -10,6 +10,7 @@ import {
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 
 export type AutoIsolateInput = {
   enabled: boolean
@@ -57,7 +58,7 @@ export function autoIsolateAction(
 
 /** Whether a title is still the placeholder a session starts with. */
 export const isPlaceholderTitle = (title: string | undefined): boolean =>
-  !title || /^new session$/i.test(title.trim())
+  !title || title.trim() === DEFAULT_SESSION_TITLE
 
 /** The commit message used when merging commits the session's pending work. */
 export const sessionCommitMessage = (title: string | undefined): string =>

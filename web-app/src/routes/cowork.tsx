@@ -333,6 +333,7 @@ import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
+import { DEFAULT_SESSION_TITLE } from '@/lib/coworkSessionStart'
 import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
@@ -1761,7 +1762,7 @@ function CoworkPage() {
       const created = await useCoworkWorktrees
         .getState()
         .ensure(sid, folder, dataFolder, {
-          title: title && title !== 'New session' ? title : undefined,
+          title: title && title !== DEFAULT_SESSION_TITLE ? title : undefined,
         })
       if (!created.ok) {
         toast.error(created.reason)
