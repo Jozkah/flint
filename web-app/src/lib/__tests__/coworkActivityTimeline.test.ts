@@ -92,3 +92,35 @@ it('shows a timed-out call as failed without losing why', () => {
   expect(turn.toolState).toBe('failed')
   expect(turn.result).toBe('no output for 120s')
 })
+
+describe('lifecycle records are not tool calls', () => {
+  // An earlier run's steering delivery stays in the session's record. It must
+  // not become a "Used steering" call on a later, ordinary turn.
+  const staleSteering = item('steer:old-run:q1', 'succeeded', {
+    tool: 'steering',
+    run: 'old-run',
+    event_type: 'lifecycle',
+    lifecycle: 'steering',
+    resource: '',
+    summary: 'Input delivered to the running agent',
+  })
+
+  it('does not append a stale steering record to a new turn', () => {
+    const turns: CoworkTurn[] = [
+      { role: 'user', content: 'trigger the build for me' },
+      toolTurn('bash-1', { name: 'bash', runId: 'new-run' }),
+    ]
+    const out = reconcileToolActivity(turns, [
+      staleSteering,
+      item('bash-1', 'succeeded', { tool: 'bash', run: 'new-run' }),
+    ])
+    expect(out).toHaveLength(2)
+    expect(out.some((t) => t.name === 'steering')).toBe(false)
+    expect(out[1].toolState).toBe('succeeded')
+  })
+
+  it('leaves the transcript alone when the record holds only lifecycle rows', () => {
+    const turns: CoworkTurn[] = [{ role: 'user', content: 'hi' }]
+    expect(reconcileToolActivity(turns, [staleSteering])).toBe(turns)
+  })
+})

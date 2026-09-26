@@ -1566,6 +1566,9 @@ function CoworkPage() {
       }),
     [committedTurns, idPrefix, hideCompletedTools]
   )
+  const liveRunId = useCoworkRun((s) =>
+    session?.id ? s.runs[session.id]?.runId : undefined
+  )
   const liveMessages = useMemo(() => {
     if (!running) return []
     const committedCalls = new Set(
@@ -1573,8 +1576,13 @@ function CoworkPage() {
         .filter((t) => t.role === 'tool' && t.callId)
         .map((t) => t.callId)
     )
+    // Only this run's record belongs to the live half: an item from an
+    // earlier run whose call the transcript never kept would otherwise be
+    // appended to the new turn as if this run had made it.
     const liveActivity = toolActivity.filter(
-      (item) => !committedCalls.has(item.call)
+      (item) =>
+        !committedCalls.has(item.call) &&
+        (!liveRunId || !item.run || item.run === liveRunId)
     )
     const reconciledLive = reconcileToolActivity(liveTurns, liveActivity)
     return coworkTurnsToUIMessages(
@@ -1588,6 +1596,7 @@ function CoworkPage() {
     liveTurns,
     session?.turns,
     toolActivity,
+    liveRunId,
     idPrefix,
     hideCompletedTools,
     committedTurns.length,
