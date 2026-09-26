@@ -1,9 +1,6 @@
 name: Engine Build
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 concurrency:
   group: engine-build-${{ github.ref }}

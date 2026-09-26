@@ -36,11 +36,6 @@ on:
         required: false
         type: string
         default: '0'
-  # Pre-merge testing hook only. GitHub does not offer workflow_dispatch until
-  # the file is on the default branch, so without this there is no way to run
-  # this before merging. Drop it once that lands.
-  push:
-    branches: ['feat/windows-arm64']
 
 concurrency:
   group: tauri-win-arm64-${{ github.ref }}
