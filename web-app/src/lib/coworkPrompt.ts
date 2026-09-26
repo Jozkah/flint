@@ -116,6 +116,16 @@ export type CoworkPromptOptions = {
    */
   readOnlyFolder: string | null
   /**
+   * The session's additional attached folders, after the primary one. Listed
+   * to the model so it knows every folder it may work in.
+   */
+  extraFolders?: readonly string[]
+  /**
+   * Whether the run's write grant covers `extraFolders`. False (the default)
+   * says they are read-only, which is what the gate does without a grant.
+   */
+  extraFoldersWritable?: boolean
+  /**
    * Whether this run may write to the attached folder.
    *
    * Defaults to read-only, and every caller that has not been taught about
@@ -440,6 +450,24 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
             'project — never describe a workspace write as a change to the user’s repository.',
           ])
     )
+    const extras = opts.extraFolders ?? []
+    if (extras.length > 0) {
+      lines.push(
+        '',
+        'The user also attached these folders to this session:',
+        ...extras.map((folder) => `- \`${folder}\``),
+        ...(opts.extraFoldersWritable
+          ? [
+              'They are attached directly (never through a worktree): you may read, write',
+              'and edit in them, and changes there are changes to the user’s own files.',
+              'Use absolute paths for them; relative paths do not resolve there.',
+            ]
+          : [
+              'They are READ-ONLY: read, search and list inside them, but writes there will',
+              'be refused. Use absolute paths for them.',
+            ])
+      )
+    }
   } else {
     lines.push('', 'No project folder is attached, so there is nothing outside the workspace to read.')
   }

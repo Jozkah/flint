@@ -1,3 +1,8 @@
+import {
+  extraFoldersOf,
+  withExtraFolder,
+  withoutExtraFolder,
+} from '@/lib/coworkFolders'
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
@@ -75,6 +80,14 @@ export type CoworkSession = {
   /** An attached project folder, mounted read-only. Writes always land in the
    * session's own sandbox, never here. */
   folder: string | null
+  /**
+   * Folders attached beside `folder`, in the order the user added them, like
+   * a multi-root workspace. Each is readable and writable exactly like the
+   * primary; the shell still starts in the primary. Absent on sessions saved
+   * before this existed, which have the primary alone. Read through
+   * `extraFoldersOf`.
+   */
+  extraFolders?: string[]
   turns: CoworkTurn[]
   /** The authoritative conversation, sent to the model each turn. */
   messages: UIMessage[]
@@ -250,6 +263,10 @@ type CoworkSessionsState = {
   /** The user has read what a handoff could not restore. */
   dismissHandoff: (id: string) => void
   setFolder: (id: string, folder: string | null) => void
+  /** Attach another folder beside the primary one. */
+  addExtraFolder: (id: string, folder: string) => void
+  /** Detach one of the extra folders. */
+  removeExtraFolder: (id: string, folder: string) => void
   /** The session's own provider/model choice (janhq/jan#8905). */
   setModel: (id: string, model: { provider: string; id: string }) => void
   /** Record the input still pending for the session; empty clears it. */
@@ -538,6 +555,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
               ? {
                   ...x,
                   folder,
+                  // The new primary is not also an extra folder.
+                  extraFolders: folder
+                    ? withoutExtraFolder(extraFoldersOf(x), folder)
+                    : x.extraFolders,
                   // Attaching a repository to a session that has not run yet
                   // puts it in Ask: every change waits for the user, and the
                   // opening turn is read-only on its own. A mode the user chose,
@@ -565,6 +586,44 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                     x.codePanel ?? emptyCodePanelState(),
                     projectKeyOf(folder)
                   ),
+                  updated: now(),
+                }
+              : x
+          ),
+        })),
+
+      // Changing which folders are attached withdraws the access agreed for the
+      // old set, as changing the primary does: a grant covers the folders it
+      // was issued for, and silently widening it would be authority nobody
+      // confirmed.
+      addExtraFolder: (id, folder) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  extraFolders: withExtraFolder(
+                    x.folder,
+                    extraFoldersOf(x),
+                    folder
+                  ),
+                  access: 'review-only',
+                  editConsent: undefined,
+                  updated: now(),
+                }
+              : x
+          ),
+        })),
+
+      removeExtraFolder: (id, folder) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  extraFolders: withoutExtraFolder(extraFoldersOf(x), folder),
+                  access: 'review-only',
+                  editConsent: undefined,
                   updated: now(),
                 }
               : x
