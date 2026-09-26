@@ -90,6 +90,15 @@ describe('the run summary the application writes', () => {
     expect(region()).toHaveTextContent(`common:coworkOrigins.baseline.${baseline}`)
   })
 
+  // Session b6343e27 had no folder attached, and read "No starting state was
+  // recorded", which sounded like Flint failed to record one for a repo.
+  it('says a run with no starting state had no folder attached', async () => {
+    const en = (await import('@/locales/en/common.json')).default as {
+      coworkOrigins: { baseline: { none: string } }
+    }
+    expect(en.coworkOrigins.baseline.none).toMatch(/No folder was attached/)
+  })
+
   // Its own labelled region, not a paragraph inside the assistant's message:
   // the reader has to be able to tell which of the two wrote it.
   it('stands apart from the model’s prose as its own region', () => {

@@ -1395,7 +1395,7 @@
       "non-git": "This folder is not a Git repository, so nothing could be compared.",
       "git-unavailable": "Git could not be read, so nothing could be compared.",
       "incomplete": "The starting state was never fully captured, so nothing could be compared.",
-      "none": "No starting state was recorded, so nothing could be compared."
+      "none": "No folder was attached to this run, so there was no starting Git state to compare against."
     },
     "nothing": "This run changed no files. Changes from earlier runs in this session stay listed in Review changes.",
     "row": {
