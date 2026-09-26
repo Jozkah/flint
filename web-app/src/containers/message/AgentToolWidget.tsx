@@ -63,6 +63,12 @@ export type TerminalWidgetProps = {
   embedded?: boolean
   /** Looks up the call's live (streamed, colour-preserving) output. */
   toolCallId?: string
+  /**
+   * Looks up the sandboxed first attempt of a call that was then run again
+   * outside the sandbox. Separate from `toolCallId`, which also turns on the
+   * live output.
+   */
+  attemptCallId?: string
 }
 
 const segmentStyle = (s: AnsiStyle): React.CSSProperties | undefined => {
@@ -112,20 +118,46 @@ AnsiText.displayName = 'AnsiText'
  * failure text is what matters there.
  */
 export const TerminalWidget = memo(
-  ({ bar, state, output, errorText, toolCallId, embedded = false }: TerminalWidgetProps) => {
+  ({
+    bar,
+    state,
+    output,
+    errorText,
+    toolCallId,
+    attemptCallId,
+    embedded = false,
+  }: TerminalWidgetProps) => {
     const { t } = useTranslation()
     const running = isToolRunning(state)
     const live = useToolCallRuntime((s) =>
       toolCallId ? s.output[toolCallId] : undefined
     )
+    const firstAttempt = useToolCallRuntime((s) => {
+      const id = attemptCallId ?? toolCallId
+      return id ? s.firstAttempts[id] : undefined
+    })
     const result = useMemo(
       () => (output ? parseBashOutput(output) : undefined),
       [output]
     )
+    // A failed rerun arrives as the error, still led by the model's note.
+    const errorResult = useMemo(
+      () => (errorText ? parseBashOutput(asText(errorText)) : undefined),
+      [errorText]
+    )
+    const firstAttemptText = useMemo(
+      () =>
+        firstAttempt
+          ? stripAnsi(parseBashOutput(firstAttempt.output).text)
+          : undefined,
+      [firstAttempt]
+    )
+    const ranUnsandboxed =
+      !!result?.ranUnsandboxed || !!errorResult?.ranUnsandboxed
     // A non-zero exit is reported in-band, so the body is the failure detail and
     // the chip is the failure signal; there is no separate error banner to show.
     const failed = errorText !== undefined || (result?.exit ?? 0) !== 0
-    const finalText = result?.text || (errorText ? asText(errorText) : '')
+    const finalText = result?.text || (errorResult?.text ?? '')
     // The streamed text keeps colours, but is only complete for a finished call
     // that was not truncated; otherwise the result is the full account.
     const coloured =
@@ -170,6 +202,14 @@ export const TerminalWidget = memo(
               {t('tools:toolCall.exitCode', { code: result.exit })}
             </span>
           )}
+          {!running && ranUnsandboxed && (
+            <span
+              data-testid="terminal-ran-unsandboxed"
+              className="shrink-0 rounded-[5px] bg-[#d29922]/15 px-1.5 py-px text-[11px] text-[#d29922]"
+            >
+              {t('tools:toolCall.ranUnsandboxed')}
+            </span>
+          )}
           {result?.signaled && (
             <span className="shrink-0 rounded-[5px] bg-[#f85149]/15 px-1.5 py-px text-[11px] text-[#f85149]">
               {t('tools:toolCall.terminated')}
@@ -209,6 +249,18 @@ export const TerminalWidget = memo(
               <Lock className="mt-0.5 size-3.5 shrink-0" />
               <span>{result.sandboxNote}</span>
             </p>
+          )}
+          {/* The sandboxed run the rerun replaced: kept for the record, out of
+              the way of the result that counts. */}
+          {!running && firstAttempt && (
+            <details className="mt-2" data-testid="terminal-first-attempt">
+              <summary className="term-d cursor-pointer select-none">
+                {t('tools:toolCall.firstAttempt')}
+              </summary>
+              <pre className="m-0 mt-1 max-h-56 overflow-auto whitespace-pre-wrap wrap-break-word opacity-80">
+                <TermOutput text={firstAttemptText ?? ''} />
+              </pre>
+            </details>
           )}
         </div>
       </div>

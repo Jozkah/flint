@@ -115,6 +115,12 @@ export type BashOutput = {
   truncated: boolean
   /** The OS sandbox refused something; explains the limits that applied. */
   sandboxNote?: string
+  /**
+   * This is the result of a rerun outside the sandbox the user allowed after
+   * Windows' null device refused the sandboxed run. The note saying so is
+   * for the model and is removed from `text`.
+   */
+  ranUnsandboxed: boolean
 }
 
 /** Global: the exit marker is not always last, so every match is considered. */
@@ -122,6 +128,9 @@ const EXIT_LINE = /\n?\[exit (-?\d+)\]/g
 const SIGNAL_LINE = /\n?\[terminated by signal\]/
 const TRUNCATION_NOTICE = /\n?\[output truncated[^\]]*\]/
 const SANDBOX_NOTICE = /\n?\[sandbox: ([^\]]*)\]/
+/** `RAN_UNSANDBOXED_NOTE` (lib/nullDeviceRetry.ts), leading a rerun's output. */
+const RAN_UNSANDBOXED_NOTICE =
+  /^\[The sandboxed run failed because Windows' null device refuses sandboxed programs\.[^\]]*\]\n/
 
 /**
  * Split `bash`'s `[exit N]` / `[terminated by signal]` status and its trailing
@@ -134,13 +143,15 @@ const SANDBOX_NOTICE = /\n?\[sandbox: ([^\]]*)\]/
  * would silently lose the exit code exactly when something went wrong.
  */
 export function parseBashOutput(output: unknown): BashOutput {
-  const text =
+  const raw =
     typeof output === 'string'
       ? output
       : typeof (output as { content?: unknown })?.content === 'string'
         ? (output as { content: string }).content
         : ''
 
+  const ranUnsandboxed = RAN_UNSANDBOXED_NOTICE.test(raw)
+  const text = raw.replace(RAN_UNSANDBOXED_NOTICE, '')
   const truncated = TRUNCATION_NOTICE.test(text)
   const signaled = SIGNAL_LINE.test(text)
   const sandboxNote = text.match(SANDBOX_NOTICE)?.[1]
@@ -160,6 +171,7 @@ export function parseBashOutput(output: unknown): BashOutput {
     signaled,
     truncated,
     sandboxNote,
+    ranUnsandboxed,
   }
 }
 

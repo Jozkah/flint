@@ -742,7 +742,17 @@ async function routeCoworkTool(
               )
           : undefined,
       })
-      return settled
+      if (settled.firstAttempt) {
+        useToolCallRuntime
+          .getState()
+          .recordFirstAttempt(call.toolCallId, settled.firstAttempt)
+      }
+      // The first attempt is display-only; the model gets the rerun.
+      return {
+        output: settled.output,
+        isError: settled.isError,
+        resources: settled.resources,
+      }
     }
     if (result.error) {
       if (readPath && isMissingPathError(result.error)) {

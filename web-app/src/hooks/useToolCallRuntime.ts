@@ -41,6 +41,12 @@ export type ToolCallRuntimeSnapshot = {
    */
   output: Record<string, string>
   /**
+   * The sandboxed run of a `bash` call the user then allowed to run again
+   * outside the sandbox. The card shows the rerun as the result and keeps
+   * this collapsed as the "first attempt". Display-only, like `diffs`.
+   */
+  firstAttempts: Record<string, { output: string; isError: boolean }>
+  /**
    * The conversation each enqueued call belongs to. The store is shared by
    * every mounted conversation (a split view runs two at once), so a turn's
    * housekeeping must only touch its own calls.
@@ -67,6 +73,15 @@ type ToolCallRuntimeState = ToolCallRuntimeSnapshot & {
   recordDiff: (toolCallId: string, diff: string) => void
   /** Appends a chunk of live command output to the call that produced it. */
   appendOutput: (toolCallId: string, text: string) => void
+  /**
+   * Keeps a call's sandboxed run as its first attempt after an unsandboxed
+   * rerun. Its streamed output belonged to that run, so it is dropped: the
+   * rerun's result is what the card shows now.
+   */
+  recordFirstAttempt: (
+    toolCallId: string,
+    attempt: { output: string; isError: boolean }
+  ) => void
   /** Ends a turn: nothing still queued will run, so stop showing it as waiting. */
   settleRemaining: (owner?: string) => void
   reset: () => void
@@ -105,6 +120,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
   progress: {},
   diffs: {},
   output: {},
+  firstAttempts: {},
   owners: {},
 
   enqueue: (toolCallIds, owner) =>
@@ -192,6 +208,16 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       },
     })),
 
+  recordFirstAttempt: (toolCallId, attempt) =>
+    set((s) => {
+      const output = { ...s.output }
+      delete output[toolCallId]
+      return {
+        firstAttempts: { ...s.firstAttempts, [toolCallId]: attempt },
+        output,
+      }
+    }),
+
   settleRemaining: (owner) =>
     set((s) => {
       const mine = s.queue.filter((id) => s.owners[id] === owner)
@@ -211,6 +237,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
       progress: {},
       diffs: {},
       output: {},
+      firstAttempts: {},
       owners: {},
     }),
 
@@ -228,6 +255,7 @@ export const useToolCallRuntime = create<ToolCallRuntimeState>()((set) => ({
         progress: keep(s.progress),
         diffs: keep(s.diffs),
         output: keep(s.output),
+        firstAttempts: keep(s.firstAttempts),
         owners: keep(s.owners),
       }
     }),
