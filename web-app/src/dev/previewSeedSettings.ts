@@ -18,7 +18,7 @@ const MIN = 60_000
 const now = Date.now()
 const sec = (ms: number) => Math.floor(ms / 1000)
 
-export const PREVIEW_DATA_FOLDER = 'C:\\Users\\Jozkah\\AppData\\Roaming\\flint'
+export const PREVIEW_DATA_FOLDER = 'C:\\Users\\demo\\AppData\\Roaming\\flint'
 
 /* ---------------- hardware and live usage ---------------- */
 
@@ -27,18 +27,18 @@ const GB = 1024 // the hardware plugin reports megabytes
 const HARDWARE: HardwareData = {
   cpu: {
     arch: 'x86_64',
-    core_count: 32,
+    core_count: 16,
     extensions: ['AVX', 'AVX2', 'AVX512F', 'FMA', 'F16C', 'SSE4.2'],
     instructions: ['AVX', 'AVX2', 'AVX512F', 'FMA', 'F16C', 'SSE4.2'],
-    name: 'AMD Ryzen 9 7950X 16-Core Processor',
+    name: 'AMD Ryzen 7 7700 8-Core Processor',
     usage: 12.3,
   },
   gpus: [
     {
-      name: 'NVIDIA GeForce RTX 4070',
-      total_memory: 12 * GB,
+      name: 'NVIDIA GeForce RTX 4060',
+      total_memory: 8 * GB,
       vendor: 'NVIDIA',
-      uuid: 'GPU-4070',
+      uuid: 'GPU-4060',
       driver_version: '576.02',
       activated: true,
       nvidia_info: { index: 0, compute_capability: '8.9' },
@@ -46,10 +46,10 @@ const HARDWARE: HardwareData = {
     },
   ],
   os_type: 'windows',
-  os_name: 'Windows 11 IoT Enterprise LTSC 2024',
-  total_memory: 63.9 * GB,
-  os: { name: 'windows', version: 'Windows 11 IoT Enterprise LTSC 2024' },
-  ram: { available: 27.4 * GB, total: 63.9 * GB },
+  os_name: 'Windows 11 Pro',
+  total_memory: 31.9 * GB,
+  os: { name: 'windows', version: 'Windows 11 Pro' },
+  ram: { available: 14.2 * GB, total: 31.9 * GB },
 } as unknown as HardwareData
 
 let tick = 0
@@ -63,21 +63,21 @@ function usage(): SystemUsage {
     cpu: wave(22, 9, 1.3),
     used_memory: Math.round(63.9 * GB * ram),
     total_memory: Math.round(63.9 * GB),
-    gpus: [{ uuid: 'GPU-4070', used_memory: Math.round(12 * GB * vram), total_memory: 12 * GB }],
+    gpus: [{ uuid: 'GPU-4060', used_memory: Math.round(8 * GB * vram), total_memory: 8 * GB }],
   }
 }
 
 /* ---------------- logs ---------------- */
 
 const LOG_BASE: [LogEntry['level'], string, string][] = [
-  ['info', 'llamacpp', 'Loaded Qwen3-14B-Q4_K_M.gguf in 2.14s (41/41 layers on GPU)'],
-  ['warn', 'hardware', 'VRAM at 95% (11.4 / 12 GB), reducing context to 24576'],
+  ['info', 'llamacpp', 'Loaded qwen3-8b-instruct.gguf in 2.14s (41/41 layers on GPU)'],
+  ['warn', 'hardware', 'VRAM at 95% (7.6 / 8 GB), reducing context to 24576'],
   ['info', 'mcp', 'filesystem connected, 4 tools'],
-  ['error', 'agent', 'bash exited with code 101: helper not found: target\\debug\\jan-sandbox-helper.exe'],
-  ['info', 'agent', 'bash allowed once in thread "Release build fix"'],
+  ['error', 'agent', 'bash exited with code 1: go test ./internal/cache/... failed'],
+  ['info', 'agent', 'bash allowed once in thread "Forecast cache returns stale data"'],
   ['debug', 'router', 'Routed 3 of 5 MCP servers for request 0x91f3 (github, filesystem, you-search)'],
   ['warn', 'mcp', 'playwright slow start (6.2s)'],
-  ['info', 'proxy', 'POST /v1/chat/completions 200 · qwen3-14b · 1,284 tokens · 30.4s'],
+  ['info', 'proxy', 'POST /v1/chat/completions 200 · qwen3-8b-instruct · 1,284 tokens · 30.4s'],
   ['error', 'mcp', 'you-search: 401 Unauthorized, sign-in required'],
   ['info', 'llamacpp', 'Prompt cache hit: reused 28,900 of 31,204 tokens'],
   ['debug', 'agent', 'Compacted context: 31.2k → 6.4k tokens (summary 512)'],
@@ -100,9 +100,9 @@ const SERVER_LOG: [LogEntry['level'], string][] = [
   ['info', 'server listening on http://127.0.0.1:1337/v1'],
   ['info', 'GET /v1/models 200 · 9 models'],
   ['warn', 'POST /v1/chat/completions 401 · missing bearer token from 127.0.0.1:52011'],
-  ['info', 'POST /v1/chat/completions 200 · qwen3-14b · 1,284 tokens · 30.4s'],
+  ['info', 'POST /v1/chat/completions 200 · qwen3-8b-instruct · 1,284 tokens · 30.4s'],
   ['info', 'POST /v1/chat/completions 200 · gemma-3-12b · 412 tokens · 9.8s'],
-  ['error', 'POST /v1/chat/completions 500 · model "llama-4-scout" is not loaded'],
+  ['error', 'POST /v1/chat/completions 500 · model "llama-3.1-8b" is not loaded'],
 ]
 
 /** Oldest first, as the log file has them. */
@@ -165,8 +165,8 @@ const memory = (
 
 const MEMORIES = [
   memory('m_12', 'Prefers terse replies and exact error strings.', 'user', 41, 30, true),
-  memory('m_18', 'Works on Windows 11, builds with cargo -j 4.', 'agent', 12, 1500),
-  memory('m_03', 'Main project is Flint, a fork of Jan.', 'user', 88, 90),
+  memory('m_18', 'Works on Windows 11, runs go test with -count=1.', 'agent', 12, 1500),
+  memory('m_03', 'Main project is acme-weather, a Go API with a TypeScript dashboard.', 'user', 88, 90),
 ]
 
 /* ---------------- seed ---------------- */
@@ -195,15 +195,15 @@ function answers() {
   })
   answer(`${at}memory_conflicts`, () => [
     {
-      subject: 'build parallelism',
-      left: memory('m_31', 'Builds with cargo -j 4.', 'agent', 3, 600),
-      right: memory('m_32', 'Builds with cargo -j 8.', 'agent', 1, 2000),
+      subject: 'test flags',
+      left: memory('m_31', 'Runs tests with -race.', 'agent', 3, 600),
+      right: memory('m_32', 'Runs tests without -race.', 'agent', 1, 2000),
     },
   ])
   answer(`${at}memory_proposals_list`, () => [
     {
       id: 'p_1',
-      content: 'This project builds jan-sandbox-helper before running agent tool tests.',
+      content: 'acme-weather keys cached forecasts by UTC date.',
       scope: 'project',
       reason: 'automatic-saving-disabled',
       explanation: 'Automatic saving is off, so Flint asks before keeping this.',
@@ -226,7 +226,7 @@ function answers() {
       run: 'r1',
       call: 'c1',
       agent: 'flint',
-      project: 'jan',
+      project: 'acme-weather',
       tool,
       capability: tool,
       kind: 'tool',
@@ -240,18 +240,18 @@ function answers() {
     {
       id: 'g1',
       session: 'release',
-      path: 'C:\\Users\\Jozkah\\Desktop\\Coding\\jan',
-      display: 'C:\\Users\\Jozkah\\Desktop\\Coding\\jan',
+      path: 'C:\\Projects\\acme-weather',
+      display: 'C:\\Projects\\acme-weather',
       isDir: true,
       mode: 'write',
-      reason: 'Fix the release build',
+      reason: 'Fix the forecast cache',
       grantedAt: sec(now - 20 * MIN),
       expiresAt: sec(new Date('2026-09-26T10:00:00').getTime()),
       persistent: false,
     },
   ])
   answer(`${at}memory_list`, () => ['build-notes'])
-  answer(`${at}skill_list`, () => [{ name: 'rust-testing', description: 'Run and read cargo tests' }])
+  answer(`${at}skill_list`, () => [{ name: 'go-testing', description: 'Run and read go tests' }])
   answer(`${at}sandbox_status`, () => ({ backend: 'appcontainer', enforces: true }))
   answer(`${at}workspace_path`, () => `${PREVIEW_DATA_FOLDER}\\agent`)
   const plugin = (id: string, version: string, description: string, repo: string, enabled: boolean) => ({
@@ -268,8 +268,8 @@ function answers() {
     source: repo,
   })
   answer('agent_plugin_list', () => [
-    plugin('flint-core', '1.4.0', 'Built-in skills for Rust, git and testing.', 'Local folder', true),
-    plugin('release-kit', '0.3.2', 'Changelog and release-note helpers.', 'github.com/jozkah/release-kit', true),
+    plugin('flint-core', '1.4.0', 'Skills for Go, git and testing.', 'Local folder', true),
+    plugin('release-kit', '0.3.2', 'Changelog and release-note helpers.', 'github.com/acme/release-kit', true),
     plugin('design-kit', '0.9.0', 'Frontend and artifact design skills.', 'Configured marketplace', false),
   ])
 }
@@ -362,7 +362,7 @@ function seedClaudeCode() {
       JSON.stringify({
         big: 'claude-opus-5-5',
         medium: 'claude-sonnet-5',
-        small: 'Qwen3-14B-Q4_K_M',
+        small: 'qwen3-8b-instruct',
         envVars: [
           { key: 'ANTHROPIC_BASE_URL', value: 'http://127.0.0.1:1337' },
           { key: 'ANTHROPIC_AUTH_TOKEN', value: 'preview' },
@@ -389,8 +389,8 @@ export function patchSettingsServices(hub: Hub) {
   set('hardwareService', 'getHardwareInfo', async () => HARDWARE)
   set('hardwareService', 'getSystemUsage', async () => usage())
   set('hardwareService', 'getLlamacppDevices', async () => [
-    { id: 'CUDA0', name: 'NVIDIA GeForce RTX 4070', mem: 12 * GB, free: 2.2 * GB, activated: true },
-    { id: 'Vulkan0', name: 'NVIDIA GeForce RTX 4070', mem: 12 * GB, free: 2.2 * GB, activated: true },
+    { id: 'CUDA0', name: 'NVIDIA GeForce RTX 4060', mem: 8 * GB, free: 1.4 * GB, activated: true },
+    { id: 'Vulkan0', name: 'NVIDIA GeForce RTX 4060', mem: 8 * GB, free: 1.4 * GB, activated: true },
     { id: 'Vulkan1', name: 'AMD Radeon Graphics (iGPU)', mem: 2 * GB, free: 1.8 * GB, activated: false },
   ])
   set('mcpService', 'trustReport', async () => ({
@@ -414,7 +414,7 @@ export function seedSettingsPreview() {
   useAppState.setState({ serverStatus: 'running' } as never)
   if (!useLocalApiServer.getState().defaultModelLocalApiServer)
     useLocalApiServer.setState({
-      defaultModelLocalApiServer: { model: 'Qwen3-14B-Q4_K_M', provider: 'llamacpp' },
+      defaultModelLocalApiServer: { model: 'qwen3-8b-instruct', provider: 'llamacpp' },
     } as never)
   useToolApproval.setState({
     approvedTools: { release: ['bash', 'create_pull_request'] },

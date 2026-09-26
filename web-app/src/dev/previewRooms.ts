@@ -73,8 +73,8 @@ type Spec = {
 const SPECS: Spec[] = [
   {
     id: 'arch',
-    title: 'Architecture review',
-    objective: 'Decide how conservative the tool-argument recovery pass should be before 0.9.0 ships.',
+    title: 'Radar feed retry policy',
+    objective: 'Decide how acme-weather should retry the upstream radar feed before the 1.4 release.',
     status: 'running',
     mode: 'round-robin',
     turns: 14,
@@ -84,7 +84,7 @@ const SPECS: Spec[] = [
     maxCost: 2,
     activeMs: (6 * 60 + 12) * 1000,
     ageMin: 1,
-    folder: 'C:\\Users\\Jozkah\\Desktop\\Coding\\jan',
+    folder: 'C:\\Projects\\acme-weather',
     parts: [
       ['Claude', 'skeptic', 'anthropic', 'claude-sonnet-5', 'read', 0],
       ['GPT', 'domain expert', 'openai', 'gpt-5', 'read', 3],
@@ -94,7 +94,7 @@ const SPECS: Spec[] = [
   {
     id: 'changelog',
     title: 'Changelog wording',
-    objective: 'Agree on the tone and length of the 0.9.0 release notes.',
+    objective: 'Agree on the tone and length of the acme-weather 1.4 release notes.',
     status: 'awaiting-user',
     mode: 'user-selected',
     turns: 9,
@@ -105,14 +105,14 @@ const SPECS: Spec[] = [
     activeMs: (3 * 60 + 40) * 1000,
     ageMin: 80,
     parts: [
-      ['Qwen', 'editor', 'llamacpp', 'Qwen3-14B-Q4_K_M', 'none', 2],
+      ['Qwen', 'editor', 'llamacpp', 'qwen3-8b-instruct', 'none', 2],
       ['Mistral', 'copywriter', 'llamacpp', 'Mistral-Small-3.2-24B-Q4_K_S', 'none', 7],
     ],
   },
   {
     id: 'offsets',
-    title: 'Offset cross-check',
-    objective: 'Confirm the health and position offsets from two independent dumps.',
+    title: 'Sensor calibration check',
+    objective: 'Confirm the temperature offset for the rooftop sensor from two independent logs.',
     status: 'completed',
     mode: 'moderator-selected',
     turns: 14,
@@ -131,8 +131,8 @@ const SPECS: Spec[] = [
   },
   {
     id: 'startup',
-    title: 'Startup time budget',
-    objective: 'Agree on a cold-start budget for the desktop app and what to lazy-load to meet it.',
+    title: 'Dashboard load budget',
+    objective: 'Agree on a load-time budget for the weather dashboard and what to lazy-load to meet it.',
     status: 'paused',
     mode: 'round-robin',
     turns: 22,
@@ -142,17 +142,17 @@ const SPECS: Spec[] = [
     maxCost: 2,
     activeMs: (14 * 60 + 5) * 1000,
     ageMin: 5 * 60,
-    folder: 'C:\\Users\\Jozkah\\Desktop\\Coding\\jan',
+    folder: 'C:\\Projects\\acme-weather',
     parts: [
       ['Opus', 'performance lead', 'anthropic', 'claude-opus-5-5', 'read', 3],
-      ['Llama', 'devil’s advocate', 'llamacpp', 'Llama-4-Scout-17B-Q3_K_M', 'none', 7],
+      ['Llama', 'devil’s advocate', 'llamacpp', 'llama-3.1-8b', 'none', 7],
       ['GPT', 'profiler', 'openai', 'gpt-5-mini', 'read', 4],
     ],
   },
   {
     id: 'license',
-    title: 'License for the fork',
-    objective: 'Pick a license that keeps upstream compatibility and allows the bundled models.',
+    title: 'License for the SDK',
+    objective: 'Pick a license for the acme-weather client SDK.',
     status: 'stopped',
     mode: 'moderator-selected',
     turns: 8,
@@ -165,13 +165,13 @@ const SPECS: Spec[] = [
     moderator: true,
     parts: [
       ['Haiku', 'counsel', 'anthropic', 'claude-haiku-4-5', 'none', 0],
-      ['Qwen', 'maintainer', 'llamacpp', 'Qwen3-14B-Q4_K_M', 'none', 2],
+      ['Qwen', 'maintainer', 'llamacpp', 'qwen3-8b-instruct', 'none', 2],
     ],
   },
   {
     id: 'naming',
-    title: 'Name the app',
-    objective: 'Short, memorable names for the Flint fork.',
+    title: 'Name the mobile app',
+    objective: 'Short, memorable names for the weather app.',
     status: 'draft',
     mode: 'round-robin',
     turns: 0,
@@ -292,34 +292,34 @@ function journalOf(room: Room, list: M[]): RoomJournalRecord[] {
   })
 }
 
-const proposal = 'Ship the conservative pass for 0.9.0 and add UNC tests before release.'
+const proposal = 'Retry 3 times with jittered backoff, then serve the cached frame, and add a timeout test before 1.4.'
 
 const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
   arch: () => [
     { sys: true, text: 'Room started · Round-robin · 3 participants' },
-    { you: true, text: 'Keep it short, we ship Friday. Should the recovery pass fix anything it can, or only what it can prove?' },
-    { by: 'Claude', text: 'Only what it can prove. A wrong “fix” silently changes a file path, which is worse than an error the model can retry. @GPT do you have numbers on how often this happens?' },
+    { you: true, text: 'Keep it short, we cut 1.4 on Friday. When the radar feed times out, how hard should we retry?' },
+    { by: 'Claude', text: 'Not hard. Every retry holds a request open, and the feed usually recovers within a minute. A stale frame is better than a spinner. @GPT how often does it actually fail?' },
     {
       by: 'GPT',
       tools: [
-        { name: 'web_search', ok: true, args: { query: 'json escape windows path tool call' }, output: '4 results' },
-        { name: 'read_file', ok: true, args: { path: 'logs/tool-calls-2026-09.jsonl' }, output: '11,842 lines' },
+        { name: 'web_search', ok: true, args: { query: 'exponential backoff jitter best practice' }, output: '4 results' },
+        { name: 'read_file', ok: true, args: { path: 'logs/radar-2026-09.jsonl' }, output: '8,412 lines' },
       ],
-      text: 'From September’s logs: 3.1% of tool calls had bad escapes, and 92% of those were Windows paths like `C:\\Users`. Those are safe to repair. @Gemini can you check test coverage?',
+      text: 'From September’s logs: 2.4% of radar fetches timed out, and 88% of those succeeded on the second or third try. Three retries with jitter cover almost all of it. @Gemini can you check the tests?',
     },
     {
       by: 'Gemini',
       tools: [
-        { name: 'read_file', ok: true, args: { path: 'src/agent/tests/recover.rs' }, output: '14 tests' },
-        { name: 'run_tests', ok: false, args: { filter: 'recover_args' }, output: 'Refused: needs approval, and approvals never apply in rooms' },
+        { name: 'read_file', ok: true, args: { path: 'internal/radar/client_test.go' }, output: '9 tests' },
+        { name: 'run_tests', ok: false, args: { filter: 'TestRadarRetry' }, output: 'Refused: needs approval, and approvals never apply in rooms' },
       ],
-      text: 'There are 14 recovery tests and none cover UNC paths such as `\\\\server\\share`. I couldn’t run them from here, since running tests needs approval.',
+      text: 'There are 9 client tests and none cover a timeout followed by a cached fallback. I couldn’t run them from here, since running tests needs approval.',
     },
     { you: true, kind: 'vote-call', text: proposal },
-    { by: 'Claude', kind: 'vote', vote: { callId: '', choice: 'agree', proposal }, text: 'Agree. Conservative is the right default.' },
-    { by: 'GPT', kind: 'vote', vote: { callId: '', choice: 'agree', proposal }, text: 'Agree, with a counter so we can see how often it fires.' },
-    { by: 'Gemini', kind: 'vote', vote: { callId: '', choice: 'disagree', proposal }, text: 'Disagree until the UNC tests exist. I’d hold the release a day.' },
-    { by: 'Claude', to: { kind: 'user' }, text: '@you If we ship Friday, I’d put GPT’s counter behind a flag so we can turn it off if it’s noisy.' },
+    { by: 'Claude', kind: 'vote', vote: { callId: '', choice: 'agree', proposal }, text: 'Agree. Bounded retries, then the cache.' },
+    { by: 'GPT', kind: 'vote', vote: { callId: '', choice: 'agree', proposal }, text: 'Agree, with a metric so we can see how often the fallback fires.' },
+    { by: 'Gemini', kind: 'vote', vote: { callId: '', choice: 'disagree', proposal }, text: 'Disagree until the timeout test exists. I’d hold the release a day.' },
+    { by: 'Claude', to: { kind: 'user' }, text: '@you If we ship Friday, I’d put GPT’s metric behind a flag so we can turn it off if it’s noisy.' },
   ],
   changelog: () => [
     { sys: true, text: 'Room started · You choose · 2 participants' },
@@ -331,42 +331,42 @@ const TRANSCRIPTS: Record<string, (room: Room) => M[]> = {
     { sys: true, text: 'Room started · Moderator chooses · 3 participants' },
     {
       mod: true,
-      text: 'Two dumps disagree on the rotation offset. @DeepSeek go first.',
-      disagreements: ['Rotation: 0x1B0 vs 0x1B4', 'Whether the health field is a float or an int'],
+      text: 'The two logs disagree on the offset. @DeepSeek go first.',
+      disagreements: ['Offset: −0.8 °C vs −1.1 °C', 'Whether humidity needs its own correction'],
     },
-    { by: 'DeepSeek', text: 'Health is a float at 0x1A8 in both dumps. Rotation is 0x1B4; the 0x1B0 read is the padding before it.' },
-    { by: 'Grok', kind: 'final-position', text: 'Agree on 0x1A8. Still unsure on rotation without a third sample.' },
+    { by: 'DeepSeek', text: 'Both logs agree on −0.8 °C at night. The −1.1 °C readings are all between 12:00 and 15:00, when the enclosure sits in direct sun.' },
+    { by: 'Grok', kind: 'final-position', text: 'Agree on −0.8 °C. The midday error is heat, not calibration.' },
     {
       mod: true,
       kind: 'synthesis',
-      text: 'Health: float at 0x1A8 (agreed). Rotation: 0x1B4 (majority). Take a third dump before relying on rotation.',
+      text: 'Offset: −0.8 °C (agreed). Midday readings run hot from sun on the enclosure; add a radiation shield before changing the offset.',
       dissent: [
         {
           participantId: room.participants.find((p) => p.name === 'Grok')!.id,
           name: 'Grok',
-          position: 'Rotation offset needs a third sample.',
+          position: 'Humidity may still need its own correction.',
         },
       ],
     },
   ],
   startup: () => [
     { sys: true, text: 'Room started · Round-robin · 3 participants' },
-    { by: 'Opus', text: 'Cold start is 2.9 s on the reference laptop. I’d set the budget at 1.5 s and lazy-load the rooms engine, the charts and the Monaco editor.' },
+    { by: 'Opus', text: 'The dashboard takes 2.9 s to first paint on a mid-range phone. I’d set the budget at 1.5 s and lazy-load the radar map and the charts.' },
     { by: 'Llama', text: 'A budget nobody measures in CI will drift back. Put the number in a test first.' },
-    { by: 'GPT', tools: [{ name: 'read_file', ok: true, args: { path: 'web-app/dist/stats.json' }, output: '412 chunks' }], text: 'Monaco alone is 38% of the initial bundle. Moving it behind the editor route gets us to about 1.8 s.' },
+    { by: 'GPT', tools: [{ name: 'read_file', ok: true, args: { path: 'web/dist/stats.json' }, output: '96 chunks' }], text: 'The map library alone is 41% of the initial bundle. Moving it behind the radar tab gets us to about 1.7 s.' },
     { sys: true, text: 'Paused by you.' },
   ],
   license: () => [
     { sys: true, text: 'Room started · Moderator chooses · 2 participants' },
-    { by: 'Haiku', text: 'Upstream is Apache-2.0, so staying on Apache-2.0 keeps merges simple and covers the patent grant.' },
-    { by: 'Qwen', text: 'Agreed. The bundled model weights keep their own licenses; list them in a NOTICE file.' },
+    { by: 'Haiku', text: 'Apache-2.0 keeps it permissive and adds a patent grant, which company users tend to ask for.' },
+    { by: 'Qwen', text: 'Agreed. Keep third-party notices in a NOTICE file.' },
     { sys: true, text: 'Stopped by you.' },
   ],
   naming: () => [],
 }
 
 const LIVE_TEXT =
-  'I can add the counter as a feature flag in `AgentSettings`, off by default. It logs each repair with the original and fixed string, so we can audit false positives after release. @Gemini once the UNC tests land I’ll rerun the numbers.'
+  'I can add the metric as a flag in `config.Radar`, off by default. It counts each fallback with the age of the cached frame, so we can see how stale the map gets. @Gemini once the timeout test lands I’ll rerun the numbers.'
 
 export function seedRooms() {
   const rooms = new Map<string, Room>()

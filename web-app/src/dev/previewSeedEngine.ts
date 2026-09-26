@@ -26,11 +26,11 @@ const wobble = (i: number, seed: number) =>
 /* ---------- models ---------- */
 
 const CTX: Record<string, number> = {
-  'Qwen3-14B-Q4_K_M': 32768,
+  'qwen3-8b-instruct': 32768,
   'gemma-3-12b-it-Q5_K_M': 8192,
-  'Llama-4-Scout-17B-Q3_K_M': 131072,
+  'llama-3.1-8b': 131072,
   'Mistral-Small-3.2-24B-Q4_K_S': 32768,
-  'jan-nano-4b-Q8_0': 131072,
+  'phi-4-mini-Q8_0': 131072,
   'claude-sonnet-5': 200000,
   'claude-opus-5-5': 200000,
   'claude-haiku-4-5': 200000,
@@ -40,19 +40,19 @@ const CTX: Record<string, number> = {
 }
 
 const SIZES: Record<string, number> = {
-  'Qwen3-14B-Q4_K_M': 8.4 * GB,
+  'qwen3-8b-instruct': 8.4 * GB,
   'gemma-3-12b-it-Q5_K_M': 8.9 * GB,
-  'Llama-4-Scout-17B-Q3_K_M': 7.9 * GB,
+  'llama-3.1-8b': 7.9 * GB,
   'Mistral-Small-3.2-24B-Q4_K_S': 13.5 * GB,
-  'jan-nano-4b-Q8_0': 4.3 * GB,
+  'phi-4-mini-Q8_0': 4.3 * GB,
 }
 
 /** Average speed per model id (tok/s), from the mockup's Models table. */
 const SPEEDS: Record<string, [avg: number, provider: string]> = {
-  'Qwen3-14B-Q4_K_M': [48.6, 'llamacpp'],
+  'qwen3-8b-instruct': [48.6, 'llamacpp'],
   'gemma-3-12b-it-Q5_K_M': [39.4, 'llamacpp'],
-  'jan-nano-4b-Q8_0': [92.1, 'llamacpp'],
-  'Llama-4-Scout-17B-Q3_K_M': [31.2, 'llamacpp'],
+  'phi-4-mini-Q8_0': [92.1, 'llamacpp'],
+  'llama-3.1-8b': [31.2, 'llamacpp'],
   'Mistral-Small-3.2-24B-Q4_K_S': [22.8, 'llamacpp'],
   'gpt-5': [61.2, 'openai'],
   'gpt-5-mini': [88.4, 'openai'],
@@ -97,9 +97,9 @@ function seedModels() {
   useModelProvider.setState({ providers } as never)
   useAppState.setState({
     activeModels: [
-      'Qwen3-14B-Q4_K_M',
+      'qwen3-8b-instruct',
       'gemma-3-12b-it-Q5_K_M',
-      'jan-nano-4b-Q8_0',
+      'phi-4-mini-Q8_0',
     ],
   } as never)
 }
@@ -165,7 +165,7 @@ function seedActivity() {
 const SERVERS: MCPServers = {
   'filesystem': {
     command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem', 'C:\\Coding'],
+    args: ['-y', '@modelcontextprotocol/server-filesystem', 'C:\\Projects'],
     env: {},
     active: true,
   },
@@ -189,7 +189,7 @@ const SERVERS: MCPServers = {
     url: 'https://api.you.com/mcp',
     active: true,
   },
-  'Jan Browser MCP': {
+  'browser-search': {
     command: 'npx',
     args: ['-y', 'search-mcp-server@latest'],
     env: {},
@@ -221,26 +221,26 @@ type Art = [
   ageMin: number,
 ]
 const ARTIFACTS: Art[] = [
-  ['changelog', 'Draft 0.9.0 changelog', 'CHANGELOG.md', 2100, 40],
+  ['changelog', 'Draft 1.4 changelog', 'CHANGELOG.md', 2100, 40],
   [
-    'escape',
-    'Fix JSON escape tracking',
-    'src/agent/json_recovery.svg',
+    'sync',
+    'Write the API guide',
+    'docs/radar-retry.svg',
     5200,
     2,
   ],
-  ['escape', 'Fix JSON escape tracking', 'out/recover_report.html', 9400, 4],
-  ['paths', 'Heal Windows paths', 'charts/vram-by-model.png', 88000, 1500],
-  ['paths', 'Heal Windows paths', 'scripts/build-helper.svg', 1900, 1500],
-  ['sync', 'Sync RE findings', 'hunt/offsets.md', 11200, 4300],
+  ['sync', 'Write the API guide', 'out/retry_report.html', 9400, 4],
+  ['sync', 'Write the API guide', 'charts/temp-by-city.png', 88000, 1500],
+  ['sync', 'Write the API guide', 'docs/units-flow.svg', 1900, 1500],
+  ['sync', 'Write the API guide', 'docs/api-guide.md', 11200, 4300],
   [
     'changelog',
-    'Draft 0.9.0 changelog',
+    'Draft 1.4 changelog',
     'out/standup-summary.mp3',
     2_140_000,
     4300,
   ],
-  ['kravio', 'Kravio style preview', 'out/flint-kravio.html', 48000, 20],
+  ['kravio', 'Dashboard color palette', 'out/palette-preview.html', 48000, 20],
 ]
 
 function seedArtifacts() {
@@ -307,26 +307,26 @@ const PLUGINS: Plug[] = [
   [
     'flint-core',
     '1.4.0',
-    'Built-in skills for Rust, git and testing.',
+    'Skills for Go, git and testing.',
     '',
     true,
-    ['rust-testing', 'git-hygiene', 'cargo-watch'],
+    ['go-testing', 'git-hygiene', 'go-watch'],
     2,
     0,
     'local',
-    'C:\\Coding\\flint-core',
+    'C:\\Projects\\flint-core',
   ],
   [
     'release-kit',
     '0.3.2',
     'Changelog and release-note helpers.',
-    'https://github.com/jozkah/release-kit',
+    'https://github.com/acme/release-kit',
     true,
     ['changelog', 'release-notes'],
     0,
     1,
     'git',
-    'https://github.com/jozkah/release-kit',
+    'https://github.com/acme/release-kit',
   ],
   [
     'design-kit',
@@ -341,16 +341,16 @@ const PLUGINS: Plug[] = [
     'design-kit',
   ],
   [
-    're-toolkit',
+    'data-kit',
     '0.2.1',
-    'Reverse-engineering notes, offsets and signatures.',
+    'CSV, SQL and chart helpers.',
     '',
     true,
-    ['offset-sync', 'sig-scan', 're-notes'],
+    ['csv-clean', 'sql-helper', 'chart-quick'],
     0,
     0,
     'local',
-    'C:\\Coding\\re-toolkit',
+    'C:\\Projects\\data-kit',
   ],
 ]
 const installed = (p: Plug) => ({
@@ -367,16 +367,16 @@ const installed = (p: Plug) => ({
   source: p[9],
 })
 const SKILLS: Array<[name: string, description: string, plugin?: string]> = [
-  ['rust-testing', 'Run and read cargo tests', 'flint-core'],
+  ['go-testing', 'Run and read go tests', 'flint-core'],
   ['git-hygiene', 'Commit and branch conventions', 'flint-core'],
   ['changelog', 'Write release notes', 'release-kit'],
   ['frontend-design', 'Build polished UI', 'design-kit'],
-  ['offset-sync', 'Sync RE findings to the repo', 're-toolkit'],
-  ['cargo-watch', 'Keep a build running', 'flint-core'],
+  ['csv-clean', 'Clean up CSV exports', 'data-kit'],
+  ['go-watch', 'Keep a build running', 'flint-core'],
 ]
 /** Skills kept in a project's own folder. */
 const PROJECT_SKILLS = [
-  { name: 'tauri-release', description: 'Cut a Tauri release build' },
+  { name: 'weather-release', description: 'Cut an acme-weather release' },
 ]
 const MARKET = [
   ['obsidian-bridge', 'Read and write your Obsidian vault.'],
@@ -384,7 +384,7 @@ const MARKET = [
   ['figma-context', 'Pull design context from Figma files.'],
   ['k8s-ops', 'Inspect clusters with read-only tools.'],
 ]
-const PROJECTS = [{ id: 'jan', folder: 'C:\\Coding\\jan', name: 'jan' }]
+const PROJECTS = [{ id: 'weather', folder: 'C:\\Projects\\acme-weather', name: 'acme-weather' }]
 
 function previewInvoke(
   command: string,
@@ -407,7 +407,7 @@ function previewInvoke(
           (_, i) => ['build', 'test'][i] ?? `cmd-${i}`
         ),
         agentNames: p[7] ? ['release-captain'] : [],
-        hasMcpConfig: p[0] === 're-toolkit',
+        hasMcpConfig: p[0] === 'data-kit',
         executableFiles: [],
         executableFileCount: 0,
       })
@@ -435,7 +435,7 @@ function previewInvoke(
       )
     case 'agent_skill_read':
       return ok(
-        `---\ndescription: Run and read cargo tests\n---\n\n# Rust testing\n\n1. Build helper binaries first: \`cargo build -p jan-sandbox-helper\`.\n2. Run \`cargo test --lib\` with \`-j 4\`.\n3. Quote the shortest failing line, never the whole log.\n`
+        `---\ndescription: Run and read go tests\n---\n\n# Go testing\n\n1. Run \`go vet ./...\` first.\n2. Run \`go test ./... -count=1\`.\n3. Quote the shortest failing line, never the whole log.\n`
       )
     case 'agent_projects_list':
       return ok(PROJECTS)
@@ -444,8 +444,8 @@ function previewInvoke(
         skills: { 'git-hygiene': { surfaces: ['home', 'rooms'] } },
         plugins: {
           'flint-core': { surfaces: ['home', 'rooms'] },
-          'release-kit': { surfaces: ['home', 'rooms', 'cowork:jan'] },
-          're-toolkit': { surfaces: ['home', 'rooms', 'cowork:jan'] },
+          'release-kit': { surfaces: ['home', 'rooms', 'cowork:weather'] },
+          'data-kit': { surfaces: ['home', 'rooms', 'cowork:weather'] },
         },
       })
     case 'agent_extensions_matrix_set_item':
