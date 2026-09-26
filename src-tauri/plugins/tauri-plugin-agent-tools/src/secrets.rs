@@ -110,7 +110,7 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     // the warning that matters.
     named_pairs(trimmed).into_iter().find_map(|(name, v, w)| {
         let value = &trimmed[v..w];
-        if value.len() < 8 || is_placeholder(value) {
+        if value.len() < 8 || is_placeholder(value) || is_call(trimmed, v, value) {
             return None;
         }
         let kind = secret_name_kind(&name)?;
@@ -208,6 +208,15 @@ fn secret_name_kind(name: &str) -> Option<SecretKind> {
     Some(kind)
 }
 
+/// Whether an unquoted value is code reading the credential from somewhere
+/// else -- `secret = os.Getenv("SECRET")`, `token := load_token()` -- rather
+/// than the credential itself. That is the fix the refusal asks for, so
+/// refusing it too left the model no way to write the file.
+fn is_call(line: &str, v: usize, value: &str) -> bool {
+    let quoted = v > 0 && matches!(line.as_bytes()[v - 1], b'"' | b'\'');
+    !quoted && value.contains('(')
+}
+
 /// Whether a value is a stand-in rather than a credential.
 fn is_placeholder(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
@@ -233,6 +242,7 @@ fn redact_named_values(line: &str) -> Option<String> {
             && value.len() >= 8
             && !value.contains(REDACTED)
             && !is_placeholder(value)
+            && !is_call(line, v, value)
         {
             out.push_str(&line[copied..v]);
             out.push_str(REDACTED);
@@ -289,7 +299,13 @@ fn token_like(line: &str) -> Option<(SecretKind, String)> {
         if let Some(at) = lower.find(scheme) {
             let rest = line[at + scheme.len()..].trim();
             let token: &str = rest.split_whitespace().next().unwrap_or("");
-            if token.len() >= 16 {
+            // A credential is token68-shaped. `"Bearer "+cfg.InternalSecret)`
+            // is code building the header from a variable, and refusing it
+            // blocked a write that kept the secret out of the file.
+            let shaped = token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | '_' | '~' | '+' | '/' | '='));
+            if token.len() >= 16 && shaped {
                 return Some((SecretKind::Token, format!("{scheme}{REDACTED}")));
             }
         }
@@ -575,6 +591,28 @@ fn redact_line(line: &str) -> String {
     match split_assignment(body) {
         Some((name, _)) => format!("{leading}{name}={REDACTED}"),
         None => format!("{leading}{REDACTED}"),
+    }
+}
+
+#[cfg(test)]
+mod code_reading_a_secret_tests {
+    use super::scan_text;
+
+    /// A Go file that reads its secret from the environment and builds the
+    /// header from it was refused as "API key" and "token" (session 8411d403).
+    #[test]
+    fn code_that_reads_a_secret_is_not_one() {
+        let go = "\t\tcfg.InternalSecret = os.Getenv(\"INGEST_SECRET_X\")\n\
+\treq.Header.Set(\"Authorization\", \"Bearer \"+cfg.InternalSecret)\n\
+\ttoken := loadToken(ctx)\n";
+        assert!(scan_text(go).is_empty(), "{:?}", scan_text(go));
+    }
+
+    #[test]
+    fn literal_secrets_are_still_caught() {
+        assert!(!scan_text("secret = abcd1234efgh5678").is_empty());
+        assert!(!scan_text("api_key = \"f(abcd1234efgh5678)\"").is_empty());
+        assert!(!scan_text("Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345").is_empty());
     }
 }
 
