@@ -1043,3 +1043,39 @@ export function ensureCurrentSession(paneSessionId?: string | null): string {
   }
   return createSession()
 }
+
+/**
+ * "New session" from a split-view pane beside the main one.
+ *
+ * Judged on the pane's own session, the same way startSession judges the
+ * current one, and the global selection is left alone: it belongs to the main
+ * pane. A new session is added without dropping any blank one, since the main
+ * pane may be showing it.
+ */
+export function startPaneSession(
+  paneSessionId: string,
+  input: { running: boolean; hasDraft: boolean }
+): string {
+  const state = useCoworkSessions.getState()
+  const current = state.sessions.find((s) => s.id === paneSessionId)
+  const hasFileActivity = current
+    ? useFileActivity.getState().eventsFor(current.id).length > 0
+    : false
+  if (
+    current &&
+    decideSessionStart({ current, ...input, hasFileActivity }) === 'reuse'
+  ) {
+    return current.id
+  }
+  const id = crypto.randomUUID()
+  const session: CoworkSession = {
+    id,
+    title: DEFAULT_SESSION_TITLE,
+    folder: null,
+    turns: [],
+    messages: [],
+    updated: Date.now(),
+  }
+  useCoworkSessions.setState((s) => ({ sessions: [session, ...s.sessions] }))
+  return id
+}

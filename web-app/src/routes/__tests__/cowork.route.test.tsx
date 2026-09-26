@@ -259,6 +259,14 @@ vi.mock('@/containers/ChatInput', () => ({
       <button data-testid="stop" onClick={() => props.onStop?.()}>
         stop
       </button>
+      <button
+        data-testid="slash-new"
+        onClick={() =>
+          props.slashBuiltins?.find((b: any) => b.name === 'new')?.run()
+        }
+      >
+        new
+      </button>
     </div>
   ),
 }))
@@ -279,7 +287,13 @@ vi.mock('@/containers/message/CodeOpenProvider', () => ({
   useCodeOpen: () => ({ openCode: vi.fn() }),
 }))
 vi.mock('@/components/ai-elements/conversation', () => ({
-  Conversation: ({ children }: any) => <div>{children}</div>,
+  // The log role and inner node are what the route scrolls, as with the
+  // real StickToBottom.
+  Conversation: ({ children }: any) => (
+    <div role="log">
+      <div data-testid="scroller">{children}</div>
+    </div>
+  ),
   ConversationContent: ({ children }: any) => <div>{children}</div>,
   ConversationScrollButton: () => null,
 }))
@@ -318,10 +332,11 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { CoworkPaneContext } from '@/hooks/useCoworkPane'
+import { CoworkPaneContext, PaneChromeContext } from '@/hooks/useCoworkPane'
+import { useCoworkView } from '@/hooks/useCoworkView'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { Route } from '@/routes/cowork'
+import { Route, CoworkPage as PanePage } from '@/routes/cowork'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
 
@@ -1297,8 +1312,8 @@ describe('two sessions side by side in split view', () => {
     useCoworkSessions.getState().sessions.find((s) => s.id === id) as any
 
   /** The route's session (SESSION) on the left, OTHER in a pane beside it. */
-  const renderSplit = async () => {
-    const base = useCoworkSessions.getState().sessions[0]
+  const renderSplit = async (turns: any[] = []) => {
+    const base = { ...useCoworkSessions.getState().sessions[0], turns }
     useCoworkSessions.setState({
       sessions: [
         base,
@@ -1309,16 +1324,20 @@ describe('two sessions side by side in split view', () => {
     useSplitConversation.setState({
       panes: [{ id: 'right', kind: 'cowork', refId: OTHER }],
     } as any)
-    render(
+    const view = render(
       <>
         <div data-testid="left">
-          <CoworkPage />
+          <PanePage />
         </div>
         <div data-testid="right">
           <CoworkPaneContext.Provider
             value={{ sessionId: OTHER, draftScope: 'pane:right' }}
           >
-            <CoworkPage />
+            <PaneChromeContext.Provider
+              value={{ paneId: 'right', isActive: true, controls: null }}
+            >
+              <PanePage />
+            </PaneChromeContext.Provider>
           </CoworkPaneContext.Provider>
         </div>
       </>
@@ -1326,6 +1345,7 @@ describe('two sessions side by side in split view', () => {
     await act(async () => {
       await Promise.resolve()
     })
+    return view
   }
   const inPane = (pane: 'left' | 'right', testId: string) =>
     screen
@@ -1406,5 +1426,47 @@ describe('two sessions side by side in split view', () => {
       for (const r of release) r()
     })
     h.runTurn.mockReset()
+  })
+
+  it("opens /new typed in the right pane in that pane, leaving the main pane as it was", async () => {
+    await renderSplit(PRIOR_TURNS)
+    await userEvent.click(inPane('right', 'slash-new'))
+    const pane = useSplitConversation.getState().panes[0]
+    expect(pane.kind).toBe('cowork')
+    expect(pane.refId).not.toBe(OTHER)
+    expect(pane.refId).not.toBe(SESSION)
+    expect(session(pane.refId!)).toBeTruthy()
+    expect(useCoworkSessions.getState().currentId).toBe(SESSION)
+    // Nothing either pane showed was dropped.
+    expect(session(SESSION)).toBeTruthy()
+    expect(session(OTHER)).toBeTruthy()
+  })
+
+  it("restores the right pane's scroll position in the right pane's transcript", async () => {
+    useCoworkView.setState({ scrollBySession: { [OTHER]: 222 } } as any)
+    // What the route writes, recorded per element: jsdom does not scroll.
+    const proto = HTMLElement.prototype as any
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    Object.defineProperty(proto, 'scrollTop', {
+      configurable: true,
+      get() {
+        return Number(this.dataset.scrolledTo ?? 0)
+      },
+      set(v: number) {
+        this.dataset.scrolledTo = String(v)
+      },
+    })
+    try {
+      await renderSplit(PRIOR_TURNS)
+      await act(async () => {
+        await new Promise((r) => requestAnimationFrame(() => r(null)))
+      })
+      expect(inPane('right', 'scroller').dataset.scrolledTo).toBe('222')
+      expect(inPane('left', 'scroller').dataset.scrolledTo).toBeUndefined()
+    } finally {
+      delete proto.scrollTop
+      if (original) Object.defineProperty(Element.prototype, 'scrollTop', original)
+      useCoworkView.setState({ scrollBySession: {} } as any)
+    }
   })
 })

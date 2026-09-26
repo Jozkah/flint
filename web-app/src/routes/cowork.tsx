@@ -62,8 +62,10 @@ import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
+  startPaneSession,
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
@@ -558,6 +560,14 @@ export function CoworkPage() {
   // split pane it must be the pane's own, not the global selection.
   const paneSessionIdRef = useRef(coworkPane?.sessionId)
   paneSessionIdRef.current = coworkPane?.sessionId
+  // The split pane this page is in, when it is a pane beside the main one:
+  // `/new` there replaces the pane's session instead of the main pane's.
+  const sidePaneId = usePaneChrome()?.paneId
+  const sidePaneIdRef = useRef(coworkPane ? sidePaneId : undefined)
+  sidePaneIdRef.current = coworkPane ? sidePaneId : undefined
+  // The transcript's container, so the scroll node found is this page's own
+  // and not the first transcript in the document (another split pane's).
+  const transcriptRef = useRef<HTMLDivElement | null>(null)
   const session = useMemo(
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
@@ -4190,6 +4200,17 @@ export function CoworkPage() {
         run: () => {
           // Same rule as the sidebar's entry point: one press, at most one
           // session. The draft is the `/new` being consumed, so it is no draft.
+          const paneId = sidePaneIdRef.current
+          const paneSid = paneSessionIdRef.current
+          if (paneId && paneSid) {
+            // Typed in a pane beside the main one: the new session opens in
+            // that pane, and the main pane keeps what it shows.
+            const id = startPaneSession(paneSid, { running, hasDraft: false })
+            useSplitConversation
+              .getState()
+              .setPaneTarget(paneId, { kind: 'cowork', refId: id })
+            return
+          }
           const store = useCoworkSessions.getState()
           const id = store.startSession({ running, hasDraft: false })
           store.selectSession(id)
@@ -4311,10 +4332,11 @@ export function CoworkPage() {
    *
    * The scroll node is the one `StickToBottom` owns inside the `role="log"`
    * container; it is found rather than held by ref because that element is the
-   * library's, not this route's.
+   * library's, not this route's. It is looked for inside this page's own
+   * transcript only: in split view each pane has one.
    */
   const scrollNode = useCallback((): HTMLElement | null => {
-    const log = document.querySelector('[role="log"]')
+    const log = transcriptRef.current?.querySelector('[role="log"]')
     if (!log) return null
     return (
       (log.querySelector(':scope > *') as HTMLElement | null) ??
@@ -4860,7 +4882,7 @@ export function CoworkPage() {
           />
           )}
           <FrameBody className="min-h-0 overflow-hidden">
-          <div className="relative flex-1">
+          <div ref={transcriptRef} className="relative flex-1">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
                 folder={folder}
