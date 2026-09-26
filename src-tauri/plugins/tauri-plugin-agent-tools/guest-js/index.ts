@@ -1257,7 +1257,7 @@ export async function executeToolUnsandboxedWithdraw(
 
 /** One turn's file changes that can be undone or redone. AH-202. */
 /** Who made a change (AH-110). `id` is the identity, `label` is for reading. */
-export type ChangeActorKind = 'primary' | 'named' | 'role'
+export type ChangeActorKind = 'primary' | 'named' | 'role' | 'user'
 
 export type ChangeActor = {
   /** `agent`, `agent:<name>` or `role:<name>`. Never a display name alone. */

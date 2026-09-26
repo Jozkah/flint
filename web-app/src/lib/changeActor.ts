@@ -14,6 +14,7 @@ export type ActorLabelParts =
   | { kind: 'primary' }
   | { kind: 'named'; name: string }
   | { kind: 'role'; name: string }
+  | { kind: 'user' }
   | { kind: 'unknown' }
 
 /** What to say about an actor, before translation. */
@@ -21,6 +22,8 @@ export function actorLabelParts(actor?: ChangeActor | null): ActorLabelParts {
   if (!actor || typeof actor.id !== 'string' || !actor.id.trim()) {
     return { kind: 'unknown' }
   }
+  // A hand edit from the Code panel: the person, never an agent.
+  if (actor.kind === 'user' || actor.id === 'user') return { kind: 'user' }
   const name = (actor.label || '').trim()
   if (actor.kind === 'role') {
     return { kind: 'role', name: name || actor.id.replace(/^role:/, '') }
@@ -48,7 +51,9 @@ export function changedByText(
         ? t('common:turnUndo.namedAgent', { name: parts.name })
         : parts.kind === 'role'
           ? t('common:turnUndo.roleAgent', { name: parts.name })
-          : t('common:turnUndo.unknownAgent')
+          : parts.kind === 'user'
+            ? t('common:turnUndo.user')
+            : t('common:turnUndo.unknownAgent')
   return t('common:turnUndo.changedBy', { who })
 }
 
@@ -70,6 +75,7 @@ export function actorFromEvent(
       ? { id: 'agent', kind: 'primary', label: '' }
       : { id: `agent:${name}`, kind: 'named', label: name }
   }
+  if (id === 'user') return { id, kind: 'user', label: '' }
   const kind: ChangeActor['kind'] = id.startsWith('role:')
     ? 'role'
     : id === 'agent'
