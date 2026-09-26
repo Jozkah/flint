@@ -37,6 +37,18 @@ it('stops the second failure after the shell said not to retry', () => {
   expect(verdict.tripped && verdict.reason).toBe('failing-shell')
 })
 
+it('does not count a NUL refusal, which is offered as an unsandboxed retry', () => {
+  const refused = (n: number) =>
+    call({
+      tool: 'bash',
+      input: { command: `go build ./... ${n}` },
+      failed: true,
+      error: `open NUL: Access is denied ${n}
+[device_path_sandbox_refused: ... Do not retry the same command inside the sandbox.]`,
+    })
+  expect(detectLoop([refused(1), call(), refused(2)])).toEqual({ tripped: false })
+})
+
 it('stops the same call made over and over', () => {
   // Three is ordinary -- re-reading a file after editing it, running the same
   // test twice while fixing it. Five is a model going in circles.

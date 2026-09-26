@@ -104,6 +104,12 @@ export function classifyShellFailure(error: string | undefined): ShellFailureCla
 const TOLD_NOT_TO_RETRY =
   /\[device_path:|cannot open it on this platform|reported exit 0, but/i
 
+/**
+ * The null device refusing the sandbox. Not a dead end: Flint offers the user
+ * an unsandboxed retry of the command, so it never counts toward the stop above.
+ */
+const NULL_DEVICE_REFUSED = /\[device_path_sandbox_refused:/i
+
 export type ObservedCall = {
   tool: string
   input: unknown
@@ -271,8 +277,9 @@ function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
   let total = 0
   let streakClass: ShellFailureClass | null = null
   let streak = 0
-  // Failures Flint already told the model not to retry (the null device,
-  // a granted folder the shell cannot open). A second one means the note was
+  // Failures Flint already told the model not to retry (a device path, a
+  // granted folder the shell cannot open, a masked exit code). The null device
+  // refusing the sandbox is not one: the user is offered an unsandboxed retry. A second one means the note was
   // not heeded; waiting for the ordinary streak spent three more commands.
   let told = 0
   for (const call of calls) {
@@ -282,7 +289,11 @@ function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
       streak = 0
       continue
     }
-    if (call.error && TOLD_NOT_TO_RETRY.test(call.error)) {
+    if (
+      call.error &&
+      TOLD_NOT_TO_RETRY.test(call.error) &&
+      !NULL_DEVICE_REFUSED.test(call.error)
+    ) {
       told += 1
       if (told >= 2) {
         return {
