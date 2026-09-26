@@ -5296,10 +5296,10 @@ async fn orchestrate_inner(
             Some(sys) => format!("{sys}\n\n{addendum}"),
             None => addendum.to_string(),
         })
-    } else if let Some(addendum) = todo_prompt_addendum(eager_todo_plan, todo_registry).await {
-        // Never reaches a child (subagent) run: its `todo_registry` is `None`
-        // (`configure_child_args`), so `todo_prompt_addendum` has no list to
-        // describe.
+    } else if eager_todo_plan {
+        // The goal-mode init instruction holds for the whole run, so it can sit
+        // in the system prompt without the prompt changing from turn to turn.
+        let addendum = crate::core::agent::context::EAGER_TODO_PROMPT_ADDENDUM;
         Some(match system_prompt {
             Some(sys) => format!("{sys}\n\n{addendum}"),
             None => addendum.to_string(),
@@ -5309,6 +5309,16 @@ async fn orchestrate_inner(
     };
     if let Some(sys) = system_prompt {
         set_system_prompt(&mut conversation_messages, &sys);
+    }
+    // Upkeep guidance depends on whether a list exists, which changes between
+    // turns. It travels through the append-only reminder channel so the system
+    // prompt, and the cached prefix behind it, stays byte-stable. Plan mode and
+    // goal-mode init carry their own addendum above; a child (subagent) run has
+    // no `todo_registry`, so it never gets this.
+    if run_mode != crate::core::agent::plan::RunMode::Plan && !eager_todo_plan {
+        if let Some(upkeep) = todo_prompt_addendum(false, todo_registry).await {
+            crate::core::agent::reminder::attach(&mut conversation_messages, upkeep);
+        }
     }
     // Paired with the addendum above: force the model's very first tool call
     // to actually be `todo` rather than leaving compliance up to a prompt it

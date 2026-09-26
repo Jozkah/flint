@@ -322,6 +322,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(models): drop a model locally only after its delete succeeds, and probe vision once per dropdown open
 - fix(providers): send `api_type` when registering a provider with the backend
 - fix(providers): removing a provider clears a model selection that still pointed at it
+- fix(anthropic): stop sending `temperature`/`top_p` to Claude models that reject them (Opus 4.7 and later, Sonnet 5, Fable, Mythos), and fall back to `auto` instead of a forced `tool_choice` on Opus 5.5, Fable 5.1 and Mythos 5.1, which answer both with a 400
 - fix(vector-db): skip chunks of another dimension in linear search; move RAG to calamine 0.36 for RUSTSEC-2026-0194
 
 ### Chat and composer

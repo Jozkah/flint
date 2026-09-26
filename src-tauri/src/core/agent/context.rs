@@ -207,29 +207,13 @@ fn render_skills_block(entries: &[crate::core::agent::skills::SkillMeta], can_re
 /// capability. Per jan-internal#196 the tools are provider-neutral: the model
 /// must call `web_search`/`web_fetch`, never a provider-branded name like
 /// `exa_search`, and should cite the URLs it relies on.
-const WEB_TOOLS_GUIDE: &str = "# Web Access\n\nYou have two native, built-in tools for the live web. They are provider-neutral \
-(the search backend is configured in Flint's settings) and work out of the box — do NOT look for, ask for, or call a \
-provider-branded tool such as `exa_search`, and do not say you lack internet access.\n\n\
-## When to use them\n\n\
-Reach for the web whenever the answer depends on current, external, or fast-changing information: recent events, \
-library/API versions and docs, error messages, prices, people, or anything you are unsure about or that is outside \
-your training data. Prefer verifying over guessing.\n\n\
-## How to call them\n\n\
-- `web_search` — find sources. Arguments: `query` (required string; write a specific, natural-language description \
-of the ideal page, not just keywords) and optional `count` (integer, default 5, max 20). Returns a numbered list of \
-results with title, URL, and a snippet.\n\
-- `web_fetch` — read one page. Argument: `url` (required http(s) string, typically a URL returned by `web_search`). \
-Returns the page's readable text with its title and source URL (bounded in length).\n\n\
-## Workflow\n\n\
-1. Call `web_search` with a focused query.\n\
-2. Pick the most relevant result(s) and call `web_fetch` on their URLs to read the full content — don't rely on \
-snippets alone for anything important.\n\
-3. Base your answer on what you read and cite the source URLs you used. If results are thin, refine the query and \
-search again. If a tool returns text starting with `ERROR`, read it, adjust your arguments, and retry or tell the \
-user what's wrong.\n\n\
-## Repositories and code hosts\n\n\
-`web_fetch` is an anonymous crawler with no GitHub/GitLab credentials, so it CANNOT read a private repository — a \
-private repo answers with a not-found error no matter which provider is configured, and retrying or switching \
+const WEB_TOOLS_GUIDE: &str = "# Web Access\n\n`web_search` and `web_fetch` are built in and provider-neutral \
+(the search backend is configured in Flint's settings), so you have live web access; there is no separate \
+provider-branded tool such as `exa_search` to look for. Use them when the answer depends on current, external, \
+or fast-changing information -- recent events, library/API versions and docs, error messages, prices -- or \
+anything you are unsure about, and cite the URLs you relied on.\n\n\
+`web_fetch` is an anonymous crawler with no GitHub/GitLab credentials, so it cannot read a private repository: \
+a private repo answers with a not-found error whichever provider is configured, and retrying or switching \
 providers will not help.";
 
 /// The shell route to repository data, given only to a run that has `bash`:
@@ -1225,14 +1209,10 @@ We build with make.")
             out.contains("exa_search"),
             "guide names the anti-pattern to avoid"
         );
-        // Teaches how to call the tools, not just that they exist.
-        assert!(out.contains("query"), "documents the web_search query arg");
-        assert!(out.contains("count"), "documents the web_search count arg");
-        assert!(out.contains("url"), "documents the web_fetch url arg");
-        assert!(
-            out.contains("Workflow"),
-            "describes the search->fetch->cite flow"
-        );
+        // Argument contracts live in the tool schemas; the guide covers when
+        // to reach for the web and asks for cited sources.
+        assert!(out.contains("cite the URLs"), "asks the model to cite sources");
+        assert!(out.contains("private repository"), "states the crawler limit");
         let _ = std::fs::remove_dir_all(&root);
     }
 

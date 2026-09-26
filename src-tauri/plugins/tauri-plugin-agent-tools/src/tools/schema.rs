@@ -39,7 +39,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "read",
-                "description": "Read the contents of a UTF-8 text file. Use this to inspect a file before you act on it — and ALWAYS before you `edit` it, because `edit` matches against the exact current text and will fail if your memory of the file is stale. Prefer a targeted `offset`/`limit` window over reading a whole large file. Output is truncated to 2000 lines or 64KB, whichever is hit first; when you need more, page through it with `offset`. Image files (png/jpeg/gif/webp, detected by signature or extension) come back as a vision image instead of text, so you can look at what you rendered. Do not use this to list a directory (use `ls`) or to search contents across files (use `grep`).",
+                "description": "Read the contents of a UTF-8 text file. Use this to inspect a file before you act on it, including before you `edit` it, because `edit` matches against the exact current text and will fail if your memory of the file is stale. Prefer a targeted `offset`/`limit` window over reading a whole large file. Output is truncated to 2000 lines or 64KB, whichever is hit first; when you need more, page through it with `offset`. Image files (png/jpeg/gif/webp, detected by signature or extension) come back as a vision image instead of text, so you can look at what you rendered. Do not use this to list a directory (use `ls`) or to search contents across files (use `grep`).",
                 "parameters": {
                     "type": "object",
                     "properties": {

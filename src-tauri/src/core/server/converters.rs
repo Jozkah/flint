@@ -1206,6 +1206,25 @@ fn push_merged(messages: &mut Vec<Value>, role: &str, blocks: Vec<Value>) {
     messages.push(json!({"role": role, "content": blocks}));
 }
 
+/// Claude models that reject `temperature`/`top_p`/`top_k` with a 400.
+fn anthropic_rejects_sampling(model: &str) -> bool {
+    const PREFIXES: &[&str] = &[
+        "claude-opus-4-7",
+        "claude-opus-4-8",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "claude-fable-",
+        "claude-mythos-",
+    ];
+    PREFIXES.iter().any(|p| model.starts_with(p))
+}
+
+/// Claude models that reject forced `tool_choice` (`any` / named `tool`).
+fn anthropic_rejects_forced_tool_choice(model: &str) -> bool {
+    const PREFIXES: &[&str] = &["claude-opus-5-5", "claude-fable-5-1", "claude-mythos-5-1"];
+    PREFIXES.iter().any(|p| model.starts_with(p))
+}
+
 impl UpstreamConverter for AnthropicMessagesConverter {
     fn upstream_path(&self, _body: &Value) -> String {
         // An OAuth `sk-ant-oat01` token is billed against the Claude Code /
@@ -1255,7 +1274,14 @@ impl UpstreamConverter for AnthropicMessagesConverter {
             .and_then(|v| v.as_i64())
             .unwrap_or(ANTHROPIC_DEFAULT_MAX_TOKENS);
         out["max_tokens"] = json!(max_tokens);
+        // Newer Claude models reject sampling parameters with a 400, so they are
+        // forwarded only to models that still accept them.
+        let model_id = body.get("model").and_then(|m| m.as_str()).unwrap_or("");
+        let sampling_ok = !anthropic_rejects_sampling(model_id);
         for key in ["temperature", "top_p", "stream"] {
+            if key != "stream" && !sampling_ok {
+                continue;
+            }
             if let Some(v) = body.get(key) {
                 out[key] = v.clone();
             }
@@ -1361,10 +1387,14 @@ impl UpstreamConverter for AnthropicMessagesConverter {
             }
         }
         if let Some(tc) = body.get("tool_choice") {
+            // Forced tool use returns a 400 on these models; the prompt already
+            // names the tool, so fall back to `auto`.
+            let no_forced = anthropic_rejects_forced_tool_choice(model_id);
             out["tool_choice"] = match tc.as_str() {
                 Some("none") => json!({"type": "none"}),
-                Some("required") => json!({"type": "any"}),
                 Some("auto") => json!({"type": "auto"}),
+                _ if no_forced => json!({"type": "auto"}),
+                Some("required") => json!({"type": "any"}),
                 _ => {
                     // {"type":"function","function":{"name":...}} -> {"type":"tool","name":...}
                     match tc.get("function").and_then(|f| f.get("name")) {
@@ -2827,6 +2857,32 @@ mod anthropic_messages_tests {
         });
         let out = conv().convert_request(&body);
         assert_eq!(out["tool_choice"], json!({"type": "tool", "name": "pick"}));
+    }
+
+    #[test]
+    fn request_drops_sampling_for_models_that_reject_it() {
+        let body = json!({
+            "model": "claude-opus-5-5",
+            "messages": [],
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "stream": true
+        });
+        let out = conv().convert_request(&body);
+        assert!(out.get("temperature").is_none());
+        assert!(out.get("top_p").is_none());
+        assert_eq!(out["stream"], json!(true));
+
+        let older = json!({"model": "claude-sonnet-4-6", "messages": [], "temperature": 0.7});
+        assert_eq!(conv().convert_request(&older)["temperature"], json!(0.7));
+    }
+
+    #[test]
+    fn request_softens_forced_tool_choice_for_models_that_reject_it() {
+        for tc in [json!("required"), json!({"type": "function", "function": {"name": "todo"}})] {
+            let body = json!({"model": "claude-opus-5-5", "messages": [], "tool_choice": tc});
+            assert_eq!(conv().convert_request(&body)["tool_choice"], json!({"type": "auto"}));
+        }
     }
 
     #[test]

@@ -582,10 +582,10 @@ pub fn tool_schemas() -> Vec<serde_json::Value> {
 /// depended on it fails too. Telling the model the real shell, in the tool's own
 /// description, is what stops it: append a short PowerShell note to `bash`.
 fn note_non_posix_shell(mut value: serde_json::Value) -> serde_json::Value {
-    const NOTE: &str = " IMPORTANT (this machine): no POSIX shell is available \
+    const NOTE: &str = " On this machine no POSIX shell is available \
         inside the sandbox, so commands run in Windows PowerShell, not bash. \
         Write PowerShell, not bash syntax: sequence commands with `;` -- Windows \
-        PowerShell 5.1 does NOT accept `&&` or `||`; use cmdlets or their aliases \
+        PowerShell 5.1 does not accept `&&` or `||`; use cmdlets or their aliases \
         (cp/Copy-Item, mv/Move-Item, rm/Remove-Item, cat/Get-Content, \
         ls/Get-ChildItem, New-Item); and write Windows paths with backslashes. \
         Discard output with `2>$null` or `| Out-Null` -- cmd's `2>nul`/`>nul` is \
