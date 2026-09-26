@@ -41,11 +41,21 @@ type PrStatusState = {
   refresh: (folder: string, force?: boolean) => Promise<void>
 }
 
+/**
+ * Folders a forced refresh arrived for while a lookup was already running.
+ * That lookup may have started before the pull request existed, so its
+ * answer is followed by one more.
+ */
+const again = new Set<string>()
+
 export const usePrStatusStore = create<PrStatusState>()((set, get) => ({
   byFolder: {},
   refresh: async (folder, force = false) => {
     const cur = get().byFolder[folder]
-    if (cur?.loading) return
+    if (cur?.loading) {
+      if (force) again.add(folder)
+      return
+    }
     if (!force && cur && Date.now() - cur.at < FRESH_MS) return
     set((s) => ({
       byFolder: { ...s.byFolder, [folder]: { lookup: cur?.lookup ?? null, at: cur?.at ?? 0, loading: true } },
@@ -60,6 +70,7 @@ export const usePrStatusStore = create<PrStatusState>()((set, get) => ({
     set((s) => ({
       byFolder: { ...s.byFolder, [folder]: { lookup, at: Date.now(), loading: false } },
     }))
+    if (again.delete(folder)) await get().refresh(folder, true)
   },
 }))
 

@@ -290,31 +290,35 @@ pub async fn access_prepare(
     access_mode: Option<String>,
     reason: Option<String>,
     scope: Option<WorkspaceScope>,
+    audit: Option<crate::access::AuditIds>,
 ) -> Result<AccessPrepareResult, AgentToolsError> {
     let env = access_env(&data_folder, &session_id, scope).await?;
     let data = Path::new(&data_folder);
+    let ids = audit.unwrap_or_default();
     let prepared = crate::access::AccessMode::parse(access_mode.as_deref())
         .and_then(|mode| crate::access::prepare(&path, mode, &env));
     Ok(match prepared {
         Ok(prepared) => {
-            crate::access::audit_event(
+            crate::access::audit_event_as(
                 data,
                 &session_id,
                 "requested",
                 &prepared.display,
                 prepared.mode,
                 reason.as_deref().unwrap_or(""),
+                &ids,
             );
             AccessPrepareResult::Ok { prepared }
         }
         Err(refusal) => {
-            crate::access::audit_event(
+            crate::access::audit_event_as(
                 data,
                 &session_id,
                 "refused",
                 &path,
                 crate::access::AccessMode::Read,
                 refusal.code.as_str(),
+                &ids,
             );
             AccessPrepareResult::Refused {
                 code: refusal.code.as_str().to_string(),
@@ -338,11 +342,12 @@ pub async fn access_grant(
     persistent: Option<bool>,
     ttl_secs: Option<u64>,
     scope: Option<WorkspaceScope>,
+    audit: Option<crate::access::AuditIds>,
 ) -> Result<crate::access::AccessGrant, AgentToolsError> {
     let env = access_env(&data_folder, &session_id, scope).await?;
     let mode = crate::access::AccessMode::parse(access_mode.as_deref())
         .map_err(|r| AgentToolsError::from(r.message))?;
-    crate::access::grant(
+    crate::access::grant_as(
         Path::new(&data_folder),
         &env,
         &session_id,
@@ -351,6 +356,7 @@ pub async fn access_grant(
         reason.as_deref().unwrap_or(""),
         persistent.unwrap_or(false),
         ttl_secs,
+        &audit.unwrap_or_default(),
     )
     .map_err(|r| AgentToolsError::from(r.message))
 }
@@ -363,11 +369,20 @@ pub fn access_record_decision(
     path: String,
     access_mode: Option<String>,
     decision: String,
+    audit: Option<crate::access::AuditIds>,
 ) {
     let mode = crate::access::AccessMode::parse(access_mode.as_deref())
         .unwrap_or(crate::access::AccessMode::Read);
     let event = if decision == "cancelled" { "cancelled" } else { "denied" };
-    crate::access::audit_event(Path::new(&data_folder), &session_id, event, &path, mode, "by user");
+    crate::access::audit_event_as(
+        Path::new(&data_folder),
+        &session_id,
+        event,
+        &path,
+        mode,
+        "by user",
+        &audit.unwrap_or_default(),
+    );
 }
 
 /// Withdraw one access grant, session or kept.
@@ -1158,6 +1173,11 @@ async fn execute_tool_inner(
     // AH-049: every decision is recorded before it is acted on, so a refusal
     // that returns early below is still in the log. Recording never changes
     // the decision -- `append` swallows its own failures.
+    let renderer_approved_git = matches!(decision, Decision::Prompt(PromptKind::Ask))
+        && name == "git"
+        && permissions
+            .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+            .is_none();
     record_permission_decision(
         Path::new(&data_folder),
         &thread_id,
@@ -1165,6 +1185,15 @@ async fn execute_tool_inner(
         &args,
         &root,
         &decision,
+        &DecisionContext {
+            run: undo_run.as_deref(),
+            call: call_id.as_deref(),
+            project: read_only_project.as_deref(),
+            renderer_approved_git,
+            unsandboxed,
+            sandbox_enforces: matches!(decision, Decision::Prompt(PromptKind::Exec))
+                && jail::backend().enforces(),
+        },
     );
 
     match decision {
@@ -1810,6 +1839,50 @@ pub async fn mailbox_stop_resolve(
 /// Split out so the production gate call above stays readable, and so the
 /// mapping from `Decision` to `Outcome` is in one place rather than repeated
 /// across the match arms that follow it.
+/// What joins a decision record to the rest of the log: the run and call it
+/// belongs to (they were always passed in and never written, so every record
+/// had empty `run`/`call`), the project it acts on, and what the renderer did
+/// before calling.
+#[derive(Debug, Clone, Copy, Default)]
+struct DecisionContext<'a> {
+    run: Option<&'a str>,
+    call: Option<&'a str>,
+    /// The attached project folder; the session workspace when there is none.
+    project: Option<&'a str>,
+    /// A `git` call the renderer has already put to the user and had allowed
+    /// (web-app `coworkDispatch.ts` asks before every remote or destructive
+    /// call, then calls this). No project `ask` rule applies to it.
+    renderer_approved_git: bool,
+    /// The user approved running this call outside the sandbox.
+    unsandboxed: bool,
+    /// An `Exec` prompt the enforcing sandbox makes unnecessary.
+    sandbox_enforces: bool,
+}
+
+/// The outcome to record for `decision`, given what already happened before
+/// this call reached the backend. A `Prompt` is written only for a question
+/// that is still open: recording "prompt" for a push the user had already
+/// allowed (session 8411d403) read as an unanswered request.
+fn recorded_outcome(
+    decision: &Decision,
+    cx: &DecisionContext<'_>,
+) -> Option<(crate::audit::Outcome, String)> {
+    use crate::audit::Outcome;
+    match decision {
+        Decision::Prompt(PromptKind::Ask) if cx.renderer_approved_git => {
+            Some((Outcome::Granted, "approved in the prompt".to_string()))
+        }
+        Decision::Prompt(PromptKind::Exec) if cx.unsandboxed => Some((
+            Outcome::Granted,
+            "approved to run outside the sandbox".to_string(),
+        )),
+        Decision::Prompt(PromptKind::Exec) if cx.sandbox_enforces => {
+            Some((Outcome::Allow, "confined by the sandbox".to_string()))
+        }
+        _ => None,
+    }
+}
+
 fn record_permission_decision(
     data_folder: &Path,
     thread_id: &str,
@@ -1817,11 +1890,15 @@ fn record_permission_decision(
     args: &serde_json::Value,
     root: &Path,
     decision: &Decision,
+    cx: &DecisionContext<'_>,
 ) {
     use crate::audit::{self, Outcome, PermissionRecord};
     use crate::tools::Capability;
 
-    let (outcome, reason) = match decision {
+    let (outcome, reason) = if let Some(known) = recorded_outcome(decision, cx) {
+        known
+    } else {
+        match decision {
         Decision::Allow => (Outcome::Allow, String::new()),
         Decision::HardDeny(gate::DenyReason::Policy) => (Outcome::Deny, "policy".to_string()),
         Decision::HardDeny(gate::DenyReason::Hidden) => {
@@ -1850,11 +1927,25 @@ fn record_permission_decision(
         // A prompt is a request that has not been answered yet; the answer is
         // recorded separately when it arrives.
         Decision::Prompt(kind) => (Outcome::Prompt, format!("prompt:{kind:?}")),
+        }
     };
 
-    let git_read = tool.name == "git"
-        && crate::tools::git_tool::plan_from_args(args)
-            .is_ok_and(|plan| plan.class == crate::tools::git_tool::GitClass::Read);
+    let git_plan = (tool.name == "git")
+        .then(|| crate::tools::git_tool::plan_from_args(args).ok())
+        .flatten();
+    let git_read = git_plan
+        .as_ref()
+        .is_some_and(|plan| plan.class == crate::tools::git_tool::GitClass::Read);
+    let project = cx
+        .project
+        .map(str::to_string)
+        .unwrap_or_else(|| root.to_string_lossy().into_owned());
+    let stamp = |r: PermissionRecord| {
+        r.with_project(project.clone())
+            .with_agent("main")
+            .with_run(cx.run.unwrap_or_default())
+            .with_call(cx.call.unwrap_or_default())
+    };
     let capability = match tool.capability {
         // `git status` is a read however the tool is declared: the audit said
         // "write" for every one, the same call the gate let through unasked.
@@ -1865,13 +1956,19 @@ fn record_permission_decision(
         Capability::Net => "net",
     };
 
-    let resources = crate::resource::Resource::for_builtin(
-        tool.name,
-        tool.path_args,
-        tool.capability == Capability::Net,
-        args,
-        Some(root),
-    );
+    // A git call's resource is the command line it runs, so `git push ...`
+    // and the `git remote get-url` asked before it are told apart; the bare
+    // tool name made both read "git".
+    let resources = match &git_plan {
+        Some(plan) => vec![crate::resource::Resource::command(&plan.display())],
+        None => crate::resource::Resource::for_builtin(
+            tool.name,
+            tool.path_args,
+            tool.capability == Capability::Net,
+            args,
+            Some(root),
+        ),
+    };
     let at = audit::now();
     // A call with no resolvable resource still gets a record: "nothing was
     // recorded" and "nothing was touched" must not look the same.
@@ -1882,7 +1979,7 @@ fn record_permission_decision(
         };
         audit::append(
             data_folder,
-            &PermissionRecord::new(
+            &stamp(PermissionRecord::new(
                 at,
                 thread_id,
                 tool.name,
@@ -1890,16 +1987,14 @@ fn record_permission_decision(
                 &placeholder,
                 outcome,
                 reason,
-            )
-            .with_project(root.to_string_lossy())
-            .with_agent("main"),
+            )),
         );
         return;
     }
     for resource in &resources {
         audit::append(
             data_folder,
-            &PermissionRecord::new(
+            &stamp(PermissionRecord::new(
                 at.clone(),
                 thread_id,
                 tool.name,
@@ -1907,9 +2002,7 @@ fn record_permission_decision(
                 resource,
                 outcome,
                 reason.clone(),
-            )
-            .with_project(root.to_string_lossy())
-            .with_agent("main"),
+            )),
         );
     }
 }
@@ -2081,6 +2174,58 @@ mod tests {
         assert!(desc.contains("`2>$null`"));
         // The name is untouched; only the description grows.
         assert_eq!(noted["function"]["name"], "bash");
+    }
+
+    /// Session 8411d403's audit: a push the user had allowed was written as
+    /// an open "prompt", with empty run and call ids, under the tool name
+    /// "git" -- the same text as the `git remote get-url` asked before it.
+    #[test]
+    fn a_decision_record_carries_its_run_call_project_and_answer() {
+        let data = unique_data_folder();
+        std::fs::create_dir_all(&data).unwrap();
+        let tool = lookup("git").unwrap();
+        let args = json!({"args": ["push", "-u", "origin", "fix/x"]});
+        let root = data.join("ws");
+        record_permission_decision(
+            &data,
+            "s1",
+            tool,
+            &args,
+            &root,
+            &Decision::Prompt(PromptKind::Ask),
+            &DecisionContext {
+                run: Some("run-1"),
+                call: Some("call-1"),
+                project: Some(r"C:\repo"),
+                renderer_approved_git: true,
+                ..Default::default()
+            },
+        );
+        let bash = lookup("bash").unwrap();
+        record_permission_decision(
+            &data,
+            "s1",
+            bash,
+            &json!({"command": "go build ./..."}),
+            &root,
+            &Decision::Prompt(PromptKind::Exec),
+            &DecisionContext { unsandboxed: true, ..Default::default() },
+        );
+        let all = crate::audit::read_all(&data);
+        assert_eq!(all.len(), 2, "{all:?}");
+        let push = &all[0];
+        assert_eq!(push.run, "run-1");
+        assert_eq!(push.call, "call-1");
+        assert_eq!(push.project, r"C:\repo");
+        assert_eq!(push.agent, "main");
+        assert_eq!(push.capability, "write");
+        assert_eq!(push.decision, crate::audit::Outcome::Granted);
+        assert!(push.resource.contains("git push -u origin fix/x"), "{}", push.resource);
+        let retry = &all[1];
+        assert_eq!(retry.decision, crate::audit::Outcome::Granted);
+        assert!(retry.reason.contains("outside the sandbox"), "{}", retry.reason);
+        assert_eq!(retry.project, root.to_string_lossy(), "no attached folder: the workspace");
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     /// The output sink test's shared ledger: what was sent, tagged with call id.
@@ -3485,6 +3630,7 @@ mod tests {
             Some("read".into()),
             Some("read the notes".into()),
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3501,9 +3647,25 @@ mod tests {
             None,
             None,
             None,
+            Some(crate::access::AuditIds {
+                run: Some("run-7".into()),
+                call: Some("call-7".into()),
+                agent: Some("main".into()),
+                project: Some(repo.to_string_lossy().to_string()),
+            }),
         )
         .await
         .unwrap();
+        // The grant's audit record says who asked, like every other decision.
+        let granted = crate::audit::read_all(&data)
+            .into_iter()
+            .find(|r| r.tool == "request_access" && r.decision == crate::audit::Outcome::Granted)
+            .expect("the grant was recorded");
+        assert_eq!(
+            (granted.run.as_str(), granted.call.as_str(), granted.agent.as_str()),
+            ("run-7", "call-7", "main")
+        );
+        assert_eq!(granted.project, repo.to_string_lossy());
 
         let ok = call("read", read_args.clone()).await.unwrap();
         assert!(!ok.is_error, "{}", ok.content);
@@ -3549,6 +3711,7 @@ mod tests {
             home,
             None,
             Some("look around".into()),
+            None,
             None,
         )
         .await

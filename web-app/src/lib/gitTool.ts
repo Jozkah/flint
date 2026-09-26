@@ -774,9 +774,12 @@ export function gitApproval(
   if (!result.ok || result.plan.class === 'read') return null
   const { plan } = result
   if (!gitAlwaysAsks(plan)) return { plan, alwaysAsk: false }
+  const pushes = plan.program === 'git' && plan.args[0] === 'push'
   const reason = plan.destructive
     ? `Destructive: ${plan.destructive}. Asked every time.`
-    : `Reaches ${plan.program === 'gh' ? 'GitHub' : 'the remote'}: asked every time.`
+    : pushes
+      ? `Push: publishes commits to ${plan.remote ?? 'the default remote'}, where others can see them. Asked every time.`
+      : `Reaches ${plan.program === 'gh' ? 'GitHub' : 'the remote'}: asked every time.`
   return { plan, alwaysAsk: true, reason }
 }
 

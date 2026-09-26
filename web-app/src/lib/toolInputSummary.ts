@@ -60,6 +60,27 @@ export function summarizeToolInput(input: unknown, maxLength = 72): string {
   if (typeof parsed === 'string') return truncate(collapseWhitespace(parsed), maxLength)
   if (!isPlainObject(parsed)) return truncate(previewValue(parsed), maxLength)
 
+  // The `git` tool's `{program?, args, cwd?}`: the command line itself. As
+  // "cwd: C:\repo, args: [4]" a push read like any other call in the
+  // timeline and the activity log (session 8411d403).
+  const argv = parsed.args
+  if (
+    Array.isArray(argv) &&
+    argv.length > 0 &&
+    argv.every((a) => typeof a === 'string') &&
+    Object.keys(parsed).every((k) => ['args', 'cwd', 'program'].includes(k)) &&
+    (parsed.program === undefined ||
+      parsed.program === 'git' ||
+      parsed.program === 'gh')
+  ) {
+    const program = (parsed.program as string | undefined) ?? 'git'
+    const words = (argv as string[]).map((a) =>
+      a === '' || /[\s"]/.test(a) ? `"${a.replace(/"/g, '\\"')}"` : a
+    )
+    const rest = argv[0] === program ? words.slice(1) : words
+    return truncate(collapseWhitespace([program, ...rest].join(' ')), maxLength)
+  }
+
   const pairs: string[] = []
   for (const [key, value] of Object.entries(parsed)) {
     if (value === undefined) continue

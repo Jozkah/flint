@@ -6,8 +6,10 @@
 //! tool runs the host binaries directly, as an argv array (never a shell
 //! string), with the working directory confined to the folders the run may
 //! use, a timeout, a bounded and secret-redacted output, and no credential
-//! handling of its own: git and gh use the user's existing login, and nothing
-//! can prompt (`GIT_TERMINAL_PROMPT=0`, `GH_PROMPT_DISABLED=1`).
+//! store of its own: git and gh use the user's existing login (a git network
+//! call to an https host gh is logged in to uses gh's login, through
+//! `gh auth git-credential`), and nothing can prompt
+//! (`GIT_TERMINAL_PROMPT=0`, `GH_PROMPT_DISABLED=1`).
 //!
 //! Every call is classified before it runs ([`plan`]):
 //!
@@ -626,6 +628,17 @@ fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), Stri
         if words.is_empty() {
             return Err(format!("`--json` needs the fields to return, e.g. [\"--json\", \"number,title\"]. {GH_SHAPES}"));
         }
+        // `gh repo view` is not checked field by field (its list grows), but
+        // the one miss seen in session 8411d403 -- `permission` for "can I
+        // push?" -- is named with its real spelling.
+        if group == "repo"
+            && action == "view"
+            && words[0].split(',').map(str::trim).any(|f| f == "permission")
+        {
+            return Err(format!(
+                "`gh repo view --json` has no field `permission` (did you mean `viewerPermission`?). {GH_SHAPES}"
+            ));
+        }
         if let Some(valid) = gh_json_fields(group, action) {
             let bad: Vec<&str> = words[0]
                 .split(',')
@@ -633,9 +646,20 @@ fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), Stri
                 .filter(|f| !f.is_empty() && !valid.contains(f))
                 .collect();
             if !bad.is_empty() {
+                // The near miss, named first: `permission` -> `viewerPermission`.
+                let hint: Vec<String> = bad
+                    .iter()
+                    .filter_map(|b| {
+                        let mut chars = b.chars();
+                        let first = chars.next()?;
+                        let viewer = format!("viewer{}{}", first.to_ascii_uppercase(), chars.as_str());
+                        valid.contains(&viewer.as_str()).then(|| format!(" (did you mean `{viewer}`?)"))
+                    })
+                    .collect();
                 return Err(format!(
-                    "`gh {group} {action} --json` has no field {}. Valid fields: {}",
+                    "`gh {group} {action} --json` has no field {}{}. Valid fields: {}",
                     bad.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),
+                    hint.join(""),
                     valid.join(",")
                 ));
             }
@@ -895,6 +919,34 @@ impl Roots {
     }
 }
 
+/// Whether `plan` writes only to the remote and leaves the folder it runs in
+/// as it was: `git push` (at most it records the upstream it pushed to) and
+/// the GitHub pull request / issue / release commands. Such a call may run in
+/// a folder attached read-only. It is a [`GitClass::Remote`] call, so it is
+/// put to the user every time, naming the command, remote and branch; the
+/// approval is the permission, and refusing it afterwards for the folder being
+/// read-only asked the user a question whose "yes" could never be honoured
+/// (session 8411d403: a push approved, then refused as "attached read-only").
+/// `gh pr merge` / `gh pr close --delete-branch` (which switch and delete
+/// local branches), `gh repo fork` (adds remotes) and `gh repo sync` (moves a
+/// local branch) change the folder and are not included.
+pub fn publishes_only(plan: &GitPlan) -> bool {
+    if plan.class != GitClass::Remote {
+        return false;
+    }
+    let first = plan.args.first().map(String::as_str);
+    let second = plan.args.get(1).map(String::as_str).unwrap_or("");
+    match (plan.program, first) {
+        (Program::Git, Some("push")) => true,
+        (Program::Gh, Some("pr")) => {
+            !matches!(second, "merge" | "checkout")
+                && !(second == "close" && has_opt(&plan.args, &["-d", "--delete-branch"]))
+        }
+        (Program::Gh, Some("issue" | "release" | "label" | "run")) => true,
+        _ => false,
+    }
+}
+
 /// Resolve and check the working directory for `plan`.
 pub fn resolve_cwd(raw: Option<&str>, plan: &GitPlan, roots: &Roots) -> Result<PathBuf, String> {
     // A call that makes a new repository (`clone`, `init`) never needs to run
@@ -932,11 +984,11 @@ pub fn resolve_cwd(raw: Option<&str>, plan: &GitPlan, roots: &Roots) -> Result<P
         return Ok(cwd);
     }
     if inside(&cwd, &roots.read) {
-        if plan.class == GitClass::Read {
+        if plan.class == GitClass::Read || publishes_only(plan) {
             return Ok(cwd);
         }
         return Err(format!(
-            "`{}` is attached read-only, so `{}` cannot run there. Only read-only git commands (status, log, diff, ...) work in it; ask the user for write access or a worktree to change it.",
+            "`{}` is attached read-only, so `{}` cannot run there. Only read-only git commands (status, log, diff, ...), `git push` and GitHub pull request / issue commands work in it; ask the user for write access or a worktree to change it.",
             cwd.display(),
             plan.display()
         ));
@@ -1192,6 +1244,165 @@ pub async fn check_repo_config(cwd: &Path) -> Result<(), String> {
     }
 }
 
+/// The host of an `https://` remote URL, lower-cased, without user info or
+/// port. `None` for ssh and anything else: those authenticate with keys, not
+/// with a credential helper.
+pub fn https_host(url: &str) -> Option<String> {
+    let rest = url.trim().strip_prefix("https://").or_else(|| {
+        let t = url.trim();
+        t.get(..8)
+            .filter(|p| p.eq_ignore_ascii_case("https://"))
+            .map(|_| &t[8..])
+    })?;
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host = authority.rsplit('@').next()?.split(':').next()?;
+    (!host.is_empty()).then(|| host.to_ascii_lowercase())
+}
+
+/// The account `gh auth status --hostname <host>` reports as logged in.
+/// Current gh says "Logged in to github.com account NAME (keyring)", older
+/// releases "Logged in to github.com as NAME (...)".
+pub fn gh_account(status: &str, host: &str) -> Option<String> {
+    let host = host.to_ascii_lowercase();
+    status.lines().find_map(|line| {
+        let lower = line.to_ascii_lowercase();
+        let at = lower.find("logged in to ")?;
+        let after = &line[at + "logged in to ".len()..];
+        let mut words = after.split_whitespace();
+        if words.next()?.to_ascii_lowercase() != host {
+            return None;
+        }
+        match words.next()? {
+            "account" | "as" => words
+                .next()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-' && c != '_'))
+                .filter(|w| !w.is_empty())
+                .map(str::to_string),
+            _ => None,
+        }
+    })
+}
+
+/// A credential-helper value that makes git ask `gh` for the login, the same
+/// shape `gh auth setup-git` writes. Forward slashes and single quotes, since
+/// git runs it through its own shell.
+pub fn gh_credential_helper(gh: &Path) -> String {
+    let path = gh.to_string_lossy().replace('\\', "/");
+    format!("!'{path}' auth git-credential")
+}
+
+/// A remote URL as shown to the model: any `user:password@` part removed.
+pub fn without_userinfo(url: &str) -> String {
+    if let Some((scheme, rest)) = url.split_once("://") {
+        let (authority, path) = match rest.find('/') {
+            Some(i) => rest.split_at(i),
+            None => (rest, ""),
+        };
+        let host = authority.rsplit('@').next().unwrap_or(authority);
+        return crate::secrets::redact_secrets(&format!("{scheme}://{host}{path}"));
+    }
+    crate::secrets::redact_secrets(url)
+}
+
+/// Whether git's output says the remote refused the login or the account.
+pub fn auth_refused(output: &str) -> bool {
+    let l = output.to_ascii_lowercase();
+    [
+        "returned error: 403",
+        "returned error: 401",
+        "write access to repository not granted",
+        "permission to ",
+        "authentication failed",
+        "could not read username",
+        "invalid username or password",
+    ]
+    .iter()
+    .any(|m| l.contains(m))
+}
+
+/// Who a git network call authenticated as, for the approval and for a
+/// refusal the user has to act on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GitIdentity {
+    /// The GitHub CLI login, handed to git as its credential helper.
+    Gh { account: String, host: String },
+    /// git's own credential helper(s), as configured (names only).
+    Helper { helpers: Vec<String>, host: Option<String> },
+}
+
+impl GitIdentity {
+    /// What to tell the model when the remote refused the call.
+    pub fn refusal_note(&self, url: Option<&str>) -> String {
+        let target = url.map(|u| format!(" to `{u}`")).unwrap_or_default();
+        let fix = "Nothing was pushed. Tell the user; do not retry the same call. Ways forward: the repository owner grants this account write access; or push to a fork of the repository (`gh repo fork`, push the branch there, then `gh pr create --head <owner>:<branch>`); or the user pushes it themselves.";
+        match self {
+            GitIdentity::Gh { account, host } => format!(
+                "Flint authenticated as the GitHub CLI account `{account}` on {host} (`gh auth git-credential`), and the remote refused that account{target}: it has no write access there. {fix}"
+            ),
+            GitIdentity::Helper { helpers, host } => {
+                let used = if helpers.is_empty() {
+                    "no credential helper is configured".to_string()
+                } else {
+                    format!("git's own credential helper (`{}`) was used", helpers.join("`, `"))
+                };
+                let gh = match host {
+                    Some(h) => format!(" The GitHub CLI is not installed or not logged in for {h}, so its login was not used; `gh auth login` would let Flint push with it."),
+                    None => String::new(),
+                };
+                format!("The remote refused the login{target}: {used}, not a GitHub CLI login.{gh} {fix}")
+            }
+        }
+    }
+}
+
+/// Run a short helper command and return its stdout and stderr, or `None`
+/// when it did not start, timed out or failed.
+async fn quiet_output(bin: &Path, args: &[&str], cwd: &Path) -> Option<String> {
+    let mut cmd = tokio::process::Command::new(bin);
+    cmd.args(args)
+        .current_dir(cwd)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("GH_NO_UPDATE_NOTIFIER", "1")
+        .env("NO_COLOR", "1")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .stdin(std::process::Stdio::null())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    cmd.creation_flags(0x0800_0000);
+    let out = tokio::time::timeout(Duration::from_secs(20), cmd.output())
+        .await
+        .ok()?
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let mut text = String::from_utf8_lossy(&out.stdout).into_owned();
+    text.push('\n');
+    text.push_str(&String::from_utf8_lossy(&out.stderr));
+    Some(text)
+}
+
+/// The URL a git network call talks to: the remote named in it (or `origin`),
+/// resolved with `git remote get-url`, or the URL itself when it names one.
+async fn remote_url_of(git: &Path, plan: &GitPlan, cwd: &Path) -> Option<String> {
+    let named = plan.remote.as_deref().unwrap_or("origin");
+    if named.contains("://") || named.starts_with("git@") {
+        return Some(named.to_string());
+    }
+    let push = plan.args.first().map(String::as_str) == Some("push");
+    let args: Vec<&str> = if push {
+        vec!["remote", "get-url", "--push", named]
+    } else {
+        vec!["remote", "get-url", named]
+    };
+    quiet_output(git, &args, cwd)
+        .await
+        .and_then(|o| o.lines().next().map(|l| l.trim().to_string()))
+        .filter(|l| !l.is_empty())
+}
+
 /// Run a planned call in `cwd`. Returns the tool result text; a failure starts
 /// with `ERROR:`.
 pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
@@ -1218,6 +1429,55 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             "-c",
             "core.pager=cat",
         ]);
+    }
+    // A git call that talks to an https remote authenticates with the GitHub
+    // CLI login when gh is logged in for that host: that is the identity the
+    // user connected, and git's own helper can hold a different (or stale)
+    // account -- in session 8411d403 an approved push was refused with 403
+    // while gh was logged in with repo scope. Only for the network
+    // subcommands, and only a helper Flint names on the command line.
+    let mut identity: Option<GitIdentity> = None;
+    let mut url: Option<String> = None;
+    let network = plan.program == Program::Git
+        && matches!(
+            plan.args.first().map(String::as_str),
+            Some("push" | "fetch" | "pull" | "ls-remote" | "clone")
+        );
+    if network {
+        url = remote_url_of(&bin, plan, cwd).await;
+        if let Some(host) = url.as_deref().and_then(https_host) {
+            let gh = discover_gh();
+            let account = match gh.as_deref() {
+                Some(gh) => quiet_output(gh, &["auth", "status", "--hostname", &host], cwd)
+                    .await
+                    .and_then(|s| gh_account(&s, &host)),
+                None => None,
+            };
+            match (gh, account) {
+                (Some(gh), Some(account)) => {
+                    cmd.args([
+                        "-c".to_string(),
+                        "credential.helper=".to_string(),
+                        "-c".to_string(),
+                        format!("credential.helper={}", gh_credential_helper(&gh)),
+                    ]);
+                    identity = Some(GitIdentity::Gh { account, host });
+                }
+                _ => {
+                    let helpers = quiet_output(&bin, &["config", "--get-all", "credential.helper"], cwd)
+                        .await
+                        .map(|o| {
+                            o.lines()
+                                .map(str::trim)
+                                .filter(|l| !l.is_empty())
+                                .map(|l| crate::secrets::redact_secrets(l))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    identity = Some(GitIdentity::Helper { helpers, host: Some(host) });
+                }
+            }
+        }
     }
     cmd.args(argv_for(plan));
     cmd.current_dir(cwd)
@@ -1278,7 +1538,14 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
             format!("$ {shown}\n{body}")
         }
     } else {
-        format!("ERROR: `{shown}` exited with {code}\n{body}")
+        let note = match &identity {
+            Some(id) if auth_refused(&body) => {
+                let shown_url = url.as_deref().map(without_userinfo);
+                format!("\n{}", id.refusal_note(shown_url.as_deref()))
+            }
+            _ => String::new(),
+        };
+        format!("ERROR: `{shown}` exited with {code}\n{body}{note}")
     }
 }
 
@@ -1569,6 +1836,100 @@ mod tests {
         assert_eq!(cwd, ws, "a clone defaults to a writable root");
         assert!(check_created_dir(&clone_abs, &cwd, &roots).is_ok());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Session 8411d403: a push the user approved was then refused because
+    /// the repository was attached read-only. A call that only publishes runs
+    /// there (it is asked about every time); one that changes the folder
+    /// still does not.
+    #[test]
+    fn a_push_runs_in_a_read_only_attached_folder() {
+        let base = temp("publish");
+        let ws = base.join("ws");
+        let attached = base.join("attached");
+        for d in [&ws, &attached] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let roots = Roots {
+            granted: vec![],
+            workspace: vec![ws.clone()],
+            read: vec![attached.clone()],
+        };
+        let at = Some(attached.to_str().unwrap());
+        for ok in [
+            p("git", &["push", "-u", "origin", "fix/x"]),
+            p("gh", &["pr", "create", "--repo", "o/r", "--head", "fix/x", "--base", "main", "--title", "T", "--body", "B"]),
+            p("gh", &["pr", "comment", "1", "--body", "hi"]),
+            p("gh", &["issue", "create", "--title", "T", "--body", "B"]),
+        ] {
+            let plan = ok.unwrap();
+            assert!(publishes_only(&plan), "{}", plan.display());
+            assert_eq!(resolve_cwd(at, &plan, &roots).unwrap(), attached, "{}", plan.display());
+        }
+        for refused in [
+            p("git", &["commit", "-m", "x"]),
+            p("git", &["pull", "origin", "main"]),
+            p("gh", &["pr", "merge", "1"]),
+            p("gh", &["pr", "close", "1", "--delete-branch"]),
+            p("gh", &["pr", "checkout", "1"]),
+            p("gh", &["repo", "fork"]),
+            p("gh", &["repo", "sync"]),
+        ] {
+            let plan = refused.unwrap();
+            assert!(!publishes_only(&plan), "{}", plan.display());
+            let err = resolve_cwd(at, &plan, &roots).unwrap_err();
+            assert!(err.contains("read-only"), "{err}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn https_hosts_and_gh_accounts_are_read() {
+        assert_eq!(https_host("https://github.com/o/r.git").as_deref(), Some("github.com"));
+        assert_eq!(https_host("HTTPS://x:tok@GitHub.com:443/o/r").as_deref(), Some("github.com"));
+        assert_eq!(https_host("git@github.com:o/r.git"), None);
+        assert_eq!(https_host("ssh://git@github.com/o/r"), None);
+
+        let current = "github.com\n  \u{2713} Logged in to github.com account Jozkah (keyring)\n  - Active account: true\n  - Token scopes: 'repo'";
+        assert_eq!(gh_account(current, "github.com").as_deref(), Some("Jozkah"));
+        let older = "github.com\n  \u{2713} Logged in to github.com as octo-cat (C:\\x\\hosts.yml)";
+        assert_eq!(gh_account(older, "github.com").as_deref(), Some("octo-cat"));
+        assert_eq!(gh_account(current, "gitlab.com"), None);
+        assert_eq!(gh_account("You are not logged into any GitHub hosts.", "github.com"), None);
+
+        assert_eq!(
+            gh_credential_helper(Path::new(r"C:\Program Files\GitHub CLI\gh.exe")),
+            "!'C:/Program Files/GitHub CLI/gh.exe' auth git-credential"
+        );
+        assert_eq!(
+            without_userinfo("https://user:secret@github.com/o/r.git"),
+            "https://github.com/o/r.git"
+        );
+    }
+
+    /// The 403 from session 8411d403 said nothing about whose login was
+    /// refused. It now names the identity and the ways forward.
+    #[test]
+    fn a_refused_push_names_the_identity() {
+        let out = "remote: Write access to repository not granted.\nfatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 403";
+        assert!(auth_refused(out));
+        assert!(!auth_refused("error: failed to push some refs (fetch first)"));
+
+        let gh = GitIdentity::Gh { account: "Jozkah".into(), host: "github.com".into() };
+        let note = gh.refusal_note(Some("https://github.com/o/r.git"));
+        assert!(note.contains("`Jozkah`") && note.contains("github.com"), "{note}");
+        assert!(note.contains("gh repo fork") && note.contains("do not retry"), "{note}");
+
+        let helper = GitIdentity::Helper { helpers: vec!["manager".into()], host: Some("github.com".into()) };
+        let note = helper.refusal_note(None);
+        assert!(note.contains("`manager`") && note.contains("gh auth login"), "{note}");
+    }
+
+    #[test]
+    fn gh_repo_view_names_the_viewer_permission_field() {
+        let err = p("gh", &["repo", "view", "o/r", "--json", "defaultBranchRef,permission"]).unwrap_err();
+        assert!(err.contains("`viewerPermission`"), "{err}");
+        assert!(p("gh", &["repo", "view", "o/r", "--json", "defaultBranchRef,viewerPermission"]).is_ok());
     }
 
     #[tokio::test]

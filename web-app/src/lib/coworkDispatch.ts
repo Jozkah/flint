@@ -51,7 +51,9 @@ import {
   gitApproval,
   gitInsideSessionTree,
   gitRemoteFacts,
+  type GitPlan,
 } from '@/lib/gitTool'
+import { usePrStatusStore } from '@/stores/pr-status-store'
 
 export type DispatchContext = {
   sessionId: string
@@ -351,6 +353,33 @@ function stopReason(signal: AbortSignal): string {
 }
 
 /**
+ * After a `git` call that can create or change a pull request succeeds --
+ * a push, or any `gh pr` / `gh repo` write -- ask again for the session
+ * folder's pull request, so the PR bar and the sidebar mark appear now. The
+ * store otherwise asked only when the folder changed, and a "no pull
+ * request" answer from before the agent opened one stood (session 8411d403:
+ * `gh pr create` succeeded and no bar showed).
+ */
+export function refreshPrStatusAfterGit(
+  plan: GitPlan,
+  ctx: Pick<DispatchContext, 'readOnlyFolder' | 'worktreePath'>
+): string[] {
+  const opensPr =
+    (plan.program === 'git' && plan.args[0] === 'push') ||
+    (plan.program === 'gh' &&
+      plan.class === 'remote' &&
+      (plan.args[0] === 'pr' || plan.args[0] === 'repo'))
+  if (!opensPr) return []
+  const folders = [ctx.readOnlyFolder, ctx.worktreePath].filter(
+    (f, i, all): f is string => !!f && all.indexOf(f) === i
+  )
+  for (const folder of folders) {
+    void usePrStatusStore.getState().refresh(folder, true)
+  }
+  return folders
+}
+
+/**
  * Route one tool call. Always resolves: a rejection here would abort the run,
  * where the model can usually recover from being told what went wrong.
  */
@@ -478,6 +507,10 @@ async function routeCoworkTool(
                 extraProjects: ctx.extraFolders,
                 scope: 'session',
                 writeGrant: ctx.writeGrant,
+                // Its own call id, derived from the call it describes, so
+                // the audit tells this lookup apart from the push itself.
+                callId: `${call.toolCallId}:remote-facts`,
+                undoRun: ctx.activity?.run,
               }
             )
             return r.error ? null : String(r.content ?? '')
@@ -767,6 +800,7 @@ async function routeCoworkTool(
     }
     // A path that reads now is not missing any more.
     if (readPath) ctx.readFailures?.delete(readPath)
+    if (git) refreshPrStatusAfterGit(git.plan, ctx)
     return {
       output:
         typeof result.content === 'string'

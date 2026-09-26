@@ -373,6 +373,17 @@ export async function executeAgentTool(
           signal: options.signal,
           taskLabel: options.taskLabel,
           origin: options.origin,
+          audit: {
+            run: options.undoRun,
+            call: options.callId,
+            // The primary agent is recorded as `main`, as the backend's own
+            // decision records spell it; a subagent by its actor id.
+            agent:
+              !options.actor || options.actor.id === 'agent'
+                ? 'main'
+                : options.actor.id,
+            project: options.readOnlyProject ?? undefined,
+          },
         }),
       }
     }

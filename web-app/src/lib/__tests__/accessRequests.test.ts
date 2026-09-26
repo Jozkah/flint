@@ -92,6 +92,18 @@ describe('runAccessRequest', () => {
     })
   })
 
+  it('sends who asked with every audited step', async () => {
+    const audit = { run: 'r1', call: 'c1', agent: 'main', project: 'D:\\repo' }
+    const run = runAccessRequest({ path: 'D:\\p', reason: 'r' }, 't1', {
+      ...opts,
+      audit,
+    })
+    await answerNext('session')
+    await run
+    expect(calls('access_prepare')[0][1]).toMatchObject({ audit })
+    expect(calls('access_grant')[0][1]).toMatchObject({ audit })
+  })
+
   it('gives up on an unanswered request and tells the model to continue', async () => {
     vi.useFakeTimers()
     try {
