@@ -75,7 +75,12 @@
     "search": "검색",
     "searchDesc": "검색 대화 상자를 엽니다.",
     "goToSettings": "설정으로 이동",
-    "goToSettingsDesc": "설정을 엽니다."
+    "goToSettingsDesc": "설정을 엽니다.",
+    "splitViewSection": "분할 보기",
+    "splitView": "분할 보기",
+    "splitViewDesc": "화면의 대화 옆에 다른 대화를 엽니다.",
+    "maxPanes": "분할 보기의 창 수",
+    "maxPanesDesc": "분할 보기에서 한 번에 표시할 대화 수(기본 대화 포함)."
   },
   "interface": {
     "title": "인터페이스",

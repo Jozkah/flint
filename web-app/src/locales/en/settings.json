@@ -84,7 +84,12 @@
     "search": "Search",
     "searchDesc": "Open the search dialog.",
     "goToSettings": "Go to Settings",
-    "goToSettingsDesc": "Open settings."
+    "goToSettingsDesc": "Open settings.",
+    "splitViewSection": "Split view",
+    "splitView": "Split view",
+    "splitViewDesc": "Open another conversation beside the one on screen.",
+    "maxPanes": "Panes in split view",
+    "maxPanesDesc": "How many conversations split view shows at once, the main one included."
   },
   "interface": {
     "title": "Interface",

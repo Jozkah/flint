@@ -71,7 +71,12 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "導覽",
     "goToSettings": "前往設定",
-    "goToSettingsDesc": "開啟設定。"
+    "goToSettingsDesc": "開啟設定。",
+    "splitViewSection": "分割檢視",
+    "splitView": "分割檢視",
+    "splitViewDesc": "在畫面上的對話旁開啟另一個對話。",
+    "maxPanes": "分割檢視窗格數",
+    "maxPanesDesc": "分割檢視同時顯示的對話數量（包含主對話）。"
   },
   "interface": {
     "title": "外觀",

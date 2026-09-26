@@ -71,7 +71,12 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Navigace",
     "goToSettings": "Přejít do nastavení",
-    "goToSettingsDesc": "Otevřít nastavení."
+    "goToSettingsDesc": "Otevřít nastavení.",
+    "splitViewSection": "Rozdělené zobrazení",
+    "splitView": "Rozdělené zobrazení",
+    "splitViewDesc": "Otevřít další konverzaci vedle té, která je na obrazovce.",
+    "maxPanes": "Panely v rozděleném zobrazení",
+    "maxPanesDesc": "Kolik konverzací rozdělené zobrazení ukáže najednou, včetně hlavní."
   },
   "interface": {
     "title": "Rozhraní",

@@ -75,7 +75,12 @@
     "search": "खोजें",
     "searchDesc": "खोज डायलॉग खोलें।",
     "goToSettings": "सेटिंग्स पर जाएं",
-    "goToSettingsDesc": "सेटिंग्स खोलें।"
+    "goToSettingsDesc": "सेटिंग्स खोलें।",
+    "splitViewSection": "स्प्लिट व्यू",
+    "splitView": "स्प्लिट व्यू",
+    "splitViewDesc": "स्क्रीन पर मौजूद बातचीत के बगल में एक और बातचीत खोलें।",
+    "maxPanes": "स्प्लिट व्यू में पैन",
+    "maxPanesDesc": "स्प्लिट व्यू एक साथ कितनी बातचीत दिखाता है, मुख्य बातचीत सहित।"
   },
   "interface": {
     "title": "इंटरफ़ेस",

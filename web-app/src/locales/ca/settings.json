@@ -71,7 +71,12 @@
     "shiftEnter": "Maj + Retorn",
     "navigation": "Navegació",
     "goToSettings": "Vés a Configuració",
-    "goToSettingsDesc": "Obre la configuració."
+    "goToSettingsDesc": "Obre la configuració.",
+    "splitViewSection": "Vista dividida",
+    "splitView": "Vista dividida",
+    "splitViewDesc": "Obre una altra conversa al costat de la que tens a la pantalla.",
+    "maxPanes": "Panells a la vista dividida",
+    "maxPanesDesc": "Quantes converses mostra alhora la vista dividida, inclosa la principal."
   },
   "interface": {
     "title": "Interfície",

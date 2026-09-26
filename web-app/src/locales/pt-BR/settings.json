@@ -71,7 +71,12 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Navegação",
     "goToSettings": "Ir para Configurações",
-    "goToSettingsDesc": "Abrir configurações."
+    "goToSettingsDesc": "Abrir configurações.",
+    "splitViewSection": "Visualização dividida",
+    "splitView": "Visualização dividida",
+    "splitViewDesc": "Abrir outra conversa ao lado da que está na tela.",
+    "maxPanes": "Painéis na visualização dividida",
+    "maxPanesDesc": "Quantas conversas a visualização dividida mostra ao mesmo tempo, incluindo a principal."
   },
   "appearance": {
     "title": "Aparência",

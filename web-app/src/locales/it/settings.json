@@ -75,7 +75,12 @@
     "search": "Cerca",
     "searchDesc": "Apre la finestra di dialogo di ricerca.",
     "goToSettings": "Vai alle impostazioni",
-    "goToSettingsDesc": "Apre le impostazioni."
+    "goToSettingsDesc": "Apre le impostazioni.",
+    "splitViewSection": "Vista divisa",
+    "splitView": "Vista divisa",
+    "splitViewDesc": "Apri un'altra conversazione accanto a quella sullo schermo.",
+    "maxPanes": "Riquadri nella vista divisa",
+    "maxPanesDesc": "Quante conversazioni mostra insieme la vista divisa, inclusa quella principale."
   },
   "interface": {
     "title": "Interfaccia",

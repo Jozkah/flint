@@ -77,7 +77,12 @@
     "switchAssistant": "切换助手",
     "switchAssistantDesc": "在聊天中循环切换到下一个助手。",
     "search": "搜索",
-    "searchDesc": "打开搜索对话框。"
+    "searchDesc": "打开搜索对话框。",
+    "splitViewSection": "分屏视图",
+    "splitView": "分屏视图",
+    "splitViewDesc": "在屏幕上的对话旁打开另一个对话。",
+    "maxPanes": "分屏视图窗格数",
+    "maxPanesDesc": "分屏视图同时显示的对话数量（包括主对话）。"
   },
   "interface": {
     "title": "外观",
