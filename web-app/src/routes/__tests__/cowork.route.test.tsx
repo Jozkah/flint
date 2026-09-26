@@ -1470,3 +1470,17 @@ describe('two sessions side by side in split view', () => {
     }
   })
 })
+
+describe("a session whose saved model no longer resolves", () => {
+  it("runs with the picker's model and saves it on the session", async () => {
+    seedSession({ model: { provider: 'removed-provider', id: 'qwen3.8-27b' } })
+    await renderRoute()
+    await userEvent.click(screen.getByTestId('submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(useCoworkSessions.getState().sessions[0].model).toEqual({
+      provider: 'llamacpp',
+      id: 'local/qwen',
+    })
+    expect(h.toast.error).not.toHaveBeenCalled()
+  })
+})

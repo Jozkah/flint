@@ -601,6 +601,46 @@ describe('ChatInput', () => {
     ).toBeInTheDocument()
   })
 
+  it('sends with the surface\'s own model while the global picker is empty', async () => {
+    // A Cowork session (in a split pane or not) keeps its model on the
+    // session; the global picker can be empty while the header shows one.
+    selectedModelOverride = null
+    promptState = 'try now'
+    const onSubmit = vi.fn()
+    renderInput({
+      onSubmit,
+      scopeKey: 'session-b',
+      modelSelection: {
+        selectedProvider: '8556',
+        selectedModel: { id: 'qwen3.8-27b', capabilities: ['tools'] } as any,
+      },
+    })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(
+      screen.queryByText('Please select a model to start chatting.')
+    ).not.toBeInTheDocument()
+  })
+
+  it('names the saved model when it is no longer available', () => {
+    selectedModelOverride = null
+    promptState = 'try now'
+    const onSubmit = vi.fn()
+    renderInput({
+      onSubmit,
+      scopeKey: 'session-b',
+      modelSelection: { selectedProvider: '8556', selectedModel: null as any },
+      unavailableModel: 'qwen3.8-27b',
+    })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    expect(
+      screen.getByText(
+        'qwen3.8-27b is no longer available. Pick another model in the model menu.'
+      )
+    ).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it('does not submit if isComposing (IME) is true', () => {
     promptState = 'hello'
     const onSubmit = vi.fn()

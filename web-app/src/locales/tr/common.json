@@ -716,6 +716,7 @@
     "tryAgain": "Tekrar dene"
   },
   "modelNoTools": "{{model}} araç çağıramadığından ajan olarak hareket edemiyor. Araç çağırabilen bir model seçin.",
+  "sessionModelUnavailable": "{{model}} artık kullanılamıyor. Model menüsünden başka bir model seçin.",
   "askContinue": "Devam edeyim mi?",
   "askNext": "Sonraki adım nedir?",
   "askPrev": "Önceki adım nedir?",

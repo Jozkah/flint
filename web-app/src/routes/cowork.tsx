@@ -66,6 +66,7 @@ import {
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { resolveCoworkModel } from '@/lib/coworkModelChoice'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
@@ -552,6 +553,28 @@ export function CoworkPage() {
     selectedModel as never,
     selectedProvider as never
   )
+
+  const sessionModel = useCoworkSessions(
+    (s) =>
+      s.sessions.find((x) => x.id === (coworkPane?.sessionId ?? s.currentId))
+        ?.model
+  )
+  // What the composer checks before sending: the same resolution the run
+  // uses (session model, then the picker's), never the bare global picker.
+  const composerModel = useMemo(() => {
+    const resolved = resolveCoworkModel(sessionModel, {
+      selectedProvider: globalProvider,
+      selectedModel: globalModel,
+      providers: modelProviders,
+    })
+    return {
+      selection: {
+        selectedProvider: resolved.choice?.provider ?? globalProvider,
+        selectedModel: resolved.model,
+      },
+      unavailable: resolved.model ? undefined : resolved.unavailable?.id,
+    }
+  }, [sessionModel, globalProvider, globalModel, modelProviders])
 
   const sessions = useCoworkSessions((s) => s.sessions)
   const routeCurrentId = useCoworkSessions((s) => s.currentId)
@@ -2134,22 +2157,16 @@ export function CoworkPage() {
      * picker's values for the rest of this function on purpose: nothing in a
      * run should read the global selection after this point.
      */
-    const modelState = useModelProvider.getState()
-    const runChoice =
-      current?.model ??
-      (modelState.selectedModel
-        ? {
-            provider: modelState.selectedProvider,
-            id: modelState.selectedModel.id,
-          }
-        : null)
+    // A saved model that no longer resolves falls back to the picker's and
+    // the replacement is saved, so the session is repaired once.
+    const resolved = resolveCoworkModel(
+      current?.model,
+      useModelProvider.getState()
+    )
+    const runChoice = resolved.choice
     const selectedProvider = runChoice?.provider ?? ''
-    const selectedModel = runChoice
-      ? (modelState.providers
-          .find((p) => p.provider === runChoice.provider && p.active !== false)
-          ?.models.find((m) => m.id === runChoice.id) ?? null)
-      : null
-    if (runChoice && !current?.model) store.setModel(sid, runChoice)
+    const selectedModel = resolved.model
+    if (runChoice && resolved.save) store.setModel(sid, runChoice)
     /**
      * Skills asked for by *this* turn, frozen for the whole run.
      *
@@ -2180,7 +2197,11 @@ export function CoworkPage() {
     runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
-      toast.error(t('common:selectModel'))
+      toast.error(
+        resolved.unavailable
+          ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
+          : t('common:selectModel')
+      )
       return
     }
     // Without tool calling the transport drops the tool set silently, and the
@@ -5324,6 +5345,10 @@ export function CoworkPage() {
                 initialMessage={true}
                 scopeKey={session?.id}
                 draftScope={coworkPane?.draftScope}
+                // The session's model, resolved as the run resolves it: the
+                // composer must not refuse a send the run would make.
+                modelSelection={composerModel.selection}
+                unavailableModel={composerModel.unavailable}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}
