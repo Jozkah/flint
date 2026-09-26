@@ -26,7 +26,7 @@ use serde_json::Value;
 pub const FLINT_COAUTHOR_EMAIL: &str = "334201045+flint-desktop@users.noreply.github.com";
 
 /// The line appended to the end of a pull request body.
-pub const PR_FOOTER: &str = "\u{1F916} Generated with [Flint](https://github.com/Jozkah/jan)";
+pub const PR_FOOTER: &str = "\u{1F916} Generated with [Flint](https://github.com/Jozkah/flint)";
 
 /// Largest `-F` / `--body-file` file read to rewrite it inline.
 const MAX_FILE: u64 = 1024 * 1024;
