@@ -294,7 +294,7 @@ const ThreadItem = memo(
               <NavButton asChild size="sm" isActive={isSelected}>
                 <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
                   <ThreadStatusMark status={status} />
-                  <span className={cn("block truncate", isSelected && "font-medium")} title={thread.title || t('common:newThread')}>{thread.title || t('common:newThread')}</span>
+                  <span className={cn("block truncate", isSelected && "font-medium")}>{thread.title || t('common:newThread')}</span>
                 </Link>
               </NavButton>
             </HoverCardTrigger>

@@ -1,10 +1,6 @@
 import { useMemo } from 'react'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
-import {
-  Loader2,
-  Menu,
-  ShieldAlert,
-} from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { Icon, type IconName } from '@/components/ui/icon'
 import {
   DropdownMenu,
@@ -16,6 +12,7 @@ import {
 import { useUsageStats, type ActivityKind } from '@/stores/usage-stats-store'
 import { useShellNav } from '@/components/shell/nav-kit'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
+import { HeaderLiveChips } from '@/components/shell/HeaderLiveChips'
 import { crumbForPath } from '@/lib/breadcrumb'
 import { route } from '@/constants/routes'
 import { useTheme } from '@/hooks/useTheme'
@@ -167,19 +164,6 @@ export function TopHeader() {
   const runs = useCoworkRun((s) => Object.keys(s.runs ?? {}).length)
   const approvals = useToolApprovalRequests((s) => Object.keys(s.pending ?? {}).length)
   const navigate = useNavigate()
-  const focusFirstApproval = () => {
-    const card = document.querySelector<HTMLElement>(
-      '[data-testid="inline-approval-card"]'
-    )
-    if (card) {
-      card.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      card.querySelector<HTMLButtonElement>('button:not([disabled])')?.focus({
-        preventScroll: true,
-      })
-      return
-    }
-    navigate({ to: route.cowork })
-  }
   const activity = useUsageStats((s) => s.activity)
   const recent = activity.slice(0, 4)
 
@@ -267,34 +251,7 @@ export function TopHeader() {
       />
 
       <div className="flex shrink-0 items-center gap-1.5">
-        {runs > 0 && (
-          <Link
-            to={route.cowork}
-            className="hidden h-[26px] items-center gap-1.5 rounded-full border-[0.8px] border-border bg-card px-2.5 text-[11.5px] font-medium whitespace-nowrap text-secondary-foreground transition-shadow hover:shadow-lift md:inline-flex"
-            title={t('common:shell.runsTitle')}
-            data-testid="header-runs-chip"
-          >
-            <Loader2 className="size-3 motion-safe:animate-spin" aria-hidden />
-            {t('common:shell.runs', { count: runs })}
-          </Link>
-        )}
-        {approvals > 0 && (
-          // Actionable: jumps to the first request waiting for an answer.
-          <button
-            type="button"
-            className="hidden h-[26px] cursor-pointer items-center gap-1.5 rounded-full border border-warning bg-warning px-2.5 text-[11.5px] font-semibold whitespace-nowrap text-white shadow-md shadow-warning/30 transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-warning/50 focus-visible:outline-hidden md:inline-flex"
-            data-testid="header-approvals-chip"
-            title={t('common:shell.approvalWaiting')}
-            onClick={focusFirstApproval}
-          >
-            <span className="relative flex size-2" aria-hidden>
-              <span className="absolute inline-flex size-full rounded-full bg-white/80 motion-safe:animate-ping" />
-              <span className="relative inline-flex size-2 rounded-full bg-white" />
-            </span>
-            <ShieldAlert className="size-3" aria-hidden />
-            {t('common:shell.approvals', { count: approvals })}
-          </button>
-        )}
+        <HeaderLiveChips />
         <button
           type="button"
           className={cn(iconBtn, 'max-sm:hidden')}
