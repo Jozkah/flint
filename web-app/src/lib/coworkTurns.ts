@@ -270,6 +270,71 @@ export function appendLiveMessages(
   return [...committed.slice(0, -1), joined, ...live.slice(1)]
 }
 
+const segmentCache = new WeakMap<UIMessage, UIMessage[]>()
+
+/**
+ * An assistant message split into the model rounds it was built from.
+ *
+ * One reply folds every round of a run (text, tool calls, the next request's
+ * text ...) into a single message, but what belongs to each round -- what the
+ * model received, the round's token usage, a workflow card -- is drawn after
+ * the message. Rendered whole, a live run's newest text and approval requests
+ * therefore landed above those older rows. Split at each round's start (the
+ * `data-prompt-snapshot` part, or `data-turn-usage` when a round has no
+ * snapshot), every round renders with its own rows directly beneath it, and
+ * the newest round is always last.
+ *
+ * The first segment keeps the message's id, so anything anchored to the
+ * message (a workflow, a positional snapshot) still finds it. Cached per
+ * message object, so a committed message keeps stable segments across renders.
+ */
+export function segmentAssistantMessage(message: UIMessage): UIMessage[] {
+  if (message.role !== 'assistant') return [message]
+  const cached = segmentCache.get(message)
+  if (cached) return cached
+  const groups: UIMessage['parts'][] = [[]]
+  message.parts.forEach((part, index) => {
+    const current = groups[groups.length - 1]
+    const type = (part as { type: string }).type
+    const previous = (message.parts[index - 1] as { type?: string } | undefined)
+      ?.type
+    const startsRound =
+      type === 'data-prompt-snapshot' ||
+      (type === 'data-turn-usage' && previous !== 'data-prompt-snapshot')
+    if (startsRound && current.length > 0) groups.push([part])
+    else current.push(part)
+  })
+  const segments =
+    groups.length === 1
+      ? [message]
+      : groups.map((parts, k) =>
+          k === 0
+            ? { ...message, parts }
+            : { ...message, id: `${message.id}-r${k}`, parts }
+        )
+  segmentCache.set(message, segments)
+  return segments
+}
+
+/**
+ * The segment a workflow card follows: the round that made its first
+ * dispatch, so the card sits where the work started and everything the run
+ * did afterwards is below it. The last segment when no dispatch is found.
+ */
+export function workflowSegmentIndex(
+  segments: UIMessage[],
+  callIds: Iterable<string>
+): number {
+  const ids = new Set(callIds)
+  const at = segments.findIndex((segment) =>
+    segment.parts.some((part) => {
+      const id = (part as { toolCallId?: string }).toolCallId
+      return typeof id === 'string' && ids.has(id)
+    })
+  )
+  return at >= 0 ? at : segments.length - 1
+}
+
 /**
  * Messages with every tool part carrying an `input`. #321.
  *

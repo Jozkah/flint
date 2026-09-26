@@ -98,6 +98,8 @@ import SkillSelector from '@/containers/SkillSelector'
 import {
   appendLiveMessages,
   assistantAnchorId,
+  segmentAssistantMessage,
+  workflowSegmentIndex,
   coworkTurnsToUIMessages,
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
@@ -4738,12 +4740,32 @@ function CoworkPage() {
                   {/* The plan heads the transcript, in its reading column. */}
                   <CoworkPlanStrip todos={session?.todos} />
                   <CodeOpenProvider open={openToolPath}>
-                    {uiMessages.map((message, i) => (
+                    {uiMessages.map((whole, i) => {
+                      // Each model round renders with its own rows beneath
+                      // it, so the newest content is always last.
+                      const segments = segmentAssistantMessage(whole)
+                      const workflow = workflowAnchoredAt(
+                        activity,
+                        session?.id,
+                        whole.id
+                      )
+                      const workflowAt = workflow
+                        ? workflowSegmentIndex(
+                            segments,
+                            workflow.tasks.map((task) => task.callId)
+                          )
+                        : -1
+                      return segments.map((message, k) => (
                       <Fragment key={message.id}>
                         <MessageItem
                           message={message}
-                          isFirstMessage={i === 0}
-                          isLastMessage={i === uiMessages.length - 1}
+                          isFirstMessage={i === 0 && k === 0}
+                          isLastMessage={
+                            i === uiMessages.length - 1 &&
+                            k === segments.length - 1
+                          }
+                          hideActions={k < segments.length - 1 || undefined}
+                          continuation={k > 0 || undefined}
                           status={running ? 'streaming' : 'ready'}
                           onRegenerate={handleRegenerate}
                           reasoningContainerRef={reasoningContainerRef}
@@ -4761,11 +4783,7 @@ function CoworkPage() {
                         dispatch landed under. Same store as the panel, so it
                         is live without a copy of anything. */}
                         {(() => {
-                          const view = workflowAnchoredAt(
-                            activity,
-                            session?.id,
-                            message.id
-                          )
+                          const view = k === workflowAt ? workflow : null
                           return view ? (
                             <CoworkWorkflowCard
                               view={view}
@@ -4896,7 +4914,8 @@ function CoworkPage() {
                           />
                         ))}
                       </Fragment>
-                    ))}
+                                          ))
+                    })}
                   </CodeOpenProvider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />

@@ -3,6 +3,8 @@ import {
   appendLiveMessages,
   assistantAnchorId,
   coworkTurnsToUIMessages,
+  segmentAssistantMessage,
+  workflowSegmentIndex,
 } from '@/lib/coworkTurns'
 import type { CoworkTurn } from '@/hooks/useCoworkSessions'
 
@@ -407,5 +409,71 @@ describe("a request Flint wrote itself", () => {
     const users = stored.filter((m) => m.role === 'user')
     expect(users).toHaveLength(2)
     expect((users[1] as any).metadata).toEqual({ hidden: true })
+  })
+})
+
+describe('live transcript order', () => {
+  // One reply, three model rounds: the run bashed, then (next request) said
+  // something and asked to run another command that waits for approval.
+  const run: CoworkTurn[] = [
+    { role: 'user', content: 'trigger the build for me' },
+    {
+      role: 'assistant',
+      content: 'Starting the build.',
+      promptSnapshot: { id: 'snap-1', hash: 'h1', redactions: 0 },
+      usage: { inputTokens: 10, outputTokens: 5 } as never,
+    },
+    { role: 'tool', content: '', callId: 'bash-1', name: 'bash', status: 'done' },
+    {
+      role: 'assistant',
+      content: 'Build finished; deploying next.',
+      promptSnapshot: { id: 'snap-2', hash: 'h2', redactions: 0 },
+    },
+    {
+      role: 'tool',
+      content: '',
+      callId: 'bash-2',
+      name: 'bash',
+      status: 'running',
+      toolState: 'awaiting-approval' as never,
+    },
+  ]
+  const [, reply] = coworkTurnsToUIMessages(run, 's')
+
+  it('splits a reply at each round so a round\'s rows sit under it', () => {
+    const segments = segmentAssistantMessage(reply)
+    expect(segments).toHaveLength(2)
+    // The first round keeps the message id: anchors still find it.
+    expect(segments[0].id).toBe(reply.id)
+    const types = (m: typeof reply) =>
+      m.parts.map((p) => (p as { type: string }).type)
+    expect(types(segments[0])).toContain('tool-bash')
+    // The newest text and the pending approval are in the last segment, so
+    // nothing older is drawn below them.
+    const last = segments[segments.length - 1]
+    expect(types(last)[0]).toBe('data-prompt-snapshot')
+    expect(
+      last.parts.some(
+        (p) => (p as { toolCallId?: string }).toolCallId === 'bash-2'
+      )
+    ).toBe(true)
+  })
+
+  it('anchors the workflow card after the round of its first dispatch', () => {
+    const segments = segmentAssistantMessage(reply)
+    expect(workflowSegmentIndex(segments, ['bash-1', 'bash-2'])).toBe(0)
+    expect(workflowSegmentIndex(segments, ['bash-2'])).toBe(1)
+    expect(workflowSegmentIndex(segments, ['elsewhere'])).toBe(1)
+  })
+
+  it('leaves a single-round reply and user rows untouched', () => {
+    const [user, single] = coworkTurnsToUIMessages(run.slice(0, 3), 's')
+    expect(segmentAssistantMessage(single)).toEqual([single])
+    expect(segmentAssistantMessage(single)[0]).toBe(single)
+    expect(segmentAssistantMessage(user)).toEqual([user])
+  })
+
+  it('returns the same segments for the same message', () => {
+    expect(segmentAssistantMessage(reply)).toBe(segmentAssistantMessage(reply))
   })
 })
