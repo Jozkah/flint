@@ -11,6 +11,12 @@ export type QueuedMessage = {
    */
   held?: boolean
   /**
+   * The user asked for this message to be handed to the running turn at its
+   * next safe point (steering) instead of waiting for the run to end and
+   * going as a new turn. Mail from another session is always steering.
+   */
+  steer?: boolean
+  /**
    * Set when the message is mail from another agent session
    * (docs/SESSION_MESSAGING.md). `text` is then the wrapped text the model is
    * given; this records who sent it so the UI can attribute it and reply.
@@ -50,7 +56,21 @@ interface MessageQueueState {
   hold: (threadId: string, messageId: string) => void
   /** Put messages back after a restart, held; ids already queued are skipped. */
   restoreHeld: (threadId: string, messages: QueuedMessage[]) => void
+  /** Mark one waiting message to be delivered into the running turn. */
+  steerNow: (threadId: string, messageId: string) => void
+  /**
+   * Remove and return what the running turn should take at a safe point:
+   * ready messages marked to steer, and mail. Plain queued messages stay to
+   * go as new turns once the run ends.
+   */
+  takeSteering: (threadId: string) => QueuedMessage[]
+  /** Move one message up (-1) or down (+1) in its queue. */
+  move: (threadId: string, messageId: string, delta: number) => void
 }
+
+/** What the running turn takes at a safe point. */
+export const isSteering = (m: QueuedMessage): boolean =>
+  !m.held && (m.steer === true || !!m.from)
 
 export const useMessageQueue = create<MessageQueueState>((set, get) => ({
   queues: {},
@@ -138,7 +158,12 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
       return {
         queues: {
           ...state.queues,
-          [threadId]: queue.map((m) => ({ ...m, held: true })),
+          // A held message waits for the user; releasing it later sends it
+          // as a turn of its own, not as steering for a run it missed.
+          [threadId]: queue.map(({ steer: _steer, ...m }) => ({
+            ...m,
+            held: true,
+          })),
         },
       }
     })
@@ -183,6 +208,52 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
         .map((m) => ({ ...m, held: true }))
       if (added.length === 0) return state
       return { queues: { ...state.queues, [threadId]: [...queue, ...added] } }
+    })
+  },
+
+  steerNow: (threadId, messageId) => {
+    set((state) => {
+      const queue = state.queues[threadId]
+      if (!queue?.some((m) => m.id === messageId && !m.held && !m.steer))
+        return state
+      return {
+        queues: {
+          ...state.queues,
+          [threadId]: queue.map((m) =>
+            m.id === messageId ? { ...m, steer: true } : m
+          ),
+        },
+      }
+    })
+  },
+
+  takeSteering: (threadId) => {
+    let taken: QueuedMessage[] = []
+    set((state) => {
+      const queue = state.queues[threadId]
+      if (!queue?.some(isSteering)) return state
+      taken = queue.filter(isSteering)
+      return {
+        queues: {
+          ...state.queues,
+          [threadId]: queue.filter((m) => !isSteering(m)),
+        },
+      }
+    })
+    return taken
+  },
+
+  move: (threadId, messageId, delta) => {
+    set((state) => {
+      const queue = state.queues[threadId]
+      const from = queue?.findIndex((m) => m.id === messageId) ?? -1
+      if (!queue || from < 0) return state
+      const to = Math.max(0, Math.min(queue.length - 1, from + delta))
+      if (to === from) return state
+      const next = [...queue]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return { queues: { ...state.queues, [threadId]: next } }
     })
   },
 }))
