@@ -19,9 +19,9 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **Agent SDK and slash commands.** JavaScript and Python SDK clients speak a frozen protocol v1 over JSON-RPC. A host tool contract lets a client declare tools that it runs itself. Flint's built-in tools are also available over MCP. Slash commands now work in the Home, Cowork and Rooms composers.
 - **A sandbox that can reach the network, safely.** Agent runs now have network access by default through a LAN-capable sandbox, with a toggle that policy can restrict and a native `git_clone`. A long round of security hardening covers bash rules, symlinks, secrets, `web_fetch` to private addresses and repository git config.
 - **A git tool with real approvals.** Git and `gh` run outside the sandbox through a dedicated `git` tool: reads run freely, local changes follow the session's mode, and every push, pull request, issue or repository change shows an approval naming the exact command and remote. Repository config that would run programs is refused, and MCP tools that approve their own commands are never offered.
-- **Toolchains in the Windows sandbox.** Settings → Agent Tools lets the sandbox use a toolchain installed in your profile (such as Python) by granting one folder, revocable at any time; folders that need an administrator show the exact command instead. When Windows' NUL device refuses sandboxed programs, Flint offers to rerun that one command outside the sandbox, with your approval.
+- **Toolchains in the Windows sandbox.** Settings → Agent Tools lets the sandbox use a toolchain installed in your profile (such as Python) by granting one folder, revocable at any time; folders that need an administrator show the exact command instead. When Windows' NUL device refuses sandboxed programs, Flint offers to rerun that one command outside the sandbox, with your approval, and asks up front for programs known to need it.
 - **Agents that ask, verify and stop looping.** The agent asks structured questions with its own suggested options, is told the shell, sandbox limits and access mode up front, reruns existing tests after a change, and a loop guard now catches repeated approve/execute cycles.
-- **Long runs that keep going, and messages that wait their turn.** Chat, Cowork and Rooms compact the context automatically as it fills, with `/compact` to do it by hand. A message sent while a run is working waits in a queue you can edit, reorder or remove, or steers the run at its next tool call.
+- **Long runs that keep going, and messages that wait their turn.** Chat, Cowork and Rooms compact the context automatically as it fills, with `/compact` to do it by hand. A message sent while a run is working waits in a queue you can edit, drag to reorder or remove, or steers the run at its next tool call; Stop keeps the queue for you to send or discard.
 - **A richer System Monitor.** Drives, network rates, temperatures, per-core CPU, swap, uptime and host details, with usage bars throughout.
 - **AI-written MCP descriptions.** Generate "About this server" text for your MCP servers with a model you choose, reviewing each one before it is saved.
 
@@ -131,6 +131,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cowork): tell the model its real environment and working directory, and which toolchains the sandbox can run
 - feat(cowork): say that MCP servers from Settings are not offered
 - feat(cowork): attach more than one folder to a session, each with its own access, seen by subagents too
+- feat(cowork): session details estimate the context (system prompt, instructions, tool schemas) before the first run
 - feat(cowork): Edit this folder on Windows, through AppContainer grants withdrawn when the grant goes
 - feat(cowork): compact a long run automatically instead of stopping at the context window
 
@@ -266,7 +267,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(policy): a permission policy as a reviewed file a project cannot loosen (AH-052, AH-187)
 - feat(agent-tools): issue write authority as a grant over a root, not a path, and hold the shell to the same roots
 - feat(cowork): separate where Flint may write from how freely it acts, and default a repository to review
-- feat(agent-tools): offer an unsandboxed retry, through the approval prompt, when Windows' NUL device refuses the sandbox
+- feat(agent-tools): offer an unsandboxed retry, through the approval prompt, when Windows' NUL device refuses the sandbox; the card shows the rerun with the first attempt collapsed, the CLI asks the same y/n question, and programs known to open NUL (`go`, `git`, configurable with `[tools].nul_programs` in agent.toml) are offered up front instead of failing first
 - feat(security): enforce the project's tool policy on the desktop path
 - feat(agent): an autonomous-mode safety classifier (findings F1), off by default
 - security(harness): detect credentials once, and redact them on every durable path
@@ -323,7 +324,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(chat): attach text and code without asking the model to see it
 - feat(composer): one @ menu for files, skills, agents and aliases, and name a selection as an alias
 - feat(web-search): native `web_search` / `web_fetch` tooling and provider improvements
-- feat(chat): queue messages while a run works, and steer it with one at its next tool call; edit, reorder or remove queued messages, in Chat and Cowork
+- feat(chat): queue messages while a run works, and steer it with one at its next tool call; edit, drag to reorder or remove queued messages, in Chat and Cowork; Stop or a failed run holds the queue with Send and Discard instead of dropping it
 - feat(chat): compact automatically at the threshold, show where it happened, and compact by hand with `/compact`
 - fix(threads): keep a conversation's tail reachable when a message is removed, and never leave a torn thread file behind
 - fix(threads): opening "Delete all" and pressing Enter no longer deletes every thread
