@@ -351,6 +351,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(chat): count pages read separately from search hits in the sources badge, and recheck project documents before using the tool cache
 - fix(threads): keep a thread's model when its assistant is set to None, skip an unreadable `thread.json`, refuse unsafe thread ids, and remove a deleted thread's agent scratch directory
 - fix(messages): handle a failed backend delete, and keep updates made while a message is being saved
+- fix(chat): deleting or continuing a message acts on the current transcript, so a delete no longer drops messages added since that message last rendered
 - fix(websearch): strip YAML front matter from fetched pages, and cap response bodies while reading them
 - fix(web): truncate long tool-card details, and keep string tracking across escaped quotes in tool-argument repair
 
