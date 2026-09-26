@@ -400,14 +400,24 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     // selectedModel and selectedProvider intentionally excluded to prevent race conditions
   ])
 
+  // The chat's or session's own model, when its provider (or the model) is
+  // gone: removed, or turned off. The picker names it as unavailable rather
+  // than quietly showing another model or an empty "Select a model".
+  const unavailableModel =
+    model?.id && !checkModelExists(model.provider, model.id) ? model : undefined
+
   // Update display model when selection changes
   useEffect(() => {
     if (selectedProvider && selectedModel) {
       setDisplayModel(getModelDisplayName(selectedModel))
+    } else if (unavailableModel) {
+      setDisplayModel(
+        t('common:modelUnavailable', { model: unavailableModel.id })
+      )
     } else {
       setDisplayModel(t('common:selectAModel'))
     }
-  }, [selectedProvider, selectedModel, t])
+  }, [selectedProvider, selectedModel, unavailableModel, t])
 
   // Models already probed for vision while the dropdown is open. The effect
   // below re-runs on every providers-store change (including the ones the
@@ -818,6 +828,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                       'min-w-0 flex-1 truncate text-left leading-normal text-foreground',
                       !selectedModel?.id && 'text-muted-foreground'
                     )}
+                    data-unavailable={
+                      !selectedModel?.id && unavailableModel ? '' : undefined
+                    }
                   >
                     {displayModel}
                   </span>

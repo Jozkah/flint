@@ -58,5 +58,28 @@
   },
   "addProvider": "新增提供者",
   "addOpenAIProvider": "新增 OpenAI 提供者",
-  "enterNameForProvider": "輸入提供者名稱"
+  "enterNameForProvider": "輸入提供者名稱",
+  "cardMenu": {
+    "actions": "{{provider}} 的操作",
+    "edit": "編輯設定",
+    "enable": "開啟",
+    "disable": "關閉",
+    "remove": "移除提供者",
+    "rename": "重新命名"
+  },
+  "removeProvider": {
+    "confirmTitle": "要移除 {{provider}} 嗎？",
+    "confirmDescription": "{{provider}} 及其 {{count}} 個模型將從 Flint 中移除，已儲存的 API 金鑰也會一併刪除。",
+    "keepsHistory": "使用其模型的聊天、工作階段、房間和助理會保留歷史記錄；該模型將顯示為無法使用。",
+    "cancel": "取消",
+    "remove": "移除",
+    "success": "已移除 {{provider}}。"
+  },
+  "renameProvider": {
+    "title": "重新命名提供者",
+    "description": "只變更 Flint 中顯示的名稱。聊天、API 金鑰和設定照常運作。留空則使用預設名稱。",
+    "label": "提供者名稱",
+    "cancel": "取消",
+    "save": "儲存"
+  }
 }

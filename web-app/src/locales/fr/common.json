@@ -521,5 +521,6 @@
     },
     "deleteKeep": "Conserver son worktree et sa branche ({{name}})",
     "deleteRemove": "Supprimer aussi son worktree et sa branche ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (indisponible)"
 }

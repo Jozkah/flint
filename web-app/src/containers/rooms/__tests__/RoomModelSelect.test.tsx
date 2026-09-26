@@ -46,6 +46,7 @@ describe('RoomModelSelect', () => {
   it('groups the options by provider', () => {
     const { container } = render(<RoomModelSelect id="m" value={null} onChange={() => {}} />)
     const groups = [...container.querySelectorAll('optgroup')].map((g) => g.label)
-    expect(groups).toEqual(['openai', 'openrouter', 'groq'])
+    // Groups are labelled by the provider title, which follows renames.
+    expect(groups).toEqual(['OpenAI', 'OpenRouter', 'Groq'])
   })
 })

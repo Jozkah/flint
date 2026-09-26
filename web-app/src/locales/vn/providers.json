@@ -58,5 +58,28 @@
   },
   "addProvider": "Thêm nhà cung cấp",
   "addOpenAIProvider": "Thêm nhà cung cấp OpenAI",
-  "enterNameForProvider": "Nhập tên cho nhà cung cấp"
+  "enterNameForProvider": "Nhập tên cho nhà cung cấp",
+  "cardMenu": {
+    "actions": "Thao tác cho {{provider}}",
+    "edit": "Chỉnh sửa cài đặt",
+    "enable": "Bật",
+    "disable": "Tắt",
+    "remove": "Xóa nhà cung cấp",
+    "rename": "Đổi tên"
+  },
+  "removeProvider": {
+    "confirmTitle": "Xóa {{provider}}?",
+    "confirmDescription": "{{provider}} và {{count}} mô hình của nó sẽ bị xóa khỏi Flint, cùng với khóa API đã lưu.",
+    "keepsHistory": "Các cuộc trò chuyện, phiên, phòng và trợ lý dùng mô hình của nó vẫn giữ lịch sử; mô hình sẽ hiển thị là không khả dụng.",
+    "cancel": "Hủy",
+    "remove": "Xóa",
+    "success": "Đã xóa {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Đổi tên nhà cung cấp",
+    "description": "Chỉ đổi tên hiển thị trong Flint. Các cuộc trò chuyện, khóa API và cài đặt vẫn hoạt động. Để trống để dùng tên mặc định.",
+    "label": "Tên nhà cung cấp",
+    "cancel": "Hủy",
+    "save": "Lưu"
+  }
 }

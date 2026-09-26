@@ -33,6 +33,17 @@ const h = vi.hoisted(() => {
     settings: [],
     models: [],
   }
+  const custom: any = {
+    provider: 'Qwen 3.8 500k (8081)',
+    active: true,
+    api_key: 'x',
+    base_url: 'http://localhost:8081/v1',
+    settings: [],
+    models: [
+      { id: 'qwen-local', name: 'Qwen local', capabilities: [] },
+      { id: 'qwen-b', name: 'Qwen B' },
+    ],
+  }
   const models = {
     getActiveModels: vi.fn().mockResolvedValue(['qwen3-14b']),
     fetchModels: vi
@@ -46,7 +57,8 @@ const h = vi.hoisted(() => {
   }
   const appState: any = { activeModels: [], setActiveModels: vi.fn() }
   return {
-    providers: [llamacpp, openai, mistral],
+    providers: [llamacpp, openai, mistral, custom],
+    removeProvider: vi.fn().mockResolvedValue(undefined),
     updateProvider: vi.fn(),
     addProvider: vi.fn(),
     setProviders: vi.fn(),
@@ -95,6 +107,11 @@ vi.mock('@/hooks/useServiceHub', () => {
   return { useServiceHub: () => hub }
 })
 
+vi.mock('@/hooks/useRemoveProvider', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/useRemoveProvider')>()),
+  useRemoveProvider: () => h.removeProvider,
+}))
+
 vi.mock('@/hooks/useAppState', () => ({
   useAppState: (selector: any) => selector(h.appState),
 }))
@@ -137,8 +154,8 @@ describe('Models page (/settings/providers)', () => {
   it('shows KPI tiles from the providers, the loaded list and the files on disk', async () => {
     await renderPage()
     const installed = screen.getByText('engine:kpi.installed').closest('section')!
-    // Only enabled providers count: one local model, one remote.
-    expect(within(installed).getByText('2')).toBeInTheDocument()
+    // Only enabled providers count: one local model, three remote.
+    expect(within(installed).getByText('4')).toBeInTheDocument()
     const loaded = screen.getByText('engine:kpi.loaded').closest('section')!
     expect(within(loaded).getByText('1')).toBeInTheDocument()
     const disk = screen.getByText('engine:kpi.disk').closest('section')!
@@ -205,5 +222,128 @@ describe('Models page (/settings/providers)', () => {
     await renderPage()
     expect(screen.getAllByTestId('add-provider-dialog')).toHaveLength(2)
     expect(screen.getByTestId('import-gguf')).toBeInTheDocument()
+  })
+
+  const openCardMenu = async (
+    user: ReturnType<typeof userEvent.setup>,
+    provider: string
+  ) => {
+    const card = screen.getByTestId(`provider-row-${provider}`)
+    fireEvent.contextMenu(card)
+    return screen.findByRole('menu')
+  }
+
+  it('offers removing a provider the user added from its right-click menu', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    const menu = await openCardMenu(user, 'Qwen 3.8 500k (8081)')
+    const items = within(menu)
+      .getAllByRole('menuitem')
+      .map((i) => i.textContent)
+    expect(items).toEqual([
+      'providers:cardMenu.edit',
+      'providers:cardMenu.rename',
+      'providers:cardMenu.disable',
+      'providers:cardMenu.remove',
+    ])
+  })
+
+  it.each(['openai', 'llamacpp'])(
+    'never offers removing the built-in provider %s',
+    async (provider) => {
+      const user = userEvent.setup()
+      await renderPage()
+      const menu = await openCardMenu(user, provider)
+      const items = within(menu)
+        .getAllByRole('menuitem')
+        .map((i) => i.textContent)
+      expect(items).toEqual([
+        'providers:cardMenu.edit',
+        'providers:cardMenu.rename',
+        'providers:cardMenu.disable',
+      ])
+    }
+  )
+
+  it('offers the same menu from the card three dots button', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await user.click(
+      within(screen.getByTestId('provider-row-mistral')).getByRole('button', {
+        name: /providers:cardMenu.actions/,
+      })
+    )
+    const enable = await screen.findByRole('menuitem', {
+      name: 'providers:cardMenu.enable',
+    })
+    await user.click(enable)
+    expect(h.updateProvider).toHaveBeenCalledWith(
+      'mistral',
+      expect.objectContaining({ active: true })
+    )
+  })
+
+  it('confirms removal naming the provider and its model count, then removes it', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await openCardMenu(user, 'Qwen 3.8 500k (8081)')
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'providers:cardMenu.remove' })
+    )
+    const dialog = await screen.findByTestId('remove-provider-dialog')
+    expect(dialog).toHaveTextContent('Qwen 3.8 500k (8081)')
+    expect(dialog).toHaveTextContent('"count":2')
+    expect(dialog).toHaveTextContent('providers:removeProvider.keepsHistory')
+    expect(h.removeProvider).not.toHaveBeenCalled()
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'providers:removeProvider.remove',
+      })
+    )
+    expect(h.removeProvider).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'Qwen 3.8 500k (8081)' })
+    )
+  })
+
+  it('lays every installed-model row, and the header, on one column template', async () => {
+    await renderPage()
+    const withCaps = screen.getByTestId('models-row-gpt-5')
+    const noCaps = screen.getByTestId('models-row-qwen-b')
+    const emptyCaps = screen.getByTestId('models-row-qwen-local')
+    const tbox = withCaps.closest('[data-slot="tbox"]') as HTMLElement
+    expect(tbox.style.getPropertyValue('--tbox-cols')).toMatch(/\S/)
+    // Same cell count on every row, so no column shifts.
+    const counts = [withCaps, noCaps, emptyCaps].map((r) => r.children.length)
+    expect(new Set(counts).size).toBe(1)
+    for (const row of [withCaps, noCaps, emptyCaps]) {
+      expect(row.className).toContain('grid-cols-[var(--tbox-cols)]')
+      expect(row.querySelector('[data-slot="caps-cell"]')).not.toBeNull()
+    }
+    const head = tbox.firstElementChild as HTMLElement
+    expect(head.children.length).toBe(counts[0])
+    expect(head.className).toContain('grid-cols-[var(--tbox-cols)]')
+    // Fits the frame: no forced minimum width that makes it scroll sideways.
+    expect(tbox.className).not.toMatch(/min-w-\[/)
+  })
+
+  it('renames a provider for display only, keeping its internal key', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await openCardMenu(user, 'Qwen 3.8 500k (8081)')
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'providers:cardMenu.rename' })
+    )
+    const dialog = await screen.findByTestId('rename-provider-dialog')
+    const input = within(dialog).getByRole('textbox', {
+      name: 'providers:renameProvider.label',
+    })
+    await user.clear(input)
+    await user.type(input, 'Home Qwen')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'providers:renameProvider.save' })
+    )
+    expect(h.updateProvider).toHaveBeenCalledWith('Qwen 3.8 500k (8081)', {
+      displayName: 'Home Qwen',
+    })
   })
 })

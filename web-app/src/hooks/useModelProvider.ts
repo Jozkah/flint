@@ -1,3 +1,4 @@
+import { syncProviderDisplayNames } from '@/lib/providerDisplayNames'
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
@@ -229,6 +230,7 @@ export const useModelProvider = create<ModelProviderState>()(
                 existingProvider?.api_key_fallbacks ?? provider.api_key_fallbacks,
               base_url: existingProvider?.base_url || provider.base_url,
               active: existingProvider ? existingProvider?.active : true,
+              displayName: existingProvider?.displayName ?? provider.displayName,
             }
           })
           const nextProviders = [
@@ -363,6 +365,11 @@ export const useModelProvider = create<ModelProviderState>()(
           providers: state.providers.filter(
             (provider) => provider.provider !== providerName
           ),
+          // A selection pointing at the removed provider would name a model
+          // that no longer exists; fall back to the default local engine.
+          ...(state.selectedProvider === providerName
+            ? { selectedProvider: 'llamacpp', selectedModel: null }
+            : {}),
         }))
       },
     }),
@@ -875,3 +882,9 @@ export const useModelProvider = create<ModelProviderState>()(
     }
   )
 )
+
+// Keep provider titles (getProviderTitle) in step with user renames.
+syncProviderDisplayNames(useModelProvider.getState().providers)
+useModelProvider.subscribe((state, prev) => {
+  if (state.providers !== prev.providers) syncProviderDisplayNames(state.providers)
+})

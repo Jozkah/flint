@@ -799,5 +799,6 @@
     },
     "deleteKeep": "Worktree'sini ve dalını koru ({{name}})",
     "deleteRemove": "Worktree'sini ve dalını ({{name}}) da kaldır"
-  }
+  },
+  "modelUnavailable": "{{model}} (kullanılamıyor)"
 }

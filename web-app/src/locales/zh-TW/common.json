@@ -518,5 +518,6 @@
     },
     "deleteKeep": "保留其 worktree 與分支（{{name}}）",
     "deleteRemove": "一併移除其 worktree 與分支（{{name}}）"
-  }
+  },
+  "modelUnavailable": "{{model}}（無法使用）"
 }

@@ -587,5 +587,6 @@
     },
     "deleteKeep": "worktree와 브랜치 유지 ({{name}})",
     "deleteRemove": "worktree와 브랜치({{name}})도 제거"
-  }
+  },
+  "modelUnavailable": "{{model}} (사용할 수 없음)"
 }

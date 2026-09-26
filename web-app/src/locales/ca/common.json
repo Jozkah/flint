@@ -520,5 +520,6 @@
     },
     "deleteKeep": "Conserva el seu worktree i branca ({{name}})",
     "deleteRemove": "Elimina també el seu worktree i branca ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (no disponible)"
 }

@@ -75,6 +75,8 @@ type ProviderObject = {
   custom_header?: ProviderCustomHeader[] | null
   /** Wire format of the provider's HTTP API. Missing = 'openai' (default). */
   api_type?: ProviderApiType
+  /** Name the user gave the provider; `provider` stays the internal key. */
+  displayName?: string
 }
 
 /**

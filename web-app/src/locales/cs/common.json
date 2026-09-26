@@ -520,5 +520,6 @@
     },
     "deleteKeep": "Ponechat worktree a větev ({{name}})",
     "deleteRemove": "Odstranit i worktree a větev ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (nedostupný)"
 }

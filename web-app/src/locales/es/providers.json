@@ -58,5 +58,28 @@
   },
   "addProvider": "Agregar proveedor",
   "addOpenAIProvider": "Agregar proveedor OpenAI",
-  "enterNameForProvider": "Ingresa un nombre para el proveedor"
+  "enterNameForProvider": "Ingresa un nombre para el proveedor",
+  "cardMenu": {
+    "actions": "Acciones para {{provider}}",
+    "edit": "Editar configuración",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "remove": "Eliminar proveedor",
+    "rename": "Renombrar"
+  },
+  "removeProvider": {
+    "confirmTitle": "¿Eliminar {{provider}}?",
+    "confirmDescription": "{{provider}} y sus {{count}} modelos se eliminarán de Flint, junto con su clave API guardada.",
+    "keepsHistory": "Los chats, sesiones, salas y asistentes que usan sus modelos conservan su historial; el modelo aparecerá como no disponible.",
+    "cancel": "Cancelar",
+    "remove": "Eliminar",
+    "success": "Se eliminó {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Renombrar proveedor",
+    "description": "Solo cambia el nombre que se muestra en Flint. Los chats, las claves API y la configuración siguen funcionando. Déjalo vacío para usar el nombre predeterminado.",
+    "label": "Nombre del proveedor",
+    "cancel": "Cancelar",
+    "save": "Guardar"
+  }
 }

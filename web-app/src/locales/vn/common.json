@@ -518,5 +518,6 @@
     },
     "deleteKeep": "Giữ worktree và nhánh ({{name}})",
     "deleteRemove": "Xóa cả worktree và nhánh ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (không khả dụng)"
 }

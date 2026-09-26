@@ -1,71 +1,39 @@
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
-
 import { toast } from 'sonner'
 import { CardItem } from '../Card'
-import { EngineManager } from '@janhq/core'
-import { useModelProvider } from '@/hooks/useModelProvider'
-import { useServiceHub } from '@/hooks/useServiceHub'
 import { useRouter } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { predefinedProviders } from '@/constants/providers'
-import { useFavoriteModel } from '@/hooks/useFavoriteModel'
-import { deleteSecretHeaderValues } from '@/lib/providerHeaderSecrets'
+import { isRemovableProvider, useRemoveProvider } from '@/hooks/useRemoveProvider'
+import { RemoveProviderDialog } from '@/containers/engine/ProviderCardMenu'
+import { getProviderTitle } from '@/lib/utils'
 
 type Props = {
   provider?: ProviderObject
 }
+
+/**
+ * The provider settings page's "Delete provider" row. It uses the same
+ * removal and confirmation as the provider card menu on the Models page.
+ */
 const DeleteProvider = ({ provider }: Props) => {
   const { t } = useTranslation()
-  const { deleteProvider, providers } = useModelProvider()
-  const { favoriteModels, removeFavorite } = useFavoriteModel()
-  const serviceHub = useServiceHub()
+  const removeProvider = useRemoveProvider()
   const router = useRouter()
-  if (
-    !provider ||
-    predefinedProviders.some((e) => e.provider === provider.provider) ||
-    EngineManager.instance().get(provider.provider)
-  )
-    return null
+  const [confirming, setConfirming] = useState(false)
+  if (!provider || !isRemovableProvider(provider.provider)) return null
 
-  const removeProvider = async () => {
-    // Remove favorite models that belong to this provider
-    const providerModelIds = provider.models.map((model) => model.id)
-    favoriteModels.forEach((favoriteModel) => {
-      if (providerModelIds.includes(favoriteModel.id)) {
-        removeFavorite(favoriteModel.id)
-      }
-    })
-
-    deleteProvider(provider.provider)
-    // Removing a custom provider is an explicit user action, so purge its
-    // stored keyring secret too (boot reconciliation never does this).
-    serviceHub.providers().deleteProviderKeys(provider.provider)
-    // And its secret custom header values, kept under a key of their own.
-    deleteSecretHeaderValues(provider.provider).catch(() => {})
-    toast.success(t('providers:deleteProvider.title'), {
-      id: `delete-provider-${provider.provider}`,
-      description: t('providers:deleteProvider.success', {
-        provider: provider.provider,
-      }),
-    })
-    setTimeout(() => {
-      router.navigate({
-        to: route.settings.providers,
-        params: {
-          providerName: providers[0].provider,
-        },
+  const title = getProviderTitle(provider.provider)
+  const confirm = () => {
+    setConfirming(false)
+    void removeProvider(provider).then(() =>
+      toast.success(t('providers:removeProvider.success', { provider: title }), {
+        id: `delete-provider-${provider.provider}`,
       })
+    )
+    setTimeout(() => {
+      router.navigate({ to: route.settings.model_providers })
     }, 0)
   }
 
@@ -74,53 +42,22 @@ const DeleteProvider = ({ provider }: Props) => {
       title={t('providers:deleteProvider.title')}
       description={t('providers:deleteProvider.description')}
       actions={
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="pointer-coarse:h-11"
-            >
-              {t('providers:deleteProvider.delete')}
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>
-                {t('providers:deleteProvider.confirmTitle', {
-                  provider: provider.provider,
-                })}
-              </DialogTitle>
-              <DialogDescription>
-                {t('providers:deleteProvider.confirmDescription')}
-              </DialogDescription>
-            </DialogHeader>
-
-            <DialogFooter className="mt-2">
-              <DialogClose asChild>
-                {/* Focus starts on the answer that removes nothing. */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  autoFocus
-                  className="pointer-coarse:h-11"
-                >
-                  {t('providers:deleteProvider.cancel')}
-                </Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="pointer-coarse:h-11"
-                  onClick={removeProvider}
-                >
-                  {t('providers:deleteProvider.delete')}
-                </Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="pointer-coarse:h-11"
+            onClick={() => setConfirming(true)}
+          >
+            {t('providers:deleteProvider.delete')}
+          </Button>
+          <RemoveProviderDialog
+            provider={confirming ? provider : null}
+            title={title}
+            onOpenChange={(o) => !o && setConfirming(false)}
+            onConfirm={confirm}
+          />
+        </>
       }
     />
   )

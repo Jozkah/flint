@@ -520,5 +520,6 @@
     },
     "deleteKeep": "Zachowaj worktree i gałąź ({{name}})",
     "deleteRemove": "Usuń także worktree i gałąź ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (niedostępny)"
 }

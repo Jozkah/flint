@@ -58,5 +58,28 @@
   },
   "addProvider": "Ajouter un fournisseur",
   "addOpenAIProvider": "Ajouter un fournisseur OpenAI",
-  "enterNameForProvider": "Entrez le nom du fournisseur"
+  "enterNameForProvider": "Entrez le nom du fournisseur",
+  "cardMenu": {
+    "actions": "Actions pour {{provider}}",
+    "edit": "Modifier les paramètres",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "remove": "Supprimer le fournisseur",
+    "rename": "Renommer"
+  },
+  "removeProvider": {
+    "confirmTitle": "Supprimer {{provider}} ?",
+    "confirmDescription": "{{provider}} et ses {{count}} modèles seront supprimés de Flint, ainsi que sa clé API enregistrée.",
+    "keepsHistory": "Les discussions, sessions, salons et assistants qui utilisent ses modèles conservent leur historique ; le modèle apparaît comme indisponible.",
+    "cancel": "Annuler",
+    "remove": "Supprimer",
+    "success": "{{provider}} a été supprimé."
+  },
+  "renameProvider": {
+    "title": "Renommer le fournisseur",
+    "description": "Change uniquement le nom affiché dans Flint. Les discussions, clés API et paramètres continuent de fonctionner. Laissez vide pour utiliser le nom par défaut.",
+    "label": "Nom du fournisseur",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
+  }
 }

@@ -1,3 +1,4 @@
+import { providerDisplayName } from '@/lib/providerDisplayNames'
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 import type { Node, Position } from 'unist'
@@ -165,6 +166,8 @@ export function getProviderLogo(provider: string) {
 }
 
 export const getProviderTitle = (provider: string) => {
+  const renamed = providerDisplayName(provider)
+  if (renamed) return renamed
   switch (provider) {
     case 'jan':
       return 'Jan'

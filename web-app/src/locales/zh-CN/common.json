@@ -801,5 +801,6 @@
     },
     "deleteKeep": "保留其 worktree 和分支（{{name}}）",
     "deleteRemove": "同时删除其 worktree 和分支（{{name}}）"
-  }
+  },
+  "modelUnavailable": "{{model}}（不可用）"
 }

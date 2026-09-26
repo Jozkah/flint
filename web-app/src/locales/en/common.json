@@ -1775,5 +1775,6 @@
     },
     "deleteKeep": "Keep its worktree and branch ({{name}})",
     "deleteRemove": "Remove its worktree and branch ({{name}}) too"
-  }
+  },
+  "modelUnavailable": "{{model}} (unavailable)"
 }

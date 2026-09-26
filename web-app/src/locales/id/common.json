@@ -518,5 +518,6 @@
     },
     "deleteKeep": "Simpan worktree dan branch-nya ({{name}})",
     "deleteRemove": "Hapus juga worktree dan branch-nya ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (tidak tersedia)"
 }
