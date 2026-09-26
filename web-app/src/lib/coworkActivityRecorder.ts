@@ -41,6 +41,8 @@ export function lastUserQuestion(
   for (let i = (messages?.length ?? 0) - 1; i >= 0; i--) {
     const message = messages![i]
     if (message.role !== 'user') continue
+    // A request Flint wrote itself (the result card's Continue).
+    if ((message.metadata as { hidden?: boolean } | undefined)?.hidden) continue
     const text = message.parts
       ?.map((part) => (part.type === 'text' ? part.text : ''))
       .join('')

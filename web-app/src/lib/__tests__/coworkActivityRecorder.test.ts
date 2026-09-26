@@ -320,3 +320,18 @@ describe('two runs reusing one provider call id', () => {
     expect(store().tasks[idOf('call-1')].status).toBe('running')
   })
 })
+
+describe('a run started by Continue', () => {
+  it('is titled by the question the user asked, not the retry request', () => {
+    const messages = [
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'fix the build' }] },
+      {
+        id: 'u2',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Continue with the previous request.' }],
+        metadata: { hidden: true },
+      },
+    ] as any
+    expect(runTitle(null, messages)).toBe('fix the build')
+  })
+})

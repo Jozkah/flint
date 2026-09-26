@@ -2465,8 +2465,9 @@ function CoworkPage() {
       sessionId: sid,
       runId,
       // The turn's own question, or the one being taken again -- never an
-      // instruction the app sent to continue an approved plan.
-      title: runTitle(text, current?.messages) || t('common:tasks.untitledRun'),
+      // instruction the app sent to continue an approved plan or retry what
+      // the last run left open.
+      title: runTitle(hidden ? null : text, current?.messages) || t('common:tasks.untitledRun'),
       model: selectedModel.id,
     }
 
