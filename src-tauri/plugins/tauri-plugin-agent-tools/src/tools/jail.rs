@@ -958,6 +958,36 @@ fn named_paths(output: &str) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The package cache a path lies in, and what to call it: the Go module
+/// cache, Cargo's registry, the npm cache, NuGet's packages, Maven's
+/// repository. These are read-mostly caches a model browses package by package
+/// (a session asked for `go\pkg\mod\github.com\supabase-community` after its
+/// listing was denied); naming the cache root lets one read grant cover them.
+/// Matched on path components, case-insensitively, as Windows paths are.
+pub(crate) fn toolchain_cache_root(path: &Path) -> Option<(PathBuf, &'static str)> {
+    const CACHES: &[(&[&str], &str)] = &[
+        (&["go", "pkg", "mod"], "Go module cache"),
+        (&[".cargo", "registry"], "Cargo registry"),
+        (&["npm-cache"], "npm cache"),
+        (&[".nuget", "packages"], "NuGet package cache"),
+        (&[".m2", "repository"], "Maven repository"),
+    ];
+    let parts: Vec<_> = path.components().collect();
+    for (tail, what) in CACHES {
+        for end in tail.len()..=parts.len() {
+            let window = &parts[end - tail.len()..end];
+            let matches = window.iter().zip(tail.iter()).all(|(c, want)| {
+                matches!(c, std::path::Component::Normal(s) if s.to_string_lossy().eq_ignore_ascii_case(want))
+            });
+            // A cache named at a drive root is not a user cache; require a parent.
+            if matches && end > tail.len() {
+                return Some((parts[..end].iter().collect(), what));
+            }
+        }
+    }
+    None
+}
+
 /// A note for output that shows the shell refused, or could not see, a path
 /// inside a folder the session was granted.
 ///
@@ -1093,6 +1123,13 @@ pub fn failure_hint(
             // Inside the closing bracket, so it reads as part of the note.
             hint.pop();
             hint.push_str(REQUEST_ACCESS_ADVICE);
+            if let Some((root, what)) = named.iter().find_map(|p| toolchain_cache_root(p)) {
+                hint.push_str(&format!(
+                    " The path is inside the {what} ({}): request read access to that folder \
+                     once rather than one package at a time, so every package in it is readable.",
+                    root.display()
+                ));
+            }
             hint.push(']');
             Some(hint)
         }
@@ -2280,6 +2317,31 @@ mod tests {
         assert!(!hint.contains("request_access"), "{hint}");
         assert!(!hint.contains("writes are limited"), "{hint}");
         assert!(device_hint(false).contains("null syntax"));
+    }
+
+    #[test]
+    fn a_denial_in_a_package_cache_names_the_cache_root() {
+        use crate::tools::shell_diag::FailureClass;
+        let (root, what) = toolchain_cache_root(Path::new(
+            r"C:\Users\me\go\pkg\mod\github.com\supabase-community\storage-go@v0.7.0",
+        ))
+        .unwrap();
+        assert_eq!(root, PathBuf::from(r"C:\Users\me\go\pkg\mod"));
+        assert_eq!(what, "Go module cache");
+        assert_eq!(
+            toolchain_cache_root(Path::new(r"C:\Users\me\.Cargo\Registry\src\x")).unwrap().0,
+            PathBuf::from(r"C:\Users\me\.Cargo\Registry")
+        );
+        assert!(toolchain_cache_root(Path::new(r"C:\Users\me\Coding\app\go.mod")).is_none());
+
+        let out = "Get-ChildItem : Cannot find path \
+                   'C:\\Users\\me\\go\\pkg\\mod\\github.com\\supabase-community' because it \
+                   does not exist.\nAccess is denied";
+        let hint = failure_hint(&policy(), &FailureClass::FileAccessDenied, out).unwrap();
+        assert!(hint.contains(r"Go module cache (C:\Users\me\go\pkg\mod)"), "{hint}");
+        assert!(hint.ends_with(']'), "{hint}");
+        let plain = failure_hint(&policy(), &FailureClass::FileAccessDenied, "").unwrap();
+        assert!(!plain.contains("cache"), "{plain}");
     }
 
     #[test]

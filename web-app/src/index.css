@@ -177,12 +177,18 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: clip;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
-  mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
-}
-[data-slot='nav-item']:is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) .text-fade {
-  --text-fade-width: 32px;
-  --text-fade-reserve: 8px;
+  /* The fade is drawn only while the text overflows its box: useTextOverflow
+     sets data-overflow. Short labels stay crisp. */
+  &[data-overflow='true'] {
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
+  }
+  /* The wider fade clears the row's ⋯ action, and only where the row has one
+     showing and the text runs under it. */
+  [data-slot='nav-item']:has([data-slot='nav-action']):is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) &[data-overflow='true'] {
+    --text-fade-width: 32px;
+    --text-fade-reserve: 8px;
+  }
 }
 
 /* Loading text: a light band sweeps across muted text. */

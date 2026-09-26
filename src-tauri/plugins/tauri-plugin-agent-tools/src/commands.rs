@@ -3857,4 +3857,63 @@ mod tests {
             ));
         })
     }
+    /// A plain chat (thread scope, no Cowork session, no write grant) reads
+    /// the folders it attached: the first as `read_only_project`, the rest as
+    /// `extra_projects`. It cannot write to them, and without them the same
+    /// read is refused.
+    #[tokio::test]
+    async fn a_chat_thread_reads_its_attached_folders_read_only() {
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let outside = unique_data_folder();
+        let a = outside.join("a");
+        let b = outside.join("b");
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        std::fs::write(a.join("one.txt"), "from a").unwrap();
+        std::fs::write(b.join("two.txt"), "from b").unwrap();
+        let a_str = a.to_string_lossy().to_string();
+        let b_str = b.to_string_lossy().to_string();
+        let call = |name: &str, args: serde_json::Value, attached: bool| {
+            execute_tool(
+                df.clone(),
+                "chat-thread".into(),
+                None,
+                name.into(),
+                args,
+                None,
+                None,
+                attached.then(|| a_str.clone()),
+                None,
+                Some(WorkspaceScope::Thread),
+                None,
+                None,
+                None,
+                attached.then(|| vec![b_str.clone()]),
+            )
+        };
+
+        let read_a = json!({"path": a.join("one.txt").to_string_lossy()});
+        let out = call("read", read_a.clone(), true).await.expect("read a");
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("from a"), "{}", out.content);
+
+        let read_b = json!({"path": b.join("two.txt").to_string_lossy()});
+        let out = call("read", read_b, true).await.expect("read b");
+        assert!(!out.is_error, "{}", out.content);
+        assert!(out.content.contains("from b"), "{}", out.content);
+
+        // Read-only: no write grant, so a write there is refused.
+        let write = json!({"path": a.join("new.txt").to_string_lossy(), "content": "x"});
+        let out = call("write", write, true).await;
+        assert!(out.map(|r| r.is_error).unwrap_or(true));
+        assert!(!a.join("new.txt").exists());
+
+        // Without the attachment, the same read is refused.
+        let out = call("read", read_a, false).await;
+        assert!(out.map(|r| r.is_error).unwrap_or(true));
+
+        let _ = std::fs::remove_dir_all(&data);
+        let _ = std::fs::remove_dir_all(&outside);
+    }
 }

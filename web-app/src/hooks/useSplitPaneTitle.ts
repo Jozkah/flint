@@ -1,7 +1,6 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import {
-  PRIMARY_PANE,
   useSplitConversation,
   type SplitTarget,
 } from '@/hooks/useSplitConversation'
@@ -44,16 +43,9 @@ export function usePaneTitle(kind: SplitTarget['kind'], refId?: string) {
 }
 
 /**
- * The title of the conversation in the active side pane, for the breadcrumb.
- * Undefined when the view is not split, the main pane is the active one, or
- * the active pane has no conversation yet: the route's own title stands.
+ * Whether the conversation view is split. Each pane then has its own header
+ * with its title, so the top breadcrumb names only the section.
  */
-export function useActiveSidePaneTitle(): string | undefined {
-  const active = useSplitConversation((s) =>
-    s.panes.length > 0 && s.activePane !== PRIMARY_PANE
-      ? s.panes.find((p) => p.id === s.activePane)
-      : undefined
-  )
-  const title = useStoredTitle(active?.kind ?? 'chat', active?.refId)
-  return active?.refId ? title : undefined
+export function useSplitViewOpen(): boolean {
+  return useSplitConversation((s) => s.panes.length > 0)
 }

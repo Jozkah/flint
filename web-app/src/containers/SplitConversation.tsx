@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import {
   Fragment,
   Suspense,
@@ -329,7 +330,7 @@ function PaneTab({
       )}
     >
       <span className="sr-only">{label}: </span>
-      <span className="text-fade">{title}</span>
+      <FadeText>{title}</FadeText>
       {streaming && (
         <>
           {/* Replying is activity, not selection: an icon, never the accent. */}

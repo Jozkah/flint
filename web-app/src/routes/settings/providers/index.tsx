@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { Button } from '@/components/ui/button'
@@ -540,12 +541,12 @@ function ModelProviders() {
                         aria-label={t('providers:openProvider', { provider: title })}
                         className="min-w-0 max-w-full text-left text-[13.5px] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
                       >
-                        <span className="text-fade">{title}</span>
+                        <FadeText>{title}</FadeText>
                       </button>
                     ) : (
-                      <b className="text-fade max-w-full text-[13.5px] font-semibold text-foreground opacity-60">
+                      <FadeText as="b" className="max-w-full text-[13.5px] font-semibold text-foreground opacity-60">
                         {title}
-                      </b>
+                      </FadeText>
                     )}
                     <small className="text-xs text-muted-foreground">
                       {local ? t('engine:providers.onDevice') : t('engine:providers.remote')}
@@ -652,12 +653,12 @@ function ModelProviders() {
                         size={30}
                       />
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <b className="text-fade text-[13px] font-medium text-foreground" title={model.id}>
+                        <FadeText as="b" className="text-[13px] font-medium text-foreground" title={model.id}>
                           {model.name || model.id}
-                        </b>
-                        <small className="text-fade font-mono text-[11px] text-subtle-foreground">
+                        </FadeText>
+                        <FadeText as="small" className="font-mono text-[11px] text-subtle-foreground">
                           {model.id}
-                        </small>
+                        </FadeText>
                       </div>
                       <span className="min-w-0">
                         {local && quantOf(model.id) ? (
