@@ -20,7 +20,7 @@ vi.mock('@/lib/rooms/store', () => ({
 }))
 
 import { PaneHeaderBar } from '@/containers/PaneHeaderBar'
-import { useActiveSidePaneTitle } from '@/hooks/useSplitPaneTitle'
+import { useSplitViewOpen } from '@/hooks/useSplitPaneTitle'
 import {
   PRIMARY_PANE,
   useSplitConversation,
@@ -78,22 +78,16 @@ describe('the breadcrumb in split view', () => {
     })
   })
 
-  it("names the active side pane's conversation", () => {
-    const { result } = renderHook(() => useActiveSidePaneTitle())
-    // The main pane is active: the route's own title stands.
-    expect(result.current).toBeUndefined()
+  it('reports the split as open, whichever pane is active', () => {
+    const { result } = renderHook(() => useSplitViewOpen())
+    expect(result.current).toBe(true)
     act(() => useSplitConversation.getState().setActivePane('p2'))
-    expect(result.current).toBe('Side session')
-    // An empty pane has no conversation to name.
-    act(() => useSplitConversation.getState().setActivePane('p3'))
-    expect(result.current).toBeUndefined()
+    expect(result.current).toBe(true)
   })
 
-  it('is the route title again once the split closes', () => {
-    useSplitConversation.setState({ activePane: 'p2' })
-    const { result } = renderHook(() => useActiveSidePaneTitle())
-    expect(result.current).toBe('Side session')
+  it('reports the split as closed once every side pane closes', () => {
+    const { result } = renderHook(() => useSplitViewOpen())
     act(() => useSplitConversation.getState().closeAll())
-    expect(result.current).toBeUndefined()
+    expect(result.current).toBe(false)
   })
 })
