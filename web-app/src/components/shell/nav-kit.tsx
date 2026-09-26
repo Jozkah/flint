@@ -6,6 +6,7 @@ import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 import { useIsNarrowShell } from '@/hooks/use-mobile'
 import { useLeftPanel } from '@/hooks/useLeftPanel'
+import { useTextOverflow } from '@/hooks/useTextOverflow'
 
 /**
  * Building blocks of the app sidebar: the shell context (open on desktop, the
@@ -149,6 +150,12 @@ const navButtonVariants = cva(
   }
 )
 
+/** A row's label: its last child, when that is a span. */
+const lastSpan = (root: HTMLElement) => {
+  const last = root.lastElementChild
+  return last instanceof HTMLElement && last.tagName === 'SPAN' ? last : null
+}
+
 export const NavButton = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<'button'> & {
@@ -160,9 +167,13 @@ export const NavButton = React.forwardRef<
   ref
 ) {
   const Comp = asChild ? Slot : 'button'
+  // The row's label (its last span) fades only when it overflows.
+  const own = React.useRef<HTMLButtonElement>(null)
+  React.useImperativeHandle(ref, () => own.current as HTMLButtonElement)
+  useTextOverflow(own, lastSpan)
   return (
     <Comp
-      ref={ref}
+      ref={own}
       data-slot="nav-button"
       data-active={isActive}
       data-size={size ?? 'default'}

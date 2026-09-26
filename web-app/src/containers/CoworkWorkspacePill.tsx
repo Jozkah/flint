@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import {
   Box,
   Copy,
@@ -219,7 +220,7 @@ export function CoworkWorkspacePill({
                   <span className="sr-only">
                     {t('common:workspace.branchLabel')}:{' '}
                   </span>
-                  <span className="text-fade font-mono">{gitBranch}</span>
+                  <FadeText className="font-mono">{gitBranch}</FadeText>
                 </p>
               )}
             </section>

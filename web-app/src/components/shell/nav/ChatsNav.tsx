@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { startHomeProjectsMirror } from '@/lib/groups/homeMirror'
 import {
@@ -329,7 +330,7 @@ export function ChatsNav() {
                     className="flex h-[26px] min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground outline-hidden focus-visible:ring-[3px] focus-visible:ring-ring/40"
                   >
                     {g.pinned && <Pin className="size-3 shrink-0" aria-hidden />}
-                    <span className="text-fade">{g.name}</span>
+                    <FadeText>{g.name}</FadeText>
                     <span className="text-[10.5px] font-normal text-subtle-foreground tabular-nums">
                       {g.threads.length}
                     </span>

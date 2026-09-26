@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import {
   Check,
   Columns2,
@@ -296,7 +297,7 @@ const ThreadItem = memo(
               <NavButton asChild size="sm" isActive={isSelected}>
                 <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
                   <ThreadStatusMark status={status} />
-                  <span className={cn("text-fade", isSelected && "font-medium")}>{thread.title || t('common:newThread')}</span>
+                  <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
                 </Link>
               </NavButton>
             </HoverCardTrigger>

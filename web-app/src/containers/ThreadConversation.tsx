@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
+import { useTextOverflow } from '@/hooks/useTextOverflow'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -2475,6 +2476,9 @@ export function ThreadConversation({
   const detailsPanelId = useId()
   // A phone's page header has room for one button (see controlsWith).
   const isPhone = useMediaQuery('(max-width: 639px)')
+  // The split pane's title fades only when it is too long to fit.
+  const titleRef = useRef<HTMLHeadingElement>(null)
+  useTextOverflow(titleRef)
   // Splitting halves the width; the inspector gives its room to the panes.
   useEffect(() => {
     if (isSplit) {
@@ -2499,6 +2503,7 @@ export function ThreadConversation({
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <Icon name="comment" size={16} />
       <h1
+        ref={titleRef}
         data-testid="conversation-title"
         // In a split pane the title fades out, as the sidebar's do, and the
         // pane being worked in has it in the foreground colour. text-fade is

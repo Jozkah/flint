@@ -1,3 +1,4 @@
+import { FadeText } from '@/components/ui/fade-text'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -97,7 +98,7 @@ const RoomItem = memo(function RoomItem({
         data-testid="room-nav-item"
       >
         <ThreadStatusMark status={status} />
-        <span className="text-fade">{room.title}</span>
+        <FadeText>{room.title}</FadeText>
       </NavButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>

@@ -23,28 +23,34 @@ describe('sidebar row titles fade instead of ending in an ellipsis', () => {
     expect(button.className).not.toContain(':truncate')
   })
 
-  it('the utility is a right-edge mask that widens on hover, focus and open menu', () => {
+  it('the mask is drawn only on overflowing text, widening only under a row action', () => {
     const css = src('index.css')
-    const block = css.slice(css.indexOf('@utility text-fade'))
-    expect(block).toMatch(/mask-image:\s*linear-gradient\(to right/)
+    const start = css.indexOf('@utility text-fade')
+    const block = css.slice(start, css.indexOf('/* Loading text:', start))
     expect(block).toMatch(/text-overflow:\s*clip/)
-    expect(css).toMatch(
-      /\[data-slot='nav-item'\]:is\(:hover, :focus-within, :has\(\[data-slot='nav-action'\]\[data-state='open'\]\)\) \.text-fade/
+    // No mask on the base rule: short labels are not faded.
+    const base = block.slice(0, block.indexOf('&['))
+    expect(base).not.toMatch(/mask-image/)
+    expect(block).toMatch(
+      /&\[data-overflow='true'\] \{\s*-webkit-mask-image: linear-gradient\(to right/
+    )
+    expect(block).toContain(
+      "[data-slot='nav-item']:has([data-slot='nav-action']):is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) &[data-overflow='true']"
     )
   })
 
   it('Cowork session, room, chat-group rows and the branch chip use it', () => {
     expect(src('components/shell/nav/CoworkNav.tsx')).toContain(
-      '<span className="text-fade">{session.title}</span>'
+      '<FadeText>{session.title}</FadeText>'
     )
     expect(src('components/shell/nav/RoomsNav.tsx')).toContain(
-      '<span className="text-fade">{room.title}</span>'
+      '<FadeText>{room.title}</FadeText>'
     )
     expect(src('components/shell/nav/ChatsNav.tsx')).toContain(
-      '<span className="text-fade">{g.name}</span>'
+      '<FadeText>{g.name}</FadeText>'
     )
     expect(src('containers/CoworkWorkspacePill.tsx')).toContain(
-      '<span className="text-fade font-mono">{gitBranch}</span>'
+      '<FadeText className="font-mono">{gitBranch}</FadeText>'
     )
   })
 })
