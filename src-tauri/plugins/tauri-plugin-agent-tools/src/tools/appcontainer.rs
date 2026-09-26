@@ -65,6 +65,25 @@ pub(crate) const OWN_HOLDER: &str = "--own-grant-holder";
 /// The holder every shell command of a session records its grants under.
 pub(crate) const SHELL_HOLDER: &str = "shell";
 
+/// The holder name a long-lived spawn records its grants under: its helper's
+/// process id and that process's start time. The start time is what makes a
+/// record die with its process: Windows reuses process ids, and a record keyed
+/// by the id alone would be honoured again once any unrelated process got it.
+pub(crate) fn process_holder(pid: u32, started: u64) -> String {
+    format!("mcp-{pid}-{started}")
+}
+
+/// The process id and start time a [`process_holder`] name records. A name
+/// with no start time (written before it was recorded) yields `None` for it:
+/// such a record cannot be told apart from a reused id, so it is not live.
+pub(crate) fn parse_process_holder(name: &str) -> Option<(u32, Option<u64>)> {
+    let rest = name.strip_prefix("mcp-")?;
+    match rest.split_once('-') {
+        Some((pid, started)) => Some((pid.parse().ok()?, Some(started.parse().ok()?))),
+        None => Some((rest.parse().ok()?, None)),
+    }
+}
+
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
 #[cfg(windows)]
@@ -348,7 +367,7 @@ pub fn revoke_roots(_workspace: &Path) {}
 #[cfg(windows)]
 pub fn release_holder(workspace: &Path, pid: u32) {
     let name = moniker(workspace);
-    if let Err(e) = win::release_holder(&name, &format!("mcp-{pid}")) {
+    if let Err(e) = win::release_process_holder(&name, pid) {
         eprintln!("could not withdraw the folder grants of {name}/{pid}: {e}");
     }
 }
@@ -1479,28 +1498,65 @@ mod win {
         }
     }
 
-    /// Is this holder still live? The shell always is (its record is replaced
-    /// by the next command); a process holder while its process runs.
-    fn holder_alive(holder: &str) -> bool {
-        use windows_sys::Win32::System::Threading::{
-            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-        };
-        if holder == super::SHELL_HOLDER {
-            return true;
+    /// Forget every record a long-lived holder with helper `pid` left, and
+    /// re-apply what the others need. Records under the same id with another
+    /// start time are an older process's, stale either way.
+    pub(super) fn release_process_holder(moniker: &str, pid: u32) -> Result<(), String> {
+        let record = write_root_record(moniker);
+        let names: Vec<String> = std::fs::read_dir(super::holders_dir(&record))
+            .map(|entries| {
+                entries
+                    .flatten()
+                    .map(|e| e.file_name().to_string_lossy().into_owned())
+                    .filter(|n| super::parse_process_holder(n).is_some_and(|(p, _)| p == pid))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if names.is_empty() {
+            return release_holder(moniker, &super::process_holder(pid, 0));
         }
-        let Some(pid) = holder.strip_prefix("mcp-").and_then(|p| p.parse::<u32>().ok()) else {
-            return false;
+        for name in names {
+            release_holder(moniker, &name)?;
+        }
+        Ok(())
+    }
+
+    /// When the running process `pid` started (a FILETIME, 100 ns ticks), or
+    /// `None` when it is not running or cannot be queried.
+    pub(crate) fn process_start_time(pid: u32) -> Option<u64> {
+        use windows_sys::Win32::Foundation::FILETIME;
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
         };
         const STILL_ACTIVE: u32 = 259;
         unsafe {
             let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
             if handle.is_null() {
-                return false;
+                return None;
             }
             let mut code: u32 = 0;
-            let ok = GetExitCodeProcess(handle, &mut code);
+            let running = GetExitCodeProcess(handle, &mut code) != 0 && code == STILL_ACTIVE;
+            let zero = || FILETIME { dwLowDateTime: 0, dwHighDateTime: 0 };
+            let (mut created, mut exited, mut kernel, mut user) = (zero(), zero(), zero(), zero());
+            let ok = GetProcessTimes(handle, &mut created, &mut exited, &mut kernel, &mut user);
             CloseHandle(handle);
-            ok != 0 && code == STILL_ACTIVE
+            (running && ok != 0).then(|| {
+                (u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime)
+            })
+        }
+    }
+
+    /// Is this holder still live? The shell always is (its record is replaced
+    /// by the next command); a process holder while the very process that
+    /// recorded it runs: same id and same start time, so a reused id is not
+    /// mistaken for it.
+    fn holder_alive(holder: &str) -> bool {
+        if holder == super::SHELL_HOLDER {
+            return true;
+        }
+        match super::parse_process_holder(holder) {
+            Some((pid, Some(started))) => process_start_time(pid) == Some(started),
+            _ => false,
         }
     }
 
@@ -2024,7 +2080,15 @@ mod win {
             }
         }
         let holder = if req.own_holder {
-            format!("mcp-{}", std::process::id())
+            let pid = std::process::id();
+            let started = process_start_time(pid).ok_or_else(|| {
+                LaunchFailure::new(
+                    Stage::SandboxPolicy,
+                    "GetProcessTimes",
+                    "could not read the helper's own start time".to_string(),
+                )
+            })?;
+            super::process_holder(pid, started)
         } else {
             super::SHELL_HOLDER.to_string()
         };
@@ -2696,7 +2760,8 @@ mod tests {
         let writable = |p: &Path| {
             win::aces_for(p, psid).iter().any(|&(_, _, mask)| mask & FILE_WRITE_DATA != 0)
         };
-        let server = format!("mcp-{n}"); // this test process: alive
+        // This test process: alive, under its real start time.
+        let server = process_holder(n, win::process_start_time(n).expect("own start time"));
 
         win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
             .unwrap();
@@ -2712,16 +2777,31 @@ mod tests {
         assert!(writable(&repo), "stopping the server withdrew the shell's write");
         assert!(win::aces_for(&other, psid).is_empty(), "the stopped server's grant stayed");
 
-        // A holder whose process is gone is pruned, not honoured.
-        std::fs::write(
-            holders_dir(&record).join("mcp-4294967291"),
-            roots_record(std::slice::from_ref(&stale), &[]),
-        )
-        .unwrap();
+        // A holder whose process is gone is pruned, not honoured; so is one
+        // whose id a live process reuses (this one's, a different start time),
+        // and one recorded with no start time to tell the two apart.
+        let reused = process_holder(n, 1);
+        let dead = [process_holder(4294967291, 1), reused, format!("mcp-{n}")];
+        for holder in &dead {
+            std::fs::write(
+                holders_dir(&record).join(holder),
+                roots_record(std::slice::from_ref(&stale), &[]),
+            )
+            .unwrap();
+        }
         win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
             .unwrap();
         assert!(win::aces_for(&stale, psid).is_empty(), "a dead holder's folder was granted");
-        assert!(!holders_dir(&record).join("mcp-4294967291").exists());
+        for holder in &dead {
+            assert!(!holders_dir(&record).join(holder).exists(), "{holder} was kept");
+        }
+
+        // Releasing by process id drops that id's record whatever its start.
+        win::sync_holder_roots(&record, psid, &server, &[], std::slice::from_ref(&other))
+            .unwrap();
+        win::release_process_holder(&name, n).unwrap();
+        assert!(!holders_dir(&record).join(&server).exists());
+        assert!(win::aces_for(&other, psid).is_empty());
 
         win::revoke_recorded_roots(&name).unwrap();
         assert!(win::aces_for(&repo, psid).is_empty());
@@ -2729,6 +2809,17 @@ mod tests {
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn a_process_holder_records_its_start_time() {
+        assert_eq!(process_holder(42, 133_000), "mcp-42-133000");
+        assert_eq!(parse_process_holder("mcp-42-133000"), Some((42, Some(133_000))));
+        // Written before start times were recorded: not verifiable.
+        assert_eq!(parse_process_holder("mcp-42"), Some((42, None)));
+        assert_eq!(parse_process_holder(SHELL_HOLDER), None);
+        assert_eq!(parse_process_holder("mcp-x-1"), None);
+        assert_eq!(parse_process_holder("mcp-42-x"), None);
     }
 
     #[test]
