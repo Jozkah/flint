@@ -2624,6 +2624,9 @@ function CoworkPage() {
     ): Promise<ToolOutcome> => {
       const childFolder = destination?.path ?? runReadRoot
       const childGrant = destination ? destination.grantId : runGrant
+      // A child in the run's own tree shares its extra folders; one given an
+      // isolated checkout holds a grant for that checkout alone.
+      const childExtras = destination ? [] : runExtraFolders
       const childOwner = destination?.ownerId ?? sid
       const resolved = resolveSubagent(
         req,
@@ -2724,6 +2727,8 @@ function CoworkPage() {
           system: {
             workspacePath,
             readOnlyFolder: childFolder,
+            extraFolders: childExtras,
+            extraFoldersWritable: !destination && runExtraFoldersWritable,
             bashAvailable: sandboxEnforces(),
             // The parent's frozen answers, handed down unchanged: a
             // child never resolves its own access or its own
@@ -2762,6 +2767,7 @@ function CoworkPage() {
               // grant presented under any other id.
               sessionId: childOwner,
               readOnlyFolder: childFolder,
+              extraFolders: childExtras,
               mode: runMode,
               readFailures: runReadFailures,
               writeGrant: childGrant,
