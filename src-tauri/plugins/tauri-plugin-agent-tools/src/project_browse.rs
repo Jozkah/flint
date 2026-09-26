@@ -120,13 +120,19 @@ pub fn is_sensitive_name(name: &str) -> bool {
     false
 }
 
+/// A path as a person reads it in an error: canonicalized paths on Windows
+/// carry the `\\?\` verbatim prefix, which is noise in the UI.
+fn shown(path: &Path) -> String {
+    crate::tools::proc::without_verbatim_prefix(&path.to_string_lossy())
+}
+
 fn canonical_root(root: &str) -> Result<PathBuf, String> {
     let path = Path::new(root);
     let canonical = path
         .canonicalize()
-        .map_err(|e| format!("project root {} is unreadable: {e}", path.display()))?;
+        .map_err(|e| format!("project root {} is unreadable: {e}", shown(path)))?;
     if !canonical.is_dir() {
-        return Err(format!("{} is not a folder", canonical.display()));
+        return Err(format!("{} is not a folder", shown(&canonical)));
     }
     Ok(canonical)
 }
@@ -153,7 +159,7 @@ fn resolve_rel(root_canon: &Path, rel: &str) -> Result<PathBuf, String> {
     let joined = root_canon.join(rel_path);
     let canonical = joined
         .canonicalize()
-        .map_err(|e| format!("{} is unreadable: {e}", joined.display()))?;
+        .map_err(|e| format!("{} is unreadable: {e}", shown(&joined)))?;
     if !canonical.starts_with(root_canon) {
         return Err(format!("path escapes the project root: {rel}"));
     }
@@ -357,6 +363,15 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_file_error_has_no_verbatim_prefix() {
+        let root = temp_project();
+        let canon = canonical_root(root.to_str().unwrap()).unwrap();
+        let err = resolve_rel(&canon, "CLAUDE.md").unwrap_err();
+        assert!(!err.contains(r"\\?\"), "{err}");
+        assert!(err.contains("CLAUDE.md"), "{err}");
+    }
 
     /// A directory no other test can be handed.
     ///

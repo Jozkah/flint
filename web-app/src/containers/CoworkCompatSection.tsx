@@ -34,6 +34,23 @@ const ORDER: CompatComponent['type'][] = [
   'plugin',
 ]
 
+/** States that are a real problem with the folder, not ordinary absence. */
+const PROBLEM_STATES = new Set<CompatComponent['state']>([
+  'malformed',
+  'unreadable',
+  'oversized',
+  'path-escape',
+  'init-failed',
+])
+
+/** States in which there is no server config to request anything from. */
+const NO_ENV_STATES = new Set<CompatComponent['state']>([
+  'absent',
+  'malformed',
+  'unreadable',
+  'oversized',
+])
+
 export function CoworkCompatSection({
   manifest,
   hasFolder,
@@ -126,7 +143,14 @@ export function CoworkCompatSection({
                       <span className="block truncate font-mono text-foreground">
                         {item.name}
                       </span>
-                      <span className="block text-muted-foreground">
+                      <span
+                        data-state={item.state}
+                        className={
+                          PROBLEM_STATES.has(item.state)
+                            ? 'block text-destructive'
+                            : 'block text-muted-foreground'
+                        }
+                      >
                         {t(`common:claudeCompat.state.${item.state}`)}
                         {/* Through the formatter at the point of display:
                             `reason` is typed as a string but arrives from a
@@ -134,7 +158,10 @@ export function CoworkCompatSection({
                             "[object Object]" on screen. */}
                         {item.reason ? ` · ${errorText(item.reason)}` : ''}
                       </span>
-                      {item.type === 'mcp' ? (
+                      {/* Only for a server that was actually read: a missing or
+                          broken .mcp.json requests nothing, and saying so
+                          under an error reads as an orphaned line. */}
+                      {item.type === 'mcp' && !NO_ENV_STATES.has(item.state) ? (
                         <span className="block text-muted-foreground">
                           {item.dependencies && item.dependencies.length > 0
                             ? `${t('common:claudeCompat.mcpEnv')}: ${item.dependencies.join(', ')}`

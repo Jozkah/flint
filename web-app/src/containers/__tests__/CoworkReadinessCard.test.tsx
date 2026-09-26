@@ -312,9 +312,42 @@ describe('what the card states about the model and tools', () => {
 describe('what the card states about context', () => {
   // A total that silently omits what it could not measure reads as complete.
   it('marks the total as partial when a category is unmeasured', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({
+          context: {
+            categories: {
+              instructions: measured(120),
+              skills: measured(null),
+              repositoryMap: measured(null),
+              conversation: measured(null),
+              tools: measured(null),
+            },
+            budget: measured(null),
+          },
+        })}
+      />
+    )
+
+    expect(card()).toHaveTextContent('common:readiness.tokensPartial#120')
+  })
+
+  // "at least 0 tokens" read as "this session sends nothing".
+  it('says the context is measured when the first run starts, never "at least 0"', () => {
     render(<CoworkReadinessCard manifest={manifest()} />)
 
-    expect(card()).toHaveTextContent('common:readiness.tokensPartial')
+    expect(card()).toHaveTextContent('common:readiness.tokensPending')
+    expect(card()).not.toHaveTextContent('common:readiness.tokensPartial')
+  })
+
+  it('says when the tool set is built rather than that it is not', () => {
+    render(
+      <CoworkReadinessCard
+        manifest={manifest({ tools: { builtins: null, mcpServers: [] } })}
+      />
+    )
+
+    expect(card()).toHaveTextContent('common:readiness.builtinsUnknown')
   })
 
   it('reports a plain total once everything was measured', () => {
