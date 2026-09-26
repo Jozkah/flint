@@ -98,3 +98,16 @@
   0%, 100% { transform: rotate(0) scale(1); }
   50% { transform: rotate(18deg) scale(1.15); }
 }
+
+/* ---- Long transcripts ----
+   Messages scrolled out of view skip layout and paint, so a long transcript
+   costs about what the visible part does while a reply streams in. `auto` in
+   the intrinsic size keeps each message's last rendered height, so the
+   scrollbar does not jump once a message has been seen. The clip margin keeps
+   focus rings and shadows at a message's edge from being cut by the paint
+   containment `content-visibility` brings. */
+.transcript-list > :not(:last-child) {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
+  overflow-clip-margin: 12px;
+}

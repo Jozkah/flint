@@ -2048,13 +2048,20 @@ export function ThreadConversation({
     ]
   )
 
+  // The handlers passed to every MessageItem read the transcript through a
+  // ref: depending on `chatMessages` gave them a new identity on every
+  // streamed delta, which defeated MessageItem's memo and re-rendered the
+  // whole transcript per delta.
+  const chatMessagesRef = useRef(chatMessages)
+  chatMessagesRef.current = chatMessages
+
   // Resume a turn that was stopped before it finished: replay the partial text
   // as an assistant prefill so the model continues from where it left off. The
   // transport re-emits the partial as the first delta, so the regenerated
   // message reconstitutes partial + new content and the KV cache is reused.
   const handleContinue = useCallback(
     (messageId: string) => {
-      const msg = chatMessages.find((m) => m.id === messageId)
+      const msg = chatMessagesRef.current.find((m) => m.id === messageId)
       if (!msg) return
       const collect = (type: 'text' | 'reasoning') =>
         msg.parts
@@ -2068,7 +2075,7 @@ export function ThreadConversation({
       continueReplaceIdRef.current = messageId
       handleRegenerate(messageId)
     },
-    [chatMessages, setContinueFromContent, handleRegenerate]
+    [setContinueFromContent, handleRegenerate]
   )
 
   // Editing forks a new sibling version (the original + its subtree are kept).
@@ -2126,7 +2133,7 @@ export function ThreadConversation({
         return
       }
       // Update chat messages for UI
-      const updatedChatMessages = chatMessages.filter(
+      const updatedChatMessages = chatMessagesRef.current.filter(
         (msg) => msg.id !== messageId
       )
       setChatMessages(updatedChatMessages)
@@ -2136,7 +2143,6 @@ export function ThreadConversation({
       deleteMessage,
       updateMessage,
       syncActivePath,
-      chatMessages,
       setChatMessages,
     ]
   )
@@ -2719,7 +2725,7 @@ export function ThreadConversation({
           <Conversation className="absolute inset-0 text-start text-[calc(var(--text-base)*0.84375)] leading-[1.6] text-fg-2">
             <ConversationContent
               className={cn(
-                'mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
+                'transcript-list mx-auto w-full min-w-0 max-w-[calc(780px+2.5rem)] pt-[22px] pb-4',
                 isSplit ? 'px-4' : 'px-5'
               )}
             >

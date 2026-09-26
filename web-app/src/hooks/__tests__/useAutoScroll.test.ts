@@ -1,11 +1,24 @@
 import { renderHook, act } from '@testing-library/react'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useAutoScroll } from '../useAutoScroll'
 
 describe('useAutoScroll', () => {
   let container: HTMLDivElement
+  // Frames queued by scrollToBottom; `frame()` runs them like a paint would.
+  let frames: FrameRequestCallback[]
+  const frame = () => {
+    const due = frames
+    frames = []
+    due.forEach((cb) => cb(0))
+  }
 
   beforeEach(() => {
+    frames = []
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      frames.push(cb)
+      return frames.length
+    })
+    vi.stubGlobal('cancelAnimationFrame', () => {})
     container = document.createElement('div')
     // jsdom doesn't compute layout, so we stub the scroll properties
     Object.defineProperty(container, 'scrollHeight', {
@@ -18,6 +31,10 @@ describe('useAutoScroll', () => {
       writable: true,
       configurable: true,
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it('should return all expected properties', () => {
@@ -41,6 +58,7 @@ describe('useAutoScroll', () => {
 
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     expect(container.scrollTop).toBe(500)
@@ -69,6 +87,7 @@ describe('useAutoScroll', () => {
 
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     // Should remain at 100, not jump to 500
@@ -99,6 +118,7 @@ describe('useAutoScroll', () => {
 
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     expect(container.scrollTop).toBe(500)
@@ -123,6 +143,7 @@ describe('useAutoScroll', () => {
     container.scrollTop = 50
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
     expect(container.scrollTop).toBe(50)
 
@@ -134,6 +155,7 @@ describe('useAutoScroll', () => {
 
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     expect(container.scrollTop).toBe(500)
@@ -157,6 +179,7 @@ describe('useAutoScroll', () => {
 
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     expect(container.scrollTop).toBe(500)
@@ -181,6 +204,7 @@ describe('useAutoScroll', () => {
     container.scrollTop = 279
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
 
     // Should NOT auto-scroll
@@ -206,6 +230,7 @@ describe('useAutoScroll', () => {
     container.scrollTop = 100
     act(() => {
       result.current.scrollToBottom()
+      frame()
     })
     expect(container.scrollTop).toBe(100)
 
@@ -225,9 +250,50 @@ describe('useAutoScroll', () => {
       act(() => {
         result.current.handleScroll()
         result.current.scrollToBottom()
+        frame()
         result.current.forceScrollToBottom()
         result.current.reset()
       })
     }).not.toThrow()
+  })
+
+  it('coalesces many calls in one frame into a single scroll', () => {
+    const { result } = renderHook(() => useAutoScroll())
+    Object.defineProperty(result.current.containerRef, 'current', {
+      value: container,
+      writable: true,
+    })
+    let reads = 0
+    Object.defineProperty(container, 'scrollHeight', {
+      get: () => {
+        reads++
+        return 500
+      },
+      configurable: true,
+    })
+
+    act(() => {
+      for (let i = 0; i < 20; i++) result.current.scrollToBottom()
+    })
+    expect(frames).toHaveLength(1)
+    expect(container.scrollTop).toBe(0)
+    act(() => frame())
+    expect(container.scrollTop).toBe(500)
+    expect(reads).toBe(1)
+  })
+
+  it('does not scroll when the user scrolls away before the frame lands', () => {
+    const { result } = renderHook(() => useAutoScroll())
+    Object.defineProperty(result.current.containerRef, 'current', {
+      value: container,
+      writable: true,
+    })
+
+    act(() => result.current.scrollToBottom())
+    container.scrollTop = 100
+    act(() => result.current.handleScroll())
+    act(() => frame())
+    expect(container.scrollTop).toBe(100)
+    expect(result.current.isAtBottom).toBe(false)
   })
 })

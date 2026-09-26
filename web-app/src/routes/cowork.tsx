@@ -128,6 +128,7 @@ import {
   recordToolActivity,
   type ToolActivityItem,
 } from '@/lib/toolActivity'
+import { createFrameBatch } from '@/lib/frameBatch'
 import {
   useToolCallRuntime,
   withToolTiming,
@@ -2259,7 +2260,13 @@ export function CoworkPage() {
         .getState()
         .setInFlight(sid, inFlightCheckpoint(runId, runStartedAt, runBaseCount, runTurns, at))
     }
+    // Text deltas publish at most once per frame: a set per token woke every
+    // `useCoworkRun` subscriber and re-rendered this route per token, which is
+    // what made scrolling a streaming transcript lag. Any other write publishes
+    // at once and takes the queued text with it, so ordering is unchanged.
+    const textFrame = createFrameBatch(() => publish())
     const publish = () => {
+      textFrame.cancel()
       useCoworkRun.getState().setRunTurns(sid, runId, [...runTurns])
       saveInFlight()
     }
@@ -2724,7 +2731,7 @@ export function CoworkPage() {
         const last = runTurns[runTurns.length - 1]
         if (last && last.role === 'assistant') {
           last.content += delta
-          publish()
+          textFrame.schedule()
         } else {
           pushLive([{ role: 'assistant', content: delta }])
         }
@@ -4765,7 +4772,7 @@ export function CoworkPage() {
               />
             ) : (
               <Conversation className="absolute inset-0 text-start">
-                <ConversationContent className="mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
+                <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
                   {/* The plan heads the transcript, in its reading column. */}
                   <CoworkPlanStrip todos={session?.todos} />
                   <CodeOpenProvider open={openToolPath}>

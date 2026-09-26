@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from 'react'
+import { useRef, useCallback, useState, useEffect } from 'react'
 
 // How close to the bottom (in px) counts as "at the bottom"
 const BOTTOM_THRESHOLD = 20
@@ -22,12 +22,25 @@ export function useAutoScroll() {
     setIsAtBottom(stuck)
   }, [])
 
-  // Scroll to bottom only when the user hasn't scrolled away
+  // Scroll to bottom only when the user hasn't scrolled away. Deferred to the
+  // next frame and coalesced: a stream calls this per delta, and reading
+  // scrollHeight each time forced a layout per delta while the user scrolled.
+  const frameRef = useRef<number | null>(null)
   const scrollToBottom = useCallback(() => {
-    if (isStuckRef.current && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight
-    }
+    if (frameRef.current !== null) return
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null
+      if (isStuckRef.current && containerRef.current) {
+        containerRef.current.scrollTop = containerRef.current.scrollHeight
+      }
+    })
   }, [])
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
+    },
+    []
+  )
 
   // Force-scroll to bottom regardless of stuck state (for the button)
   const forceScrollToBottom = useCallback(() => {
