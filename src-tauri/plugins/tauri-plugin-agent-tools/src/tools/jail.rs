@@ -118,6 +118,12 @@ pub struct Policy {
     /// ([`Policy::with_start_dir`] ignores anything else), so the shell never
     /// starts somewhere it was not granted.
     pub start_dir: Option<PathBuf>,
+    /// Folders granted to the file tools that this backend cannot open to the
+    /// shell (on AppContainer, anything but a Flint-owned worktree). Not a
+    /// permission: only named in failure notes, so a model told "Access is
+    /// denied" there stops retrying from the shell instead of asking again for
+    /// access it already has.
+    pub unreachable_grants: Vec<PathBuf>,
 }
 
 impl Policy {
@@ -132,7 +138,14 @@ impl Policy {
             read_roots: Vec::new(),
             write_roots: Vec::new(),
             start_dir: None,
+            unreachable_grants: Vec::new(),
         }
+    }
+
+    /// Record grants the shell cannot reach. See [`Policy::unreachable_grants`].
+    pub fn with_unreachable_grants(mut self, roots: Vec<PathBuf>) -> Self {
+        self.unreachable_grants = roots;
+        self
     }
 
     /// Start the shell in `dir`, which must already be one of the write roots;
@@ -904,6 +917,52 @@ fn named_paths(output: &str) -> Vec<PathBuf> {
         })
         .map(PathBuf::from)
         .collect()
+}
+
+/// A note for output that shows the shell refused, or could not see, a path
+/// inside a folder granted to the file tools but not to the shell.
+///
+/// Checked whatever the exit code: `Set-Location X; ...; "EXIT=$LASTEXITCODE"`
+/// ends with a successful statement, and the model then read "COPIED" after a
+/// `Copy-Item` that was denied. Without it a session retried `Set-Location`,
+/// `Push-Location`, `go -C` and `Copy-Item` against a folder the shell could
+/// never open, and the generic advice was to request access it already had.
+pub fn unreachable_grant_note(policy: &Policy, output: &str) -> Option<String> {
+    if policy.unreachable_grants.is_empty() {
+        return None;
+    }
+    let lower = output.to_ascii_lowercase();
+    let refused = lower.contains("access is denied")
+        || lower.contains("permission denied")
+        || lower.contains("because it does not exist")
+        || lower.contains("cannot find the path");
+    if !refused {
+        return None;
+    }
+    let named = named_paths(output);
+    let hit: Vec<String> = policy
+        .unreachable_grants
+        .iter()
+        .filter(|root| {
+            let probe = Policy {
+                write_roots: vec![(*root).clone()],
+                ..Policy::new(Path::new(""), false)
+            };
+            named.iter().any(|p| shell_writable(&probe, p))
+        })
+        .map(|r| r.display().to_string())
+        .collect();
+    if hit.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "\n[sandbox: {} is granted to the file tools (read, write, edit, grep) but shell \
+         commands cannot open it on this platform, so any command there fails with \"Access \
+         is denied\" or \"does not exist\" whatever its exit code says. Do not retry it from \
+         the shell or request access again. Use the file tools for that folder, and give the \
+         user the command to run there themselves.]",
+        hit.join(", ")
+    ))
 }
 
 /// What a model is told when granting access would fix the failure.
@@ -1975,6 +2034,23 @@ mod tests {
         ));
         assert!(!looks_denied("hello world"));
         assert!(!looks_denied("test failed: 3 assertions"));
+    }
+
+    #[test]
+    fn a_grant_the_shell_cannot_open_is_named_whatever_the_exit_code() {
+        let grant = PathBuf::from("C:/Users/me/Coding");
+        let p = Policy::new(Path::new("C:/data/ws"), false)
+            .with_unreachable_grants(vec![grant]);
+        let out = "Copy-Item : Access is denied\n(C:\\Users\\me\\Coding\\KewScraper:String)\n\
+                   Copy-Item : Cannot find path 'C:\\Users\\me\\Coding\\KewScraper' because \
+                   it does not exist.\nCOPIED\n[exit 0]";
+        let note = unreachable_grant_note(&p, out).expect("names the grant");
+        assert!(note.contains("C:/Users/me/Coding"), "{note}");
+        assert!(note.contains("Do not retry"), "{note}");
+        // A denial elsewhere, or no denial at all, is not this.
+        assert!(unreachable_grant_note(&p, "Access is denied: 'D:\\x'").is_none());
+        assert!(unreachable_grant_note(&p, "C:\\Users\\me\\Coding ok").is_none());
+        assert!(unreachable_grant_note(&Policy::new(Path::new("C:/w"), false), out).is_none());
     }
 
     #[test]

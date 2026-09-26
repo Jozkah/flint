@@ -40,6 +40,23 @@ describe('CoworkBudgetNotice', () => {
     expect(onNewSession).toHaveBeenCalled()
   })
 
+  it('names the context window, not a budget, when the request would not fit', () => {
+    render(
+      <CoworkBudgetNotice
+        kind="tokens"
+        cause="window"
+        detail="the request needs about 67,578 tokens and the window is 32,768"
+        onNewSession={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/common:budget\.stoppedWindow/)).toHaveTextContent(
+      'the window is 32,768'
+    )
+    expect(screen.queryByText(/stoppedTokens/)).toBeNull()
+    // No compaction to run: no button pretending there is one.
+    expect(screen.queryByText('common:budget.compact')).toBeNull()
+  })
+
   // Routine, not a failure: a destructive/red treatment would teach users to
   // ignore the notices that do matter.
   it('is a status, not an alert', () => {

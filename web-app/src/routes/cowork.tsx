@@ -102,8 +102,10 @@ import {
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
+import { useAssistant } from '@/hooks/useAssistant'
 import {
   ContextOverflowError,
+  coworkWindow,
   isContextOverflow,
   planTurn,
 } from '@/lib/coworkBudget'
@@ -199,6 +201,7 @@ import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import {
   applySandboxFile,
+  planSandboxApply,
   sandboxRelativePath,
 } from '@/lib/coworkSandboxApply'
 import { CoworkRewind } from '@/containers/CoworkRewind'
@@ -418,8 +421,26 @@ export const Route = createFileRoute(route.cowork as any)({
  * training size -- the smaller number is the real limit.
  */
 const configuredContextTokens = (
-  caps: { contextTokens: number | null } | null | undefined
-): number | null => caps?.contextTokens ?? null
+  caps: { contextTokens: number | null; source?: string } | null | undefined,
+  acceptedPrompt?: number | null
+): number | null =>
+  coworkWindow({
+    // The user's Max Context Tokens is a decision about this window, the
+    // same one Chat honours; a bundled family guess is not.
+    userSet:
+      useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
+    capabilities: caps,
+    acceptedPrompt,
+  })
+
+/** The largest prompt the provider has already accepted in these turns. */
+const largestAcceptedPrompt = (
+  turns: readonly { usage?: { prompt_tokens?: number } }[] | undefined
+): number =>
+  (turns ?? []).reduce(
+    (max, turn) => Math.max(max, turn.usage?.prompt_tokens ?? 0),
+    0
+  )
 
 /** Stable empty lane, so a session with no run does not re-render per write. */
 const NO_LIVE_TURNS: CoworkTurn[] = []
@@ -1477,7 +1498,9 @@ function CoworkPage() {
   // Read-only working-tree status for the attached repo, loaded lazily and kept
   // strictly separate from the sandbox diffs above. The chip's counts combine
   // both sources so it appears whenever either has changes.
-  const git = useCoworkGitStatus(treeRoot)
+  // Re-read when a run starts or settles: a run's edits, commits and undo
+  // change the tree, and a list loaded before them contradicts its own diffs.
+  const git = useCoworkGitStatus(treeRoot, running)
 
   /**
    * Ask the backend to authorize this folder, then switch the session.
@@ -2865,7 +2888,10 @@ function CoworkPage() {
     // would report a conversation one turn short of the one being sent.
     const measured = transport.measureContext(
       messages,
-      configuredContextTokens(modelCapabilities)
+      configuredContextTokens(
+        modelCapabilities,
+        largestAcceptedPrompt(current?.turns)
+      )
     )
     if (sid === sessionIdRef.current) setRunContext(measured)
 
@@ -4613,7 +4639,11 @@ function CoworkPage() {
                   {stoppedBy === 'tokens' && (
                     <CoworkBudgetNotice
                       kind="tokens"
-                      onCompact={() => toast.info(t('common:budget.compact'))}
+                      // An overflow carries its measurement; the spend cap
+                      // stops with none. Cowork has no compaction yet, so no
+                      // Compact button that could only show a toast.
+                      cause={runError ? 'window' : 'budget'}
+                      detail={runError ?? undefined}
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session.
@@ -4913,15 +4943,27 @@ function CoworkPage() {
             onOpenFile={openToolPath}
             // Review only leaves the run's output in the sandbox; this is the
             // explicit per-file step that brings one file into the folder.
+            // One folder today; a list so more attached folders slot in.
+            isSandboxPath={(path) =>
+              sandboxRelativePath(workspacePath, path) !== null
+            }
+            applyPlanFor={(path) =>
+              planSandboxApply(workspacePath, folder ? [folder] : [], path)
+            }
             onApplyFile={
               folder && session?.id
                 ? async (path, overwrite) => {
-                    const relative = sandboxRelativePath(workspacePath, path)
-                    if (!relative) throw new Error(`${path} is not in the session sandbox`)
+                    const plan = planSandboxApply(
+                      workspacePath,
+                      [folder],
+                      path
+                    )
+                    if (!plan) throw new Error(`${path} is not in the session sandbox`)
                     const outcome = await applySandboxFile({
                       session: session.id,
-                      path: relative,
-                      project: folder,
+                      path: plan.source,
+                      project: plan.folder,
+                      destination: plan.destination,
                       overwrite,
                     })
                     if (outcome !== 'exists') git.refresh()

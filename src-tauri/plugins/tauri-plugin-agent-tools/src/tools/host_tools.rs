@@ -281,6 +281,80 @@ pub fn not_installed_hint(name: &str) -> String {
     )
 }
 
+/// The assignment in `command` whose unquoted value PowerShell ran as a
+/// program called `name`: `$env:GOTOOLCHAIN=local` makes PowerShell look up a
+/// command `local`, and saying "`local` is not available in this sandbox"
+/// then sent the model to tell the user a program was missing when the
+/// command only needed quotes.
+pub fn unquoted_assignment(command: &str, name: &str) -> Option<String> {
+    let mut from = 0;
+    while let Some(i) = command[from..].find('=') {
+        let eq = from + i;
+        from = eq + 1;
+        // The bare word right after `=`, up to a separator. A quoted value
+        // starts with a quote and so never equals a program name.
+        let value: String = command[eq + 1..]
+            .trim_start()
+            .chars()
+            .take_while(|c| !c.is_whitespace() && !matches!(c, ';' | '|' | ')' | '&'))
+            .collect();
+        if !value.eq_ignore_ascii_case(name) {
+            continue;
+        }
+        // The target left of `=` must be a variable: `$name` or `$env:NAME`.
+        let head = command[..eq].trim_end();
+        let start = head.rfind(|c: char| c.is_whitespace() || c == ';').map_or(0, |s| s + 1);
+        let target = &head[start..];
+        let is_var = target.starts_with('$')
+            && target.len() > 1
+            && target[1..]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | ':'));
+        if is_var {
+            return Some(format!(
+                "\n[shell: `{name}` was run as a command because the value in `{target}={value}` \
+                 is not quoted. PowerShell needs quotes around a text value: \
+                 `{target}=\"{value}\"`. Fix the quoting and run it again; nothing is missing \
+                 from the sandbox.]"
+            ));
+        }
+    }
+    None
+}
+
+/// A note for a command that reported success after a step inside it failed.
+///
+/// PowerShell's exit status is the last statement's, so `go vet ./...;
+/// "EXIT=$LASTEXITCODE"` printed `EXIT=2` and still came back `[exit 0]`, and
+/// the result was recorded as a passing check. Only called for output the
+/// shell reported as successful.
+pub fn masked_failure_note(output: &str) -> Option<String> {
+    let reported = output
+        .match_indices("EXIT=")
+        .filter_map(|(i, _)| {
+            let digits: String = output[i + 5..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '-')
+                .collect();
+            digits.parse::<i64>().ok()
+        })
+        .find(|code| *code != 0);
+    let native_error = output.contains("NativeCommandError")
+        || output.contains("UnauthorizedAccessException")
+        || output.contains("ItemNotFoundException");
+    let what = match (reported, native_error) {
+        (Some(code), _) => format!("a command inside it exited with {code}"),
+        (None, true) => "a command inside it wrote an error record".to_string(),
+        (None, false) => return None,
+    };
+    Some(format!(
+        "\n[shell: reported exit 0, but {what}. PowerShell reports only the last \
+         statement's status, so a trailing `\"EXIT=$LASTEXITCODE\"` or `; echo` hides the \
+         failure. Treat this command as failed, and check `$LASTEXITCODE` with `if` or run \
+         the step on its own.]"
+    ))
+}
+
 /// The note appended when a download fails on name resolution inside a
 /// sandbox that has no network: retrying cannot succeed.
 pub const NO_NETWORK_HINT: &str =
@@ -816,6 +890,29 @@ mod missing_hint_tests {
         assert!(h.contains("`node` is not available in this sandbox"), "{h}");
         assert!(h.contains("do not download or install it"), "{h}");
         assert!(h.contains("treat the check as not run"), "{h}");
+    }
+
+    #[test]
+    fn a_failure_behind_a_trailing_statement_is_named() {
+        let vet = "go : go: vet.exe failed: open NUL: Access is denied.\n\
+                   + FullyQualifiedErrorId : NativeCommandError\nEXIT=2\n[exit 0]";
+        assert!(masked_failure_note(vet).unwrap().contains("exited with 2"));
+        let copy = "Copy-Item : Access is denied\n UnauthorizedAccessException\nCOPIED\n[exit 0]";
+        assert!(masked_failure_note(copy).unwrap().contains("error record"));
+        assert!(masked_failure_note("go version go1.26\nEXIT=0\n[exit 0]").is_none());
+    }
+
+    #[test]
+    fn an_unquoted_assignment_is_a_quoting_note_not_a_missing_program() {
+        let cmd = r#"Push-Location "C:\p"; $env:GOTOOLCHAIN=local; $env:GODEBUG="x=0"; go list ./..."#;
+        let h = unquoted_assignment(cmd, "local").expect("names the assignment");
+        assert!(h.contains(r#"`$env:GOTOOLCHAIN="local"`"#), "{h}");
+        assert!(h.contains("nothing is missing"), "{h}");
+        // A quoted value, a genuinely missing program, or a flag value is not it.
+        assert!(unquoted_assignment(r#"$env:A="local"; local"#, "local").is_none());
+        assert!(unquoted_assignment("node --version", "node").is_none());
+        assert!(unquoted_assignment("go build -tags=local ./...", "local").is_none());
+        assert!(unquoted_assignment("$x = local", "local").is_some());
     }
 
     #[test]

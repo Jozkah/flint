@@ -24,6 +24,19 @@ it('lets ordinary work through', () => {
   ).toEqual({ tripped: false })
 })
 
+it('stops the second failure after the shell said not to retry', () => {
+  const nul = (n: number) =>
+    call({
+      tool: 'bash',
+      input: { command: `go build ./... ${n}` },
+      failed: true,
+      error: `open NUL: Access is denied ${n}\n[device_path: ... Report it to the user rather than retrying.]`,
+    })
+  expect(detectLoop([nul(1)])).toEqual({ tripped: false })
+  const verdict = detectLoop([nul(1), call(), nul(2)])
+  expect(verdict.tripped && verdict.reason).toBe('failing-shell')
+})
+
 it('stops the same call made over and over', () => {
   // Three is ordinary -- re-reading a file after editing it, running the same
   // test twice while fixing it. Five is a model going in circles.

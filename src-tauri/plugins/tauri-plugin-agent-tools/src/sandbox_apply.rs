@@ -63,6 +63,22 @@ pub fn apply_sandbox_file(
     relative: &str,
     overwrite: bool,
 ) -> Result<SandboxApplyOutcome, String> {
+    apply_sandbox_file_to(sandbox, project, relative, relative, overwrite)
+}
+
+/// [`apply_sandbox_file`], with the file landing at `destination` (relative to
+/// the attached folder) rather than at its sandbox path. A run that mirrored
+/// the project into the sandbox wrote `KewScraper/go.mod` for the folder
+/// `KewScraper`; copying that to the same relative path made a stray
+/// `KewScraper/KewScraper/go.mod`. The user confirms the destination first.
+pub fn apply_sandbox_file_to(
+    sandbox: &Path,
+    project: &Path,
+    relative: &str,
+    destination: &str,
+    overwrite: bool,
+) -> Result<SandboxApplyOutcome, String> {
+    let target = plain_relative(destination)?;
     let relative = plain_relative(relative)?;
     let sandbox_root = std::fs::canonicalize(sandbox)
         .map_err(|e| format!("the session sandbox is not readable: {e}"))?;
@@ -81,7 +97,7 @@ pub fn apply_sandbox_file(
         return Err("only files can be applied".into());
     }
 
-    let destination = project_root.join(&relative);
+    let destination = project_root.join(&target);
     // Whatever part of the destination already exists must resolve inside
     // the project, so a link in the project cannot redirect the write.
     if !canonical_existing_ancestor(&destination)?.starts_with(&project_root) {
@@ -175,6 +191,18 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn copies_to_a_confirmed_destination_inside_the_folder() {
+        let (_root, sandbox, project) = dirs();
+        let out =
+            apply_sandbox_file_to(&sandbox, &project, "docs/notes.md", "notes.md", false).unwrap();
+        assert_eq!(out, SandboxApplyOutcome::Created);
+        assert_eq!(std::fs::read_to_string(project.join("notes.md")).unwrap(), "from the run");
+        assert!(
+            apply_sandbox_file_to(&sandbox, &project, "docs/notes.md", "../x.md", true).is_err()
+        );
     }
 
     #[test]

@@ -219,6 +219,16 @@ fn split_segments(s: &str) -> Vec<String> {
                 cur.push(chars[i + 1]);
                 i += 2;
             }
+            // `&` in a redirection (`2>&1`, `>&2`, `<&3`, `&>file`) duplicates
+            // a descriptor; it does not end the command. Splitting there made
+            // `go build 2>&1` two commands, `go build 2>` and `1`, each shown
+            // and asked about on its own.
+            '&' if i > 0 && matches!(chars[i - 1], '>' | '<')
+                || chars.get(i + 1) == Some(&'>') =>
+            {
+                cur.push(c);
+                i += 1;
+            }
             ';' | '\n' | '|' | '&' | '(' | ')' => {
                 segs.push(std::mem::take(&mut cur));
                 i += 1;
@@ -501,6 +511,10 @@ mod simple_command_tests {
         assert_eq!(simple_commands("bash -c 'git reset --hard'"), vec!["git reset --hard"]);
         assert_eq!(simple_commands("echo $(git reset --hard)"), vec!["git reset --hard", "echo"]);
         assert_eq!(simple_commands("git commit -m 'a b'"), vec!["git commit -m 'a b'"]);
+        // A descriptor redirection is part of its command, not a separator.
+        assert_eq!(simple_commands("go build ./... 2>&1"), vec!["go build ./... 2>&1"]);
+        assert_eq!(simple_commands("make >&2 && git push"), vec!["make >&2", "git push"]);
+        assert_eq!(simple_commands("cargo test &>log; ls"), vec!["cargo test &>log", "ls"]);
     }
 }
 

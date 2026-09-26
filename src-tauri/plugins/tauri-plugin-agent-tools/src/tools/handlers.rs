@@ -1540,6 +1540,11 @@ async fn ls(
             Err(e) => return format!("ERROR: {e}"),
         }
     }
+    // Said, not left blank: an empty result read as a call that returned
+    // nothing, and the model listed the same folder again with a shell.
+    if names.is_empty() {
+        return format!("(empty directory: {})", target.display());
+    }
     names.sort_by_key(|n| n.to_lowercase());
     let entry_limited = names.len() > limit;
     names.truncate(limit);
@@ -1603,9 +1608,45 @@ async fn write(
     match write_no_follow(&open_at, content).await {
         Ok(()) if unchanged => format!("No change: {shown} already had these {bytes} bytes"),
         Ok(()) if existed => format!("Overwrote {shown} ({bytes} bytes)"),
-        Ok(()) => format!("Created {shown} ({bytes} bytes)"),
+        Ok(()) => {
+            let mut out = format!("Created {shown} ({bytes} bytes)");
+            if let Some(real) = shadowed_real_file(path, &target, write_roots) {
+                out.push_str(&format!(
+                    "\n[note: this is a new copy in the session workspace, not {}. That file \
+                     exists and you may edit it: change it there with `edit` instead of \
+                     rewriting files here. The user can bring a sandbox file across with \
+                     Review changes > Apply to folder.]",
+                    real.display()
+                ));
+            }
+            out
+        }
         Err(e) => format!("ERROR: {shown}: {e}"),
     }
+}
+
+/// The real file a relative write into the workspace duplicates: `path` under
+/// a granted folder, or under it with the folder's own name dropped
+/// (`KewScraper/go.mod` for the granted `…/KewScraper`). A session copied a
+/// project by hand this way after a shell copy failed, rewriting whole files
+/// from memory while it could have edited the originals.
+fn shadowed_real_file(path: &str, written: &Path, write_roots: &[PathBuf]) -> Option<PathBuf> {
+    let rel = Path::new(path);
+    if rel.is_absolute() {
+        return None;
+    }
+    let mut parts = rel.components();
+    let first = parts.next()?.as_os_str().to_os_string();
+    let rest: PathBuf = parts.collect();
+    write_roots.iter().find_map(|root| {
+        let direct = root.join(rel);
+        let named = (root.file_name() == Some(first.as_os_str()) && !rest.as_os_str().is_empty())
+            .then(|| root.join(&rest));
+        [Some(direct), named]
+            .into_iter()
+            .flatten()
+            .find(|candidate| candidate.is_file() && candidate.as_path() != written)
+    })
 }
 
 async fn edit(
@@ -1823,6 +1864,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             start = policy.start_dir().to_path_buf();
         }
     }
+    if ctx.sandbox && policy.write_roots.is_empty() && !write_abs.is_empty() {
+        // Granted to the file tools, out of the shell's reach: named in
+        // failure notes only.
+        policy = policy.with_unreachable_grants(write_abs.clone());
+    }
     let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -2023,6 +2069,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         if shell_flavor == proc::ShellFlavor::PowerShell {
             out = proc::strip_prologue(&out);
         }
+        // Before the failure notes, and whatever the exit code: a command that
+        // ends in a successful statement still hit the wall.
+        let unreachable = if sandboxed {
+            jail::unreachable_grant_note(&policy, &out)
+        } else {
+            None
+        };
         if bash_result_failed(&out) {
             let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
             // PowerShell runs from a drive mounted on where the shell started
@@ -2058,7 +2111,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             }
             .or_else(|| super::host_tools::python_launcher_missing(&command_text, &out));
             if sandboxed {
-                if let Some(name) = missing {
+                // An unquoted assignment value, not a missing program.
+                let quoting = missing
+                    .as_deref()
+                    .and_then(|name| super::host_tools::unquoted_assignment(&command_text, name));
+                if let Some(note) = quoting {
+                    out.push_str(&note);
+                } else if let Some(name) = missing {
                     let host = std::env::var_os("PATH").unwrap_or_default();
                     let pathext =
                         std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".into());
@@ -2087,6 +2146,14 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             if let Some(banner) = super::shell_diag::shell_banner(shell_flavor, shell_description)
             {
                 out.insert_str(0, &banner);
+            }
+        }
+        if let Some(note) = unreachable {
+            out.push_str(&note);
+        }
+        if shell_flavor == proc::ShellFlavor::PowerShell && !bash_result_failed(&out) {
+            if let Some(note) = super::host_tools::masked_failure_note(&out) {
+                out.push_str(&note);
             }
         }
         if let Some(note) = &fallback_note {
@@ -6162,6 +6229,36 @@ on_failure = \"warn\"
         std::fs::write(root.join("listed.txt"), b"x").unwrap();
         let out = execute_builtin(lookup("ls").unwrap(), &json!({}), &root).await;
         assert!(out.contains("listed.txt"), "unexpected: {out}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_workspace_copy_of_a_granted_file_names_the_original() {
+        let base = unique_root();
+        let granted = base.join("Coding");
+        std::fs::create_dir_all(granted.join("KewScraper")).unwrap();
+        std::fs::write(granted.join("KewScraper/go.mod"), b"x").unwrap();
+        let ws = base.join("ws");
+        let written = ws.join("KewScraper/go.mod");
+        let roots = vec![granted.clone()];
+        assert_eq!(
+            shadowed_real_file("KewScraper/go.mod", &written, &roots),
+            Some(granted.join("KewScraper/go.mod"))
+        );
+        let own = vec![granted.join("KewScraper")];
+        assert_eq!(
+            shadowed_real_file("KewScraper/go.mod", &written, &own),
+            Some(granted.join("KewScraper/go.mod"))
+        );
+        assert_eq!(shadowed_real_file("notes.md", &ws.join("notes.md"), &roots), None);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[tokio::test]
+    async fn ls_says_a_folder_is_empty() {
+        let root = unique_root();
+        let out = execute_builtin(lookup("ls").unwrap(), &json!({}), &root).await;
+        assert!(out.starts_with("(empty directory"), "unexpected: {out}");
         let _ = std::fs::remove_dir_all(&root);
     }
 

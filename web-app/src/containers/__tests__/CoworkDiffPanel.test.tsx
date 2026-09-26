@@ -28,7 +28,7 @@ vi.mock('@/lib/coworkGit', async (importOriginal) => {
 import { CoworkDiffPanel } from '../CoworkDiffPanel'
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
 import type { CoworkGitState } from '@/hooks/useCoworkGitStatus'
-import type { GitStatus } from '@/lib/coworkGit'
+import { loadGitFileDiff, type GitStatus } from '@/lib/coworkGit'
 
 const sandboxFiles: CoworkFileDiff[] = [
   {
@@ -56,6 +56,13 @@ const noGit: CoworkGitState = {
   nonce: 0,
   refresh: vi.fn(),
 }
+
+const plainPlan = (path: string) => ({
+  source: path,
+  folder: '/home/user/proj',
+  destination: path,
+  remapped: false,
+})
 
 function gitWith(status: GitStatus, over: Partial<CoworkGitState> = {}): CoworkGitState {
   return { ...noGit, status, ...over }
@@ -184,6 +191,49 @@ describe('CoworkDiffPanel', () => {
     expect(screen.queryByTestId('diff')).toBeNull()
     await userEvent.click(screen.getByText('src/a.ts'))
     expect(await screen.findByTestId('diff')).toHaveTextContent('added by git')
+  })
+
+  it('re-reads a stale list instead of showing counts over an empty diff', async () => {
+    // The status was read while the edits were uncommitted; the agent then
+    // committed them, so the row's diff is now empty.
+    vi.mocked(loadGitFileDiff).mockResolvedValueOnce({
+      diff: '',
+      binary: false,
+      truncated: false,
+    })
+    const refresh = vi.fn()
+    const status: GitStatus = {
+      branch: 'fix/stock-change',
+      repoRoot: '/home/user/KewScraper',
+      additions: 9,
+      deletions: 7,
+      files: [
+        {
+          path: 'integrations/ingestion.go',
+          origPath: null,
+          status: 'modified',
+          staged: false,
+          unstaged: true,
+          additions: 9,
+          deletions: 7,
+          binary: false,
+        },
+      ],
+    }
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[]}
+        folder="/home/user/KewScraper"
+        git={gitWith(status, { refresh })}
+        onClose={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByText('integrations/ingestion.go'))
+    expect(
+      await screen.findByText('common:changes.staleRow')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('common:changes.noDiff')).toBeNull()
+    expect(refresh).toHaveBeenCalledTimes(1)
   })
 
   it('reports a clean working tree for an attached repo with no changes', () => {
@@ -367,9 +417,10 @@ describe('what the Changes panel claims about each file', () => {
         git={noGit}
         onClose={vi.fn()}
         onApplyFile={onApplyFile}
+        applyPlanFor={plainPlan}
       />
     )
-    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
     expect(onApplyFile).toHaveBeenLastCalledWith('report.md', false)
     expect(await screen.findByRole('alert')).toHaveTextContent('common:changes.applyExists')
     await user.click(screen.getByRole('button', { name: 'common:changes.applyReplace' }))
@@ -387,15 +438,92 @@ describe('what the Changes panel claims about each file', () => {
         git={noGit}
         onClose={vi.fn()}
         onApplyFile={onApplyFile}
+        applyPlanFor={plainPlan}
       />
     )
-    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
     expect(await screen.findByText(/common:changes.applyFailed.*denied/)).toBeInTheDocument()
     rerender(
       <CoworkDiffPanel sandboxFiles={[sandboxFiles[0]]} folder={null} git={noGit} onClose={vi.fn()} />
     )
     expect(
-      screen.queryByRole('button', { name: 'common:changes.applyToFolder' })
+      screen.queryByRole('button', { name: /common:changes.applyHint/ })
     ).not.toBeInTheDocument()
+  })
+
+  it('offers no Apply for a file it could only fail to copy', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[sandboxFiles[0]]}
+        folder="/home/user/proj"
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={vi.fn()}
+        applyPlanFor={() => null}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /common:changes.applyHint/ })
+    ).toBeNull()
+  })
+
+  it('shows a guessed destination and copies only once it is accepted', async () => {
+    const user = userEvent.setup()
+    const onApplyFile = vi.fn().mockResolvedValue('created')
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[{ ...sandboxFiles[0], path: 'KewScraper/go.mod' }]}
+        folder="C:\\Coding\\KewScraper"
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={onApplyFile}
+        applyPlanFor={(path) => ({
+          source: path,
+          folder: 'C:\\Coding\\KewScraper',
+          destination: 'go.mod',
+          remapped: true,
+        })}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
+    expect(onApplyFile).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('"path":"go.mod"')
+    await user.click(screen.getByRole('button', { name: 'common:changes.applyConfirm' }))
+    expect(onApplyFile).toHaveBeenCalledWith('KewScraper/go.mod', false)
+  })
+
+  it('lists files edited in place apart from sandbox output', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[
+          { ...sandboxFiles[0], path: 'C:\\Coding\\KewScraper\\main.go' },
+          { ...sandboxFiles[0], path: 'C:\\Coding\\KewScraper\\utils\\utils.go' },
+          sandboxFiles[1],
+        ]}
+        folder={null}
+        git={noGit}
+        onClose={vi.fn()}
+        isSandboxPath={(path) => !path.startsWith('C:')}
+      />
+    )
+    expect(
+      screen.getByText(/common:changes\.changedIn .*KewScraper/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('common:changes.sandboxOutput')).toBeInTheDocument()
+    // Shown relative to the folder they were changed in.
+    expect(screen.getByText('utils/utils.go')).toBeInTheDocument()
+    expect(screen.getByText('main.go')).toBeInTheDocument()
+  })
+
+  it('offers the comparison scope only for a Git repository', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={sandboxFiles}
+        folder="/home/user/proj"
+        git={noGit}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.queryByTitle('common:changes.scopeLabel')).toBeNull()
   })
 })

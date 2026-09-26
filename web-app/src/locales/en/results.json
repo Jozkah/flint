@@ -95,7 +95,7 @@
       "timeout": "The model stopped responding in time.",
       "loop": "The run was stopped for repeating itself.",
       "steps": "The run used all of its steps.",
-      "tokens": "The run reached its token budget."
+      "tokens": "The run stopped at a token limit (the context window or the request's allowance)."
     },
     "refused": "Not allowed: {{tool}} {{target}}",
     "refusedReadOnly": "Not run, this turn was read-only: {{tool}} {{target}}. Switch the mode to Ask before changes or Autonomous, then Continue.",

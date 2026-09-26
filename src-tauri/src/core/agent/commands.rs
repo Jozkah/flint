@@ -1484,15 +1484,19 @@ pub async fn agent_sandbox_apply_file(
     session: String,
     path: String,
     project: String,
+    // Where in `project` the file goes, when the user confirmed a place other
+    // than its sandbox path.
+    destination: Option<String>,
     overwrite: bool,
 ) -> Result<tauri_plugin_agent_tools::sandbox_apply::SandboxApplyOutcome, String> {
     let data_folder = get_jan_data_folder_path(app);
     tokio::task::spawn_blocking(move || {
         let sandbox = workspace::session_workspace(&data_folder, &session)?;
-        tauri_plugin_agent_tools::sandbox_apply::apply_sandbox_file(
+        tauri_plugin_agent_tools::sandbox_apply::apply_sandbox_file_to(
             &sandbox,
             std::path::Path::new(&project),
             &path,
+            destination.as_deref().unwrap_or(&path),
             overwrite,
         )
     })

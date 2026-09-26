@@ -48,6 +48,18 @@ describe('useCoworkGitStatus', () => {
     )
   })
 
+  it('re-reads the status when the refresh key changes, not before', async () => {
+    loadGitStatus.mockResolvedValue(status())
+    const { rerender } = renderHook(
+      ({ key }) => useCoworkGitStatus('/repo', key),
+      { initialProps: { key: true } }
+    )
+    await waitFor(() => expect(loadGitStatus).toHaveBeenCalledTimes(1))
+    rerender({ key: true })
+    rerender({ key: false })
+    await waitFor(() => expect(loadGitStatus).toHaveBeenCalledTimes(2))
+  })
+
   it('surfaces a load failure as an error and clears the status', async () => {
     loadGitStatus.mockRejectedValue(new Error('boom'))
     const { result } = renderHook(() => useCoworkGitStatus('/repo'))

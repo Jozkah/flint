@@ -1720,7 +1720,13 @@ fn record_permission_decision(
         Decision::Prompt(kind) => (Outcome::Prompt, format!("prompt:{kind:?}")),
     };
 
+    let git_read = tool.name == "git"
+        && crate::tools::git_tool::plan_from_args(args)
+            .is_ok_and(|plan| plan.class == crate::tools::git_tool::GitClass::Read);
     let capability = match tool.capability {
+        // `git status` is a read however the tool is declared: the audit said
+        // "write" for every one, the same call the gate let through unasked.
+        _ if git_read => "read",
         Capability::Read => "read",
         Capability::Write => "write",
         Capability::Exec => "exec",

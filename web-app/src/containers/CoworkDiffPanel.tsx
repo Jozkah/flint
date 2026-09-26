@@ -19,8 +19,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
-import type { SandboxApplyOutcome } from '@/lib/coworkSandboxApply'
+import type {
+  SandboxApplyOutcome,
+  SandboxApplyPlan,
+} from '@/lib/coworkSandboxApply'
 import { errorText } from '@/lib/errorText'
+import { basenameOf } from '@/lib/coworkPreview'
 import {
   loadGitFileDiff,
   repoName,
@@ -60,10 +64,20 @@ function LazyGitDiff({
   folder,
   path,
   scope,
+  claimsChanges,
+  onStale,
 }: {
   folder: string
   path: string
   scope: GitScope
+  /** The row this diff belongs to reported added or removed lines. */
+  claimsChanges: boolean
+  /**
+   * The status list is older than the tree: called once when a row that
+   * claimed changes turns out to have none, so the list is re-read instead of
+   * showing counts above an empty body.
+   */
+  onStale?: () => void
 }) {
   const { t } = useTranslation()
   const [state, setState] = useState<
@@ -86,6 +100,20 @@ function LazyGitDiff({
       alive = false
     }
   }, [folder, path, scope])
+
+  // The status is only re-read on demand, so a commit or undo made after it was
+  // loaded leaves rows whose counts no longer exist. An empty diff under such a
+  // row means the list is stale, not that the change has nothing to show.
+  const stale =
+    state.status === 'ready' &&
+    !state.diff.binary &&
+    !state.diff.diff.trim() &&
+    claimsChanges
+  useEffect(() => {
+    if (stale) onStale?.()
+    // Once per load: the panel re-keys this component after the refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stale])
 
   if (state.status === 'loading') {
     return (
@@ -112,13 +140,63 @@ function LazyGitDiff({
   if (!diff.diff.trim()) {
     return (
       <p className="px-3 py-2.5 text-xs text-muted-foreground">
-        {t('common:changes.noDiff')}
+        {stale ? t('common:changes.staleRow') : t('common:changes.noDiff')}
       </p>
     )
   }
   return (
     <DiffView diff={diff.diff} className="max-h-none rounded-none border-0" />
   )
+}
+
+type SessionGroup = {
+  key: string
+  title: string
+  files: CoworkFileDiff[]
+  /** The row label: in-place paths are shown relative to their folder. */
+  show: (path: string) => string
+}
+
+const splitPath = (path: string) => path.split(/[\\/]/).filter(Boolean)
+
+/** The deepest folder every path shares, as segments. */
+function commonFolder(paths: readonly string[]): string[] {
+  const split = paths.map((p) => splitPath(p).slice(0, -1))
+  const first = split[0] ?? []
+  let n = 0
+  while (n < first.length && split.every((s) => s[n] === first[n])) n += 1
+  return first.slice(0, n)
+}
+
+function groupSessionFiles(
+  files: CoworkFileDiff[],
+  isSandboxPath: ((path: string) => boolean) | undefined,
+  t: (key: string, vars?: Record<string, unknown>) => string
+): SessionGroup[] {
+  const inSandbox = files.filter((f) => !isSandboxPath || isSandboxPath(f.path))
+  const inPlace = files.filter((f) => isSandboxPath && !isSandboxPath(f.path))
+  const groups: SessionGroup[] = []
+  if (inPlace.length > 0) {
+    const common = commonFolder(inPlace.map((f) => f.path))
+    const folder = common[common.length - 1]
+    groups.push({
+      key: 'in-place',
+      title: folder
+        ? t('common:changes.changedIn', { folder })
+        : t('common:changes.changedInPlace'),
+      files: inPlace,
+      show: (path) => splitPath(path).slice(common.length).join('/') || path,
+    })
+  }
+  if (inSandbox.length > 0) {
+    groups.push({
+      key: 'sandbox',
+      title: t('common:changes.sandboxOutput'),
+      files: inSandbox,
+      show: (path) => path,
+    })
+  }
+  return groups
 }
 
 /** A single expandable row shared by the project and sandbox lists. */
@@ -230,6 +308,8 @@ function FileRow({
 type ApplyState =
   | { kind: 'idle' }
   | { kind: 'busy' }
+  /** A guessed destination, shown for the user to accept before copying. */
+  | { kind: 'where' }
   | { kind: 'confirm' }
   | { kind: 'done'; outcome: 'created' | 'replaced' }
   | { kind: 'error'; message: string }
@@ -240,9 +320,11 @@ type ApplyState =
  */
 function SandboxApply({
   path,
+  plan,
   onApply,
 }: {
   path: string
+  plan: SandboxApplyPlan
   onApply: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
 }) {
   const { t } = useTranslation()
@@ -261,9 +343,35 @@ function SandboxApply({
   const button =
     'rounded-md border-[0.8px] border-border bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground hover:text-foreground disabled:opacity-50'
 
+  const folderName = basenameOf(plan.folder) || plan.folder
+  const hint = t('common:changes.applyHint', {
+    folder: folderName,
+    path: plan.destination,
+  })
+
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-8 text-[11px] text-muted-foreground">
-      {state.kind === 'confirm' ? (
+      {state.kind === 'where' ? (
+        <>
+          <span role="alert">
+            {t('common:changes.applyWhere', {
+              folder: folderName,
+              path: plan.destination,
+              source: plan.source,
+            })}
+          </span>
+          <button type="button" className={button} onClick={() => void apply(false)}>
+            {t('common:changes.applyConfirm')}
+          </button>
+          <button
+            type="button"
+            className={button}
+            onClick={() => setState({ kind: 'idle' })}
+          >
+            {t('common:cancel')}
+          </button>
+        </>
+      ) : state.kind === 'confirm' ? (
         <>
           <span role="alert">{t('common:changes.applyExists')}</span>
           <button type="button" className={button} onClick={() => void apply(true)}>
@@ -283,7 +391,12 @@ function SandboxApply({
             type="button"
             className={button}
             disabled={state.kind === 'busy'}
-            onClick={() => void apply(false)}
+            title={hint}
+            aria-label={hint}
+            // A guessed destination is shown before anything is copied.
+            onClick={() =>
+              plan.remapped ? setState({ kind: 'where' }) : void apply(false)
+            }
           >
             {t('common:changes.applyToFolder')}
           </button>
@@ -327,6 +440,8 @@ export function CoworkDiffPanel({
   onClose,
   onOpenFile,
   onApplyFile,
+  applyPlanFor,
+  isSandboxPath,
   header,
   footer,
   branch,
@@ -357,6 +472,17 @@ export function CoworkDiffPanel({
    * folder to copy into.
    */
   onApplyFile?: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
+  /**
+   * Where a sandbox file would be copied, or null when it cannot be (a file
+   * Flint edited in place, outside the sandbox). No plan, no Apply button:
+   * one that can only fail is worse than none.
+   */
+  applyPlanFor?: (path: string) => SandboxApplyPlan | null
+  /**
+   * Whether a changed file is in the session sandbox. Files that are not were
+   * edited in place and get their own section. Absent: all are sandbox files.
+   */
+  isSandboxPath?: (path: string) => boolean
   folder: string | null
   git: CoworkGitState
   onClose: () => void
@@ -381,7 +507,13 @@ export function CoworkDiffPanel({
   )
   const showProject = !!folder
   const showSandbox = sandboxFiles.length > 0
-  const labelled = showProject && showSandbox
+  // Files Flint edited where they live are not sandbox output: listing them
+  // under "Session sandbox" said the real project was untouched.
+  const sessionGroups = useMemo(
+    () => groupSessionFiles(sandboxFiles, isSandboxPath, t),
+    [sandboxFiles, isSandboxPath, t]
+  )
+  const labelled = (showProject ? 1 : 0) + sessionGroups.length > 1
 
   // Combined totals across both sources for the header summary.
   const sandboxAdds = sandboxFiles.reduce((s, f) => s + f.additions, 0)
@@ -447,8 +579,14 @@ export function CoworkDiffPanel({
         {header}
         {showProject ? (
           <div className="flex shrink-0 items-center gap-1 px-3 pt-2.5 pb-2">
+            {/* The comparison only changes the Git list: shown for a
+                repository, and labelled as the project's. */}
+            {git.status ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-xs font-medium text-secondary-foreground outline-none transition-[box-shadow,color] hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:shadow-lift">
+              <DropdownMenuTrigger
+                aria-label={t('common:changes.scopeLabel')}
+                title={t('common:changes.scopeLabel')}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-xs font-medium text-secondary-foreground outline-none transition-[box-shadow,color] hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:shadow-lift">
                 {t(`common:changes.scope.${git.scope}`)}
                 <ChevronDown size={12} className="shrink-0" />
               </DropdownMenuTrigger>
@@ -465,6 +603,7 @@ export function CoworkDiffPanel({
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
             <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"
@@ -584,6 +723,10 @@ export function CoworkDiffPanel({
                             folder={folder}
                             path={file.path}
                             scope={git.scope}
+                            claimsChanges={
+                              file.additions + file.deletions > 0
+                            }
+                            onStale={git.refresh}
                           />
                         ) : null}
                       </FileRow>
@@ -595,27 +738,35 @@ export function CoworkDiffPanel({
           ) : null}
 
           {/* Cowork output · Session sandbox */}
-          {showSandbox ? (
-            <section>
+          {sessionGroups.map((group) => (
+            <section key={group.key}>
               {labelled ? (
-                <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
-                  {t('common:changes.sandboxOutput')}
+                <h3 className="sticky top-0 z-[1] truncate bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
+                  {group.title}
                 </h3>
               ) : null}
               <div>
-                {sandboxFiles.map((file) => {
+                {group.files.map((file) => {
                   const id = `sandbox:${file.path}`
                   const isExpanded = expanded.has(id)
+                  const plan =
+                    onApplyFile && group.key === 'sandbox'
+                      ? applyPlanFor?.(file.path)
+                      : null
                   return (
                     <FileRow
                       key={id}
-                      path={file.path}
+                      path={group.show(file.path)}
                       onOpen={
                         onOpenFile ? () => onOpenFile(file.path) : undefined
                       }
                       after={
-                        onApplyFile ? (
-                          <SandboxApply path={file.path} onApply={onApplyFile} />
+                        onApplyFile && plan ? (
+                          <SandboxApply
+                            path={file.path}
+                            plan={plan}
+                            onApply={onApplyFile}
+                          />
                         ) : undefined
                       }
                       additions={file.additions}
@@ -648,7 +799,7 @@ export function CoworkDiffPanel({
                 })}
               </div>
             </section>
-          ) : null}
+          ))}
 
           {/* Nothing anywhere. */}
           {!showProject && !showSandbox ? (
