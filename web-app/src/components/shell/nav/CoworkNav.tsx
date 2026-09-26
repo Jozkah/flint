@@ -66,7 +66,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
 import { openInSplit, reportSplitResult } from '@/lib/splitView'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -83,6 +83,9 @@ import {
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import PluginsManagerDialog from '@/containers/dialogs/PluginsManagerDialog'
+import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
+import { coworkFolderAdapter } from '@/lib/groups/adapters'
+import { addNewItemToGroup } from '@/lib/groups/inherit'
 
 
 type CoworkNavItem = {
@@ -188,6 +191,11 @@ const SessionItem = memo(function SessionItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <MoveToGroupSub
+            surface="cowork"
+            itemId={session.id}
+            adapter={coworkFolderAdapter}
+          />
           <DropdownMenuSeparator />
           {/* AH-201. Copies the conversation and none of the access: the fork
               asks for its own folder and its own confirmation, so forking can
@@ -384,12 +392,16 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const currentId = useCoworkSessions((s) => s.currentId)
   // A blank session is listed only while it is open in Cowork: pressing New
   // session and going elsewhere should not leave an empty entry behind.
-  const sessions = allSessions.filter(
-    (session) =>
-      (onCowork && session.id === currentId) ||
-      !isSessionEmpty(session) ||
-      session.title !== DEFAULT_SESSION_TITLE ||
-      Boolean(runs?.[session.id])
+  const sessions = useMemo(
+    () =>
+      allSessions.filter(
+        (session) =>
+          (onCowork && session.id === currentId) ||
+          !isSessionEmpty(session) ||
+          session.title !== DEFAULT_SESSION_TITLE ||
+          Boolean(runs?.[session.id])
+      ),
+    [allSessions, onCowork, currentId, runs]
   )
   const visibleSessions = expanded
     ? sessions
@@ -405,7 +417,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const [removeWorktree, setRemoveWorktree] = useState(false)
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
-  const newSession = () => {
+  const newSession = (groupId?: string) => {
     // Idempotent: on a blank session this returns the same one, so a second
     // press cannot leave a trail of empty sessions behind. An unsent draft
     // keeps the user where they are rather than stranding it.
@@ -417,6 +429,8 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       hasDraft: usePrompt.getState().prompt.trim().length > 0,
     })
     store.selectSession(id)
+    if (groupId)
+      void addNewItemToGroup('cowork', id, groupId, coworkFolderAdapter)
     goCowork()
   }
   const selectSession = useCallback(
@@ -426,6 +440,26 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     },
     [goCowork]
   )
+
+  const sessionIds = useMemo(() => sessions.map((x) => x.id), [sessions])
+  const byId = useMemo(
+    () => new Map(sessions.map((x) => [x.id, x])),
+    [sessions]
+  )
+  const renderSession = (id: string) => {
+    const session = byId.get(id)
+    if (!session) return null
+    return (
+      <SessionItem
+        key={session.id}
+        session={session}
+        isCurrent={onCowork && session.id === currentId}
+        isMobile={isMobile}
+        onSelect={selectSession}
+        onRequestDelete={setPendingDelete}
+      />
+    )
+  }
 
   const items: CoworkNavItem[] = [
     {
@@ -583,22 +617,28 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
           {expanded && (
             <NavItem>
-              <NavButton size="sub" onClick={newSession}>
+              <NavButton size="sub" onClick={() => newSession()}>
                 <Plus aria-hidden className="size-3.5" />
                 <span>{t('common:newSession')}</span>
               </NavButton>
             </NavItem>
           )}
-          {visibleSessions.map((session) => (
-            <SessionItem
-              key={session.id}
-              session={session}
-              isCurrent={onCowork && session.id === currentId}
-              isMobile={isMobile}
-              onSelect={selectSession}
-              onRequestDelete={setPendingDelete}
+          {expanded ? (
+            <GroupedTree
+              surface="cowork"
+              ids={sessionIds}
+              renderItem={renderSession}
+              keepVisible={(id) =>
+                (onCowork && id === currentId) || Boolean(runs?.[id])
+              }
+              adapter={coworkFolderAdapter}
+              onNewInGroup={newSession}
+              newInLabelKey="common:groups.newSessionIn"
+              showNewGroup
             />
-          ))}
+          ) : (
+            visibleSessions.map((session) => renderSession(session.id))
+          )}
         </NavList>
       </NavCollapse>
 

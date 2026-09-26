@@ -41,13 +41,19 @@ import {
 import type { RoomSummary } from '@/lib/rooms/types'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
-import { memo, useCallback, useEffect, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { openInSplit, reportSplitResult } from '@/lib/splitView'
 import { roomNavStatus } from '@/lib/rooms/navStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
+import { roomFolderAdapter } from '@/lib/groups/adapters'
+import { addNewItemToGroup, type FolderAdapter } from '@/lib/groups/inherit'
+
+/** A room created from a group's "+" within this long joins that group. */
+const PENDING_GROUP_MS = 10 * 60 * 1000
 
 const RoomItem = memo(function RoomItem({
   room,
@@ -56,8 +62,10 @@ const RoomItem = memo(function RoomItem({
   onSelect,
   onRequestDelete,
   running,
+  adapter,
 }: {
   room: RoomSummary
+  adapter: FolderAdapter
   isCurrent: boolean
   isMobile: boolean
   onSelect: (id: string) => void
@@ -125,6 +133,7 @@ const RoomItem = memo(function RoomItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <MoveToGroupSub surface="rooms" itemId={room.id} adapter={adapter} />
           <DropdownMenuSeparator />
           <DropdownMenuItem
             variant="destructive"
@@ -170,6 +179,55 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     if (api.status !== 'ready') return
     api.loadSummaries().catch(() => {})
   }, [api])
+
+  const adapter = useMemo(() => roomFolderAdapter(api), [api])
+  // "+" on a group opens the create dialog; the room that appears next joins
+  // the group and inherits its folder.
+  const pendingGroup = useRef<{
+    groupId: string
+    known: Set<string>
+    at: number
+  } | null>(null)
+  useEffect(() => {
+    const pending = pendingGroup.current
+    if (!pending) return
+    if (Date.now() - pending.at > PENDING_GROUP_MS) {
+      pendingGroup.current = null
+      return
+    }
+    const created = summaries.find((r) => !pending.known.has(r.id))
+    if (!created) return
+    pendingGroup.current = null
+    void addNewItemToGroup('rooms', created.id, pending.groupId, adapter)
+  }, [summaries, adapter])
+  const newRoom = (groupId?: string) => {
+    pendingGroup.current = groupId
+      ? { groupId, known: new Set(summaries.map((r) => r.id)), at: Date.now() }
+      : null
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    navigate({ to: route.rooms, search: { new: 1 } as any })
+  }
+  const roomIds = useMemo(() => summaries.map((r) => r.id), [summaries])
+  const byId = useMemo(
+    () => new Map(summaries.map((r) => [r.id, r])),
+    [summaries]
+  )
+  const renderRoom = (id: string) => {
+    const room = byId.get(id)
+    if (!room) return null
+    return (
+      <RoomItem
+        key={room.id}
+        room={room}
+        isCurrent={room.id === currentRoomId}
+        isMobile={isMobile}
+        onSelect={selectRoom}
+        onRequestDelete={setPendingDelete}
+        running={runningRoomIds.includes(room.id)}
+        adapter={adapter}
+      />
+    )
+  }
 
   const selectRoom = useCallback(
     (id: string) => {
@@ -228,27 +286,28 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
         <NavList className="relative pt-0.5 pb-1 pl-5 before:absolute before:inset-y-1 before:left-[17px] before:w-px before:bg-border">
           {expanded && (
             <NavItem>
-              <NavButton
-                size="sub"
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                onClick={() => navigate({ to: route.rooms, search: { new: 1 } as any })}
-              >
+              <NavButton size="sub" onClick={() => newRoom()}>
                 <Plus aria-hidden className="size-3.5" />
                 <span>{t('common:shell.newRoom')}</span>
               </NavButton>
             </NavItem>
           )}
-          {visibleRooms.map((room) => (
-            <RoomItem
-              key={room.id}
-              room={room}
-              isCurrent={room.id === currentRoomId}
-              isMobile={isMobile}
-              onSelect={selectRoom}
-              onRequestDelete={setPendingDelete}
-              running={runningRoomIds.includes(room.id)}
+          {expanded ? (
+            <GroupedTree
+              surface="rooms"
+              ids={roomIds}
+              renderItem={renderRoom}
+              keepVisible={(id) =>
+                id === currentRoomId || runningRoomIds.includes(id)
+              }
+              adapter={adapter}
+              onNewInGroup={newRoom}
+              newInLabelKey="common:groups.newRoomIn"
+              showNewGroup
             />
-          ))}
+          ) : (
+            visibleRooms.map((room) => renderRoom(room.id))
+          )}
         </NavList>
       </NavCollapse>
 
