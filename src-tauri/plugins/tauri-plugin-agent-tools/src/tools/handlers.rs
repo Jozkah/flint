@@ -1823,6 +1823,11 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             start = policy.start_dir().to_path_buf();
         }
     }
+    if ctx.sandbox && policy.write_roots.is_empty() && !write_abs.is_empty() {
+        // Granted to the file tools, out of the shell's reach: named in
+        // failure notes only.
+        policy = policy.with_unreachable_grants(write_abs.clone());
+    }
     let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -2023,6 +2028,13 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         if shell_flavor == proc::ShellFlavor::PowerShell {
             out = proc::strip_prologue(&out);
         }
+        // Before the failure notes, and whatever the exit code: a command that
+        // ends in a successful statement still hit the wall.
+        let unreachable = if sandboxed {
+            jail::unreachable_grant_note(&policy, &out)
+        } else {
+            None
+        };
         if bash_result_failed(&out) {
             let class = super::shell_diag::classify(&command_text, &out, shell_flavor);
             // PowerShell runs from a drive mounted on where the shell started
@@ -2094,6 +2106,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             {
                 out.insert_str(0, &banner);
             }
+        }
+        if let Some(note) = unreachable {
+            out.push_str(&note);
         }
         if let Some(note) = &fallback_note {
             out.insert_str(0, note);
