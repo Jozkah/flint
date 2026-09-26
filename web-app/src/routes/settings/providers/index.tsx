@@ -43,6 +43,11 @@ import {
 import { BrandMark } from '@/containers/engine/BrandMark'
 import { LiveChart } from '@/containers/engine/LiveChart'
 import { RowMenu } from '@/containers/engine/RowMenu'
+import {
+  ProviderCardMenu,
+  RemoveProviderDialog,
+} from '@/containers/engine/ProviderCardMenu'
+import { useRemoveProvider } from '@/hooks/useRemoveProvider'
 import { modelLogo, providerLogo } from '@/lib/brandLogos'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
@@ -65,7 +70,7 @@ type Filter = 'all' | 'local' | 'remote'
 
 /** Installed-models table: logo, name, provider, capabilities, size, context, speed, status, menu. */
 const MODEL_COLS =
-  '30px minmax(180px,3fr) 76px minmax(170px,1.3fr) 64px 72px 96px 100px 28px'
+  '30px minmax(0,1fr) 96px 112px 64px 68px 80px 104px 28px'
 
 /** How many recent replies the speed charts show. */
 const SPEED_WINDOW = 24
@@ -88,6 +93,31 @@ function ModelProviders() {
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({})
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
+  const [menuFor, setMenuFor] = useState<string | null>(null)
+  const [pendingRemoval, setPendingRemoval] = useState<ProviderObject | null>(
+    null
+  )
+  const removeProvider = useRemoveProvider()
+
+  const toggleProvider = async (provider: ProviderObject, active: boolean) => {
+    if (!active && provider.provider.toLowerCase() === 'llamacpp') {
+      await serviceHub.models().stopAllModels()
+    }
+    updateProvider(provider.provider, { ...provider, active })
+  }
+
+  const confirmRemoval = () => {
+    const provider = pendingRemoval
+    if (!provider) return
+    setPendingRemoval(null)
+    void removeProvider(provider).then(() =>
+      toast.success(
+        t('providers:removeProvider.success', {
+          provider: getProviderTitle(provider.provider),
+        })
+      )
+    )
+  }
 
   const visibleProviders = useMemo(
     () =>
@@ -456,6 +486,16 @@ function ModelProviders() {
                     key={provider.provider}
                     data-testid={`provider-row-${provider.provider}`}
                     style={{ animationDelay: `${320 + i * 35}ms` }}
+                    onContextMenu={(e) => {
+                      e.preventDefault()
+                      setMenuFor(provider.provider)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                        e.preventDefault()
+                        setMenuFor(provider.provider)
+                      }
+                    }}
                     className={cn(
                       'group relative flex flex-col items-start gap-1.5 rounded-xl border-[0.8px] border-border p-3 text-left transition-[transform,box-shadow] duration-300 ease-expo motion-safe:animate-rise-in',
                       provider.active
@@ -470,34 +510,37 @@ function ModelProviders() {
                         size={40}
                         className={cn(!provider.active && 'opacity-60')}
                       />
-                      <Switch
-                        className="relative z-10"
-                        checked={provider.active}
-                        aria-label={t('providers:useProvider', {
-                          provider: title,
-                        })}
-                        onCheckedChange={async (e) => {
-                          if (!e && provider.provider.toLowerCase() === 'llamacpp') {
-                            await serviceHub.models().stopAllModels()
-                          }
-                          updateProvider(provider.provider, {
-                            ...provider,
-                            active: e,
-                          })
-                        }}
-                      />
+                      <div className="flex items-center gap-1">
+                        <ProviderCardMenu
+                          provider={provider}
+                          title={title}
+                          open={menuFor === provider.provider}
+                          onOpenChange={(o) => setMenuFor(o ? provider.provider : null)}
+                          onEdit={() => openProvider(provider.provider)}
+                          onToggle={() => void toggleProvider(provider, !provider.active)}
+                          onRemove={() => setPendingRemoval(provider)}
+                        />
+                        <Switch
+                          className="relative z-10"
+                          checked={provider.active}
+                          aria-label={t('providers:useProvider', {
+                            provider: title,
+                          })}
+                          onCheckedChange={(e) => void toggleProvider(provider, e)}
+                        />
+                      </div>
                     </div>
                     {provider.active ? (
                       <button
                         type="button"
                         onClick={() => openProvider(provider.provider)}
                         aria-label={t('providers:openProvider', { provider: title })}
-                        className="text-[13.5px] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
+                        className="min-w-0 max-w-full text-left text-[13.5px] font-semibold text-foreground outline-none after:absolute after:inset-0 after:rounded-xl after:content-[''] focus-visible:after:ring-[3px] focus-visible:after:ring-ring/40"
                       >
-                        {title}
+                        <span className="text-fade">{title}</span>
                       </button>
                     ) : (
-                      <b className="text-[13.5px] font-semibold text-foreground opacity-60">
+                      <b className="text-fade max-w-full text-[13.5px] font-semibold text-foreground opacity-60">
                         {title}
                       </b>
                     )}
@@ -561,7 +604,7 @@ function ModelProviders() {
               </div>
             }
           />
-          <FrameBody className="overflow-x-auto p-3">
+          <FrameBody className="p-3">
             {shownRows.length === 0 ? (
               <EmptyState
                 icon={<Icon name="x-cube" />}
@@ -576,8 +619,18 @@ function ModelProviders() {
               />
             ) : (
               <TBox
-                className="min-w-[860px]"
                 columns={MODEL_COLS}
+                head={[
+                  '',
+                  t('engine:table.name'),
+                  t('engine:table.provider'),
+                  t('engine:table.capabilities'),
+                  t('engine:table.size'),
+                  t('engine:table.context'),
+                  t('engine:table.speed'),
+                  t('engine:table.status'),
+                  '',
+                ]}
               >
                 {shownRows.map(({ provider, model, local }) => {
                   const loaded = local && activeModels.includes(model.id)
@@ -596,10 +649,10 @@ function ModelProviders() {
                         size={30}
                       />
                       <div className="flex min-w-0 flex-col gap-0.5">
-                        <b className="truncate text-[13px] font-medium text-foreground" title={model.id}>
+                        <b className="text-fade text-[13px] font-medium text-foreground" title={model.id}>
                           {model.name || model.id}
                         </b>
-                        <small className="truncate font-mono text-[11px] text-subtle-foreground">
+                        <small className="text-fade font-mono text-[11px] text-subtle-foreground">
                           {model.id}
                         </small>
                       </div>
@@ -614,18 +667,26 @@ function ModelProviders() {
                           </Chip>
                         )}
                       </span>
-                      <CapabilityChips capabilities={model.capabilities ?? []} />
-                      <span className={cn('tabular-nums', !local && 'text-muted-foreground')}>
+                      {/* Always a cell, even with no capabilities, so the
+                          columns after it stay in place. */}
+                      <span className="min-w-0 overflow-hidden" data-slot="caps-cell">
+                        <CapabilityChips
+                          iconOnly
+                          className="flex-nowrap"
+                          capabilities={model.capabilities ?? []}
+                        />
+                      </span>
+                      <span className={cn('min-w-0 truncate tabular-nums', !local && 'text-muted-foreground')}>
                         {local
                           ? fileSizes[model.id]
                             ? formatBytes(fileSizes[model.id])
                             : '—'
                           : t('engine:table.remote')}
                       </span>
-                      <span className="tabular-nums">
+                      <span className="min-w-0 truncate tabular-nums">
                         {ctx ? ctx.toLocaleString() : '—'}
                       </span>
-                      <span className="flex flex-col gap-1">
+                      <span className="flex min-w-0 flex-col gap-1">
                         {speed && maxSpeed > 0 ? (
                           <>
                             <span className="h-1.5 w-full overflow-hidden rounded-full bg-track">
@@ -642,7 +703,7 @@ function ModelProviders() {
                           <span className="text-muted-foreground">—</span>
                         )}
                       </span>
-                      <span>
+                      <span className="min-w-0">
                         {local ? (
                           loaded ? (
                             <Chip tone="ok" live>
@@ -724,6 +785,12 @@ function ModelProviders() {
             </div>
           </FrameBody>
         </Frame>
+        <RemoveProviderDialog
+          provider={pendingRemoval}
+          title={pendingRemoval ? getProviderTitle(pendingRemoval.provider) : ''}
+          onOpenChange={(o) => !o && setPendingRemoval(null)}
+          onConfirm={confirmRemoval}
+        />
       </EnginePage>
     </div>
   )

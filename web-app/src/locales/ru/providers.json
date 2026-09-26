@@ -58,5 +58,20 @@
   },
   "addProvider": "Добавить поставщика",
   "addOpenAIProvider": "Добавить поставщика OpenAI",
-  "enterNameForProvider": "Введите имя поставщика"
+  "enterNameForProvider": "Введите имя поставщика",
+  "cardMenu": {
+    "actions": "Действия для {{provider}}",
+    "edit": "Изменить настройки",
+    "enable": "Включить",
+    "disable": "Выключить",
+    "remove": "Удалить поставщика"
+  },
+  "removeProvider": {
+    "confirmTitle": "Удалить {{provider}}?",
+    "confirmDescription": "{{provider}} и его модели ({{count}}) будут удалены из Flint вместе с сохранённым API-ключом.",
+    "keepsHistory": "Чаты, сессии, комнаты и ассистенты, использующие его модели, сохранят историю; модель будет показана как недоступная.",
+    "cancel": "Отмена",
+    "remove": "Удалить",
+    "success": "{{provider}} удалён."
+  }
 }

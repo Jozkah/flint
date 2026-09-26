@@ -120,5 +120,20 @@
     "oneKeyHint": "İsteğe bağlı yedek anahtarlar Gelişmiş bölümünde yapılandırılır.",
     "addKey": "Anahtar ekle",
     "removeKey": "Anahtarı kaldır"
+  },
+  "cardMenu": {
+    "actions": "{{provider}} için eylemler",
+    "edit": "Ayarları düzenle",
+    "enable": "Aç",
+    "disable": "Kapat",
+    "remove": "Sağlayıcıyı kaldır"
+  },
+  "removeProvider": {
+    "confirmTitle": "{{provider}} kaldırılsın mı?",
+    "confirmDescription": "{{provider}} ve {{count}} modeli, kayıtlı API anahtarıyla birlikte Flint'ten kaldırılacak.",
+    "keepsHistory": "Modellerini kullanan sohbetler, oturumlar, odalar ve asistanlar geçmişlerini korur; model kullanılamaz olarak görünür.",
+    "cancel": "İptal",
+    "remove": "Kaldır",
+    "success": "{{provider}} kaldırıldı."
   }
 }

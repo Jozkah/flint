@@ -363,6 +363,11 @@ export const useModelProvider = create<ModelProviderState>()(
           providers: state.providers.filter(
             (provider) => provider.provider !== providerName
           ),
+          // A selection pointing at the removed provider would name a model
+          // that no longer exists; fall back to the default local engine.
+          ...(state.selectedProvider === providerName
+            ? { selectedProvider: 'llamacpp', selectedModel: null }
+            : {}),
         }))
       },
     }),

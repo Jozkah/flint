@@ -120,5 +120,20 @@
     "oneKeyHint": "可选的备用密钥可在高级设置中配置。",
     "addKey": "添加密钥",
     "removeKey": "移除密钥"
+  },
+  "cardMenu": {
+    "actions": "{{provider}} 的操作",
+    "edit": "编辑设置",
+    "enable": "开启",
+    "disable": "关闭",
+    "remove": "移除提供商"
+  },
+  "removeProvider": {
+    "confirmTitle": "移除 {{provider}}？",
+    "confirmDescription": "{{provider}} 及其 {{count}} 个模型将从 Flint 中移除，已保存的 API 密钥也会一并删除。",
+    "keepsHistory": "使用其模型的聊天、会话、房间和助手会保留历史记录；该模型将显示为不可用。",
+    "cancel": "取消",
+    "remove": "移除",
+    "success": "已移除 {{provider}}。"
   }
 }

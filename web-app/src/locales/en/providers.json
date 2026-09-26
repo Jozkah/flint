@@ -169,5 +169,20 @@
       "too-long": "Too long.",
       "too-many": "Too many headers."
     }
+  },
+  "cardMenu": {
+    "actions": "Actions for {{provider}}",
+    "edit": "Edit settings",
+    "enable": "Turn on",
+    "disable": "Turn off",
+    "remove": "Remove provider"
+  },
+  "removeProvider": {
+    "confirmTitle": "Remove {{provider}}?",
+    "confirmDescription": "{{provider}} and its {{count}} models will be removed from Flint, along with its saved API key.",
+    "keepsHistory": "Chats, sessions, rooms and assistants that use its models keep their history; the model shows as unavailable.",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "success": "{{provider}} was removed."
   }
 }

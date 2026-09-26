@@ -58,5 +58,20 @@
   },
   "addProvider": "Tambah Penyedia",
   "addOpenAIProvider": "Tambah Penyedia OpenAI",
-  "enterNameForProvider": "Masukkan nama untuk penyedia"
+  "enterNameForProvider": "Masukkan nama untuk penyedia",
+  "cardMenu": {
+    "actions": "Tindakan untuk {{provider}}",
+    "edit": "Edit pengaturan",
+    "enable": "Aktifkan",
+    "disable": "Nonaktifkan",
+    "remove": "Hapus penyedia"
+  },
+  "removeProvider": {
+    "confirmTitle": "Hapus {{provider}}?",
+    "confirmDescription": "{{provider}} dan {{count}} modelnya akan dihapus dari Flint, beserta kunci API yang tersimpan.",
+    "keepsHistory": "Obrolan, sesi, ruang, dan asisten yang memakai modelnya tetap menyimpan riwayat; model ditampilkan sebagai tidak tersedia.",
+    "cancel": "Batal",
+    "remove": "Hapus",
+    "success": "{{provider}} telah dihapus."
+  }
 }

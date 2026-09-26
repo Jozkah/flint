@@ -100,5 +100,20 @@
     "oneKeyHint": "Le chiavi di riserva opzionali si configurano nella sezione Avanzate.",
     "addKey": "Aggiungi chiave",
     "removeKey": "Rimuovi chiave"
+  },
+  "cardMenu": {
+    "actions": "Azioni per {{provider}}",
+    "edit": "Modifica impostazioni",
+    "enable": "Attiva",
+    "disable": "Disattiva",
+    "remove": "Rimuovi provider"
+  },
+  "removeProvider": {
+    "confirmTitle": "Rimuovere {{provider}}?",
+    "confirmDescription": "{{provider}} e i suoi {{count}} modelli verranno rimossi da Flint, insieme alla chiave API salvata.",
+    "keepsHistory": "Chat, sessioni, stanze e assistenti che usano i suoi modelli mantengono la cronologia; il modello risulterà non disponibile.",
+    "cancel": "Annulla",
+    "remove": "Rimuovi",
+    "success": "{{provider}} è stato rimosso."
   }
 }

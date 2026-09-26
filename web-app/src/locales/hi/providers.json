@@ -58,5 +58,20 @@
   },
   "addProvider": "प्रदाता जोड़ें",
   "addOpenAIProvider": "OpenAI प्रदाता जोड़ें",
-  "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें"
+  "enterNameForProvider": "कृपया प्रदाता का नाम दर्ज करें",
+  "cardMenu": {
+    "actions": "{{provider}} के लिए क्रियाएँ",
+    "edit": "सेटिंग्स संपादित करें",
+    "enable": "चालू करें",
+    "disable": "बंद करें",
+    "remove": "प्रदाता हटाएं"
+  },
+  "removeProvider": {
+    "confirmTitle": "{{provider}} हटाएं?",
+    "confirmDescription": "{{provider}} और इसके {{count}} मॉडल, सहेजी गई API कुंजी के साथ, Flint से हटा दिए जाएंगे।",
+    "keepsHistory": "इसके मॉडल उपयोग करने वाली चैट, सत्र, रूम और असिस्टेंट अपना इतिहास रखते हैं; मॉडल अनुपलब्ध दिखेगा।",
+    "cancel": "रद्द करें",
+    "remove": "हटाएं",
+    "success": "{{provider}} हटा दिया गया।"
+  }
 }

@@ -58,5 +58,20 @@
   },
   "addProvider": "Přidat poskytovatele",
   "addOpenAIProvider": "Přidat OpenAI poskytovatele",
-  "enterNameForProvider": "Zadejte název pro poskytovatele"
+  "enterNameForProvider": "Zadejte název pro poskytovatele",
+  "cardMenu": {
+    "actions": "Akce pro {{provider}}",
+    "edit": "Upravit nastavení",
+    "enable": "Zapnout",
+    "disable": "Vypnout",
+    "remove": "Odebrat poskytovatele"
+  },
+  "removeProvider": {
+    "confirmTitle": "Odebrat {{provider}}?",
+    "confirmDescription": "{{provider}} a jeho modely ({{count}}) budou z Flintu odebrány spolu s uloženým API klíčem.",
+    "keepsHistory": "Chaty, relace, místnosti a asistenti, kteří jeho modely používají, si ponechají historii; model se zobrazí jako nedostupný.",
+    "cancel": "Zrušit",
+    "remove": "Odebrat",
+    "success": "{{provider}} byl odebrán."
+  }
 }

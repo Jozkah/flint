@@ -58,5 +58,20 @@
   },
   "addProvider": "Dodaj Dostawcę",
   "addOpenAIProvider": "Dodaj Dostawcę OpenAI",
-  "enterNameForProvider": "Wprowadź nazwę dostawcy"
+  "enterNameForProvider": "Wprowadź nazwę dostawcy",
+  "cardMenu": {
+    "actions": "Akcje dla {{provider}}",
+    "edit": "Edytuj ustawienia",
+    "enable": "Włącz",
+    "disable": "Wyłącz",
+    "remove": "Usuń dostawcę"
+  },
+  "removeProvider": {
+    "confirmTitle": "Usunąć {{provider}}?",
+    "confirmDescription": "{{provider}} i jego modele ({{count}}) zostaną usunięte z Flint razem z zapisanym kluczem API.",
+    "keepsHistory": "Czaty, sesje, pokoje i asystenci korzystający z jego modeli zachowują historię; model będzie oznaczony jako niedostępny.",
+    "cancel": "Anuluj",
+    "remove": "Usuń",
+    "success": "Usunięto {{provider}}."
+  }
 }

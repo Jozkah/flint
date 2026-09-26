@@ -58,5 +58,20 @@
   },
   "addProvider": "Afegeix un proveïdor",
   "addOpenAIProvider": "Afegeix un proveïdor d’OpenAI",
-  "enterNameForProvider": "Introdueix el nom del proveïdor"
+  "enterNameForProvider": "Introdueix el nom del proveïdor",
+  "cardMenu": {
+    "actions": "Accions per a {{provider}}",
+    "edit": "Edita la configuració",
+    "enable": "Activa",
+    "disable": "Desactiva",
+    "remove": "Elimina el proveïdor"
+  },
+  "removeProvider": {
+    "confirmTitle": "Vols eliminar {{provider}}?",
+    "confirmDescription": "{{provider}} i els seus {{count}} models s'eliminaran de Flint, juntament amb la clau API desada.",
+    "keepsHistory": "Els xats, sessions, sales i assistents que fan servir els seus models conserven l'historial; el model es mostra com a no disponible.",
+    "cancel": "Cancel·la",
+    "remove": "Elimina",
+    "success": "S'ha eliminat {{provider}}."
+  }
 }
