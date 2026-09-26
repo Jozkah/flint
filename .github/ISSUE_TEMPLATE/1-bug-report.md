@@ -1,24 +1,27 @@
 ---
-name: 🐛 Bug Report
-about: If something isn't working as expected 🤔
+name: Bug report
+about: Something in Flint is not working as expected
 title: 'bug: '
-type: Bug
+labels: bug
 ---
 
-**Version:** e.g. 0.5.x-xxx
+**Flint version:** e.g. 0.9.0
 
-## Describe the Bug
-<!-- A clear & concise description of the bug -->
+## Describe the bug
+<!-- A clear and concise description of what went wrong -->
 
 
-## Steps to Reproduce
+## Steps to reproduce
 1.
 
-## Screenshots / Logs
-<!-- You can find logs in: Setting -> General -> Data Folder -> App Logs -->
+## Expected behavior
+<!-- What you expected to happen instead -->
+
+## Screenshots / logs
+<!-- Logs are on the Logs page in the sidebar. Remove API keys, private paths
+     or anything else you don't want public before posting. -->
 
 
-## Operating System
-- [ ] MacOS
-- [ ] Windows
-- [ ] Linux
+## Environment
+- OS: [ ] Windows  [ ] macOS (Apple silicon / Intel)  [ ] Linux
+- Model / provider in use (e.g. llama.cpp with a local GGUF, an OpenAI-compatible endpoint):

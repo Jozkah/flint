@@ -1,12 +1,15 @@
 ---
-name: 🚀 Feature Request
-about: Suggest an idea for this project 😻!
+name: Feature request
+about: Suggest an idea or improvement for Flint
 title: 'idea: '
-type: Idea
+labels: enhancement
 ---
 
-## Problem Statement
-<!-- Describe the problem you're facing -->
+## Problem
+<!-- What are you trying to do, and what gets in the way? -->
 
-## Feature Idea
-<!-- Describe what you want instead. Examples are welcome! -->
+## Proposed solution
+<!-- Describe what you would like Flint to do. Mockups and examples are welcome. -->
+
+## Alternatives considered
+<!-- Other approaches or workarounds you have tried -->
