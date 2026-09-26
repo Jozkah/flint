@@ -5,7 +5,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...
 
 import { refreshPrStatusAfterGit } from '@/lib/coworkDispatch'
 import { planGitCall, type GitPlan } from '@/lib/gitTool'
-import { usePrStatusStore } from '@/stores/pr-status-store'
+import { usePrStatusStore, prVisibleTo, claimKey, type PrStatus } from '@/stores/pr-status-store'
 
 const plan = (program: string, args: string[]): GitPlan => {
   const r = planGitCall(program, args)
@@ -31,7 +31,7 @@ const found = {
 describe('refreshPrStatusAfterGit', () => {
   beforeEach(() => {
     invoke.mockReset()
-    usePrStatusStore.setState({ byFolder: {} })
+    usePrStatusStore.setState({ byFolder: {}, claims: {} })
   })
 
   // Session 8411d403: `gh pr create` succeeded, and the bar stayed empty
@@ -77,5 +77,36 @@ describe('refreshPrStatusAfterGit', () => {
     await running
     expect(invoke).toHaveBeenCalledTimes(2)
     expect(usePrStatusStore.getState().byFolder[folder]?.lookup).toEqual(found)
+  })
+
+  // Session 3a6cdcf3 showed PR #31 as its own: session 8411d403 opened it on
+  // the KewScraper checkout both sessions share.
+  it('claims the pull request for the session that opened it', async () => {
+    const folder = 'C:\repo'
+    invoke.mockResolvedValue(found)
+    refreshPrStatusAfterGit(
+      plan('gh', ['pr', 'create', '--repo', 'o/r', '--head', 'fix/x', '--base', 'master', '--title', 'T', '--body', 'B']),
+      { readOnlyFolder: folder, worktreePath: null, sessionId: 'opener' }
+    )
+    await vi.waitFor(() =>
+      expect(usePrStatusStore.getState().claims[claimKey(folder, 31)]).toBe('opener')
+    )
+    const { claims } = usePrStatusStore.getState()
+    const pr = found.pr as PrStatus
+    expect(prVisibleTo(pr, folder, claims, 'opener')).toBe(true)
+    expect(prVisibleTo(pr, folder, claims, 'other')).toBe(false)
+    expect(prVisibleTo(pr, folder, claims, undefined)).toBe(false)
+  })
+
+  it('keeps the first claim, and a plain lookup claims nothing', async () => {
+    const folder = 'C:\repo'
+    invoke.mockResolvedValue(found)
+    await usePrStatusStore.getState().refresh(folder, true)
+    expect(usePrStatusStore.getState().claims).toEqual({})
+    // Unclaimed (opened outside Flint): every session on the folder sees it.
+    expect(prVisibleTo(found.pr as PrStatus, folder, {}, 'any')).toBe(true)
+    await usePrStatusStore.getState().refresh(folder, true, 'first')
+    await usePrStatusStore.getState().refresh(folder, true, 'second')
+    expect(usePrStatusStore.getState().claims).toEqual({ [claimKey(folder, 31)]: 'first' })
   })
 })

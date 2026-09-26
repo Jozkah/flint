@@ -20,6 +20,9 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { usePrStatusStore } from '@/stores/pr-status-store'
+import { backfillPrClaims } from '@/lib/prClaimBackfill'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
@@ -50,6 +53,7 @@ import { initConversationGroups } from '@/lib/groups/bootstrap'
 // useInterfaceSettings' onRehydrateStorage reads useTheme.getState().isDark, so
 // theme must hydrate first.
 const secondaryStores = [
+  usePrStatusStore,
   useInterfaceSettings,
   useGeneralSetting,
   useLeftPanel,
@@ -103,6 +107,18 @@ export async function hydrateBackendStores(): Promise<void> {
   // Discussion rooms live in backend files, desktop only. Rooms the previous
   // run left running are saved paused; failures are logged, never thrown.
   void scheduleRoomRecovery(IS_TAURI)
+  // Pull requests opened before sessions claimed them: claimed once from the
+  // event log, so a session sharing a checkout stops showing another's PR.
+  if (IS_TAURI) {
+    const worktrees = useCoworkWorktrees.getState().bySession
+    void backfillPrClaims(
+      useCoworkSessions.getState().sessions.map((s) => ({
+        id: s.id,
+        folder: s.folder,
+        worktreePath: worktrees[s.id]?.path ?? null,
+      }))
+    )
+  }
 }
 
 /** Recorded as the reason on work the previous app run left unfinished. */
