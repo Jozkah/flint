@@ -111,6 +111,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
 
 ### Cowork workspace
+- feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line
 - feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
 - feat(cowork): a read-only code workspace, an Activity rail, and global settings search (#1)
 - feat(cowork): make the declared coding-harness modes real (#6)
