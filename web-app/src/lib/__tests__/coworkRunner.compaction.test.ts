@@ -223,3 +223,70 @@ describe('Cowork run crossing the compaction threshold', () => {
     expect(sent.every((request) => !request.some(isSummaryMessage))).toBe(true)
   })
 })
+
+describe('Cowork allowance after compaction', () => {
+  const stepWithUsage = (
+    chunks: UIMessageChunk[],
+    usage: { inputTokens: number; outputTokens: number; totalTokens: number }
+  ): UIMessageChunk[] => [
+    ...chunks,
+    { type: 'finish', messageMetadata: { usage } } as UIMessageChunk,
+  ]
+
+  const run = (withCompaction: boolean) => {
+    const steps = [
+      stepWithUsage(toolStep('c0'), {
+        inputTokens: 1_000,
+        outputTokens: 10,
+        totalTokens: 1_010,
+      }),
+      stepWithUsage(textStep('done'), {
+        inputTokens: 300,
+        outputTokens: 5,
+        totalTokens: 305,
+      }),
+    ]
+    let i = 0
+    let compacted = false
+    return runTurn({
+      messages: [user('y'.repeat(8_000))],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep: vi.fn(async () => streamOf(steps[i++])),
+        dispatch: vi.fn(async (): Promise<ToolOutcome> => ({ output: 'ok' })),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: (() => {
+          let n = 0
+          return () => `m${n++}`
+        })(),
+        compact: withCompaction
+          ? vi.fn(async (messages: UIMessage[]) => {
+              // Once, after the first step: the history shrinks to a summary.
+              if (compacted || messages.length < 2) return null
+              compacted = true
+              return [
+                {
+                  id: 's',
+                  role: 'user',
+                  parts: [{ type: 'text', text: 'summary of the work so far' }],
+                } as UIMessage,
+              ]
+            })
+          : undefined,
+      },
+    })
+  }
+
+  // The 200k allowance counts the prompt once. Compaction removed the older
+  // part of it, so the counted prompt becomes the compacted one instead of
+  // staying at its pre-compaction size.
+  it('credits the summarized part instead of staying cumulative', async () => {
+    const without = await run(false)
+    const withIt = await run(true)
+    expect(without.sessionTokens).toBe(1_015)
+    // 1,010 charged, the 1,000-token prompt credited back to the summary's
+    // size, then the next step's 300-token prompt and 5 new tokens.
+    expect(withIt.sessionTokens).toBe(315)
+  })
+})
