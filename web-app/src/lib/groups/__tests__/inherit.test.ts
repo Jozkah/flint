@@ -7,6 +7,7 @@ import { emptyGroupsState } from '../domain'
 import {
   addNewItemToGroup,
   inheritedFolders,
+  joinNeedsChoice,
   missingFolders,
   moveWithFolders,
   type FolderAdapter,
@@ -135,5 +136,62 @@ describe('group folder inheritance', () => {
     await moveWithFolders('cowork', 's1', b, adapter, async () => false)
     expect(folders.s1).toEqual(['/b'])
     expect(store().state.surfaces.cowork.contexts.s1?.sourceGroupId).toBe(b)
+  })
+
+  describe('joining with folders of its own', () => {
+    const setup = async () => {
+      const g = (await store().createGroup('cowork', 'Work', {
+        folderBindings: [binding('/p/web')],
+      }))!
+      const mem = memoryAdapter({ s1: ['/own'] })
+      return { g, ...mem }
+    }
+
+    it('asks only when both sides have folders and they differ', () => {
+      const group = {
+        folderBindings: [binding('/a')],
+      } as Parameters<typeof joinNeedsChoice>[1]
+      expect(joinNeedsChoice([], group)).toBe(false)
+      expect(joinNeedsChoice(['/a'], group)).toBe(false)
+      expect(joinNeedsChoice(['/b'], group)).toBe(true)
+    })
+
+    it('keep: nothing attached', async () => {
+      const { g, adapter, folders } = await setup()
+      await moveWithFolders('cowork', 's1', g, adapter, async () => true, async () => 'keep')
+      expect(folders.s1).toEqual(['/own'])
+      expect(store().state.surfaces.cowork.memberships.s1?.groupId).toBe(g)
+    })
+
+    it("inherit: the item's own folders give way to the group's", async () => {
+      const { g, adapter, folders } = await setup()
+      await moveWithFolders('cowork', 's1', g, adapter, async () => true, async () => 'inherit')
+      expect(folders.s1).toEqual(['/p/web'])
+    })
+
+    it('merge: both', async () => {
+      const { g, adapter, folders } = await setup()
+      await moveWithFolders('cowork', 's1', g, adapter, async () => true, async () => 'merge')
+      expect(folders.s1).toEqual(['/own', '/p/web'])
+    })
+
+    it("addToGroup: the group gains the item's folders", async () => {
+      const { g, adapter, folders } = await setup()
+      await moveWithFolders('cowork', 's1', g, adapter, async () => true, async () => 'addToGroup')
+      expect(folders.s1).toEqual(['/own'])
+      expect(
+        store().state.surfaces.cowork.groups[0].folderBindings.map((b) => b.path)
+      ).toEqual(['/p/web', '/own'])
+    })
+
+    it('cancel: nothing moves', async () => {
+      const { g, adapter, folders } = await setup()
+      const moved = await moveWithFolders(
+        'cowork', 's1', g, adapter, async () => true, async () => 'cancel'
+      )
+      expect(moved).toBe(false)
+      expect(folders.s1).toEqual(['/own'])
+      expect(store().state.surfaces.cowork.memberships.s1).toBeUndefined()
+    })
   })
 })

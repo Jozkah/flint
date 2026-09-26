@@ -12,6 +12,8 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
 import { useThreadManagementStore } from '@/hooks/useThreadManagement'
 import type { ThreadFolder } from '@/services/projects/types'
+import { chatFolderAdapter } from '@/lib/chatFolders'
+import { inheritGroupFolders } from './inherit'
 import { migrateProjects } from './migrateProjects'
 import { useConversationGroups } from './store'
 import type { ConversationGroup, SurfaceGroups } from './types'
@@ -124,7 +126,13 @@ export function startHomeProjectsMirror(): () => void {
           if (known.has(id)) continue
           const pid = (s.threads[id]?.metadata?.project as ProjectMeta | undefined)?.id
           if (pid && !home.memberships[id] && home.groups.some((g) => g.id === pid)) {
-            void useConversationGroups.getState().moveItem('home', id, pid, 0)
+            // A chat started in a group gets the group's folders.
+            void useConversationGroups
+              .getState()
+              .moveItem('home', id, pid, 0)
+              .then((ok) =>
+                ok ? inheritGroupFolders('home', id, pid, chatFolderAdapter) : undefined
+              )
           }
         }
         known = new Set(ids)

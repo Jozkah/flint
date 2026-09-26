@@ -56,7 +56,8 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
-import { useConversationGroups } from '@/lib/groups/store'
+import { useMoveToGroup } from '@/hooks/useMoveToGroup'
+import { chatFolderAdapter } from '@/lib/chatFolders'
 import AddProjectDialog from '@/containers/dialogs/AddProjectDialog'
 
 const ThreadItem = memo(
@@ -81,7 +82,6 @@ const ThreadItem = memo(
     })
     const deleteThread = useThreads((state) => state.deleteThread)
     const renameThread = useThreads((state) => state.renameThread)
-    const getFolderById = useThreadManagement().getFolderById
     const { folders, addFolder } = useThreadManagement()
     const { t } = useTranslation()
     const [menuOpen, setMenuOpen] = useState(false)
@@ -159,21 +159,12 @@ const ThreadItem = memo(
     const [previewOpen, setPreviewOpen] = useState(false)
 
     /** Move the thread into a group, or out of every group with `null`. */
+    // Home groups are the source of truth; the mirror updates
+    // metadata.project. The chat's folders follow the group's, asking first.
+    const moveWithGroupFolders = useMoveToGroup('home', chatFolderAdapter)
     const moveToGroup = (groupId: string | null) => {
       if (groupId === currentGroupId) return
-      const name = groupId ? getFolderById(groupId)?.name : null
-      // Home groups are the source of truth; the mirror updates metadata.project.
-      void useConversationGroups
-        .getState()
-        .moveItem('home', thread.id, groupId)
-        .then((ok) => {
-          if (!ok) return
-          toast.success(
-            name
-              ? t('common:projects.movedToGroup', { name })
-              : t('common:projects.movedToUngrouped')
-          )
-        })
+      void moveWithGroupFolders(thread.id, groupId)
     }
 
     const [groupMenuOpen, setGroupMenuOpen] = useState(false)
@@ -198,8 +189,7 @@ const ThreadItem = memo(
     const createGroupAndMove = async (name: string, assistantId?: string) => {
       const created = await addFolder(name, assistantId)
       setNewGroupOpen(false)
-      await useConversationGroups.getState().moveItem('home', thread.id, created.id)
-      toast.success(t('common:projects.movedToGroup', { name: created.name }))
+      await moveWithGroupFolders(thread.id, created.id)
     }
 
     const isAppStateActive = useIsThreadActive(thread.id)

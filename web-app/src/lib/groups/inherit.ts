@@ -9,10 +9,10 @@
  * recorded as the item's folder context, so leaving the group can offer to
  * detach exactly those and nothing the item had before.
  */
-import { canonicalKey } from './domain'
+import { canonicalKey, dedupeBindings } from './domain'
 import { folderBindingFor } from './folders'
 import { useConversationGroups } from './store'
-import type { GroupSurface } from './types'
+import type { ConversationGroup, GroupSurface } from './types'
 
 /** How one surface attaches and detaches folders on its items. */
 export type FolderAdapter = {
@@ -85,20 +85,62 @@ export async function inheritedFolders(
 }
 
 /**
- * Move an item to `target` (null: out of every group). When it leaves a group
- * whose folders it inherited, `keepFolders` is asked whether to keep them;
- * resolving false detaches them. When it joins a group, it inherits the
- * group's folders. Resolves false when nothing moved.
+ * How an item's folders meet a group's when it joins:
+ * - keep: the item keeps its folders; none of the group's are attached.
+ * - inherit: the item takes the group's folders and detaches its own.
+ * - merge: the group's folders are attached beside the item's own.
+ * - addToGroup: the item's folders are added to the group; the item keeps
+ *   what it has.
+ * - cancel: nothing moves.
+ */
+export type JoinChoice = 'keep' | 'inherit' | 'merge' | 'addToGroup' | 'cancel'
+
+/** Asked when the item's folders and the group's differ. */
+export type ChooseJoin = (
+  own: string[],
+  group: ConversationGroup
+) => Promise<JoinChoice>
+
+/** True when joining `group` with folders `own` should ask how to combine them. */
+export function joinNeedsChoice(own: string[], group: ConversationGroup): boolean {
+  const theirs = group.folderBindings.map((b) => b.path)
+  if (own.length === 0 || theirs.length === 0) return false
+  return (
+    missingFolders(own, theirs).length > 0 ||
+    missingFolders(theirs, own).length > 0
+  )
+}
+
+/**
+ * Move an item to `target` (null: out of every group). Joining a group whose
+ * folders differ from the item's asks `chooseJoin` how to combine them (an
+ * item without folders simply takes the group's). Leaving a group whose
+ * folders it inherited asks `keepFolders`; resolving false detaches them.
+ * Resolves false when nothing moved.
  */
 export async function moveWithFolders(
   surface: GroupSurface,
   itemId: string,
   target: string | null,
   adapter: FolderAdapter,
-  keepFolders: (paths: string[]) => Promise<boolean>
+  keepFolders: (paths: string[]) => Promise<boolean>,
+  chooseJoin?: ChooseJoin
 ): Promise<boolean> {
-  const from = groups().state.surfaces[surface].memberships[itemId]?.groupId ?? null
+  const surfaceState = groups().state.surfaces[surface]
+  const from = surfaceState.memberships[itemId]?.groupId ?? null
   if (from === target) return false
+  const group = target
+    ? surfaceState.groups.find((g) => g.id === target)
+    : undefined
+
+  let choice: JoinChoice = 'merge'
+  if (group) {
+    const own = await adapter.attached(itemId)
+    if (joinNeedsChoice(own, group) && chooseJoin)
+      choice = await chooseJoin(own, group)
+    if (choice === 'cancel') return false
+  }
+
   const inherited = await inheritedFolders(surface, itemId, from, adapter)
   if (inherited.length) {
     const keep = await keepFolders(inherited)
@@ -107,7 +149,26 @@ export async function moveWithFolders(
   const moved = await groups().moveItem(surface, itemId, target)
   if (!moved) return false
   if (from) await groups().setItemContext(surface, itemId, null)
-  if (target) await inheritGroupFolders(surface, itemId, target, adapter)
+  if (!group) return true
+
+  if (choice === 'keep') return true
+  if (choice === 'addToGroup') {
+    const own = await adapter.attached(itemId)
+    await groups().setFolders(
+      surface,
+      group.id,
+      dedupeBindings([...group.folderBindings, ...own.map(folderBindingFor)])
+    )
+    return true
+  }
+  if (choice === 'inherit') {
+    const theirs = new Set(group.folderBindings.map((b) => canonicalKey(b.path)))
+    const drop = (await adapter.attached(itemId)).filter(
+      (p) => !theirs.has(canonicalKey(p))
+    )
+    if (drop.length) await adapter.detach(itemId, drop)
+  }
+  await inheritGroupFolders(surface, itemId, group.id, adapter)
   return true
 }
 

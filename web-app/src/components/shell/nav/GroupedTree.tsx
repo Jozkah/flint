@@ -18,7 +18,6 @@ import {
   Plus,
   Trash2,
 } from 'lucide-react'
-import { toast } from 'sonner'
 import {
   NavButton,
   NavCollapse,
@@ -51,10 +50,11 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { layoutSurface } from '@/lib/groups/domain'
 import { useConversationGroups } from '@/lib/groups/store'
-import { moveWithFolders, type FolderAdapter } from '@/lib/groups/inherit'
-import { useKeepFoldersPrompt } from '@/lib/groups/keepPrompt'
+import type { FolderAdapter } from '@/lib/groups/inherit'
+import { useMoveToGroup } from '@/hooks/useMoveToGroup'
 import type { ConversationGroup, GroupSurface } from '@/lib/groups/types'
 import { GroupFoldersDialog } from './GroupFoldersDialog'
+import { GroupPrompts } from './GroupPrompts'
 
 const UNGROUPED = 'ungrouped'
 
@@ -87,35 +87,6 @@ function DraggableRow({ id, children }: { id: string; children: ReactNode }) {
       <ul>{children}</ul>
     </li>
   )
-}
-
-/**
- * Move an item into a group (or out, with null), asking before detaching the
- * folders it inherited, and say where it went.
- */
-function useMoveToGroup(
-  surface: Extract<GroupSurface, 'cowork' | 'rooms'>,
-  adapter: FolderAdapter
-) {
-  const { t } = useTranslation()
-  return async (itemId: string, target: string | null) => {
-    const { state } = useConversationGroups.getState()
-    const groups = state.surfaces[surface].groups
-    const from = state.surfaces[surface].memberships[itemId]?.groupId ?? null
-    const fromName = groups.find((g) => g.id === from)?.name ?? ''
-    try {
-      const moved = await moveWithFolders(surface, itemId, target, adapter, (paths) =>
-        useKeepFoldersPrompt.getState().ask(surface, fromName, paths)
-      )
-      if (!moved) return
-      const g = groups.find((x) => x.id === target)
-      toast.success(
-        g ? t('common:groups.movedTo', { name: g.name }) : t('common:groups.movedOut')
-      )
-    } catch (err) {
-      toast.error(String(err))
-    }
-  }
 }
 
 type NameDialog =
@@ -169,10 +140,6 @@ export function GroupedTree({
   const [name, setName] = useState('')
   const [deleting, setDeleting] = useState<ConversationGroup | null>(null)
   const [foldersOf, setFoldersOf] = useState<string | null>(null)
-  const keepAsk = useKeepFoldersPrompt((s) =>
-    s.request?.surface === surface ? s.request : null
-  )
-  const answerKeep = useKeepFoldersPrompt((s) => s.answer)
   const move = useMoveToGroup(surface, adapter)
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -400,38 +367,7 @@ export function GroupedTree({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={keepAsk !== null} onOpenChange={(o) => !o && answerKeep(true)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{t('common:groups.keepTitle')}</DialogTitle>
-            <DialogDescription>
-              {t('common:groups.keepBody', { name: keepAsk?.groupName })}
-            </DialogDescription>
-          </DialogHeader>
-          <ul className="flex flex-col gap-0.5 font-mono text-xs text-muted-foreground">
-            {keepAsk?.paths.map((p) => (
-              <li key={p} className="truncate" title={p}>
-                {p}
-              </li>
-            ))}
-          </ul>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              onClick={() => answerKeep(false)}
-              data-testid="group-detach-folders"
-            >
-              {t('common:groups.detach')}
-            </Button>
-            <Button
-              onClick={() => answerKeep(true)}
-              data-testid="group-keep-folders"
-            >
-              {t('common:groups.keep')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <GroupPrompts surface={surface} />
 
       {foldersGroup && (
         <GroupFoldersDialog
