@@ -67,7 +67,7 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
   if (!record) {
     if (!props.offerCopy) return null
     return (
-      <div className="mb-2 flex items-center gap-2 rounded-lg border border-main-view-fg/10 px-3 py-2 text-xs text-main-view-fg/70">
+      <div className="mb-2 flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground">
         <Copy className="size-3.5 shrink-0" />
         <span className="flex-1">{t('common:coworkParallel.copyOffer')}</span>
         <Button
@@ -176,13 +176,13 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
   return (
     <>
       <div
-        className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-main-view-fg/10 px-3 py-1.5 text-xs"
+        className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs"
         data-testid="session-worktree-bar"
       >
         {isCopy ? (
-          <Copy className="size-3.5 shrink-0 text-main-view-fg/60" />
+          <Copy className="size-3.5 shrink-0 text-muted-foreground" />
         ) : (
-          <GitBranch className="size-3.5 shrink-0 text-main-view-fg/60" />
+          <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <span
           className="min-w-0 flex-1 truncate font-mono"
@@ -194,7 +194,7 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
         >
           {isCopy ? t('common:coworkParallel.copyLabel') : record.branch}
           {!isCopy && base ? (
-            <span className="text-main-view-fg/50">
+            <span className="text-muted-foreground">
               {' '}
               {t('common:coworkParallel.basedOn', { base })}
             </span>
@@ -248,7 +248,7 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
         </Button>
         {(record.notes?.length ?? 0) > 0 ||
         record.uncommittedAtCreation.length > 0 ? (
-          <div className="basis-full text-main-view-fg/60">
+          <div className="basis-full text-muted-foreground">
             {[
               ...(record.notes ?? []),
               ...(record.uncommittedAtCreation.length > 0
@@ -293,7 +293,7 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
             loses.length > 0 ? (
               <FileList heading={t('common:coworkParallel.discardLoses')} items={loses} />
             ) : (
-              <p className="text-sm text-main-view-fg/70">
+              <p className="text-sm text-muted-foreground">
                 {t('common:coworkParallel.discardNothing')}
               </p>
             )
@@ -335,8 +335,8 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
 function FileList({ heading, items }: { heading: string; items: string[] }) {
   return (
     <div className="text-sm">
-      <p className="mb-1 text-main-view-fg/80">{heading}</p>
-      <ul className="max-h-48 overflow-auto rounded border border-main-view-fg/10 p-2 font-mono text-xs">
+      <p className="mb-1 text-foreground">{heading}</p>
+      <ul className="max-h-48 overflow-auto rounded border border-border p-2 font-mono text-xs">
         {items.map((item) => (
           <li key={item} className="truncate">
             {item}
@@ -444,7 +444,7 @@ function CopyApplyDialog(props: {
           </DialogTitle>
         </DialogHeader>
         {changes === null ? null : changes.length === 0 ? (
-          <p className="text-sm text-main-view-fg/70">
+          <p className="text-sm text-muted-foreground">
             {t('common:coworkParallel.applyNone')}
           </p>
         ) : (
@@ -467,7 +467,7 @@ function CopyApplyDialog(props: {
                   >
                     {c.path}
                   </button>
-                  <span className="shrink-0 text-main-view-fg/50">
+                  <span className="shrink-0 text-muted-foreground">
                     {t(`common:coworkParallel.kind.${c.kind}`)}
                   </span>
                   {c.conflict ? (
@@ -478,7 +478,7 @@ function CopyApplyDialog(props: {
                 </li>
               ))}
             </ul>
-            <pre className="overflow-auto rounded border border-main-view-fg/10 p-2 text-xs">
+            <pre className="overflow-auto rounded border border-border p-2 text-xs">
               {pair === null
                 ? null
                 : pair.binary
