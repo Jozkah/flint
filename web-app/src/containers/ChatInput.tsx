@@ -46,7 +46,7 @@ import {
 } from 'lucide-react'
 import { generateId } from 'ai'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { QueuedMessageChip } from '@/containers/QueuedMessageBubble'
+import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -2562,37 +2562,36 @@ const ChatInput = memo(function ChatInput({
             )}
             {queuedMessages.length > 0 && (
               <div className="flex flex-col gap-1 px-3 pt-2 pb-0">
-                {queuedMessages.map((msg, index) => (
-                  <QueuedMessageChip
-                    key={msg.id}
-                    message={msg}
-                    onEdit={(queued) => {
+                <QueuedMessageList
+                  messages={queuedMessages}
+                  onReorder={(id, overId) =>
+                    useMessageQueue.getState().reorder(queueId, id, overId)
+                  }
+                  chipProps={(msg, index) => ({
+                    onEdit: (queued) => {
                       // Put the text back in the input for editing, remove from queue
                       setPrompt(queued.text)
                       removeQueuedMessage(queued.id)
                       textareaRef.current?.focus()
-                    }}
-                    onRemove={removeQueuedMessage}
+                    },
+                    onRemove: removeQueuedMessage,
                     // Steering only means something while a run works; a
                     // held message waits for the user and is sent, not steered.
-                    onSteer={
+                    onSteer:
                       (isStreaming || threadBusy) && !msg.held && !msg.from
                         ? (id) =>
                             useMessageQueue.getState().steerNow(queueId, id)
-                        : undefined
-                    }
-                    onMoveUp={
+                        : undefined,
+                    onMoveUp:
                       index > 0
                         ? (id) => useMessageQueue.getState().move(queueId, id, -1)
-                        : undefined
-                    }
-                    onMoveDown={
+                        : undefined,
+                    onMoveDown:
                       index < queuedMessages.length - 1
                         ? (id) => useMessageQueue.getState().move(queueId, id, 1)
-                        : undefined
-                    }
-                  />
-                ))}
+                        : undefined,
+                  })}
+                />
               </div>
             )}
             {slashCommands.open && (

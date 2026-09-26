@@ -270,9 +270,12 @@ vi.mock('@/lib/slashCatalog', () => ({
 
 // Stub heavy children
 vi.mock('@/containers/QueuedMessageBubble', () => ({
-  QueuedMessageChip: ({ message }: any) => (
-    <div data-testid="queued-chip">{message?.text}</div>
-  ),
+  QueuedMessageList: ({ messages }: any) =>
+    messages.map((m: any) => (
+      <div key={m.id} data-testid="queued-chip">
+        {m.text}
+      </div>
+    )),
 }))
 vi.mock('@/containers/DropdownToolsAvailable', () => ({
   __esModule: true,

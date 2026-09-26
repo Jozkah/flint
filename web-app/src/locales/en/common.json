@@ -1284,6 +1284,7 @@
     "remove": "Remove",
     "moveUp": "Move up",
     "moveDown": "Move down",
+    "drag": "Drag to reorder",
     "steer": "Steer now",
     "steerHint": "Hand this to the agent at its next step instead of waiting for the run to end (Ctrl+Enter from the composer)",
     "steering": "Steering",

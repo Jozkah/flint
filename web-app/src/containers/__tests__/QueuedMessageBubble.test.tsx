@@ -5,7 +5,64 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 
-import { QueuedMessageChip } from '../QueuedMessageBubble'
+import {
+  QueuedMessageChip,
+  QueuedMessageList,
+  queueDropTarget,
+} from '../QueuedMessageBubble'
+
+describe('QueuedMessageList drag to reorder', () => {
+  const m = (id: string) => ({ id, text: `text ${id}`, createdAt: 1 })
+
+  it('gives each chip a drag handle when there is something to reorder', () => {
+    render(
+      <QueuedMessageList
+        messages={[m('a'), m('b')]}
+        onReorder={() => {}}
+        chipProps={() => ({})}
+      />
+    )
+    expect(screen.getAllByTestId('queued-drag-handle')).toHaveLength(2)
+  })
+
+  it('keeps the arrow buttons for keyboard reordering', () => {
+    render(
+      <QueuedMessageList
+        messages={[m('a'), m('b')]}
+        onReorder={() => {}}
+        chipProps={(_, i) => ({
+          onMoveUp: i > 0 ? () => {} : undefined,
+          onMoveDown: i === 0 ? () => {} : undefined,
+        })}
+      />
+    )
+    expect(screen.getByTestId('queued-move-up')).toBeInTheDocument()
+    expect(screen.getByTestId('queued-move-down')).toBeInTheDocument()
+  })
+
+  it('shows no handle for a single message', () => {
+    render(
+      <QueuedMessageList
+        messages={[m('a')]}
+        onReorder={() => {}}
+        chipProps={() => ({})}
+      />
+    )
+    expect(screen.queryByTestId('queued-drag-handle')).toBeNull()
+  })
+
+  it('maps a drop onto another chip to a reorder, and a drop in place to nothing', () => {
+    type DropEvent = Parameters<typeof queueDropTarget>[0]
+    const drop = (active: string, over: string | null) =>
+      queueDropTarget({
+        active: { id: active },
+        over: over === null ? null : { id: over },
+      } as unknown as DropEvent)
+    expect(drop('a', 'b')).toEqual({ id: 'a', overId: 'b' })
+    expect(drop('a', 'a')).toBeNull()
+    expect(drop('a', null)).toBeNull()
+  })
+})
 
 describe('QueuedMessageChip', () => {
   const baseMessage = {
