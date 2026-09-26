@@ -78,6 +78,46 @@ export async function loadGitFileDiff(
   })) as GitFileDiff
 }
 
+/** A file's bytes at HEAD, or null when nothing is committed to compare with. */
+export async function loadGitHeadFile(
+  project: string,
+  path: string
+): Promise<string | null> {
+  return (await invoke('agent_git_head_file', { project, path })) as
+    | string
+    | null
+}
+
+/** Raw `git blame --porcelain`, and `origin`'s GitHub URL when it has one. */
+export type GitBlameResult = { porcelain: string | null; webUrl: string | null }
+
+export async function loadGitBlame(
+  project: string,
+  path: string
+): Promise<GitBlameResult> {
+  return (await invoke('agent_git_blame', { project, path })) as GitBlameResult
+}
+
+type CommitPr = { number: number; url: string } | null
+const prCache = new Map<string, Promise<CommitPr>>()
+
+/**
+ * The pull request a commit belongs to, via `gh`; null when `gh` is missing
+ * or finds nothing. Cached per repository and commit for the app's life, so
+ * hovering the same line again never re-runs `gh`.
+ */
+export function loadCommitPr(project: string, sha: string): Promise<CommitPr> {
+  const key = `${project}\u0000${sha}`
+  let hit = prCache.get(key)
+  if (!hit) {
+    hit = (
+      invoke('agent_git_pr_for_commit', { project, sha }) as Promise<CommitPr>
+    ).catch(() => null)
+    prCache.set(key, hit)
+  }
+  return hit
+}
+
 /** Repository folder name for the review header, or null when unknown. */
 export function repoName(status: GitStatus | null): string | null {
   if (!status?.repoRoot) return null

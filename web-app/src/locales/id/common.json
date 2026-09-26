@@ -583,5 +583,58 @@
     "noneForProvider": "Tidak ada parameter yang dapat diatur untuk penyedia ini.",
     "maybeUnsupported": "Mungkin tidak didukung oleh {{providers}}"
   },
-  "sessionModelUnavailable": "{{model}} tidak lagi tersedia. Pilih model lain di menu model."
+  "sessionModelUnavailable": "{{model}} tidak lagi tersedia. Pilih model lain di menu model.",
+  "rail": {
+    "resizeHint": "Seret untuk mengubah ukuran. Klik dua kali untuk beralih antara lebar bawaan dan lebar."
+  },
+  "turnUndo": {
+    "user": "Anda"
+  },
+  "codePanel": {
+    "editing": "Mengedit",
+    "editingSandbox": "Mengedit salinan sandbox",
+    "editingSandboxHint": "Hanya tinjau: menyimpan menulis salinan sandbox sesi ini. Terapkan dari Perubahan untuk mengubah folder.",
+    "save": "Simpan",
+    "saving": "Menyimpan…",
+    "saveHint": "Simpan (Ctrl+S)",
+    "discard": "Buang",
+    "discardAndClose": "Buang dan tutup",
+    "cancel": "Batal",
+    "unsavedMark": "(belum disimpan)",
+    "unsavedTitle": "Perubahan belum disimpan",
+    "unsavedOne": "{{name}} memiliki perubahan yang belum disimpan.",
+    "unsavedMany": "{{count}} file memiliki perubahan yang belum disimpan.",
+    "closeTabUnsaved": "Tutup {{name}} (perubahan belum disimpan)",
+    "conflict": "File ini berubah di disk sejak Anda mulai mengeditnya.",
+    "conflictReload": "Muat ulang dari disk",
+    "conflictOverwrite": "Timpa",
+    "conflictKeep": "Lanjutkan mengedit",
+    "saveFailed": "Tidak dapat menyimpan: {{error}}",
+    "saved": "{{name}} disimpan",
+    "savedSandbox": "{{name}} disimpan ke salinan sandbox",
+    "editedByYou": "Diedit oleh Anda",
+    "openPath": "Buka {{path}} di Kode",
+    "openPathHint": "Buka {{path}} di Kode (Ctrl+klik atau klik tengah membukanya di latar belakang)",
+    "openDiff": "Tampilkan perubahan pada {{path}} di Perubahan",
+    "readOnlyReason": {
+      "external": "Dibuka dari luar proyek, jadi tidak ada tempat untuk menyimpannya.",
+      "detached": "Proyek file ini tidak lagi terlampir.",
+      "other-session": "File ini milik sandbox sesi lain.",
+      "pending": "Masih memeriksa ke mana sesi ini boleh menulis.",
+      "no-grant": "Sesi ini tidak dapat menulis ke folder saat ini. Izinkan pengeditan lagi untuk mengubah file."
+    },
+    "unresolved": {
+      "not-source": "Bukan file yang ditampilkan panel Kode.",
+      "outside": "Di luar folder yang dapat dibaca sesi ini.",
+      "extra-folder": "Di folder tambahan yang terlampir; panel Kode menelusuri folder utama.",
+      "no-session": "Mulai sesi terlebih dahulu."
+    },
+    "settings": "Pengaturan panel Kode",
+    "changeMarkers": "Penanda perubahan",
+    "inlineBlame": "Blame sebaris",
+    "notCommitted": "Belum di-commit",
+    "pullRequest": "Pull request #{{number}}",
+    "changeAt": "Perubahan di baris {{line}}",
+    "revertChange": "Kembalikan"
+  }
 }

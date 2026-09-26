@@ -866,5 +866,58 @@
     "noMatches": "没有匹配的参数",
     "noneForProvider": "此提供商没有可调参数。",
     "maybeUnsupported": "{{providers}} 可能不支持"
+  },
+  "rail": {
+    "resizeHint": "拖动以调整宽度。双击在默认宽度和宽屏之间切换。"
+  },
+  "turnUndo": {
+    "user": "你"
+  },
+  "codePanel": {
+    "editing": "编辑中",
+    "editingSandbox": "正在编辑沙盒副本",
+    "editingSandboxHint": "仅审阅：保存会写入此会话的沙盒副本。在“更改”中应用它以修改文件夹。",
+    "save": "保存",
+    "saving": "正在保存…",
+    "saveHint": "保存 (Ctrl+S)",
+    "discard": "放弃",
+    "discardAndClose": "放弃并关闭",
+    "cancel": "取消",
+    "unsavedMark": "（未保存）",
+    "unsavedTitle": "未保存的更改",
+    "unsavedOne": "{{name}} 有未保存的更改。",
+    "unsavedMany": "{{count}} 个文件有未保存的更改。",
+    "closeTabUnsaved": "关闭 {{name}}（有未保存的更改）",
+    "conflict": "自你开始编辑以来，此文件已在磁盘上更改。",
+    "conflictReload": "从磁盘重新加载",
+    "conflictOverwrite": "覆盖",
+    "conflictKeep": "继续编辑",
+    "saveFailed": "无法保存：{{error}}",
+    "saved": "已保存 {{name}}",
+    "savedSandbox": "已将 {{name}} 保存到沙盒副本",
+    "editedByYou": "由你编辑",
+    "openPath": "在代码中打开 {{path}}",
+    "openPathHint": "在代码中打开 {{path}}（Ctrl+点击或中键点击在后台打开）",
+    "openDiff": "在“更改”中显示 {{path}} 的更改",
+    "readOnlyReason": {
+      "external": "从项目外部打开，因此无处可保存。",
+      "detached": "此文件所属的项目已不再附加。",
+      "other-session": "此文件属于另一个会话的沙盒。",
+      "pending": "仍在确认此会话可以写入的位置。",
+      "no-grant": "此会话目前无法写入该文件夹。请重新授权编辑以更改文件。"
+    },
+    "unresolved": {
+      "not-source": "不是代码面板显示的文件。",
+      "outside": "在此会话可读取的文件夹之外。",
+      "extra-folder": "位于额外附加的文件夹中；代码面板浏览的是主文件夹。",
+      "no-session": "请先开始会话。"
+    },
+    "settings": "代码面板设置",
+    "changeMarkers": "更改标记",
+    "inlineBlame": "行内 blame",
+    "notCommitted": "尚未提交",
+    "pullRequest": "拉取请求 #{{number}}",
+    "changeAt": "第 {{line}} 行的更改",
+    "revertChange": "还原"
   }
 }

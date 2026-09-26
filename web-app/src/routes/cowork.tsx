@@ -4,6 +4,8 @@ import { createFileRoute } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
+import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
+import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
 import {
   CoworkSplitWorkspace,
@@ -232,6 +234,11 @@ import {
 } from '@/lib/coworkSandboxApply'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
+import {
+  NO_USER_EDITS,
+  useCoworkUserEdits,
+} from '@/hooks/useCoworkUserEdits'
+import { withUserEditNotice } from '@/lib/coworkCodeEdit'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
@@ -240,7 +247,7 @@ import {
   emptyCodePanelState,
   expandCodeRefs,
   artifactTab,
-  openTab,
+  openTabAt,
   projectKeyOf,
   projectTab,
   sandboxTab,
@@ -1138,16 +1145,20 @@ export function CoworkPage() {
   )
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
-  const openCode = useCallback((tab: CodeTab) => {
-    const sid = ensureCurrentSession(paneSessionIdRef.current)
-    const store = useCoworkSessions.getState()
-    const current = store.sessions.find((s) => s.id === sid)
-    store.setCodePanel(
-      sid,
-      openTab(current?.codePanel ?? emptyCodePanelState(), tab)
-    )
-    setRail({ kind: 'code' })
-  }, [setRail])
+  const openCode = useCallback(
+    (tab: CodeTab, options: CodeOpenOptions = {}) => {
+      const sid = ensureCurrentSession(paneSessionIdRef.current)
+      const store = useCoworkSessions.getState()
+      const current = store.sessions.find((s) => s.id === sid)
+      store.setCodePanel(
+        sid,
+        openTabAt(current?.codePanel ?? emptyCodePanelState(), tab, options)
+      )
+      // In the background the tab is queued without leaving what is on screen.
+      if (!options.background) setRail({ kind: 'code' })
+    },
+    [setRail]
+  )
 
   /**
    * Open a path a tool acted on, from its widget in the transcript.
@@ -1159,19 +1170,54 @@ export function CoworkPage() {
    * other place the agent can write. Non-source files are left alone rather
    * than opened as code.
    */
+  // With a live grant the backend rebases relative paths onto the write
+  // root; without one they are the sandbox's.
+  const relativeIsProject = !!runCarries(effective, {
+    folder,
+    grantId: liveGrant?.grantId ?? null,
+  }).writeGrant
+  const resolveToolPath = useCallback(
+    (path: string) =>
+      resolveCodePath(path, {
+        treeRoot,
+        workspacePath,
+        extraFolders,
+        relativeIsProject,
+        hasSession: !!session?.id,
+      }),
+    [treeRoot, workspacePath, extraFolders, relativeIsProject, session?.id]
+  )
   const openToolPath = useCallback(
-    (path: string) => {
-      if (!shouldOpenInCode(path)) return
-      const projectKey = projectKeyOf(folder)
-      const relative = relativeToRoot(folder, path)
-      // Only call it a project file when it really resolved inside the project.
-      if (projectKey && relative !== path) {
-        openCode(projectTab(relative, projectKey))
-      } else if (session?.id) {
-        openCode(sandboxTab(relativeToRoot(workspacePath, path), session.id))
+    (path: string, options?: CodeOpenOptions) => {
+      const resolved = resolveToolPath(path)
+      // The tree the Code panel browses, so the tab is not born detached in a
+      // managed session.
+      const projectKey = projectKeyOf(treeRoot)
+      if (resolved.kind === 'project' && projectKey) {
+        openCode(projectTab(resolved.rel, projectKey), options)
+      } else if (resolved.kind === 'sandbox' && session?.id) {
+        openCode(sandboxTab(resolved.rel, session.id), options)
       }
     },
-    [folder, workspacePath, openCode, session?.id]
+    [resolveToolPath, treeRoot, openCode, session?.id]
+  )
+  /** Why a path cannot be opened, for its tooltip. */
+  const checkToolPath = useCallback(
+    (path: string): CodePathCheck => {
+      const resolved = resolveToolPath(path)
+      return resolved.kind === 'unresolved'
+        ? {
+            ok: false,
+            reason: t(`common:codePanel.unresolved.${resolved.reason}`),
+          }
+        : { ok: true }
+    },
+    [resolveToolPath, t]
+  )
+  /** Show a changed file in Changes. */
+  const openToolDiff = useCallback(
+    (path: string) => setRail({ kind: 'diff', focusPath: path }),
+    [setRail]
   )
 
   /**
@@ -1744,13 +1790,18 @@ export function CoworkPage() {
   const liveSubagents = useCoworkRun((s) =>
     session?.id ? s.subagents[session.id] : undefined
   )
+  // Saves the user made by hand in the Code panel, listed with the agent's.
+  const userEdits = useCoworkUserEdits((s) =>
+    session?.id ? (s.bySession[session.id]?.edits ?? NO_USER_EDITS) : NO_USER_EDITS
+  )
   const fileDiffs = useMemo(
     () =>
       collectCodeFileDiffs(
         displayedTurns,
-        liveSubagents ?? session?.subagents ?? []
+        liveSubagents ?? session?.subagents ?? [],
+        userEdits
       ),
-    [displayedTurns, liveSubagents, session?.subagents]
+    [displayedTurns, liveSubagents, session?.subagents, userEdits]
   )
 
   // Read-only working-tree status for the attached repo, loaded lazily and kept
@@ -2841,7 +2892,14 @@ export function CoworkPage() {
     // The transcript shows `text` as typed; the model additionally receives the
     // staged code references expanded under it (exact path, line range and the
     // selected source). Only content the user explicitly selected travels.
-    const modelText = text ? expandCodeRefs(text, pendingRefs.current) : text
+    // And, when the user edited files by hand since the last turn, which ones,
+    // so the agent re-reads them instead of editing from a stale copy.
+    const modelText = text
+      ? withUserEditNotice(
+          expandCodeRefs(text, pendingRefs.current),
+          useCoworkUserEdits.getState().takePending(sid)
+        )
+      : text
     pendingRefs.current = []
     /**
      * Run one child, and record it.
@@ -4934,7 +4992,11 @@ export function CoworkPage() {
                 <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
                   {/* The plan heads the transcript, in its reading column. */}
                   <CoworkPlanStrip todos={session?.todos} />
-                  <CodeOpenProvider open={openToolPath}>
+                  <CodeOpenProvider
+            open={openToolPath}
+            check={checkToolPath}
+            openDiff={openToolDiff}
+          >
                     {uiMessages.map((whole, i) => {
                       // Each model round renders with its own rows beneath
                       // it, so the newest content is always last.
@@ -5589,6 +5651,7 @@ export function CoworkPage() {
             folder={treeRoot}
             git={git}
             origins={runOrigins?.entries}
+            focusPath={rail.focusPath}
             onClose={closeRail}
           />
         )}
@@ -5638,6 +5701,17 @@ export function CoworkPage() {
             onAddToChat={addCodeToChat}
             onAttach={() => void attachFolder()}
             onClose={closeRail}
+            // Hand edits save where the agent's writes would, under the same
+            // grant; with no live grant a real-tree mode stays read-only.
+            editAccess={{
+              destination: effective.destination,
+              writeGrant: relativeIsProject
+                ? (liveGrant?.grantId ?? null)
+                : null,
+            }}
+            readRoot={treeRoot}
+            extraFolders={extraFolders}
+            onSaved={() => git.refresh()}
           />
         )}
         {phone && !panelShown && (

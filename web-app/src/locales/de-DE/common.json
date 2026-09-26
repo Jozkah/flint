@@ -583,5 +583,58 @@
     "noneForProvider": "Keine einstellbaren Parameter für diesen Anbieter.",
     "maybeUnsupported": "Wird von {{providers}} möglicherweise nicht unterstützt"
   },
-  "sessionModelUnavailable": "{{model}} ist nicht mehr verfügbar. Wähle im Modellmenü ein anderes Modell."
+  "sessionModelUnavailable": "{{model}} ist nicht mehr verfügbar. Wähle im Modellmenü ein anderes Modell.",
+  "rail": {
+    "resizeHint": "Ziehen zum Ändern der Breite. Doppelklick wechselt zwischen Standard und breit."
+  },
+  "turnUndo": {
+    "user": "dir"
+  },
+  "codePanel": {
+    "editing": "Bearbeiten",
+    "editingSandbox": "Sandbox-Kopie wird bearbeitet",
+    "editingSandboxHint": "Nur prüfen: Speichern schreibt die Sandbox-Kopie dieser Sitzung. Übernimm sie unter Änderungen, um den Ordner zu ändern.",
+    "save": "Speichern",
+    "saving": "Speichern…",
+    "saveHint": "Speichern (Strg+S)",
+    "discard": "Verwerfen",
+    "discardAndClose": "Verwerfen und schließen",
+    "cancel": "Abbrechen",
+    "unsavedMark": "(nicht gespeichert)",
+    "unsavedTitle": "Nicht gespeicherte Änderungen",
+    "unsavedOne": "{{name}} hat nicht gespeicherte Änderungen.",
+    "unsavedMany": "{{count}} Dateien haben nicht gespeicherte Änderungen.",
+    "closeTabUnsaved": "{{name}} schließen (nicht gespeicherte Änderungen)",
+    "conflict": "Diese Datei wurde auf der Festplatte geändert, seit du mit dem Bearbeiten begonnen hast.",
+    "conflictReload": "Von der Festplatte neu laden",
+    "conflictOverwrite": "Überschreiben",
+    "conflictKeep": "Weiter bearbeiten",
+    "saveFailed": "Speichern fehlgeschlagen: {{error}}",
+    "saved": "{{name}} gespeichert",
+    "savedSandbox": "{{name}} in der Sandbox-Kopie gespeichert",
+    "editedByYou": "Von dir bearbeitet",
+    "openPath": "{{path}} in Code öffnen",
+    "openPathHint": "{{path}} in Code öffnen (Strg+Klick oder Mittelklick öffnet im Hintergrund)",
+    "openDiff": "Änderung an {{path}} unter Änderungen zeigen",
+    "readOnlyReason": {
+      "external": "Von außerhalb des Projekts geöffnet, daher gibt es keinen Speicherort.",
+      "detached": "Das Projekt dieser Datei ist nicht mehr verbunden.",
+      "other-session": "Diese Datei gehört zur Sandbox einer anderen Sitzung.",
+      "pending": "Es wird noch geprüft, wohin diese Sitzung schreiben darf.",
+      "no-grant": "Diese Sitzung kann gerade nicht in den Ordner schreiben. Autorisiere das Bearbeiten erneut, um Dateien zu ändern."
+    },
+    "unresolved": {
+      "not-source": "Keine Datei, die der Code-Bereich anzeigt.",
+      "outside": "Außerhalb der Ordner, die diese Sitzung lesen kann.",
+      "extra-folder": "In einem zusätzlich verbundenen Ordner; der Code-Bereich zeigt den Hauptordner.",
+      "no-session": "Starte zuerst die Sitzung."
+    },
+    "settings": "Einstellungen des Code-Bereichs",
+    "changeMarkers": "Änderungsmarkierungen",
+    "inlineBlame": "Inline-Blame",
+    "notCommitted": "Noch nicht committet",
+    "pullRequest": "Pull-Request #{{number}}",
+    "changeAt": "Änderung in Zeile {{line}}",
+    "revertChange": "Zurücksetzen"
+  }
 }

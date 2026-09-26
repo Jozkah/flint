@@ -674,5 +674,58 @@
     "noneForProvider": "Nessun parametro regolabile per questo provider.",
     "maybeUnsupported": "Potrebbe non essere supportato da {{providers}}"
   },
-  "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli."
+  "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli.",
+  "rail": {
+    "resizeHint": "Trascina per ridimensionare. Doppio clic per passare tra larghezza predefinita e ampia."
+  },
+  "turnUndo": {
+    "user": "tu"
+  },
+  "codePanel": {
+    "editing": "Modifica",
+    "editingSandbox": "Modifica della copia sandbox",
+    "editingSandboxHint": "Solo revisione: il salvataggio scrive la copia sandbox di questa sessione. Applicala da Modifiche per cambiare la cartella.",
+    "save": "Salva",
+    "saving": "Salvataggio…",
+    "saveHint": "Salva (Ctrl+S)",
+    "discard": "Scarta",
+    "discardAndClose": "Scarta e chiudi",
+    "cancel": "Annulla",
+    "unsavedMark": "(non salvato)",
+    "unsavedTitle": "Modifiche non salvate",
+    "unsavedOne": "{{name}} ha modifiche non salvate.",
+    "unsavedMany": "{{count}} file hanno modifiche non salvate.",
+    "closeTabUnsaved": "Chiudi {{name}} (modifiche non salvate)",
+    "conflict": "Questo file è cambiato sul disco da quando hai iniziato a modificarlo.",
+    "conflictReload": "Ricarica dal disco",
+    "conflictOverwrite": "Sovrascrivi",
+    "conflictKeep": "Continua a modificare",
+    "saveFailed": "Impossibile salvare: {{error}}",
+    "saved": "{{name}} salvato",
+    "savedSandbox": "{{name}} salvato nella copia sandbox",
+    "editedByYou": "Modificato da te",
+    "openPath": "Apri {{path}} in Codice",
+    "openPathHint": "Apri {{path}} in Codice (Ctrl+clic o clic centrale lo apre in background)",
+    "openDiff": "Mostra la modifica a {{path}} in Modifiche",
+    "readOnlyReason": {
+      "external": "Aperto dall’esterno del progetto, quindi non c’è dove salvarlo.",
+      "detached": "Il progetto di questo file non è più collegato.",
+      "other-session": "Questo file appartiene alla sandbox di un’altra sessione.",
+      "pending": "Verifica in corso di dove questa sessione può scrivere.",
+      "no-grant": "Questa sessione ora non può scrivere nella cartella. Autorizza di nuovo la modifica per cambiare i file."
+    },
+    "unresolved": {
+      "not-source": "Non è un file mostrato dal pannello Codice.",
+      "outside": "Fuori dalle cartelle che questa sessione può leggere.",
+      "extra-folder": "In una cartella collegata aggiuntiva; il pannello Codice esplora la cartella principale.",
+      "no-session": "Avvia prima la sessione."
+    },
+    "settings": "Impostazioni del pannello Codice",
+    "changeMarkers": "Indicatori di modifica",
+    "inlineBlame": "Blame in linea",
+    "notCommitted": "Non ancora in un commit",
+    "pullRequest": "Pull request n. {{number}}",
+    "changeAt": "Modifica alla riga {{line}}",
+    "revertChange": "Ripristina"
+  }
 }

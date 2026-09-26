@@ -12,6 +12,16 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { cn } from '@/lib/utils'
+import {
+  PANEL_DEFAULT_W,
+  PANEL_MIN_W,
+  clampPanelWidth,
+  expandedPanelWidth,
+  maxPanelWidth,
+  readStoredWidth,
+  toggledPanelWidth,
+  writeStoredWidth,
+} from '@/lib/inspectorWidth'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 
 type CoworkSidePanelProps = {
@@ -42,21 +52,19 @@ type InspectorState = {
   setWidth: (width: number) => void
   expanded: boolean
   setExpanded: (next: boolean | ((value: boolean) => boolean)) => void
+  /** The space the rail shares with the conversation, as last measured. */
+  container: number
+  setContainer: (width: number) => void
 }
 
-export const PANEL_MIN_W = 240
-export const PANEL_MAX_W = 640
-export const PANEL_DEFAULT_W = 430
 const KEY_STEP = 24
-
-const clampWidth = (value: number) =>
-  Math.min(PANEL_MAX_W, Math.max(PANEL_MIN_W, value))
 
 const InspectorContext = createContext<InspectorState | null>(null)
 
 /**
  * Holds the output panel's layout, width and expansion for the page. Mounted
- * for as long as Cowork is, so closing and reopening a panel keeps its width.
+ * for as long as Cowork is, so closing and reopening a panel keeps its width;
+ * the width is also remembered across restarts.
  * Panels rendered without it (their own tests) keep their original docked,
  * self-sized behaviour.
  */
@@ -67,15 +75,31 @@ export function CoworkInspectorProvider({
   layout: InspectorLayout
   children: ReactNode
 }) {
-  const [width, setWidthState] = useState(PANEL_DEFAULT_W)
-  const [expanded, setExpanded] = useState(false)
-  const setWidth = useCallback(
-    (next: number) => setWidthState(clampWidth(next)),
-    []
+  const [width, setWidthState] = useState(
+    () => readStoredWidth() ?? PANEL_DEFAULT_W
   )
+  const [expanded, setExpanded] = useState(false)
+  const [container, setContainer] = useState(0)
+  const containerRef = useRef(0)
+  containerRef.current = container
+  const setWidth = useCallback((next: number) => {
+    const clamped = clampPanelWidth(next, containerRef.current)
+    setWidthState(clamped)
+    writeStoredWidth(clamped)
+  }, [])
   return (
     <InspectorContext.Provider
-      value={{ layout, width, setWidth, expanded, setExpanded }}
+      value={{
+        layout,
+        // A window made narrower than when the width was chosen shows the
+        // widest the rail may now be, without forgetting the choice.
+        width: clampPanelWidth(width, container),
+        setWidth,
+        expanded,
+        setExpanded,
+        container,
+        setContainer,
+      }}
     >
       {children}
     </InspectorContext.Provider>
@@ -88,18 +112,21 @@ function useResizeHandle(state: {
   setWidth: (width: number) => void
   expanded: boolean
   setExpanded: (next: boolean) => void
+  container: number
 }) {
-  const { width, setWidth, expanded, setExpanded } = state
+  const { width, setWidth, expanded, setExpanded, container } = state
   const dragging = useRef(false)
   const startX = useRef(0)
   const startW = useRef(0)
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
+      // The second press of a double-click is the toggle, not a drag.
+      if (e.detail > 1) return
       e.preventDefault()
       dragging.current = true
       startX.current = e.clientX
-      startW.current = expanded ? PANEL_MAX_W : width
+      startW.current = expanded ? expandedPanelWidth(container) : width
       if (expanded) setExpanded(false)
       const onMove = (ev: PointerEvent) => {
         if (!dragging.current) return
@@ -114,8 +141,14 @@ function useResizeHandle(state: {
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
     },
-    [expanded, width, setWidth, setExpanded]
+    [expanded, width, setWidth, setExpanded, container]
   )
+
+  // Default width and wide, one gesture apart.
+  const onDoubleClick = useCallback(() => {
+    setExpanded(false)
+    setWidth(toggledPanelWidth(width, container))
+  }, [width, container, setWidth, setExpanded])
 
   // The keyboard alternative to dragging: the handle is focusable and moves
   // with the arrow keys, Home and End, like any other separator.
@@ -125,26 +158,29 @@ function useResizeHandle(state: {
     if (e.key === 'ArrowLeft') next = width + step
     else if (e.key === 'ArrowRight') next = width - step
     else if (e.key === 'Home') next = PANEL_MIN_W
-    else if (e.key === 'End') next = PANEL_MAX_W
+    else if (e.key === 'End') next = maxPanelWidth(container)
+    else if (e.key === 'Enter') next = toggledPanelWidth(width, container)
     if (next === null) return
     e.preventDefault()
     setExpanded(false)
     setWidth(next)
   }
 
-  return { onPointerDown, onKeyDown }
+  return { onPointerDown, onKeyDown, onDoubleClick }
 }
 
 function ResizeHandle({
   width,
-  expanded,
+  max,
   onPointerDown,
   onKeyDown,
+  onDoubleClick,
 }: {
   width: number
-  expanded: boolean
+  max: number
   onPointerDown: (e: React.PointerEvent) => void
   onKeyDown: (e: React.KeyboardEvent) => void
+  onDoubleClick: () => void
 }) {
   const { t } = useTranslation()
   return (
@@ -152,17 +188,41 @@ function ResizeHandle({
       role="separator"
       aria-orientation="vertical"
       aria-label={t('common:rail.resize')}
+      title={t('common:rail.resizeHint')}
       aria-valuemin={PANEL_MIN_W}
-      aria-valuemax={PANEL_MAX_W}
-      aria-valuenow={expanded ? PANEL_MAX_W : width}
+      aria-valuemax={max}
+      aria-valuenow={width}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onKeyDown={onKeyDown}
+      onDoubleClick={onDoubleClick}
       className="absolute inset-y-3 -left-2.5 z-10 w-2 cursor-col-resize touch-none rounded-full bg-transparent outline-none transition-colors hover:bg-border-strong/60 focus-visible:bg-ring/40"
     />
   )
 }
 
+/**
+ * Follows the width of the element the frame sits in -- the row it shares
+ * with the conversation -- so the clamp tracks the window.
+ */
+function useContainerWidth(
+  frame: React.RefObject<HTMLElement | null>,
+  report: ((width: number) => void) | undefined
+) {
+  useLayoutEffect(() => {
+    const parent = frame.current?.parentElement
+    if (!parent || !report) return
+    const measure = () => report(Math.round(parent.clientWidth))
+    measure()
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', measure)
+      return () => window.removeEventListener('resize', measure)
+    }
+    const observer = new ResizeObserver(measure)
+    observer.observe(parent)
+    return () => observer.disconnect()
+  }, [frame, report])
+}
 /**
  * How far the drawer must stay off the bottom of its container so it ends
  * above the conversation's composer rather than covering it. Zero when not a
@@ -227,15 +287,20 @@ export function CoworkInspectorFrame({
   const layout = state?.layout ?? 'docked'
   const width = state?.width ?? PANEL_DEFAULT_W
   const expanded = state?.expanded ?? false
+  const container = state?.container ?? 0
   const resize = useResizeHandle({
     width,
     setWidth: state?.setWidth ?? (() => {}),
     expanded,
     setExpanded: state?.setExpanded ?? (() => {}),
+    container,
   })
   const full = layout === 'full'
   const drawer = layout === 'drawer'
   const frameRef = useRef<HTMLElement | null>(null)
+  useContainerWidth(frameRef, state?.setContainer)
+  // Expanded is near-full: everything but the conversation's minimum.
+  const shownWidth = expanded ? expandedPanelWidth(container) : width
   // The drawer and its scrim end above the composer, so the input stays
   // reachable while the drawer is open.
   const clearance = useComposerClearance(frameRef, drawer)
@@ -279,20 +344,19 @@ export function CoworkInspectorFrame({
           full ? 'w-full flex-1' : 'max-w-full shrink-0',
           drawer &&
             'absolute inset-y-3 right-1 z-30 shadow-pop motion-safe:animate-in motion-safe:slide-in-from-right-8',
-          !full && expanded && 'w-[40rem]',
-          layout === 'docked' && expanded && 'max-w-[60%]'
         )}
         style={{
-          ...(full || expanded ? {} : { width: `${width}px` }),
+          ...(full ? {} : { width: `${shownWidth}px` }),
           ...(drawer && clearance ? { bottom: clearance } : {}),
         }}
       >
         {!full && (
           <ResizeHandle
-            width={width}
-            expanded={expanded}
+            width={shownWidth}
+            max={expandedPanelWidth(container)}
             onPointerDown={resize.onPointerDown}
             onKeyDown={resize.onKeyDown}
+            onDoubleClick={resize.onDoubleClick}
           />
         )}
         <FrameHeader
@@ -376,9 +440,10 @@ export function CoworkSidePanel({
   const setExpanded = framed?.setExpanded ?? setLocalExpanded
   const resize = useResizeHandle({
     width: localWidth,
-    setWidth: (w) => setLocalWidth(clampWidth(w)),
+    setWidth: (w) => setLocalWidth(clampPanelWidth(w, 0)),
     expanded: localExpanded,
     setExpanded: setLocalExpanded,
+    container: 0,
   })
   const iconButton =
     'text-muted-foreground hover:text-foreground pointer-coarse:size-11'
@@ -393,17 +458,24 @@ export function CoworkSidePanel({
           ? 'w-full'
           : cn(
               'max-w-full shrink-0 rounded-xl border-[0.8px] border-input',
-              expanded && 'w-[40rem] max-w-[60%]'
+              expanded && 'max-w-[80%]'
             )
       )}
-      style={framed || expanded ? undefined : { width: `${localWidth}px` }}
+      style={
+        framed
+          ? undefined
+          : {
+              width: `${expanded ? expandedPanelWidth(0) : localWidth}px`,
+            }
+      }
     >
       {!framed && (
         <ResizeHandle
           width={localWidth}
-          expanded={localExpanded}
+          max={maxPanelWidth(0)}
           onPointerDown={resize.onPointerDown}
           onKeyDown={resize.onKeyDown}
+          onDoubleClick={resize.onDoubleClick}
         />
       )}
       {framed ? (

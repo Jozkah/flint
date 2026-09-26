@@ -614,6 +614,45 @@ pub async fn agent_git_file_diff(
     .map_err(ui_error)
 }
 
+/// A file's committed bytes at HEAD, for the Code panel's change gutter.
+/// Read-only; `None` when there is nothing committed to compare with.
+#[tauri::command]
+pub async fn agent_git_head_file(project: String, path: String) -> Result<Option<String>, String> {
+    git::head_file(std::path::Path::new(&project), &path).map_err(ui_error)
+}
+
+/// What the Code panel's inline blame needs: `git blame --porcelain` output
+/// and the GitHub URL of `origin`, when it is on GitHub. Read-only.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitBlameDto {
+    pub porcelain: Option<String>,
+    pub web_url: Option<String>,
+}
+
+#[tauri::command]
+pub async fn agent_git_blame(project: String, path: String) -> Result<GitBlameDto, String> {
+    let dir = std::path::Path::new(&project);
+    Ok(GitBlameDto {
+        porcelain: git::blame(dir, &path).map_err(ui_error)?,
+        web_url: git::github_web_url(dir),
+    })
+}
+
+/// The pull request a commit belongs to, via `gh`. `None` when `gh` is
+/// missing, signed out, or finds nothing.
+#[derive(serde::Serialize)]
+pub struct GitPrDto {
+    pub number: u64,
+    pub url: String,
+}
+
+#[tauri::command]
+pub async fn agent_git_pr_for_commit(project: String, sha: String) -> Option<GitPrDto> {
+    git::pr_for_commit(std::path::Path::new(&project), &sha)
+        .map(|(number, url)| GitPrDto { number, url })
+}
+
 /// A saved subagent definition, for the `task` tool's advertised name list and
 /// the Cowork subagents panel.
 #[derive(serde::Serialize)]

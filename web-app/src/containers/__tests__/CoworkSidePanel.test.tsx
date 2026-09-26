@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -9,11 +9,18 @@ import {
   CoworkInspectorFrame,
   CoworkInspectorProvider,
   CoworkSidePanel,
-  PANEL_DEFAULT_W,
-  PANEL_MAX_W,
-  PANEL_MIN_W,
   type InspectorLayout,
 } from '../CoworkSidePanel'
+import {
+  PANEL_DEFAULT_W,
+  PANEL_MIN_W,
+  WIDTH_STORAGE_KEY,
+  maxPanelWidth,
+} from '@/lib/inspectorWidth'
+
+const PANEL_MAX_W = maxPanelWidth(0)
+
+beforeEach(() => localStorage.clear())
 
 function framed(
   layout: InspectorLayout,
@@ -102,6 +109,50 @@ describe('CoworkInspectorFrame', () => {
     ).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'common:coworkLayout.back' }))
     expect(onBack).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Output rail width', () => {
+  it('remembers the dragged width across mounts', () => {
+    localStorage.removeItem(WIDTH_STORAGE_KEY)
+    const first = render(
+      <CoworkInspectorProvider layout="docked">
+        <CoworkInspectorFrame tabs={null} onDismiss={vi.fn()}>
+          body
+        </CoworkInspectorFrame>
+      </CoworkInspectorProvider>
+    )
+    fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' })
+    expect(localStorage.getItem(WIDTH_STORAGE_KEY)).toBe(
+      String(PANEL_DEFAULT_W + 24)
+    )
+    first.unmount()
+    framed('docked')
+    expect(screen.getByTestId('cowork-inspector').style.width).toBe(
+      `${PANEL_DEFAULT_W + 24}px`
+    )
+    localStorage.removeItem(WIDTH_STORAGE_KEY)
+  })
+
+  it('toggles between default and wide on double-click', () => {
+    localStorage.removeItem(WIDTH_STORAGE_KEY)
+    framed('docked')
+    const frame = screen.getByTestId('cowork-inspector')
+    const handle = screen.getByRole('separator')
+    fireEvent.doubleClick(handle)
+    expect(frame.style.width).toBe(`${PANEL_MAX_W}px`)
+    fireEvent.doubleClick(handle)
+    expect(frame.style.width).toBe(`${PANEL_DEFAULT_W}px`)
+    localStorage.removeItem(WIDTH_STORAGE_KEY)
+  })
+
+  it('expands to everything but the conversation minimum', () => {
+    localStorage.removeItem(WIDTH_STORAGE_KEY)
+    framed('docked')
+    fireEvent.click(screen.getByRole('button', { name: 'common:expand' }))
+    expect(screen.getByTestId('cowork-inspector').style.width).toBe(
+      `${window.innerWidth - 360}px`
+    )
   })
 })
 

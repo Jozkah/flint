@@ -585,5 +585,58 @@
     "noneForProvider": "Aquest proveïdor no té paràmetres ajustables.",
     "maybeUnsupported": "Pot ser que {{providers}} no ho admeti"
   },
-  "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models."
+  "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models.",
+  "rail": {
+    "resizeHint": "Arrossega per canviar la mida. Doble clic per alternar entre l’amplada predeterminada i ampla."
+  },
+  "turnUndo": {
+    "user": "tu"
+  },
+  "codePanel": {
+    "editing": "Editant",
+    "editingSandbox": "Editant la còpia del sandbox",
+    "editingSandboxHint": "Només revisió: desar escriu la còpia del sandbox d’aquesta sessió. Aplica-la des de Canvis per modificar la carpeta.",
+    "save": "Desa",
+    "saving": "S’està desant…",
+    "saveHint": "Desa (Ctrl+S)",
+    "discard": "Descarta",
+    "discardAndClose": "Descarta i tanca",
+    "cancel": "Cancel·la",
+    "unsavedMark": "(sense desar)",
+    "unsavedTitle": "Canvis sense desar",
+    "unsavedOne": "{{name}} té canvis sense desar.",
+    "unsavedMany": "{{count}} fitxers tenen canvis sense desar.",
+    "closeTabUnsaved": "Tanca {{name}} (canvis sense desar)",
+    "conflict": "Aquest fitxer ha canviat al disc des que el vas començar a editar.",
+    "conflictReload": "Torna a carregar des del disc",
+    "conflictOverwrite": "Sobreescriu",
+    "conflictKeep": "Continua editant",
+    "saveFailed": "No s’ha pogut desar: {{error}}",
+    "saved": "{{name}} desat",
+    "savedSandbox": "{{name}} desat a la còpia del sandbox",
+    "editedByYou": "Editat per tu",
+    "openPath": "Obre {{path}} a Codi",
+    "openPathHint": "Obre {{path}} a Codi (Ctrl+clic o clic del mig l’obre en segon pla)",
+    "openDiff": "Mostra el canvi a {{path}} a Canvis",
+    "readOnlyReason": {
+      "external": "Obert des de fora del projecte, així que no hi ha on desar-lo.",
+      "detached": "El projecte d’aquest fitxer ja no està adjuntat.",
+      "other-session": "Aquest fitxer pertany al sandbox d’una altra sessió.",
+      "pending": "Encara s’està comprovant on pot escriure aquesta sessió.",
+      "no-grant": "Aquesta sessió ara no pot escriure a la carpeta. Torna a autoritzar l’edició per canviar fitxers."
+    },
+    "unresolved": {
+      "not-source": "No és un fitxer que mostri el tauler Codi.",
+      "outside": "Fora de les carpetes que aquesta sessió pot llegir.",
+      "extra-folder": "En una carpeta adjuntada addicional; el tauler Codi explora la carpeta principal.",
+      "no-session": "Primer inicia la sessió."
+    },
+    "settings": "Configuració del tauler Codi",
+    "changeMarkers": "Marcadors de canvis",
+    "inlineBlame": "Blame en línia",
+    "notCommitted": "Encara sense confirmar",
+    "pullRequest": "Pull request núm. {{number}}",
+    "changeAt": "Canvi a la línia {{line}}",
+    "revertChange": "Reverteix"
+  }
 }

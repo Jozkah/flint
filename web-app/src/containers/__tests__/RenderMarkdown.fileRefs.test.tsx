@@ -23,7 +23,10 @@ describe('RenderMarkdown file references', () => {
     // Ordinary prose around the reference is preserved.
     expect(screen.getByText(/See/)).toBeInTheDocument()
     await userEvent.click(btn)
-    expect(open).toHaveBeenCalledWith('src/example.ts')
+    expect(open).toHaveBeenCalledWith('src/example.ts', {
+      line: 12,
+      background: false,
+    })
   })
 
   it('leaves an @path inert (plain text) with no opener, and never links a URL', async () => {

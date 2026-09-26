@@ -18,7 +18,8 @@ describe('CoworkFileRef', () => {
     const btn = screen.getByRole('button', { name: '@src/a.ts:24' })
     expect(btn).toHaveAttribute('title', 'src/a.ts:24')
     await userEvent.click(btn)
-    expect(open).toHaveBeenCalledWith('src/a.ts')
+    // At the referenced line, in the foreground.
+    expect(open).toHaveBeenCalledWith('src/a.ts', { line: 24, background: false })
   })
 
   it('renders inert plain text where no opener is provided (chat)', () => {

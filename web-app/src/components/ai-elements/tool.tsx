@@ -63,6 +63,8 @@ import { toolKind } from '@/lib/toolKind'
 import { Chip } from '@/components/ui/chip'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import type { WorkState } from '@/containers/StatusChip'
+import { OpenablePath } from '@/containers/message/OpenablePath'
+import { lineOfToolInput } from '@/lib/codeOpen'
 
 /** One section of an open tool card, under a dashed rule. */
 const TOOL_SECTION =
@@ -222,6 +224,11 @@ export type ToolHeaderProps = {
    * query), shown instead of the generic `key: value` preview.
    */
   arg?: string
+  /**
+   * The argument rendered by the caller instead of as text, e.g. a path that
+   * opens in the Code panel. `arg` is still the plain form.
+   */
+  argNode?: ReactNode
   /** A short outcome beside the argument: an exit code, a match count, +/-. */
   badge?: ReactNode
   /** The call failed in-band (see `Tool`). */
@@ -268,6 +275,7 @@ export const ToolHeader = memo(
     origin,
     input,
     arg,
+    argNode,
     badge,
     failed = false,
   }: ToolHeaderProps) => {
@@ -346,7 +354,7 @@ export const ToolHeader = memo(
         )}
         {summary ? (
           <span className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
-            {summary}
+            {argNode ?? summary}
           </span>
         ) : (
           <span className="flex-1" />
@@ -432,6 +440,9 @@ export type ToolInputProps = ComponentProps<'div'> & {
   input: ToolUIPart['input']
 }
 
+/** Parameters that name one file, the way the workspace tools spell it. */
+const PATH_PARAMS = new Set(['path', 'file_path', 'filePath'])
+
 /** Table cells keep nested values readable rather than collapsing them. */
 const formatParamValue = (value: unknown): string =>
   typeof value === 'string' ? value : stringifyToolInput(value)
@@ -486,7 +497,18 @@ export const ToolInput = memo(
                 </dt>
                 <dd className="min-w-0 max-h-24 overflow-auto">
                   <code className="block rounded-[5px] bg-accent px-[5px] py-px font-mono text-xs whitespace-pre-wrap break-all text-foreground">
-                    {formatParamValue(value)}
+                    {PATH_PARAMS.has(key) &&
+                    typeof value === 'string' &&
+                    value.trim() ? (
+                      // The path argument opens in the Code panel where
+                      // there is one; elsewhere it stays text.
+                      <OpenablePath
+                        path={value}
+                        line={lineOfToolInput(parsed)}
+                      />
+                    ) : (
+                      formatParamValue(value)
+                    )}
                   </code>
                 </dd>
               </Fragment>

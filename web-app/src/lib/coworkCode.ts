@@ -436,6 +436,42 @@ export type CodePanelState = {
    * only directories the user actually opened are ever in here. */
   expandedDirs: string[]
   wordWrap: boolean
+  /**
+   * A line to bring into view once `tabId` shows, e.g. the line a tool call
+   * read from. `at` distinguishes a repeated request for the same line.
+   */
+  reveal?: { tabId: string; line: number; at: number }
+}
+
+/**
+ * Open `tab` (or focus it) and, with a line, scroll it there. With
+ * `background`, the tab is added but the active tab stays as it was -- the
+ * Ctrl+click / middle-click "open without switching" of an IDE.
+ */
+export function openTabAt(
+  state: CodePanelState,
+  tab: CodeTab,
+  options: { line?: number; background?: boolean; now?: number } = {}
+): CodePanelState {
+  const id = tabId(tab)
+  const already = state.tabs.some((t) => tabId(t) === id)
+  let next: CodePanelState
+  if (options.background) {
+    next = already
+      ? state
+      : {
+          ...state,
+          tabs: [...state.tabs, tab],
+          activeTabId: state.activeTabId ?? id,
+        }
+  } else {
+    next = openTab(state, tab)
+  }
+  const line = options.line
+  if (line && Number.isInteger(line) && line > 0) {
+    next = { ...next, reveal: { tabId: id, line, at: options.now ?? Date.now() } }
+  }
+  return next
 }
 
 export function emptyCodePanelState(): CodePanelState {

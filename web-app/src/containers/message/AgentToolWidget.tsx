@@ -27,7 +27,8 @@ import { cn } from '@/lib/utils'
 import { archivedFirstAttempt } from '@/lib/firstAttemptArchive'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
-import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
+import { joinToolPath, useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
+import { OpenablePath } from './OpenablePath'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import { TermOutput } from '@/components/TermOutput'
 import { parseAnsi, stripAnsi, type AnsiStyle } from '@/lib/ansi'
@@ -302,20 +303,27 @@ const HighlightedLine = ({ text, re }: { text: string; re?: RegExp }) => {
 const GrepFileGroup = ({ group, re }: { group: GrepGroup; re?: RegExp }) => {
   const [open, setOpen] = useState(true)
   const hits = group.lines.filter((l) => l.match).length
+  const { t } = useTranslation()
   return (
     <div data-testid="grep-file-group">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1 py-0.5 text-left text-foreground hover:text-foreground/80"
-      >
-        <ChevronRight
-          className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')}
-        />
-        <span className="min-w-0 flex-1 truncate">{group.file}</span>
+      <div className="flex w-full items-center gap-1 py-0.5 text-foreground">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={group.file}
+          title={open ? t('common:collapse') : t('common:expand')}
+          className="grid shrink-0 place-items-center hover:text-foreground/80"
+        >
+          <ChevronRight
+            className={cn('size-3 shrink-0 transition-transform', open && 'rotate-90')}
+          />
+        </button>
+        <span className="min-w-0 flex-1 truncate">
+          <OpenablePath path={group.file} line={firstMatch(group)} />
+        </span>
         <span className="shrink-0 tabular-nums text-muted-foreground">{hits}</span>
-      </button>
+      </div>
       {open && (
         <div className="pl-4">
           {group.lines.map((l, i) => (
@@ -325,7 +333,10 @@ const GrepFileGroup = ({ group, re }: { group: GrepGroup; re?: RegExp }) => {
               )}
               <div className="flex gap-2">
                 <span className="w-8 shrink-0 select-none text-right tabular-nums text-muted-foreground/60">
-                  {l.line}
+                  {/* Each line number opens the file at that line. */}
+                  <OpenablePath path={group.file} line={l.line}>
+                    {l.line}
+                  </OpenablePath>
                 </span>
                 <span
                   className={cn(
@@ -343,6 +354,40 @@ const GrepFileGroup = ({ group, re }: { group: GrepGroup; re?: RegExp }) => {
     </div>
   )
 }
+
+/** The first matching line of a group, where opening the file lands. */
+const firstMatch = (group: GrepGroup): number | undefined =>
+  group.lines.find((l) => l.match)?.line
+
+/**
+ * A `find` or `ls` result as a list whose file entries open in the Code
+ * panel. Directories (a trailing `/`) and notes stay text.
+ */
+const PathListing = ({ body, base }: { body: string; base?: string }) => (
+  <pre
+    className="mt-1.5 max-h-80 overflow-auto rounded-md border border-border bg-muted px-2 py-1.5 font-mono text-xs whitespace-pre-wrap text-muted-foreground"
+    data-testid="path-listing"
+  >
+    {body.split('\n').map((line, i) => {
+      const entry = line.trim()
+      const isFile =
+        entry.length > 0 &&
+        !entry.endsWith('/') &&
+        !entry.endsWith('\\') &&
+        !/^[([]/.test(entry) &&
+        !/\s{2,}/.test(entry)
+      return (
+        <span key={i} className="block">
+          {isFile ? (
+            <OpenablePath path={joinToolPath(base, entry)}>{line}</OpenablePath>
+          ) : (
+            line
+          )}
+        </span>
+      )
+    })}
+  </pre>
+)
 
 /** `grep` results grouped per file, collapsible, with the matches highlighted. */
 export const GrepResults = memo(
@@ -493,6 +538,13 @@ export const AgentToolWidget = memo(
             <DiffBlock diff={diff} bleed className="-mx-2.5 -mb-2" />
           ) : grep ? (
             <GrepResults groups={grep.groups} notes={grep.notes} re={highlight} />
+          ) : body && openCode && (bar.tool === 'find' || bar.tool === 'ls') ? (
+            // Listed paths: `find` prints them whole, `ls` relative to the
+            // directory it listed.
+            <PathListing
+              body={body}
+              base={bar.tool === 'ls' ? bar.target || undefined : undefined}
+            />
           ) : body ? (
             <OutputBlock>{body}</OutputBlock>
           ) : (

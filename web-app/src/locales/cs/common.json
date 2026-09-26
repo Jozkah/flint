@@ -585,5 +585,58 @@
     "noneForProvider": "Tento poskytovatel nemá žádné nastavitelné parametry.",
     "maybeUnsupported": "Nemusí být podporováno poskytovatelem {{providers}}"
   },
-  "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů."
+  "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů.",
+  "rail": {
+    "resizeHint": "Přetažením změníte šířku. Dvojklikem přepnete mezi výchozí a širokou."
+  },
+  "turnUndo": {
+    "user": "vy"
+  },
+  "codePanel": {
+    "editing": "Úpravy",
+    "editingSandbox": "Úprava kopie v sandboxu",
+    "editingSandboxHint": "Pouze kontrola: uložení zapíše kopii v sandboxu této relace. Použijte ji v Změnách, chcete-li změnit složku.",
+    "save": "Uložit",
+    "saving": "Ukládání…",
+    "saveHint": "Uložit (Ctrl+S)",
+    "discard": "Zahodit",
+    "discardAndClose": "Zahodit a zavřít",
+    "cancel": "Zrušit",
+    "unsavedMark": "(neuloženo)",
+    "unsavedTitle": "Neuložené změny",
+    "unsavedOne": "{{name}} obsahuje neuložené změny.",
+    "unsavedMany": "{{count}} souborů obsahuje neuložené změny.",
+    "closeTabUnsaved": "Zavřít {{name}} (neuložené změny)",
+    "conflict": "Tento soubor se na disku změnil od chvíle, kdy jste ho začali upravovat.",
+    "conflictReload": "Znovu načíst z disku",
+    "conflictOverwrite": "Přepsat",
+    "conflictKeep": "Pokračovat v úpravách",
+    "saveFailed": "Uložení se nezdařilo: {{error}}",
+    "saved": "{{name}} uloženo",
+    "savedSandbox": "{{name}} uloženo do kopie v sandboxu",
+    "editedByYou": "Upraveno vámi",
+    "openPath": "Otevřít {{path}} v Kódu",
+    "openPathHint": "Otevřít {{path}} v Kódu (Ctrl+klik nebo prostřední tlačítko otevře na pozadí)",
+    "openDiff": "Zobrazit změnu {{path}} v Změnách",
+    "readOnlyReason": {
+      "external": "Otevřeno mimo projekt, takže není kam uložit.",
+      "detached": "Projekt tohoto souboru už není připojen.",
+      "other-session": "Tento soubor patří do sandboxu jiné relace.",
+      "pending": "Stále se ověřuje, kam může tato relace zapisovat.",
+      "no-grant": "Tato relace teď nemůže zapisovat do složky. Znovu povolte úpravy, chcete-li měnit soubory."
+    },
+    "unresolved": {
+      "not-source": "Není to soubor, který panel Kód zobrazuje.",
+      "outside": "Mimo složky, které tato relace může číst.",
+      "extra-folder": "V další připojené složce; panel Kód prochází hlavní složku.",
+      "no-session": "Nejprve spusťte relaci."
+    },
+    "settings": "Nastavení panelu Kód",
+    "changeMarkers": "Značky změn",
+    "inlineBlame": "Blame v řádku",
+    "notCommitted": "Zatím necommitováno",
+    "pullRequest": "Pull request č. {{number}}",
+    "changeAt": "Změna na řádku {{line}}",
+    "revertChange": "Vrátit"
+  }
 }

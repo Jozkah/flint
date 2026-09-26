@@ -49,6 +49,11 @@ type CodeViewerProps = {
   /** When set, a selection offers “Add to chat” and reports the selected span. */
   onAddToChat?: (ref: CodeRef) => void
   className?: string
+  /** Why this file cannot be edited, when editing exists for the session.
+   * Replaces the generic read-only tooltip. */
+  readOnlyHint?: string
+  /** Bring this 1-based line into view; `at` repeats a request. */
+  revealLine?: { line: number; at: number } | null
 }
 
 /** Same line-number transformer style as `ai-elements/code-block`, kept local so
@@ -106,6 +111,8 @@ export function CodeViewer({
   onToggleWrap,
   onAddToChat,
   className,
+  readOnlyHint,
+  revealLine,
 }: CodeViewerProps) {
   const { t } = useTranslation()
   const language = useMemo(() => detectLanguage(relPath), [relPath])
@@ -145,6 +152,23 @@ export function CodeViewer({
       alive = false
     }
   }, [content, language.lang, isDark, relPath])
+
+  // Scroll to a requested line once the highlighted lines exist, and mark it
+  // briefly so the eye lands on it.
+  useEffect(() => {
+    if (!revealLine || !html) return
+    const row = bodyRef.current?.querySelector<HTMLElement>(
+      `[data-cv-line="${revealLine.line}"]`
+    )
+    if (!row) return
+    row.scrollIntoView?.({ block: 'center' })
+    row.setAttribute('data-cv-revealed', 'true')
+    const timer = setTimeout(() => row.removeAttribute('data-cv-revealed'), 1600)
+    return () => clearTimeout(timer)
+    // Keyed on the request's fields: a new object for the same request must
+    // not scroll the reader back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealLine?.line, revealLine?.at, html])
 
   const copy = useCallback(
     async (what: 'code' | 'path') => {
@@ -240,20 +264,24 @@ export function CodeViewer({
   )
 
   const preClasses = cn(
-    '[&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:px-2 [&>pre]:py-3 [&>pre]:text-xs [&>pre]:leading-[1.6] [&_code]:font-mono [&_code]:text-xs',
+    '[&_[data-cv-revealed]]:bg-acc-tint [&>pre]:m-0 [&>pre]:bg-transparent! [&>pre]:px-2 [&>pre]:py-3 [&>pre]:text-xs [&>pre]:leading-[1.6] [&_code]:font-mono [&_code]:text-xs',
     wordWrap
       ? '[&>pre]:whitespace-pre-wrap [&>pre]:break-words'
-      : '[&>pre]:whitespace-pre'
+      : // Unwrapped, the block is as wide as its longest line (and never
+        // narrower than the pane), so the scroller reaches the end of every
+        // line instead of the highlighted block stopping at the pane's edge.
+        '[&>pre]:w-max [&>pre]:min-w-full [&>pre]:overflow-visible [&>pre]:whitespace-pre'
   )
 
   return (
     <div className={cn('flex h-full min-h-0 min-w-0 flex-col', className)}>
       <div className="flex h-10 shrink-0 items-center gap-1 px-3 pointer-coarse:h-11">
         {/* Truthful about capability: this surface never writes. */}
-        {!isWritableOrigin(origin) && (
+        {(readOnlyHint !== undefined || !isWritableOrigin(origin)) && (
           <span
             className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[11px] font-medium text-secondary-foreground"
-            title={t('common:codePanel.readOnlyHint')}
+            title={readOnlyHint ?? t('common:codePanel.readOnlyHint')}
+            data-testid="code-readonly-badge"
           >
             <Lock className="size-3" aria-hidden />
             {t('common:codePanel.readOnly')}
@@ -317,7 +345,9 @@ export function CodeViewer({
           <pre
             className={cn(
               'm-0 px-3 py-3 font-mono text-xs leading-[1.6]',
-              wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+              wordWrap
+                ? 'whitespace-pre-wrap break-words'
+                : 'w-max min-w-full whitespace-pre'
             )}
           >
             {content}

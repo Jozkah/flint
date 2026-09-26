@@ -2,7 +2,8 @@ import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
 
 export type CoworkDiffOperation = {
   diff: string
-  source: 'main' | 'subagent'
+  /** Who made the change: the run, a subagent, or the user by hand. */
+  source: 'main' | 'subagent' | 'user'
   sourceName?: string
 }
 
@@ -16,7 +17,7 @@ export type CoworkFileDiff = {
 function addOperation(
   files: Map<string, CoworkFileDiff>,
   turn: CoworkTurn,
-  source: 'main' | 'subagent',
+  source: CoworkDiffOperation['source'],
   sourceName?: string
 ) {
   if (
@@ -53,7 +54,9 @@ function addOperation(
 
 export function collectCodeFileDiffs(
   turns: CoworkTurn[],
-  subagents: SubagentRun[]
+  subagents: SubagentRun[],
+  /** Saves the user made in the Code panel, in the order they were made. */
+  userEdits: readonly { writtenPath: string; diff?: string }[] = []
 ): CoworkFileDiff[] {
   const files = new Map<string, CoworkFileDiff>()
 
@@ -67,5 +70,46 @@ export function collectCodeFileDiffs(
     }
   }
 
+  for (const edit of userEdits) {
+    if (!edit.diff || !edit.writtenPath.trim()) continue
+    addOperation(
+      files,
+      {
+        role: 'tool',
+        name: 'write',
+        args: { path: edit.writtenPath },
+        diff: edit.diff,
+        status: 'done',
+      } as unknown as CoworkTurn,
+      'user'
+    )
+  }
+
   return [...files.values()]
+}
+
+/**
+ * The row a focus request names: an exact path first, then one path ending
+ * with the other (a tool's absolute path against Git's repository-relative
+ * one), compared with `/` separators and without case on Windows drives.
+ */
+export function findFocusedRow(
+  ids: readonly string[],
+  focusPath: string
+): string | null {
+  const norm = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '')
+  const want = norm(focusPath)
+  const pathOf = (id: string) => norm(id.slice(id.indexOf(':') + 1))
+  const exact = ids.find((id) => pathOf(id) === want)
+  if (exact) return exact
+  const lower = want.toLowerCase()
+  return (
+    ids.find((id) => {
+      const have = pathOf(id).toLowerCase()
+      return (
+        (lower.endsWith(`/${have}`) || have.endsWith(`/${lower}`)) &&
+        have.length > 0
+      )
+    }) ?? null
+  )
 }
