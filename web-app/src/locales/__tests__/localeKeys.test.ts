@@ -37,6 +37,17 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
   ],
   common: [
     // CoworkEmptyState picks its example set by whether a folder is attached.
+    // The Code panel says why a file is read-only, and why a tool path cannot
+    // be opened, by composing the reason into the key.
+    'codePanel.readOnlyReason.external',
+    'codePanel.readOnlyReason.detached',
+    'codePanel.readOnlyReason.other-session',
+    'codePanel.readOnlyReason.pending',
+    'codePanel.readOnlyReason.no-grant',
+    'codePanel.unresolved.not-source',
+    'codePanel.unresolved.outside',
+    'codePanel.unresolved.extra-folder',
+    'codePanel.unresolved.no-session',
     'coworkEmpty.sandbox.first',
     'coworkEmpty.sandbox.second',
     'coworkEmpty.sandbox.third',

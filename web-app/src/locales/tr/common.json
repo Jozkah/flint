@@ -807,5 +807,51 @@
     "noMatches": "Eşleşen parametre yok",
     "noneForProvider": "Bu sağlayıcı için ayarlanabilir parametre yok.",
     "maybeUnsupported": "{{providers}} tarafından desteklenmeyebilir"
+  },
+  "rail": {
+    "resizeHint": "Yeniden boyutlandırmak için sürükleyin. Varsayılan ve geniş arasında geçmek için çift tıklayın."
+  },
+  "turnUndo": {
+    "user": "siz"
+  },
+  "codePanel": {
+    "editing": "Düzenleniyor",
+    "editingSandbox": "Korumalı alan kopyası düzenleniyor",
+    "editingSandboxHint": "Yalnızca inceleme: kaydetme bu oturumun korumalı alan kopyasına yazar. Klasörü değiştirmek için Değişiklikler'den uygulayın.",
+    "save": "Kaydet",
+    "saving": "Kaydediliyor…",
+    "saveHint": "Kaydet (Ctrl+S)",
+    "discard": "Vazgeç",
+    "discardAndClose": "Vazgeç ve kapat",
+    "cancel": "İptal",
+    "unsavedMark": "(kaydedilmedi)",
+    "unsavedTitle": "Kaydedilmemiş değişiklikler",
+    "unsavedOne": "{{name}} dosyasında kaydedilmemiş değişiklikler var.",
+    "unsavedMany": "{{count}} dosyada kaydedilmemiş değişiklikler var.",
+    "closeTabUnsaved": "{{name}} dosyasını kapat (kaydedilmemiş değişiklikler)",
+    "conflict": "Bu dosya siz düzenlemeye başladıktan sonra diskte değişti.",
+    "conflictReload": "Diskten yeniden yükle",
+    "conflictOverwrite": "Üzerine yaz",
+    "conflictKeep": "Düzenlemeye devam et",
+    "saveFailed": "Kaydedilemedi: {{error}}",
+    "saved": "{{name}} kaydedildi",
+    "savedSandbox": "{{name}} korumalı alan kopyasına kaydedildi",
+    "editedByYou": "Sizin tarafınızdan düzenlendi",
+    "openPath": "{{path}} dosyasını Kod'da aç",
+    "openPathHint": "{{path}} dosyasını Kod'da aç (Ctrl+tıklama veya orta tık arka planda açar)",
+    "openDiff": "{{path}} değişikliğini Değişiklikler'de göster",
+    "readOnlyReason": {
+      "external": "Proje dışından açıldı, bu yüzden kaydedilecek bir yer yok.",
+      "detached": "Bu dosyanın projesi artık bağlı değil.",
+      "other-session": "Bu dosya başka bir oturumun korumalı alanına ait.",
+      "pending": "Bu oturumun nereye yazabileceği hâlâ denetleniyor.",
+      "no-grant": "Bu oturum şu anda klasöre yazamıyor. Dosyaları değiştirmek için düzenlemeyi yeniden yetkilendirin."
+    },
+    "unresolved": {
+      "not-source": "Kod panelinin gösterdiği bir dosya değil.",
+      "outside": "Bu oturumun okuyabildiği klasörlerin dışında.",
+      "extra-folder": "Ek bir bağlı klasörde; Kod paneli ana klasöre göz atar.",
+      "no-session": "Önce oturumu başlatın."
+    }
   }
 }

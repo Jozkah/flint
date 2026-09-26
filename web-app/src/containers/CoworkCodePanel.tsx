@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import {
   ChevronDown,
   ChevronRight,
@@ -7,6 +15,8 @@ import {
   Folder,
   FolderOpen,
   FolderTree,
+  Pencil,
+  WrapText,
   X,
   XCircle,
 } from 'lucide-react'
@@ -56,6 +66,30 @@ import {
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
 import { errorText } from '@/lib/errorText'
+import { useTheme } from '@/hooks/useTheme'
+import {
+  checkDisk,
+  discardBuffer,
+  dropBuffer,
+  isDirty,
+  markSaved,
+  planUserWrite,
+  type Buffers,
+  type EditAccess,
+  type EditTarget,
+  type ReadOnlyReason,
+} from '@/lib/coworkCodeEdit'
+import { saveUserEdit, type SaveUserEdit } from '@/lib/coworkCodeSave'
+import {
+  NO_BUFFERS,
+  NO_USER_EDITS,
+  useCodeBuffers,
+  useCoworkUserEdits,
+} from '@/hooks/useCoworkUserEdits'
+import { detectLanguage } from '@/lib/coworkCode'
+
+// The editor and its grammars load on first edit, not with the app.
+const CodeEditor = lazy(() => import('@/components/CodeEditor'))
 
 type DirState =
   | { status: 'loading' }
@@ -103,6 +137,27 @@ type Props = {
   onClose: () => void
   /** A folder was dropped; offer to attach it as the project. */
   onOfferFolder?: (name: string) => void
+  /**
+   * Where hand edits may be saved: the session's write destination and live
+   * grant. Absent keeps every tab read-only, as before editing existed.
+   */
+  editAccess?: EditAccess | null
+  /** The folder the session reads, passed to the write the way a run's is. */
+  readRoot?: string | null
+  /** The session's other attached folders, likewise. */
+  extraFolders?: readonly string[]
+  /** Performs a save. Injected by tests; the real one is the `write` tool. */
+  saveFile?: SaveUserEdit
+  /** A save landed, so views of the tree (Changes) can re-read it. */
+  onSaved?: () => void
+}
+
+type Conflict = {
+  id: string
+  /** What the file holds on disk now. */
+  disk: string
+  /** Raised by a save attempt, which Overwrite then completes. */
+  fromSave: boolean
 }
 
 /**
@@ -125,10 +180,37 @@ export function CoworkCodePanel({
   onAttach,
   onClose,
   onOfferFolder,
+  editAccess,
+  readRoot,
+  extraFolders,
+  saveFile = saveUserEdit,
+  onSaved,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const state = stateProp ?? emptyCodePanelState()
+  const isDark = useTheme((s) => s.isDark)
+
+  const buffers = useCodeBuffers((s) =>
+    sessionKey ? (s.bySession[sessionKey] ?? NO_BUFFERS) : NO_BUFFERS
+  )
+  const setBuffers = useCallback(
+    (next: (current: Buffers) => Buffers) => {
+      if (sessionKey) useCodeBuffers.getState().update(sessionKey, next)
+    },
+    [sessionKey]
+  )
+  const userEdits = useCoworkUserEdits((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.edits ?? NO_USER_EDITS) : NO_USER_EDITS
+  )
+  const [conflict, setConflict] = useState<Conflict | null>(null)
+  const [pendingClose, setPendingClose] = useState<{
+    ids: string[]
+    next: CodePanelState
+  } | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [selection, setSelection] = useState<CodeRef | null>(null)
 
   const [dragOver, setDragOver] = useState(false)
   const pickerRef = useRef<HTMLInputElement>(null)
@@ -321,86 +403,73 @@ export function CoworkCodePanel({
     [folder, dataFolder, setDir]
   )
 
-  const loadFile = useCallback(
-    async (tab: CodeTab, allowSensitive = false) => {
-      const id = tabId(tab)
-      const gen = currentGen.current
+  /**
+   * A project file the user saved in Review only lives on as the sandbox
+   * copy the save wrote; the tab shows that copy, not the untouched original.
+   */
+  const sandboxCopyOf = useCallback(
+    (tab: CodeTab): string | null => {
+      if (tab.origin.kind !== 'project') return null
+      if (editAccess?.destination !== 'sandbox') return null
+      return userEdits.some((e) => e.where === 'sandbox' && e.path === tab.path)
+        ? tab.path
+        : null
+    },
+    [editAccess?.destination, userEdits]
+  )
 
+  /**
+   * Read a tab's bytes, or say why not. Null when there is nothing to read
+   * yet (roots unresolved) or ever (an external tab without its handle).
+   */
+  const fetchContent = useCallback(
+    async (tab: CodeTab, allowSensitive = false): Promise<FileState | null> => {
       // A tab whose project is gone is detached, not loading: say so rather
       // than leaving a spinner nothing will resolve.
       if (
         tab.origin.kind === 'project' &&
         (!folder || tab.origin.projectKey !== projectKey)
       ) {
-        setFile(gen, id, { status: 'detached' })
-        return
+        return { status: 'detached' }
       }
       // A sandbox tab belonging to another session is never read here: its
       // path is relative to that session's directory, so reading it against
       // this one would silently open a different file.
-      if (!tabBelongsToSession(tab, sessionKey)) {
-        setFile(gen, id, { status: 'detached' })
-        return
-      }
+      if (!tabBelongsToSession(tab, sessionKey)) return { status: 'detached' }
       // An external file lives outside every root this panel can resolve
       // against, and the handle that made it readable is held in memory only.
       // Reaching here means that handle is gone — a restart, or a tab restored
       // from persisted state — so there is nothing to read. Falling through
       // would resolve its bare name against the session workspace and open a
       // different file that happens to share the name.
-      if (tab.origin.kind === 'external') return
+      if (tab.origin.kind === 'external') return null
 
-      // The roots resolve asynchronously on mount. Record nothing until they
-      // are known, so the effect retries once they are — writing a state here
-      // would cache a verdict reached before the panel could read anything.
-      const rootPending =
-        tab.origin.kind === 'project' ? !dataFolder : !workspacePath
-      if (rootPending) return
-
-      setFile(gen, id, { status: 'loading' })
-      // Snapshot before reading, not after: a write landing during the read
-      // would otherwise be counted as already included and the tab would look
-      // fresh while showing the older bytes.
-      const seen = writeCountsByPath(turnsRef.current)[
-        tab.path.replace(/\\/g, '/')
-      ]
-      setLoadedAt((current) => new Map(current).set(id, seen ?? 0))
-
+      const copy = sandboxCopyOf(tab)
       // Sandbox and generated files stream off disk the way the preview pane
       // reads them; the backend project commands only serve the attached
       // project.
-      if (tab.origin.kind !== 'project') {
-        const abs = workspacePath
-          ? resolveInRoot(workspacePath, tab.path)
-          : null
-        if (!abs) {
-          setFile(gen, id, {
-            status: 'error',
-            message: t('common:preview.outside'),
-          })
-          return
-        }
+      if (tab.origin.kind !== 'project' || copy) {
+        // The roots resolve asynchronously on mount. Record nothing until
+        // they are known, so the effect retries once they are.
+        if (!workspacePath) return null
+        const abs = resolveInRoot(workspacePath, copy ?? tab.path)
+        if (!abs) return { status: 'error', message: t('common:preview.outside') }
         try {
           const res = await fetch(getServiceHub().core().convertFileSrc(abs))
           if (!res.ok) throw new Error(String(res.status))
           const size = Number(res.headers.get('content-length') ?? 0)
-          if (size > MAX_CODE_FILE_BYTES) {
-            setFile(gen, id, { status: 'oversized', size })
-            return
-          }
+          if (size > MAX_CODE_FILE_BYTES) return { status: 'oversized', size }
           const content = await res.text()
           if (content.length > MAX_CODE_FILE_BYTES) {
-            setFile(gen, id, { status: 'oversized', size: content.length })
-            return
+            return { status: 'oversized', size: content.length }
           }
-          setFile(gen, id, { status: 'ready', content })
+          return { status: 'ready', content }
         } catch (e) {
-          setFile(gen, id, { status: 'error', message: messageOf(e) })
+          return { status: 'error', message: messageOf(e) }
         }
-        return
       }
 
-      if (!folder || !dataFolder) return
+      if (!folder || !dataFolder) return null
       try {
         const file = await projectReadFile(
           dataFolder,
@@ -408,27 +477,56 @@ export function CoworkCodePanel({
           tab.path,
           allowSensitive
         )
-        if (file.oversized) {
-          setFile(gen, id, { status: 'oversized', size: file.size })
-        } else if (file.binary) {
-          setFile(gen, id, { status: 'binary' })
-        } else {
-          setFile(gen, id, { status: 'ready', content: file.content })
-        }
+        if (file.oversized) return { status: 'oversized', size: file.size }
+        if (file.binary) return { status: 'binary' }
+        return { status: 'ready', content: file.content }
       } catch (e) {
         const message = messageOf(e)
-        setFile(
-          gen,
-          id,
-          message.startsWith('SENSITIVE:')
-            ? { status: 'sensitive' }
-            : message.startsWith(DENIED_PREFIX)
-              ? { status: 'denied' }
-              : { status: 'error', message }
-        )
+        return message.startsWith('SENSITIVE:')
+          ? { status: 'sensitive' }
+          : message.startsWith(DENIED_PREFIX)
+            ? { status: 'denied' }
+            : { status: 'error', message }
       }
     },
-    [folder, projectKey, sessionKey, workspacePath, dataFolder, setFile, t]
+    [folder, projectKey, sessionKey, workspacePath, dataFolder, sandboxCopyOf, t]
+  )
+
+  const loadFile = useCallback(
+    async (tab: CodeTab, allowSensitive = false) => {
+      const id = tabId(tab)
+      const gen = currentGen.current
+      const rootPending =
+        tab.origin.kind === 'project' && !sandboxCopyOf(tab)
+          ? !dataFolder
+          : !workspacePath
+      const quick =
+        tab.origin.kind === 'project' &&
+        (!folder || tab.origin.projectKey !== projectKey)
+      if (!quick && tabBelongsToSession(tab, sessionKey)) {
+        if (tab.origin.kind === 'external' || rootPending) return
+        setFile(gen, id, { status: 'loading' })
+        // Snapshot before reading, not after: a write landing during the read
+        // would otherwise be counted as already included and the tab would
+        // look fresh while showing the older bytes.
+        const seen = writeCountsByPath(turnsRef.current)[
+          tab.path.replace(/\\/g, '/')
+        ]
+        setLoadedAt((current) => new Map(current).set(id, seen ?? 0))
+      }
+      const result = await fetchContent(tab, allowSensitive)
+      if (result) setFile(gen, id, result)
+    },
+    [
+      folder,
+      projectKey,
+      sessionKey,
+      workspacePath,
+      dataFolder,
+      setFile,
+      fetchContent,
+      sandboxCopyOf,
+    ]
   )
 
   // Root listing, and re-listing whenever a root identity changes. Everything
@@ -509,6 +607,243 @@ export function CoworkCodePanel({
   const chooseExternalAgain = useCallback(() => {
     pickerRef.current?.click()
   }, [])
+
+  // -------------------------------------------------------------------------
+  // Editing
+  // -------------------------------------------------------------------------
+
+  /** Where saving the active tab writes, or why it cannot. */
+  const editTarget: EditTarget | null = active
+    ? planUserWrite({
+        tab: active,
+        projectKey,
+        treeRoot: folder,
+        sessionKey,
+        access: editAccess,
+      })
+    : null
+  const writable =
+    editTarget && editTarget.kind !== 'read-only' ? editTarget : null
+  const editable =
+    !!editAccess &&
+    !!writable &&
+    activeFile?.status === 'ready' &&
+    !(activeId && activeId in externalFiles)
+  const activeBuffer = activeId ? buffers[activeId] : undefined
+  const activeDirty = isDirty(activeBuffer)
+  const readyContent =
+    activeFile?.status === 'ready' ? activeFile.content : undefined
+
+  // Seed the buffer from what was read, and keep it in step with the disk:
+  // new bytes replace a clean buffer, and raise a conflict under a dirty one
+  // rather than overwriting what the user typed.
+  useEffect(() => {
+    if (!activeId || readyContent === undefined || !editable) return
+    // Read the store, not this render's copy: text typed since the render
+    // that scheduled this effect must not be seeded over.
+    const buffer = sessionKey
+      ? useCodeBuffers.getState().bySession[sessionKey]?.[activeId]
+      : undefined
+    if (!buffer) {
+      setBuffers((current) => ({
+        ...current,
+        [activeId]: { base: readyContent, text: readyContent },
+      }))
+      return
+    }
+    const verdict = checkDisk(buffer, readyContent)
+    if (verdict === 'refresh') {
+      setBuffers((current) => ({
+        ...current,
+        [activeId]: { base: readyContent, text: readyContent },
+      }))
+    } else if (verdict === 'conflict') {
+      setConflict((c) =>
+        c?.id === activeId ? c : { id: activeId, disk: readyContent, fromSave: false }
+      )
+    }
+    // Only when the bytes read change, not on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, readyContent, editable])
+
+  /** Re-read the active file and compare it with what the editor started from. */
+  const recheckDisk = useCallback(async (): Promise<string | null> => {
+    if (!active || !activeId) return null
+    const read = await fetchContent(active)
+    return read?.status === 'ready' ? read.content : null
+  }, [active, activeId, fetchContent])
+
+  // Coming back to the window is when an editor elsewhere may have saved.
+  useEffect(() => {
+    if (!editable || !activeId) return
+    const onFocus = () => {
+      void recheckDisk().then((disk) => {
+        if (disk === null) return
+        const buffer = useCodeBuffers.getState().bySession[sessionKey ?? '']?.[
+          activeId
+        ]
+        const verdict = checkDisk(buffer, disk)
+        if (verdict === 'refresh') {
+          setBuffers((current) => ({
+            ...current,
+            [activeId]: { base: disk, text: disk },
+          }))
+        } else if (verdict === 'conflict') {
+          setConflict({ id: activeId, disk, fromSave: false })
+        }
+      })
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [editable, activeId, recheckDisk, sessionKey, setBuffers])
+
+  const writeActive = useCallback(
+    async (text: string) => {
+      if (!active || !activeId || !sessionKey || !editTarget) return false
+      if (editTarget.kind === 'read-only') return false
+      setSaving(true)
+      setSaveError(null)
+      try {
+        const outcome = await saveFile({
+          sessionId: sessionKey,
+          target: editTarget,
+          content: text,
+          readRoot: readRoot ?? null,
+          extraFolders,
+        })
+        if (!outcome.ok) {
+          setSaveError(outcome.error)
+          return false
+        }
+        setBuffers((current) => markSaved(current, activeId, text))
+        setConflict(null)
+        useCoworkUserEdits.getState().record(sessionKey, {
+          path: active.path,
+          writtenPath: editTarget.path,
+          where: editTarget.kind,
+          diff: outcome.diff,
+          at: Date.now(),
+        })
+        onSaved?.()
+        toast.success(
+          editTarget.kind === 'sandbox' && active.origin.kind === 'project'
+            ? t('common:codePanel.savedSandbox', { name: active.path })
+            : t('common:codePanel.saved', { name: active.path })
+        )
+        return true
+      } catch (e) {
+        setSaveError(messageOf(e))
+        return false
+      } finally {
+        setSaving(false)
+      }
+    },
+    [
+      active,
+      activeId,
+      sessionKey,
+      editTarget,
+      saveFile,
+      readRoot,
+      extraFolders,
+      setBuffers,
+      onSaved,
+      t,
+    ]
+  )
+
+  /**
+   * Save the active tab. The disk is read first: if it moved since the
+   * editor started from it, the user chooses before anything is overwritten.
+   */
+  const save = useCallback(async () => {
+    if (!activeId || !editable || saving) return false
+    const buffer = useCodeBuffers.getState().bySession[sessionKey ?? '']?.[
+      activeId
+    ]
+    if (!buffer || !isDirty(buffer)) return true
+    const disk = await recheckDisk()
+    if (disk !== null && disk !== buffer.base) {
+      setConflict({ id: activeId, disk, fromSave: true })
+      return false
+    }
+    return writeActive(buffer.text)
+  }, [activeId, editable, saving, sessionKey, recheckDisk, writeActive])
+
+  const discard = useCallback(() => {
+    if (!activeId) return
+    setBuffers((current) => discardBuffer(current, activeId))
+    setSaveError(null)
+  }, [activeId, setBuffers])
+
+  /** Close tabs, asking first when any of them holds unsaved edits. */
+  const requestClose = useCallback(
+    (ids: string[], next: CodePanelState) => {
+      const dirty = ids.filter((id) => isDirty(buffers[id]))
+      if (dirty.length > 0) {
+        setPendingClose({ ids: dirty, next })
+        return
+      }
+      setBuffers((current) =>
+        ids.reduce((acc, id) => dropBuffer(acc, id), current)
+      )
+      onStateChange(next)
+    },
+    [buffers, setBuffers, onStateChange]
+  )
+
+  const confirmClose = useCallback(
+    async (choice: 'save' | 'discard' | 'cancel') => {
+      const pending = pendingClose
+      if (!pending) return
+      if (choice === 'cancel') {
+        setPendingClose(null)
+        return
+      }
+      if (choice === 'save') {
+        // Only offered for the active tab, the one the editor can save.
+        const ok = await save()
+        if (!ok) return
+      }
+      setPendingClose(null)
+      setBuffers((current) =>
+        pending.ids.reduce((acc, id) => dropBuffer(acc, id), current)
+      )
+      onStateChange(pending.next)
+    },
+    [pendingClose, save, setBuffers, onStateChange]
+  )
+
+  const resolveConflict = useCallback(
+    async (choice: 'overwrite' | 'reload' | 'keep') => {
+      const c = conflict
+      if (!c) return
+      if (choice === 'keep') {
+        // Keep editing against the new disk: the next save overwrites it.
+        setBuffers((current) => ({
+          ...current,
+          [c.id]: { base: c.disk, text: current[c.id]?.text ?? c.disk },
+        }))
+        setConflict(null)
+        return
+      }
+      if (choice === 'reload') {
+        setBuffers((current) => ({
+          ...current,
+          [c.id]: { base: c.disk, text: c.disk },
+        }))
+        setConflict(null)
+        return
+      }
+      const text = buffers[c.id]?.text
+      if (text === undefined) return
+      await writeActive(text)
+    },
+    [conflict, buffers, setBuffers, writeActive]
+  )
+
+  const readOnlyText = (reason: ReadOnlyReason): string =>
+    t(`common:codePanel.readOnlyReason.${reason}`)
 
   const renderTree = (rel: string, depth: number): React.ReactNode => {
     const dir = dirs.get(rel)
@@ -712,7 +1047,7 @@ export function CoworkCodePanel({
                     if (next) onStateChange(focusTab(state, next))
                   } else if (e.key === 'Delete' || e.key === 'Backspace') {
                     e.preventDefault()
-                    onStateChange(closeTab(state, id))
+                    requestClose([id], closeTab(state, id))
                   }
                 }}
                 tabIndex={isActive ? 0 : -1}
@@ -730,14 +1065,31 @@ export function CoworkCodePanel({
                 <span className="max-w-40 truncate">{name}</span>
                 <button
                   type="button"
-                  aria-label={t('common:codePanel.closeTab', { name })}
+                  aria-label={
+                    isDirty(buffers[id])
+                      ? t('common:codePanel.closeTabUnsaved', { name })
+                      : t('common:codePanel.closeTab', { name })
+                  }
                   onClick={(e) => {
                     e.stopPropagation()
-                    onStateChange(closeTab(state, id))
+                    requestClose([id], closeTab(state, id))
                   }}
-                  className="grid h-[22px] w-[18px] place-items-center rounded-sm text-muted-foreground opacity-50 transition-opacity hover:text-foreground hover:opacity-100"
+                  className="group/close grid h-[22px] w-[18px] place-items-center rounded-sm text-muted-foreground opacity-50 transition-opacity hover:text-foreground hover:opacity-100"
                 >
-                  <X size={11} />
+                  {isDirty(buffers[id]) ? (
+                    // Unsaved: a dot, which turns back into the close
+                    // cross under the pointer, as in VS Code.
+                    <>
+                      <span
+                        data-testid="tab-dirty"
+                        aria-hidden
+                        className="size-2 rounded-full bg-foreground opacity-100 group-hover/close:hidden"
+                      />
+                      <X size={11} className="hidden group-hover/close:block" />
+                    </>
+                  ) : (
+                    <X size={11} />
+                  )}
                 </button>
               </div>
             )
@@ -748,10 +1100,14 @@ export function CoworkCodePanel({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={t('common:codePanel.closeOthers')}
-                onClick={() =>
-                  state.activeTabId &&
-                  onStateChange(closeOtherTabs(state, state.activeTabId))
-                }
+                onClick={() => {
+                  const keep = state.activeTabId
+                  if (!keep) return
+                  requestClose(
+                    state.tabs.map(tabId).filter((id) => id !== keep),
+                    closeOtherTabs(state, keep)
+                  )
+                }}
                 className="text-muted-foreground"
               >
                 <Columns2 className="size-3.5" />
@@ -760,13 +1116,57 @@ export function CoworkCodePanel({
                 variant="ghost"
                 size="icon-xs"
                 aria-label={t('common:codePanel.closeAll')}
-                onClick={() => onStateChange(closeAllTabs(state))}
+                onClick={() =>
+                  requestClose(state.tabs.map(tabId), closeAllTabs(state))
+                }
                 className="text-muted-foreground"
               >
                 <XCircle className="size-3.5" />
               </Button>
             </span>
           )}
+        </div>
+      )}
+
+      {pendingClose && (
+        <div
+          role="alertdialog"
+          aria-label={t('common:codePanel.unsavedTitle')}
+          data-testid="code-unsaved-close"
+          className="mx-3 my-2 flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
+        >
+          <span className="min-w-0 flex-1">
+            {pendingClose.ids.length === 1
+              ? t('common:codePanel.unsavedOne', {
+                  name:
+                    findTabById(state, pendingClose.ids[0])?.path ??
+                    pendingClose.ids[0],
+                })
+              : t('common:codePanel.unsavedMany', {
+                  count: pendingClose.ids.length,
+                })}
+          </span>
+          {pendingClose.ids.length === 1 &&
+            pendingClose.ids[0] === activeId &&
+            editable && (
+              <Button size="xs" onClick={() => void confirmClose('save')}>
+                {t('common:codePanel.save')}
+              </Button>
+            )}
+          <Button
+            size="xs"
+            variant="outline"
+            onClick={() => void confirmClose('discard')}
+          >
+            {t('common:codePanel.discardAndClose')}
+          </Button>
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => void confirmClose('cancel')}
+          >
+            {t('common:codePanel.cancel')}
+          </Button>
         </div>
       )}
 
@@ -833,17 +1233,201 @@ export function CoworkCodePanel({
                   </Button>
                 </div>
               )}
+              {conflict && conflict.id === activeId && (
+                <div
+                  role="alert"
+                  data-testid="code-conflict"
+                  className="mx-3 mb-2 flex shrink-0 flex-wrap items-center gap-2 rounded-lg bg-warning-tint px-2.5 py-2 text-xs text-fg-2"
+                >
+                  <span className="min-w-0 flex-1">
+                    {t('common:codePanel.conflict')}
+                  </span>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => void resolveConflict('reload')}
+                  >
+                    {t('common:codePanel.conflictReload')}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => void resolveConflict('overwrite')}
+                  >
+                    {t('common:codePanel.conflictOverwrite')}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={() => void resolveConflict('keep')}
+                  >
+                    {t('common:codePanel.conflictKeep')}
+                  </Button>
+                </div>
+              )}
+              {saveError && editable && (
+                <div
+                  role="alert"
+                  className="mx-3 mb-2 shrink-0 rounded-lg bg-destructive/10 px-2.5 py-2 text-xs text-destructive"
+                >
+                  {t('common:codePanel.saveFailed', { error: saveError })}
+                </div>
+              )}
               <div className="min-h-0 flex-1">
-                <CodeViewer
-                  relPath={active.path}
-                  content={activeFile.content}
-                  wordWrap={state.wordWrap}
-                  onToggleWrap={(wordWrap) =>
-                    onStateChange({ ...state, wordWrap })
-                  }
-                  origin={active.origin}
-                  onAddToChat={onAddToChat}
-                />
+                {editable && writable ? (
+                  <div className="flex h-full min-h-0 min-w-0 flex-col">
+                    <div className="flex h-10 shrink-0 items-center gap-1 px-3 pointer-coarse:h-11">
+                      <span
+                        data-testid="code-edit-badge"
+                        className="inline-flex h-[22px] shrink-0 items-center gap-1.5 rounded-md border-[0.8px] border-border bg-card px-2 text-[11px] font-medium text-secondary-foreground"
+                        title={
+                          writable.kind === 'sandbox' &&
+                          active.origin.kind === 'project'
+                            ? t('common:codePanel.editingSandboxHint')
+                            : undefined
+                        }
+                      >
+                        <Pencil className="size-3" aria-hidden />
+                        {writable.kind === 'sandbox' &&
+                        active.origin.kind === 'project'
+                          ? t('common:codePanel.editingSandbox')
+                          : t('common:codePanel.editing')}
+                      </span>
+                      <span
+                        className="min-w-0 flex-1 truncate px-1 font-mono text-[11px] text-muted-foreground"
+                        title={active.path}
+                      >
+                        {active.path}
+                        {activeDirty && (
+                          <span className="ml-1 text-foreground">
+                            {t('common:codePanel.unsavedMark')}
+                          </span>
+                        )}
+                      </span>
+                      <span className="shrink-0 pr-1 text-[11px] text-subtle-foreground">
+                        {detectLanguage(active.path).label}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        aria-label={t('common:codePanel.toggleWrap')}
+                        aria-pressed={state.wordWrap}
+                        onClick={() =>
+                          onStateChange({ ...state, wordWrap: !state.wordWrap })
+                        }
+                        className={cn(
+                          'shrink-0 pointer-coarse:size-11',
+                          state.wordWrap
+                            ? 'bg-accent text-foreground'
+                            : 'text-muted-foreground'
+                        )}
+                      >
+                        <WrapText className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        disabled={!activeDirty || saving}
+                        onClick={discard}
+                      >
+                        {t('common:codePanel.discard')}
+                      </Button>
+                      <Button
+                        size="xs"
+                        disabled={!activeDirty || saving}
+                        onClick={() => void save()}
+                        title={t('common:codePanel.saveHint')}
+                      >
+                        {saving
+                          ? t('common:codePanel.saving')
+                          : t('common:codePanel.save')}
+                      </Button>
+                    </div>
+                    <div className="relative min-h-0 flex-1 border-t border-dashed border-border bg-code-bg">
+                      <Suspense
+                        fallback={<Notice>{t('common:codePanel.loading')}</Notice>}
+                      >
+                        <CodeEditor
+                          docKey={activeId}
+                          value={activeBuffer?.text ?? activeFile.content}
+                          lang={detectLanguage(active.path).lang}
+                          wordWrap={state.wordWrap}
+                          isDark={isDark}
+                          ariaLabel={active.path}
+                          onChange={(text) =>
+                            setBuffers((current) => ({
+                              ...current,
+                              [activeId]: {
+                                base:
+                                  current[activeId]?.base ?? activeFile.content,
+                                text,
+                              },
+                            }))
+                          }
+                          onSave={() => void save()}
+                          onSelection={(span) =>
+                            setSelection(
+                              span
+                                ? {
+                                    ...span,
+                                    path: active.path,
+                                    origin: active.origin,
+                                  }
+                                : null
+                            )
+                          }
+                          reveal={
+                            state.reveal && state.reveal.tabId === activeId
+                              ? state.reveal
+                              : null
+                          }
+                        />
+                      </Suspense>
+                      {selection && selection.path === active.path && (
+                        <div className="absolute bottom-2 left-2 z-10 inline-flex">
+                          <Button
+                            size="sm"
+                            variant="surface"
+                            className="shadow-pop"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              onAddToChat(selection)
+                              setSelection(null)
+                            }}
+                          >
+                            {t('common:codePanel.addToChat', {
+                              range:
+                                selection.startLine === selection.endLine
+                                  ? `L${selection.startLine}`
+                                  : `L${selection.startLine}-${selection.endLine}`,
+                            })}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <CodeViewer
+                    relPath={active.path}
+                    content={activeFile.content}
+                    wordWrap={state.wordWrap}
+                    onToggleWrap={(wordWrap) =>
+                      onStateChange({ ...state, wordWrap })
+                    }
+                    origin={active.origin}
+                    onAddToChat={onAddToChat}
+                    readOnlyHint={
+                      editAccess && editTarget?.kind === 'read-only'
+                        ? readOnlyText(editTarget.reason)
+                        : undefined
+                    }
+                    revealLine={
+                      state.reveal && state.reveal.tabId === activeId
+                        ? state.reveal
+                        : null
+                    }
+                  />
+                )}
               </div>
             </div>
           ) : activeFile.status === 'oversized' ? (
@@ -997,6 +1581,9 @@ function Notice({ children }: { children: React.ReactNode }) {
     </div>
   )
 }
+
+const findTabById = (state: CodePanelState, id: string) =>
+  state.tabs.find((tab) => tabId(tab) === id)
 
 const indent = (depth: number) => ({ paddingLeft: `${10 + depth * 14}px` })
 /** Where a folder's guide line sits: under its own chevron. */

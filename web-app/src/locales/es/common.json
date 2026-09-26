@@ -596,5 +596,51 @@
     "noMatches": "Ningún parámetro coincide",
     "noneForProvider": "Este proveedor no tiene parámetros ajustables.",
     "maybeUnsupported": "Puede que {{providers}} no lo admita"
+  },
+  "rail": {
+    "resizeHint": "Arrastra para cambiar el tamaño. Doble clic para alternar entre el ancho predeterminado y amplio."
+  },
+  "turnUndo": {
+    "user": "tú"
+  },
+  "codePanel": {
+    "editing": "Editando",
+    "editingSandbox": "Editando la copia del sandbox",
+    "editingSandboxHint": "Solo revisión: al guardar se escribe la copia del sandbox de esta sesión. Aplícala desde Cambios para modificar la carpeta.",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "saveHint": "Guardar (Ctrl+S)",
+    "discard": "Descartar",
+    "discardAndClose": "Descartar y cerrar",
+    "cancel": "Cancelar",
+    "unsavedMark": "(sin guardar)",
+    "unsavedTitle": "Cambios sin guardar",
+    "unsavedOne": "{{name}} tiene cambios sin guardar.",
+    "unsavedMany": "{{count}} archivos tienen cambios sin guardar.",
+    "closeTabUnsaved": "Cerrar {{name}} (cambios sin guardar)",
+    "conflict": "Este archivo cambió en el disco desde que empezaste a editarlo.",
+    "conflictReload": "Recargar desde el disco",
+    "conflictOverwrite": "Sobrescribir",
+    "conflictKeep": "Seguir editando",
+    "saveFailed": "No se pudo guardar: {{error}}",
+    "saved": "{{name}} guardado",
+    "savedSandbox": "{{name}} guardado en la copia del sandbox",
+    "editedByYou": "Editado por ti",
+    "openPath": "Abrir {{path}} en Código",
+    "openPathHint": "Abrir {{path}} en Código (Ctrl+clic o clic central lo abre en segundo plano)",
+    "openDiff": "Mostrar el cambio en {{path}} en Cambios",
+    "readOnlyReason": {
+      "external": "Abierto desde fuera del proyecto, así que no hay dónde guardarlo.",
+      "detached": "El proyecto de este archivo ya no está adjunto.",
+      "other-session": "Este archivo pertenece al sandbox de otra sesión.",
+      "pending": "Aún se está comprobando dónde puede escribir esta sesión.",
+      "no-grant": "Esta sesión no puede escribir en la carpeta ahora. Vuelve a autorizar la edición para cambiar archivos."
+    },
+    "unresolved": {
+      "not-source": "No es un archivo que muestre el panel Código.",
+      "outside": "Fuera de las carpetas que esta sesión puede leer.",
+      "extra-folder": "En una carpeta adjunta adicional; el panel Código explora la carpeta principal.",
+      "no-session": "Inicia primero la sesión."
+    }
   }
 }

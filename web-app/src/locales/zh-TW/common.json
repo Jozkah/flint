@@ -526,5 +526,51 @@
     "noMatches": "沒有相符的參數",
     "noneForProvider": "此供應商沒有可調整的參數。",
     "maybeUnsupported": "{{providers}} 可能不支援"
+  },
+  "rail": {
+    "resizeHint": "拖曳以調整寬度。按兩下在預設寬度與寬版之間切換。"
+  },
+  "turnUndo": {
+    "user": "你"
+  },
+  "codePanel": {
+    "editing": "編輯中",
+    "editingSandbox": "正在編輯沙箱副本",
+    "editingSandboxHint": "僅審閱：儲存會寫入此工作階段的沙箱副本。在「變更」中套用以修改資料夾。",
+    "save": "儲存",
+    "saving": "正在儲存…",
+    "saveHint": "儲存 (Ctrl+S)",
+    "discard": "捨棄",
+    "discardAndClose": "捨棄並關閉",
+    "cancel": "取消",
+    "unsavedMark": "（未儲存）",
+    "unsavedTitle": "未儲存的變更",
+    "unsavedOne": "{{name}} 有未儲存的變更。",
+    "unsavedMany": "{{count}} 個檔案有未儲存的變更。",
+    "closeTabUnsaved": "關閉 {{name}}（有未儲存的變更）",
+    "conflict": "自你開始編輯以來，此檔案已在磁碟上變更。",
+    "conflictReload": "從磁碟重新載入",
+    "conflictOverwrite": "覆寫",
+    "conflictKeep": "繼續編輯",
+    "saveFailed": "無法儲存：{{error}}",
+    "saved": "已儲存 {{name}}",
+    "savedSandbox": "已將 {{name}} 儲存到沙箱副本",
+    "editedByYou": "由你編輯",
+    "openPath": "在程式碼中開啟 {{path}}",
+    "openPathHint": "在程式碼中開啟 {{path}}（Ctrl+按一下或中鍵在背景開啟）",
+    "openDiff": "在「變更」中顯示 {{path}} 的變更",
+    "readOnlyReason": {
+      "external": "從專案外部開啟，因此沒有可儲存的位置。",
+      "detached": "此檔案所屬的專案已不再附加。",
+      "other-session": "此檔案屬於另一個工作階段的沙箱。",
+      "pending": "仍在確認此工作階段可寫入的位置。",
+      "no-grant": "此工作階段目前無法寫入資料夾。請重新授權編輯以變更檔案。"
+    },
+    "unresolved": {
+      "not-source": "不是程式碼面板顯示的檔案。",
+      "outside": "在此工作階段可讀取的資料夾之外。",
+      "extra-folder": "位於額外附加的資料夾中；程式碼面板瀏覽的是主資料夾。",
+      "no-session": "請先開始工作階段。"
+    }
   }
 }

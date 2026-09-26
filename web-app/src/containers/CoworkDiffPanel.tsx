@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { findFocusedRow } from '@/lib/coworkDiffs'
 import type { OriginEntry } from '@/lib/coworkOrigins'
 import {
   ChevronDown,
@@ -214,7 +215,10 @@ function FileRow({
   onOpen,
   after,
   children,
+  rowId,
 }: {
+  /** Identifies the row for `focusPath`. */
+  rowId?: string
   path: string
   subtitle?: string
   additions: number
@@ -236,7 +240,10 @@ function FileRow({
   const openLabel = t('common:changes.openFile')
 
   return (
-    <div className="group/row relative border-b border-dashed border-border">
+    <div
+      className="group/row relative border-b border-dashed border-border"
+      data-row-id={rowId}
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -446,7 +453,13 @@ export function CoworkDiffPanel({
   footer,
   branch,
   projectName,
+  focusPath,
 }: {
+  /**
+   * A file to bring into view and expand, e.g. from a tool card's "Open
+   * diff". Matched by path, whichever list it is in.
+   */
+  focusPath?: string | null
   sandboxFiles: CoworkFileDiff[]
   /** The attached project's name, used until Git names the repository. */
   projectName?: string
@@ -539,6 +552,18 @@ export function CoworkDiffPanel({
       else next.add(id)
       return next
     })
+
+  // Bring the requested file into view, expanded.
+  useEffect(() => {
+    if (!focusPath) return
+    const id = findFocusedRow(allIds, focusPath)
+    if (!id) return
+    setExpanded((current) => (current.has(id) ? current : new Set(current).add(id)))
+    const row = document.querySelector<HTMLElement>(
+      `[data-row-id="${CSS.escape(id)}"]`
+    )
+    row?.scrollIntoView?.({ block: 'center' })
+  }, [focusPath, allIds])
 
   const toggleAll = () =>
     setExpanded(() => (allExpanded ? new Set() : new Set(allIds)))
@@ -683,6 +708,7 @@ export function CoworkDiffPanel({
                     return (
                       <FileRow
                         key={id}
+                        rowId={id}
                         path={file.path}
                         onOpen={
                           onOpenFile ? () => onOpenFile(file.path) : undefined
@@ -756,6 +782,7 @@ export function CoworkDiffPanel({
                   return (
                     <FileRow
                       key={id}
+                      rowId={id}
                       path={group.show(file.path)}
                       onOpen={
                         onOpenFile ? () => onOpenFile(file.path) : undefined
@@ -787,6 +814,13 @@ export function CoworkDiffPanel({
                             <p className="px-3 pt-2 text-xs text-muted-foreground">
                               {operation.sourceName}
                             </p>
+                          ) : operation.source === 'user' ? (
+                            <p
+                              className="px-3 pt-2 text-xs text-muted-foreground"
+                              data-testid="diff-op-by-user"
+                            >
+                              {t('common:codePanel.editedByYou')}
+                            </p>
                           ) : null}
                           <DiffView
                             diff={operation.diff}
@@ -813,3 +847,4 @@ export function CoworkDiffPanel({
     </CoworkSidePanel>
   )
 }
+

@@ -640,5 +640,51 @@
     "noMatches": "一致するパラメーターはありません",
     "noneForProvider": "このプロバイダーには調整可能なパラメーターがありません。",
     "maybeUnsupported": "{{providers}} ではサポートされていない可能性があります"
+  },
+  "rail": {
+    "resizeHint": "ドラッグで幅を変更。ダブルクリックで標準とワイドを切り替えます。"
+  },
+  "turnUndo": {
+    "user": "あなた"
+  },
+  "codePanel": {
+    "editing": "編集中",
+    "editingSandbox": "サンドボックスのコピーを編集中",
+    "editingSandboxHint": "レビューのみ：保存するとこのセッションのサンドボックスのコピーに書き込まれます。フォルダーを変更するには変更パネルから適用してください。",
+    "save": "保存",
+    "saving": "保存中…",
+    "saveHint": "保存 (Ctrl+S)",
+    "discard": "破棄",
+    "discardAndClose": "破棄して閉じる",
+    "cancel": "キャンセル",
+    "unsavedMark": "（未保存）",
+    "unsavedTitle": "未保存の変更",
+    "unsavedOne": "{{name}} に未保存の変更があります。",
+    "unsavedMany": "{{count}} 個のファイルに未保存の変更があります。",
+    "closeTabUnsaved": "{{name}} を閉じる（未保存の変更あり）",
+    "conflict": "編集を始めてから、このファイルはディスク上で変更されました。",
+    "conflictReload": "ディスクから再読み込み",
+    "conflictOverwrite": "上書き",
+    "conflictKeep": "編集を続ける",
+    "saveFailed": "保存できませんでした: {{error}}",
+    "saved": "{{name}} を保存しました",
+    "savedSandbox": "{{name}} をサンドボックスのコピーに保存しました",
+    "editedByYou": "あなたが編集",
+    "openPath": "{{path}} をコードで開く",
+    "openPathHint": "{{path}} をコードで開く（Ctrl+クリックまたは中クリックでバックグラウンドで開く）",
+    "openDiff": "{{path}} の変更を変更パネルで表示",
+    "readOnlyReason": {
+      "external": "プロジェクト外から開いたため、保存先がありません。",
+      "detached": "このファイルのプロジェクトはもう接続されていません。",
+      "other-session": "このファイルは別のセッションのサンドボックスのものです。",
+      "pending": "このセッションの書き込み先を確認中です。",
+      "no-grant": "このセッションは現在フォルダーに書き込めません。ファイルを変更するには編集を再度許可してください。"
+    },
+    "unresolved": {
+      "not-source": "コードパネルで表示するファイルではありません。",
+      "outside": "このセッションが読めるフォルダーの外です。",
+      "extra-folder": "追加で接続したフォルダー内です。コードパネルはメインのフォルダーを表示します。",
+      "no-session": "先にセッションを開始してください。"
+    }
   }
 }

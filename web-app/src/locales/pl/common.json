@@ -528,5 +528,51 @@
     "noMatches": "Brak pasujących parametrów",
     "noneForProvider": "Ten dostawca nie ma parametrów do dostrojenia.",
     "maybeUnsupported": "Może nie być obsługiwane przez {{providers}}"
+  },
+  "rail": {
+    "resizeHint": "Przeciągnij, aby zmienić szerokość. Kliknij dwukrotnie, aby przełączyć między domyślną a szeroką."
+  },
+  "turnUndo": {
+    "user": "ty"
+  },
+  "codePanel": {
+    "editing": "Edycja",
+    "editingSandbox": "Edycja kopii w piaskownicy",
+    "editingSandboxHint": "Tylko przegląd: zapis trafia do kopii w piaskownicy tej sesji. Zastosuj ją w Zmianach, aby zmienić folder.",
+    "save": "Zapisz",
+    "saving": "Zapisywanie…",
+    "saveHint": "Zapisz (Ctrl+S)",
+    "discard": "Odrzuć",
+    "discardAndClose": "Odrzuć i zamknij",
+    "cancel": "Anuluj",
+    "unsavedMark": "(niezapisane)",
+    "unsavedTitle": "Niezapisane zmiany",
+    "unsavedOne": "{{name}} ma niezapisane zmiany.",
+    "unsavedMany": "{{count}} plików ma niezapisane zmiany.",
+    "closeTabUnsaved": "Zamknij {{name}} (niezapisane zmiany)",
+    "conflict": "Ten plik zmienił się na dysku od chwili rozpoczęcia edycji.",
+    "conflictReload": "Wczytaj ponownie z dysku",
+    "conflictOverwrite": "Nadpisz",
+    "conflictKeep": "Edytuj dalej",
+    "saveFailed": "Nie udało się zapisać: {{error}}",
+    "saved": "Zapisano {{name}}",
+    "savedSandbox": "Zapisano {{name}} w kopii w piaskownicy",
+    "editedByYou": "Edytowane przez ciebie",
+    "openPath": "Otwórz {{path}} w Kodzie",
+    "openPathHint": "Otwórz {{path}} w Kodzie (Ctrl+klik lub środkowy przycisk otwiera w tle)",
+    "openDiff": "Pokaż zmianę w {{path}} w Zmianach",
+    "readOnlyReason": {
+      "external": "Otwarty spoza projektu, więc nie ma gdzie go zapisać.",
+      "detached": "Projekt tego pliku nie jest już dołączony.",
+      "other-session": "Ten plik należy do piaskownicy innej sesji.",
+      "pending": "Trwa sprawdzanie, gdzie ta sesja może zapisywać.",
+      "no-grant": "Ta sesja nie może teraz zapisywać w folderze. Ponownie zezwól na edycję, aby zmieniać pliki."
+    },
+    "unresolved": {
+      "not-source": "To nie jest plik wyświetlany w panelu Kod.",
+      "outside": "Poza folderami, które ta sesja może czytać.",
+      "extra-folder": "W dodatkowym dołączonym folderze; panel Kod przegląda folder główny.",
+      "no-session": "Najpierw rozpocznij sesję."
+    }
   }
 }

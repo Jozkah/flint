@@ -527,5 +527,51 @@
     "noMatches": "Nenhum parâmetro corresponde",
     "noneForProvider": "Nenhum parâmetro ajustável para este provedor.",
     "maybeUnsupported": "Pode não ser compatível com {{providers}}"
+  },
+  "rail": {
+    "resizeHint": "Arraste para redimensionar. Clique duas vezes para alternar entre a largura padrão e ampla."
+  },
+  "turnUndo": {
+    "user": "você"
+  },
+  "codePanel": {
+    "editing": "Editando",
+    "editingSandbox": "Editando a cópia do sandbox",
+    "editingSandboxHint": "Somente revisão: salvar grava a cópia do sandbox desta sessão. Aplique-a em Alterações para mudar a pasta.",
+    "save": "Salvar",
+    "saving": "Salvando…",
+    "saveHint": "Salvar (Ctrl+S)",
+    "discard": "Descartar",
+    "discardAndClose": "Descartar e fechar",
+    "cancel": "Cancelar",
+    "unsavedMark": "(não salvo)",
+    "unsavedTitle": "Alterações não salvas",
+    "unsavedOne": "{{name}} tem alterações não salvas.",
+    "unsavedMany": "{{count}} arquivos têm alterações não salvas.",
+    "closeTabUnsaved": "Fechar {{name}} (alterações não salvas)",
+    "conflict": "Este arquivo mudou no disco desde que você começou a editá-lo.",
+    "conflictReload": "Recarregar do disco",
+    "conflictOverwrite": "Sobrescrever",
+    "conflictKeep": "Continuar editando",
+    "saveFailed": "Não foi possível salvar: {{error}}",
+    "saved": "{{name}} salvo",
+    "savedSandbox": "{{name}} salvo na cópia do sandbox",
+    "editedByYou": "Editado por você",
+    "openPath": "Abrir {{path}} em Código",
+    "openPathHint": "Abrir {{path}} em Código (Ctrl+clique ou clique do meio abre em segundo plano)",
+    "openDiff": "Mostrar a alteração em {{path}} em Alterações",
+    "readOnlyReason": {
+      "external": "Aberto de fora do projeto, então não há onde salvá-lo.",
+      "detached": "O projeto deste arquivo não está mais anexado.",
+      "other-session": "Este arquivo pertence ao sandbox de outra sessão.",
+      "pending": "Ainda verificando onde esta sessão pode gravar.",
+      "no-grant": "Esta sessão não pode gravar na pasta agora. Autorize a edição novamente para alterar arquivos."
+    },
+    "unresolved": {
+      "not-source": "Não é um arquivo exibido pelo painel Código.",
+      "outside": "Fora das pastas que esta sessão pode ler.",
+      "extra-folder": "Em uma pasta anexada extra; o painel Código navega pela pasta principal.",
+      "no-session": "Inicie a sessão primeiro."
+    }
   }
 }

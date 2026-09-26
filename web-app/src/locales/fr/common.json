@@ -529,5 +529,51 @@
     "noMatches": "Aucun paramètre ne correspond",
     "noneForProvider": "Aucun paramètre réglable pour ce fournisseur.",
     "maybeUnsupported": "Peut ne pas être pris en charge par {{providers}}"
+  },
+  "rail": {
+    "resizeHint": "Faites glisser pour redimensionner. Double-cliquez pour basculer entre la largeur par défaut et large."
+  },
+  "turnUndo": {
+    "user": "vous"
+  },
+  "codePanel": {
+    "editing": "Modification",
+    "editingSandbox": "Modification de la copie sandbox",
+    "editingSandboxHint": "Révision seule : l’enregistrement écrit la copie sandbox de cette session. Appliquez-la depuis Modifications pour changer le dossier.",
+    "save": "Enregistrer",
+    "saving": "Enregistrement…",
+    "saveHint": "Enregistrer (Ctrl+S)",
+    "discard": "Annuler les modifications",
+    "discardAndClose": "Annuler et fermer",
+    "cancel": "Annuler",
+    "unsavedMark": "(non enregistré)",
+    "unsavedTitle": "Modifications non enregistrées",
+    "unsavedOne": "{{name}} contient des modifications non enregistrées.",
+    "unsavedMany": "{{count}} fichiers contiennent des modifications non enregistrées.",
+    "closeTabUnsaved": "Fermer {{name}} (modifications non enregistrées)",
+    "conflict": "Ce fichier a changé sur le disque depuis que vous avez commencé à le modifier.",
+    "conflictReload": "Recharger depuis le disque",
+    "conflictOverwrite": "Écraser",
+    "conflictKeep": "Continuer à modifier",
+    "saveFailed": "Échec de l’enregistrement : {{error}}",
+    "saved": "{{name}} enregistré",
+    "savedSandbox": "{{name}} enregistré dans la copie sandbox",
+    "editedByYou": "Modifié par vous",
+    "openPath": "Ouvrir {{path}} dans Code",
+    "openPathHint": "Ouvrir {{path}} dans Code (Ctrl+clic ou clic du milieu ouvre en arrière-plan)",
+    "openDiff": "Afficher la modification de {{path}} dans Modifications",
+    "readOnlyReason": {
+      "external": "Ouvert depuis l’extérieur du projet : il n’y a nulle part où l’enregistrer.",
+      "detached": "Le projet de ce fichier n’est plus attaché.",
+      "other-session": "Ce fichier appartient à la sandbox d’une autre session.",
+      "pending": "Vérification en cours de l’emplacement où cette session peut écrire.",
+      "no-grant": "Cette session ne peut pas écrire dans le dossier pour le moment. Autorisez à nouveau la modification pour changer des fichiers."
+    },
+    "unresolved": {
+      "not-source": "Ce n’est pas un fichier affiché par le panneau Code.",
+      "outside": "En dehors des dossiers que cette session peut lire.",
+      "extra-folder": "Dans un dossier attaché supplémentaire ; le panneau Code parcourt le dossier principal.",
+      "no-session": "Démarrez d’abord la session."
+    }
   }
 }

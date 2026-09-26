@@ -526,5 +526,51 @@
     "noMatches": "Không có tham số nào khớp",
     "noneForProvider": "Nhà cung cấp này không có tham số điều chỉnh được.",
     "maybeUnsupported": "Có thể không được {{providers}} hỗ trợ"
+  },
+  "rail": {
+    "resizeHint": "Kéo để đổi kích thước. Nhấp đúp để chuyển giữa độ rộng mặc định và rộng."
+  },
+  "turnUndo": {
+    "user": "bạn"
+  },
+  "codePanel": {
+    "editing": "Đang chỉnh sửa",
+    "editingSandbox": "Đang chỉnh sửa bản sao sandbox",
+    "editingSandboxHint": "Chỉ xem xét: lưu sẽ ghi vào bản sao sandbox của phiên này. Áp dụng từ Thay đổi để sửa thư mục.",
+    "save": "Lưu",
+    "saving": "Đang lưu…",
+    "saveHint": "Lưu (Ctrl+S)",
+    "discard": "Hủy thay đổi",
+    "discardAndClose": "Hủy và đóng",
+    "cancel": "Hủy",
+    "unsavedMark": "(chưa lưu)",
+    "unsavedTitle": "Thay đổi chưa lưu",
+    "unsavedOne": "{{name}} có thay đổi chưa lưu.",
+    "unsavedMany": "{{count}} tệp có thay đổi chưa lưu.",
+    "closeTabUnsaved": "Đóng {{name}} (thay đổi chưa lưu)",
+    "conflict": "Tệp này đã thay đổi trên đĩa kể từ khi bạn bắt đầu chỉnh sửa.",
+    "conflictReload": "Tải lại từ đĩa",
+    "conflictOverwrite": "Ghi đè",
+    "conflictKeep": "Tiếp tục chỉnh sửa",
+    "saveFailed": "Không thể lưu: {{error}}",
+    "saved": "Đã lưu {{name}}",
+    "savedSandbox": "Đã lưu {{name}} vào bản sao sandbox",
+    "editedByYou": "Do bạn chỉnh sửa",
+    "openPath": "Mở {{path}} trong Mã",
+    "openPathHint": "Mở {{path}} trong Mã (Ctrl+nhấp hoặc nhấp chuột giữa để mở ở nền)",
+    "openDiff": "Hiện thay đổi của {{path}} trong Thay đổi",
+    "readOnlyReason": {
+      "external": "Được mở từ bên ngoài dự án nên không có nơi để lưu lại.",
+      "detached": "Dự án của tệp này không còn được đính kèm.",
+      "other-session": "Tệp này thuộc sandbox của phiên khác.",
+      "pending": "Vẫn đang kiểm tra nơi phiên này được phép ghi.",
+      "no-grant": "Phiên này hiện không thể ghi vào thư mục. Hãy cấp quyền chỉnh sửa lại để thay đổi tệp."
+    },
+    "unresolved": {
+      "not-source": "Không phải tệp mà bảng Mã hiển thị.",
+      "outside": "Nằm ngoài các thư mục phiên này có thể đọc.",
+      "extra-folder": "Trong một thư mục đính kèm thêm; bảng Mã duyệt thư mục chính.",
+      "no-session": "Hãy bắt đầu phiên trước."
+    }
   }
 }
