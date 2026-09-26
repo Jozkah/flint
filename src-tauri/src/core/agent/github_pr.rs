@@ -139,23 +139,50 @@ fn parse_pr(json: &str) -> Result<PrStatus, String> {
     })
 }
 
-fn lookup_blocking(project: &Path) -> PrLookup {
+/// `gh pr view` arguments: the folder's current branch, or one pull request
+/// named by URL (a session's own, whatever the folder has checked out).
+fn view_args(pr: Option<&str>) -> Vec<String> {
+    let mut args = vec!["pr".to_string(), "view".to_string()];
+    if let Some(pr) = pr {
+        args.push(pr.to_string());
+    }
+    args.push("--json".to_string());
+    args.push(
+        "number,title,url,state,isDraft,headRefName,baseRefName,additions,deletions,statusCheckRollup"
+            .to_string(),
+    );
+    args
+}
+
+/// Only a GitHub pull-request URL is passed on to `gh`.
+fn is_pr_url(pr: &str) -> bool {
+    pr.starts_with("https://github.com/")
+        && pr.contains("/pull/")
+        && !pr.chars().any(|c| c.is_whitespace())
+}
+
+fn lookup_blocking(project: &Path, pr: Option<&str>) -> PrLookup {
     let Some(gh) = on_path(if cfg!(windows) { "gh.exe" } else { "gh" }) else {
         return PrLookup::GhMissing;
     };
-    if !project.is_dir() {
-        return PrLookup::NotARepository;
-    }
-    if super::git::current_branch(project).is_none() {
-        return PrLookup::NotARepository;
+    if let Some(pr) = pr {
+        if !is_pr_url(pr) {
+            return PrLookup::Failed { message: format!("not a pull request URL: {pr}") };
+        }
+    } else {
+        if !project.is_dir() {
+            return PrLookup::NotARepository;
+        }
+        if super::git::current_branch(project).is_none() {
+            return PrLookup::NotARepository;
+        }
     }
     let mut cmd = Command::new(&gh);
-    cmd.current_dir(project).args([
-        "pr",
-        "view",
-        "--json",
-        "number,title,url,state,isDraft,headRefName,baseRefName,additions,deletions,statusCheckRollup",
-    ]);
+    // A URL names its repository; the folder is only a working directory.
+    if project.is_dir() {
+        cmd.current_dir(project);
+    }
+    cmd.args(view_args(pr));
     // Never prompt: a missing login must fail, not wait for input.
     cmd.env("GH_PROMPT_DISABLED", "1");
     jan_utils::system::hide_console_window(&mut cmd);
@@ -185,11 +212,12 @@ fn lookup_blocking(project: &Path) -> PrLookup {
     }
 }
 
-/// The pull request for the branch checked out in `project`, if any.
+/// The pull request for the branch checked out in `project`, or, given `pr`
+/// (a pull-request URL a session recorded), that pull request.
 #[tauri::command]
-pub async fn agent_pr_status(project: String) -> PrLookup {
+pub async fn agent_pr_status(project: String, pr: Option<String>) -> PrLookup {
     let path = std::path::PathBuf::from(project);
-    let task = tokio::task::spawn_blocking(move || lookup_blocking(&path));
+    let task = tokio::task::spawn_blocking(move || lookup_blocking(&path, pr.as_deref()));
     match tokio::time::timeout(GH_TIMEOUT, task).await {
         Ok(Ok(result)) => result,
         Ok(Err(e)) => PrLookup::Failed { message: e.to_string() },
@@ -233,6 +261,16 @@ mod tests {
         assert_eq!(parse_pr(&base("OPEN", true)).unwrap().state, PrState::Draft);
         assert_eq!(parse_pr(&base("MERGED", false)).unwrap().state, PrState::Merged);
         assert_eq!(parse_pr(&base("CLOSED", true)).unwrap().state, PrState::Closed);
+    }
+
+    #[test]
+    fn views_a_named_pull_request_by_url_only() {
+        let url = "https://github.com/stockpath/KewScraper/pull/34";
+        assert!(is_pr_url(url));
+        assert!(!is_pr_url("--web"));
+        assert!(!is_pr_url("https://github.com/o/r/pull/1 --web"));
+        assert_eq!(view_args(Some(url))[2], url);
+        assert_eq!(view_args(None)[2], "--json");
     }
 
     #[test]

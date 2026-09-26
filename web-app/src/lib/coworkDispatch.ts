@@ -56,6 +56,7 @@ import {
   type GitPlan,
 } from '@/lib/gitTool'
 import { usePrStatusStore } from '@/stores/pr-status-store'
+import { recordSessionPr } from '@/lib/prClaimBackfill'
 import { attributeGitInput } from '@/lib/gitAttribution'
 
 export type DispatchContext = {
@@ -347,12 +348,22 @@ export async function dispatchCoworkTool(
   ctx: DispatchContext,
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
-  return withToolActivity(
+  const outcome = await withToolActivity(
     call,
     { session: ctx.sessionId, run: '', ...(ctx.activity ?? {}) },
     signal,
     () => routeCoworkTool(call, ctx, signal)
   )
+  // A pull request the call opened or named is this session's, whatever
+  // branch the attached folder has checked out.
+  if (!outcome.isError) {
+    try {
+      recordSessionPr(ctx.sessionId, call.toolName, call.input, outcome.output)
+    } catch {
+      // Recording is best effort; the call's answer stands.
+    }
+  }
+  return outcome
 }
 
 /** Resolves `false` as soon as `signal` aborts, whatever `answer` does. */

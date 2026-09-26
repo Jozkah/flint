@@ -39,7 +39,7 @@ const page = (events: EventEnvelope[]): EventsPage => ({
 })
 
 describe('PR claim backfill', () => {
-  beforeEach(() => usePrStatusStore.setState({ byFolder: {}, claims: {}, backfilled: false }))
+  beforeEach(() => usePrStatusStore.setState({ byFolder: {}, claims: {}, backfilled: false, sessionPrsBackfilled: true }))
 
   it('reads the pull request a gh pr create or create_pull_request opened', () => {
     expect(createdPrNumber(ghCreate)).toBe(31)

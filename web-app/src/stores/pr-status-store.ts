@@ -49,8 +49,34 @@ const FRESH_MS = 2 * 60_000
 
 type Entry = { lookup: PrLookup | null; at: number; loading: boolean }
 
+/**
+ * A pull request a session opened or named, recorded from its own tool call
+ * whatever the folder has checked out: a session opened KewScraper #34 from
+ * fix/storage-go-concurrent-map-race while the attached checkout sat on
+ * fix/stock-change-delta-detection, so the folder lookup never found it.
+ */
+export type SessionPr = {
+  url: string
+  number: number
+  /** `owner/name`. */
+  repo: string
+  head?: string
+  at: string
+}
+
 type PrStatusState = {
   byFolder: Record<string, Entry>
+  /** Live status of recorded pull requests, by URL. Not kept. */
+  byUrl: Record<string, Entry>
+  /** Session id to the pull requests it recorded, oldest first. */
+  sessionPrs: Record<string, SessionPr[]>
+  /** The event-log backfill of `sessionPrs` has run. */
+  sessionPrsBackfilled: boolean
+  /** Record pull requests for sessions; one already recorded is kept. */
+  addSessionPrs: (add: Record<string, SessionPr[]>) => void
+  markSessionPrsBackfilled: () => void
+  /** Ask for one recorded pull request's status. */
+  refreshUrl: (url: string, folder?: string | null, force?: boolean) => Promise<void>
   /** `folder#number` to the id of the session that opened or pushed it. */
   claims: Record<string, string>
   /** The event-log backfill of claims (`backfillPrClaims`) has run. */
@@ -126,6 +152,37 @@ export const usePrStatusStore = create<PrStatusState>()(
   persist(
   (set, get) => ({
   byFolder: {},
+  byUrl: {},
+  sessionPrs: {},
+  sessionPrsBackfilled: false,
+  addSessionPrs: (add) =>
+    set((s) => {
+      const next = { ...s.sessionPrs }
+      for (const [id, prs] of Object.entries(add)) {
+        const list = [...(next[id] ?? [])]
+        for (const pr of prs) if (!list.some((p) => p.url === pr.url)) list.push(pr)
+        list.sort((a, b) => a.at.localeCompare(b.at))
+        next[id] = list
+      }
+      return { sessionPrs: next }
+    }),
+  markSessionPrsBackfilled: () => set({ sessionPrsBackfilled: true }),
+  refreshUrl: async (url, folder, force = false) => {
+    const cur = get().byUrl[url]
+    if (cur?.loading) return
+    if (!force && cur && Date.now() - cur.at < FRESH_MS) return
+    set((s) => ({
+      byUrl: { ...s.byUrl, [url]: { lookup: cur?.lookup ?? null, at: cur?.at ?? 0, loading: true } },
+    }))
+    let lookup: PrLookup
+    try {
+      const { invoke } = await import('@tauri-apps/api/core')
+      lookup = await invoke<PrLookup>('agent_pr_status', { project: folder ?? '', pr: url })
+    } catch (e) {
+      lookup = { kind: 'failed', message: String(e) }
+    }
+    set((s) => ({ byUrl: { ...s.byUrl, [url]: { lookup, at: Date.now(), loading: false } } }))
+  },
   claims: {},
   backfilled: false,
   addClaims: (add) => set((s) => ({ claims: { ...add, ...s.claims } })),
@@ -168,7 +225,12 @@ export const usePrStatusStore = create<PrStatusState>()(
     storage: createJSONStorage(() => backendStorage),
     skipHydration: true,
     partialize: (s) =>
-      ({ claims: s.claims, backfilled: s.backfilled }) as unknown as PrStatusState,
+      ({
+        claims: s.claims,
+        backfilled: s.backfilled,
+        sessionPrs: s.sessionPrs,
+        sessionPrsBackfilled: s.sessionPrsBackfilled,
+      }) as unknown as PrStatusState,
   }
   )
 )
@@ -179,6 +241,60 @@ export const usePrStatusStore = create<PrStatusState>()(
  * claimed it.
  */
 export function usePrStatusView(
+  folder: string | null | undefined,
+  sessionId?: string | null
+): { pr: PrStatus; relation: 'mine' | 'foreign' } | null {
+  const own = useSessionPrs(sessionId, folder)[0]
+  const folderView = useFolderPrView(folder, sessionId)
+  // The session's own latest pull request first; the folder's branch after.
+  if (own) return { pr: own, relation: 'mine' }
+  return folderView
+}
+
+const NO_PRS: SessionPr[] = []
+
+/**
+ * Live status of the pull requests `sessionId` recorded, latest first. One
+ * whose status is not read yet is shown from what was recorded.
+ */
+export function useSessionPrs(
+  sessionId: string | null | undefined,
+  folder?: string | null
+): PrStatus[] {
+  const recorded =
+    usePrStatusStore((s) => (sessionId ? s.sessionPrs[sessionId] : undefined)) ?? NO_PRS
+  const byUrl = usePrStatusStore((s) => s.byUrl)
+  const urls = recorded.map((p) => p.url).join('\n')
+  useEffect(() => {
+    if (!urls || !isPlatformTauri()) return
+    for (const url of urls.split('\n')) void usePrStatusStore.getState().refreshUrl(url, folder)
+  }, [urls, folder])
+  return sessionPrStatuses(recorded, byUrl)
+}
+
+/** Recorded pull requests with their live status, latest first. */
+export function sessionPrStatuses(
+  recorded: SessionPr[],
+  byUrl: Record<string, Entry>
+): PrStatus[] {
+  return [...recorded].reverse().map((p) => {
+    const lookup = byUrl[p.url]?.lookup
+    if (lookup?.kind === 'found') return lookup.pr
+    return {
+      number: p.number,
+      title: '',
+      url: p.url,
+      state: 'open',
+      head: p.head ?? '',
+      base: '',
+      additions: 0,
+      deletions: 0,
+      checks: { passed: 0, failed: 0, pending: 0 },
+    }
+  })
+}
+
+function useFolderPrView(
   folder: string | null | undefined,
   sessionId?: string | null
 ): { pr: PrStatus; relation: 'mine' | 'foreign' } | null {

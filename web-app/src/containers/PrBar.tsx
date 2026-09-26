@@ -74,7 +74,12 @@ export function PrBar({
     )
   }
 
-  const repo = folder.split(/[\\/]/).filter(Boolean).pop() ?? folder
+  // The pull request's own repository: a session's may be in a clone other
+  // than the attached folder.
+  const repo =
+    /github\.com\/[^/]+\/([^/]+)\/pull\//.exec(pr.url)?.[1] ??
+    folder.split(/[\\/]/).filter(Boolean).pop() ??
+    folder
   const open = () => void getServiceHub().opener().openUrl(pr.url)
   const status = pr.state === 'open' ? 'pr' : pr.state
 
@@ -148,7 +153,12 @@ export function PrBar({
                 </div>
               )}
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => void usePrStatusStore.getState().refresh(folder, true)}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  void usePrStatusStore.getState().refresh(folder, true)
+                  void usePrStatusStore.getState().refreshUrl(pr.url, folder, true)
+                }}
+              >
                 <RefreshCw />
                 <span>{t('common:pr.refresh')}</span>
               </DropdownMenuItem>
