@@ -517,6 +517,29 @@ describe('ChatInput', () => {
     delete queueState['thread-1']
   })
 
+  it('shows held messages as chips in Chat', () => {
+    queueState['thread-1'] = [
+      { id: 'h', text: 'held one', createdAt: 1, held: true },
+      { id: 'r', text: 'ready one', createdAt: 1 },
+    ]
+    renderInput({ chatStatus: 'streaming' })
+    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
+      'held one',
+      'ready one',
+    ])
+  })
+
+  it('leaves held messages to the surface that shows them (Cowork), once', () => {
+    queueState['scope-1'] = [
+      { id: 'h', text: 'held one', createdAt: 1, held: true },
+      { id: 'r', text: 'ready one', createdAt: 1 },
+    ]
+    renderInput({ chatStatus: 'streaming', scopeKey: 'scope-1', heldShownElsewhere: true })
+    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
+      'ready one',
+    ])
+  })
+
   it('queues the message when streaming with a currentThreadId', async () => {
     promptState = 'queued msg'
     const onSubmit = vi.fn()

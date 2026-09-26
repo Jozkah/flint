@@ -5040,6 +5040,8 @@ function CoworkPage() {
                 showSpeedToken={false}
                 initialMessage={true}
                 scopeKey={session?.id}
+                // Held input is shown once, in CoworkHeldInput above.
+                heldShownElsewhere
                 ownsToolSet={false}
                 // `@` names files in the folder the run works in, nothing else.
                 referenceRoot={treeRoot}

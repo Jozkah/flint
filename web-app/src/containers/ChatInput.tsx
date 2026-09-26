@@ -218,6 +218,12 @@ type ChatInputProps = {
    */
   stopControl?: ReactNode
   /**
+   * The surface shows held messages in a panel of its own (Cowork's held
+   * input, with Send and Discard), so the composer leaves them out of its
+   * chips and each held message is shown once.
+   */
+  heldShownElsewhere?: boolean
+  /**
    * Usage for a surface that keeps no thread messages (Cowork). Rendering the
    * counter here rather than in the caller is what keeps its placement, the
    * `tokenCounterCompact` setting and the spacing to the send button identical
@@ -279,6 +285,7 @@ const ChatInput = memo(function ChatInput({
   onSubmit,
   onStop,
   chatStatus,
+  heldShownElsewhere = false,
   scopeKey,
   ownsToolSet = true,
   referenceRoot,
@@ -813,9 +820,12 @@ const ChatInput = memo(function ChatInput({
   // Queued messages for this thread (shown as chips in the input area)
   const queueId = scopeKey ?? currentThreadId ?? ''
   const queuedMessages = useMessageQueue(
-    useShallow((s) => s.getQueue(queueId))
+    useShallow((s) =>
+      heldShownElsewhere
+        ? s.getQueue(queueId).filter((m) => !m.held)
+        : s.getQueue(queueId)
+    )
   )
-  const queueLength = queuedMessages.length
 
   const removeQueuedMessage = useCallback(
     (id: string) => {
