@@ -2575,6 +2575,11 @@ const ChatInput = memo(function ChatInput({
                       textareaRef.current?.focus()
                     },
                     onRemove: removeQueuedMessage,
+                    // A held message (its run failed or was stopped) waits
+                    // for the user: Send lets it go as the next turn.
+                    onRelease: msg.held
+                      ? (id) => useMessageQueue.getState().release(queueId, id)
+                      : undefined,
                     // Steering only means something while a run works; a
                     // held message waits for the user and is sent, not steered.
                     onSteer:

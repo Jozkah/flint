@@ -1,5 +1,8 @@
 import { lastAssistantMessageIsCompleteWithToolCalls, type UIMessage } from 'ai'
-import type { QueuedMessage } from '@/stores/message-queue-store'
+import {
+  useMessageQueue,
+  type QueuedMessage,
+} from '@/stores/message-queue-store'
 
 /**
  * The chat's `sendAutomaticallyWhen`, with steering.
@@ -32,4 +35,14 @@ export function chatFollowUp({
   if (taken.length === 0) return true
   send(taken.map((m) => m.text).join('\n\n'))
   return false
+}
+
+/**
+ * What the chat sends once a run has ended (or failed): the next queued
+ * message that is not held. Held messages -- typed for a run that failed or
+ * was stopped -- wait for the user to Send or Discard them.
+ */
+export function nextChatTurn(threadId: string): { text: string } | null {
+  const next = useMessageQueue.getState().dequeueReady(threadId)
+  return next ? { text: next.text } : null
 }

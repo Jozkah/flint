@@ -38,6 +38,11 @@ type QueuedMessageChipProps = {
   onMoveUp?: (id: string) => void
   onMoveDown?: (id: string) => void
   /**
+   * Send a held message (one the run it was typed for did not take). Held
+   * messages show Send and Discard instead of Steer.
+   */
+  onRelease?: (id: string) => void
+  /**
    * Props for the drag handle (dnd-kit listeners and attributes). Absent when
    * the chip is not in a sortable list.
    */
@@ -80,6 +85,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
   onSteer,
   onMoveUp,
   onMoveDown,
+  onRelease,
   dragHandleProps,
 }: QueuedMessageChipProps) {
   const { t } = useTranslation()
@@ -118,7 +124,27 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
         {message.text}
       </span>
       <div className="ml-auto flex shrink-0 items-center gap-1">
-        {message.steer ? (
+        {message.held ? (
+          <>
+            <span
+              data-testid="queued-held"
+              className="text-[11px] text-muted-foreground"
+              title={t('common:queue.heldHint')}
+            >
+              {t('common:queue.held')}
+            </span>
+            {onRelease && (
+              <button
+                type="button"
+                data-testid="queued-send"
+                className="shrink-0 rounded-md px-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                onClick={() => onRelease(message.id)}
+              >
+                {t('common:steering.send')}
+              </button>
+            )}
+          </>
+        ) : message.steer ? (
           <span
             data-testid="queued-steering"
             className="text-[11px] text-muted-foreground"
@@ -168,7 +194,11 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
         )}
         {onRemove && (
           <ChipButton
-            label={t('common:queue.remove')}
+            label={
+              message.held
+                ? t('common:steering.discard')
+                : t('common:queue.remove')
+            }
             testId="queued-remove"
             onClick={() => onRemove(message.id)}
           >

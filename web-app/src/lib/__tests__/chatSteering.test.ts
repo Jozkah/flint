@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage } from 'ai'
-import { chatFollowUp } from '../chatSteering'
+import { chatFollowUp, nextChatTurn } from '../chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
 
 const q = () => useMessageQueue.getState()
@@ -76,5 +76,32 @@ describe('chat steering at the tool loop safe point', () => {
     expect(followUp).toBe(false)
     expect(send).not.toHaveBeenCalled()
     expect(q().getQueue('T')).toHaveLength(1)
+  })
+})
+
+describe('chat queue after a stream error', () => {
+  beforeEach(() => useMessageQueue.setState({ queues: {} }))
+
+  it('holds what was queued instead of clearing it or sending it', () => {
+    q().enqueue('T', { id: '1', text: 'one', createdAt: 1 })
+    q().enqueue('T', { id: '2', text: 'two', createdAt: 1, steer: true })
+    // What the chat does when status turns to 'error'.
+    q().holdQueue('T')
+    expect(q().getQueue('T').map((m) => [m.id, m.held, m.steer])).toEqual([
+      ['1', true, undefined],
+      ['2', true, undefined],
+    ])
+    expect(nextChatTurn('T')).toBeNull()
+    expect(q().getQueue('T')).toHaveLength(2)
+  })
+
+  it('sends a held message once the user presses Send, and drops it on Discard', () => {
+    q().enqueue('T', { id: '1', text: 'one', createdAt: 1 })
+    q().enqueue('T', { id: '2', text: 'two', createdAt: 1 })
+    q().holdQueue('T')
+    q().release('T', '2')
+    expect(nextChatTurn('T')).toEqual({ text: 'two' })
+    q().removeMessage('T', '1')
+    expect(q().getQueue('T')).toEqual([])
   })
 })

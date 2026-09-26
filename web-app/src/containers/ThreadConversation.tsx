@@ -43,7 +43,7 @@ import {
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
 import { generateId } from 'ai'
-import { chatFollowUp } from '@/lib/chatSteering'
+import { chatFollowUp, nextChatTurn } from '@/lib/chatSteering'
 import type { UIMessage } from '@ai-sdk/react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import {
@@ -2310,11 +2310,29 @@ export function ThreadConversation({
   // We only read the store imperatively when status transitions to 'ready'.
   const processingQueueRef = useRef(false)
 
+  // If streaming errors out, hold what is queued -- the way Cowork does -- for
+  // the user to send or discard: it was typed for a run that failed, and
+  // neither dropping it nor sending it on its own is right. Declared before the
+  // sender below so the hold lands first in the same commit.
   useEffect(() => {
-    if (status !== 'ready' || processingQueueRef.current) return
+    if (status === 'error') {
+      useMessageQueue.getState().holdQueue(threadId)
+    }
+  }, [status, threadId])
+
+  // Released (Send on a held chip) or newly queued messages. Read so the
+  // sender below runs when the user releases one after an error, when the
+  // status does not change.
+  const readyQueued = useMessageQueue(
+    (s) => s.getQueue(threadId).filter((m) => !m.held).length
+  )
+
+  useEffect(() => {
+    if (status !== 'ready' && status !== 'error') return
+    if (processingQueueRef.current) return
     if (threadBusy || sessionData.tools.length > 0) return
 
-    const next = useMessageQueue.getState().dequeue(threadId)
+    const next = nextChatTurn(threadId)
     if (!next) return
 
     processingQueueRef.current = true
@@ -2325,14 +2343,14 @@ export function ThreadConversation({
       .finally(() => {
         processingQueueRef.current = false
       })
-  }, [status, threadId, sendQueuedMessage, sessionData.tools.length, threadBusy])
-
-  // If streaming errors out, discard any queued messages so they don't sit there stuck
-  useEffect(() => {
-    if (status === 'error') {
-      useMessageQueue.getState().clearQueue(threadId)
-    }
-  }, [status, threadId])
+  }, [
+    status,
+    threadId,
+    sendQueuedMessage,
+    sessionData.tools.length,
+    threadBusy,
+    readyQueued,
+  ])
 
   // Attach the error to the assistant turn it belongs to so the banner renders
   // alongside any tool-call parts the model already produced. Falls back to the

@@ -11,6 +11,31 @@ import {
   queueDropTarget,
 } from '../QueuedMessageBubble'
 
+describe('QueuedMessageChip held', () => {
+  const held = { id: 'h', text: 'held text', createdAt: 1, held: true }
+
+  it('offers Send and Discard, not Steer', () => {
+    const onRelease = vi.fn()
+    const onRemove = vi.fn()
+    render(
+      <QueuedMessageChip
+        message={held}
+        onRelease={onRelease}
+        onRemove={onRemove}
+        onSteer={() => {}}
+      />
+    )
+    expect(screen.getByTestId('queued-held')).toBeInTheDocument()
+    expect(screen.queryByTestId('queued-steer')).toBeNull()
+    screen.getByTestId('queued-send').click()
+    expect(onRelease).toHaveBeenCalledWith('h')
+    const discard = screen.getByTestId('queued-remove')
+    expect(discard).toHaveAttribute('aria-label', 'common:steering.discard')
+    discard.click()
+    expect(onRemove).toHaveBeenCalledWith('h')
+  })
+})
+
 describe('QueuedMessageList drag to reorder', () => {
   const m = (id: string) => ({ id, text: `text ${id}`, createdAt: 1 })
 
