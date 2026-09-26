@@ -51,7 +51,9 @@ import {
   gitApproval,
   gitInsideSessionTree,
   gitRemoteFacts,
+  type GitPlan,
 } from '@/lib/gitTool'
+import { usePrStatusStore } from '@/stores/pr-status-store'
 
 export type DispatchContext = {
   sessionId: string
@@ -348,6 +350,33 @@ function unlessStopped(
 function stopReason(signal: AbortSignal): string {
   const reason = signal.reason
   return typeof reason === 'string' && reason ? reason : 'cancelled'
+}
+
+/**
+ * After a `git` call that can create or change a pull request succeeds --
+ * a push, or any `gh pr` / `gh repo` write -- ask again for the session
+ * folder's pull request, so the PR bar and the sidebar mark appear now. The
+ * store otherwise asked only when the folder changed, and a "no pull
+ * request" answer from before the agent opened one stood (session 8411d403:
+ * `gh pr create` succeeded and no bar showed).
+ */
+export function refreshPrStatusAfterGit(
+  plan: GitPlan,
+  ctx: Pick<DispatchContext, 'readOnlyFolder' | 'worktreePath'>
+): string[] {
+  const opensPr =
+    (plan.program === 'git' && plan.args[0] === 'push') ||
+    (plan.program === 'gh' &&
+      plan.class === 'remote' &&
+      (plan.args[0] === 'pr' || plan.args[0] === 'repo'))
+  if (!opensPr) return []
+  const folders = [ctx.readOnlyFolder, ctx.worktreePath].filter(
+    (f, i, all): f is string => !!f && all.indexOf(f) === i
+  )
+  for (const folder of folders) {
+    void usePrStatusStore.getState().refresh(folder, true)
+  }
+  return folders
 }
 
 /**
@@ -771,6 +800,7 @@ async function routeCoworkTool(
     }
     // A path that reads now is not missing any more.
     if (readPath) ctx.readFailures?.delete(readPath)
+    if (git) refreshPrStatusAfterGit(git.plan, ctx)
     return {
       output:
         typeof result.content === 'string'
