@@ -24,6 +24,7 @@ import {
   type ToolCallBar,
 } from '@/lib/toolPresentation'
 import { cn } from '@/lib/utils'
+import { archivedFirstAttempt } from '@/lib/firstAttemptArchive'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
 import { useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
@@ -132,10 +133,17 @@ export const TerminalWidget = memo(
     const live = useToolCallRuntime((s) =>
       toolCallId ? s.output[toolCallId] : undefined
     )
-    const firstAttempt = useToolCallRuntime((s) => {
-      const id = attemptCallId ?? toolCallId
-      return id ? s.firstAttempts[id] : undefined
-    })
+    const attemptId = attemptCallId ?? toolCallId
+    const liveFirstAttempt = useToolCallRuntime((s) =>
+      attemptId ? s.firstAttempts[attemptId] : undefined
+    )
+    // After a reload the runtime store is empty; the archive still has it.
+    const firstAttempt = useMemo(
+      () =>
+        liveFirstAttempt ??
+        (attemptId && !running ? archivedFirstAttempt(attemptId) : undefined),
+      [liveFirstAttempt, attemptId, running]
+    )
     const result = useMemo(
       () => (output ? parseBashOutput(output) : undefined),
       [output]
