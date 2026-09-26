@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /**
- * Split conversations: two panes, two threads, nothing shared.
+ * Split view: several panes, several threads, nothing shared.
  *
  * The route is rendered for real with the conversation machinery stubbed at
  * the same seams the single-thread route test uses. The composer stub reads
@@ -225,7 +225,8 @@ vi.mock('@/hooks/useMemoryProposals', () => ({
 vi.mock('@/lib/extension', () => ({
   ExtensionManager: { getInstance: () => ({ get: () => undefined }) },
 }))
-vi.mock('ai', () => ({
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
   generateId: () => 'gen-id',
   lastAssistantMessageIsCompleteWithToolCalls: () => false,
 }))
@@ -293,23 +294,26 @@ vi.mock('@/hooks/useAutoScroll', () => ({
     reset: vi.fn(),
   }),
 }))
-// The breakpoint, switchable mid-test without remounting anything.
-vi.mock('@/hooks/useMediaQuery', async () => {
+// The panes' width, switchable mid-test without remounting anything.
+vi.mock('@/hooks/useElementWidth', async () => {
   const { create } = await import('zustand')
-  const media = create<{ wide: boolean }>(() => ({ wide: false }))
+  const width = create<{ px: number }>(() => ({ px: 800 }))
   return {
-    __media: media,
-    useMediaQuery: () => media((s) => s.wide),
+    __width: width,
+    useElementWidth: () => width((s) => s.px),
   }
 })
 
 import { Route } from '../$threadId'
 import { usePrompt } from '@/hooks/usePrompt'
-import { useSplitConversation } from '@/hooks/useSplitConversation'
-import * as mediaModule from '@/hooks/useMediaQuery'
+import {
+  PRIMARY_PANE,
+  useSplitConversation,
+} from '@/hooks/useSplitConversation'
+import * as widthModule from '@/hooks/useElementWidth'
 
-const media = (mediaModule as any).__media as {
-  setState: (s: { wide: boolean }) => void
+const width = (widthModule as any).__width as {
+  setState: (s: { px: number }) => void
 }
 
 const renderRoute = () => {
@@ -317,33 +321,31 @@ const renderRoute = () => {
   return render(<Component />)
 }
 
-const pane = (id: 'primary' | 'secondary') =>
-  screen.getByTestId(`conversation-pane-${id}`)
+const pane = (id: string) => screen.getByTestId(`conversation-pane-${id}`)
 
-describe('split conversations', () => {
+const split = () => useSplitConversation.getState()
+
+describe('split view', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     for (const key of Object.keys(h.mounts)) delete h.mounts[key]
-    h.sessions['thread-a'] = { status: 'streaming', stop: vi.fn(), messages: [] }
-    h.sessions['thread-b'] = { status: 'streaming', stop: vi.fn(), messages: [] }
+    for (const id of ['thread-a', 'thread-b', 'thread-c', 'thread-d']) {
+      h.sessions[id] = { status: 'streaming', stop: vi.fn(), messages: [] }
+    }
     h.threadsState.currentThreadId = undefined
+    const thread = (id: string, title: string, model: string, provider: string, updated: number) => ({
+      id,
+      title,
+      metadata: {},
+      assistants: [],
+      model: { id: model, provider },
+      updated,
+    })
     h.threadsState.threads = {
-      'thread-a': {
-        id: 'thread-a',
-        title: 'Alpha',
-        metadata: {},
-        assistants: [],
-        model: { id: 'model-a', provider: 'openai' },
-        updated: 2,
-      },
-      'thread-b': {
-        id: 'thread-b',
-        title: 'Beta',
-        metadata: {},
-        assistants: [],
-        model: { id: 'model-b', provider: 'anthropic' },
-        updated: 1,
-      },
+      'thread-a': thread('thread-a', 'Alpha', 'model-a', 'openai', 4),
+      'thread-b': thread('thread-b', 'Beta', 'model-b', 'anthropic', 3),
+      'thread-c': thread('thread-c', 'Gamma', 'model-a', 'openai', 2),
+      'thread-d': thread('thread-d', 'Delta', 'model-a', 'openai', 1),
     }
     usePrompt.setState({
       prompt: '',
@@ -353,12 +355,12 @@ describe('split conversations', () => {
       scoped: {},
     })
     useSplitConversation.setState({
-      open: true,
-      secondaryThreadId: 'thread-b',
-      activePane: 'primary',
-      ratio: 0.5,
+      panes: [{ id: 'secondary', kind: 'chat', refId: 'thread-b' }],
+      sizes: [0.5, 0.5],
+      activePane: PRIMARY_PANE,
+      maxPanes: 4,
     })
-    media.setState({ wide: false })
+    width.setState({ px: 800 })
   })
 
   it('renders each pane as its own conversation with its own thread', () => {
@@ -388,6 +390,7 @@ describe('split conversations', () => {
     expect(screen.getByTestId('input-thread-a')).toHaveValue('question for alpha')
     expect(screen.getByTestId('input-thread-b')).toHaveValue('question for beta')
     expect(usePrompt.getState().prompt).toBe('question for alpha')
+    // The pane migrated from the two-pane split keeps its old draft scope.
     expect(usePrompt.getState().scoped['split:secondary'].prompt).toBe(
       'question for beta'
     )
@@ -440,14 +443,99 @@ describe('split conversations', () => {
       'aria-selected',
       'true'
     )
+    expect(pane('secondary')).toHaveAttribute('data-active', 'true')
+    expect(pane('primary')).toHaveAttribute('data-active', 'false')
   })
 
-  it('shows one pane at a time below 1100px and says when the other is replying', () => {
+  it('opens more than two panes, each with its own conversation and draft', () => {
+    width.setState({ px: 2000 })
+    act(() => {
+      split().addPane({ kind: 'chat', refId: 'thread-c' })
+      split().addPane({ kind: 'chat', refId: 'thread-d' })
+    })
+    renderRoute()
+    const ids = split().panes.map((p) => p.id)
+    expect(ids).toHaveLength(3)
+    expect(screen.getByTestId('conversation-panes')).toHaveAttribute(
+      'data-layout',
+      'columns'
+    )
+    for (const [paneId, threadId] of [
+      [ids[1], 'thread-c'],
+      [ids[2], 'thread-d'],
+    ]) {
+      expect(
+        within(pane(paneId)).getByTestId(`composer-${threadId}`)
+      ).toBeInTheDocument()
+    }
+    fireEvent.change(screen.getByTestId('input-thread-c'), {
+      target: { value: 'for gamma' },
+    })
+    fireEvent.change(screen.getByTestId('input-thread-d'), {
+      target: { value: 'for delta' },
+    })
+    expect(screen.getByTestId('input-thread-c')).toHaveValue('for gamma')
+    expect(screen.getByTestId('input-thread-d')).toHaveValue('for delta')
+    expect(screen.getByTestId('input-thread-a')).toHaveValue('')
+    expect(screen.getByTestId('input-thread-b')).toHaveValue('')
+    // Three dividers between four panes.
+    expect(screen.getAllByRole('separator')).toHaveLength(3)
+    // At the cap the Add pane action stands down.
+    expect(split().addPane()).toBe('full')
+
+    fireEvent.click(screen.getByTestId('stop-thread-c'))
+    expect(h.sessions['thread-c'].stop).toHaveBeenCalledTimes(1)
+    expect(h.sessions['thread-d'].stop).not.toHaveBeenCalled()
+  })
+
+  it('adds an empty pane from the Add pane action and fills it from the picker', () => {
+    renderRoute()
+    fireEvent.click(screen.getByTestId('split-add-pane'))
+    const added = split().panes[1]
+    expect(added.refId).toBeUndefined()
+    expect(
+      within(pane(added.id)).getByTestId('split-pane-picker')
+    ).toBeInTheDocument()
+    // Conversations already on screen are not offered again.
+    expect(
+      within(pane(added.id)).queryByTestId('split-pick-thread-a')
+    ).toBeNull()
+    expect(
+      within(pane(added.id)).queryByTestId('split-pick-thread-b')
+    ).toBeNull()
+    fireEvent.click(within(pane(added.id)).getByTestId('split-pick-thread-c'))
+    expect(split().panes[1].refId).toBe('thread-c')
+    expect(
+      within(pane(added.id)).getByTestId('composer-thread-c')
+    ).toBeInTheDocument()
+  })
+
+  it('closes one pane and leaves the others running', () => {
+    act(() => {
+      split().addPane({ kind: 'chat', refId: 'thread-c' })
+    })
+    renderRoute()
+    fireEvent.change(screen.getByTestId('input-thread-c'), {
+      target: { value: 'kept' },
+    })
+    fireEvent.click(screen.getByTestId('split-pane-close-secondary'))
+    expect(screen.queryByTestId('composer-thread-b')).toBeNull()
+    expect(split().panes.map((p) => p.refId)).toEqual(['thread-c'])
+    expect(screen.getByTestId('input-thread-c')).toHaveValue('kept')
+    expect(h.mounts['thread-a']).toBe(1)
+    expect(h.mounts['thread-c']).toBe(1)
+  })
+
+  it('shows one pane at a time when they do not fit, and says when another is replying', () => {
     h.chatSessionsState.sessions = {
       'thread-b': { isStreaming: true, chat: { messages: [] } },
     }
     try {
       renderRoute()
+      expect(screen.getByTestId('conversation-panes')).toHaveAttribute(
+        'data-layout',
+        'tabs'
+      )
       expect(pane('primary')).not.toHaveClass('invisible')
       expect(pane('secondary')).toHaveClass('invisible')
       expect(pane('secondary')).toHaveAttribute('aria-hidden', 'true')
@@ -465,50 +553,76 @@ describe('split conversations', () => {
     }
   })
 
-  it('switching panes and crossing the breakpoint keep both conversations mounted', () => {
+  it('turns extra panes into tabs below the minimum width per pane', () => {
+    act(() => {
+      split().addPane({ kind: 'chat', refId: 'thread-c' })
+    })
+    // Room for two panes of 420px, not three.
+    width.setState({ px: 1000 })
+    renderRoute()
+    expect(screen.getByTestId('conversation-panes')).toHaveAttribute(
+      'data-layout',
+      'tabs'
+    )
+    expect(screen.getAllByRole('tab')).toHaveLength(3)
+    expect(screen.queryAllByRole('separator')).toHaveLength(0)
+    act(() => width.setState({ px: 1300 }))
+    expect(screen.getByTestId('conversation-panes')).toHaveAttribute(
+      'data-layout',
+      'columns'
+    )
+    expect(screen.queryAllByRole('tab')).toHaveLength(0)
+  })
+
+  it('switching panes and crossing the width threshold keep every conversation mounted', () => {
     renderRoute()
     fireEvent.change(screen.getByTestId('input-thread-b'), {
       target: { value: 'kept draft' },
     })
     fireEvent.click(screen.getByTestId('split-pane-tab-secondary'))
     fireEvent.click(screen.getByTestId('split-pane-tab-primary'))
-    act(() => media.setState({ wide: true }))
-    act(() => media.setState({ wide: false }))
+    act(() => width.setState({ px: 2000 }))
+    act(() => width.setState({ px: 600 }))
 
     expect(h.mounts['thread-a']).toBe(1)
     expect(h.mounts['thread-b']).toBe(1)
     expect(screen.getByTestId('input-thread-b')).toHaveValue('kept draft')
   })
 
-  it('sits side by side at 1100px with a divider the keyboard can move', () => {
-    media.setState({ wide: true })
+  it('sits side by side when wide enough, with dividers the keyboard can move', () => {
+    width.setState({ px: 1200 })
     renderRoute()
     expect(pane('primary')).not.toHaveClass('invisible')
     expect(pane('secondary')).not.toHaveClass('invisible')
-    expect(pane('primary')).toHaveStyle({ width: '50%' })
+    expect(pane('primary').style.flexGrow).toBe('0.5')
 
     const divider = screen.getByRole('separator')
     expect(divider).toHaveAttribute('aria-valuenow', '50')
     fireEvent.keyDown(divider, { key: 'ArrowRight' })
-    expect(useSplitConversation.getState().ratio).toBeCloseTo(0.52)
-    fireEvent.keyDown(divider, { key: 'End' })
-    expect(divider).toHaveAttribute('aria-valuenow', '70')
+    expect(split().sizes[0]).toBeCloseTo(0.52)
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    fireEvent.keyDown(divider, { key: 'ArrowLeft' })
+    expect(split().sizes[0]).toBeCloseTo(0.48)
+    expect(divider).toHaveAttribute('aria-valuenow', '48')
   })
 
-  it('never opens the same thread in both panes', () => {
-    useSplitConversation.setState({ secondaryThreadId: 'thread-a' })
+  it('never opens the same thread in two panes', () => {
+    useSplitConversation.setState({
+      panes: [{ id: 'secondary', kind: 'chat', refId: 'thread-a' }],
+    })
     renderRoute()
     expect(screen.getAllByTestId('composer-thread-a')).toHaveLength(1)
     expect(screen.getByTestId('split-pane-picker')).toBeInTheDocument()
   })
 
-  it('opens a recent conversation from the picker in the second pane', () => {
-    useSplitConversation.setState({ secondaryThreadId: undefined })
+  it('changes the conversation a pane shows', () => {
     renderRoute()
-    fireEvent.click(screen.getByTestId('split-pick-thread-b'))
-    expect(useSplitConversation.getState().secondaryThreadId).toBe('thread-b')
+    fireEvent.click(screen.getByTestId('split-pane-change-secondary'))
+    expect(split().panes[0].refId).toBeUndefined()
+    fireEvent.click(screen.getByTestId('split-pick-thread-c'))
+    expect(split().panes[0].refId).toBe('thread-c')
     expect(
-      within(pane('secondary')).getByTestId('composer-thread-b')
+      within(pane('secondary')).getByTestId('composer-thread-c')
     ).toBeInTheDocument()
   })
 
@@ -524,5 +638,16 @@ describe('split conversations', () => {
     expect(screen.getByTestId('input-thread-a')).toHaveValue('main draft')
     // Back to one conversation: the Split action is offered again.
     expect(screen.getByTestId('split-conversation-open')).toBeInTheDocument()
+  })
+
+  it('opens a new pane from the header Split action', () => {
+    useSplitConversation.setState({ panes: [], sizes: [1] })
+    renderRoute()
+    expect(screen.queryByTestId('split-bar')).toBeNull()
+    fireEvent.click(screen.getByTestId('split-conversation-open'))
+    expect(split().panes).toHaveLength(1)
+    expect(screen.getByTestId('split-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('split-pane-picker')).toBeInTheDocument()
+    expect(h.mounts['thread-a']).toBe(1)
   })
 })

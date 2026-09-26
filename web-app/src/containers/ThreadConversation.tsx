@@ -184,7 +184,7 @@ import {
   useConversationPane,
 } from '@/hooks/useConversationPane'
 import {
-  SECONDARY_DRAFT_SCOPE,
+  paneDraftScope,
   useSplitConversation,
 } from '@/hooks/useSplitConversation'
 
@@ -2570,7 +2570,7 @@ export function ThreadConversation({
               </DropdownMenuItem>
               {extra && (
                 <DropdownMenuItem
-                  onSelect={() => useSplitConversation.getState().openSplit()}
+                  onSelect={() => useSplitConversation.getState().addPane()}
                 >
                   <Columns2 className="size-4" />
                   <span>{t('chat:split.open')}</span>
@@ -2948,9 +2948,7 @@ export function ThreadConversation({
             // Named, not inferred from the current thread: in a split the
             // current thread is the other pane half the time.
             threadId={threadId}
-            draftScope={
-              paneId === 'secondary' ? SECONDARY_DRAFT_SCOPE : undefined
-            }
+            draftScope={paneDraftScope(paneId)}
             takeFocus={isActive}
           />
         </div>

@@ -5,6 +5,11 @@ import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
+import {
+  CoworkSplitWorkspace,
+  SplitToggleButton,
+} from '@/containers/SplitConversation'
+import { useCoworkPane } from '@/hooks/useCoworkPane'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
 import { ensureCoworkEnabled } from '@/lib/coworkGate'
@@ -426,8 +431,17 @@ const JOB_POLL_MS = 3000
 
 export const Route = createFileRoute(route.cowork as any)({
   beforeLoad: () => ensureCoworkEnabled(),
-  component: CoworkPage,
+  component: CoworkRoute,
 })
+
+/** The current session, with any split-view panes beside it. */
+function CoworkRoute() {
+  return (
+    <CoworkSplitWorkspace>
+      <CoworkPage />
+    </CoworkSplitWorkspace>
+  )
+}
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
 /**
@@ -478,8 +492,11 @@ const slashTitle = (text: string) => {
   return slash ? slashDisplay(slash.invocation) : text
 }
 
-function CoworkPage() {
+// Exported for split view, which shows a session in a pane of its own.
+export function CoworkPage() {
   const { t } = useTranslation()
+  // In a split-view pane: that pane's session, not the current one.
+  const coworkPane = useCoworkPane()
   const serviceHub = useServiceHub()
   // The session's own model when it has one (#215): the picker no longer
   // mirrors a session's choice into the global store, so the readiness card
@@ -491,7 +508,9 @@ function CoworkPage() {
     providers: modelProviders,
   } = useModelProvider()
   const viewedModel = useCoworkSessions(
-    (s) => s.sessions.find((x) => x.id === s.currentId)?.model
+    (s) =>
+      s.sessions.find((x) => x.id === (coworkPane?.sessionId ?? s.currentId))
+        ?.model
   )
   const { selectedModel, selectedProvider } = useMemo(
     () =>
@@ -517,7 +536,8 @@ function CoworkPage() {
   )
 
   const sessions = useCoworkSessions((s) => s.sessions)
-  const currentId = useCoworkSessions((s) => s.currentId)
+  const routeCurrentId = useCoworkSessions((s) => s.currentId)
+  const currentId = coworkPane?.sessionId ?? routeCurrentId
   const session = useMemo(
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
@@ -4602,6 +4622,7 @@ function CoworkPage() {
           )}
           {!phone && (
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {!coworkPane && <SplitToggleButton />}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
                 {detailsBody}
@@ -5111,6 +5132,7 @@ function CoworkPage() {
                 showSpeedToken={false}
                 initialMessage={true}
                 scopeKey={session?.id}
+                draftScope={coworkPane?.draftScope}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}

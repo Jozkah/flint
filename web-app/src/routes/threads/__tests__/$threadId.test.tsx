@@ -296,8 +296,9 @@ vi.mock('@tabler/icons-react', () => ({
   IconRefresh: () => <span />,
 }))
 
-vi.mock('@/lib/utils', () => ({
-  cn: (...classes: any[]) => classes.filter(Boolean).join(' '),
+vi.mock('@/lib/utils', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/utils')>()),
+  cn:(...classes: any[]) => classes.filter(Boolean).join(' '),
 }))
 
 vi.mock('@/containers/WhatJanIsUsing', () => ({
@@ -360,7 +361,8 @@ vi.mock('@/types/attachment', () => ({
   createImageAttachment: (x: any) => ({ type: 'image', ...x }),
 }))
 
-vi.mock('ai', () => ({
+vi.mock('ai', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('ai')>()),
   generateId: () => 'gen-id',
   lastAssistantMessageIsCompleteWithToolCalls: () => false,
 }))

@@ -24,3 +24,15 @@ export function HeaderSlotProvider({ children }: { children: ReactNode }) {
 export function useHeaderSlot() {
   return useContext(HeaderSlotContext)
 }
+
+/**
+ * Inside a split-view pane a page's context controls belong to the pane, not
+ * the shell's header: with no slot, `HeaderPage` renders them in place.
+ */
+export function NoHeaderSlot({ children }: { children: ReactNode }) {
+  return (
+    <HeaderSlotContext.Provider value={null}>
+      {children}
+    </HeaderSlotContext.Provider>
+  )
+}
