@@ -1349,14 +1349,14 @@
     "observed": "Appeared during this run. Nothing shows Flint caused these:",
     "unknown": "No Git evidence either way for these:",
     "baseline": {
-      "clean": "Compared against a clean working tree.",
+      "clean": "The attached folder's Git working tree had no uncommitted changes when this run started.",
       "dirty": "The working tree already had changes when this run started.",
       "non-git": "This folder is not a Git repository, so nothing could be compared.",
       "git-unavailable": "Git could not be read, so nothing could be compared.",
       "incomplete": "The starting state was never fully captured, so nothing could be compared.",
       "none": "No starting state was recorded, so nothing could be compared."
     },
-    "nothing": "Flint changed no files in this run.",
+    "nothing": "This run changed no files. Changes from earlier runs in this session stay listed in Review changes.",
     "row": {
       "jan-write": "Flint changed this",
       "jan-write-over": "Flint changed this, over existing changes",
