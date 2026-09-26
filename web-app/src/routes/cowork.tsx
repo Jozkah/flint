@@ -554,6 +554,10 @@ export function CoworkPage() {
   const sessions = useCoworkSessions((s) => s.sessions)
   const routeCurrentId = useCoworkSessions((s) => s.currentId)
   const currentId = coworkPane?.sessionId ?? routeCurrentId
+  // Read at call time by every handler that resolves "the session": in a
+  // split pane it must be the pane's own, not the global selection.
+  const paneSessionIdRef = useRef(coworkPane?.sessionId)
+  paneSessionIdRef.current = coworkPane?.sessionId
   const session = useMemo(
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
@@ -1100,7 +1104,7 @@ export function CoworkPage() {
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
   const openCode = useCallback((tab: CodeTab) => {
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
     store.setCodePanel(
@@ -1248,7 +1252,7 @@ export function CoworkPage() {
   // their own empty states, so neither is ever disabled.
   const selectRail = useCallback(
     (mode: RailMode) => {
-      if (mode === 'code') ensureCurrentSession()
+      if (mode === 'code') ensureCurrentSession(paneSessionIdRef.current)
       const kind =
         mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
       if (rail?.kind === kind) {
@@ -1460,7 +1464,7 @@ export function CoworkPage() {
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
     if (folderHeld(session?.id)) return
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     useCoworkSessions.getState().setFolder(sid, picked)
   }, [serviceHub, session?.id, folderHeld])
 
@@ -2108,7 +2112,7 @@ export function CoworkPage() {
     // not drawn as something the user said.
     hidden = false
   ) => {
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
     const store = useCoworkSessions.getState()
@@ -4530,7 +4534,9 @@ export function CoworkPage() {
       model={session?.model}
       useLastUsedModel={!session?.model}
       onModelChange={(model) =>
-        useCoworkSessions.getState().setModel(ensureCurrentSession(), {
+        useCoworkSessions
+          .getState()
+          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
           provider: model.provider,
           id: model.id,
         })
@@ -4562,7 +4568,9 @@ export function CoworkPage() {
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
         onChange={(next) =>
-          useCoworkSessions.getState().setMode(ensureCurrentSession(), next)
+          useCoworkSessions
+            .getState()
+            .setMode(ensureCurrentSession(paneSessionIdRef.current), next)
         }
       />
       <CoworkAccessSelector

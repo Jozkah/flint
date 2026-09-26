@@ -4,6 +4,7 @@ import { Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkPane } from '@/hooks/useCoworkPane'
 import { AgentReplyForm } from '@/containers/AgentReplyForm'
 import type { AgentMessageAttribution } from '@/types/coworkSession'
 
@@ -46,10 +47,12 @@ export function AgentMessageHeader({
 }) {
   const { t } = useTranslation()
   const currentId = useCoworkSessions((s) => s.currentId)
+  // In a split pane the session in view is the pane's, not the selection.
+  const paneSessionId = useCoworkPane()?.sessionId
   const [replying, setReplying] = useState(false)
   const [sent, setSent] = useState(false)
   const message = agentMessageOf(metadata)
-  const receiver = sessionId ?? currentId
+  const receiver = sessionId ?? paneSessionId ?? currentId
   if (!message) return null
 
   return (

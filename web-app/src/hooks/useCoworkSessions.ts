@@ -1017,9 +1017,17 @@ function dropBlanks(sessions: CoworkSession[], keepId: string): CoworkSession[] 
   return next.length === sessions.length ? sessions : next
 }
 
-/** Return the current session, creating one if none is selected. */
-export function ensureCurrentSession(): string {
+/**
+ * Return the current session, creating one if none is selected.
+ *
+ * `paneSessionId` is the session of the split-view pane asking: a pane acts
+ * on its own session, never on the global selection (which belongs to the
+ * main pane), so when it names a session that exists, that one is returned.
+ */
+export function ensureCurrentSession(paneSessionId?: string | null): string {
   const { currentId, sessions, createSession } = useCoworkSessions.getState()
+  if (paneSessionId && sessions.some((s) => s.id === paneSessionId))
+    return paneSessionId
   if (currentId && sessions.some((s) => s.id === currentId)) return currentId
   // The selection points nowhere. A blank session already in the list is the
   // new one; creating another each time is how blanks accumulated.

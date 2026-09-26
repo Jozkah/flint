@@ -237,7 +237,7 @@ vi.mock('@/lib/coworkRunner', async (orig) => {
       // Captured, not called: each test drives the dispatcher itself, which is
       // exactly the seam a model would exercise.
       h.deps = opts.deps
-      h.runTurn(opts)
+      await h.runTurn(opts)
       return {
         messages: opts.messages,
         steps: 1,
@@ -317,6 +317,10 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { CoworkPaneContext } from '@/hooks/useCoworkPane'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { useMessageQueue } from '@/stores/message-queue-store'
 import { Route } from '@/routes/cowork'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
@@ -1284,5 +1288,123 @@ describe('the branch shown for the attached folder', () => {
     })
     expect(screen.queryByText(/branch-of-repo/)).toBeNull()
     expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('two sessions side by side in split view', () => {
+  const OTHER = 'session-in-pane'
+  const session = (id: string) =>
+    useCoworkSessions.getState().sessions.find((s) => s.id === id) as any
+
+  /** The route's session (SESSION) on the left, OTHER in a pane beside it. */
+  const renderSplit = async () => {
+    const base = useCoworkSessions.getState().sessions[0]
+    useCoworkSessions.setState({
+      sessions: [
+        base,
+        { ...base, id: OTHER, title: 'Other', created: 2, updated: 2 },
+      ],
+      currentId: SESSION,
+    })
+    useSplitConversation.setState({
+      panes: [{ id: 'right', kind: 'cowork', refId: OTHER }],
+    } as any)
+    render(
+      <>
+        <div data-testid="left">
+          <CoworkPage />
+        </div>
+        <div data-testid="right">
+          <CoworkPaneContext.Provider
+            value={{ sessionId: OTHER, draftScope: 'pane:right' }}
+          >
+            <CoworkPage />
+          </CoworkPaneContext.Provider>
+        </div>
+      </>
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+  }
+  const inPane = (pane: 'left' | 'right', testId: string) =>
+    screen
+      .getByTestId(pane)
+      .querySelector(`[data-testid="${testId}"]`) as HTMLElement
+
+  beforeEach(() => {
+    useCoworkRun.setState({ runs: {} } as any)
+    useMessageQueue.setState({ queues: {} } as any)
+  })
+  afterEach(() => {
+    useCoworkRun.setState({ runs: {} } as any)
+    useMessageQueue.setState({ queues: {} } as any)
+    useSplitConversation.setState({ panes: [] } as any)
+  })
+
+  it("sends what is typed in the right pane to the right pane's session only", async () => {
+    await renderSplit()
+    h.text = 'go ahead'
+    await userEvent.click(inPane('right', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(OTHER)
+    await waitFor(() =>
+      expect(JSON.stringify(session(OTHER).turns)).toContain('go ahead')
+    )
+    expect(session(SESSION).turns).toEqual([])
+    // The pane does not take over the sidebar's selection.
+    expect(useCoworkSessions.getState().currentId).toBe(SESSION)
+  })
+
+  it("still sends the left pane's message to the left session", async () => {
+    await renderSplit()
+    h.text = 'left words'
+    await userEvent.click(inPane('left', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(SESSION)
+    expect(JSON.stringify(session(OTHER).turns)).not.toContain('left words')
+  })
+
+  it("sends a message queued for the pane's session into that session", async () => {
+    await renderSplit()
+    act(() => {
+      useMessageQueue.getState().enqueue(OTHER, {
+        id: 'q1',
+        text: 'queued for the pane',
+        createdAt: 1,
+      })
+    })
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(OTHER)
+    await waitFor(() =>
+      expect(JSON.stringify(session(OTHER).turns)).toContain(
+        'queued for the pane'
+      )
+    )
+    expect(session(SESSION).turns).toEqual([])
+  })
+
+  it("stops only the pane's own run from the pane's stop control", async () => {
+    const release: Array<() => void> = []
+    h.runTurn.mockImplementation(
+      () => new Promise<void>((resolve) => release.push(resolve))
+    )
+    await renderSplit()
+    await userEvent.click(inPane('left', 'submit'))
+    await userEvent.click(inPane('right', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(2))
+    act(() => {
+      const q = useMessageQueue.getState()
+      q.enqueue(SESSION, { id: 'a', text: 'for left', createdAt: 1 })
+      q.enqueue(OTHER, { id: 'b', text: 'for right', createdAt: 1 })
+    })
+    await userEvent.click(inPane('right', 'stop'))
+    const queues = useMessageQueue.getState()
+    expect(queues.getQueue(OTHER).every((m) => m.held)).toBe(true)
+    expect(queues.getQueue(SESSION).some((m) => !m.held)).toBe(true)
+    await act(async () => {
+      for (const r of release) r()
+    })
+    h.runTurn.mockReset()
   })
 })
