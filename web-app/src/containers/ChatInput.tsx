@@ -45,8 +45,9 @@ import {
   X,
 } from 'lucide-react'
 import { generateId } from 'ai'
+import { holdQueueThenStop } from '@/lib/chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { QueuedMessageChip } from '@/containers/QueuedMessageBubble'
+import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
@@ -217,6 +218,12 @@ type ChatInputProps = {
    */
   stopControl?: ReactNode
   /**
+   * The surface shows held messages in a panel of its own (Cowork's held
+   * input, with Send and Discard), so the composer leaves them out of its
+   * chips and each held message is shown once.
+   */
+  heldShownElsewhere?: boolean
+  /**
    * Usage for a surface that keeps no thread messages (Cowork). Rendering the
    * counter here rather than in the caller is what keeps its placement, the
    * `tokenCounterCompact` setting and the spacing to the send button identical
@@ -278,6 +285,7 @@ const ChatInput = memo(function ChatInput({
   onSubmit,
   onStop,
   chatStatus,
+  heldShownElsewhere = false,
   scopeKey,
   ownsToolSet = true,
   referenceRoot,
@@ -812,9 +820,12 @@ const ChatInput = memo(function ChatInput({
   // Queued messages for this thread (shown as chips in the input area)
   const queueId = scopeKey ?? currentThreadId ?? ''
   const queuedMessages = useMessageQueue(
-    useShallow((s) => s.getQueue(queueId))
+    useShallow((s) =>
+      heldShownElsewhere
+        ? s.getQueue(queueId).filter((m) => !m.held)
+        : s.getQueue(queueId)
+    )
   )
-  const queueLength = queuedMessages.length
 
   const removeQueuedMessage = useCallback(
     (id: string) => {
@@ -2562,37 +2573,41 @@ const ChatInput = memo(function ChatInput({
             )}
             {queuedMessages.length > 0 && (
               <div className="flex flex-col gap-1 px-3 pt-2 pb-0">
-                {queuedMessages.map((msg, index) => (
-                  <QueuedMessageChip
-                    key={msg.id}
-                    message={msg}
-                    onEdit={(queued) => {
+                <QueuedMessageList
+                  messages={queuedMessages}
+                  onReorder={(id, overId) =>
+                    useMessageQueue.getState().reorder(queueId, id, overId)
+                  }
+                  chipProps={(msg, index) => ({
+                    onEdit: (queued) => {
                       // Put the text back in the input for editing, remove from queue
                       setPrompt(queued.text)
                       removeQueuedMessage(queued.id)
                       textareaRef.current?.focus()
-                    }}
-                    onRemove={removeQueuedMessage}
+                    },
+                    onRemove: removeQueuedMessage,
+                    // A held message (its run failed or was stopped) waits
+                    // for the user: Send lets it go as the next turn.
+                    onRelease: msg.held
+                      ? (id) => useMessageQueue.getState().release(queueId, id)
+                      : undefined,
                     // Steering only means something while a run works; a
                     // held message waits for the user and is sent, not steered.
-                    onSteer={
+                    onSteer:
                       (isStreaming || threadBusy) && !msg.held && !msg.from
                         ? (id) =>
                             useMessageQueue.getState().steerNow(queueId, id)
-                        : undefined
-                    }
-                    onMoveUp={
+                        : undefined,
+                    onMoveUp:
                       index > 0
                         ? (id) => useMessageQueue.getState().move(queueId, id, -1)
-                        : undefined
-                    }
-                    onMoveDown={
+                        : undefined,
+                    onMoveDown:
                       index < queuedMessages.length - 1
                         ? (id) => useMessageQueue.getState().move(queueId, id, 1)
-                        : undefined
-                    }
-                  />
-                ))}
+                        : undefined,
+                  })}
+                />
               </div>
             )}
             {slashCommands.open && (
@@ -3352,33 +3367,24 @@ const ChatInput = memo(function ChatInput({
                       size="icon-sm"
                       className="size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
                       data-test-id="stop-button"
-                      aria-label={
-                        queueLength > 0
-                          ? `Clear ${queueLength} queued message(s)`
-                          : 'Stop generating'
-                      }
+                      aria-label="Stop generating"
                       onClick={() => {
-                        // Stopping with messages queued clears the queue —
-                        // there is nothing to interrupt yet. The old
-                        // `if (!currentThreadId) return` guard made this button
-                        // inert for any surface without a thread id.
-                        if (queueId) {
-                          const queue = useMessageQueue
-                            .getState()
-                            .getQueue(queueId)
-                          if (queue.length > 0) {
-                            useMessageQueue.getState().clearQueue(queueId)
-                            return
-                          }
-                        }
-                        stopStreaming(currentThreadId ?? '')
+                        // Stop always stops the run. What is queued is held,
+                        // not cleared: each chip then offers Send and
+                        // Discard. Held first, so the stopping run cannot
+                        // take a steering message on its way out. The old
+                        // `if (!currentThreadId) return` guard made this
+                        // button inert for any surface without a thread id.
+                        holdQueueThenStop([queueId], () =>
+                          stopStreaming(currentThreadId ?? '')
+                        )
                       }}
                     >
                       <Square className="size-3 fill-current" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{queueLength > 0 ? `Clear ${queueLength} queued message(s)` : 'Stop generating'}</p>
+                    <p>Stop generating</p>
                   </TooltipContent>
                 </Tooltip>
               ) : (

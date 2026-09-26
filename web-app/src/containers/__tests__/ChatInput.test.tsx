@@ -202,6 +202,7 @@ const enqueueMock = vi.fn((tid: string, msg: any) => {
 })
 const removeMessageMock = vi.fn()
 const clearQueueMock = vi.fn()
+const holdQueueMock = vi.fn()
 const getQueueMock = vi.fn((tid: string) => queueState[tid] || [])
 
 function useMessageQueueImpl(selector?: any) {
@@ -210,6 +211,7 @@ function useMessageQueueImpl(selector?: any) {
     enqueue: enqueueMock,
     removeMessage: removeMessageMock,
     clearQueue: clearQueueMock,
+    holdQueue: holdQueueMock,
   }
   if (selector) return selector(state)
   return state
@@ -219,6 +221,7 @@ function useMessageQueueImpl(selector?: any) {
   enqueue: enqueueMock,
   removeMessage: removeMessageMock,
   clearQueue: clearQueueMock,
+  holdQueue: holdQueueMock,
 })
 vi.mock('@/stores/message-queue-store', () => ({
   useMessageQueue: useMessageQueueImpl,
@@ -270,9 +273,12 @@ vi.mock('@/lib/slashCatalog', () => ({
 
 // Stub heavy children
 vi.mock('@/containers/QueuedMessageBubble', () => ({
-  QueuedMessageChip: ({ message }: any) => (
-    <div data-testid="queued-chip">{message?.text}</div>
-  ),
+  QueuedMessageList: ({ messages }: any) =>
+    messages.map((m: any) => (
+      <div key={m.id} data-testid="queued-chip">
+        {m.text}
+      </div>
+    )),
 }))
 vi.mock('@/containers/DropdownToolsAvailable', () => ({
   __esModule: true,
@@ -364,6 +370,7 @@ const resetAll = () => {
   navigateHistoryMock.mockClear()
   enqueueMock.mockClear()
   clearQueueMock.mockClear()
+  holdQueueMock.mockClear()
   for (const k of Object.keys(queueState)) delete queueState[k]
   getCurrentThreadMock.mockReturnValue(undefined)
 }
@@ -494,6 +501,43 @@ describe('ChatInput', () => {
     // Accept either onStop called OR clearQueue called (both are valid stop-click paths).
     const clicked = onStop.mock.calls.length + clearQueueMock.mock.calls.length
     expect(clicked).toBeGreaterThanOrEqual(0) // smoke: no crash
+  })
+
+  it('Stop holds the queue and stops the run instead of clearing the queue', () => {
+    promptState = ''
+    const onStop = vi.fn()
+    queueState['thread-1'] = [{ id: 'q1', text: 'waiting', createdAt: 1 }]
+    renderInput({ chatStatus: 'streaming', onStop })
+    const stopBtn = document.querySelector('[data-test-id="stop-button"]')
+    expect(stopBtn).not.toBeNull()
+    fireEvent.click(stopBtn!)
+    expect(holdQueueMock).toHaveBeenCalledWith('thread-1')
+    expect(onStop).toHaveBeenCalled()
+    expect(clearQueueMock).not.toHaveBeenCalled()
+    delete queueState['thread-1']
+  })
+
+  it('shows held messages as chips in Chat', () => {
+    queueState['thread-1'] = [
+      { id: 'h', text: 'held one', createdAt: 1, held: true },
+      { id: 'r', text: 'ready one', createdAt: 1 },
+    ]
+    renderInput({ chatStatus: 'streaming' })
+    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
+      'held one',
+      'ready one',
+    ])
+  })
+
+  it('leaves held messages to the surface that shows them (Cowork), once', () => {
+    queueState['scope-1'] = [
+      { id: 'h', text: 'held one', createdAt: 1, held: true },
+      { id: 'r', text: 'ready one', createdAt: 1 },
+    ]
+    renderInput({ chatStatus: 'streaming', scopeKey: 'scope-1', heldShownElsewhere: true })
+    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
+      'ready one',
+    ])
   })
 
   it('queues the message when streaming with a currentThreadId', async () => {

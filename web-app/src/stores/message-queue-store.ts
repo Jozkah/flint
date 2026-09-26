@@ -66,6 +66,11 @@ interface MessageQueueState {
   takeSteering: (threadId: string) => QueuedMessage[]
   /** Move one message up (-1) or down (+1) in its queue. */
   move: (threadId: string, messageId: string, delta: number) => void
+  /**
+   * Put one message where another is (drag and drop): the dragged message
+   * takes the target's place and the ones between shift by one.
+   */
+  reorder: (threadId: string, messageId: string, overId: string) => void
 }
 
 /** What the running turn takes at a safe point. */
@@ -160,8 +165,9 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
           ...state.queues,
           // A held message waits for the user; releasing it later sends it
           // as a turn of its own, not as steering for a run it missed.
-          [threadId]: queue.map(({ steer: _steer, ...m }) => ({
+          [threadId]: queue.map((m) => ({
             ...m,
+            steer: undefined,
             held: true,
           })),
         },
@@ -255,5 +261,13 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
       next.splice(to, 0, item)
       return { queues: { ...state.queues, [threadId]: next } }
     })
+  },
+
+  reorder: (threadId, messageId, overId) => {
+    const queue = get().queues[threadId]
+    const from = queue?.findIndex((m) => m.id === messageId) ?? -1
+    const to = queue?.findIndex((m) => m.id === overId) ?? -1
+    if (from < 0 || to < 0 || from === to) return
+    get().move(threadId, messageId, to - from)
   },
 }))
