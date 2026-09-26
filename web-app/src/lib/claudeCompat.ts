@@ -56,6 +56,8 @@ export type CompatState =
   /** Present but not parseable. */
   | 'malformed'
   | 'unreadable'
+  /** Not in this folder. Normal, and not a failure. */
+  | 'absent'
   | 'oversized'
   /** Another component already claimed this identity. */
   | 'duplicate'
@@ -237,7 +239,7 @@ export function classifyCompatInstruction(
   }
   if (probe.content == null) {
     // Not there is not a failure, and not silence either.
-    return { ...base, state: 'unsupported', reason: 'not present' }
+    return { ...base, state: 'absent' }
   }
   if (
     !opts.root ||

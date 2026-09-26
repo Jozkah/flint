@@ -19,8 +19,18 @@ const MESSAGE_KEYS = [
   'description',
 ] as const
 
-const truncate = (value: string): string =>
-  value.length > MAX_LENGTH ? `${value.slice(0, MAX_LENGTH - 1)}…` : value
+/**
+ * Drop Windows verbatim prefixes (`\\?\C:\…`, `\\?\UNC\server\…`) that
+ * canonicalized paths carry into Rust error messages. They are noise to a
+ * person and make an ordinary path look alarming.
+ */
+export const withoutVerbatimPrefix = (value: string): string =>
+  value.replace(/\\\\\?\\UNC\\/g, '\\\\').replace(/\\\\\?\\/g, '')
+
+const truncate = (raw: string): string => {
+  const value = withoutVerbatimPrefix(raw)
+  return value.length > MAX_LENGTH ? `${value.slice(0, MAX_LENGTH - 1)}…` : value
+}
 
 /**
  * A readable description of `value`, never `[object Object]` and never empty.

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   discoverCompatibility,
+  isMissing,
   parseFrontmatter,
   parseMcpConfig,
   referencedResources,
@@ -485,5 +486,49 @@ describe('user-level Claude skills', () => {
     const skills = manifest.components.filter((one) => one.type === 'skill')
     expect(skills.map((one) => one.state)).toEqual(['active', 'duplicate'])
     expect(skills[0].source).toBe('project')
+  })
+})
+
+describe('a file that is simply not there', () => {
+  it('recognises the Windows wording of a missing file', () => {
+    expect(
+      isMissing(
+        'C:\\repo\\CLAUDE.md is unreadable: The system cannot find the file specified. (os error 2)'
+      )
+    ).toBe(true)
+    expect(isMissing('The system cannot find the path specified. (os error 3)')).toBe(true)
+    expect(isMissing('ENOENT: no such file')).toBe(true)
+  })
+
+  it('does not mistake a real read error for absence', () => {
+    expect(isMissing('Access is denied. (os error 5)')).toBe(false)
+    expect(isMissing('os error 22')).toBe(false)
+  })
+
+  it('reports a missing root CLAUDE.md and .mcp.json as absent, not unreadable', async () => {
+    const windowsMissing: CompatIO = {
+      list: async () => [],
+      read: async (rel) => {
+        throw new Error(
+          `\\\\?\\C:\\repo\\${rel} is unreadable: The system cannot find the file specified. (os error 2)`
+        )
+      },
+    }
+    const probes = await discoverCompatibility(windowsMissing, ROOT)
+    expect(probes.mcp).toEqual([])
+    expect(probes.instructions[0].error).toBeUndefined()
+    expect(probes.instructions[0].content).toBeUndefined()
+    const manifest = resolveCompatibility(probes, {
+      binding,
+      enabled: true,
+      enabledSkills: new Set(),
+      availableTools: [],
+      consentedMcp: new Set(),
+      initializedMcp: new Set(),
+      failedMcp: new Map(),
+      confinement: NO_LOCAL_CONFINEMENT,
+    })
+    const root = manifest.components.find((one) => one.name === 'CLAUDE.md')
+    expect(root?.state).toBe('absent')
   })
 })

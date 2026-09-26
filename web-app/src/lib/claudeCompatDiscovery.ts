@@ -74,8 +74,13 @@ const UNSUPPORTED_AGENT_FIELDS = [
 ]
 
 /** Absent is the ordinary case, not a failure. */
-const isMissing = (message: string): boolean =>
-  /not found|no such file|ENOENT/i.test(message)
+// Windows words a missing file differently from POSIX ("The system cannot find
+// the file specified. (os error 2)"), and the path variant is os error 3. A
+// folder without CLAUDE.md or .mcp.json is the ordinary case, not a read error.
+export const isMissing = (message: string): boolean =>
+  /not found|no such file|ENOENT|cannot find the (file|path)|os error [23]\b/i.test(
+    message
+  )
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText

@@ -48,6 +48,43 @@ const show = (
 const region = () => screen.getByTestId('cowork-compat')
 
 describe('what the compatibility section reports', () => {
+  it('shows a missing CLAUDE.md as not present, muted, with no error text', () => {
+    show({
+      components: [
+        component({
+          id: 'instructions:CLAUDE.md',
+          type: 'instructions',
+          name: 'CLAUDE.md',
+          state: 'absent',
+        }),
+      ],
+    })
+
+    const line = screen.getByText('common:claudeCompat.state.absent')
+    expect(line).toHaveClass('text-muted-foreground')
+    expect(region()).not.toHaveTextContent('common:claudeCompat.state.unreadable')
+  })
+
+  it('shows a real read error in the destructive colour, without the verbatim prefix', () => {
+    show({
+      components: [
+        component({
+          id: 'mcp:.mcp.json',
+          type: 'mcp',
+          name: '.mcp.json',
+          state: 'unreadable',
+          reason: String.raw`\\?\C:\repo\.mcp.json is unreadable: Access is denied. (os error 5)`,
+        }),
+      ],
+    })
+
+    const line = screen.getByText(/common:claudeCompat\.state\.unreadable/)
+    expect(line).toHaveClass('text-destructive')
+    expect(line.textContent).not.toContain('\\\\?\\')
+    // No env line under a config that could not be read.
+    expect(region()).not.toHaveTextContent('common:claudeCompat.mcpNoEnv')
+  })
+
   it('says nothing was found rather than showing an empty frame', () => {
     show()
 

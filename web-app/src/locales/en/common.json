@@ -1387,6 +1387,7 @@
       "disabled": "Switched off",
       "malformed": "Could not be parsed",
       "unreadable": "Could not be read",
+      "absent": "Not present",
       "oversized": "Too large to read",
       "duplicate": "Duplicate name",
       "path-escape": "Points outside this folder",

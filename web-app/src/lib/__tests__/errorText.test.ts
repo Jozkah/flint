@@ -62,4 +62,14 @@ describe('errorText', () => {
     expect(errorDetail(null)).toBe('')
     expect(errorDetail({ message: 'kept' })).toBe('kept')
   })
+
+  it('drops the Windows verbatim prefix from paths it shows', () => {
+    const b = '\\'
+    expect(errorText(`${b}${b}?${b}C:${b}repo${b}CLAUDE.md is unreadable`)).toBe(
+      `C:${b}repo${b}CLAUDE.md is unreadable`
+    )
+    expect(errorText({ message: `${b}${b}?${b}UNC${b}srv${b}share` })).toBe(
+      `${b}${b}srv${b}share`
+    )
+  })
 })
