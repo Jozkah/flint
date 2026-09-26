@@ -1,6 +1,7 @@
 {
   "name": "@janhq/tauri-plugin-vector-db-api",
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "private": true,
   "description": "Guest JS API for Jan vector DB plugin",
   "type": "module",
