@@ -198,12 +198,14 @@ pub async fn deactivate_mcp_server<R: Runtime>(
     };
 
     // First, mark server as manually deactivated
-    // Remove from active servers list
-    {
+    // Remove from active servers list, keeping its configuration to withdraw
+    // any folder grant its sandbox held once it has stopped.
+    let stopped_config = {
         let mut active_servers = state.mcp_active_servers.lock().await;
-        active_servers.remove(&name);
+        let config = active_servers.remove(&name);
         log::info!("Removed MCP server {name} from active servers list");
-    }
+        config
+    };
 
     // Move the name's number on. A start that is still in flight belongs to
     // the instance being turned off here, and must not install a monitor and
@@ -239,7 +241,11 @@ pub async fn deactivate_mcp_server<R: Runtime>(
     drop(servers_map);
 
     log::info!("Stopping server {name}...");
-    service.cancel().await.map_err(|e| e.to_string())?;
+    let cancelled = service.cancel().await.map_err(|e| e.to_string());
+    // Withdrawn whether or not the cancel reported cleanly: the user turned
+    // the server off, and its folder access goes with it.
+    super::launch::release_folder_grants(stopped_config.as_ref());
+    cancelled?;
 
     let child_pid = {
         let mut pids = state.mcp_server_pids.lock().await;

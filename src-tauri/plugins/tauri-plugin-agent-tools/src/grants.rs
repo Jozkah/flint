@@ -214,6 +214,26 @@ pub fn revoke(grant_id: &str) -> bool {
     }
 }
 
+/// Does a live grant issued against `workspace` cover `folder`?
+///
+/// What a confined MCP server started in that session workspace needs before
+/// it may be given a folder to write on AppContainer: the server shares the
+/// session's container, so its ACE lives exactly as long as the grant does.
+#[cfg(any(feature = "tauri", test))]
+pub fn workspace_holds_grant(workspace: &Path, folder: &Path) -> bool {
+    let Ok(folder) = folder.canonicalize() else {
+        return false;
+    };
+    let workspace = workspace.canonicalize().unwrap_or_else(|_| workspace.to_path_buf());
+    let Ok(grants) = registry().lock() else {
+        return false;
+    };
+    grants.values().any(|grant| {
+        grant.workspace.canonicalize().unwrap_or_else(|_| grant.workspace.clone()) == workspace
+            && (grant.root == folder || grant.extra_roots.contains(&folder))
+    })
+}
+
 /// Validate one folder a grant would cover. See [`authorize`].
 #[cfg(any(feature = "tauri", test))]
 fn grantable(folder: &Path, workspace: &Path, data_folder: &Path) -> Result<PathBuf, String> {
@@ -638,6 +658,39 @@ mod tests {
 
         assert!(authorize("", &repo.to_string_lossy(), &ws, &data).is_err());
 
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    /// A confined MCP server in a session workspace may edit a folder only
+    /// while that session's grant covers it; on AppContainer it is refused
+    /// otherwise, and refused again once the grant is revoked.
+    #[test]
+    fn an_mcp_server_edits_a_folder_only_under_a_live_grant() {
+        use crate::tools::mcp_confine::{confined_command, ConfineError, McpAuthority};
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let authority = McpAuthority::EditFolder {
+            workspace: ws.clone(),
+            repository: repo.canonicalize().unwrap(),
+            read_roots: vec![],
+        };
+        let build = || confined_command(Path::new("node"), &[], None, &authority, None);
+        let appcontainer = jail::backend() == jail::Backend::AppContainer;
+
+        assert!(!workspace_holds_grant(&ws, &repo));
+        if appcontainer {
+            assert_eq!(build().err(), Some(ConfineError::NoGrant));
+        }
+        let id = authorize(&session, &repo.to_string_lossy(), &ws, &data).unwrap();
+        assert!(workspace_holds_grant(&ws, &repo));
+        assert!(!workspace_holds_grant(&data, &repo), "another workspace holds nothing");
+        assert_ne!(build().err(), Some(ConfineError::NoGrant));
+
+        revoke(&id);
+        assert!(!workspace_holds_grant(&ws, &repo));
+        if appcontainer {
+            assert_eq!(build().err(), Some(ConfineError::NoGrant));
+        }
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 }
