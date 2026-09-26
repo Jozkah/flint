@@ -98,6 +98,8 @@ import SkillSelector from '@/containers/SkillSelector'
 import {
   appendLiveMessages,
   assistantAnchorId,
+  segmentAssistantMessage,
+  workflowSegmentIndex,
   coworkTurnsToUIMessages,
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
@@ -1566,6 +1568,9 @@ function CoworkPage() {
       }),
     [committedTurns, idPrefix, hideCompletedTools]
   )
+  const liveRunId = useCoworkRun((s) =>
+    session?.id ? s.runs[session.id]?.runId : undefined
+  )
   const liveMessages = useMemo(() => {
     if (!running) return []
     const committedCalls = new Set(
@@ -1573,8 +1578,13 @@ function CoworkPage() {
         .filter((t) => t.role === 'tool' && t.callId)
         .map((t) => t.callId)
     )
+    // Only this run's record belongs to the live half: an item from an
+    // earlier run whose call the transcript never kept would otherwise be
+    // appended to the new turn as if this run had made it.
     const liveActivity = toolActivity.filter(
-      (item) => !committedCalls.has(item.call)
+      (item) =>
+        !committedCalls.has(item.call) &&
+        (!liveRunId || !item.run || item.run === liveRunId)
     )
     const reconciledLive = reconcileToolActivity(liveTurns, liveActivity)
     return coworkTurnsToUIMessages(
@@ -1588,6 +1598,7 @@ function CoworkPage() {
     liveTurns,
     session?.turns,
     toolActivity,
+    liveRunId,
     idPrefix,
     hideCompletedTools,
     committedTurns.length,
@@ -4729,12 +4740,32 @@ function CoworkPage() {
                   {/* The plan heads the transcript, in its reading column. */}
                   <CoworkPlanStrip todos={session?.todos} />
                   <CodeOpenProvider open={openToolPath}>
-                    {uiMessages.map((message, i) => (
+                    {uiMessages.map((whole, i) => {
+                      // Each model round renders with its own rows beneath
+                      // it, so the newest content is always last.
+                      const segments = segmentAssistantMessage(whole)
+                      const workflow = workflowAnchoredAt(
+                        activity,
+                        session?.id,
+                        whole.id
+                      )
+                      const workflowAt = workflow
+                        ? workflowSegmentIndex(
+                            segments,
+                            workflow.tasks.map((task) => task.callId)
+                          )
+                        : -1
+                      return segments.map((message, k) => (
                       <Fragment key={message.id}>
                         <MessageItem
                           message={message}
-                          isFirstMessage={i === 0}
-                          isLastMessage={i === uiMessages.length - 1}
+                          isFirstMessage={i === 0 && k === 0}
+                          isLastMessage={
+                            i === uiMessages.length - 1 &&
+                            k === segments.length - 1
+                          }
+                          hideActions={k < segments.length - 1 || undefined}
+                          continuation={k > 0 || undefined}
                           status={running ? 'streaming' : 'ready'}
                           onRegenerate={handleRegenerate}
                           reasoningContainerRef={reasoningContainerRef}
@@ -4752,11 +4783,7 @@ function CoworkPage() {
                         dispatch landed under. Same store as the panel, so it
                         is live without a copy of anything. */}
                         {(() => {
-                          const view = workflowAnchoredAt(
-                            activity,
-                            session?.id,
-                            message.id
-                          )
+                          const view = k === workflowAt ? workflow : null
                           return view ? (
                             <CoworkWorkflowCard
                               view={view}
@@ -4887,7 +4914,8 @@ function CoworkPage() {
                           />
                         ))}
                       </Fragment>
-                    ))}
+                                          ))
+                    })}
                   </CodeOpenProvider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />

@@ -137,7 +137,7 @@ const SessionItem = memo(function SessionItem({
         data-current={isCurrent ? 'true' : 'false'}
       >
         <SessionMark session={session} running={running} selected={isCurrent} />
-        <span className="truncate">{session.title}</span>
+        <span className="text-fade">{session.title}</span>
         {running && (
           // A session running in the background shows here, without the
           // session in view being treated as busy (janhq/jan#8905). The row's

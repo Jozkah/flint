@@ -165,6 +165,26 @@
   background-image: var(--grad);
 }
 
+/* One-line text that fades out at its right edge instead of ending in "…".
+   A mask, so it works on any background, light or dark. Inside a sidebar row
+   that is hovered, focused or has its menu open, the fade widens and ends
+   short of the edge, so the text is gone before the row's "⋯" button. */
+@utility text-fade {
+  --text-fade-width: 24px;
+  --text-fade-reserve: 0px;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
+  mask-image: linear-gradient(to right, #000 calc(100% - var(--text-fade-reserve) - var(--text-fade-width)), transparent calc(100% - var(--text-fade-reserve)));
+}
+[data-slot='nav-item']:is(:hover, :focus-within, :has([data-slot='nav-action'][data-state='open'])) .text-fade {
+  --text-fade-width: 32px;
+  --text-fade-reserve: 8px;
+}
+
 /* Loading text: a light band sweeps across muted text. */
 @utility text-shimmer {
   background: linear-gradient(90deg, var(--muted-foreground) 0%, var(--foreground) 50%, var(--muted-foreground) 100%);

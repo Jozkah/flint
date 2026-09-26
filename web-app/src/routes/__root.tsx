@@ -1,4 +1,4 @@
-import { createRootRoute, Outlet } from '@tanstack/react-router'
+import { createRootRoute, Outlet, useNavigate } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 
 import { Fragment } from 'react/jsx-runtime'
@@ -60,7 +60,7 @@ const AppLayout = () => {
   useClearSettingsSearchOnExit()
   useWindowTitle()
   useAppViewport()
-  useApprovalWaitNotifier()
+  useApprovalWaitNotifier(useNavigate())
   const appDrawsChrome = detectWindowChrome() === 'custom'
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)

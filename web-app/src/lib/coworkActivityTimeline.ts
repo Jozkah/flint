@@ -61,6 +61,12 @@ export function reconcileToolActivity(
   items: ToolActivityItem[]
 ): CoworkTurn[] {
   if (!items || items.length === 0) return turns
+  // Only tool calls fold into the transcript. A lifecycle record (steering
+  // delivered, subagent dispatched, compaction, approval) is not a call: made
+  // into a turn it rendered as "Used steering", and because its id never
+  // appears in the transcript it was appended again to every later turn.
+  items = items.filter((item) => item.event_type !== 'lifecycle')
+  if (items.length === 0) return turns
 
   const byCall = new Map(items.map((item) => [item.call, item]))
   const seen = new Set<string>()

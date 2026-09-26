@@ -562,6 +562,7 @@ export const ToolApprovalActions = memo(() => {
     // with Deny focused first.
     <div
       data-testid="inline-approval-card"
+      data-approval-request={pending.requestId}
       className="relative m-2 flex min-w-0 flex-col gap-2.5 rounded-lg border border-warning/50 border-l-4 border-l-warning bg-[color-mix(in_oklab,var(--warning)_12%,var(--card))] p-3 text-foreground shadow-lg shadow-warning/10 ring-1 ring-warning/20"
     >
       <div className="flex flex-wrap items-center gap-2 text-[13px]">

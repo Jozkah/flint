@@ -98,6 +98,11 @@ export type MessageItemProps = {
   hideActions?: boolean
   /** Cowork only: keep completed tool calls in the conversation. AH-172. */
   keepToolActivity?: boolean
+  /**
+   * Cowork only: this row continues the assistant message above it (a later
+   * model round of the same reply), so it carries no header of its own.
+   */
+  continuation?: boolean
 }
 
 export const MessageItem = memo(
@@ -108,6 +113,7 @@ export const MessageItem = memo(
     status,
     isAnimating,
     hideActions,
+    continuation,
     keepToolActivity,
     subagents,
     reasoningContainerRef,
@@ -656,7 +662,7 @@ export const MessageItem = memo(
           <CompactionDivider record={compactionRecord} />
         ) : null}
         {/* A small, quiet line naming who answered and when. */}
-        {message.role === 'assistant' && (
+        {message.role === 'assistant' && !continuation && (
           <div
             data-testid="assistant-message-header"
             className="mb-2 flex min-w-0 items-center gap-2 text-[12.5px] leading-5 text-subtle-foreground"
@@ -938,6 +944,7 @@ export const MessageItem = memo(
       prevProps.isLastMessage === nextProps.isLastMessage &&
       prevProps.status === nextProps.status &&
       prevProps.hideActions === nextProps.hideActions &&
+      prevProps.continuation === nextProps.continuation &&
       prevProps.keepToolActivity === nextProps.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&
       prevProps.versionInfo?.count === nextProps.versionInfo?.count

@@ -82,7 +82,7 @@ const makeThread = (overrides: Partial<Thread> = {}): Thread =>
 const flushEffects = () => act(() => Promise.resolve())
 
 describe('ThreadList — long-URL overflow guard (#7959)', () => {
-  it('truncates non-project thread titles and exposes full text via title attribute', async () => {
+  it('truncates non-project thread titles; the hover card shows the full text, so no native title', async () => {
     render(<ThreadList threads={[makeThread()]} />)
     await flushEffects()
 
@@ -92,8 +92,16 @@ describe('ThreadList — long-URL overflow guard (#7959)', () => {
     expect(titleSpans.length).toBeGreaterThan(0)
 
     const titleEl = titleSpans[0]
-    expect(titleEl).toHaveClass('block', 'truncate')
-    expect(titleEl).toHaveAttribute('title', longUrl)
+    // Fades at the edge rather than ending in an ellipsis.
+    expect(titleEl).toHaveClass('text-fade')
+    expect(titleEl).not.toHaveClass('truncate')
+    // The row has a hover card; a native tooltip on top of it showed two
+    // popups at once. The visible text stays the link's accessible name.
+    expect(titleEl).not.toHaveAttribute('title')
+    const link = titleEl.closest('li') as HTMLElement
+    expect(link).not.toBeNull()
+    expect(link.querySelector('[title]')).toBeNull()
+    expect(link.textContent).toContain(longUrl)
   })
 
   it('applies overflow guard on the project-view thread link wrapper', async () => {
@@ -118,7 +126,9 @@ describe('ThreadList — long-URL overflow guard (#7959)', () => {
       .getAllByText('common:newThread')
       .find((el) => el.tagName === 'SPAN')
     expect(titleEl).toBeDefined()
-    expect(titleEl).toHaveClass('block', 'truncate')
-    expect(titleEl).toHaveAttribute('title', 'common:newThread')
+    // Fades at the edge rather than ending in an ellipsis.
+    expect(titleEl).toHaveClass('text-fade')
+    expect(titleEl).not.toHaveClass('truncate')
+    expect(titleEl).not.toHaveAttribute('title')
   })
 })

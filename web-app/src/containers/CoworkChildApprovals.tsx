@@ -82,6 +82,7 @@ export function CoworkChildApprovals({
           // warning header says so, not a failure colour on the whole block.
           className="overflow-hidden rounded-xl border-[0.8px] border-warning/40 bg-card text-xs shadow-lift motion-safe:animate-rise-in"
           data-testid="child-approval"
+          data-approval-request={entry.requestId}
           data-origin={entry.origin}
           data-tool={entry.toolName}
         >

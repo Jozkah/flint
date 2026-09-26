@@ -95,7 +95,7 @@ const RoomItem = memo(function RoomItem({
         data-testid="room-nav-item"
       >
         <ThreadStatusMark status={status} />
-        <span className="truncate">{room.title}</span>
+        <span className="text-fade">{room.title}</span>
       </NavButton>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
