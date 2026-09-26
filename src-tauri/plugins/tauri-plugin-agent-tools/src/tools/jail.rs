@@ -228,15 +228,14 @@ fn home_dir() -> Option<PathBuf> {
 /// false of `bash`, which is not a feature — it is a wrong answer.
 ///
 /// Seatbelt takes a subpath rule per root and bubblewrap a read-write bind, so
-/// both express it directly. AppContainer grants writes only by placing an ACE
-/// on the thread workspace; authorizing a repository would mean writing an ACE
-/// onto the user's own folder, which this backend does not do. Until it does,
-/// Windows reports unsupported rather than silently granting less than the UI
-/// would promise.
+/// both express it directly. AppContainer grants the container's SID an
+/// inheritable ACE on each authorized folder, recorded so exactly those ACEs
+/// are withdrawn when the grant goes (see `appcontainer::revoke_roots`), and
+/// refuses drive roots, the profile and system folders
+/// (`appcontainer::grant_refusal`).
 pub fn supports_write_roots(backend: Backend) -> bool {
     match backend {
-        Backend::Seatbelt | Backend::Bubblewrap => true,
-        Backend::AppContainer => false,
+        Backend::Seatbelt | Backend::Bubblewrap | Backend::AppContainer => true,
         // Nothing enforces anything; `bash` is withheld entirely.
         Backend::None => false,
     }
@@ -372,6 +371,7 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
                 policy.start_dir.as_deref(),
                 policy.scratch_root.as_deref(),
                 &policy.write_roots,
+                &policy.read_roots,
                 policy.allow_network,
                 &cfg.program,
                 &cfg.args,
@@ -2341,11 +2341,10 @@ mod tests {
         assert!(String::from_utf8_lossy(&out.stdout).contains("ok"));
     }
 
-    /// AppContainer confines a run to a Jan-owned worktree and nothing else:
-    /// every root inside the owned folder, the owned folder itself refused, a
-    /// root outside it refused, and no owned folder at all refused.
+    /// Every enforcing backend, AppContainer included, holds a shell to the
+    /// roots it was given; no backend holds nothing.
     #[test]
-    fn appcontainer_confines_only_jan_owned_roots() {
+    fn enforcing_backends_confine_authorized_roots() {
         let base = std::env::temp_dir().join(format!("jan_owned_roots_{}", std::process::id()));
         let owned = base.join("worktrees");
         let inside = owned.join("repo").join("s1");
@@ -2355,12 +2354,7 @@ mod tests {
         }
         let ac = Backend::AppContainer;
         assert!(can_confine_write_roots(ac, &[inside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[outside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[owned.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[inside.clone()], None));
-        assert!(!can_confine_write_roots(ac, &[inside.join("..").join("..").join("..").join("user-repo")], Some(&owned)));
-        // The general backends hold any root; no backend holds nothing.
+        assert!(can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
         assert!(can_confine_write_roots(Backend::Seatbelt, &[outside.clone()], None));
         assert!(!can_confine_write_roots(Backend::None, &[inside], Some(&owned)));
         assert!(supports_owned_write_roots(ac));
@@ -2371,7 +2365,7 @@ mod tests {
     fn only_backends_that_can_confine_a_repository_support_direct_editing() {
         assert!(supports_write_roots(Backend::Seatbelt));
         assert!(supports_write_roots(Backend::Bubblewrap));
-        assert!(!supports_write_roots(Backend::AppContainer));
+        assert!(supports_write_roots(Backend::AppContainer));
         assert!(!supports_write_roots(Backend::None));
     }
 }

@@ -37,6 +37,10 @@ struct Grant {
     /// primary stays the first write root (the one a managed worktree run's
     /// shell starts in).
     extra_roots: Vec<PathBuf>,
+    /// The session workspace the grant was issued against. Its sandbox
+    /// container holds the folder ACEs on AppContainer, so withdrawing the
+    /// grant withdraws them through it ([`withdraw_folder_aces`]).
+    workspace: PathBuf,
 }
 
 #[cfg(any(feature = "tauri", test))]
@@ -103,6 +107,11 @@ fn new_id() -> String {
 ///
 /// Nothing is published if any step fails: the registry is only touched after
 /// validation has succeeded.
+///
+/// On top of the read-root validation, a folder is refused when the sandbox
+/// must never be granted it (a drive root, the profile, Windows, Program
+/// Files: [`crate::tools::appcontainer::grant_refusal`]) or when it lies
+/// inside Flint's data folder without being one of its managed worktrees.
 #[cfg(any(feature = "tauri", test))]
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn authorize(
@@ -120,10 +129,10 @@ pub fn authorize(
 /// validation fails the whole grant: a run must never be told a folder is
 /// writable when it is not. Extras are attached directly, never through a
 /// managed worktree, so on a platform that can only confine a run to Jan's own
-/// worktrees (AppContainer) a user folder among them cannot be written. There
-/// they are left out of the grant rather than refused -- the primary's worktree
-/// stays writable and the extras stay readable, which is exactly what the
-/// primary folder itself gets on that platform.
+/// worktrees a user folder among them cannot be written. There they are left
+/// out of the grant rather than refused -- the primary's worktree stays
+/// writable and the extras stay readable, which is exactly what the primary
+/// folder itself gets on that platform.
 #[cfg(any(feature = "tauri", test))]
 pub fn authorize_with_extras(
     session_id: &str,
@@ -142,8 +151,7 @@ pub fn authorize_with_extras(
     if session_id.is_empty() {
         return Err("a grant needs the session it belongs to".to_string());
     }
-    let root =
-        crate::workspace::validate_read_root(Path::new(folder), workspace, Some(data_folder))?;
+    let root = grantable(Path::new(folder), workspace, data_folder)?;
     // Where only Jan's own worktrees can be confined, the user's folder cannot
     // be authorized at all: decided on the canonical path, after validation,
     // so no spelling of a user folder passes for a worktree.
@@ -158,8 +166,7 @@ pub fn authorize_with_extras(
 
     let mut extra_roots: Vec<PathBuf> = Vec::new();
     for extra in extras {
-        let extra =
-            crate::workspace::validate_read_root(Path::new(extra), workspace, Some(data_folder))?;
+        let extra = grantable(Path::new(extra), workspace, data_folder)?;
         if !capability() && !is_owned_worktree(&extra, data_folder) {
             continue;
         }
@@ -170,13 +177,22 @@ pub fn authorize_with_extras(
 
     let id = new_id();
     let mut grants = registry().lock().map_err(|_| "grant registry poisoned")?;
+    let replaced: Vec<PathBuf> = grants
+        .values()
+        .filter(|grant| grant.session_id == session_id)
+        .map(|grant| grant.workspace.clone())
+        .collect();
     grants.retain(|_, grant| grant.session_id != session_id);
+    // The replaced grant's folders may not be in this one (a folder removed
+    // from the session): their ACEs go now, not at the next command.
+    withdraw_folder_aces(&replaced);
     grants.insert(
         id.clone(),
         Grant {
             session_id: session_id.to_string(),
             root,
             extra_roots,
+            workspace: workspace.to_path_buf(),
         },
     );
     Ok(id)
@@ -185,10 +201,45 @@ pub fn authorize_with_extras(
 /// Withdraw one grant. Idempotent: revoking what is already gone is success.
 #[cfg(any(feature = "tauri", test))]
 pub fn revoke(grant_id: &str) -> bool {
-    registry()
+    let removed = registry()
         .lock()
-        .map(|mut grants| grants.remove(grant_id).is_some())
-        .unwrap_or(false)
+        .ok()
+        .and_then(|mut grants| grants.remove(grant_id));
+    match removed {
+        Some(grant) => {
+            withdraw_folder_aces(&[grant.workspace]);
+            true
+        }
+        None => false,
+    }
+}
+
+/// Validate one folder a grant would cover. See [`authorize`].
+#[cfg(any(feature = "tauri", test))]
+fn grantable(folder: &Path, workspace: &Path, data_folder: &Path) -> Result<PathBuf, String> {
+    let root = crate::workspace::validate_read_root(folder, workspace, Some(data_folder))?;
+    if let Some(why) = crate::tools::appcontainer::grant_refusal(&root) {
+        return Err(format!("{why}, so Flint cannot be allowed to edit it"));
+    }
+    if let Ok(data) = data_folder.canonicalize() {
+        if root.starts_with(&data) && !is_owned_worktree(&root, data_folder) {
+            return Err(format!(
+                "{} is inside Flint's data folder and cannot be edited",
+                root.display()
+            ));
+        }
+    }
+    Ok(root)
+}
+
+/// Withdraw the folder ACEs the sandbox containers of these workspaces hold.
+/// A no-op off Windows, where confinement is per command and holds nothing
+/// between them.
+#[cfg(any(feature = "tauri", test))]
+fn withdraw_folder_aces(workspaces: &[PathBuf]) {
+    for workspace in workspaces {
+        crate::tools::appcontainer::revoke_roots(workspace);
+    }
 }
 
 /// How a child destination's owner id is spelled.
@@ -248,9 +299,15 @@ pub fn revoke_session(session_id: &str) -> usize {
         return 0;
     };
     let before = grants.len();
+    let mut released = Vec::new();
     grants.retain(|_, grant| {
-        grant.session_id != session_id && !is_child_of(&grant.session_id, session_id)
+        let keep = grant.session_id != session_id && !is_child_of(&grant.session_id, session_id);
+        if !keep {
+            released.push(grant.workspace.clone());
+        }
+        keep
     });
+    withdraw_folder_aces(&released);
     before - grants.len()
 }
 
@@ -472,12 +529,12 @@ mod tests {
         assert!(crate::workspace::thread_segment(&odd).is_ok(), "{odd}");
     }
 
-    /// Windows: the sandbox can hold a run to a Jan-owned worktree, so one is
-    /// authorized, but it will not write an ACE onto the user's own folder, so
-    /// that is refused -- whatever the path looks like.
+    /// Windows: AppContainer grants the user's own folder under "Edit this
+    /// folder" and a managed worktree alike, extras included; a folder inside
+    /// Flint's data folder that is not a worktree stays refused.
     #[cfg(windows)]
     #[test]
-    fn on_windows_only_a_jan_owned_worktree_can_be_authorized() {
+    fn on_windows_user_folders_and_worktrees_can_be_authorized() {
         if jail::backend() != jail::Backend::AppContainer {
             eprintln!("skipping: AppContainer is not available here");
             return;
@@ -486,14 +543,13 @@ mod tests {
         let owned = crate::workspace::worktrees_dir(&data).join("key").join("session-1");
         std::fs::create_dir_all(&owned).unwrap();
 
-        assert!(!capability(), "direct editing stays unavailable on Windows");
+        assert!(capability(), "direct editing is available on Windows");
         assert!(worktree_capability());
         let id = authorize(&session, &owned.to_string_lossy(), &ws, &data)
             .expect("a Jan-owned worktree is authorized");
         assert_eq!(resolve(&id, &session), Some(owned.canonicalize().unwrap()));
 
-        // Extras are attached directly: a user folder among them stays out of
-        // the grant rather than failing the worktree's.
+        // Extras are attached directly beside the worktree, in the grant.
         let with_extra = authorize_with_extras(
             &session,
             &owned.to_string_lossy(),
@@ -502,19 +558,37 @@ mod tests {
             &data,
         )
         .expect("the worktree is still authorized");
-        assert_eq!(resolve_all(&with_extra, &session), vec![owned.canonicalize().unwrap()]);
+        assert_eq!(
+            resolve_all(&with_extra, &session),
+            vec![owned.canonicalize().unwrap(), repo.canonicalize().unwrap()]
+        );
 
-        let err = authorize(&session, &repo.to_string_lossy(), &ws, &data)
-            .expect_err("the user's own folder is refused");
-        assert!(err.contains("Managed worktree"), "{err}");
+        let id = authorize(&session, &repo.to_string_lossy(), &ws, &data)
+            .expect("the user's own folder is authorized");
+        assert_eq!(resolve(&id, &session), Some(repo.canonicalize().unwrap()));
         // The worktree folder itself, and a spelling that climbs out of it,
-        // are not a worktree.
+        // are inside the data folder and not a worktree.
         let root = crate::workspace::worktrees_dir(&data);
         assert!(authorize(&session, &root.to_string_lossy(), &ws, &data).is_err());
         let climb = owned.join("..").join("..").join("..");
         assert!(authorize(&session, &climb.to_string_lossy(), &ws, &data).is_err());
 
         revoke_session(&session);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    /// The profile, a folder holding it, and a drive root are never granted.
+    #[cfg(windows)]
+    #[test]
+    fn the_profile_and_drive_roots_cannot_be_authorized() {
+        let (ws, data, _repo, session) = fixture();
+        let profile = std::env::var("USERPROFILE").expect("USERPROFILE");
+        for folder in [profile.clone(), "C:\\".to_string()] {
+            assert!(
+                authorize(&session, &folder, &ws, &data).is_err(),
+                "{folder} must be refused"
+            );
+        }
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 

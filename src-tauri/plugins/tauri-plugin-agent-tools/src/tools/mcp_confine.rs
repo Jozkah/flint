@@ -199,8 +199,7 @@ pub fn confined_command(
     if !backend.enforces() {
         return Err(ConfineError::NoBackend);
     }
-    if matches!(authority, McpAuthority::EditFolder { .. }) && !jail::supports_write_roots(backend)
-    {
+    if matches!(authority, McpAuthority::EditFolder { .. }) && !supports_edit_folder(backend) {
         return Err(ConfineError::NoWriteRoots(backend.as_str()));
     }
 
@@ -254,8 +253,12 @@ pub fn confinement_backend() -> &'static str {
 }
 
 /// Does this backend support the `edit-folder` case?
+///
+/// Not on AppContainer, although its shell can now edit an authorized folder:
+/// a folder ACE is withdrawn when the session's grant goes, and a long-lived
+/// MCP server holds no grant that could be withdrawn under it.
 pub fn supports_edit_folder(backend: Backend) -> bool {
-    jail::supports_write_roots(backend)
+    jail::supports_write_roots(backend) && backend != Backend::AppContainer
 }
 
 #[cfg(test)]
@@ -543,8 +546,8 @@ mod tests {
         assert!(allowed_env(&[], &supplied).is_empty());
     }
 
-    /// Windows grants writes by an ACE on the thread workspace, never on the
-    /// user's own folder, so `edit-folder` cannot be honoured there.
+    /// Windows ties a folder ACE to a session grant a server does not hold, so
+    /// `edit-folder` is not honoured there for MCP servers.
     #[test]
     fn edit_folder_is_unsupported_where_writes_cannot_be_confined() {
         assert!(supports_edit_folder(Backend::Seatbelt));

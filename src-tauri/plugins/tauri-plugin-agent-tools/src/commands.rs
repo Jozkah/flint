@@ -2561,6 +2561,95 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
     }
 
+    /// Windows, end to end: under "Edit this folder" the sandboxed shell writes
+    /// the authorized folder and its extra folders and not the one beside
+    /// them; under Review only it reads an attached folder and cannot write
+    /// it; once the grant is revoked the shell cannot write the folder again.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn the_windows_shell_edits_only_authorized_folders() {
+        if jail::backend() != jail::Backend::AppContainer {
+            eprintln!("skipping: AppContainer is not available here");
+            return;
+        }
+        let sid: &str = &unique_thread("windows_edit_folder");
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let repo = repo_outside_tmp("ac-edit");
+        let extra = repo_outside_tmp("ac-extra");
+        let sibling = repo_outside_tmp("ac-sibling");
+        std::fs::write(sibling.join("notes.txt"), b"sibling notes").unwrap();
+        let fwd = |p: &Path| p.to_string_lossy().replace('\\', "/");
+        let bash = |command: String, project: Option<String>, grant: Option<String>| {
+            execute_tool(
+                df.clone(),
+                sid.into(),
+                None,
+                "bash".into(),
+                json!({ "command": command }),
+                None,
+                None,
+                project,
+                grant,
+                Some(WorkspaceScope::Session),
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+
+        let grant = direct_edit_authorize(
+            df.clone(),
+            sid.into(),
+            repo.to_string_lossy().into(),
+            Some(vec![extra.to_string_lossy().into()]),
+        )
+        .await
+        .expect("the folder is authorized");
+        for (dir, name) in [(&repo, "in-repo.txt"), (&extra, "in-extra.txt"), (&sibling, "in-sibling.txt")] {
+            let _ = bash(
+                format!("echo edited > \"{}/{name}\"", fwd(dir)),
+                Some(repo.to_string_lossy().into()),
+                Some(grant.clone()),
+            )
+            .await;
+        }
+        assert!(repo.join("in-repo.txt").exists(), "the authorized folder was not writable");
+        assert!(extra.join("in-extra.txt").exists(), "the extra folder was not writable");
+        assert!(!sibling.join("in-sibling.txt").exists(), "a folder beside them was written");
+
+        // Review only: the sibling attached, no grant.
+        direct_edit_revoke(grant);
+        let out = bash(
+            format!("cat \"{}/notes.txt\"", fwd(&sibling)),
+            Some(sibling.to_string_lossy().into()),
+            None,
+        )
+        .await
+        .expect("runs");
+        assert!(out.content.contains("sibling notes"), "the attached folder was not readable: {}", out.content);
+        let _ = bash(
+            format!("echo x > \"{}/review.txt\"", fwd(&sibling)),
+            Some(sibling.to_string_lossy().into()),
+            None,
+        )
+        .await;
+        assert!(!sibling.join("review.txt").exists(), "Review only wrote the attached folder");
+        let _ = bash(
+            format!("echo x > \"{}/after-revoke.txt\"", fwd(&repo)),
+            Some(repo.to_string_lossy().into()),
+            None,
+        )
+        .await;
+        assert!(!repo.join("after-revoke.txt").exists(), "the revoked folder stayed writable");
+
+        for dir in [&repo, &extra, &sibling] {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
     /// The network flag has to survive the whole IPC -> ToolContext -> jail path.
     /// Only the closed direction is asserted: opening it would make the test
     /// depend on the host actually having connectivity.
