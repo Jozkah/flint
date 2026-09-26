@@ -2202,7 +2202,7 @@ mod tests {
         let desc = noted["function"]["description"].as_str().unwrap();
         assert!(desc.starts_with("Run a shell command."));
         assert!(desc.contains("Windows PowerShell"));
-        assert!(desc.contains("does NOT accept `&&`"));
+        assert!(desc.contains("does not accept `&&`"));
         assert!(desc.contains("`2>$null`"));
         // The name is untouched; only the description grows.
         assert_eq!(noted["function"]["name"], "bash");
