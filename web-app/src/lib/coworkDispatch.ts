@@ -233,11 +233,21 @@ function skillRefusal(
   const named = unresolved
     .map((skill) => `${skill.requested} (${skill.state})`)
     .join(', ')
+  // Name the text that was read as a request: a robocopy switch quoted in a
+  // Continue request once read as seven "missing" skills, and neither the
+  // model nor the user could tell where they came from.
+  const triggers = unresolved
+    .map((skill) => `\`/${skill.requested}\` or \`@${skill.requested}\``)
+    .join(', ')
   return {
     output:
       `\`${toolName}\` was not run: you were asked to use ${named}, and ` +
       'that is not in effect. Do not work around it. Say which skill is ' +
-      'unavailable and what the user can do about it, then stop.',
+      'unavailable and what the user can do about it, then stop. ' +
+      `This was read from ${triggers} in the user's message. If that text ` +
+      'is a command switch, a path or a file name rather than a skill, tell ' +
+      'the user to put it in backticks or code, or to write it without the ' +
+      'leading / or @, and send the request again.',
     isError: true,
   }
 }
