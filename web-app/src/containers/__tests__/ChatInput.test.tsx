@@ -202,6 +202,7 @@ const enqueueMock = vi.fn((tid: string, msg: any) => {
 })
 const removeMessageMock = vi.fn()
 const clearQueueMock = vi.fn()
+const holdQueueMock = vi.fn()
 const getQueueMock = vi.fn((tid: string) => queueState[tid] || [])
 
 function useMessageQueueImpl(selector?: any) {
@@ -210,6 +211,7 @@ function useMessageQueueImpl(selector?: any) {
     enqueue: enqueueMock,
     removeMessage: removeMessageMock,
     clearQueue: clearQueueMock,
+    holdQueue: holdQueueMock,
   }
   if (selector) return selector(state)
   return state
@@ -219,6 +221,7 @@ function useMessageQueueImpl(selector?: any) {
   enqueue: enqueueMock,
   removeMessage: removeMessageMock,
   clearQueue: clearQueueMock,
+  holdQueue: holdQueueMock,
 })
 vi.mock('@/stores/message-queue-store', () => ({
   useMessageQueue: useMessageQueueImpl,
@@ -367,6 +370,7 @@ const resetAll = () => {
   navigateHistoryMock.mockClear()
   enqueueMock.mockClear()
   clearQueueMock.mockClear()
+  holdQueueMock.mockClear()
   for (const k of Object.keys(queueState)) delete queueState[k]
   getCurrentThreadMock.mockReturnValue(undefined)
 }
@@ -497,6 +501,20 @@ describe('ChatInput', () => {
     // Accept either onStop called OR clearQueue called (both are valid stop-click paths).
     const clicked = onStop.mock.calls.length + clearQueueMock.mock.calls.length
     expect(clicked).toBeGreaterThanOrEqual(0) // smoke: no crash
+  })
+
+  it('Stop holds the queue and stops the run instead of clearing the queue', () => {
+    promptState = ''
+    const onStop = vi.fn()
+    queueState['thread-1'] = [{ id: 'q1', text: 'waiting', createdAt: 1 }]
+    renderInput({ chatStatus: 'streaming', onStop })
+    const stopBtn = document.querySelector('[data-test-id="stop-button"]')
+    expect(stopBtn).not.toBeNull()
+    fireEvent.click(stopBtn!)
+    expect(holdQueueMock).toHaveBeenCalledWith('thread-1')
+    expect(onStop).toHaveBeenCalled()
+    expect(clearQueueMock).not.toHaveBeenCalled()
+    delete queueState['thread-1']
   })
 
   it('queues the message when streaming with a currentThreadId', async () => {

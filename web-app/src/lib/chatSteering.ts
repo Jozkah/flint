@@ -38,6 +38,18 @@ export function chatFollowUp({
 }
 
 /**
+ * Stop, Chat and Cowork alike: hold what is queued for the given queues --
+ * each message then offers Send and Discard -- and only then stop the run, so
+ * the stopping run cannot take a steering message at a last safe point.
+ * Nothing queued is cleared by Stop.
+ */
+export function holdQueueThenStop(queueIds: string[], stop: () => void): void {
+  const queue = useMessageQueue.getState()
+  for (const id of queueIds) if (id) queue.holdQueue(id)
+  stop()
+}
+
+/**
  * What the chat sends once a run has ended (or failed): the next queued
  * message that is not held. Held messages -- typed for a run that failed or
  * was stopped -- wait for the user to Send or Discard them.

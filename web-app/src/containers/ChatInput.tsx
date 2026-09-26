@@ -45,6 +45,7 @@ import {
   X,
 } from 'lucide-react'
 import { generateId } from 'ai'
+import { holdQueueThenStop } from '@/lib/chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { QueuedMessageList } from '@/containers/QueuedMessageBubble'
 import { SamplerPopover } from '@/containers/SamplerPopover'
@@ -3356,33 +3357,24 @@ const ChatInput = memo(function ChatInput({
                       size="icon-sm"
                       className="size-7 border-destructive/40 text-destructive hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:shadow-none pointer-coarse:size-11"
                       data-test-id="stop-button"
-                      aria-label={
-                        queueLength > 0
-                          ? `Clear ${queueLength} queued message(s)`
-                          : 'Stop generating'
-                      }
+                      aria-label="Stop generating"
                       onClick={() => {
-                        // Stopping with messages queued clears the queue —
-                        // there is nothing to interrupt yet. The old
-                        // `if (!currentThreadId) return` guard made this button
-                        // inert for any surface without a thread id.
-                        if (queueId) {
-                          const queue = useMessageQueue
-                            .getState()
-                            .getQueue(queueId)
-                          if (queue.length > 0) {
-                            useMessageQueue.getState().clearQueue(queueId)
-                            return
-                          }
-                        }
-                        stopStreaming(currentThreadId ?? '')
+                        // Stop always stops the run. What is queued is held,
+                        // not cleared: each chip then offers Send and
+                        // Discard. Held first, so the stopping run cannot
+                        // take a steering message on its way out. The old
+                        // `if (!currentThreadId) return` guard made this
+                        // button inert for any surface without a thread id.
+                        holdQueueThenStop([queueId], () =>
+                          stopStreaming(currentThreadId ?? '')
+                        )
                       }}
                     >
                       <Square className="size-3 fill-current" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>{queueLength > 0 ? `Clear ${queueLength} queued message(s)` : 'Stop generating'}</p>
+                    <p>Stop generating</p>
                   </TooltipContent>
                 </Tooltip>
               ) : (

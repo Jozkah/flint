@@ -264,6 +264,7 @@ import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
+import { holdQueueThenStop } from '@/lib/chatSteering'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
 import {
   COWORK_DECISION_WINDOW_MS,
@@ -4082,8 +4083,10 @@ function CoworkPage() {
   // Stop reaches the viewed session's run and nothing else: its model stream,
   // its tool loop, its subagents and its open questions (janhq/jan#8905). It
   // used to abort whichever run had started last, in any session.
+  // What is queued is held, not cleared, for the user to send or discard.
   const handleStop = useCallback(() => {
-    if (session?.id) abortRun(session.id)
+    const sid = session?.id
+    if (sid) holdQueueThenStop([sid], () => abortRun(sid))
   }, [session?.id])
 
   // "Stop all activity": abort every session's renderer-side run loop. The
@@ -4091,7 +4094,7 @@ function CoworkPage() {
   // Tokens and cannot reach these JS AbortControllers, so without this the
   // model streams and tool loops keep going after the user asked to stop.
   const handleStopAll = useCallback(() => {
-    abortAll()
+    holdQueueThenStop(Object.keys(useMessageQueue.getState().queues), abortAll)
   }, [])
 
   // The run's real id (a per-run UUID), not the session id, is what the backend

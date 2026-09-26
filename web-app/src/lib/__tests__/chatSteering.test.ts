@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage } from 'ai'
-import { chatFollowUp, nextChatTurn } from '../chatSteering'
+import { chatFollowUp, holdQueueThenStop, nextChatTurn } from '../chatSteering'
 import { useMessageQueue } from '@/stores/message-queue-store'
 
 const q = () => useMessageQueue.getState()
@@ -76,6 +76,32 @@ describe('chat steering at the tool loop safe point', () => {
     expect(followUp).toBe(false)
     expect(send).not.toHaveBeenCalled()
     expect(q().getQueue('T')).toHaveLength(1)
+  })
+})
+
+describe('Stop holds the queue (Chat and Cowork)', () => {
+  beforeEach(() => useMessageQueue.setState({ queues: {} }))
+
+  it('holds every queued message, then stops, and clears nothing', () => {
+    q().enqueue('S', { id: '1', text: 'one', createdAt: 1 })
+    q().enqueue('S', { id: '2', text: 'two', createdAt: 1, steer: true })
+    q().enqueue('other', { id: '3', text: 'three', createdAt: 1 })
+    let heldAtStop: boolean[] = []
+    holdQueueThenStop(['S'], () => {
+      // Held before the run is stopped: no last safe point can take it.
+      heldAtStop = q().getQueue('S').map((m) => !!m.held)
+      expect(q().takeSteering('S')).toEqual([])
+    })
+    expect(heldAtStop).toEqual([true, true])
+    expect(q().getQueue('S')).toHaveLength(2)
+    // Another session's queue is untouched by a stop of this one.
+    expect(q().getQueue('other')[0].held).toBeUndefined()
+  })
+
+  it('stops even with nothing queued or no queue id', () => {
+    const stop = vi.fn()
+    holdQueueThenStop([''], stop)
+    expect(stop).toHaveBeenCalledOnce()
   })
 })
 
