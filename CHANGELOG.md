@@ -24,7 +24,7 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **Long runs that keep going, and messages that wait their turn.** Chat, Cowork and Rooms compact the context automatically as it fills, with `/compact` to do it by hand. A message sent while a run is working waits in a queue you can edit, drag to reorder or remove, or steers the run at its next tool call; Stop keeps the queue for you to send or discard.
 - **A richer System Monitor.** Drives, network rates, temperatures, per-core CPU, swap, uptime and host details, with usage bars throughout.
 - **AI-written MCP descriptions.** Generate "About this server" text for your MCP servers with a model you choose, reviewing each one before it is saved.
-- **Parallel sessions and split view.** Each new Cowork session in a Git folder gets its own worktree and branch, merged back, opened as a pull request or discarded from the session; plain folders can work on a copy. Up to four Chat, Cowork or Room panes sit side by side, with keyboard shortcuts.
+- **Parallel sessions and split view.** Each new Cowork session in a Git folder gets its own worktree and branch, merged back, opened as a pull request or discarded from the session, and a pull request shows only on the session that opened it; plain folders can work on a copy. Up to four Chat, Cowork or Room panes sit side by side, each with a single aligned header, with keyboard shortcuts.
 
 ## Migration
 
@@ -116,7 +116,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cowork): make the declared coding-harness modes real (#6)
 - feat(cowork): report the real context — a repository map and the payload actually sent — with a harness feature registry (#7)
 - feat(cowork): the managed worktree — make it real, use the tree the run actually uses, and finish its lifecycle including recovery
-- feat(cowork): parallel sessions on one folder — each new session in a Git folder works in its own worktree and branch (flint/<title>) by default, created even while the checkout has a rebase or merge in progress; merge into the base branch with a conflict report, open a pull request, or discard from the session; deleting a session asks whether to keep its worktree; plain folders can work on a copy and apply changes back file by file with conflict detection
+- feat(cowork): parallel sessions on one folder — each new session in a Git folder works in its own worktree and branch (flint/<title>) by default, created even while the checkout has a rebase or merge in progress; merge into the base branch with a conflict report, open a pull request, or discard from the session; a pull request is claimed by the session that opened it, so other sessions on the same checkout do not show it; deleting a session asks whether to keep its worktree; plain folders can work on a copy and apply changes back file by file with conflict detection
 - feat(cowork): checkpoints and two meanings of rewind, wired into Cowork with a safety point on restore
 - feat(cowork): answer an opening request with a proposal, not an edit; review it by hunk and apply only what was chosen
 - feat(cowork): export a managed worktree as a reviewable patch bundle, and import one back through proposal review
@@ -299,6 +299,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(providers): custom request headers, with secrets kept secret (#8208)
 - feat(providers): fail over to a configured provider chain when one cannot be reached (AH-193)
 - feat(providers): add llmman as a predefined local provider
+- feat(providers): a right-click menu on provider cards to edit, turn on or off, rename (display name only) or remove a provider you added, and a model whose provider was removed shows as unavailable
 - feat(net): resolve a short hostname to the machine it names, and name certificate failures
 - fix(providers): keep a still-resolving single-label LAN provider in the settings list, and keep asking until the resolver knows it
 - fix(providers): treat LAN endpoints as local, say what actually failed, and stop burying the reason
@@ -318,14 +319,16 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(claude-code): Reset removes custom environment variables, which are shell-quoted and cleaned up on Windows without a console flash
 - fix(models): drop a model locally only after its delete succeeds, and probe vision once per dropdown open
 - fix(providers): send `api_type` when registering a provider with the backend
+- fix(providers): removing a provider clears a model selection that still pointed at it
 - fix(vector-db): skip chunks of another dimension in linear search; move RAG to calamine 0.36 for RUSTSEC-2026-0194
 
 ### Chat and composer
 - feat(chat): warn before sending images to a model without vision
 - feat(chat): per-chat model settings and a reasoning-effort bar (#2)
+- feat(chat): search the Add parameter menu by name, description or key, with keyboard navigation and a tooltip naming providers that may not support a parameter
 - feat(chat): temporary chat lifecycle — keep, discard, and a leave guard (#3)
 - feat(chat): split a conversation into two independent panes, with a Details inspector
-- feat(split): split view holds up to four panes (configurable) — Chat threads, Cowork sessions and a room side by side, opened from any row's menu, the header's Split button or Ctrl+\, switched with Ctrl+Alt+Left/Right, resizable, turning into tabs when the window is narrow, and restored after a restart
+- feat(split): split view holds up to four panes (configurable) — Chat threads, Cowork sessions and a room side by side, opened from any row's menu, the header's Split button or Ctrl+\, switched with Ctrl+Alt+Left/Right, resizable, turning into tabs when the window is narrow, and restored after a restart; each pane shows its title once in one aligned header, with Add pane and Close split in the top header
 - feat(chat): attach text and code without asking the model to see it
 - feat(composer): one @ menu for files, skills, agents and aliases, and name a selection as an alias
 - feat(web-search): native `web_search` / `web_fetch` tooling and provider improvements
