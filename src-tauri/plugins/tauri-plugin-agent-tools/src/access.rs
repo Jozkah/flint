@@ -631,8 +631,33 @@ fn save_persisted(data_folder: &Path, grants: &[AccessGrant]) -> Result<(), Stri
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
 }
 
+/// Who asked, for the audit record of a `request_access` call: the run and
+/// tool call it came from, the agent, and the project the session is bound
+/// to. Sent by the renderer; every field optional, so a caller that has none
+/// records what it did before (session 8411d403's records had empty
+/// `agent`/`project`/`run`/`call`, unlike every other decision in the log).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AuditIds {
+    pub run: Option<String>,
+    pub call: Option<String>,
+    pub agent: Option<String>,
+    pub project: Option<String>,
+}
+
+impl AuditIds {
+    fn stamp(&self, r: crate::audit::PermissionRecord) -> crate::audit::PermissionRecord {
+        let pick = |v: &Option<String>| v.as_deref().map(str::trim).unwrap_or("").to_string();
+        r.with_run(pick(&self.run))
+            .with_call(pick(&self.call))
+            .with_agent(pick(&self.agent))
+            .with_project(pick(&self.project))
+    }
+}
+
 /// Issue a grant. The path is prepared again here: a grant can only ever
 /// cover what [`prepare`] would have shown.
+#[allow(clippy::too_many_arguments)]
 pub fn grant(
     data_folder: &Path,
     env: &Env,
@@ -642,6 +667,32 @@ pub fn grant(
     reason: &str,
     persistent: bool,
     ttl_secs: Option<u64>,
+) -> Result<AccessGrant, Refusal> {
+    grant_as(
+        data_folder,
+        env,
+        session,
+        path,
+        mode,
+        reason,
+        persistent,
+        ttl_secs,
+        &AuditIds::default(),
+    )
+}
+
+/// [`grant`], recording who asked.
+#[allow(clippy::too_many_arguments)]
+pub fn grant_as(
+    data_folder: &Path,
+    env: &Env,
+    session: &str,
+    path: &str,
+    mode: AccessMode,
+    reason: &str,
+    persistent: bool,
+    ttl_secs: Option<u64>,
+    ids: &AuditIds,
 ) -> Result<AccessGrant, Refusal> {
     let prepared = prepare(path, mode, env)?;
     let now = now_secs();
@@ -671,7 +722,15 @@ pub fn grant(
     } else if let Ok(mut reg) = registry().lock() {
         reg.insert(grant.id.clone(), grant.clone());
     }
-    audit_event(data_folder, session, "granted", &grant.display, mode, &grant_detail(&grant));
+    audit_event_as(
+        data_folder,
+        session,
+        "granted",
+        &grant.display,
+        mode,
+        &grant_detail(&grant),
+        ids,
+    );
     Ok(grant)
 }
 
@@ -704,6 +763,19 @@ pub fn audit_event(
     mode: AccessMode,
     detail: &str,
 ) {
+    audit_event_as(data_folder, session, event, scope, mode, detail, &AuditIds::default())
+}
+
+/// [`audit_event`], recording who asked.
+pub fn audit_event_as(
+    data_folder: &Path,
+    session: &str,
+    event: &str,
+    scope: &str,
+    mode: AccessMode,
+    detail: &str,
+    ids: &AuditIds,
+) {
     use crate::audit::{Outcome, PermissionRecord};
     let outcome = match event {
         "granted" => Outcome::Granted,
@@ -722,7 +794,7 @@ pub fn audit_event(
         outcome,
         format!("{event}: {detail}"),
     );
-    crate::audit::append(data_folder, &record);
+    crate::audit::append(data_folder, &ids.stamp(record));
 }
 
 /// Withdraw one grant, session or kept.

@@ -478,6 +478,10 @@ async function routeCoworkTool(
                 extraProjects: ctx.extraFolders,
                 scope: 'session',
                 writeGrant: ctx.writeGrant,
+                // Its own call id, derived from the call it describes, so
+                // the audit tells this lookup apart from the push itself.
+                callId: `${call.toolCallId}:remote-facts`,
+                undoRun: ctx.activity?.run,
               }
             )
             return r.error ? null : String(r.content ?? '')

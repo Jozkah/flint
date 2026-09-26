@@ -53,6 +53,18 @@ export type AccessGrant = {
 
 const PLUGIN = 'plugin:agent-tools|'
 
+/**
+ * Who asked, for the audit record: the run and tool call a `request_access`
+ * came from, the agent, and the project the session is bound to. Without
+ * them the record had empty ids, unlike every other permission decision.
+ */
+export type AccessAuditIds = {
+  run?: string
+  call?: string
+  agent?: string
+  project?: string
+}
+
 export const prepareAccess = (args: {
   dataFolder: string
   sessionId: string
@@ -60,6 +72,7 @@ export const prepareAccess = (args: {
   accessMode: AccessMode
   reason: string
   scope?: WorkspaceScope
+  audit?: AccessAuditIds
 }) =>
   invoke<PreparedAccess | RefusedAccess>(`${PLUGIN}access_prepare`, args)
 
@@ -71,6 +84,7 @@ export const grantAccess = (args: {
   reason: string
   persistent: boolean
   scope?: WorkspaceScope
+  audit?: AccessAuditIds
 }) => invoke<AccessGrant>(`${PLUGIN}access_grant`, args)
 
 export const recordAccessDecision = (args: {
@@ -79,6 +93,7 @@ export const recordAccessDecision = (args: {
   path: string
   accessMode: AccessMode
   decision: 'denied' | 'cancelled'
+  audit?: AccessAuditIds
 }) => invoke<void>(`${PLUGIN}access_record_decision`, args)
 
 export const revokeAccess = (dataFolder: string, grantId: string) =>
@@ -203,6 +218,8 @@ export type RunAccessRequestOptions = {
   taskLabel?: string
   origin?: string
   signal?: AbortSignal
+  /** Recorded with every audit entry this request writes. */
+  audit?: AccessAuditIds
 }
 
 /**
@@ -248,6 +265,7 @@ export async function runAccessRequest(
     accessMode,
     reason,
     scope: opts.scope,
+    audit: opts.audit,
   })
   if (prepared.status === 'refused') return prepared.modelResult
 
@@ -277,6 +295,7 @@ export async function runAccessRequest(
       path: prepared.display,
       accessMode,
       decision: 'cancelled',
+      audit: opts.audit,
     }).catch(() => undefined)
     return result('timed_out', {
       path: prepared.display,
@@ -292,6 +311,7 @@ export async function runAccessRequest(
       path: prepared.display,
       accessMode,
       decision: decision === 'cancelled' ? 'cancelled' : 'denied',
+      audit: opts.audit,
     }).catch(() => undefined)
     if (decision === 'cancelled') {
       return result('cancelled', {
@@ -319,6 +339,7 @@ export async function runAccessRequest(
       reason,
       persistent: decision === 'always',
       scope: opts.scope,
+      audit: opts.audit,
     })
     return result('granted', {
       path: grant.display,
