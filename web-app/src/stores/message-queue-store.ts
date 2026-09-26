@@ -165,8 +165,9 @@ export const useMessageQueue = create<MessageQueueState>((set, get) => ({
           ...state.queues,
           // A held message waits for the user; releasing it later sends it
           // as a turn of its own, not as steering for a run it missed.
-          [threadId]: queue.map(({ steer: _steer, ...m }) => ({
+          [threadId]: queue.map((m) => ({
             ...m,
+            steer: undefined,
             held: true,
           })),
         },
