@@ -98,4 +98,23 @@ describe('summarizeToolInput', () => {
   it('summarizes a bare string argument', () => {
     expect(summarizeToolInput('just text')).toBe('just text')
   })
+
+  it('shows a git tool call as its command line', () => {
+    expect(
+      summarizeToolInput({
+        cwd: 'C:\\repo',
+        args: ['push', '-u', 'origin', 'fix/x'],
+      })
+    ).toBe('git push -u origin fix/x')
+    expect(
+      summarizeToolInput({
+        program: 'gh',
+        args: ['pr', 'create', '--title', 'Fix it'],
+      })
+    ).toBe('gh pr create --title "Fix it"')
+    // Another tool's `args` is not mistaken for a git call.
+    expect(summarizeToolInput({ args: ['a'], name: 'x' })).toBe(
+      'args: [1], name: x'
+    )
+  })
 })

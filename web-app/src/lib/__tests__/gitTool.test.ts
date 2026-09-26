@@ -47,7 +47,11 @@ describe('gitApproval', () => {
   it('asks about a push every time and says it reaches the remote', () => {
     const a = gitApproval({ args: ['push', 'origin', 'main'] })
     expect(a?.alwaysAsk).toBe(true)
-    expect(a?.reason).toMatch(/remote/)
+    // Named as a push to that remote, so "do not push" is visibly at stake.
+    expect(a?.reason).toMatch(/^Push: publishes commits to origin\b/)
+    expect(gitApproval({ args: ['push'] })?.reason).toMatch(
+      /to the default remote/
+    )
     const f = gitApproval({ args: ['push', '--force'] })
     expect(f?.reason).toMatch(/^Destructive: force push/)
     const pr = gitApproval({ program: 'gh', args: ['pr', 'create', '--fill'] })
