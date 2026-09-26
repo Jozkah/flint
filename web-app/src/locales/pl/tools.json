@@ -6,5 +6,9 @@
     "title": "Prośba o Użycie Narzędzia",
     "description": "Asystent chce użyć narzędzia:",
     "securityNotice": "Ostrzeżenie Bezpieczeństwa: Złośliwe narzędzia lub treści rozmowy mają potencjał nakłonić agenta do szkodliwych działań. Dokładnie przejrzyj każdą prośbę o użycie narzędzia przed wyrażeniem zgody."
+  },
+  "toolCall": {
+    "ranUnsandboxed": "uruchomiono poza piaskownicą",
+    "firstAttempt": "Pierwsza próba (w piaskownicy)"
   }
 }

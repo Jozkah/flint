@@ -6,5 +6,9 @@
     "title": "Richiesta chiamata strumento",
     "description": "L'assistente vuole utilizzare lo strumento:",
     "securityNotice": "Avviso di sicurezza: strumenti dannosi o il contenuto della conversazione potrebbero ingannare l'assistente spingendolo a compiere azioni nocive. Verifica attentamente ogni chiamata prima di approvarla."
+  },
+  "toolCall": {
+    "ranUnsandboxed": "eseguito fuori dalla sandbox",
+    "firstAttempt": "Primo tentativo (nella sandbox)"
   }
 }

@@ -6,5 +6,9 @@
     "title": "Permintaan Panggilan Alat",
     "description": "Asisten ingin menggunakan alat:",
     "securityNotice": "Pemberitahuan Keamanan: Alat berbahaya atau konten percakapan dapat menipu asisten untuk mencoba melakukan tindakan yang merugikan. Tinjau setiap permintaan penggunaan alat dengan cermat sebelum menyetujui."
+  },
+  "toolCall": {
+    "ranUnsandboxed": "dijalankan di luar sandbox",
+    "firstAttempt": "Percobaan pertama (di dalam sandbox)"
   }
 }

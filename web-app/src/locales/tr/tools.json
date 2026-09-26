@@ -55,6 +55,8 @@
     "outputTruncated": "Çıktı kırpıldı; yalnızca son satırlar gösteriliyor.",
     "pathPlaceholder": "yol",
     "reading": "Okunuyor...",
-    "workspaceRoot": "çalışma alanı kökü"
+    "workspaceRoot": "çalışma alanı kökü",
+    "ranUnsandboxed": "korumalı alanın dışında çalıştırıldı",
+    "firstAttempt": "İlk deneme (korumalı alanda)"
   }
 }

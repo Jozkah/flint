@@ -6,5 +6,9 @@
     "title": "Werkzeugaufruf angefordert",
     "description": "Der Assistent möchte folgendes Werkzeug verwenden:",
     "securityNotice": "Sicherheitshinweis: Schädliche Werkzeuge oder Konversationsinhalte könnten den Assistenten möglicherweise zu schädlichen Aktionen verleiten. Überprüfe jeden Werkzeug-Aufruf sorgfältig, bevor Du ihn genehmigst."
+  },
+  "toolCall": {
+    "ranUnsandboxed": "außerhalb der Sandbox ausgeführt",
+    "firstAttempt": "Erster Versuch (in der Sandbox)"
   }
 }

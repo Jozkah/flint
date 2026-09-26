@@ -55,6 +55,8 @@
     "outputTruncated": "输出已截断；仅显示最后几行。",
     "pathPlaceholder": "路径",
     "reading": "正在读取...",
-    "workspaceRoot": "工作区根目录"
+    "workspaceRoot": "工作区根目录",
+    "ranUnsandboxed": "已在沙盒外运行",
+    "firstAttempt": "第一次尝试（在沙盒中）"
   }
 }

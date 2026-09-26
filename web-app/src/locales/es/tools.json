@@ -6,5 +6,9 @@
     "title": "Solicitud de llamada a herramienta",
     "description": "El asistente quiere usar la herramienta:",
     "securityNotice": "Aviso de seguridad: Herramientas maliciosas o contenido de conversación podrían engañar al asistente para que intente acciones dañinas. Revisa cada llamada a herramienta cuidadosamente antes de aprobar."
+  },
+  "toolCall": {
+    "ranUnsandboxed": "ejecutado fuera del sandbox",
+    "firstAttempt": "Primer intento (en el sandbox)"
   }
 }
