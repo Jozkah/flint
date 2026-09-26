@@ -230,6 +230,21 @@ import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
+import { CompactionDivider } from '@/containers/CompactionDivider'
+import type { UIMessage } from 'ai'
+import {
+  compactHistory,
+  resolveAutoCompact,
+  shouldCompact,
+  DEFAULT_KEEP_RECENT,
+  type CompactionRecord,
+} from '@/lib/compaction'
+import { modelSummarizer } from '@/lib/compactionSummarizer'
+import {
+  getCompactionPolicy,
+  DEFAULT_COMPACTION_POLICY,
+  type CompactionPolicy,
+} from '@/lib/compactionPolicy'
 import { CoworkRunSummary } from '@/containers/CoworkRunSummary'
 import { janAuthoredPaths } from '@/lib/coworkOrigins'
 import {
@@ -2885,13 +2900,67 @@ function CoworkPage() {
     // payload exists: `messages` is what the request carries, and the transport
     // adds the system prompt and the advertised tools to it. Measuring earlier
     // would report a conversation one turn short of the one being sent.
-    const measured = transport.measureContext(
-      messages,
-      configuredContextTokens(
-        modelCapabilities,
-        largestAcceptedPrompt(current?.turns)
-      )
+    const runWindow = configuredContextTokens(
+      modelCapabilities,
+      largestAcceptedPrompt(current?.turns)
     )
+    const measured = transport.measureContext(messages, runWindow)
+
+    /**
+     * Automatic compaction (`lib/compaction.ts`). On unless the model's Auto
+     * Compact parameter is switched off, or the shared policy is. Before each
+     * step the request is measured against the window the check below uses;
+     * past the threshold, the older part of the run is summarized by the same
+     * model and the run carries on.
+     */
+    let compactionPolicy: CompactionPolicy = DEFAULT_COMPACTION_POLICY
+    try {
+      compactionPolicy = await getCompactionPolicy(current?.folder ?? null)
+    } catch (e) {
+      console.warn('[cowork] compaction policy unreadable; using defaults', e)
+    }
+    const autoCompact = resolveAutoCompact(
+      useAssistant.getState().currentAssistant?.parameters,
+      compactionPolicy.auto
+    )
+    const summarizeRun = modelSummarizer({
+      provider: selectedProvider,
+      modelId: selectedModel.id,
+      session: sid,
+      maxOutputTokens: compactionPolicy.summaryMaxTokens,
+      window: runWindow,
+      model: () => transport.model,
+    })
+    const compactRun = async (
+      msgs: UIMessage[],
+      why: 'threshold' | 'context-error',
+      signal: AbortSignal
+    ): Promise<UIMessage[] | null> => {
+      if (!autoCompact) return null
+      if (why === 'threshold') {
+        const now = transport.measureContext(msgs, runWindow)
+        const window = now.budget.known === false ? null : now.budget.tokens
+        if (!shouldCompact(accountedTotal(now).tokens, window)) return null
+      }
+      const result = await compactHistory(msgs, {
+        summarize: summarizeRun,
+        keepRecent: compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT,
+        reason: why,
+        signal,
+      })
+      if (!result) return null
+      pushLive([{ role: 'assistant', content: '', compaction: result.record }])
+      void recordLifecycle(
+        { session: sid, run: runId, source: 'cowork' },
+        {
+          id: `compaction:${runId}:${result.record.at}`,
+          lifecycle: 'compaction',
+          phase: 'succeeded',
+          summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
+        }
+      )
+      return result.messages
+    }
     if (sid === sessionIdRef.current) setRunContext(measured)
 
     /**
@@ -2910,8 +2979,10 @@ function CoworkPage() {
       projected: accounted.tokens,
       window: measured.budget.known === false ? null : measured.budget.tokens,
     })
+    // With compaction on, an overfull request is compacted before the first
+    // step instead of refused.
     const overflow =
-      plan.status === 'over' && accounted.complete
+      plan.status === 'over' && accounted.complete && !autoCompact
         ? new ContextOverflowError(plan)
         : null
 
@@ -3648,6 +3719,7 @@ function CoworkPage() {
             agent: 'main',
             invocation: stepSnapshot?.invocation,
           }),
+          compact: compactRun,
           nextMessageId: (() => {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
@@ -3796,8 +3868,80 @@ function CoworkPage() {
 
   const handleSubmit = (text: string) => void runRequest(text)
   // Cowork's own `/` built-ins; `/help` is added by the composer.
+  /**
+   * Compact this session now: fold its older messages into a summary written
+   * by the session's model, keep the recent turns, and persist the result so
+   * every later request sends the compacted history. Works whether or not
+   * Auto Compact is on; that switch only decides whether it happens by itself.
+   */
+  const [compacting, setCompacting] = useState(false)
+  const compactNow = async (opts: { thenContinue?: boolean } = {}) => {
+    const sid = session?.id
+    if (!sid || running || compacting || !selectedModel) return
+    const cur = useCoworkSessions
+      .getState()
+      .sessions.find((one) => one.id === sid)
+    if (!cur) return
+    let policy: CompactionPolicy = DEFAULT_COMPACTION_POLICY
+    try {
+      policy = await getCompactionPolicy(cur.folder ?? null)
+    } catch {
+      // Defaults: a manual compaction was asked for either way.
+    }
+    setCompacting(true)
+    try {
+      const result = await compactHistory(cur.messages ?? [], {
+        summarize: modelSummarizer({
+          provider: selectedProvider,
+          modelId: selectedModel.id,
+          session: sid,
+          maxOutputTokens: policy.summaryMaxTokens,
+          window: configuredContextTokens(
+            modelCapabilities,
+            largestAcceptedPrompt(cur.turns)
+          ),
+        }),
+        keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
+        reason: 'manual',
+      })
+      if (!result) {
+        toast.info(t('common:budget.compactFailed'))
+        return
+      }
+      useCoworkSessions
+        .getState()
+        .commitTurns(
+          sid,
+          [{ role: 'assistant', content: '', compaction: result.record }],
+          result.messages,
+          [],
+          undefined
+        )
+      void recordLifecycle(
+        { session: sid, run: '', source: 'cowork' },
+        {
+          id: `compaction:manual:${result.record.at}`,
+          lifecycle: 'compaction',
+          phase: 'succeeded',
+          summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
+        }
+      )
+      // From the stop card: the run stopped for room, so it resumes on it.
+      if (opts.thenContinue) void runRequestRef.current('Continue.', undefined, true)
+    } finally {
+      setCompacting(false)
+    }
+  }
+  const compactNowRef = useRef(compactNow)
+  compactNowRef.current = compactNow
+
   const slashBuiltins = useMemo(
     () => [
+      {
+        name: 'compact',
+        description: t('slash:builtin.compact'),
+        run: () => void compactNowRef.current(),
+      },
       {
         name: 'new',
         description: t('slash:builtin.newSession'),
@@ -4470,6 +4614,18 @@ function CoworkPage() {
                               />
                             )
                           })}
+                        {/* The conversation was compacted here. */}
+                        {(message.parts as { type: string; data?: unknown }[])
+                          .filter((p) => p.type === 'data-compaction')
+                          .map((p) => {
+                            const record = p.data as CompactionRecord
+                            return (
+                              <CompactionDivider
+                                key={`compaction-${record.at}`}
+                                record={record}
+                              />
+                            )
+                          })}
                         {/* Another session stopped this run, with its user's
                         approval: who, and the reason it gave. */}
                         {(message.parts as { type: string; data?: unknown }[])
@@ -4639,10 +4795,15 @@ function CoworkPage() {
                     <CoworkBudgetNotice
                       kind="tokens"
                       // An overflow carries its measurement; the spend cap
-                      // stops with none. Cowork has no compaction yet, so no
-                      // Compact button that could only show a toast.
+                      // stops with none.
                       cause={runError ? 'window' : 'budget'}
                       detail={runError ?? undefined}
+                      // Compacts the session's history for real, then
+                      // resumes the run on the room that freed.
+                      onCompact={() =>
+                        void compactNow({ thenContinue: true })
+                      }
+                      compacting={compacting}
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session.

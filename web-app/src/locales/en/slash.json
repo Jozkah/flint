@@ -18,7 +18,8 @@
   "builtin": {
     "help": "List available commands",
     "new": "Start a new conversation",
-    "newSession": "Start a new Cowork session"
+    "newSession": "Start a new Cowork session",
+    "compact": "Summarize older messages to free the context window"
   },
   "sent": {
     "command": "Command",
