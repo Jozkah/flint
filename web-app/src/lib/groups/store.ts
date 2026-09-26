@@ -86,6 +86,12 @@ type GroupsStore = {
     toIndex: number | undefined,
     plan: { context?: ItemFolderContext; groupFolders?: GroupFolderBinding[] }
   ) => Promise<boolean>
+  /** Sets or clears (null) the folder context an item took from a group. */
+  setItemContext: (
+    surface: GroupSurface,
+    itemId: string,
+    context: ItemFolderContext | null
+  ) => Promise<boolean>
   removeItem: (surface: GroupSurface, itemId: string) => Promise<void>
   pruneMissing: (surface: GroupSurface, liveIds: ReadonlySet<string>) => Promise<void>
   /** Replaces a whole surface; used by the one-time projects migration. */
@@ -256,6 +262,13 @@ export const useConversationGroups = create<GroupsStore>()((set, get) => {
       }
       return ok
     },
+
+    setItemContext: (surface, itemId, context) =>
+      commit(
+        surface,
+        (s) => domain.setItemContext(s, surface, itemId, context),
+        'Could not update the folder context'
+      ),
 
     removeItem: async (surface, itemId) => {
       await commit(surface, (s) => domain.removeItem(s, surface, itemId), 'Could not update groups')
