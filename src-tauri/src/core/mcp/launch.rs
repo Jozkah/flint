@@ -280,6 +280,8 @@ pub(super) fn confined_mcp_command(
 ///
 /// `None` for every other server: a user-configured one, a review-only one, a
 /// remote one. Those hold no folder grant to withdraw.
+/// Desktop only: the CLI build has no server lifecycle that withdraws grants.
+#[cfg(not(feature = "cli"))]
 pub(super) fn folder_grant_workspace(config: &Value) -> Option<std::path::PathBuf> {
     let confinement = config.get("janConfinement")?.as_object()?;
     confinement.get("writableRepository")?.as_str()?;
@@ -294,6 +296,7 @@ pub(super) fn folder_grant_workspace(config: &Value) -> Option<std::path::PathBu
 /// recorded under. Only what no other live holder in the session's container
 /// (its shell, another server) still needs is revoked, so a command running
 /// in that session keeps its access.
+#[cfg(not(feature = "cli"))]
 pub(super) fn release_folder_grants(config: Option<&Value>, pid: Option<u32>) {
     if let (Some(workspace), Some(pid)) = (config.and_then(folder_grant_workspace), pid) {
         tauri_plugin_agent_tools::tools::appcontainer::release_holder(&workspace, pid);
@@ -305,6 +308,7 @@ mod tests {
     use super::*;
     use crate::core::mcp::models::McpConfinement;
 
+    #[cfg(not(feature = "cli"))]
     #[test]
     fn only_a_folder_editing_imported_server_has_a_grant_to_release() {
         let editing = serde_json::json!({
