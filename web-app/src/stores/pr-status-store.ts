@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { isPlatformTauri } from '@/lib/platform/utils'
+import { backendStorage } from '@/lib/backendStorage'
 
 /**
  * Pull-request status per project folder, read through the GitHub CLI by the
@@ -15,8 +16,9 @@ import { isPlatformTauri } from '@/lib/platform/utils'
  * So a pull request is also claimed by the session whose push or `gh pr`
  * call produced it, and a session that did not claim it is not shown it:
  * session 3a6cdcf3 showed PR #31 as its own although session 8411d403 opened
- * it on the shared KewScraper checkout. Claims are the only thing kept
- * between launches.
+ * it on the shared KewScraper checkout. Claims (and whether the one-time
+ * backfill from the event log ran) are the only things kept between
+ * launches, in the backend settings store beside the sessions.
  */
 
 export type PrState = 'open' | 'draft' | 'merged' | 'closed'
@@ -50,6 +52,11 @@ type PrStatusState = {
   byFolder: Record<string, Entry>
   /** `folder#number` to the id of the session that opened or pushed it. */
   claims: Record<string, string>
+  /** The event-log backfill of claims (`backfillPrClaims`) has run. */
+  backfilled: boolean
+  /** Record claims, keeping any a session already holds. */
+  addClaims: (claims: Record<string, string>) => void
+  markBackfilled: () => void
   /**
    * Ask for `folder`'s pull request. `claimant` is the session whose git call
    * prompted the ask; a pull request found for it, and not already claimed,
@@ -91,6 +98,9 @@ export const usePrStatusStore = create<PrStatusState>()(
   (set, get) => ({
   byFolder: {},
   claims: {},
+  backfilled: false,
+  addClaims: (add) => set((s) => ({ claims: { ...add, ...s.claims } })),
+  markBackfilled: () => set({ backfilled: true }),
   refresh: async (folder, force = false, claimant) => {
     if (claimant) claimants.set(folder, claimant)
     const cur = get().byFolder[folder]
@@ -124,8 +134,12 @@ export const usePrStatusStore = create<PrStatusState>()(
   }),
   {
     name: 'flint-pr-claims',
-    storage: createJSONStorage(() => localStorage),
-    partialize: (s) => ({ claims: s.claims }) as unknown as PrStatusState,
+    // The Rust settings store, like the sessions, so claims survive a
+    // cleared webview store. Rehydrated in hydrateBackendStores().
+    storage: createJSONStorage(() => backendStorage),
+    skipHydration: true,
+    partialize: (s) =>
+      ({ claims: s.claims, backfilled: s.backfilled }) as unknown as PrStatusState,
   }
   )
 )
