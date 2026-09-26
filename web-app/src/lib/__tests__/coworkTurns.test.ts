@@ -386,3 +386,26 @@ describe('streamed tool arguments stay out of the rendered message', () => {
     expect(part.input).toEqual({ path: 'big.txt', content: 'the whole body' })
   })
 })
+
+describe("a request Flint wrote itself", () => {
+  const turns = [
+    { role: 'user' as const, content: 'fix it' },
+    { role: 'assistant' as const, content: 'could not reach the host' },
+    { role: 'user' as const, content: 'Continue with the previous request.', hidden: true },
+    { role: 'assistant' as const, content: 'done' },
+  ]
+
+  it('is left out of the timeline', () => {
+    const shown = coworkTurnsToUIMessages(turns, 'c', { omitHiddenTurns: true })
+    const users = shown.filter((m) => m.role === 'user')
+    expect(users).toHaveLength(1)
+    expect((users[0].parts[0] as any).text).toBe('fix it')
+  })
+
+  it('is kept, marked, for the model', () => {
+    const stored = coworkTurnsToUIMessages(turns, 'c')
+    const users = stored.filter((m) => m.role === 'user')
+    expect(users).toHaveLength(2)
+    expect((users[1] as any).metadata).toEqual({ hidden: true })
+  })
+})

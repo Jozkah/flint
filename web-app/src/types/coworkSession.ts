@@ -21,6 +21,13 @@ export type CoworkTurn = {
    */
   steered?: boolean
   /**
+   * User-row only: written by Flint rather than typed, such as the request the
+   * result card's "Continue" sends. It goes to the model like any user row but
+   * is not drawn in the transcript: the user pressed a button, they did not
+   * say anything.
+   */
+  hidden?: boolean
+  /**
    * User-row only: this row is mail from another agent session, handed to the
    * model wrapped as coordination data (docs/SESSION_MESSAGING.md). Rendered
    * as "Message from <name>", never as something the user typed.

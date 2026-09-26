@@ -76,6 +76,12 @@ export type CoworkTurnsOptions = {
    * again with no reload.
    */
   hideCompletedTools?: boolean
+  /**
+   * Leave out user rows Flint wrote itself (`CoworkTurn.hidden`). For the
+   * timeline only: the stored transcript keeps them, because the model has to
+   * see what it was asked.
+   */
+  omitHiddenTurns?: boolean
 }
 
 export function coworkTurnsToUIMessages(
@@ -117,7 +123,9 @@ export function coworkTurnsToUIMessages(
     }
     if (turn.role === 'user') {
       flushAssistant()
+      if (turn.hidden && options.omitHiddenTurns) return
       const metadata: Record<string, unknown> = {}
+      if (turn.hidden) metadata.hidden = true
       // janhq/jan#8864: marked where it entered a run as steering.
       if (turn.steered) metadata.steered = true
       // Mail from another session: attributed to its sender, not the user.

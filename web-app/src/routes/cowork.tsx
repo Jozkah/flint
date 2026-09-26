@@ -1381,7 +1381,10 @@ function CoworkPage() {
   }, [session?.turns, toolActivity])
   const committedMessages = useMemo(
     () =>
-      coworkTurnsToUIMessages(committedTurns, idPrefix, { hideCompletedTools }),
+      coworkTurnsToUIMessages(committedTurns, idPrefix, {
+        hideCompletedTools,
+        omitHiddenTurns: true,
+      }),
     [committedTurns, idPrefix, hideCompletedTools]
   )
   const liveMessages = useMemo(() => {
@@ -1398,7 +1401,7 @@ function CoworkPage() {
     return coworkTurnsToUIMessages(
       reconciledLive,
       idPrefix,
-      { hideCompletedTools },
+      { hideCompletedTools, omitHiddenTurns: true },
       committedTurns.length
     )
   }, [
@@ -1851,7 +1854,13 @@ function CoworkPage() {
    * re-runs the committed history rather than re-sending the question, which
    * would leave the model reading it twice.
    */
-  const runRequest = async (text: string | null, from?: QueuedMessageSender) => {
+  const runRequest = async (
+    text: string | null,
+    from?: QueuedMessageSender,
+    // Flint's own request (the result card's Continue): sent to the model,
+    // not drawn as something the user said.
+    hidden = false
+  ) => {
     const sid = ensureCurrentSession()
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
@@ -1921,7 +1930,7 @@ function CoworkPage() {
       return
     }
     // Another session's message is not what this session is about.
-    if (text && !from && current?.title === 'New session')
+    if (text && !from && !hidden && current?.title === 'New session')
       store.setTitle(sid, slashTitle(text).slice(0, 40))
 
     /**
@@ -1993,7 +2002,14 @@ function CoworkPage() {
     // stopped, replaced or its session deleted, a late write is refused
     // rather than drawn under whatever session is in view.
     let runTurns: CoworkTurn[] = text
-      ? [{ role: 'user', content: text, ...(from ? { from: agentAttribution(from) } : {}) }]
+      ? [
+          {
+            role: 'user',
+            content: text,
+            ...(from ? { from: agentAttribution(from) } : {}),
+            ...(hidden ? { hidden: true } : {}),
+          },
+        ]
       : []
     // AH-026: the live lane is also kept with the session while the run goes,
     // so a run the app is killed under comes back as an interrupted turn.
@@ -4534,9 +4550,15 @@ function CoworkPage() {
                         onRetry={() => void runRequest(null)}
                         // A follow-up run under the session's current mode,
                         // asked to retry what this one left unresolved.
-                        // Focusing the composer did nothing visible.
+                        // Focusing the composer did nothing visible. The
+                        // request is Flint's, so it is not drawn as a user
+                        // message.
                         onContinue={() =>
-                          handleSubmit(continueRequest(runOutcome.unresolved))
+                          void runRequest(
+                            continueRequest(runOutcome.unresolved),
+                            undefined,
+                            true
+                          )
                         }
                       />
                     )}
