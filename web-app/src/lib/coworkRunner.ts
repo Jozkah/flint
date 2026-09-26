@@ -833,6 +833,14 @@ export type RunOutcome = {
  * more work is pending. Stops cleanly on a cap rather than throwing: hitting the
  * step budget is routine on a long task, and the caller offers "Keep going".
  */
+/**
+ * A shell result that reported success while a step inside it failed, as the
+ * shell tool marks it. Counted as a failure by the loop guard, since the model
+ * was told to treat it as one.
+ */
+const maskedFailure = (output: unknown): boolean =>
+  typeof output === 'string' && output.includes('[shell: reported exit 0, but')
+
 export async function runTurn(opts: {
   messages: UIMessage[]
   deps: RunDeps
@@ -1083,8 +1091,11 @@ export async function runTurn(opts: {
         // Settled either way: a success leaves `isError` unset, and the guard
         // reads `undefined` as "not known", which would let failures on
         // either side of a success count as a streak.
-        failed: outcome.isError === true,
-        error: outcome.isError ? outcome.output : undefined,
+        failed: outcome.isError === true || maskedFailure(outcome.output),
+        error:
+          outcome.isError || maskedFailure(outcome.output)
+            ? outcome.output
+            : undefined,
         path: pathOf(call.input),
         after: outcome.diff,
       })

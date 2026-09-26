@@ -100,6 +100,10 @@ export function classifyShellFailure(error: string | undefined): ShellFailureCla
   return null
 }
 
+/** Notes from the shell tool that already say retrying cannot help. */
+const TOLD_NOT_TO_RETRY =
+  /\[device_path:|cannot open it on this platform|reported exit 0, but/i
+
 export type ObservedCall = {
   tool: string
   input: unknown
@@ -267,12 +271,26 @@ function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
   let total = 0
   let streakClass: ShellFailureClass | null = null
   let streak = 0
+  // Failures Flint already told the model not to retry (the null device,
+  // a granted folder the shell cannot open). A second one means the note was
+  // not heeded; waiting for the ordinary streak spent three more commands.
+  let told = 0
   for (const call of calls) {
     if (call.tool !== SHELL_TOOL) continue
     if (!call.failed) {
       streakClass = null
       streak = 0
       continue
+    }
+    if (call.error && TOLD_NOT_TO_RETRY.test(call.error)) {
+      told += 1
+      if (told >= 2) {
+        return {
+          tripped: true,
+          reason: 'failing-shell',
+          detail: `${call.tool} failed again after being told the sandbox cannot run it`,
+        }
+      }
     }
     total += 1
     if (total >= SHELL_FAILURE_BUDGET) {

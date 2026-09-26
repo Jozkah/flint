@@ -322,6 +322,39 @@ pub fn unquoted_assignment(command: &str, name: &str) -> Option<String> {
     None
 }
 
+/// A note for a command that reported success after a step inside it failed.
+///
+/// PowerShell's exit status is the last statement's, so `go vet ./...;
+/// "EXIT=$LASTEXITCODE"` printed `EXIT=2` and still came back `[exit 0]`, and
+/// the result was recorded as a passing check. Only called for output the
+/// shell reported as successful.
+pub fn masked_failure_note(output: &str) -> Option<String> {
+    let reported = output
+        .match_indices("EXIT=")
+        .filter_map(|(i, _)| {
+            let digits: String = output[i + 5..]
+                .chars()
+                .take_while(|c| c.is_ascii_digit() || *c == '-')
+                .collect();
+            digits.parse::<i64>().ok()
+        })
+        .find(|code| *code != 0);
+    let native_error = output.contains("NativeCommandError")
+        || output.contains("UnauthorizedAccessException")
+        || output.contains("ItemNotFoundException");
+    let what = match (reported, native_error) {
+        (Some(code), _) => format!("a command inside it exited with {code}"),
+        (None, true) => "a command inside it wrote an error record".to_string(),
+        (None, false) => return None,
+    };
+    Some(format!(
+        "\n[shell: reported exit 0, but {what}. PowerShell reports only the last \
+         statement's status, so a trailing `\"EXIT=$LASTEXITCODE\"` or `; echo` hides the \
+         failure. Treat this command as failed, and check `$LASTEXITCODE` with `if` or run \
+         the step on its own.]"
+    ))
+}
+
 /// The note appended when a download fails on name resolution inside a
 /// sandbox that has no network: retrying cannot succeed.
 pub const NO_NETWORK_HINT: &str =
@@ -857,6 +890,16 @@ mod missing_hint_tests {
         assert!(h.contains("`node` is not available in this sandbox"), "{h}");
         assert!(h.contains("do not download or install it"), "{h}");
         assert!(h.contains("treat the check as not run"), "{h}");
+    }
+
+    #[test]
+    fn a_failure_behind_a_trailing_statement_is_named() {
+        let vet = "go : go: vet.exe failed: open NUL: Access is denied.\n\
+                   + FullyQualifiedErrorId : NativeCommandError\nEXIT=2\n[exit 0]";
+        assert!(masked_failure_note(vet).unwrap().contains("exited with 2"));
+        let copy = "Copy-Item : Access is denied\n UnauthorizedAccessException\nCOPIED\n[exit 0]";
+        assert!(masked_failure_note(copy).unwrap().contains("error record"));
+        assert!(masked_failure_note("go version go1.26\nEXIT=0\n[exit 0]").is_none());
     }
 
     #[test]
