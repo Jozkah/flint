@@ -6,6 +6,13 @@ import { useLocation } from '@tanstack/react-router'
  * instead of each row lighting up on its own. It follows the row marked
  * `data-active="true"`, hides while that row is collapsed away, and keeps
  * up with scrolling, resizing and trees opening.
+ *
+ * The nav is a fixed-height scroll box, so its own size never changes when a
+ * group above the selection expands (a NavCollapse animates grid rows, which
+ * no attribute or resize event reports). The card therefore watches the size
+ * of every direct child of the nav and of the active row itself, and places
+ * again whenever a transition inside the nav ends, so it never stays parked
+ * at a stale position between two rows.
  */
 export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
   const { pathname } = useLocation()
@@ -22,6 +29,7 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
     }
     const glide = ind
     let placed = false
+    let watched: HTMLElement | null = null
 
     const place = () => {
       const rows = Array.from(
@@ -30,6 +38,11 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
       const row = rows.find(
         (el) => el.offsetParent !== null && !el.closest('[inert]') && el.getBoundingClientRect().height > 4
       )
+      if (row !== watched) {
+        if (watched) ro.unobserve(watched)
+        if (row) ro.observe(row)
+        watched = row ?? null
+      }
       if (!row) {
         glide.style.opacity = '0'
         nav.removeAttribute('data-glide')
@@ -57,24 +70,41 @@ export function useSidebarGlide(navRef: RefObject<HTMLElement | null>) {
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(place)
     }
+    const ro = new ResizeObserver(soon)
+    const observeChildren = () => {
+      ro.observe(nav)
+      for (const child of Array.from(nav.children)) {
+        if (child !== glide) ro.observe(child)
+      }
+    }
+    observeChildren()
     soon()
     // Trees and groups animate open; place again once they settle.
     const settle = window.setTimeout(place, 450)
-    const mo = new MutationObserver(soon)
+    const mo = new MutationObserver((records) => {
+      if (records.some((r) => r.type === 'childList' && r.target === nav)) observeChildren()
+      soon()
+    })
     mo.observe(nav, {
       subtree: true,
       childList: true,
       attributes: true,
       attributeFilter: ['data-active', 'data-state', 'inert'],
     })
-    const ro = new ResizeObserver(soon)
-    ro.observe(nav)
+    // A collapse finishing its animation moves every row below it.
+    const onTransitionEnd = (e: Event) => {
+      if (e.target !== glide) soon()
+    }
+    nav.addEventListener('transitionend', onTransitionEnd)
+    nav.addEventListener('transitioncancel', onTransitionEnd)
     window.addEventListener('resize', soon)
     return () => {
       cancelAnimationFrame(frame)
       window.clearTimeout(settle)
       mo.disconnect()
       ro.disconnect()
+      nav.removeEventListener('transitionend', onTransitionEnd)
+      nav.removeEventListener('transitioncancel', onTransitionEnd)
       window.removeEventListener('resize', soon)
     }
   }, [navRef, pathname])
