@@ -120,7 +120,15 @@ export function GroupFoldersDialog({
           <DialogTitle>
             {t('common:groups.foldersTitle', { name: group.name })}
           </DialogTitle>
-          <DialogDescription>{t('common:groups.foldersBody')}</DialogDescription>
+          <DialogDescription>
+            {t(
+              surface === 'home'
+                ? 'common:groups.foldersBodyHome'
+                : surface === 'cowork'
+                  ? 'common:groups.foldersBodyCowork'
+                  : 'common:groups.foldersBodyRooms'
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         {bindings.length === 0 ? (
