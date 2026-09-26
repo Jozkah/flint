@@ -52,6 +52,7 @@ import {
   gitInsideSessionTree,
   gitRemoteFacts,
 } from '@/lib/gitTool'
+import { attributeGitInput } from '@/lib/gitAttribution'
 
 export type DispatchContext = {
   sessionId: string
@@ -63,6 +64,11 @@ export type DispatchContext = {
    */
   activity?: Partial<ToolActivityContext>
   readOnlyFolder: string | null
+  /**
+   * The model this run is using, named in the co-author trailer Flint adds to
+   * a `git` commit. Absent, the trailer names Flint alone.
+   */
+  modelId?: string
   /**
    * The session's additional attached folders, readable (and, under a live
    * grant, writable) exactly like the primary one.
@@ -374,6 +380,18 @@ async function routeCoworkTool(
 
   // `git`: a read runs straight away; anything else is a mutation and goes
   // through the same policy as `write` and `bash` below.
+  // Flint's attribution on a commit or pull request, added before the call is
+  // judged or asked about, so the prompt shows exactly what will land.
+  if (toolName === GIT_TOOL_NAME) {
+    call = {
+      ...call,
+      input: await attributeGitInput(
+        call.input,
+        ctx.modelId,
+        ctx.worktreePath ?? ctx.readOnlyFolder
+      ),
+    }
+  }
   const git = toolName === GIT_TOOL_NAME ? gitApproval(call.input) : null
 
   // Every mutating call goes through the one policy, so the run mode and the

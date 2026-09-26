@@ -2922,6 +2922,8 @@ function CoworkPage() {
               // isolated child's authority is its own, and the backend refuses a
               // grant presented under any other id.
               sessionId: childOwner,
+              // The parent's model: a child runs on the same instance.
+              modelId: selectedModel?.id,
               readOnlyFolder: childFolder,
               extraFolders: childExtras,
               mode: runMode,
@@ -3247,6 +3249,7 @@ function CoworkPage() {
                   invocation: stepSnapshot?.invocation,
                 },
                 sessionId: sid,
+                modelId: selectedModel?.id,
                 readOnlyFolder: runReadRoot,
                 extraFolders: runExtraFolders,
                 mode: runMode,

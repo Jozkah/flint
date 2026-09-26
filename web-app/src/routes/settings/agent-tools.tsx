@@ -41,6 +41,7 @@ import {
 } from '@/lib/agentWorkspace'
 import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
+import { AttributionSettings } from '@/containers/AttributionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
@@ -318,6 +319,7 @@ function AgentToolsContent() {
             />
           )}
           {sandbox?.enforces && <SandboxToolchainGrants />}
+          <AttributionSettings />
         </Card>
 
         <CompactionPolicySettings />

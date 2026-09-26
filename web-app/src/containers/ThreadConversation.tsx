@@ -146,6 +146,7 @@ import {
 } from '@/lib/deadTools'
 import { chatForcedPrompt } from '@/lib/chatToolGuard'
 import { GIT_TOOL_NAME, gitApproval, gitRemoteFacts } from '@/lib/gitTool'
+import { attributeGitInput } from '@/lib/gitAttribution'
 import { chatLoopStop, chatTurnId, noteChatToolCall } from '@/lib/chatLoopGuard'
 import {
   recordToolActivity,
@@ -753,6 +754,14 @@ export function ThreadConversation({
             null
           try {
             const toolName = toolCall.toolName
+            // Flint's attribution on a commit or pull request, added before
+            // the call is asked about, so the prompt shows what will land.
+            if (toolName === GIT_TOOL_NAME) {
+              toolCall.input = await attributeGitInput(
+                toolCall.input,
+                getModelSelection().selectedModel?.id
+              )
+            }
             // The same record Cowork writes (AH-050): Chat's tool calls are
             // part of what the conversation did, and a timeline or an audit
             // export that only knew Cowork's would be missing them.
