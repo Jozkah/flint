@@ -2167,6 +2167,9 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         if let Some(note) = unreachable {
             out.push_str(&note);
         }
+        if let Some(hint) = super::host_tools::go_flag_order_hint(&out) {
+            out.push_str(hint);
+        }
         if shell_flavor == proc::ShellFlavor::PowerShell && !bash_result_failed(&out) {
             if let Some(note) = super::host_tools::masked_failure_note(&out) {
                 out.push_str(&note);

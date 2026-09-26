@@ -355,6 +355,20 @@ pub fn masked_failure_note(output: &str) -> Option<String> {
     ))
 }
 
+/// A one-line hint for Go's `-C` flag-order error. `go` accepts `-C <dir>`
+/// only as the very first flag (`go -C <dir> test ./...`), and a model keeps
+/// writing it after the subcommand.
+pub fn go_flag_order_hint(output: &str) -> Option<&'static str> {
+    let lower = output.to_lowercase();
+    let hit = lower.contains("-c flag must be first flag")
+        || (lower.contains("go: ") && lower.contains("flag provided but not defined: -c"));
+    hit.then_some(
+        "\n[shell: go needs `-C <dir>` as the first flag, before the subcommand: \
+         `go -C <dir> test ./...`, not `go test -C <dir> ./...`. Or run go from that \
+         directory (the tool's `cwd`).]",
+    )
+}
+
 /// The note appended when a download fails on name resolution inside a
 /// sandbox that has no network: retrying cannot succeed.
 pub const NO_NETWORK_HINT: &str =
@@ -890,6 +904,17 @@ mod missing_hint_tests {
         assert!(h.contains("`node` is not available in this sandbox"), "{h}");
         assert!(h.contains("do not download or install it"), "{h}");
         assert!(h.contains("treat the check as not run"), "{h}");
+    }
+
+    #[test]
+    fn go_c_flag_order_error_gets_a_one_line_hint() {
+        let h = go_flag_order_hint("go: -C flag must be first flag on command line\n[exit 2]")
+            .expect("hint");
+        assert!(h.contains("`go -C <dir> test ./...`"), "{h}");
+        assert_eq!(h.trim_start().lines().count(), 1, "{h}");
+        assert!(go_flag_order_hint("flag provided but not defined: -C\ngo: usage\n[exit 2]").is_some());
+        assert!(go_flag_order_hint("ok  example.com/x 0.1s\n[exit 0]").is_none());
+        assert!(go_flag_order_hint("error: unknown flag -C\n[exit 1]").is_none());
     }
 
     #[test]

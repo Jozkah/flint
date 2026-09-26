@@ -264,6 +264,19 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
     let Some(sub) = args.first().cloned() else {
         return Err("no git subcommand given (e.g. [\"status\"])".into());
     };
+    if sub == "-C" || (sub.starts_with("-C") && sub.len() > 2) {
+        let (dir, skip) = if sub == "-C" {
+            (args.get(1).cloned().unwrap_or_default(), 2)
+        } else {
+            (sub[2..].to_string(), 1)
+        };
+        let rest: Vec<String> = args.iter().skip(skip).cloned().collect();
+        return Err(format!(
+            "`git -C <dir>` is not supported: pass the folder in the tool's `cwd` parameter and leave -C out of `args`, e.g. {{\"cwd\": {}, \"args\": {}}}",
+            serde_json::Value::String(dir),
+            serde_json::Value::from(rest)
+        ));
+    }
     if sub.starts_with('-') {
         return Err(format!(
             "global options before the subcommand (`{sub}`) are not allowed; pass the folder as `cwd` instead of -C, and do not override configuration with -c"
@@ -509,6 +522,88 @@ fn move_leading_repo(args: Vec<String>) -> Result<Vec<String>, String> {
     Ok(rest)
 }
 
+/// The `--json` fields gh accepts for the commands a model reads most, so an
+/// invalid field is refused with the valid list instead of gh's bare error.
+fn gh_json_fields(group: &str, action: &str) -> Option<&'static [&'static str]> {
+    const PR: &[&str] = &[
+        "additions", "assignees", "author", "autoMergeRequest", "baseRefName", "baseRefOid",
+        "body", "changedFiles", "closed", "closedAt", "closingIssuesReferences", "comments",
+        "commits", "createdAt", "deletions", "files", "fullDatabaseId", "headRefName",
+        "headRefOid", "headRepository", "headRepositoryOwner", "id", "isCrossRepository",
+        "isDraft", "labels", "latestReviews", "maintainerCanModify", "mergeCommit",
+        "mergeStateStatus", "mergeable", "mergedAt", "mergedBy", "milestone", "number",
+        "potentialMergeCommit", "projectCards", "projectItems", "reactionGroups",
+        "reviewDecision", "reviewRequests", "reviews", "state", "statusCheckRollup", "title",
+        "updatedAt", "url",
+    ];
+    const ISSUE: &[&str] = &[
+        "assignees", "author", "body", "closed", "closedAt", "closedByPullRequestsReferences",
+        "comments", "createdAt", "id", "isPinned", "labels", "milestone", "number",
+        "projectCards", "projectItems", "reactionGroups", "state", "stateReason", "title",
+        "updatedAt", "url",
+    ];
+    const RUN_LIST: &[&str] = &[
+        "attempt", "conclusion", "createdAt", "databaseId", "displayTitle", "event",
+        "headBranch", "headSha", "name", "number", "startedAt", "status", "updatedAt", "url",
+        "workflowDatabaseId", "workflowName",
+    ];
+    const RUN_VIEW: &[&str] = &[
+        "attempt", "conclusion", "createdAt", "databaseId", "displayTitle", "event",
+        "headBranch", "headSha", "jobs", "name", "number", "startedAt", "status", "updatedAt",
+        "url", "workflowDatabaseId", "workflowName",
+    ];
+    const RELEASE_LIST: &[&str] =
+        &["createdAt", "isDraft", "isLatest", "isPrerelease", "name", "publishedAt", "tagName"];
+    const CHECKS: &[&str] = &[
+        "bucket", "completedAt", "description", "event", "link", "name", "startedAt", "state",
+        "workflow",
+    ];
+    match (group, action) {
+        ("pr", "list" | "view") => Some(PR),
+        ("issue", "list" | "view") => Some(ISSUE),
+        ("run", "list") => Some(RUN_LIST),
+        ("run", "view") => Some(RUN_VIEW),
+        ("release", "list") => Some(RELEASE_LIST),
+        ("pr", "checks") => Some(CHECKS),
+        _ => None,
+    }
+}
+
+/// The gh subcommand that replaces a refused `gh api <endpoint>` call.
+fn gh_api_alternative(args: &[String]) -> String {
+    let endpoint = args
+        .iter()
+        .skip(1)
+        .find(|a| !a.starts_with('-'))
+        .map(|a| a.to_ascii_lowercase())
+        .unwrap_or_default();
+    let has_seg = |seg: &str| endpoint.split(['/', '?']).any(|p| p == seg);
+    let alt = if has_seg("pulls") {
+        if has_seg("comments") || has_seg("reviews") {
+            r#"["pr", "view", "<number>", "--repo", "owner/repo", "--json", "comments,reviews"]"#
+        } else if has_seg("files") {
+            r#"["pr", "diff", "<number>", "--repo", "owner/repo", "--name-only"]"#
+        } else {
+            r#"["pr", "list", "--repo", "owner/repo", "--json", "number,title,state"] or ["pr", "view", "<number>", "--repo", "owner/repo", "--json", "<fields>"]"#
+        }
+    } else if has_seg("issues") {
+        r#"["issue", "list", "--repo", "owner/repo", "--json", "number,title,state"] or ["issue", "view", "<number>", "--repo", "owner/repo", "--json", "<fields>"]"#
+    } else if has_seg("actions") || has_seg("runs") {
+        r#"["run", "list", "--repo", "owner/repo"] or ["run", "view", "<run-id>", "--repo", "owner/repo", "--log-failed"]"#
+    } else if has_seg("releases") || has_seg("tags") {
+        r#"["release", "list", "--repo", "owner/repo"] or ["release", "view", "<tag>", "--repo", "owner/repo"]"#
+    } else if has_seg("search") {
+        r#"["search", "issues" | "prs" | "repos" | "code", "<query>"]"#
+    } else if has_seg("user") || has_seg("users") || has_seg("orgs") {
+        r#"["repo", "list", "<owner>"] (or ["auth", "status"] for the signed-in account)"#
+    } else {
+        r#"["repo", "view", "owner/repo", "--json", "<fields>"]"#
+    };
+    format!(
+        "`gh api` is not allowed through this tool. Use the matching subcommand instead: {alt}. {GH_SHAPES}"
+    )
+}
+
 /// Mistakes a model makes in gh's argument shape, named with the fix.
 fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), String> {
     if has(args, &["--web", "-w"]) {
@@ -530,6 +625,20 @@ fn check_gh_shape(group: &str, action: &str, args: &[String]) -> Result<(), Stri
         }
         if words.is_empty() {
             return Err(format!("`--json` needs the fields to return, e.g. [\"--json\", \"number,title\"]. {GH_SHAPES}"));
+        }
+        if let Some(valid) = gh_json_fields(group, action) {
+            let bad: Vec<&str> = words[0]
+                .split(',')
+                .map(str::trim)
+                .filter(|f| !f.is_empty() && !valid.contains(f))
+                .collect();
+            if !bad.is_empty() {
+                return Err(format!(
+                    "`gh {group} {action} --json` has no field {}. Valid fields: {}",
+                    bad.iter().map(|b| format!("`{b}`")).collect::<Vec<_>>().join(", "),
+                    valid.join(",")
+                ));
+            }
         }
     }
     if matches!(group, "pr" | "issue") && action == "create" {
@@ -560,6 +669,9 @@ fn gh_plan(args: Vec<String>) -> Result<GitPlan, String> {
     }
     if has_opt(&args, &["--show-token", "-t"]) && group == "auth" {
         return Err("`gh auth status --show-token` is not allowed: the token must never reach the transcript".into());
+    }
+    if group == "api" {
+        return Err(gh_api_alternative(&args));
     }
     let action = args.get(1).map(String::as_str).unwrap_or("");
     check_gh_shape(&group, action, &args)?;
@@ -1350,6 +1462,49 @@ mod tests {
                 .program,
             Program::Gh
         );
+    }
+
+    #[test]
+    fn git_dash_c_names_the_cwd_parameter_and_the_rewritten_call() {
+        let e = p("git", &["-C", "C:/repo", "status", "--short"]).unwrap_err();
+        assert!(e.contains("`cwd` parameter"), "{e}");
+        assert!(e.contains(r#""cwd": "C:/repo""#), "{e}");
+        assert!(e.contains(r#""args": ["status","--short"]"#), "{e}");
+        let e = p("git", &["-C/repo", "log"]).unwrap_err();
+        assert!(e.contains(r#""cwd": "/repo""#), "{e}");
+        // Other global options keep the general refusal.
+        assert!(p("git", &["-c", "a=b", "status"]).unwrap_err().contains("global options"));
+    }
+
+    #[test]
+    fn gh_api_names_the_subcommand_to_use_instead() {
+        let e = p("gh", &["api", "repos/o/r/pulls"]).unwrap_err();
+        assert!(e.contains(r#"["pr", "list""#), "{e}");
+        let e = p("gh", &["api", "repos/o/r/pulls/3/comments"]).unwrap_err();
+        assert!(e.contains(r#"["pr", "view", "<number>""#), "{e}");
+        let e = p("gh", &["api", "-X", "GET", "/repos/o/r/issues"]).unwrap_err();
+        assert!(e.contains(r#"["issue", "list""#), "{e}");
+        let e = p("gh", &["api", "repos/o/r/actions/runs"]).unwrap_err();
+        assert!(e.contains(r#"["run", "list""#), "{e}");
+        let e = p("gh", &["api", "repos/o/r/releases/latest"]).unwrap_err();
+        assert!(e.contains(r#"["release", "list""#), "{e}");
+        let e = p("gh", &["api", "repos/o/r"]).unwrap_err();
+        assert!(e.contains(r#"["repo", "view""#), "{e}");
+    }
+
+    #[test]
+    fn gh_json_with_an_unknown_field_lists_the_valid_ones() {
+        let e = p("gh", &["pr", "list", "--json", "number,status,title"]).unwrap_err();
+        assert!(e.contains("no field `status`"), "{e}");
+        assert!(e.contains("Valid fields:") && e.contains("state") && e.contains("headRefName"), "{e}");
+        let e = p("gh", &["issue", "view", "3", "--json", "number,headRefName"]).unwrap_err();
+        assert!(e.contains("`headRefName`"), "{e}");
+        let e = p("gh", &["run", "list", "--json", "id"]).unwrap_err();
+        assert!(e.contains("databaseId"), "{e}");
+        // Valid fields pass, and commands without a known list are not checked.
+        assert!(p("gh", &["pr", "list", "--json", "number,title,state"]).is_ok());
+        assert!(p("gh", &["run", "view", "5", "--json", "jobs,conclusion"]).is_ok());
+        assert!(p("gh", &["repo", "view", "o/r", "--json", "anyNewField"]).is_ok());
     }
 
     fn temp(name: &str) -> PathBuf {
