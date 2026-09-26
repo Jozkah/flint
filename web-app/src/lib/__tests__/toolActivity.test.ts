@@ -49,6 +49,17 @@ describe('classification', () => {
     expect(capabilityOf('web_fetch')).toBe('net')
   })
 
+  it('records a git read as a read, and every phase of a commit as a write', () => {
+    expect(capabilityOf('git', '{"args":["status"]}', 'g1')).toBe('read')
+    expect(capabilityOf('git', { program: 'gh', args: ['issue', 'view', '9'] })).toBe('read')
+    expect(capabilityOf('git', { args: ['branch', '--list'] })).toBe('read')
+    expect(capabilityOf('git', { args: ['checkout', '-b', 'x'] })).toBe('write')
+    expect(capabilityOf('git', '{"args":["commit","-m","x"]}', 'g2')).toBe('write')
+    // Later phases carry no input: the call's own class is kept.
+    expect(capabilityOf('git', undefined, 'g1')).toBe('read')
+    expect(capabilityOf('git', undefined, 'g2')).toBe('write')
+  })
+
   it('treats an MCP tool as exec rather than guessing from its name', () => {
     expect(capabilityOf('github__create_issue')).toBe('exec')
     expect(kindOf('github__create_issue')).toBe('mcp')

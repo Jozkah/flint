@@ -191,7 +191,66 @@ const KINDS: Record<string, string> = {
   web_fetch: 'net',
 }
 
-export function capabilityOf(tool: string): string {
+/**
+ * `git`/`gh` subcommands that only read. Mirrors the Rust classifier's read
+ * class closely enough for the record; the gate is what decides prompting.
+ */
+const GIT_READS = new Set([
+  'status', 'log', 'diff', 'show', 'ls-files', 'blame', 'rev-parse',
+  'describe', 'shortlog', 'reflog', 'remote',
+])
+const GH_READS = new Set(['list', 'view', 'status', 'diff', 'checks'])
+
+/** The capability of one `git` tool call, from its argv. */
+export function gitCapability(input: unknown): 'read' | 'write' {
+  let parsed = input
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed)
+    } catch {
+      return 'write'
+    }
+  }
+  const record = (parsed ?? {}) as { program?: unknown; args?: unknown }
+  const args = Array.isArray(record.args) ? record.args.map(String) : []
+  if (record.program === 'gh') {
+    if (args[0] === 'auth' && args[1] === 'status') return 'read'
+    return GH_READS.has(args[1] ?? '') ? 'read' : 'write'
+  }
+  const sub = args[0] ?? ''
+  // A listing of branches or tags reads; naming one creates or deletes it.
+  if (sub === 'branch' || sub === 'tag') {
+    const rest = args.slice(1)
+    return rest.every((a) => ['--list', '-l', '-a', '-r', '-v', '-vv', '--all', '--show-current'].includes(a))
+      ? 'read'
+      : 'write'
+  }
+  if (sub === 'remote') return args.length <= 2 && (args[1] ?? '-v').startsWith('-') ? 'read' : 'write'
+  return GIT_READS.has(sub) ? 'read' : 'write'
+}
+
+/** Per call, so every phase records what the requested call was. */
+const callCapability = new Map<string, string>()
+
+export function capabilityOf(
+  tool: string,
+  input?: unknown,
+  call?: string
+): string {
+  if (tool === 'git') {
+    if (input !== undefined) {
+      const found = gitCapability(input)
+      if (call) {
+        callCapability.set(call, found)
+        if (callCapability.size > 500) {
+          const oldest = callCapability.keys().next().value
+          if (oldest !== undefined) callCapability.delete(oldest)
+        }
+      }
+      return found
+    }
+    return (call && callCapability.get(call)) || 'write'
+  }
   if (CAPABILITIES[tool]) return CAPABILITIES[tool]
   // An MCP tool is named `server__tool` and is not one of ours to classify by
   // name; it is reported as exec, which is the authority it actually carries.
@@ -369,7 +428,7 @@ export function recordToolActivity(
           supersedes: '',
           event_type: 'tool',
           lifecycle: '',
-          capability: capabilityOf(event.tool),
+          capability: capabilityOf(event.tool, event.input, event.call),
           kind: kindOf(event.tool),
           resource: '',
           summary: '',
