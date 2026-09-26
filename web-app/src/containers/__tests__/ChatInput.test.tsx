@@ -508,9 +508,25 @@ describe('ChatInput', () => {
         expect.objectContaining({ text: 'queued msg', id: 'gen-id-1' })
       )
     )
+    // Plain Enter queues to go after the run, not as steering.
+    expect(enqueueMock.mock.calls[0][1].steer).toBeUndefined()
     // onSubmit should NOT fire when queued
     expect(onSubmit).not.toHaveBeenCalled()
     expect(setPromptMock).toHaveBeenCalledWith('')
+  })
+
+  it('marks a message to steer on Ctrl+Enter during a run, instead of plain queueing', async () => {
+    promptState = 'wait for it'
+    const onSubmit = vi.fn()
+    renderInput({ onSubmit, chatStatus: 'streaming' })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter', ctrlKey: true })
+    await waitFor(() =>
+      expect(enqueueMock).toHaveBeenCalledWith(
+        'thread-1',
+        expect.objectContaining({ text: 'wait for it', steer: true })
+      )
+    )
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('queues the message while the previous turn’s tools are still pending', async () => {
