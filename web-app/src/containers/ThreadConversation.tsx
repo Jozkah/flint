@@ -138,6 +138,8 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { chatFolderToolOptions } from '@/lib/chatFolders'
+import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import {
   deadToolNote,
   deadToolRefusal,
@@ -952,6 +954,9 @@ export function ThreadConversation({
                 toolCall.input,
                 threadId,
                 {
+                  // The chat's attached folders, read-only, as Cowork
+                  // passes its own.
+                  ...chatFolderToolOptions(threadId),
                   // Stopping the conversation withdraws a pending
                   // `request_access` prompt instead of leaving it answerable.
                   signal,
@@ -2522,6 +2527,7 @@ export function ThreadConversation({
       >
         {plainThreadTitle}
       </h1>
+      {threadId !== TEMPORARY_CHAT_ID && <ChatFoldersChip threadId={threadId} />}
     </div>
   )
 

@@ -23,6 +23,7 @@ import { DISPATCH_PARAM_KEY, ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
+import { chatFoldersOf } from '@/lib/chatFolders'
 import { useAttachments } from '@/hooks/useAttachments'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
@@ -2572,6 +2573,19 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       'are reusable instructions: list and read them before a task they cover,',
       'and record a repeatable procedure with skill_write.',
     ]
+    // Folders the user attached to this chat (directly or from its group):
+    // passed to the tools read-only, as Cowork passes its extra folders.
+    const folders = this.threadId
+      ? chatFoldersOf(useThreads.getState().threads[this.threadId])
+      : []
+    if (folders.length > 0) {
+      parts.push(
+        'The user attached these folders to this chat:',
+        ...folders.map((folder) => `- \`${folder}\``),
+        'They are READ-ONLY: read, search and list inside them, but writes there will',
+        'be refused. Use absolute paths for them.'
+      )
+    }
     // Stating the limits up front is cheaper than letting the model discover
     // them by having a command refused. Only when bash is actually offered.
     parts.push(SHELL_ROUTING_GUIDANCE)
