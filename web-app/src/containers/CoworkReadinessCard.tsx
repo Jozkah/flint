@@ -45,8 +45,21 @@ function Row({
   )
 }
 
-/** Which of the four honest phrasings this total needs. */
-function contextKey(total: { complete: boolean; estimated: boolean }): string {
+/**
+ * Which of the honest phrasings this total needs.
+ *
+ * Nothing measured at all is its own case: "at least 0 tokens" is technically
+ * true and reads as "this session sends nothing", when the truth is that the
+ * prompt and tool set are only assembled when a run starts.
+ */
+export function contextKey(total: {
+  complete: boolean
+  estimated: boolean
+  tokens: number
+}): string {
+  if (!total.complete && total.tokens <= 0) {
+    return 'common:readiness.tokensPending'
+  }
   if (total.estimated) {
     return total.complete
       ? 'common:readiness.tokensEstimated'

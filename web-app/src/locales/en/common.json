@@ -1232,7 +1232,8 @@
     "budgetRemaining": "{{used}} of ~{{total}} used",
     "budgetOver": "over the configured window by ~{{over}} tokens",
     "tokensEstimatedPartial": "at least ~{{count}} tokens ({{method}}); some parts could not be measured",
-    "builtinsUnknown": "Tool set not built yet",
+    "builtinsUnknown": "Built when the first run starts",
+    "tokensPending": "Measured when the first run starts",
     "tooling": {
       "label": "Project tooling",
       "loading": "Reading manifests…",
