@@ -7326,7 +7326,7 @@ mod tests {
     #[test]
     fn git_calls_and_split_commits_carry_the_attribution() {
         use tauri_plugin_agent_tools::tools::git_attribution::{Settings, PR_FOOTER};
-        let trailer = "Co-Authored-By: Flint (qwen3.8-27b) <flint@users.noreply.github.com>";
+        let trailer = "Co-Authored-By: Flint (qwen3.8-27b) <334201045+flint-desktop@users.noreply.github.com>";
         let on: super::Attribution = ("llamacpp/qwen3.8-27b".into(), Settings::default());
         let root = std::path::Path::new(".");
 

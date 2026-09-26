@@ -20,10 +20,10 @@ use serde_json::Value;
 ///
 /// This must be the GitHub noreply address of the Flint GitHub account
 /// (`<id>+<login>@users.noreply.github.com`) so GitHub shows the Flint avatar
-/// next to the commit. The value here is a placeholder until that account's
-/// address is filled in. The only copy: the renderer asks the backend to
+/// next to the commit: the `flint-desktop` account (id 334201045). The only
+/// copy: the renderer asks the backend to
 /// rewrite calls (`attribute_git_call`) rather than building trailers itself.
-pub const FLINT_COAUTHOR_EMAIL: &str = "flint@users.noreply.github.com";
+pub const FLINT_COAUTHOR_EMAIL: &str = "334201045+flint-desktop@users.noreply.github.com";
 
 /// The line appended to the end of a pull request body.
 pub const PR_FOOTER: &str = "\u{1F916} Generated with [Flint](https://github.com/Jozkah/jan)";
@@ -471,7 +471,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    const T: &str = "Co-Authored-By: Flint (qwen3.8-27b) <flint@users.noreply.github.com>";
+    const T: &str = "Co-Authored-By: Flint (qwen3.8-27b) <334201045+flint-desktop@users.noreply.github.com>";
 
     fn run(program: &str, args: &[&str]) -> Vec<String> {
         run_with(program, args, Settings::default(), Path::new("."))
@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn trailer_names_the_bare_model() {
         assert_eq!(trailer("llamacpp/qwen3.8-27b"), T);
-        assert_eq!(trailer(""), "Co-Authored-By: Flint <flint@users.noreply.github.com>");
+        assert_eq!(trailer(""), "Co-Authored-By: Flint <334201045+flint-desktop@users.noreply.github.com>");
     }
 
     #[test]
