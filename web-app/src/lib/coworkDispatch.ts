@@ -132,7 +132,11 @@ export type DispatchContext = {
    * files while ignoring the instructions those changes were meant to follow
    * is not. Empty when everything resolved, which is the ordinary case.
    */
-  unresolvedSkills?: readonly { requested: string; state: string }[]
+  unresolvedSkills?: readonly {
+    requested: string
+    state: string
+    trigger?: string
+  }[]
   /** Where this session may write. Absent is Review only. */
   access?: AccessMode
   /** The user's confirmation to edit the attached folder, when given. */
@@ -236,7 +240,7 @@ function detachedRefusal(toolName: string): ToolOutcome {
 /** A skill the user asked for is not in play, so nothing may change. */
 function skillRefusal(
   toolName: string,
-  unresolved: readonly { requested: string; state: string }[]
+  unresolved: readonly { requested: string; state: string; trigger?: string }[]
 ): ToolOutcome {
   const named = unresolved
     .map((skill) => `${skill.requested} (${skill.state})`)
@@ -245,7 +249,11 @@ function skillRefusal(
   // Continue request once read as seven "missing" skills, and neither the
   // model nor the user could tell where they came from.
   const triggers = unresolved
-    .map((skill) => `\`/${skill.requested}\` or \`@${skill.requested}\``)
+    .map((skill) =>
+      skill.trigger
+        ? `\`${skill.trigger}\``
+        : `\`/${skill.requested}\` or \`@${skill.requested}\``
+    )
     .join(', ')
   return {
     output:

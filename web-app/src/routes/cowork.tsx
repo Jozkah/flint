@@ -333,6 +333,7 @@ import {
   classifyInstruction,
   isMissingFileError,
   parseSkillRequests,
+  parseSkillRequestTriggers,
   resolveSkills,
   unresolvedSkills,
   type ContextAccounting,
@@ -2194,7 +2195,7 @@ export function CoworkPage() {
     const runSkills =
       text == null
         ? (runSkillsRef.current[sid] ?? [])
-        : resolveSkills(parseSkillRequests(text, skillNames), runRegistry)
+        : resolveSkills(parseSkillRequestTriggers(text, skillNames), runRegistry)
     runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {

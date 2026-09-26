@@ -11,6 +11,7 @@ import {
   measured,
   mutationBlockers,
   parseSkillRequests,
+  parseSkillRequestTriggers,
   resolveSkills,
   sameBinding,
   unresolvedSkills,
@@ -23,6 +24,23 @@ const registry = (over: Partial<SkillRegistry> = {}): SkillRegistry => ({
   available: [{ name: 'superpowers' }, { name: 'brainstorming' }],
   enabled: new Set(['superpowers']),
   ...over,
+})
+
+describe('parseSkillRequestTriggers', () => {
+  it('keeps the text each request was read from', () => {
+    expect(
+      parseSkillRequestTriggers('/deploy now, then ask @reviewer and use the tdd skill')
+    ).toEqual([
+      { name: 'deploy', trigger: '/deploy' },
+      { name: 'reviewer', trigger: '@reviewer' },
+      { name: 'tdd', trigger: 'use the tdd skill' },
+    ])
+  })
+
+  it('carries the trigger through resolution', () => {
+    const [one] = resolveSkills(parseSkillRequestTriggers('@ghost'), registry())
+    expect(one).toMatchObject({ requested: 'ghost', state: 'missing', trigger: '@ghost' })
+  })
 })
 
 function emptyContext(): ContextAccounting {
