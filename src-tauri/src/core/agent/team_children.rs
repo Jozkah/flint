@@ -300,6 +300,8 @@ fn as_worktree(record: &ChildRecord) -> WorktreeRecord {
             first_commit: record.first_commit.clone(),
         },
         uncommitted_at_creation: Vec::new(),
+        base_branch: None,
+        notes: Vec::new(),
     }
 }
 
