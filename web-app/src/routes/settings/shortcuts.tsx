@@ -12,6 +12,36 @@ import {
 import { ShortcutRebind } from '@/containers/ShortcutRebind'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { Button } from '@/components/ui/button'
+import {
+  SPLIT_MAX_MAX_PANES,
+  SPLIT_MIN_MAX_PANES,
+  useSplitConversation,
+} from '@/hooks/useSplitConversation'
+
+/** How many panes split view may show, the main one included. */
+function MaxPanesSelect({ label }: { label: string }) {
+  const maxPanes = useSplitConversation((s) => s.maxPanes)
+  const setMaxPanes = useSplitConversation((s) => s.setMaxPanes)
+  const options = Array.from(
+    { length: SPLIT_MAX_MAX_PANES - SPLIT_MIN_MAX_PANES + 1 },
+    (_, i) => SPLIT_MIN_MAX_PANES + i
+  )
+  return (
+    <select
+      aria-label={label}
+      data-testid="split-max-panes"
+      value={maxPanes}
+      onChange={(e) => setMaxPanes(Number(e.target.value))}
+      className="h-8 rounded-md border border-input bg-card px-2 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+    >
+      {options.map((n) => (
+        <option key={n} value={n}>
+          {n}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 /**
  * A binding that cannot be changed, laid out like one that can: an invisible,
@@ -114,6 +144,7 @@ function Shortcuts() {
     [ShortcutAction.ZOOM_IN]: t('settings:shortcuts.zoomIn'),
     [ShortcutAction.ZOOM_OUT]: t('settings:shortcuts.zoomOut'),
     [ShortcutAction.COMMAND_PALETTE]: t('settings:shortcuts.commandPalette'),
+    [ShortcutAction.SPLIT_VIEW]: t('settings:shortcuts.splitView'),
   }
   const commandName = (action: ShortcutAction) => names[action]
 
@@ -249,6 +280,26 @@ function Shortcuts() {
                 <ShortcutLabel action={ShortcutAction.GO_TO_SETTINGS} />
               </ShortcutRebind>
             }
+          />
+        </Card>
+
+        {/* Split view */}
+        <Card title={t('settings:shortcuts.splitViewSection')}>
+          <CardItem
+            anchor="settings-shortcuts-split-view"
+            title={t('settings:shortcuts.splitView')}
+            description={t('settings:shortcuts.splitViewDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.SPLIT_VIEW} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.SPLIT_VIEW} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-split-view-max-panes"
+            title={t('settings:shortcuts.maxPanes')}
+            description={t('settings:shortcuts.maxPanesDesc')}
+            actions={<MaxPanesSelect label={t('settings:shortcuts.maxPanes')} />}
           />
         </Card>
       </SettingsPageBody>

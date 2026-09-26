@@ -53,4 +53,7 @@ export const PlatformShortcuts: ShortcutMap = {
     usePlatformMetaKey: true,
     shiftKey: true,
   },
+
+  // Split view: another conversation beside the current one.
+  [ShortcutAction.SPLIT_VIEW]: { key: '\\', usePlatformMetaKey: true },
 }

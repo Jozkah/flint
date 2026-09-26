@@ -163,3 +163,25 @@ describe('what the menu contains', () => {
     expect(screen.getByText('common:rename')).toBeInTheDocument()
   })
 })
+
+describe('open in split view', () => {
+  it('adds a pane showing the conversation beside the one on screen', async () => {
+    const { useSplitConversation } = await import(
+      '@/hooks/useSplitConversation'
+    )
+    useSplitConversation.setState({ panes: [], sizes: [1], maxPanes: 4 })
+    window.history.pushState({}, '', '/threads/t0')
+    try {
+      renderList()
+      fireEvent.contextMenu(screen.getByTestId('row'))
+      fireEvent.click(screen.getByText('chat:split.openInSplit'))
+      const { panes, activePane } = useSplitConversation.getState()
+      expect(panes).toHaveLength(1)
+      expect(panes[0]).toMatchObject({ kind: 'chat', refId: 't1' })
+      expect(activePane).toBe(panes[0].id)
+    } finally {
+      window.history.pushState({}, '', '/')
+      useSplitConversation.setState({ panes: [], sizes: [1] })
+    }
+  })
+})
