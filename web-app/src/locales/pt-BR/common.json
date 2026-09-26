@@ -527,5 +527,6 @@
     "noMatches": "Nenhum parâmetro corresponde",
     "noneForProvider": "Nenhum parâmetro ajustável para este provedor.",
     "maybeUnsupported": "Pode não ser compatível com {{providers}}"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} não está mais disponível. Escolha outro modelo no menu de modelos."
 }

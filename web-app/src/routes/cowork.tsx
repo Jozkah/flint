@@ -25,6 +25,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -62,8 +63,11 @@ import { CoworkReviewReady } from '@/containers/CoworkReviewReady'
 import {
   useCoworkSessions,
   ensureCurrentSession,
+  startPaneSession,
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { resolveCoworkModel } from '@/lib/coworkModelChoice'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import {
   runTitle,
@@ -551,9 +555,43 @@ export function CoworkPage() {
     selectedProvider as never
   )
 
+  const sessionModel = useCoworkSessions(
+    (s) =>
+      s.sessions.find((x) => x.id === (coworkPane?.sessionId ?? s.currentId))
+        ?.model
+  )
+  // What the composer checks before sending: the same resolution the run
+  // uses (session model, then the picker's), never the bare global picker.
+  const composerModel = useMemo(() => {
+    const resolved = resolveCoworkModel(sessionModel, {
+      selectedProvider: globalProvider,
+      selectedModel: globalModel,
+      providers: modelProviders,
+    })
+    return {
+      selection: {
+        selectedProvider: resolved.choice?.provider ?? globalProvider,
+        selectedModel: resolved.model,
+      },
+      unavailable: resolved.model ? undefined : resolved.unavailable?.id,
+    }
+  }, [sessionModel, globalProvider, globalModel, modelProviders])
+
   const sessions = useCoworkSessions((s) => s.sessions)
   const routeCurrentId = useCoworkSessions((s) => s.currentId)
   const currentId = coworkPane?.sessionId ?? routeCurrentId
+  // Read at call time by every handler that resolves "the session": in a
+  // split pane it must be the pane's own, not the global selection.
+  const paneSessionIdRef = useRef(coworkPane?.sessionId)
+  paneSessionIdRef.current = coworkPane?.sessionId
+  // The split pane this page is in, when it is a pane beside the main one:
+  // `/new` there replaces the pane's session instead of the main pane's.
+  const sidePaneId = usePaneChrome()?.paneId
+  const sidePaneIdRef = useRef(coworkPane ? sidePaneId : undefined)
+  sidePaneIdRef.current = coworkPane ? sidePaneId : undefined
+  // The transcript's container, so the scroll node found is this page's own
+  // and not the first transcript in the document (another split pane's).
+  const transcriptRef = useRef<HTMLDivElement | null>(null)
   const session = useMemo(
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
@@ -1100,7 +1138,7 @@ export function CoworkPage() {
   /** Open a tab in the Code panel. `sandbox` marks paths under the session
    * workspace (agent artifacts) rather than the attached project. */
   const openCode = useCallback((tab: CodeTab) => {
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
     store.setCodePanel(
@@ -1248,7 +1286,7 @@ export function CoworkPage() {
   // their own empty states, so neither is ever disabled.
   const selectRail = useCallback(
     (mode: RailMode) => {
-      if (mode === 'code') ensureCurrentSession()
+      if (mode === 'code') ensureCurrentSession(paneSessionIdRef.current)
       const kind =
         mode === 'changes' ? 'diff' : mode === 'activity' ? 'tasks' : mode
       if (rail?.kind === kind) {
@@ -1460,7 +1498,7 @@ export function CoworkPage() {
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
     if (folderHeld(session?.id)) return
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     useCoworkSessions.getState().setFolder(sid, picked)
   }, [serviceHub, session?.id, folderHeld])
 
@@ -2108,7 +2146,7 @@ export function CoworkPage() {
     // not drawn as something the user said.
     hidden = false
   ) => {
-    const sid = ensureCurrentSession()
+    const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
     const store = useCoworkSessions.getState()
@@ -2120,22 +2158,16 @@ export function CoworkPage() {
      * picker's values for the rest of this function on purpose: nothing in a
      * run should read the global selection after this point.
      */
-    const modelState = useModelProvider.getState()
-    const runChoice =
-      current?.model ??
-      (modelState.selectedModel
-        ? {
-            provider: modelState.selectedProvider,
-            id: modelState.selectedModel.id,
-          }
-        : null)
+    // A saved model that no longer resolves falls back to the picker's and
+    // the replacement is saved, so the session is repaired once.
+    const resolved = resolveCoworkModel(
+      current?.model,
+      useModelProvider.getState()
+    )
+    const runChoice = resolved.choice
     const selectedProvider = runChoice?.provider ?? ''
-    const selectedModel = runChoice
-      ? (modelState.providers
-          .find((p) => p.provider === runChoice.provider && p.active !== false)
-          ?.models.find((m) => m.id === runChoice.id) ?? null)
-      : null
-    if (runChoice && !current?.model) store.setModel(sid, runChoice)
+    const selectedModel = resolved.model
+    if (runChoice && resolved.save) store.setModel(sid, runChoice)
     /**
      * Skills asked for by *this* turn, frozen for the whole run.
      *
@@ -2166,7 +2198,11 @@ export function CoworkPage() {
     runSkillsRef.current[sid] = runSkills
     if (!text && !(current?.messages?.length ?? 0)) return
     if (!selectedModel?.id) {
-      toast.error(t('common:selectModel'))
+      toast.error(
+        resolved.unavailable
+          ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
+          : t('common:selectModel')
+      )
       return
     }
     // Without tool calling the transport drops the tool set silently, and the
@@ -4186,6 +4222,17 @@ export function CoworkPage() {
         run: () => {
           // Same rule as the sidebar's entry point: one press, at most one
           // session. The draft is the `/new` being consumed, so it is no draft.
+          const paneId = sidePaneIdRef.current
+          const paneSid = paneSessionIdRef.current
+          if (paneId && paneSid) {
+            // Typed in a pane beside the main one: the new session opens in
+            // that pane, and the main pane keeps what it shows.
+            const id = startPaneSession(paneSid, { running, hasDraft: false })
+            useSplitConversation
+              .getState()
+              .setPaneTarget(paneId, { kind: 'cowork', refId: id })
+            return
+          }
           const store = useCoworkSessions.getState()
           const id = store.startSession({ running, hasDraft: false })
           store.selectSession(id)
@@ -4307,10 +4354,11 @@ export function CoworkPage() {
    *
    * The scroll node is the one `StickToBottom` owns inside the `role="log"`
    * container; it is found rather than held by ref because that element is the
-   * library's, not this route's.
+   * library's, not this route's. It is looked for inside this page's own
+   * transcript only: in split view each pane has one.
    */
   const scrollNode = useCallback((): HTMLElement | null => {
-    const log = document.querySelector('[role="log"]')
+    const log = transcriptRef.current?.querySelector('[role="log"]')
     if (!log) return null
     return (
       (log.querySelector(':scope > *') as HTMLElement | null) ??
@@ -4329,6 +4377,14 @@ export function CoworkPage() {
         if (node) node.scrollTop = remembered
       })
     }
+  }, [session?.id, scrollNode])
+  // Remembered in a layout cleanup: it runs while the transcript is still
+  // attached, on a session switch and when the page unmounts (leaving for
+  // Settings, closing a pane). A passive cleanup ran after the ref was
+  // detached, so an unmount remembered nothing.
+  useLayoutEffect(() => {
+    const sid = session?.id
+    if (!sid) return
     return () => {
       const node = scrollNode()
       if (node) {
@@ -4530,7 +4586,9 @@ export function CoworkPage() {
       model={session?.model}
       useLastUsedModel={!session?.model}
       onModelChange={(model) =>
-        useCoworkSessions.getState().setModel(ensureCurrentSession(), {
+        useCoworkSessions
+          .getState()
+          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
           provider: model.provider,
           id: model.id,
         })
@@ -4562,7 +4620,9 @@ export function CoworkPage() {
         // live on; dropping it left the session in its default mode while the
         // user believed they had picked another.
         onChange={(next) =>
-          useCoworkSessions.getState().setMode(ensureCurrentSession(), next)
+          useCoworkSessions
+            .getState()
+            .setMode(ensureCurrentSession(paneSessionIdRef.current), next)
         }
       />
       <CoworkAccessSelector
@@ -4852,7 +4912,7 @@ export function CoworkPage() {
           />
           )}
           <FrameBody className="min-h-0 overflow-hidden">
-          <div className="relative flex-1">
+          <div ref={transcriptRef} className="relative flex-1">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
                 folder={folder}
@@ -5294,6 +5354,10 @@ export function CoworkPage() {
                 initialMessage={true}
                 scopeKey={session?.id}
                 draftScope={coworkPane?.draftScope}
+                // The session's model, resolved as the run resolves it: the
+                // composer must not refuse a send the run would make.
+                modelSelection={composerModel.selection}
+                unavailableModel={composerModel.unavailable}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}

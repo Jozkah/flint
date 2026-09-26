@@ -1017,9 +1017,17 @@ function dropBlanks(sessions: CoworkSession[], keepId: string): CoworkSession[] 
   return next.length === sessions.length ? sessions : next
 }
 
-/** Return the current session, creating one if none is selected. */
-export function ensureCurrentSession(): string {
+/**
+ * Return the current session, creating one if none is selected.
+ *
+ * `paneSessionId` is the session of the split-view pane asking: a pane acts
+ * on its own session, never on the global selection (which belongs to the
+ * main pane), so when it names a session that exists, that one is returned.
+ */
+export function ensureCurrentSession(paneSessionId?: string | null): string {
   const { currentId, sessions, createSession } = useCoworkSessions.getState()
+  if (paneSessionId && sessions.some((s) => s.id === paneSessionId))
+    return paneSessionId
   if (currentId && sessions.some((s) => s.id === currentId)) return currentId
   // The selection points nowhere. A blank session already in the list is the
   // new one; creating another each time is how blanks accumulated.
@@ -1034,4 +1042,40 @@ export function ensureCurrentSession(): string {
     return blank.id
   }
   return createSession()
+}
+
+/**
+ * "New session" from a split-view pane beside the main one.
+ *
+ * Judged on the pane's own session, the same way startSession judges the
+ * current one, and the global selection is left alone: it belongs to the main
+ * pane. A new session is added without dropping any blank one, since the main
+ * pane may be showing it.
+ */
+export function startPaneSession(
+  paneSessionId: string,
+  input: { running: boolean; hasDraft: boolean }
+): string {
+  const state = useCoworkSessions.getState()
+  const current = state.sessions.find((s) => s.id === paneSessionId)
+  const hasFileActivity = current
+    ? useFileActivity.getState().eventsFor(current.id).length > 0
+    : false
+  if (
+    current &&
+    decideSessionStart({ current, ...input, hasFileActivity }) === 'reuse'
+  ) {
+    return current.id
+  }
+  const id = crypto.randomUUID()
+  const session: CoworkSession = {
+    id,
+    title: DEFAULT_SESSION_TITLE,
+    folder: null,
+    turns: [],
+    messages: [],
+    updated: Date.now(),
+  }
+  useCoworkSessions.setState((s) => ({ sessions: [session, ...s.sessions] }))
+  return id
 }

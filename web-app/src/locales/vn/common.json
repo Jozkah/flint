@@ -526,5 +526,6 @@
     "noMatches": "Không có tham số nào khớp",
     "noneForProvider": "Nhà cung cấp này không có tham số điều chỉnh được.",
     "maybeUnsupported": "Có thể không được {{providers}} hỗ trợ"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} không còn khả dụng. Hãy chọn mô hình khác trong menu mô hình."
 }

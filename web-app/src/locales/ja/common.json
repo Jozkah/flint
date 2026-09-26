@@ -640,5 +640,6 @@
     "noMatches": "一致するパラメーターはありません",
     "noneForProvider": "このプロバイダーには調整可能なパラメーターがありません。",
     "maybeUnsupported": "{{providers}} ではサポートされていない可能性があります"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} は利用できなくなりました。モデルメニューから別のモデルを選んでください。"
 }

@@ -718,6 +718,7 @@
     "tryAgain": "重试"
   },
   "modelNoTools": "{{model}} 无法调用工具，因此不能作为 Agent 使用。请选择支持工具调用的模型。",
+  "sessionModelUnavailable": "{{model}} 已不可用。请在模型菜单中选择其他模型。",
   "askContinue": "继续",
   "askNext": "下一个问题",
   "askPrev": "上一个问题",

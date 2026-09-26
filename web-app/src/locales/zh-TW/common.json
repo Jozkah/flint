@@ -526,5 +526,6 @@
     "noMatches": "沒有相符的參數",
     "noneForProvider": "此供應商沒有可調整的參數。",
     "maybeUnsupported": "{{providers}} 可能不支援"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} 已無法使用。請在模型選單中選擇其他模型。"
 }

@@ -52,7 +52,10 @@ import { SamplerPopover } from '@/containers/SamplerPopover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import { useConversationModel } from '@/hooks/useConversationPane'
+import {
+  useConversationModel,
+  type ModelSelection,
+} from '@/hooks/useConversationPane'
 import { useTokensCount } from '@/hooks/useTokensCount'
 import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
 import {
@@ -237,6 +240,17 @@ type ChatInputProps = {
    */
   threadId?: string
   /**
+   * The model this composer sends with, when the surface decides it rather
+   * than the global picker or a thread: a Cowork session sends with its own
+   * saved model, so "is a model chosen" has to ask the session.
+   */
+  modelSelection?: ModelSelection
+  /**
+   * The saved model that no longer resolves, named in the message shown
+   * instead of the generic "select a model" when nothing can be sent with.
+   */
+  unavailableModel?: string
+  /**
    * Keeps this composer's draft apart from the main one. The second pane of a
    * split conversation passes a scope; without one the shared main draft is
    * used, as before.
@@ -295,6 +309,8 @@ const ChatInput = memo(function ChatInput({
   tokenSource,
   hideTokenCounter,
   threadId: threadIdProp,
+  modelSelection,
+  unavailableModel,
   draftScope,
   takeFocus = true,
   slashSurface = 'home',
@@ -715,7 +731,8 @@ const ChatInput = memo(function ChatInput({
 
   // This conversation's model: a split pane's own thread model, otherwise the
   // global picker.
-  const conversationModel = useConversationModel()
+  const threadModelSelection = useConversationModel()
+  const conversationModel = modelSelection ?? threadModelSelection
   const selectedModel = conversationModel.selectedModel
 
   /**
@@ -865,7 +882,11 @@ const ChatInput = memo(function ChatInput({
     { steer = false }: { steer?: boolean } = {}
   ) => {
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
-      setMessage('Please select a model to start chatting.')
+      setMessage(
+        unavailableModel
+          ? `${unavailableModel} is no longer available. Pick another model in the model menu.`
+          : 'Please select a model to start chatting.'
+      )
       return
     }
     // A `/command` expands into what the model receives; a built-in runs here

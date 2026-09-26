@@ -237,7 +237,7 @@ vi.mock('@/lib/coworkRunner', async (orig) => {
       // Captured, not called: each test drives the dispatcher itself, which is
       // exactly the seam a model would exercise.
       h.deps = opts.deps
-      h.runTurn(opts)
+      await h.runTurn(opts)
       return {
         messages: opts.messages,
         steps: 1,
@@ -259,6 +259,14 @@ vi.mock('@/containers/ChatInput', () => ({
       <button data-testid="stop" onClick={() => props.onStop?.()}>
         stop
       </button>
+      <button
+        data-testid="slash-new"
+        onClick={() =>
+          props.slashBuiltins?.find((b: any) => b.name === 'new')?.run()
+        }
+      >
+        new
+      </button>
     </div>
   ),
 }))
@@ -279,7 +287,13 @@ vi.mock('@/containers/message/CodeOpenProvider', () => ({
   useCodeOpen: () => ({ openCode: vi.fn() }),
 }))
 vi.mock('@/components/ai-elements/conversation', () => ({
-  Conversation: ({ children }: any) => <div>{children}</div>,
+  // The log role and inner node are what the route scrolls, as with the
+  // real StickToBottom.
+  Conversation: ({ children }: any) => (
+    <div role="log">
+      <div data-testid="scroller">{children}</div>
+    </div>
+  ),
   ConversationContent: ({ children }: any) => <div>{children}</div>,
   ConversationScrollButton: () => null,
 }))
@@ -317,7 +331,12 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
-import { Route } from '@/routes/cowork'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { CoworkPaneContext, PaneChromeContext } from '@/hooks/useCoworkPane'
+import { useCoworkView } from '@/hooks/useCoworkView'
+import { useSplitConversation } from '@/hooks/useSplitConversation'
+import { useMessageQueue } from '@/stores/message-queue-store'
+import { Route, CoworkPage as PanePage } from '@/routes/cowork'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
 
@@ -1284,5 +1303,221 @@ describe('the branch shown for the attached folder', () => {
     })
     expect(screen.queryByText(/branch-of-repo/)).toBeNull()
     expect(screen.getAllByText(/branch-of-other/).length).toBeGreaterThan(0)
+  })
+})
+
+describe('two sessions side by side in split view', () => {
+  const OTHER = 'session-in-pane'
+  const session = (id: string) =>
+    useCoworkSessions.getState().sessions.find((s) => s.id === id) as any
+
+  /** The route's session (SESSION) on the left, OTHER in a pane beside it. */
+  const renderSplit = async (turns: any[] = []) => {
+    const base = { ...useCoworkSessions.getState().sessions[0], turns }
+    useCoworkSessions.setState({
+      sessions: [
+        base,
+        { ...base, id: OTHER, title: 'Other', created: 2, updated: 2 },
+      ],
+      currentId: SESSION,
+    })
+    useSplitConversation.setState({
+      panes: [{ id: 'right', kind: 'cowork', refId: OTHER }],
+    } as any)
+    const view = render(
+      <>
+        <div data-testid="left">
+          <PanePage />
+        </div>
+        <div data-testid="right">
+          <CoworkPaneContext.Provider
+            value={{ sessionId: OTHER, draftScope: 'pane:right' }}
+          >
+            <PaneChromeContext.Provider
+              value={{ paneId: 'right', isActive: true, controls: null }}
+            >
+              <PanePage />
+            </PaneChromeContext.Provider>
+          </CoworkPaneContext.Provider>
+        </div>
+      </>
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    return view
+  }
+  const inPane = (pane: 'left' | 'right', testId: string) =>
+    screen
+      .getByTestId(pane)
+      .querySelector(`[data-testid="${testId}"]`) as HTMLElement
+
+  beforeEach(() => {
+    useCoworkRun.setState({ runs: {} } as any)
+    useMessageQueue.setState({ queues: {} } as any)
+  })
+  afterEach(() => {
+    useCoworkRun.setState({ runs: {} } as any)
+    useMessageQueue.setState({ queues: {} } as any)
+    useSplitConversation.setState({ panes: [] } as any)
+  })
+
+  it("sends what is typed in the right pane to the right pane's session only", async () => {
+    await renderSplit()
+    h.text = 'go ahead'
+    await userEvent.click(inPane('right', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(OTHER)
+    await waitFor(() =>
+      expect(JSON.stringify(session(OTHER).turns)).toContain('go ahead')
+    )
+    expect(session(SESSION).turns).toEqual([])
+    // The pane does not take over the sidebar's selection.
+    expect(useCoworkSessions.getState().currentId).toBe(SESSION)
+  })
+
+  it("still sends the left pane's message to the left session", async () => {
+    await renderSplit()
+    h.text = 'left words'
+    await userEvent.click(inPane('left', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(SESSION)
+    expect(JSON.stringify(session(OTHER).turns)).not.toContain('left words')
+  })
+
+  it("sends a message queued for the pane's session into that session", async () => {
+    await renderSplit()
+    act(() => {
+      useMessageQueue.getState().enqueue(OTHER, {
+        id: 'q1',
+        text: 'queued for the pane',
+        createdAt: 1,
+      })
+    })
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(h.transports.at(-1)?.sessionId).toBe(OTHER)
+    await waitFor(() =>
+      expect(JSON.stringify(session(OTHER).turns)).toContain(
+        'queued for the pane'
+      )
+    )
+    expect(session(SESSION).turns).toEqual([])
+  })
+
+  it("stops only the pane's own run from the pane's stop control", async () => {
+    const release: Array<() => void> = []
+    h.runTurn.mockImplementation(
+      () => new Promise<void>((resolve) => release.push(resolve))
+    )
+    await renderSplit()
+    await userEvent.click(inPane('left', 'submit'))
+    await userEvent.click(inPane('right', 'submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(2))
+    act(() => {
+      const q = useMessageQueue.getState()
+      q.enqueue(SESSION, { id: 'a', text: 'for left', createdAt: 1 })
+      q.enqueue(OTHER, { id: 'b', text: 'for right', createdAt: 1 })
+    })
+    await userEvent.click(inPane('right', 'stop'))
+    const queues = useMessageQueue.getState()
+    expect(queues.getQueue(OTHER).every((m) => m.held)).toBe(true)
+    expect(queues.getQueue(SESSION).some((m) => !m.held)).toBe(true)
+    await act(async () => {
+      for (const r of release) r()
+    })
+    h.runTurn.mockReset()
+  })
+
+  it("opens /new typed in the right pane in that pane, leaving the main pane as it was", async () => {
+    await renderSplit(PRIOR_TURNS)
+    await userEvent.click(inPane('right', 'slash-new'))
+    const pane = useSplitConversation.getState().panes[0]
+    expect(pane.kind).toBe('cowork')
+    expect(pane.refId).not.toBe(OTHER)
+    expect(pane.refId).not.toBe(SESSION)
+    expect(session(pane.refId!)).toBeTruthy()
+    expect(useCoworkSessions.getState().currentId).toBe(SESSION)
+    // Nothing either pane showed was dropped.
+    expect(session(SESSION)).toBeTruthy()
+    expect(session(OTHER)).toBeTruthy()
+  })
+
+  it("restores the right pane's scroll position in the right pane's transcript", async () => {
+    useCoworkView.setState({ scrollBySession: { [OTHER]: 222 } } as any)
+    // What the route writes, recorded per element: jsdom does not scroll.
+    const proto = HTMLElement.prototype as any
+    const original = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop')
+    Object.defineProperty(proto, 'scrollTop', {
+      configurable: true,
+      get() {
+        return Number(this.dataset.scrolledTo ?? 0)
+      },
+      set(v: number) {
+        this.dataset.scrolledTo = String(v)
+      },
+    })
+    try {
+      await renderSplit(PRIOR_TURNS)
+      await act(async () => {
+        await new Promise((r) => requestAnimationFrame(() => r(null)))
+      })
+      expect(inPane('right', 'scroller').dataset.scrolledTo).toBe('222')
+      expect(inPane('left', 'scroller').dataset.scrolledTo).toBeUndefined()
+    } finally {
+      delete proto.scrollTop
+      if (original) Object.defineProperty(Element.prototype, 'scrollTop', original)
+      useCoworkView.setState({ scrollBySession: {} } as any)
+    }
+  })
+})
+
+describe('the scroll position, when the page goes away', () => {
+  it("remembers each split pane's own position on unmount", async () => {
+    useCoworkView.setState({ scrollBySession: {} } as any)
+    const base = { ...useCoworkSessions.getState().sessions[0], turns: PRIOR_TURNS }
+    useCoworkSessions.setState({
+      sessions: [base, { ...base, id: 'pane-session', created: 2 }],
+      currentId: SESSION,
+    })
+    const view = render(
+      <>
+        <div data-testid="left">
+          <PanePage />
+        </div>
+        <div data-testid="right">
+          <CoworkPaneContext.Provider value={{ sessionId: 'pane-session' }}>
+            <PanePage />
+          </CoworkPaneContext.Provider>
+        </div>
+      </>
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const scroller = (pane: string) =>
+      screen
+        .getByTestId(pane)
+        .querySelector('[data-testid="scroller"]') as HTMLElement
+    Object.defineProperty(scroller('left'), 'scrollTop', { value: 111 })
+    Object.defineProperty(scroller('right'), 'scrollTop', { value: 222 })
+    view.unmount()
+    const remembered = useCoworkView.getState().scrollBySession
+    expect(remembered[SESSION]).toBe(111)
+    expect(remembered['pane-session']).toBe(222)
+    useCoworkView.setState({ scrollBySession: {} } as any)
+  })
+})
+
+describe("a session whose saved model no longer resolves", () => {
+  it("runs with the picker's model and saves it on the session", async () => {
+    seedSession({ model: { provider: 'removed-provider', id: 'qwen3.8-27b' } })
+    await renderRoute()
+    await userEvent.click(screen.getByTestId('submit'))
+    await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+    expect(useCoworkSessions.getState().sessions[0].model).toEqual({
+      provider: 'llamacpp',
+      id: 'local/qwen',
+    })
+    expect(h.toast.error).not.toHaveBeenCalled()
   })
 })
