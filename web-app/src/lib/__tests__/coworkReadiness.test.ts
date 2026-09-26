@@ -198,6 +198,27 @@ describe('finding a skill request in a message', () => {
     expect(parseSkillRequests(text, known)).toEqual([])
   })
 
+  // A "Continue" request quoted a failed robocopy command; its switches read as
+  // seven missing skills and every write in the retried run was refused.
+  it.each([
+    'robocopy $src $dst /E /XD .jan .git /XF KewScraper.exe /NFL /NDL /NJH /NP',
+    'Continue with the previous request:\n- bash robocopy a b /E /NP (failed)',
+    'list it with dir /s /b',
+    'run `/fake-cmd` in the shell',
+    '```\n/E /XD\n```',
+  ])('does not read command switches as skill requests: %s', (text) => {
+    expect(parseSkillRequests(text, known)).toEqual([])
+  })
+
+  it('reads a slash command at the start of any line, and a known one anywhere', () => {
+    expect(parseSkillRequests('first this\n/telekinesis now', known)).toEqual([
+      'telekinesis',
+    ])
+    expect(parseSkillRequests('then run /brainstorming on it', known)).toEqual([
+      'brainstorming',
+    ])
+  })
+
   it('reads the typed @skill: form, and never @agent: or @alias:', () => {
     expect(
       parseSkillRequests('@skill:reviewer with @agent:bot and @alias:spec', known)
