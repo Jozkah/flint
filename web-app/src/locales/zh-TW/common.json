@@ -471,5 +471,52 @@
     "state": {
       "absent": "不存在"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git 資料夾中的新工作階段在各自的 worktree 中工作",
+    "settingDescription": "連接到 Git 儲存庫的每個新工作階段都會取得自己的 worktree 與分支（flint/<title>），讓多個工作階段能同時在同一資料夾中工作，互不干擾，也不會動到你的簽出。可在工作階段中審閱、合併或捨棄每個分支。",
+    "branchTitle": "此工作階段在自己的 worktree 中使用分支 {{branch}}",
+    "basedOn": "基於 {{base}}",
+    "openFolder": "開啟資料夾",
+    "merge": "合併到 {{base}}",
+    "mergeNoBase": "合併",
+    "createPr": "建立提取要求",
+    "discard": "捨棄",
+    "mergeTitle": "要將 {{branch}} 合併到 {{base}} 嗎？",
+    "mergeBody": "能快轉時快轉，必要時建立合併提交。若有衝突，不做任何變更並列出衝突檔案。",
+    "mergePending": "工作階段中未提交的變更會先提交到其分支：",
+    "mergeConfirm": "合併",
+    "merged": "已合併到 {{base}}",
+    "mergedFf": "已快轉 {{base}}",
+    "alreadyMerged": "{{base}} 已包含此分支的所有內容",
+    "conflicts": "合併到 {{base}} 會在 {{files}} 中產生衝突。未做任何變更。",
+    "discardTitle": "要捨棄此工作階段的工作嗎？",
+    "discardBody": "移除 {{path}} 及其分支 {{branch}}。",
+    "discardLoses": "這會摧毀在其他地方都不存在的工作：",
+    "discardNothing": "其中沒有未提交或未合併的內容。",
+    "discardConfirm": "捨棄",
+    "discarded": "已移除工作階段的 worktree",
+    "notCarried": "未帶入 worktree：{{files}} 中未提交的變更。",
+    "prPrompt": "提交剩餘的變更，推送分支 {{branch}}，並向 {{base}} 開啟一個總結本工作階段變更的提取要求。",
+    "copyOffer": "此資料夾不是 Git 儲存庫。在副本上工作，以免影響其他工作階段與你自己的編輯；準備好後再把變更套用回去。",
+    "workOnCopy": "在副本上工作",
+    "copyLabel": "正在副本上工作",
+    "copyTitle": "變更寫入 {{folder}} 的副本；準備好後再套用回去",
+    "applyBack": "套用回變更",
+    "applyTitle": "將變更套用到 {{folder}}",
+    "applyNone": "副本中沒有可套用的變更。",
+    "applySelected": "套用 {{count}} 個檔案",
+    "applyForce": "覆寫原始位置中也已變更的檔案",
+    "applied": "已套用 {{count}} 個檔案",
+    "skipped": "已略過（原始位置中也已變更）：{{files}}",
+    "conflict": "原始位置中也已變更",
+    "binary": "二進位或大型檔案；無預覽。",
+    "kind": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "刪除"
+    },
+    "deleteKeep": "保留其 worktree 與分支（{{name}}）",
+    "deleteRemove": "一併移除其 worktree 與分支（{{name}}）"
   }
 }

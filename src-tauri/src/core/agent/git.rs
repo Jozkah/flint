@@ -93,9 +93,9 @@ fn exec(
     // private objects. Git older than 2.40 ignores the variable and keeps the
     // previous behaviour.
     cmd.env("GIT_ATTR_SOURCE", EMPTY_TREE);
-    cmd.env("GIT_AUTHOR_NAME", "Jan Agent")
+    cmd.env("GIT_AUTHOR_NAME", "Flint")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Jan Agent")
+        .env("GIT_COMMITTER_NAME", "Flint")
         .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
     if let Some(idx) = index {
         cmd.env("GIT_INDEX_FILE", idx);

@@ -472,5 +472,52 @@
     "state": {
       "absent": "Ausente"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Novas sessões em uma pasta Git trabalham em seu próprio worktree",
+    "settingDescription": "Cada nova sessão em um repositório Git recebe seu próprio worktree e branch (flint/<title>), para que várias sessões trabalhem na mesma pasta sem interferir umas nas outras nem no seu checkout. Revise, mescle ou descarte cada branch pela sessão.",
+    "branchTitle": "Esta sessão trabalha no branch {{branch}}, em seu próprio worktree",
+    "basedOn": "a partir de {{base}}",
+    "openFolder": "Abrir pasta",
+    "merge": "Mesclar em {{base}}",
+    "mergeNoBase": "Mesclar",
+    "createPr": "Criar pull request",
+    "discard": "Descartar",
+    "mergeTitle": "Mesclar {{branch}} em {{base}}?",
+    "mergeBody": "Faz fast-forward quando possível e cria um commit de merge quando necessário. Se houver conflitos, nada é alterado e os arquivos em conflito são listados.",
+    "mergePending": "As alterações não commitadas da sessão serão commitadas primeiro no branch dela:",
+    "mergeConfirm": "Mesclar",
+    "merged": "Mesclado em {{base}}",
+    "mergedFf": "Fast-forward de {{base}}",
+    "alreadyMerged": "{{base}} já tem tudo deste branch",
+    "conflicts": "Mesclar em {{base}} geraria conflitos em {{files}}. Nada foi alterado.",
+    "discardTitle": "Descartar o trabalho desta sessão?",
+    "discardBody": "Remove {{path}} e o branch {{branch}}.",
+    "discardLoses": "Isso destrói trabalho que não existe em nenhum outro lugar:",
+    "discardNothing": "Não há nada não commitado ou não mesclado.",
+    "discardConfirm": "Descartar",
+    "discarded": "Worktree da sessão removido",
+    "notCarried": "Não levado para o worktree: alterações não commitadas em {{files}}.",
+    "prPrompt": "Faça commit das alterações restantes, envie o branch {{branch}} e abra um pull request para {{base}} resumindo as alterações desta sessão.",
+    "copyOffer": "Esta pasta não é um repositório Git. Trabalhe em uma cópia para não mexer em outras sessões nem nas suas próprias edições; aplique as alterações quando estiver pronto.",
+    "workOnCopy": "Trabalhar em uma cópia",
+    "copyLabel": "Trabalhando em uma cópia",
+    "copyTitle": "As alterações vão para uma cópia de {{folder}}; aplique-as quando estiver pronto",
+    "applyBack": "Aplicar alterações",
+    "applyTitle": "Aplicar alterações em {{folder}}",
+    "applyNone": "A cópia não tem alterações para aplicar.",
+    "applySelected": "Aplicar {{count}} arquivo(s)",
+    "applyForce": "Sobrescrever arquivos que também mudaram no original",
+    "applied": "{{count}} arquivo(s) aplicado(s)",
+    "skipped": "Ignorados porque também mudaram no original: {{files}}",
+    "conflict": "também mudou no original",
+    "binary": "Arquivo binário ou grande; sem prévia.",
+    "kind": {
+      "added": "adicionado",
+      "modified": "modificado",
+      "deleted": "excluído"
+    },
+    "deleteKeep": "Manter worktree e branch ({{name}})",
+    "deleteRemove": "Remover também worktree e branch ({{name}})"
   }
 }

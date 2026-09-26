@@ -471,5 +471,52 @@
     "state": {
       "absent": "Nicht vorhanden"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Neue Sitzungen in einem Git-Ordner arbeiten in einem eigenen Worktree",
+    "settingDescription": "Jede neue Sitzung in einem Git-Repository erhält einen eigenen Worktree und Branch (flint/<title>), damit viele Sitzungen gleichzeitig im selben Ordner arbeiten können, ohne sich gegenseitig oder deinen Checkout zu berühren. Prüfe, merge oder verwirf jeden Branch in der Sitzung.",
+    "branchTitle": "Diese Sitzung arbeitet auf Branch {{branch}} in einem eigenen Worktree",
+    "basedOn": "von {{base}}",
+    "openFolder": "Ordner öffnen",
+    "merge": "In {{base}} mergen",
+    "mergeNoBase": "Mergen",
+    "createPr": "Pull Request erstellen",
+    "discard": "Verwerfen",
+    "mergeTitle": "{{branch}} in {{base}} mergen?",
+    "mergeBody": "Spult vor, wenn möglich, und erstellt sonst einen Merge-Commit. Bei Konflikten wird nichts geändert und die betroffenen Dateien werden aufgelistet.",
+    "mergePending": "Die nicht committeten Änderungen der Sitzung werden zuerst in ihren Branch committet:",
+    "mergeConfirm": "Mergen",
+    "merged": "In {{base}} gemergt",
+    "mergedFf": "{{base}} vorgespult",
+    "alreadyMerged": "{{base}} enthält bereits alles aus diesem Branch",
+    "conflicts": "Der Merge in {{base}} würde in {{files}} Konflikte erzeugen. Es wurde nichts geändert.",
+    "discardTitle": "Die Arbeit dieser Sitzung verwerfen?",
+    "discardBody": "Entfernt {{path}} und seinen Branch {{branch}}.",
+    "discardLoses": "Dadurch geht Arbeit verloren, die nirgendwo sonst existiert:",
+    "discardNothing": "Nichts darin ist nicht committet oder nicht gemergt.",
+    "discardConfirm": "Verwerfen",
+    "discarded": "Worktree der Sitzung entfernt",
+    "notCarried": "Nicht in den Worktree übernommen: nicht committete Änderungen in {{files}}.",
+    "prPrompt": "Committe alle verbleibenden Änderungen, pushe den Branch {{branch}} und öffne einen Pull Request nach {{base}}, der die Änderungen dieser Sitzung zusammenfasst.",
+    "copyOffer": "Dieser Ordner ist kein Git-Repository. Arbeite an einer Kopie, damit andere Sitzungen und deine eigenen Änderungen unberührt bleiben; übernimm die Änderungen, wenn du bereit bist.",
+    "workOnCopy": "An einer Kopie arbeiten",
+    "copyLabel": "Arbeitet an einer Kopie",
+    "copyTitle": "Änderungen landen in einer Kopie von {{folder}}; übernimm sie zurück, wenn du bereit bist",
+    "applyBack": "Änderungen zurück übernehmen",
+    "applyTitle": "Änderungen nach {{folder}} übernehmen",
+    "applyNone": "Die Kopie hat keine Änderungen zum Übernehmen.",
+    "applySelected": "{{count}} Datei(en) übernehmen",
+    "applyForce": "Dateien überschreiben, die sich auch im Original geändert haben",
+    "applied": "{{count}} Datei(en) übernommen",
+    "skipped": "Übersprungen, da auch im Original geändert: {{files}}",
+    "conflict": "auch im Original geändert",
+    "binary": "Binär- oder große Datei; keine Vorschau.",
+    "kind": {
+      "added": "hinzugefügt",
+      "modified": "geändert",
+      "deleted": "gelöscht"
+    },
+    "deleteKeep": "Worktree und Branch behalten ({{name}})",
+    "deleteRemove": "Worktree und Branch ({{name}}) ebenfalls entfernen"
   }
 }

@@ -752,5 +752,52 @@
     "state": {
       "absent": "Yok"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git klasöründeki yeni oturumlar kendi worktree'lerinde çalışır",
+    "settingDescription": "Bir Git deposuna bağlanan her yeni oturum kendi worktree'sini ve dalını (flint/<title>) alır; böylece birçok oturum aynı klasörde birbirine ve senin çalışma kopyana dokunmadan aynı anda çalışabilir. Her dalı oturumdan incele, birleştir veya at.",
+    "branchTitle": "Bu oturum kendi worktree'sinde {{branch}} dalında çalışıyor",
+    "basedOn": "{{base}} tabanlı",
+    "openFolder": "Klasörü aç",
+    "merge": "{{base}} dalına birleştir",
+    "mergeNoBase": "Birleştir",
+    "createPr": "Pull request oluştur",
+    "discard": "At",
+    "mergeTitle": "{{branch}}, {{base}} dalına birleştirilsin mi?",
+    "mergeBody": "Mümkünse ileri sarar, gerekirse birleştirme commit'i oluşturur. Çakışma olursa hiçbir şey değişmez ve çakışan dosyalar listelenir.",
+    "mergePending": "Oturumun commit edilmemiş değişiklikleri önce dalına commit edilecek:",
+    "mergeConfirm": "Birleştir",
+    "merged": "{{base}} dalına birleştirildi",
+    "mergedFf": "{{base}} ileri sarıldı",
+    "alreadyMerged": "{{base}} bu daldaki her şeyi zaten içeriyor",
+    "conflicts": "{{base}} dalına birleştirmek {{files}} içinde çakışma yaratır. Hiçbir şey değişmedi.",
+    "discardTitle": "Bu oturumun çalışması atılsın mı?",
+    "discardBody": "{{path}} ve {{branch}} dalını kaldırır.",
+    "discardLoses": "Bu, başka hiçbir yerde olmayan çalışmayı yok eder:",
+    "discardNothing": "İçinde commit edilmemiş veya birleştirilmemiş bir şey yok.",
+    "discardConfirm": "At",
+    "discarded": "Oturumun worktree'si kaldırıldı",
+    "notCarried": "Worktree'ye taşınmadı: {{files}} içindeki commit edilmemiş değişiklikler.",
+    "prPrompt": "Kalan değişiklikleri commit et, {{branch}} dalını push et ve bu oturumun değişikliklerini özetleyen, {{base}} dalına bir pull request aç.",
+    "copyOffer": "Bu klasör bir Git deposu değil. Diğer oturumlara ve kendi düzenlemelerine dokunulmaması için bir kopya üzerinde çalış; hazır olduğunda değişiklikleri geri uygula.",
+    "workOnCopy": "Kopya üzerinde çalış",
+    "copyLabel": "Kopya üzerinde çalışılıyor",
+    "copyTitle": "Değişiklikler {{folder}} klasörünün bir kopyasına gider; hazır olduğunda geri uygula",
+    "applyBack": "Değişiklikleri geri uygula",
+    "applyTitle": "Değişiklikleri {{folder}} klasörüne uygula",
+    "applyNone": "Kopyada uygulanacak değişiklik yok.",
+    "applySelected": "{{count}} dosyayı uygula",
+    "applyForce": "Orijinalde de değişen dosyaların üzerine yaz",
+    "applied": "{{count}} dosya uygulandı",
+    "skipped": "Orijinalde de değiştiği için atlandı: {{files}}",
+    "conflict": "orijinalde de değişti",
+    "binary": "İkili veya büyük dosya; önizleme yok.",
+    "kind": {
+      "added": "eklendi",
+      "modified": "değiştirildi",
+      "deleted": "silindi"
+    },
+    "deleteKeep": "Worktree'sini ve dalını koru ({{name}})",
+    "deleteRemove": "Worktree'sini ve dalını ({{name}}) da kaldır"
   }
 }

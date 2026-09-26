@@ -681,9 +681,116 @@ pub fn agent_worktree_ensure(
     data_folder: String,
     session_id: String,
     project: String,
+    title: Option<String>,
+    base: Option<String>,
 ) -> Result<worktree::WorktreeRecord, String> {
     let roots = owned_worktrees_root(&data_folder)?;
-    worktree::ensure(std::path::Path::new(&project), &roots, &session_id)
+    worktree::ensure_with(
+        std::path::Path::new(&project),
+        &roots,
+        &session_id,
+        &worktree::EnsureOptions { title, base },
+    )
+}
+
+/// Whether a folder is inside a Git working tree. Asked before a new session
+/// is put in its own worktree, so a plain folder is offered a copy instead.
+#[tauri::command]
+pub fn agent_is_git_repo(folder: String) -> bool {
+    worktree::identity(std::path::Path::new(&folder)).is_ok()
+}
+
+/// Merge a session's worktree branch into its base branch (or `target`).
+///
+/// The record is checked against the repository's own worktree list first, the
+/// same boundary as discarding, so a crafted record cannot move another
+/// repository's branches.
+#[tauri::command]
+pub fn agent_worktree_merge(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    target: Option<String>,
+    commit_message: Option<String>,
+) -> Result<worktree::MergeOutcome, String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    let record: worktree::WorktreeRecord = record.into();
+    worktree::ensure_owned(&record, &roots)?;
+    worktree::merge(&record, target.as_deref(), commit_message.as_deref())
+}
+
+/// Rename a session's worktree branch after its title.
+#[tauri::command]
+pub fn agent_worktree_rename(
+    data_folder: String,
+    record: WorktreeRecordInput,
+    session_id: String,
+    title: String,
+) -> Result<worktree::WorktreeRecord, String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    let record: worktree::WorktreeRecord = record.into();
+    worktree::ensure_owned(&record, &roots)?;
+    worktree::rename_branch(&record, &session_id, &title)
+}
+
+/// The commits on a session's branch that its base branch does not have.
+#[tauri::command]
+pub fn agent_worktree_unmerged(record: WorktreeRecordInput) -> Vec<String> {
+    worktree::unmerged_commits(&record.into(), None)
+}
+
+/// Copy a plain folder for a session ("Work on a copy").
+#[tauri::command]
+pub fn agent_copy_create(
+    data_folder: String,
+    session_id: String,
+    folder: String,
+) -> Result<crate::core::agent::session_copy::CopyRecord, String> {
+    let roots = owned_worktrees_root(&data_folder)?;
+    crate::core::agent::session_copy::create(std::path::Path::new(&folder), &roots, &session_id)
+}
+
+fn owned_copy(
+    data_folder: &str,
+    path: &str,
+) -> Result<crate::core::agent::session_copy::CopyRecord, String> {
+    let roots = owned_worktrees_root(data_folder)?;
+    crate::core::agent::session_copy::load(std::path::Path::new(path), &roots)
+}
+
+/// What differs between a session's copy and its original.
+#[tauri::command]
+pub fn agent_copy_changes(
+    data_folder: String,
+    path: String,
+) -> Result<Vec<crate::core::agent::session_copy::CopyChange>, String> {
+    crate::core::agent::session_copy::changes(&owned_copy(&data_folder, &path)?)
+}
+
+/// Both sides of one changed file, for the diff review.
+#[tauri::command]
+pub fn agent_copy_file_pair(
+    data_folder: String,
+    path: String,
+    file: String,
+) -> Result<crate::core::agent::session_copy::FilePair, String> {
+    crate::core::agent::session_copy::file_pair(&owned_copy(&data_folder, &path)?, &file)
+}
+
+/// Apply chosen files from a session's copy back to the original.
+#[tauri::command]
+pub fn agent_copy_apply(
+    data_folder: String,
+    path: String,
+    files: Vec<String>,
+    force: bool,
+) -> Result<crate::core::agent::session_copy::ApplyOutcome, String> {
+    crate::core::agent::session_copy::apply(&owned_copy(&data_folder, &path)?, &files, force)
+}
+
+/// Remove a session's copy.
+#[tauri::command]
+pub fn agent_copy_discard(data_folder: String, path: String, force: bool) -> Result<(), String> {
+    crate::core::agent::session_copy::discard(&owned_copy(&data_folder, &path)?, force)
 }
 
 /// Flint's worktree folder, absolute. See [`worktree::absolute`]: a relative
@@ -1239,6 +1346,10 @@ pub struct WorktreeRecordInput {
     pub identity: RepoIdentityInput,
     #[serde(default)]
     pub uncommitted_at_creation: Vec<String>,
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -1260,6 +1371,8 @@ impl From<WorktreeRecordInput> for worktree::WorktreeRecord {
                 first_commit: input.identity.first_commit,
             },
             uncommitted_at_creation: input.uncommitted_at_creation,
+            base_branch: input.base_branch,
+            notes: input.notes,
         }
     }
 }
@@ -1279,6 +1392,8 @@ mod worktree_command_tests {
                 first_commit: None,
             },
             uncommitted_at_creation: Vec::new(),
+            base_branch: None,
+            notes: Vec::new(),
         }
     }
 

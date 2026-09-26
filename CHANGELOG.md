@@ -114,6 +114,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cowork): make the declared coding-harness modes real (#6)
 - feat(cowork): report the real context — a repository map and the payload actually sent — with a harness feature registry (#7)
 - feat(cowork): the managed worktree — make it real, use the tree the run actually uses, and finish its lifecycle including recovery
+- feat(cowork): parallel sessions on one folder — each new session in a Git folder works in its own worktree and branch (flint/<title>) by default, created even while the checkout has a rebase or merge in progress; merge into the base branch with a conflict report, open a pull request, or discard from the session; deleting a session asks whether to keep its worktree; plain folders can work on a copy and apply changes back file by file with conflict detection
 - feat(cowork): checkpoints and two meanings of rewind, wired into Cowork with a safety point on restore
 - feat(cowork): answer an opening request with a proposal, not an edit; review it by hunk and apply only what was chosen
 - feat(cowork): export a managed worktree as a reviewable patch bundle, and import one back through proposal review

@@ -474,5 +474,52 @@
     "state": {
       "absent": "Absent"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Les nouvelles sessions dans un dossier Git travaillent dans leur propre worktree",
+    "settingDescription": "Chaque nouvelle session rattachée à un dépôt Git reçoit son propre worktree et sa propre branche (flint/<title>), pour que plusieurs sessions puissent travailler dans le même dossier sans se gêner ni toucher à votre copie de travail. Relisez, fusionnez ou abandonnez chaque branche depuis la session.",
+    "branchTitle": "Cette session travaille sur la branche {{branch}}, dans son propre worktree",
+    "basedOn": "depuis {{base}}",
+    "openFolder": "Ouvrir le dossier",
+    "merge": "Fusionner dans {{base}}",
+    "mergeNoBase": "Fusionner",
+    "createPr": "Créer une pull request",
+    "discard": "Abandonner",
+    "mergeTitle": "Fusionner {{branch}} dans {{base}} ?",
+    "mergeBody": "Avance rapide si possible, sinon un commit de fusion. En cas de conflit, rien n'est modifié et les fichiers en conflit sont listés.",
+    "mergePending": "Les modifications non commitées de la session seront d'abord commitées sur sa branche :",
+    "mergeConfirm": "Fusionner",
+    "merged": "Fusionné dans {{base}}",
+    "mergedFf": "{{base}} avancé rapidement",
+    "alreadyMerged": "{{base}} contient déjà tout ce qui est sur cette branche",
+    "conflicts": "La fusion dans {{base}} provoquerait des conflits dans {{files}}. Rien n'a été modifié.",
+    "discardTitle": "Abandonner le travail de cette session ?",
+    "discardBody": "Supprime {{path}} et sa branche {{branch}}.",
+    "discardLoses": "Cela détruit du travail qui n'existe nulle part ailleurs :",
+    "discardNothing": "Rien n'y est non commité ou non fusionné.",
+    "discardConfirm": "Abandonner",
+    "discarded": "Worktree de la session supprimé",
+    "notCarried": "Non repris dans le worktree : modifications non commitées dans {{files}}.",
+    "prPrompt": "Commite les modifications restantes, pousse la branche {{branch}} et ouvre une pull request vers {{base}} qui résume les modifications de cette session.",
+    "copyOffer": "Ce dossier n'est pas un dépôt Git. Travaillez sur une copie pour ne pas toucher aux autres sessions ni à vos propres modifications ; appliquez les changements quand vous êtes prêt.",
+    "workOnCopy": "Travailler sur une copie",
+    "copyLabel": "Travail sur une copie",
+    "copyTitle": "Les modifications vont dans une copie de {{folder}} ; appliquez-les quand vous êtes prêt",
+    "applyBack": "Appliquer les modifications",
+    "applyTitle": "Appliquer les modifications à {{folder}}",
+    "applyNone": "La copie n'a aucune modification à appliquer.",
+    "applySelected": "Appliquer {{count}} fichier(s)",
+    "applyForce": "Écraser les fichiers également modifiés dans l'original",
+    "applied": "{{count}} fichier(s) appliqué(s)",
+    "skipped": "Ignorés car modifiés aussi dans l'original : {{files}}",
+    "conflict": "modifié aussi dans l'original",
+    "binary": "Fichier binaire ou volumineux ; pas d'aperçu.",
+    "kind": {
+      "added": "ajouté",
+      "modified": "modifié",
+      "deleted": "supprimé"
+    },
+    "deleteKeep": "Conserver son worktree et sa branche ({{name}})",
+    "deleteRemove": "Supprimer aussi son worktree et sa branche ({{name}})"
   }
 }

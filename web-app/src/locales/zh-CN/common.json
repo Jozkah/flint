@@ -754,5 +754,52 @@
     "state": {
       "absent": "不存在"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git 文件夹中的新会话在各自的 worktree 中工作",
+    "settingDescription": "连接到 Git 仓库的每个新会话都会获得自己的 worktree 和分支（flint/<title>），这样多个会话可以同时在同一文件夹中工作，互不干扰，也不会触碰你的检出。可在会话中审查、合并或丢弃每个分支。",
+    "branchTitle": "此会话在自己的 worktree 中使用分支 {{branch}}",
+    "basedOn": "基于 {{base}}",
+    "openFolder": "打开文件夹",
+    "merge": "合并到 {{base}}",
+    "mergeNoBase": "合并",
+    "createPr": "创建拉取请求",
+    "discard": "丢弃",
+    "mergeTitle": "将 {{branch}} 合并到 {{base}}？",
+    "mergeBody": "能快进时快进，必要时创建合并提交。如有冲突，不做任何更改并列出冲突文件。",
+    "mergePending": "会话中未提交的更改将先提交到其分支：",
+    "mergeConfirm": "合并",
+    "merged": "已合并到 {{base}}",
+    "mergedFf": "已快进 {{base}}",
+    "alreadyMerged": "{{base}} 已包含此分支的全部内容",
+    "conflicts": "合并到 {{base}} 会在 {{files}} 中产生冲突。未做任何更改。",
+    "discardTitle": "丢弃此会话的工作？",
+    "discardBody": "删除 {{path}} 及其分支 {{branch}}。",
+    "discardLoses": "这将销毁在其他地方都不存在的工作：",
+    "discardNothing": "其中没有未提交或未合并的内容。",
+    "discardConfirm": "丢弃",
+    "discarded": "已删除会话的 worktree",
+    "notCarried": "未带入 worktree：{{files}} 中未提交的更改。",
+    "prPrompt": "提交剩余的更改，推送分支 {{branch}}，并向 {{base}} 发起一个总结本会话更改的拉取请求。",
+    "copyOffer": "此文件夹不是 Git 仓库。在副本上工作，以免影响其他会话和你自己的编辑；准备好后再把更改应用回去。",
+    "workOnCopy": "在副本上工作",
+    "copyLabel": "正在副本上工作",
+    "copyTitle": "更改写入 {{folder}} 的副本；准备好后再应用回去",
+    "applyBack": "应用回更改",
+    "applyTitle": "将更改应用到 {{folder}}",
+    "applyNone": "副本中没有可应用的更改。",
+    "applySelected": "应用 {{count}} 个文件",
+    "applyForce": "覆盖原始位置中也被修改的文件",
+    "applied": "已应用 {{count}} 个文件",
+    "skipped": "已跳过（原始位置中也被修改）：{{files}}",
+    "conflict": "原始位置中也已修改",
+    "binary": "二进制或大文件；无预览。",
+    "kind": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "删除"
+    },
+    "deleteKeep": "保留其 worktree 和分支（{{name}}）",
+    "deleteRemove": "同时删除其 worktree 和分支（{{name}}）"
   }
 }

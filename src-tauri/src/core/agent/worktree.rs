@@ -43,9 +43,9 @@ fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
         .args(crate::core::agent::vcs::HARDENED)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_AUTHOR_NAME", "Jan Agent")
+        .env("GIT_AUTHOR_NAME", "Flint")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Jan Agent")
+        .env("GIT_COMMITTER_NAME", "Flint")
         .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
     jan_utils::system::hide_console_window(&mut cmd);
     let out = cmd
@@ -127,6 +127,16 @@ pub struct WorktreeRecord {
     /// the completion summary can say what was left behind rather than letting
     /// the user discover it later.
     pub uncommitted_at_creation: Vec<String>,
+    /// The branch the worktree was based on (the source checkout's branch when
+    /// it was created, or the one the user picked), and the one "Merge" merges
+    /// into. `None` when the source was on a detached HEAD.
+    #[serde(default)]
+    pub base_branch: Option<String>,
+    /// What the source checkout held that the worktree does not carry: a
+    /// rebase, merge, cherry-pick or revert in progress. Said, not refused --
+    /// the worktree starts from a commit and is unaffected by it.
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 /// Whether a recorded worktree is still usable, and why not when it is not.
@@ -209,16 +219,12 @@ pub struct OperationInProgress {
 }
 
 impl OperationInProgress {
-    /// The message the UI shows and a delegating model reads.
-    pub fn refusal(&self) -> String {
+    /// What a worktree created while this is stopped says about it.
+    pub fn notice(&self) -> String {
         let op = self.operation;
-        let files = if self.unresolved.is_empty() {
-            String::new()
-        } else {
-            format!(" (unresolved: {})", self.unresolved.join(", "))
-        };
         format!(
-            "The checkout has a {op} in progress{files}; a managed worktree starts from HEAD and cannot carry it.              Finish or abort the {op} in the checkout, or use Review only."
+            "The checkout has a {op} in progress; this worktree starts from HEAD's commit \
+             and does not carry the {op}, its conflicts or the checkout's uncommitted changes."
         )
     }
 }
@@ -293,7 +299,59 @@ pub fn branch_name(session_id: &str) -> String {
 /// up in their editor, their search results and — but for `.git` bookkeeping —
 /// their next commit.
 pub fn worktree_path(worktrees_root: &Path, identity: &RepoIdentity, session_id: &str) -> PathBuf {
+    // Short on purpose: Git for Windows fails once a worktree's `.git` path
+    // passes about 218 characters, and the data folder is already deep. Eight
+    // hex characters of the repository key and ten of the session's hash keep
+    // the pair unique while adding under twenty characters.
+    worktrees_root
+        .join(&identity.key()[..8])
+        .join(short_id(session_id))
+}
+
+/// Where builds before the short layout put a session's worktree. Still looked
+/// at, so a session made by an older build finds its own work.
+pub fn legacy_worktree_path(
+    worktrees_root: &Path,
+    identity: &RepoIdentity,
+    session_id: &str,
+) -> PathBuf {
     worktrees_root.join(identity.key()).join(slug(session_id))
+}
+
+/// Ten hex characters of the session id's hash: the short, stable part of a
+/// session's worktree directory and branch.
+pub fn short_id(session_id: &str) -> String {
+    format!("{:016x}", fnv1a(session_id.as_bytes()))[..10].to_string()
+}
+
+/// A branch name made from a session's title, `flint/<words>-<short id>`.
+///
+/// The title makes `git branch` readable; the short id keeps two sessions with
+/// the same title apart. Only ASCII letters and digits survive, so no title can
+/// spell a ref outside the namespace.
+pub fn titled_branch_name(title: &str, session_id: &str) -> String {
+    let mut words = String::new();
+    for c in title.chars() {
+        if c.is_ascii_alphanumeric() {
+            words.push(c.to_ascii_lowercase());
+        } else if !words.is_empty() && !words.ends_with('-') {
+            words.push('-');
+        }
+        if words.len() >= 32 {
+            break;
+        }
+    }
+    let words = words.trim_matches('-');
+    if words.is_empty() {
+        format!("{FLINT_BRANCH_PREFIX}session-{}", short_id(session_id))
+    } else {
+        format!("{FLINT_BRANCH_PREFIX}{words}-{}", short_id(session_id))
+    }
+}
+
+/// Whether a branch is in one of the namespaces Flint creates branches in.
+pub fn is_flint_branch(branch: &str) -> bool {
+    branch.starts_with(BRANCH_PREFIX) || branch.starts_with(FLINT_BRANCH_PREFIX)
 }
 
 /// Whether `path` is a Git worktree of `repo`.
@@ -418,10 +476,12 @@ pub fn state(record: &WorktreeRecord) -> WorktreeState {
 /// having one yet is the ordinary case, not a failure.
 pub fn existing(repo: &Path, worktrees_root: &Path, session_id: &str) -> Option<WorktreeRecord> {
     let identity = identity(repo).ok()?;
-    let path = worktree_path(worktrees_root, &identity, session_id);
-    if !is_worktree_of(&path, repo) {
-        return None;
-    }
+    let path = [
+        worktree_path(worktrees_root, &identity, session_id),
+        legacy_worktree_path(worktrees_root, &identity, session_id),
+    ]
+    .into_iter()
+    .find(|p| is_worktree_of(p, repo))?;
     let branch = run(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).ok()?;
     let base_sha = run(&path, &["rev-parse", "HEAD"]).ok()?;
     Some(WorktreeRecord {
@@ -431,6 +491,8 @@ pub fn existing(repo: &Path, worktrees_root: &Path, session_id: &str) -> Option<
         source_root: identity.root.clone(),
         identity,
         uncommitted_at_creation: Vec::new(),
+        base_branch: None,
+        notes: Vec::new(),
     })
 }
 
@@ -446,6 +508,27 @@ pub fn ensure(
     worktrees_root: &Path,
     session_id: &str,
 ) -> Result<WorktreeRecord, String> {
+    ensure_with(repo, worktrees_root, session_id, &EnsureOptions::default())
+}
+
+/// How a new worktree is named and what it starts from.
+#[derive(Debug, Clone, Default)]
+pub struct EnsureOptions {
+    /// The session's title: the branch becomes `flint/<title>-<short id>`
+    /// instead of the id-derived `jan/cowork/...` name.
+    pub title: Option<String>,
+    /// A branch (or any commit-ish) to start from instead of the checkout's
+    /// HEAD. It also becomes the branch "Merge" targets.
+    pub base: Option<String>,
+}
+
+/// [`ensure`] with a title for the branch and an optional base to start from.
+pub fn ensure_with(
+    repo: &Path,
+    worktrees_root: &Path,
+    session_id: &str,
+    options: &EnsureOptions,
+) -> Result<WorktreeRecord, String> {
     // A relative root would be resolved twice, differently: by `git -C repo`
     // against the repository -- putting the worktree inside the checkout it
     // exists to protect -- and by everything else against this process's
@@ -454,7 +537,10 @@ pub fn ensure(
     let worktrees_root = &absolute(worktrees_root)?;
     let identity = identity(repo)?;
     let path = worktree_path(worktrees_root, &identity, session_id);
-    let branch = branch_name(session_id);
+    let branch = match options.title.as_deref().map(str::trim) {
+        Some(title) if !title.is_empty() => titled_branch_name(title, session_id),
+        _ => branch_name(session_id),
+    };
 
     // Where the worktree will actually be, not where the name says. A symlink
     // in Flint's own worktrees directory — or one someone put there — would
@@ -479,7 +565,10 @@ pub fn ensure(
     }
 
     if let Some(found) = existing(repo, worktrees_root, session_id) {
-        if found.branch == branch {
+        // The directory is derived from the session id, so a worktree there on
+        // any Flint branch is this session's own -- named before its title
+        // changed, or by an older build.
+        if found.branch == branch || is_flint_branch(&found.branch) {
             return Ok(found);
         }
         return Err(format!(
@@ -495,19 +584,41 @@ pub fn ensure(
         ));
     }
 
-    // A worktree is built from HEAD, so a merge, rebase, cherry-pick or revert
-    // stopped in the checkout cannot come along: the worktree would be clean,
-    // the agent would "resolve" a conflict that is not there, and the user
-    // would be told to commit a file that still has conflict markers in their
-    // real checkout. Refuse rather than start from a state that silently
-    // differs; replicating git's operation state is not attempted.
+    // A worktree is built from a commit, so a merge, rebase, cherry-pick or
+    // revert stopped in the checkout does not come along -- and does not need
+    // to: the worktree is a separate checkout of HEAD's commit, and the
+    // operation stays exactly where it was. That is said on the record rather
+    // than refused, so the session can start while the user finishes the
+    // operation in their own checkout.
+    let mut notes = Vec::new();
     if let Some(stopped) = operation_in_progress(repo) {
-        return Err(stopped.refusal());
+        notes.push(stopped.notice());
     }
 
-    let head = run(repo, &["rev-parse", "HEAD"]).map_err(|_| {
-        "this repository has no commits yet, so there is nothing to branch from".to_string()
-    })?;
+    let (head, base_branch) = match options.base.as_deref().map(str::trim) {
+        Some(base) if !base.is_empty() => {
+            if base.starts_with('-') {
+                return Err(format!("{base} is not a branch or commit"));
+            }
+            let sha = run(
+                repo,
+                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
+            )
+            .map_err(|_| format!("{base} is not a branch or commit in this repository"))?;
+            let local = run(
+                repo,
+                &["rev-parse", "--verify", &format!("refs/heads/{base}")],
+            )
+            .is_ok();
+            (sha, local.then(|| base.to_string()))
+        }
+        _ => {
+            let sha = run(repo, &["rev-parse", "HEAD"]).map_err(|_| {
+                "this repository has no commits yet, so there is nothing to branch from".to_string()
+            })?;
+            (sha, current_branch(repo))
+        }
+    };
     let branch_exists = run(
         repo,
         &["rev-parse", "--verify", &format!("refs/heads/{branch}")],
@@ -534,7 +645,338 @@ pub fn ensure(
         source_root: identity.root.clone(),
         identity,
         uncommitted_at_creation: uncommitted(repo),
+        base_branch,
+        notes,
     })
+}
+
+/// The branch checked out in `repo`, or `None` on a detached HEAD.
+pub(crate) fn current_branch(repo: &Path) -> Option<String> {
+    run(repo, &["symbolic-ref", "--short", "-q", "HEAD"])
+        .ok()
+        .filter(|b| !b.is_empty())
+}
+
+/// Run `git` in `repo` and hand back the exit status with stdout, for the
+/// commands whose non-zero exit carries an answer (`merge-tree`,
+/// `merge-base --is-ancestor`).
+fn run_status(repo: &Path, args: &[&str]) -> Result<(bool, String), String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    Ok((
+        out.status.success(),
+        String::from_utf8_lossy(&out.stdout).trim().to_string(),
+    ))
+}
+
+/// Run `git` as the user: their configured identity when they have one, and
+/// Flint's fixed identity only when they do not. A merge commit or a commit of
+/// the session's work lands on the user's branch, so it should carry their
+/// name wherever git knows it.
+fn run_as_user(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let configured = run_status(repo, &["config", "user.email"])
+        .map(|(ok, out)| ok && !out.is_empty())
+        .unwrap_or(false);
+    if !configured {
+        return run(repo, args);
+    }
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(repo)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// The commits on the worktree's branch that `base` does not have, one line
+/// each (`<short sha> <subject>`). Empty when there is no base to compare with.
+pub fn unmerged_commits(record: &WorktreeRecord, base: Option<&str>) -> Vec<String> {
+    let source = Path::new(&record.source_root);
+    let Some(base) = base
+        .map(str::to_string)
+        .or_else(|| record.base_branch.clone())
+        .or_else(|| current_branch(source))
+        .filter(|b| b != &record.branch)
+    else {
+        return Vec::new();
+    };
+    run(
+        source,
+        &[
+            "log",
+            "--format=%h %s",
+            &format!("refs/heads/{base}..refs/heads/{}", record.branch),
+            "--",
+        ],
+    )
+    .map(|out| {
+        out.lines()
+            .map(str::to_string)
+            .filter(|l| !l.is_empty())
+            .collect()
+    })
+    .unwrap_or_default()
+}
+
+/// Commit everything the session left uncommitted in its worktree.
+///
+/// Returns `false` when there was nothing to commit.
+pub fn commit_pending(record: &WorktreeRecord, message: &str) -> Result<bool, String> {
+    let path = Path::new(&record.path);
+    if pending(record).is_empty() {
+        return Ok(false);
+    }
+    let message = if message.trim().is_empty() {
+        "Work from a Flint session"
+    } else {
+        message.trim()
+    };
+    run(path, &["add", "-A"])?;
+    run_as_user(path, &["commit", "-q", "--no-verify", "-m", message])?;
+    Ok(true)
+}
+
+/// Rename a session's branch after its title, keeping the short id.
+///
+/// Sessions start before they have a title, so their branch is first named
+/// `flint/session-<id>`; once the title is known the branch follows it. Only a
+/// branch in Flint's namespace is renamed, and the worktree stays checked out
+/// on it (git moves the worktree's HEAD with the branch).
+pub fn rename_branch(
+    record: &WorktreeRecord,
+    session_id: &str,
+    title: &str,
+) -> Result<WorktreeRecord, String> {
+    if !is_flint_branch(&record.branch) {
+        return Err(format!("{} is not a branch Flint named", record.branch));
+    }
+    let wanted = titled_branch_name(title, session_id);
+    if wanted == record.branch {
+        return Ok(record.clone());
+    }
+    let source = Path::new(&record.source_root);
+    if run(
+        source,
+        &["rev-parse", "--verify", &format!("refs/heads/{wanted}")],
+    )
+    .is_ok()
+    {
+        return Err(format!("branch {wanted} already exists"));
+    }
+    run(source, &["branch", "-m", &record.branch, &wanted])?;
+    let mut next = record.clone();
+    next.branch = wanted;
+    Ok(next)
+}
+
+/// What "Merge into <base>" did.
+#[derive(serde::Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeOutcome {
+    /// The base branch now contains the session's branch.
+    pub merged: bool,
+    /// Merged by moving the base forward, with no merge commit.
+    pub fast_forward: bool,
+    /// The base already had everything; nothing changed.
+    pub already_merged: bool,
+    /// The branch merged into.
+    pub target: String,
+    /// The base's new tip, when it moved.
+    pub new_tip: Option<String>,
+    /// Files both sides changed incompatibly. Nothing was changed when this is
+    /// non-empty.
+    pub conflicts: Vec<String>,
+    /// Whether the session's uncommitted work was committed first.
+    pub committed_pending: bool,
+}
+
+/// The checkout (the user's own, or another worktree) that has `branch`
+/// checked out, if any.
+fn checkout_of(repo: &Path, branch: &str) -> Option<PathBuf> {
+    let out = run(repo, &["worktree", "list", "--porcelain"]).ok()?;
+    let mut path: Option<&str> = None;
+    let wanted = format!("branch refs/heads/{branch}");
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix("worktree ") {
+            path = Some(rest);
+        } else if line == wanted {
+            return path.map(PathBuf::from);
+        }
+    }
+    None
+}
+
+/// Merge a session's branch into its base branch (or `target`).
+///
+/// Fast-forwards when it can and writes a merge commit when it must. Conflicts
+/// are found with `git merge-tree` before anything moves, so a conflicting
+/// merge reports its files and leaves every checkout and ref exactly as it
+/// was -- nothing is ever left half-merged. Uncommitted work in the session's
+/// worktree is committed first only when `commit_message` says so; otherwise
+/// it is a refusal that names the files.
+///
+/// The one case refused rather than handled: the base is checked out somewhere
+/// with uncommitted changes or an operation in progress. Moving it there would
+/// either overwrite that work or fail halfway, and both are worse than asking.
+pub fn merge(
+    record: &WorktreeRecord,
+    target: Option<&str>,
+    commit_message: Option<&str>,
+) -> Result<MergeOutcome, String> {
+    let source = PathBuf::from(&record.source_root);
+    let target = target
+        .map(str::to_string)
+        .or_else(|| record.base_branch.clone())
+        .ok_or_else(|| {
+            "this worktree was made from a detached HEAD, so there is no branch to merge into; \
+             pick one"
+                .to_string()
+        })?;
+    if target.starts_with('-') || target == record.branch {
+        return Err(format!("{target} is not a branch this can be merged into"));
+    }
+    let base_ref = format!("refs/heads/{target}");
+    let base_tip = run(&source, &["rev-parse", "--verify", &base_ref])
+        .map_err(|_| format!("branch {target} does not exist"))?;
+
+    let mut committed_pending = false;
+    let dirty = pending(record);
+    if !dirty.is_empty() {
+        match commit_message {
+            Some(message) => committed_pending = commit_pending(record, message)?,
+            None => {
+                return Err(format!(
+                    "the session has {} uncommitted change(s) that would not be merged: {}",
+                    dirty.len(),
+                    dirty.join(", ")
+                ))
+            }
+        }
+    }
+    let tip = run(
+        &source,
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{}", record.branch),
+        ],
+    )?;
+
+    let is_ancestor = |a: &str, b: &str| {
+        run_status(&source, &["merge-base", "--is-ancestor", a, b])
+            .map(|(ok, _)| ok)
+            .unwrap_or(false)
+    };
+    let mut outcome = MergeOutcome {
+        merged: false,
+        fast_forward: false,
+        already_merged: false,
+        target: target.clone(),
+        new_tip: None,
+        conflicts: Vec::new(),
+        committed_pending,
+    };
+    if is_ancestor(&tip, &base_tip) {
+        outcome.merged = true;
+        outcome.already_merged = true;
+        return Ok(outcome);
+    }
+
+    let new_tip = if is_ancestor(&base_tip, &tip) {
+        outcome.fast_forward = true;
+        tip.clone()
+    } else {
+        let (clean, out) = run_status(
+            &source,
+            &[
+                "merge-tree",
+                "--write-tree",
+                "--name-only",
+                "--no-messages",
+                &base_tip,
+                &tip,
+            ],
+        )?;
+        let mut lines = out.lines();
+        let tree = lines.next().unwrap_or_default().trim().to_string();
+        if !clean {
+            let conflicts: Vec<String> = lines
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string)
+                .collect();
+            if tree.is_empty() || conflicts.is_empty() {
+                return Err(
+                    "git could not test this merge (git 2.38 or newer is needed)".to_string(),
+                );
+            }
+            outcome.conflicts = conflicts;
+            return Ok(outcome);
+        }
+        let message = format!("Merge branch '{}' into {target}", record.branch);
+        run_as_user(
+            &source,
+            &[
+                "commit-tree",
+                &tree,
+                "-p",
+                &base_tip,
+                "-p",
+                &tip,
+                "-m",
+                &message,
+            ],
+        )?
+    };
+
+    match checkout_of(&source, &target) {
+        Some(checkout) => {
+            if let Some(stopped) = operation_in_progress(&checkout) {
+                return Err(format!(
+                    "{target} is checked out at {} with a {} in progress; finish it first",
+                    checkout.display(),
+                    stopped.operation
+                ));
+            }
+            let dirty = uncommitted(&checkout);
+            if !dirty.is_empty() {
+                return Err(format!(
+                    "{target} is checked out at {} with uncommitted changes ({}); commit or \
+                     stash them first so merging cannot overwrite them",
+                    checkout.display(),
+                    dirty.join(", ")
+                ));
+            }
+            // A fast-forward to the new tip, whichever kind of merge made it:
+            // the checkout's files and its branch move together.
+            run(&checkout, &["merge", "--ff-only", "-q", &new_tip])?;
+        }
+        None => {
+            // Nobody has it checked out, so only the ref moves -- and only if
+            // it is still where it was when the merge was worked out.
+            run(&source, &["update-ref", &base_ref, &new_tip, &base_tip])?;
+        }
+    }
+    outcome.merged = true;
+    outcome.new_tip = Some(new_tip);
+    Ok(outcome)
 }
 
 /// `path` made absolute against this process's working directory, with `.`
@@ -580,6 +1022,16 @@ pub fn discard(record: &WorktreeRecord, force: bool) -> Result<(), String> {
             dirty.join(", ")
         ));
     }
+    let unmerged = unmerged_commits(record, None);
+    if !force && !unmerged.is_empty() {
+        return Err(format!(
+            "branch {} has {} commit(s) that are not in {}; removing it would destroy: {}",
+            record.branch,
+            unmerged.len(),
+            record.base_branch.as_deref().unwrap_or("its base"),
+            unmerged.join("; ")
+        ));
+    }
     let source = PathBuf::from(&record.source_root);
     // `--force` covers a dirty worktree, which is the normal state of one that
     // is being discarded on purpose.
@@ -607,6 +1059,13 @@ pub fn discard_owned(
     worktrees_root: &Path,
     force: bool,
 ) -> Result<(), String> {
+    ensure_owned(record, worktrees_root)?;
+    discard(record, force)
+}
+
+/// Refuse a record that `record.source_root`'s own Git does not list at
+/// `record.path` on `record.branch` under `worktrees_root`.
+pub fn ensure_owned(record: &WorktreeRecord, worktrees_root: &Path) -> Result<(), String> {
     let normal = |p: &str| {
         resolve_lexically(Path::new(p))
             .map(|resolved| {
@@ -626,7 +1085,7 @@ pub fn discard_owned(
             record.path, record.branch, record.source_root
         ));
     }
-    discard(record, force)
+    Ok(())
 }
 
 /// Every Flint-owned worktree of this repository that is actually on disk.
@@ -658,7 +1117,7 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
         };
         // Ours, and where we put them: a worktree the user made themselves is
         // not Flint's to list, offer to delete, or reason about.
-        if !b.starts_with(BRANCH_PREFIX) || !contained(Path::new(&p), worktrees_root) {
+        if !is_flint_branch(&b) || !contained(Path::new(&p), worktrees_root) {
             return;
         }
         // `git worktree list --porcelain` reports `C:/Users/...` on Windows,
@@ -681,6 +1140,8 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
             source_root: identity.root.clone(),
             identity: identity.clone(),
             uncommitted_at_creation: Vec::new(),
+            base_branch: None,
+            notes: Vec::new(),
         });
     };
 
@@ -701,6 +1162,9 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
 
 /// The namespace every branch Flint creates lives under.
 pub const BRANCH_PREFIX: &str = "jan/cowork/";
+
+/// The namespace of branches named from a session's title.
+pub const FLINT_BRANCH_PREFIX: &str = "flint/";
 
 /// Drop the bookkeeping for worktrees whose directories are gone.
 ///
@@ -1180,54 +1644,371 @@ mod tests {
         f
     }
 
-    fn assert_refused_for(f: &Fixture, op: &str, session: &str) {
+    /// A stopped operation in the checkout no longer blocks a worktree: it is
+    /// built from HEAD's commit, clean, and the record says what it did not
+    /// carry. The operation in the checkout is left exactly where it was.
+    fn assert_created_despite(f: &Fixture, op: &str, session: &str) {
         let stopped = operation_in_progress(&f.repo).expect("operation detected");
         assert_eq!(stopped.operation, op);
         assert_eq!(stopped.unresolved, vec!["a.txt".to_string()]);
-        let err = ensure(&f.repo, &f.worktrees, session).expect_err("must refuse");
-        assert!(err.contains(&format!("has a {op} in progress")), "{err}");
-        assert!(err.contains("a.txt"), "{err}");
-        assert!(err.contains("Review only"), "{err}");
-        // Nothing was created: no worktree directory, no branch.
-        assert!(!worktree_path(&f.worktrees, &identity(&f.repo).unwrap(), session).exists());
-        assert!(run(
-            &f.repo,
-            &["rev-parse", "--verify", &format!("refs/heads/{}", branch_name(session))]
-        )
-        .is_err());
+        let head = run(&f.repo, &["rev-parse", "HEAD"]).unwrap();
+        let record = ensure(&f.repo, &f.worktrees, session).expect("created from HEAD");
+        assert_eq!(record.base_sha, head);
+        assert!(
+            record
+                .notes
+                .iter()
+                .any(|n| n.contains(&format!("has a {op} in progress"))),
+            "{:?}",
+            record.notes
+        );
+        let wt = PathBuf::from(&record.path);
+        assert!(pending(&record).is_empty(), "the worktree starts clean");
+        assert!(!std::fs::read_to_string(wt.join("a.txt"))
+            .unwrap()
+            .contains("<<<<<<<"));
+        assert_eq!(operation_in_progress(&wt), None);
+        // The checkout still has its operation.
+        assert_eq!(
+            operation_in_progress(&f.repo).map(|o| o.operation),
+            Some(stopped.operation)
+        );
     }
 
     /// #314: a worktree built from HEAD silently dropped a stopped merge.
     #[test]
-    fn refuses_a_checkout_with_a_merge_in_progress() {
+    fn creates_a_worktree_despite_a_merge_in_progress() {
         let f = diverged();
         git_conflicting(&f.repo, &["merge", "topic"]);
-        assert_refused_for(&f, "merge", "sess-merge");
+        assert_created_despite(&f, "merge", "sess-merge");
     }
 
     #[test]
-    fn refuses_a_checkout_with_a_rebase_in_progress() {
+    fn creates_a_worktree_despite_a_rebase_in_progress() {
         let f = diverged();
         git_conflicting(&f.repo, &["rebase", "topic"]);
-        assert_refused_for(&f, "rebase", "sess-rebase");
+        assert_created_despite(&f, "rebase", "sess-rebase");
     }
 
     #[test]
-    fn refuses_a_checkout_with_a_cherry_pick_in_progress() {
+    fn creates_a_worktree_despite_a_cherry_pick_in_progress() {
         let f = diverged();
         git_conflicting(&f.repo, &["cherry-pick", "topic"]);
-        assert_refused_for(&f, "cherry-pick", "sess-pick");
+        assert_created_despite(&f, "cherry-pick", "sess-pick");
     }
 
     #[test]
-    fn refuses_a_checkout_with_a_revert_in_progress() {
+    fn creates_a_worktree_despite_a_revert_in_progress() {
         let f = fixture();
         std::fs::write(f.repo.join("a.txt"), "two").unwrap();
         git_in(&f.repo, &["commit", "-q", "-am", "second"]);
         std::fs::write(f.repo.join("a.txt"), "three").unwrap();
         git_in(&f.repo, &["commit", "-q", "-am", "third"]);
         git_conflicting(&f.repo, &["revert", "--no-edit", "HEAD~1"]);
-        assert_refused_for(&f, "revert", "sess-revert");
+        assert_created_despite(&f, "revert", "sess-revert");
+    }
+
+    #[test]
+    fn many_sessions_on_one_repository_get_their_own_worktrees_and_branches() {
+        let f = fixture();
+        let sessions = ["s-one", "s-two", "s-three", "s-four"];
+        let records: Vec<WorktreeRecord> = std::thread::scope(|scope| {
+            let handles: Vec<_> = sessions
+                .iter()
+                .map(|id| {
+                    let (repo, roots) = (&f.repo, &f.worktrees);
+                    scope.spawn(move || {
+                        let options = EnsureOptions {
+                            title: Some("Fix the parser".to_string()),
+                            base: None,
+                        };
+                        // Git serialises its own ref/worktree writes with lock
+                        // files; a concurrent loser retries like a user would.
+                        let mut last = String::new();
+                        for _ in 0..20 {
+                            match ensure_with(repo, roots, id, &options) {
+                                Ok(r) => return r,
+                                Err(e) => last = e,
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        panic!("{id}: {last}")
+                    })
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let mut paths: Vec<&str> = records.iter().map(|r| r.path.as_str()).collect();
+        let mut branches: Vec<&str> = records.iter().map(|r| r.branch.as_str()).collect();
+        paths.sort();
+        paths.dedup();
+        branches.sort();
+        branches.dedup();
+        assert_eq!(paths.len(), sessions.len());
+        assert_eq!(branches.len(), sessions.len());
+        for r in &records {
+            assert!(
+                r.branch.starts_with("flint/fix-the-parser-"),
+                "{}",
+                r.branch
+            );
+            assert_eq!(r.base_branch.as_deref(), Some("main"));
+        }
+        // Each writes its own file without seeing the others'.
+        for (i, r) in records.iter().enumerate() {
+            std::fs::write(PathBuf::from(&r.path).join(format!("f{i}.txt")), "x").unwrap();
+        }
+        for (i, r) in records.iter().enumerate() {
+            assert_eq!(pending(r), vec![format!("f{i}.txt")]);
+        }
+        assert_eq!(list(&f.repo, &f.worktrees).len(), sessions.len());
+        // And the user's checkout saw none of it.
+        assert!(uncommitted(&f.repo).is_empty());
+    }
+
+    #[test]
+    fn a_titled_branch_is_readable_and_confined_to_its_namespace() {
+        let b = titled_branch_name("Fix: the ../../main Parser!", "id-1");
+        assert!(b.starts_with("flint/fix-the-main-parser-"), "{b}");
+        assert!(!b.contains(".."));
+        assert!(titled_branch_name("***", "id-1").starts_with("flint/session-"));
+        assert_ne!(titled_branch_name("x", "a"), titled_branch_name("x", "b"));
+    }
+
+    #[test]
+    fn a_session_keeps_its_worktree_when_its_title_changes() {
+        let f = fixture();
+        let first = ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s1",
+            &EnsureOptions {
+                title: Some("First".into()),
+                base: None,
+            },
+        )
+        .unwrap();
+        let again = ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s1",
+            &EnsureOptions {
+                title: Some("Renamed".into()),
+                base: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(first.path, again.path);
+        assert_eq!(first.branch, again.branch);
+    }
+
+    #[test]
+    fn a_worktree_can_start_from_a_branch_the_user_picks() {
+        let f = fixture();
+        git_in(&f.repo, &["branch", "develop"]);
+        git_in(&f.repo, &["checkout", "-q", "develop"]);
+        std::fs::write(f.repo.join("d.txt"), "d").unwrap();
+        git_in(&f.repo, &["add", "."]);
+        git_in(&f.repo, &["commit", "-q", "-m", "dev"]);
+        git_in(&f.repo, &["checkout", "-q", "main"]);
+        let r = ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s1",
+            &EnsureOptions {
+                title: None,
+                base: Some("develop".into()),
+            },
+        )
+        .unwrap();
+        assert_eq!(r.base_branch.as_deref(), Some("develop"));
+        assert!(PathBuf::from(&r.path).join("d.txt").exists());
+        assert!(ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s2",
+            &EnsureOptions {
+                title: None,
+                base: Some("--upload-pack=x".into())
+            },
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn a_worktree_is_created_beside_uncommitted_changes_and_says_so() {
+        let f = fixture();
+        std::fs::write(f.repo.join("a.txt"), "edited").unwrap();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        assert_eq!(r.uncommitted_at_creation, vec!["a.txt".to_string()]);
+        assert_eq!(
+            std::fs::read_to_string(PathBuf::from(&r.path).join("a.txt")).unwrap(),
+            "one"
+        );
+    }
+
+    #[test]
+    fn a_worktree_made_by_an_older_build_is_still_found() {
+        let f = fixture();
+        let id = identity(&f.repo).unwrap();
+        let old = legacy_worktree_path(&f.worktrees, &id, "s-old");
+        std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+        git_in(
+            &f.repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                &branch_name("s-old"),
+                &old.to_string_lossy(),
+            ],
+        );
+        let r = ensure(&f.repo, &f.worktrees, "s-old").expect("reused");
+        assert_eq!(
+            PathBuf::from(&r.path).canonicalize().unwrap(),
+            old.canonicalize().unwrap()
+        );
+    }
+
+    fn commit_in(dir: &Path, file: &str, body: &str) {
+        std::fs::write(dir.join(file), body).unwrap();
+        git_in(dir, &["add", "."]);
+        git_in(dir, &["commit", "-q", "-m", file]);
+    }
+
+    #[test]
+    fn merging_fast_forwards_the_checked_out_base() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        commit_in(Path::new(&r.path), "b.txt", "b");
+        let out = merge(&r, None, None).unwrap();
+        assert!(out.merged && out.fast_forward, "{out:?}");
+        assert_eq!(out.target, "main");
+        // The user's checkout moved with its branch.
+        assert!(f.repo.join("b.txt").exists());
+        assert!(uncommitted(&f.repo).is_empty());
+        assert!(unmerged_commits(&r, None).is_empty());
+        // Merging again changes nothing.
+        assert!(merge(&r, None, None).unwrap().already_merged);
+    }
+
+    #[test]
+    fn merging_writes_a_merge_commit_when_the_base_moved() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        commit_in(Path::new(&r.path), "b.txt", "b");
+        commit_in(&f.repo, "c.txt", "c");
+        let out = merge(&r, None, None).unwrap();
+        assert!(out.merged && !out.fast_forward, "{out:?}");
+        assert!(f.repo.join("b.txt").exists() && f.repo.join("c.txt").exists());
+        let parents = run(&f.repo, &["rev-list", "--parents", "-n", "1", "HEAD"]).unwrap();
+        assert_eq!(parents.split_whitespace().count(), 3, "{parents}");
+    }
+
+    #[test]
+    fn merging_commits_pending_work_only_when_asked() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        std::fs::write(PathBuf::from(&r.path).join("n.txt"), "n").unwrap();
+        let err = merge(&r, None, None).expect_err("pending work named");
+        assert!(err.contains("n.txt"), "{err}");
+        let out = merge(&r, None, Some("Add n")).unwrap();
+        assert!(out.merged && out.committed_pending);
+        assert!(f.repo.join("n.txt").exists());
+    }
+
+    #[test]
+    fn a_conflicting_merge_reports_its_files_and_changes_nothing() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        commit_in(Path::new(&r.path), "a.txt", "session");
+        commit_in(&f.repo, "a.txt", "user");
+        let before = run(&f.repo, &["rev-parse", "HEAD"]).unwrap();
+        let out = merge(&r, None, None).unwrap();
+        assert!(!out.merged);
+        assert_eq!(out.conflicts, vec!["a.txt".to_string()]);
+        assert_eq!(run(&f.repo, &["rev-parse", "HEAD"]).unwrap(), before);
+        assert_eq!(operation_in_progress(&f.repo), None);
+        assert_eq!(
+            std::fs::read_to_string(f.repo.join("a.txt")).unwrap(),
+            "user"
+        );
+    }
+
+    #[test]
+    fn merging_into_a_dirty_checkout_is_refused() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        commit_in(Path::new(&r.path), "b.txt", "b");
+        std::fs::write(f.repo.join("a.txt"), "user work").unwrap();
+        let err = merge(&r, None, None).expect_err("refused");
+        assert!(err.contains("uncommitted"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(f.repo.join("a.txt")).unwrap(),
+            "user work"
+        );
+        assert!(!f.repo.join("b.txt").exists());
+    }
+
+    #[test]
+    fn merging_a_base_nobody_has_checked_out_moves_only_the_ref() {
+        let f = fixture();
+        git_in(&f.repo, &["branch", "release"]);
+        let r = ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s1",
+            &EnsureOptions {
+                title: None,
+                base: Some("release".into()),
+            },
+        )
+        .unwrap();
+        commit_in(Path::new(&r.path), "b.txt", "b");
+        std::fs::write(f.repo.join("a.txt"), "dirty main is irrelevant").unwrap();
+        let out = merge(&r, None, None).unwrap();
+        assert!(out.merged, "{out:?}");
+        let tip = run(&f.repo, &["rev-parse", "refs/heads/release"]).unwrap();
+        assert_eq!(Some(tip), out.new_tip);
+    }
+
+    #[test]
+    fn discarding_refuses_commits_that_were_never_merged() {
+        let f = fixture();
+        let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
+        commit_in(Path::new(&r.path), "b.txt", "b");
+        let err = discard(&r, false).expect_err("unmerged work kept");
+        assert!(err.contains("not in main"), "{err}");
+        assert!(PathBuf::from(&r.path).exists());
+        merge(&r, None, None).unwrap();
+        discard(&r, false).expect("merged work can go");
+    }
+
+    #[test]
+    fn a_branch_follows_the_session_title() {
+        let f = fixture();
+        let r = ensure_with(
+            &f.repo,
+            &f.worktrees,
+            "s1",
+            &EnsureOptions {
+                title: Some("New session".into()),
+                base: None,
+            },
+        )
+        .unwrap();
+        let renamed = rename_branch(&r, "s1", "Add dark mode").unwrap();
+        assert!(
+            renamed.branch.starts_with("flint/add-dark-mode-"),
+            "{}",
+            renamed.branch
+        );
+        assert_eq!(state(&renamed), WorktreeState::Ready);
+        assert_eq!(
+            ensure(&f.repo, &f.worktrees, "s1").unwrap().branch,
+            renamed.branch
+        );
     }
 
     #[test]
@@ -1420,6 +2201,8 @@ mod tests {
             source_root: f.repo.to_string_lossy().into_owned(),
             identity: identity(&f.repo).expect("identity"),
             uncommitted_at_creation: Vec::new(),
+            base_branch: None,
+            notes: Vec::new(),
         };
         assert!(discard_owned(&decoy, &f.worktrees, false).is_err());
         let still = std::process::Command::new("git")

@@ -541,5 +541,52 @@
     "state": {
       "absent": "No presente"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Las sesiones nuevas en una carpeta Git trabajan en su propio worktree",
+    "settingDescription": "Cada sesión nueva en un repositorio Git obtiene su propio worktree y rama (flint/<title>), para que muchas sesiones trabajen a la vez en la misma carpeta sin tocarse entre sí ni tocar tu copia de trabajo. Revisa, fusiona o descarta cada rama desde la sesión.",
+    "branchTitle": "Esta sesión trabaja en la rama {{branch}}, en su propio worktree",
+    "basedOn": "desde {{base}}",
+    "openFolder": "Abrir carpeta",
+    "merge": "Fusionar en {{base}}",
+    "mergeNoBase": "Fusionar",
+    "createPr": "Crear pull request",
+    "discard": "Descartar",
+    "mergeTitle": "¿Fusionar {{branch}} en {{base}}?",
+    "mergeBody": "Avanza rápido cuando puede y crea un commit de fusión cuando debe. Si hay conflictos, no se cambia nada y se listan los archivos en conflicto.",
+    "mergePending": "Los cambios sin confirmar de la sesión se confirmarán primero en su rama:",
+    "mergeConfirm": "Fusionar",
+    "merged": "Fusionado en {{base}}",
+    "mergedFf": "{{base}} avanzado rápido",
+    "alreadyMerged": "{{base}} ya tiene todo lo de esta rama",
+    "conflicts": "Fusionar en {{base}} causaría conflictos en {{files}}. No se cambió nada.",
+    "discardTitle": "¿Descartar el trabajo de esta sesión?",
+    "discardBody": "Elimina {{path}} y su rama {{branch}}.",
+    "discardLoses": "Esto destruye trabajo que no existe en ningún otro lugar:",
+    "discardNothing": "No hay nada sin confirmar ni sin fusionar.",
+    "discardConfirm": "Descartar",
+    "discarded": "Se eliminó el worktree de la sesión",
+    "notCarried": "No se llevó al worktree: cambios sin confirmar en {{files}}.",
+    "prPrompt": "Confirma los cambios restantes, sube la rama {{branch}} y abre un pull request hacia {{base}} que resuma los cambios de esta sesión.",
+    "copyOffer": "Esta carpeta no es un repositorio Git. Trabaja en una copia para no tocar otras sesiones ni tus propios cambios; aplica los cambios cuando estés listo.",
+    "workOnCopy": "Trabajar en una copia",
+    "copyLabel": "Trabajando en una copia",
+    "copyTitle": "Los cambios van a una copia de {{folder}}; aplícalos cuando estés listo",
+    "applyBack": "Aplicar cambios",
+    "applyTitle": "Aplicar cambios a {{folder}}",
+    "applyNone": "La copia no tiene cambios que aplicar.",
+    "applySelected": "Aplicar {{count}} archivo(s)",
+    "applyForce": "Sobrescribir archivos que también cambiaron en el original",
+    "applied": "{{count}} archivo(s) aplicado(s)",
+    "skipped": "Omitidos porque también cambiaron en el original: {{files}}",
+    "conflict": "también cambió en el original",
+    "binary": "Archivo binario o grande; sin vista previa.",
+    "kind": {
+      "added": "añadido",
+      "modified": "modificado",
+      "deleted": "eliminado"
+    },
+    "deleteKeep": "Conservar su worktree y rama ({{name}})",
+    "deleteRemove": "Eliminar también su worktree y rama ({{name}})"
   }
 }

@@ -585,5 +585,52 @@
     "state": {
       "absent": "なし"
     }
+  },
+  "coworkParallel": {
+    "settingTitle": "Git フォルダーの新しいセッションは専用の worktree で作業する",
+    "settingDescription": "Git リポジトリに接続した新しいセッションごとに専用の worktree とブランチ (flint/<title>) が作られるため、複数のセッションが同じフォルダーで互いにもあなたのチェックアウトにも触れずに同時に作業できます。各ブランチはセッションからレビュー、マージ、破棄できます。",
+    "branchTitle": "このセッションは専用の worktree でブランチ {{branch}} を使っています",
+    "basedOn": "{{base}} から",
+    "openFolder": "フォルダーを開く",
+    "merge": "{{base}} にマージ",
+    "mergeNoBase": "マージ",
+    "createPr": "プルリクエストを作成",
+    "discard": "破棄",
+    "mergeTitle": "{{branch}} を {{base}} にマージしますか？",
+    "mergeBody": "可能なら早送りし、必要ならマージコミットを作成します。競合がある場合は何も変更せず、競合したファイルを一覧表示します。",
+    "mergePending": "セッションの未コミットの変更は、まずそのブランチにコミットされます:",
+    "mergeConfirm": "マージ",
+    "merged": "{{base}} にマージしました",
+    "mergedFf": "{{base}} を早送りしました",
+    "alreadyMerged": "{{base}} にはこのブランチの内容がすべて含まれています",
+    "conflicts": "{{base}} へのマージは {{files}} で競合します。何も変更していません。",
+    "discardTitle": "このセッションの作業を破棄しますか？",
+    "discardBody": "{{path}} とブランチ {{branch}} を削除します。",
+    "discardLoses": "他のどこにも存在しない作業が失われます:",
+    "discardNothing": "未コミットや未マージのものはありません。",
+    "discardConfirm": "破棄",
+    "discarded": "セッションの worktree を削除しました",
+    "notCarried": "worktree に持ち込まれなかったもの: {{files}} の未コミットの変更。",
+    "prPrompt": "残りの変更をコミットし、ブランチ {{branch}} をプッシュして、このセッションの変更をまとめた {{base}} 向けのプルリクエストを作成してください。",
+    "copyOffer": "このフォルダーは Git リポジトリではありません。他のセッションやあなた自身の編集に触れないようコピーで作業し、準備ができたら変更を反映してください。",
+    "workOnCopy": "コピーで作業",
+    "copyLabel": "コピーで作業中",
+    "copyTitle": "変更は {{folder}} のコピーに書き込まれます。準備ができたら反映してください",
+    "applyBack": "変更を反映",
+    "applyTitle": "{{folder}} に変更を反映",
+    "applyNone": "コピーに反映する変更はありません。",
+    "applySelected": "{{count}} 件のファイルを反映",
+    "applyForce": "元でも変更されたファイルを上書きする",
+    "applied": "{{count}} 件のファイルを反映しました",
+    "skipped": "元でも変更されたためスキップ: {{files}}",
+    "conflict": "元でも変更あり",
+    "binary": "バイナリまたは大きなファイルのためプレビューなし。",
+    "kind": {
+      "added": "追加",
+      "modified": "変更",
+      "deleted": "削除"
+    },
+    "deleteKeep": "worktree とブランチを残す ({{name}})",
+    "deleteRemove": "worktree とブランチ ({{name}}) も削除する"
   }
 }
