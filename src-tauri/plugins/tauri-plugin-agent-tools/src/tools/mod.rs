@@ -11,6 +11,7 @@ pub mod call_shape;
 pub mod cmdscan;
 pub mod fuzzy_edit;
 pub mod gate;
+pub mod git_attribution;
 pub mod git_native;
 pub mod git_tool;
 pub mod handlers;

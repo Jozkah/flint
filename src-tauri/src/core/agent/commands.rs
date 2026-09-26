@@ -96,6 +96,43 @@ pub async fn get_compaction_policy(
     .map_err(|e| e.message().to_string())
 }
 
+/// Whether Flint adds its attribution to the agent's commits and pull
+/// requests (`<data folder>/attribution.json`, read by the CLI too).
+#[tauri::command]
+pub async fn get_attribution_settings(
+    app: tauri::AppHandle,
+) -> tauri_plugin_agent_tools::tools::git_attribution::Settings {
+    tauri_plugin_agent_tools::tools::git_attribution::load(Some(&get_jan_data_folder_path(app)))
+}
+
+#[tauri::command]
+pub async fn set_attribution_settings(
+    app: tauri::AppHandle,
+    settings: tauri_plugin_agent_tools::tools::git_attribution::Settings,
+) -> Result<tauri_plugin_agent_tools::tools::git_attribution::Settings, String> {
+    tauri_plugin_agent_tools::tools::git_attribution::save(&get_jan_data_folder_path(app), &settings)
+        .map_err(|e| e.to_string())?;
+    Ok(settings)
+}
+
+/// A `git` tool call's input with Flint's attribution added, as the renderer's
+/// dispatchers run it: rewritten before the approval prompt, so the prompt
+/// shows the exact message or body. `base` resolves a relative `-F` file.
+#[tauri::command]
+pub async fn attribute_git_call(
+    app: tauri::AppHandle,
+    input: serde_json::Value,
+    model: String,
+    base: Option<String>,
+) -> serde_json::Value {
+    let settings =
+        tauri_plugin_agent_tools::tools::git_attribution::load(Some(&get_jan_data_folder_path(app)));
+    let mut input = input;
+    let base = std::path::PathBuf::from(base.unwrap_or_default());
+    tauri_plugin_agent_tools::tools::git_attribution::attribute_call(&mut input, &model, settings, &base);
+    input
+}
+
 /// Change the user's compaction policy (AH-076). Only the fields given are
 /// changed; the rest of the user's file is kept. Validated before writing.
 #[tauri::command]
