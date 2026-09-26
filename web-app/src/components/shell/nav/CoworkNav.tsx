@@ -53,6 +53,7 @@ import {
   type ThreadStatus,
 } from '@/containers/ThreadStatusMark'
 import { usePrStatus } from '@/stores/pr-status-store'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { isCoworkRoute } from '@/constants/routes'
 import {
   useCoworkSessions,
@@ -335,7 +336,9 @@ function SessionMark({
   running: boolean
   selected: boolean
 }) {
-  const pr = usePrStatus(session.folder)
+  // The session's own worktree when it has one: its branch, not the folder's.
+  const worktreePath = useCoworkWorktrees((s) => s.bySession[session.id]?.path)
+  const pr = usePrStatus(worktreePath ?? session.folder, session.id)
   // Waiting on the user: a tool approval or a question the run asked.
   const awaitingApproval = useToolApprovalRequests((s) =>
     Object.values(s.pending ?? {}).some((p) => p.threadId === session.id)

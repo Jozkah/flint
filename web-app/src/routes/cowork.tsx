@@ -5186,7 +5186,7 @@ export function CoworkPage() {
                   }}
                 />
               ) : null}
-              <PrBar folder={treeRoot ?? folder} className="mb-2" />
+              <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
               {/* AH-209: a folder with no JAN.md is offered a starting one,
                   proposed from a survey and written only when accepted. */}
               <CoworkProjectInit

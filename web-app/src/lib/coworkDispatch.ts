@@ -368,7 +368,7 @@ function stopReason(signal: AbortSignal): string {
  */
 export function refreshPrStatusAfterGit(
   plan: GitPlan,
-  ctx: Pick<DispatchContext, 'readOnlyFolder' | 'worktreePath'>
+  ctx: Pick<DispatchContext, 'readOnlyFolder' | 'worktreePath'> & { sessionId?: string }
 ): string[] {
   const opensPr =
     (plan.program === 'git' && plan.args[0] === 'push') ||
@@ -380,7 +380,9 @@ export function refreshPrStatusAfterGit(
     (f, i, all): f is string => !!f && all.indexOf(f) === i
   )
   for (const folder of folders) {
-    void usePrStatusStore.getState().refresh(folder, true)
+    // Claimed for this session: the pull request is the one it pushed or
+    // opened, not every session's that shares the folder's checkout.
+    void usePrStatusStore.getState().refresh(folder, true, ctx.sessionId)
   }
   return folders
 }

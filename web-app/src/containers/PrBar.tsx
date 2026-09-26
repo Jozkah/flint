@@ -35,9 +35,18 @@ function CiDot({ checks }: { checks: PrStatus['checks'] }) {
  * diff size and the checks. Nothing is shown without a pull request, or when
  * the GitHub CLI is missing or signed out.
  */
-export function PrBar({ folder, className }: { folder: string | null | undefined; className?: string }) {
+export function PrBar({
+  folder,
+  sessionId,
+  className,
+}: {
+  folder: string | null | undefined
+  /** Hides a pull request another session opened on the same checkout. */
+  sessionId?: string | null
+  className?: string
+}) {
   const { t } = useTranslation()
-  const pr = usePrStatus(folder)
+  const pr = usePrStatus(folder, sessionId)
   const [dismissed, setDismissed] = useState<string | null>(null)
   if (!pr || !folder || dismissed === `${folder}#${pr.number}`) return null
 

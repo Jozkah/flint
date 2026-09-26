@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { create } from 'zustand'
+import { createJSONStorage, persist } from 'zustand/middleware'
 import { isPlatformTauri } from '@/lib/platform/utils'
 
 /**
@@ -7,6 +8,15 @@ import { isPlatformTauri } from '@/lib/platform/utils'
  * `agent_pr_status` command. Nothing is stored between launches and no token
  * is kept: when `gh` is missing or signed out the lookup says so and the UI
  * shows no pull-request marks.
+ *
+ * The lookup answers for a folder's current branch, which every session
+ * attached to that folder shares when they work in the folder's own checkout
+ * (sessions from before per-session worktrees, or with worktrees turned off).
+ * So a pull request is also claimed by the session whose push or `gh pr`
+ * call produced it, and a session that did not claim it is not shown it:
+ * session 3a6cdcf3 showed PR #31 as its own although session 8411d403 opened
+ * it on the shared KewScraper checkout. Claims are the only thing kept
+ * between launches.
  */
 
 export type PrState = 'open' | 'draft' | 'merged' | 'closed'
@@ -38,7 +48,33 @@ type Entry = { lookup: PrLookup | null; at: number; loading: boolean }
 
 type PrStatusState = {
   byFolder: Record<string, Entry>
-  refresh: (folder: string, force?: boolean) => Promise<void>
+  /** `folder#number` to the id of the session that opened or pushed it. */
+  claims: Record<string, string>
+  /**
+   * Ask for `folder`'s pull request. `claimant` is the session whose git call
+   * prompted the ask; a pull request found for it, and not already claimed,
+   * becomes that session's.
+   */
+  refresh: (folder: string, force?: boolean, claimant?: string) => Promise<void>
+}
+
+export function claimKey(folder: string, number: number): string {
+  return `${folder}#${number}`
+}
+
+/**
+ * Whether `sessionId` is shown `pr` for `folder`: yes unless another session
+ * claimed it. An unclaimed pull request (opened outside Flint, or before
+ * claims existed) stays visible to every session on the folder.
+ */
+export function prVisibleTo(
+  pr: PrStatus,
+  folder: string,
+  claims: Record<string, string>,
+  sessionId: string | null | undefined
+): boolean {
+  const owner = claims[claimKey(folder, pr.number)]
+  return !owner || owner === sessionId
 }
 
 /**
@@ -47,10 +83,16 @@ type PrStatusState = {
  * answer is followed by one more.
  */
 const again = new Set<string>()
+/** The session a pending lookup for a folder is to be claimed for. */
+const claimants = new Map<string, string>()
 
-export const usePrStatusStore = create<PrStatusState>()((set, get) => ({
+export const usePrStatusStore = create<PrStatusState>()(
+  persist(
+  (set, get) => ({
   byFolder: {},
-  refresh: async (folder, force = false) => {
+  claims: {},
+  refresh: async (folder, force = false, claimant) => {
+    if (claimant) claimants.set(folder, claimant)
     const cur = get().byFolder[folder]
     if (cur?.loading) {
       if (force) again.add(folder)
@@ -67,19 +109,41 @@ export const usePrStatusStore = create<PrStatusState>()((set, get) => ({
     } catch (e) {
       lookup = { kind: 'failed', message: String(e) }
     }
-    set((s) => ({
-      byFolder: { ...s.byFolder, [folder]: { lookup, at: Date.now(), loading: false } },
-    }))
-    if (again.delete(folder)) await get().refresh(folder, true)
+    const repeat = again.delete(folder)
+    const by = repeat ? undefined : claimants.get(folder)
+    if (!repeat) claimants.delete(folder)
+    set((s) => {
+      const byFolder = { ...s.byFolder, [folder]: { lookup, at: Date.now(), loading: false } }
+      if (!by || lookup.kind !== 'found') return { byFolder }
+      const key = claimKey(folder, lookup.pr.number)
+      if (s.claims[key]) return { byFolder }
+      return { byFolder, claims: { ...s.claims, [key]: by } }
+    })
+    if (repeat) await get().refresh(folder, true)
   },
-}))
+  }),
+  {
+    name: 'flint-pr-claims',
+    storage: createJSONStorage(() => localStorage),
+    partialize: (s) => ({ claims: s.claims }) as unknown as PrStatusState,
+  }
+  )
+)
 
-/** The pull request for `folder`'s current branch, or null. */
-export function usePrStatus(folder: string | null | undefined): PrStatus | null {
+/**
+ * The pull request for `folder`'s current branch, or null -- also null when
+ * another session than `sessionId` claimed it.
+ */
+export function usePrStatus(
+  folder: string | null | undefined,
+  sessionId?: string | null
+): PrStatus | null {
   const entry = usePrStatusStore((s) => (folder ? s.byFolder[folder] : undefined))
+  const claims = usePrStatusStore((s) => s.claims)
   useEffect(() => {
     if (!folder || !isPlatformTauri()) return
     void usePrStatusStore.getState().refresh(folder)
   }, [folder])
-  return entry?.lookup?.kind === 'found' ? entry.lookup.pr : null
+  if (!folder || entry?.lookup?.kind !== 'found') return null
+  return prVisibleTo(entry.lookup.pr, folder, claims, sessionId) ? entry.lookup.pr : null
 }
