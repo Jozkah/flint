@@ -13,7 +13,7 @@ import {
   Square,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
-import { formatBytes, getProviderTitle } from '@/lib/utils'
+import { formatBytes, getDefaultProviderTitle, getProviderTitle } from '@/lib/utils'
 import { AddProviderDialog } from '@/containers/dialogs'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
@@ -791,7 +791,7 @@ function ModelProviders() {
         </Frame>
         <RenameProviderDialog
           provider={renaming}
-          defaultTitle={renaming?.provider ?? ''}
+          defaultTitle={renaming ? getDefaultProviderTitle(renaming.provider) : ''}
           onOpenChange={(o) => !o && setRenaming(null)}
           onSave={(displayName) => {
             if (renaming) updateProvider(renaming.provider, { displayName })

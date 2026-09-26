@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import {
   getProviderLogo,
   getProviderTitle,
+  getDefaultProviderTitle,
   getReadableLanguageName,
   toGigabytes,
   formatBytes,
@@ -47,6 +48,16 @@ describe('getProviderTitle', () => {
 
   it('handles empty strings', () => {
     expect(getProviderTitle('')).toBe('')
+  })
+})
+
+describe('getDefaultProviderTitle', () => {
+  it('returns the built-in title even after a rename', async () => {
+    const { syncProviderDisplayNames } = await import('../providerDisplayNames')
+    syncProviderDisplayNames([{ provider: 'openrouter', displayName: 'My Router' }])
+    expect(getProviderTitle('openrouter')).toBe('My Router')
+    expect(getDefaultProviderTitle('openrouter')).toBe('OpenRouter')
+    syncProviderDisplayNames([])
   })
 })
 
