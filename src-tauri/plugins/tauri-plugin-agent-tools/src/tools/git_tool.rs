@@ -785,10 +785,25 @@ impl Roots {
 
 /// Resolve and check the working directory for `plan`.
 pub fn resolve_cwd(raw: Option<&str>, plan: &GitPlan, roots: &Roots) -> Result<PathBuf, String> {
-    let base = roots
-        .default_base()
-        .cloned()
-        .ok_or_else(|| "no workspace is available for this run".to_string())?;
+    // A call that makes a new repository (`clone`, `init`) never needs to run
+    // inside an existing one, and the read-only attached folder could not take
+    // it anyway: defaulting there refused `git clone <url> <writable dir>` with
+    // "attached read-only" although the destination was the session
+    // workspace. Such a call defaults to a writable root instead. (`worktree
+    // add` is not one: it runs in the repository it branches from.)
+    let first = plan.args.first().map(String::as_str);
+    let second = plan.args.get(1).map(String::as_str);
+    let creates = match plan.program {
+        Program::Git => matches!(first, Some("clone" | "init")),
+        Program::Gh => first == Some("repo") && second == Some("clone"),
+    };
+    let base = if creates {
+        roots.granted.first().or(roots.workspace.first())
+    } else {
+        roots.default_base()
+    }
+    .cloned()
+    .ok_or_else(|| "no workspace is available for this run".to_string())?;
     let wanted = match raw.map(str::trim).filter(|s| !s.is_empty()) {
         Some(p) if Path::new(p).is_absolute() => PathBuf::from(p),
         Some(p) => base.join(p),
@@ -1387,6 +1402,17 @@ mod tests {
         assert!(check_created_dir(&clone_in, &ws, &roots).is_ok());
         let clone_up = p("git", &["clone", "https://github.com/o/r", "../outside/r"]).unwrap();
         assert!(check_created_dir(&clone_up, &ws, &roots).is_err());
+
+        // A clone with no cwd does not default into the read-only attached
+        // folder: it runs from the workspace, where its destination is checked.
+        let clone_abs = p(
+            "git",
+            &["clone", "https://github.com/o/r", ws.join("r").to_str().unwrap()],
+        )
+        .unwrap();
+        let cwd = resolve_cwd(None, &clone_abs, &roots).unwrap();
+        assert_eq!(cwd, ws, "a clone defaults to a writable root");
+        assert!(check_created_dir(&clone_abs, &cwd, &roots).is_ok());
         let _ = std::fs::remove_dir_all(&base);
     }
 
