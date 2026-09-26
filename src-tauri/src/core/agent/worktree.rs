@@ -43,9 +43,9 @@ fn run(repo: &Path, args: &[&str]) -> Result<String, String> {
         .args(crate::core::agent::vcs::HARDENED)
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_AUTHOR_NAME", "Jan Agent")
+        .env("GIT_AUTHOR_NAME", "Flint")
         .env("GIT_AUTHOR_EMAIL", "agent@jan.ai")
-        .env("GIT_COMMITTER_NAME", "Jan Agent")
+        .env("GIT_COMMITTER_NAME", "Flint")
         .env("GIT_COMMITTER_EMAIL", "agent@jan.ai");
     jan_utils::system::hide_console_window(&mut cmd);
     let out = cmd
@@ -600,8 +600,11 @@ pub fn ensure_with(
             if base.starts_with('-') {
                 return Err(format!("{base} is not a branch or commit"));
             }
-            let sha = run(repo, &["rev-parse", "--verify", &format!("{base}^{{commit}}")])
-                .map_err(|_| format!("{base} is not a branch or commit in this repository"))?;
+            let sha = run(
+                repo,
+                &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
+            )
+            .map_err(|_| format!("{base} is not a branch or commit in this repository"))?;
             let local = run(
                 repo,
                 &["rev-parse", "--verify", &format!("refs/heads/{base}")],
@@ -611,8 +614,7 @@ pub fn ensure_with(
         }
         _ => {
             let sha = run(repo, &["rev-parse", "HEAD"]).map_err(|_| {
-                "this repository has no commits yet, so there is nothing to branch from"
-                    .to_string()
+                "this repository has no commits yet, so there is nothing to branch from".to_string()
             })?;
             (sha, current_branch(repo))
         }
@@ -724,7 +726,12 @@ pub fn unmerged_commits(record: &WorktreeRecord, base: Option<&str>) -> Vec<Stri
             "--",
         ],
     )
-    .map(|out| out.lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+    .map(|out| {
+        out.lines()
+            .map(str::to_string)
+            .filter(|l| !l.is_empty())
+            .collect()
+    })
     .unwrap_or_default()
 }
 
@@ -765,7 +772,12 @@ pub fn rename_branch(
         return Ok(record.clone());
     }
     let source = Path::new(&record.source_root);
-    if run(source, &["rev-parse", "--verify", &format!("refs/heads/{wanted}")]).is_ok() {
+    if run(
+        source,
+        &["rev-parse", "--verify", &format!("refs/heads/{wanted}")],
+    )
+    .is_ok()
+    {
         return Err(format!("branch {wanted} already exists"));
     }
     run(source, &["branch", "-m", &record.branch, &wanted])?;
@@ -860,7 +872,11 @@ pub fn merge(
     }
     let tip = run(
         &source,
-        &["rev-parse", "--verify", &format!("refs/heads/{}", record.branch)],
+        &[
+            "rev-parse",
+            "--verify",
+            &format!("refs/heads/{}", record.branch),
+        ],
     )?;
 
     let is_ancestor = |a: &str, b: &str| {
@@ -917,7 +933,16 @@ pub fn merge(
         let message = format!("Merge branch '{}' into {target}", record.branch);
         run_as_user(
             &source,
-            &["commit-tree", &tree, "-p", &base_tip, "-p", &tip, "-m", &message],
+            &[
+                "commit-tree",
+                &tree,
+                "-p",
+                &base_tip,
+                "-p",
+                &tip,
+                "-m",
+                &message,
+            ],
         )?
     };
 
@@ -1630,13 +1655,18 @@ mod tests {
         let record = ensure(&f.repo, &f.worktrees, session).expect("created from HEAD");
         assert_eq!(record.base_sha, head);
         assert!(
-            record.notes.iter().any(|n| n.contains(&format!("has a {op} in progress"))),
+            record
+                .notes
+                .iter()
+                .any(|n| n.contains(&format!("has a {op} in progress"))),
             "{:?}",
             record.notes
         );
         let wt = PathBuf::from(&record.path);
         assert!(pending(&record).is_empty(), "the worktree starts clean");
-        assert!(!std::fs::read_to_string(wt.join("a.txt")).unwrap().contains("<<<<<<<"));
+        assert!(!std::fs::read_to_string(wt.join("a.txt"))
+            .unwrap()
+            .contains("<<<<<<<"));
         assert_eq!(operation_in_progress(&wt), None);
         // The checkout still has its operation.
         assert_eq!(
@@ -1717,7 +1747,11 @@ mod tests {
         assert_eq!(paths.len(), sessions.len());
         assert_eq!(branches.len(), sessions.len());
         for r in &records {
-            assert!(r.branch.starts_with("flint/fix-the-parser-"), "{}", r.branch);
+            assert!(
+                r.branch.starts_with("flint/fix-the-parser-"),
+                "{}",
+                r.branch
+            );
             assert_eq!(r.base_branch.as_deref(), Some("main"));
         }
         // Each writes its own file without seeing the others'.
@@ -1748,14 +1782,20 @@ mod tests {
             &f.repo,
             &f.worktrees,
             "s1",
-            &EnsureOptions { title: Some("First".into()), base: None },
+            &EnsureOptions {
+                title: Some("First".into()),
+                base: None,
+            },
         )
         .unwrap();
         let again = ensure_with(
             &f.repo,
             &f.worktrees,
             "s1",
-            &EnsureOptions { title: Some("Renamed".into()), base: None },
+            &EnsureOptions {
+                title: Some("Renamed".into()),
+                base: None,
+            },
         )
         .unwrap();
         assert_eq!(first.path, again.path);
@@ -1775,7 +1815,10 @@ mod tests {
             &f.repo,
             &f.worktrees,
             "s1",
-            &EnsureOptions { title: None, base: Some("develop".into()) },
+            &EnsureOptions {
+                title: None,
+                base: Some("develop".into()),
+            },
         )
         .unwrap();
         assert_eq!(r.base_branch.as_deref(), Some("develop"));
@@ -1784,7 +1827,10 @@ mod tests {
             &f.repo,
             &f.worktrees,
             "s2",
-            &EnsureOptions { title: None, base: Some("--upload-pack=x".into()) },
+            &EnsureOptions {
+                title: None,
+                base: Some("--upload-pack=x".into())
+            },
         )
         .is_err());
     }
@@ -1795,7 +1841,10 @@ mod tests {
         std::fs::write(f.repo.join("a.txt"), "edited").unwrap();
         let r = ensure(&f.repo, &f.worktrees, "s1").unwrap();
         assert_eq!(r.uncommitted_at_creation, vec!["a.txt".to_string()]);
-        assert_eq!(std::fs::read_to_string(PathBuf::from(&r.path).join("a.txt")).unwrap(), "one");
+        assert_eq!(
+            std::fs::read_to_string(PathBuf::from(&r.path).join("a.txt")).unwrap(),
+            "one"
+        );
     }
 
     #[test]
@@ -1806,10 +1855,20 @@ mod tests {
         std::fs::create_dir_all(old.parent().unwrap()).unwrap();
         git_in(
             &f.repo,
-            &["worktree", "add", "-q", "-b", &branch_name("s-old"), &old.to_string_lossy()],
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                &branch_name("s-old"),
+                &old.to_string_lossy(),
+            ],
         );
         let r = ensure(&f.repo, &f.worktrees, "s-old").expect("reused");
-        assert_eq!(PathBuf::from(&r.path).canonicalize().unwrap(), old.canonicalize().unwrap());
+        assert_eq!(
+            PathBuf::from(&r.path).canonicalize().unwrap(),
+            old.canonicalize().unwrap()
+        );
     }
 
     fn commit_in(dir: &Path, file: &str, body: &str) {
@@ -1871,7 +1930,10 @@ mod tests {
         assert_eq!(out.conflicts, vec!["a.txt".to_string()]);
         assert_eq!(run(&f.repo, &["rev-parse", "HEAD"]).unwrap(), before);
         assert_eq!(operation_in_progress(&f.repo), None);
-        assert_eq!(std::fs::read_to_string(f.repo.join("a.txt")).unwrap(), "user");
+        assert_eq!(
+            std::fs::read_to_string(f.repo.join("a.txt")).unwrap(),
+            "user"
+        );
     }
 
     #[test]
@@ -1882,7 +1944,10 @@ mod tests {
         std::fs::write(f.repo.join("a.txt"), "user work").unwrap();
         let err = merge(&r, None, None).expect_err("refused");
         assert!(err.contains("uncommitted"), "{err}");
-        assert_eq!(std::fs::read_to_string(f.repo.join("a.txt")).unwrap(), "user work");
+        assert_eq!(
+            std::fs::read_to_string(f.repo.join("a.txt")).unwrap(),
+            "user work"
+        );
         assert!(!f.repo.join("b.txt").exists());
     }
 
@@ -1894,7 +1959,10 @@ mod tests {
             &f.repo,
             &f.worktrees,
             "s1",
-            &EnsureOptions { title: None, base: Some("release".into()) },
+            &EnsureOptions {
+                title: None,
+                base: Some("release".into()),
+            },
         )
         .unwrap();
         commit_in(Path::new(&r.path), "b.txt", "b");
@@ -1924,13 +1992,23 @@ mod tests {
             &f.repo,
             &f.worktrees,
             "s1",
-            &EnsureOptions { title: Some("New session".into()), base: None },
+            &EnsureOptions {
+                title: Some("New session".into()),
+                base: None,
+            },
         )
         .unwrap();
         let renamed = rename_branch(&r, "s1", "Add dark mode").unwrap();
-        assert!(renamed.branch.starts_with("flint/add-dark-mode-"), "{}", renamed.branch);
+        assert!(
+            renamed.branch.starts_with("flint/add-dark-mode-"),
+            "{}",
+            renamed.branch
+        );
         assert_eq!(state(&renamed), WorktreeState::Ready);
-        assert_eq!(ensure(&f.repo, &f.worktrees, "s1").unwrap().branch, renamed.branch);
+        assert_eq!(
+            ensure(&f.repo, &f.worktrees, "s1").unwrap().branch,
+            renamed.branch
+        );
     }
 
     #[test]
