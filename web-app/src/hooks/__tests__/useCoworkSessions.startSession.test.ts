@@ -1,3 +1,4 @@
+import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/backendStorage', () => ({
@@ -157,13 +158,15 @@ describe('Cowork session restoration', () => {
     // Leaving Cowork for Chat and coming back changes no store state, so the
     // selection the route reads on return is still the one the user left on.
     expect(store().currentId).toBe(first)
-    expect(store().sessions.some((s) => s.id === second)).toBe(true)
+    // The blank one left behind is discarded rather than kept as an entry.
+    expect(store().sessions.some((s) => s.id === second)).toBe(false)
   })
 
   it('does not replace an active first-response session on New session', () => {
     // A run is in flight: its session has no committed turns yet but must not
     // be reused. `startSession` creates a fresh one and leaves the running one.
     const running = store().createSession()
+    useCoworkRun.getState().startRun(running, 'run-1')
     const fresh = store().startSession({ running: true, hasDraft: false })
     expect(fresh).not.toBe(running)
     expect(store().sessions.some((s) => s.id === running)).toBe(true)

@@ -55,6 +55,7 @@ import {
   type CoworkSession,
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
@@ -358,11 +359,20 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { isMobile } = useShellNav()
-  const sessions = useCoworkSessions((s) => s.sessions)
+  const allSessions = useCoworkSessions((s) => s.sessions)
+  const currentId = useCoworkSessions((s) => s.currentId)
+  // A blank session is listed only while it is open in Cowork: pressing New
+  // session and going elsewhere should not leave an empty entry behind.
+  const sessions = allSessions.filter(
+    (session) =>
+      (onCowork && session.id === currentId) ||
+      !isSessionEmpty(session) ||
+      session.title !== DEFAULT_SESSION_TITLE ||
+      Boolean(runs?.[session.id])
+  )
   const visibleSessions = expanded
     ? sessions
     : sessions.filter((session) => Boolean(runs?.[session.id]))
-  const currentId = useCoworkSessions((s) => s.currentId)
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [pluginsOpen, setPluginsOpen] = useState(false)
   // Session pending deletion; drives the confirm dialog (null = closed).

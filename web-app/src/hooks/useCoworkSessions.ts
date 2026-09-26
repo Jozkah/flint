@@ -317,6 +317,7 @@ import {
 import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
+import { useCoworkRun } from '@/hooks/useCoworkRun'
 import type { QueuedMessageSender } from '@/stores/message-queue-store'
 import {
   checkBundle,
@@ -366,7 +367,12 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           messages: [],
           updated: now(),
         }
-        set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
+        // Starting a new one leaves any blank session behind it: a blank
+        // holds nothing, so keeping it only lengthens the list.
+        set((s) => ({
+          sessions: dropBlanks([session, ...s.sessions], id),
+          currentId: id,
+        }))
         return id
       },
 
@@ -392,7 +398,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return get().createSession()
       },
 
-      selectSession: (id) => set({ currentId: id }),
+      // Leaving a blank session discards it, so pressing New session and then
+      // going back to an older one does not leave an empty entry behind.
+      selectSession: (id) =>
+        set((s) => ({ sessions: dropBlanks(s.sessions, id), currentId: id })),
 
       forkSession: (id, throughTurn) => {
         const parent = get().sessions.find((x) => x.id === id)
@@ -929,6 +938,25 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
     }
   )
 )
+
+/**
+ * The sessions without the blank ones, except `keepId`. A session with a run
+ * going, file activity or held input is not blank, whatever its turns say.
+ */
+function dropBlanks(sessions: CoworkSession[], keepId: string): CoworkSession[] {
+  const runs = useCoworkRun.getState().runs ?? {}
+  const files = useFileActivity.getState()
+  const next = sessions.filter(
+    (s) =>
+      s.id === keepId ||
+      !isSessionEmpty(s) ||
+      s.title !== DEFAULT_SESSION_TITLE ||
+      Boolean(runs[s.id]) ||
+      (s.pendingInput?.length ?? 0) > 0 ||
+      files.eventsFor(s.id).length > 0
+  )
+  return next.length === sessions.length ? sessions : next
+}
 
 /** Return the current session, creating one if none is selected. */
 export function ensureCurrentSession(): string {
