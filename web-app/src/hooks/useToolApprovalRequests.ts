@@ -27,6 +27,10 @@ export type ApprovalRequestContext = {
    * the run has gone a long time without asking.
    */
   alwaysAsk?: boolean
+  /** See `PermissionRequestInput.conversationProgram`. */
+  conversationProgram?: string
+  /** Told which answer the user gave, before the request resolves. */
+  onDecision?: (decision: ApprovalDecision) => void
   /** Why the call is being made, only when the caller actually knows. */
   taskContext?: string
   /** Folder or project the call works in. */
@@ -111,6 +115,8 @@ export type PendingApproval = {
    * that approves commands itself).
    */
   alwaysAsk?: boolean
+  conversationProgram?: string
+  onDecision?: (decision: ApprovalDecision) => void
   /** When the prompt was raised (ms since epoch), to tell a long wait. */
   requestedAt?: number
   resolve: (approved: boolean) => void
@@ -409,6 +415,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : {}),
           ...(context?.threadIsEphemeral ? { threadIsEphemeral: true } : {}),
           ...(alwaysAsk ? { alwaysAsk: true } : {}),
+          ...(context?.conversationProgram
+            ? { conversationProgram: context.conversationProgram }
+            : {}),
+          ...(context?.onDecision ? { onDecision: context.onDecision } : {}),
           requestedAt: Date.now(),
           resolve,
         }
@@ -452,6 +462,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               (e) => e?.requestId === requestId
             )
       if (!entry) return
+      entry.onDecision?.(decision)
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
       if (

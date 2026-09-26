@@ -51,6 +51,76 @@ export type NullDeviceRetryOutcome = {
 }
 
 /**
+ * The program a `bash` call runs (`go` for `go test ./...`), lowercased with
+ * any directory and `.exe` dropped. Undefined when it cannot be told.
+ */
+export function commandProgram(input: unknown): string | undefined {
+  const command =
+    input && typeof input === 'object'
+      ? (input as { command?: unknown }).command
+      : undefined
+  if (typeof command !== 'string') return undefined
+  // Skip leading `VAR=value` assignments; take the first real word.
+  const words = command.trim().split(/\s+/)
+  const first = words.find((w) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(w))
+  if (!first) return undefined
+  const bare = first.replace(/^["']|["']$/g, '').split(/[\\/]/).pop() ?? ''
+  const program = bare.toLowerCase().replace(/\.exe$/, '')
+  return /^[a-z0-9._+-]+$/.test(program) ? program : undefined
+}
+
+/**
+ * "Allow for this conversation" answers to an unsandboxed rerun, per thread
+ * and program. Held in memory only: they end with the app session and are
+ * never written to the standing grants.
+ */
+const conversationGrants = new Map<string, Set<string>>()
+
+export function nullRerunAllowedForConversation(
+  threadId: string,
+  program: string | undefined
+): boolean {
+  return !!program && !!conversationGrants.get(threadId)?.has(program)
+}
+
+export function allowNullRerunForConversation(
+  threadId: string,
+  program: string
+): void {
+  let set = conversationGrants.get(threadId)
+  if (!set) conversationGrants.set(threadId, (set = new Set()))
+  set.add(program)
+}
+
+/** Test hook: forget every conversation grant. */
+export function clearNullRerunGrants(): void {
+  conversationGrants.clear()
+}
+
+/**
+ * What an approval prompt for a rerun of `input` needs so it can offer "Allow
+ * for this conversation" for its program, and record the answer here.
+ */
+export function nullRerunApprovalScope(
+  threadId: string,
+  input: unknown
+): {
+  conversationProgram?: string
+  onDecision?: (decision: string) => void
+} {
+  const program = commandProgram(input)
+  if (!program) return {}
+  return {
+    conversationProgram: program,
+    onDecision: (decision) => {
+      if (decision === 'allow-thread') {
+        allowNullRerunForConversation(threadId, program)
+      }
+    },
+  }
+}
+
+/**
  * Offer to run a failed `bash` call outside the sandbox, and settle what the
  * model gets back.
  *
@@ -66,10 +136,17 @@ export async function offerUnsandboxedRetry(opts: {
   failure: string
   failureResources?: ToolResources
   ask?: () => Promise<boolean>
+  /**
+   * The program the command runs. When the user already allowed its reruns
+   * for this conversation, the rerun goes ahead without asking.
+   */
+  program?: string
 }): Promise<NullDeviceRetryOutcome> {
-  const { threadId, retry, failure, failureResources, ask } = opts
+  const { threadId, retry, failure, failureResources, ask, program } = opts
   let allowed = false
-  if (ask) {
+  if (ask && nullRerunAllowedForConversation(threadId, program)) {
+    allowed = true
+  } else if (ask) {
     try {
       allowed = await ask()
     } catch {

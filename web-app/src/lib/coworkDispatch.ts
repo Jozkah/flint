@@ -43,6 +43,8 @@ import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
 import {
   NULL_DEVICE_RETRY_REASON,
   offerUnsandboxedRetry,
+  commandProgram,
+  nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { gateStopSession } from '@/lib/sessionStopGate'
@@ -105,7 +107,13 @@ export type DispatchContext = {
      * the mode would allow it: a destructive command, or the pause after a
      * long auto-approved streak. `reason` is shown in the prompt.
      */
-    options?: { alwaysAsk: true; reason: string }
+    options?: {
+      alwaysAsk: true
+      reason: string
+      /** Offer "Allow for this conversation" for this program only. */
+      conversationProgram?: string
+      onDecision?: (decision: string) => void
+    }
   ) => Promise<boolean>
   /**
    * Is the folder this run was bound to still the session's folder?
@@ -795,12 +803,14 @@ async function routeCoworkTool(
         retry: result.unsandboxedRetry,
         failure: result.error,
         failureResources: result.resources,
+        program: commandProgram(call.input),
         ask: onApprove
           ? () =>
               unlessStopped(
                 onApprove(call.toolCallId, toolName, call.input, undefined, signal, {
                   alwaysAsk: true,
                   reason: NULL_DEVICE_RETRY_REASON,
+                  ...nullRerunApprovalScope(ctx.sessionId, call.input),
                 }),
                 signal
               )

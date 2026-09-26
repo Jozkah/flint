@@ -3049,7 +3049,12 @@ export function CoworkPage() {
                   .requestApproval(callId, toolName, sid, undefined, {
                     input,
                     ...(forced
-                      ? { alwaysAsk: true, taskContext: forced.reason }
+                      ? {
+                          alwaysAsk: true,
+                          taskContext: forced.reason,
+                          conversationProgram: forced.conversationProgram,
+                          onDecision: forced.onDecision,
+                        }
                       : {}),
                     workspaceLabel:
                       (destination ? destination.path : current?.folder) ??
@@ -3370,7 +3375,12 @@ export function CoworkPage() {
                     .requestApproval(callId, toolName, sid, undefined, {
                       input,
                       ...(forced
-                        ? { alwaysAsk: true, taskContext: forced.reason }
+                        ? {
+                          alwaysAsk: true,
+                          taskContext: forced.reason,
+                          conversationProgram: forced.conversationProgram,
+                          onDecision: forced.onDecision,
+                        }
                         : {}),
                       workspaceLabel: current?.folder ?? undefined,
                       preview,

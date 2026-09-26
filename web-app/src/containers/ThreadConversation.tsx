@@ -130,6 +130,8 @@ import {
 import {
   NULL_DEVICE_RETRY_REASON,
   offerUnsandboxedRetry,
+  commandProgram,
+  nullRerunApprovalScope,
 } from '@/lib/nullDeviceRetry'
 import {
   ThreadStatusMark,
@@ -992,6 +994,7 @@ export function ThreadConversation({
                   retry: unsandboxedRetry,
                   failure: rest.error,
                   failureResources: rest.resources,
+                  program: commandProgram(toolCall.input),
                   ask: () =>
                     useToolApprovalRequests
                       .getState()
@@ -1004,6 +1007,7 @@ export function ThreadConversation({
                           input: toolCall.input,
                           alwaysAsk: true,
                           taskContext: NULL_DEVICE_RETRY_REASON,
+                          ...nullRerunApprovalScope(threadId, toolCall.input),
                           destructiveChecked: true,
                           threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
                           signal,
