@@ -1,5 +1,13 @@
-import { useEffect } from 'react'
+import { createElement, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
+import {
+  approvalDestination,
+  openApprovalDestination,
+  scrollToApproval,
+  type ApprovalNavigate,
+} from '@/lib/approvalDestination'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useRoomsStore } from '@/lib/rooms/store'
 import {
   allApprovalRequests,
   useToolApprovalRequests,
@@ -42,11 +50,61 @@ function osNotify(title: string, body: string): void {
 }
 
 /**
+ * Open the conversation a waiting prompt belongs to (a chat thread, a Cowork
+ * session or a room), bring the prompt into view, and dismiss its reminder.
+ */
+export function openWaitingApproval(
+  entry: Pick<PendingApproval, 'requestId' | 'threadId'>,
+  navigate: ApprovalNavigate
+): void {
+  const destination = approvalDestination(entry.threadId, {
+    coworkSessionIds: useCoworkSessions.getState().sessions.map((s) => s.id),
+    roomIds: useRoomsStore.getState().summaries.map((r) => r.id),
+  })
+  openApprovalDestination(destination, navigate, (id) =>
+    useCoworkSessions.getState().selectSession(id)
+  )
+  toast.dismiss(`approval-wait-${entry.requestId}`)
+  void scrollToApproval(entry.requestId)
+}
+
+/**
+ * The reminder's content: one button, so the whole toast is a pointer
+ * target, focusable, and answers Enter and Space.
+ */
+export function approvalReminderContent(
+  title: string,
+  body: string,
+  onOpen: () => void
+) {
+  return createElement(
+    'button',
+    {
+      type: 'button',
+      onClick: onOpen,
+      'data-testid': 'approval-wait-open',
+      className:
+        'flex w-full cursor-pointer flex-col items-start gap-0.5 text-start focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+    },
+    createElement('span', { className: 'font-medium' }, title),
+    createElement(
+      'span',
+      { className: 'text-muted-foreground text-xs' },
+      body
+    )
+  )
+}
+
+/**
  * Remind the user of approval prompts that have waited over 30 seconds: a
  * toast that stays until the prompt is answered, and a system notification
  * while the window is in the background. Mounted once, in the app shell.
  */
-export function useApprovalWaitNotifier(): void {
+export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
+  // Read at click time, so the effect below never restarts for a new router
+  // function identity.
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
   useEffect(() => {
     const reminded = new Set<string>()
     const check = () => {
@@ -65,9 +123,11 @@ export function useApprovalWaitNotifier(): void {
         const seconds = Math.round((now - (entry.requestedAt ?? now)) / 1000)
         const title = `Waiting for your approval: ${entry.toolName}`
         const body = `The run has been paused for ${seconds} s until you allow or deny it.`
-        toast.info(title, {
+        const open = () => {
+          if (navigateRef.current) openWaitingApproval(entry, navigateRef.current)
+        }
+        toast.info(approvalReminderContent(title, body, open), {
           id: `approval-wait-${entry.requestId}`,
-          description: body,
           duration: Infinity,
         })
         osNotify(title, body)
