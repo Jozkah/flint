@@ -316,6 +316,8 @@ import {
   type ReadinessManifest,
 } from '@/lib/coworkReadiness'
 import { measureContextPack } from '@/lib/coworkContext'
+import { coworkPreRunContext } from '@/lib/coworkPreRun'
+import { peekAgentToolSchemas } from '@/lib/agentTools'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
@@ -791,6 +793,74 @@ function CoworkPage() {
       }),
     [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers]
   )
+  const workspacePath = useSessionWorkspacePath(session?.id)
+  const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
+  const hasTurns = (session?.turns?.length ?? 0) > 0
+  /**
+   * What a run started now would send, before one has.
+   *
+   * Pure construction only: the system prompt with the project instructions
+   * the run would carry, and the tool set from schemas already in hand. The
+   * backend's tool schemas are never fetched for this -- that probes
+   * readiness -- so when none are cached the card says that part is measured
+   * at first run. Retrieved memory and the toolchain probe are left out for
+   * the same reason; the run's own measurement replaces this once it exists.
+   */
+  const preRunContext = useMemo<ContextAccounting | null>(() => {
+    if (runContext) return null
+    const planMode = isReadOnly(mode)
+    const subagentNames = subagentDefs.map((d) => d.name)
+    return coworkPreRunContext({
+      prompt: {
+        workspacePath,
+        readOnlyFolder: folder,
+        extraFolders,
+        worktreeBranch:
+          effective.destination === 'managed'
+            ? (worktree?.branch ?? null)
+            : null,
+        gitBranch,
+        projectInstructions,
+        compatInstructions: compatInstructionBlocks(compat),
+        projectTooling:
+          folder && tooling?.folder === folder
+            ? (tooling.loaded?.prompt ?? null)
+            : null,
+        planMode,
+        bashAvailable: sandboxEnforces(),
+        subagentNames,
+        webSearch: webSearchEnabled,
+        platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+        shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
+        mcpServers: [],
+      },
+      tools: {
+        planMode,
+        webSearch: webSearchEnabled,
+        allowSubagents: true,
+        subagentNames,
+      },
+      backendSchemas: peekAgentToolSchemas(folder ?? undefined, 'session'),
+      messages: hasTurns ? null : [],
+      configuredContextTokens: configuredContextTokens(modelCapabilities),
+    })
+  }, [
+    runContext,
+    mode,
+    subagentDefs,
+    workspacePath,
+    folder,
+    extraFolders,
+    effective.destination,
+    worktree?.branch,
+    gitBranch,
+    projectInstructions,
+    compat,
+    tooling,
+    webSearchEnabled,
+    hasTurns,
+    modelCapabilities,
+  ])
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
       available: availableSkills.map((skill) => ({ name: skill.name })),
@@ -853,6 +923,7 @@ function CoworkPage() {
       // has not been built has not sent nothing, it has sent nothing *yet*.
       context:
         runContext ??
+        preRunContext ??
         measureContextPack({
           systemPrompt: null,
           toolSchemas: null,
@@ -873,6 +944,7 @@ function CoworkPage() {
     tooling,
     advertisedToolCount,
     runContext,
+    preRunContext,
     availableSkills,
     enabledSkills,
     composerPrompt,
@@ -901,7 +973,6 @@ function CoworkPage() {
   )
   const sessionIdRef = useRef<string | null>(null)
   sessionIdRef.current = session?.id ?? null
-  const workspacePath = useSessionWorkspacePath(session?.id)
 
   /**
    * Flint's own data folder, so an imported MCP server can be kept out of it.

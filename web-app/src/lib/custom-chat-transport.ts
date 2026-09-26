@@ -91,6 +91,10 @@ import {
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
+import {
+  acceptsSystemRole,
+  foldSummaryIntoSystem,
+} from '@/lib/compactionSystemRole'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
 import {
   applyChatCompaction,
@@ -2032,6 +2036,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // deletion/eviction has left no real user turn to respond to.
     this.assertSendable(effectiveMessages)
 
+    // A compaction summary rides in the first-position system message when
+    // the model is known to accept one; otherwise it stays a user message,
+    // which every template takes (`lib/compactionSystemRole.ts`).
+    let requestSystem = effectiveSystem
+    if (acceptsSystemRole(providerId, selectedModel)) {
+      const folded = foldSummaryIntoSystem(requestSystem, effectiveMessages)
+      requestSystem = folded.system
+      effectiveMessages = folded.messages
+    }
+
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false
     const baseMessages = await convertToModelMessages(
@@ -2128,7 +2142,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       abortSignal: options.abortSignal,
       tools: shouldEnableTools ? this.tools : undefined,
       toolChoice: shouldEnableTools ? this.toolChoiceForStep() : undefined,
-      system: effectiveSystem,
+      system: requestSystem,
       ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
       ...(reasoningProviderOptions
         ? { providerOptions: reasoningProviderOptions }

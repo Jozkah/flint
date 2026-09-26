@@ -88,6 +88,35 @@ export function recordSpend(
   }
 }
 
+/**
+ * Credit a compaction against the running spend.
+ *
+ * The cap counts the prompt once, as its size at the last step (the first
+ * step's baseline plus every step's growth). Compaction replaces the older
+ * part of that prompt with a summary, so the prompt the next step sends is
+ * smaller; without a credit the cap would keep charging for history the run
+ * no longer carries, and a long run would stop at the allowance even though
+ * compaction had made room. `removedTokens` is how much smaller the compacted
+ * history is than the one it replaced, measured with the same estimator
+ * compaction uses. After the credit the counted prompt is the compacted
+ * prompt, and the next step is charged only for growth past it.
+ *
+ * Nothing to credit before this run's first step: that step's reported total
+ * is the baseline, and it is already the compacted size.
+ */
+export function creditCompaction(
+  state: SpendState,
+  removedTokens: number
+): SpendState {
+  if (state.lastPrompt == null || !(removedTokens > 0)) return state
+  const credit = Math.min(Math.round(removedTokens), state.lastPrompt)
+  return {
+    spent: Math.max(0, state.spent - credit),
+    lastTotal: Math.max(0, state.lastTotal - credit),
+    lastPrompt: state.lastPrompt - credit,
+  }
+}
+
 export type BudgetStop = 'steps' | 'tokens' | null
 
 /** Which cap, if any, this run has reached. */

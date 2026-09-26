@@ -161,3 +161,44 @@ export function measureContextPack(input: ContextPackInput): ContextAccounting {
         : measured(null),
   }
 }
+
+export type PreRunContextInput = {
+  /** The system prompt a run started now would send, built without I/O. */
+  systemPrompt: string
+  /**
+   * The tool set built from schemas already in hand (`coworkToolsFromSchemas`).
+   * Always includes the tools the renderer defines itself.
+   */
+  toolSchemas: Record<string, unknown>
+  /**
+   * False when the backend's own tool schemas have not been read yet. Reading
+   * them probes readiness, which the session details must not trigger, so the
+   * number covers the rest and says the remainder comes at the first run.
+   */
+  backendToolsKnown: boolean
+  /** The conversation the next run would carry, or null when not known. */
+  messages: readonly UIMessage[] | null
+  configuredContextTokens?: number | null
+}
+
+/**
+ * What a run started now would send, estimated before it starts.
+ *
+ * The same estimator as `measureContextPack`, over the same system prompt and
+ * tool construction the run uses, so the pre-run number and the run's own
+ * measurement differ only by what the run adds at start (retrieved memory,
+ * toolchain probe) and by the typed request.
+ */
+export function estimatePreRunContext(
+  input: PreRunContextInput
+): ContextAccounting {
+  const accounting = measureContextPack({
+    systemPrompt: input.systemPrompt,
+    toolSchemas: input.toolSchemas,
+    messages: input.messages,
+    configuredContextTokens: input.configuredContextTokens,
+  })
+  return input.backendToolsKnown
+    ? accounting
+    : { ...accounting, pending: ['tools'] }
+}

@@ -225,6 +225,33 @@ export async function getAgentToolSchemas(
   return schemaCache
 }
 
+/**
+ * The schemas already read for this folder, or null when none have been.
+ *
+ * Never asks the backend: the session details use it to measure the tool set
+ * before a run without probing readiness. A miss is reported as a miss, and
+ * the caller says that part is measured when the first run starts.
+ */
+export function peekAgentToolSchemas(
+  projectRoot: string | undefined,
+  scope?: WorkspaceScope
+): ToolSchema[] | null {
+  if (!schemaCache) return null
+  try {
+    const [root, , cachedScope] = JSON.parse(schemaCacheKey) as [
+      string,
+      unknown,
+      string,
+    ]
+    if (root !== (projectRoot ?? '') || cachedScope !== (scope ?? 'thread')) {
+      return null
+    }
+  } catch {
+    return null
+  }
+  return schemaCache
+}
+
 type AgentToolResult = {
   content?: unknown
   error?: string

@@ -15,6 +15,7 @@ import {
   budgetExceeded,
   newSpend,
   recordSpend,
+  creditCompaction,
   type BudgetStop,
 } from '@/lib/coworkBudget'
 import {
@@ -26,7 +27,18 @@ import {
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
 import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
-import { isContextLengthError } from '@/lib/compaction'
+import { estimateHistoryTokens, isContextLengthError } from '@/lib/compaction'
+
+/**
+ * How much smaller a compacted history is, by the estimator compaction itself
+ * uses, so the per-run allowance can be credited for the summarized part.
+ */
+function compactionSaving(before: UIMessage[], after: UIMessage[]): number {
+  return Math.max(
+    0,
+    estimateHistoryTokens(before) - estimateHistoryTokens(after)
+  )
+}
 
 /** A compaction that fails leaves the history as it was; a stop still stops. */
 async function compactOrNull(
@@ -953,7 +965,10 @@ export async function runTurn(opts: {
     // stopping at the window.
     if (deps.compact) {
       const compacted = await compactOrNull(deps, messages, 'threshold', signal)
-      if (compacted) messages.splice(0, messages.length, ...compacted)
+      if (compacted) {
+        spend = creditCompaction(spend, compactionSaving(messages, compacted))
+        messages.splice(0, messages.length, ...compacted)
+      }
     }
 
     // A snapshot, not the live array: the loop pushes to `messages` after the
@@ -1006,6 +1021,10 @@ export async function runTurn(opts: {
               signal
             )
             if (compacted) {
+              spend = creditCompaction(
+                spend,
+                compactionSaving(messages, compacted)
+              )
               messages.splice(0, messages.length, ...compacted)
               continue
             }

@@ -56,10 +56,14 @@ export function contextKey(total: {
   complete: boolean
   estimated: boolean
   tokens: number
+  pending?: boolean
 }): string {
   if (!total.complete && total.tokens <= 0) {
     return 'common:readiness.tokensPending'
   }
+  // Measured before any run: the backend's tool schemas are only read when a
+  // run starts, and the label says so rather than hiding it in "at least".
+  if (total.pending) return 'common:readiness.tokensEstimatedAtFirstRun'
   if (total.estimated) {
     return total.complete
       ? 'common:readiness.tokensEstimated'

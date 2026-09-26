@@ -9,7 +9,10 @@
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
-import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
+import type {
+  ComponentReport,
+  ToolSchema,
+} from '@janhq/tauri-plugin-agent-tools-api'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import {
   WEB_FETCH_DESCRIPTION,
@@ -371,6 +374,23 @@ export async function buildCoworkTools(
     opts.reported,
     'session'
   )
+  return coworkToolsFromSchemas(schemas, opts)
+}
+
+/**
+ * The advertised tool set from the backend's schemas, with no I/O.
+ *
+ * Split from `buildCoworkTools` so the session details can measure the tool
+ * set a run would send without probing readiness, spawning anything or asking
+ * for a grant: everything here is plain schema construction.
+ */
+export function coworkToolsFromSchemas(
+  schemas: readonly ToolSchema[],
+  opts: Pick<
+    CoworkToolOptions,
+    'planMode' | 'webSearch' | 'allowSubagents' | 'subagentNames'
+  >
+): Record<string, Tool> {
   const tools: Record<string, Tool> = {}
 
   for (const s of schemas) {

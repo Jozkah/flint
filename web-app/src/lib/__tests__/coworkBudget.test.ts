@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   budgetExceeded,
+  creditCompaction,
   newSpend,
   recordSpend,
   MAX_AGENT_STEPS,
@@ -112,5 +113,50 @@ describe('recordSpend', () => {
 
   it('carries a starting spend', () => {
     expect(newSpend(1_000).spent).toBe(1_000)
+  })
+})
+
+describe('creditCompaction', () => {
+  it('makes the counted prompt the compacted prompt', () => {
+    let s = newSpend()
+    s = recordSpend(s, {
+      prompt_tokens: 150_000,
+      completion_tokens: 1_000,
+      total_tokens: 151_000,
+    })
+    // Compaction replaced 120k of that history with a summary.
+    s = creditCompaction(s, 120_000)
+    expect(s.spent).toBe(31_000)
+    expect(s.lastPrompt).toBe(30_000)
+    // The next step is charged for its growth past the compacted prompt only.
+    s = recordSpend(s, {
+      prompt_tokens: 32_000,
+      completion_tokens: 500,
+      total_tokens: 32_500,
+    })
+    expect(s.spent).toBe(31_000 + 500 + 2_000)
+  })
+
+  it('never credits more than the prompt it counted', () => {
+    let s = newSpend(50_000)
+    s = recordSpend(s, {
+      prompt_tokens: 1_000,
+      completion_tokens: 100,
+      total_tokens: 1_100,
+    })
+    s = creditCompaction(s, 5_000)
+    expect(s.lastPrompt).toBe(0)
+    expect(s.spent).toBe(50_000 + 100)
+  })
+
+  it('leaves the spend alone before the first step or with nothing saved', () => {
+    const fresh = newSpend(10_000)
+    expect(creditCompaction(fresh, 3_000)).toBe(fresh)
+    const s = recordSpend(newSpend(), {
+      prompt_tokens: 100,
+      completion_tokens: 10,
+      total_tokens: 110,
+    })
+    expect(creditCompaction(s, 0)).toBe(s)
   })
 })

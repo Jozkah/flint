@@ -2721,29 +2721,29 @@ export function ThreadConversation({
                   return null
                 return (
                   <Fragment key={message.id}>
-                  {compactionInForce &&
-                  !compactionShownOnReply &&
-                  compactionInForce.boundaryId === message.id ? (
-                    <CompactionDivider record={compactionInForce.record} />
-                  ) : null}
-                  <MessageItem
-                    message={message}
-                    isFirstMessage={isFirstMessage}
-                    isLastMessage={isLastMessage}
-                    status={effectiveStatus}
-                    reasoningContainerRef={reasoningContainerRef}
-                    isReasoningAtBottom={isReasoningAtBottom}
-                    onReasoningScroll={handleReasoningScroll}
-                    onReasoningScrollToBottom={forceScrollReasoningToBottom}
-                    onRegenerate={handleRegenerate}
-                    onContinue={handleContinue}
-                    onEdit={handleEditMessage}
-                    onDelete={handleDeleteMessage}
-                    versionInfo={versionInfoById[message.id]}
-                    onSwitchVersion={handleSwitchVersion}
-                    isAnimating={!pendingContinueMessage}
-                    hideActions={!!pendingContinueMessage}
-                  />
+                    {compactionInForce &&
+                    !compactionShownOnReply &&
+                    compactionInForce.boundaryId === message.id ? (
+                      <CompactionDivider record={compactionInForce.record} />
+                    ) : null}
+                    <MessageItem
+                      message={message}
+                      isFirstMessage={isFirstMessage}
+                      isLastMessage={isLastMessage}
+                      status={effectiveStatus}
+                      reasoningContainerRef={reasoningContainerRef}
+                      isReasoningAtBottom={isReasoningAtBottom}
+                      onReasoningScroll={handleReasoningScroll}
+                      onReasoningScrollToBottom={forceScrollReasoningToBottom}
+                      onRegenerate={handleRegenerate}
+                      onContinue={handleContinue}
+                      onEdit={handleEditMessage}
+                      onDelete={handleDeleteMessage}
+                      versionInfo={versionInfoById[message.id]}
+                      onSwitchVersion={handleSwitchVersion}
+                      isAnimating={!pendingContinueMessage}
+                      hideActions={!!pendingContinueMessage}
+                    />
                   </Fragment>
                 )
               })}
@@ -2861,49 +2861,49 @@ export function ThreadConversation({
                         // other provider the server owns it, and raising a
                         // setting nothing sends cannot help (janhq/jan#8760).
                         <>
-                        {/* The same way out Cowork's stop card offers:
-                        summarize older messages, then send again. */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3 mr-2 pointer-coarse:h-11"
-                          disabled={compacting}
-                          onClick={() =>
-                            void handleCompact({ thenRegenerate: true })
-                          }
-                        >
-                          {compacting
-                            ? t('common:budget.compacting')
-                            : t('common:compaction.compactNow')}
-                        </Button>
-                        {contextIsResizable(selectedProvider) ? (
+                          {/* The same way out Cowork's stop card offers:
+                             summarize older messages, then send again. */}
                           <Button
                             variant="outline"
                             size="sm"
-                            className="mt-3 pointer-coarse:h-11"
-                            onClick={handleContextSizeIncrease}
+                            className="mt-3 mr-2 pointer-coarse:h-11"
+                            disabled={compacting}
+                            onClick={() =>
+                              void handleCompact({ thenRegenerate: true })
+                            }
                           >
-                            <CircleAlert className="size-4" />
-                            Increase Context Size
+                            {compacting
+                              ? t('common:budget.compacting')
+                              : t('common:compaction.compactNow')}
                           </Button>
-                        ) : (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-sm text-fg-2">
-                              This model's context window is set by its server,
-                              so Flint cannot enlarge it. Start a new chat, shorten
-                              the conversation, or raise the limit on the server.
-                            </p>
+                          {contextIsResizable(selectedProvider) ? (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="pointer-coarse:h-11"
-                              onClick={() => handleRegenerate()}
+                              className="mt-3 pointer-coarse:h-11"
+                              onClick={handleContextSizeIncrease}
                             >
-                              <RefreshCw className="size-4" />
-                              Regenerate
+                              <CircleAlert className="size-4" />
+                              Increase Context Size
                             </Button>
-                          </div>
-                        )}
+                          ) : (
+                            <div className="mt-3 space-y-2">
+                              <p className="text-sm text-fg-2">
+                                This model's context window is set by its server,
+                                so Flint cannot enlarge it. Start a new chat, shorten
+                                the conversation, or raise the limit on the server.
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="pointer-coarse:h-11"
+                                onClick={() => handleRegenerate()}
+                              >
+                                <RefreshCw className="size-4" />
+                                Regenerate
+                              </Button>
+                            </div>
+                          )}
                         </>
                       ) : (
                         <Button
