@@ -26,6 +26,23 @@ import {
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
 import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
+import { isContextLengthError } from '@/lib/compaction'
+
+/** A compaction that fails leaves the history as it was; a stop still stops. */
+async function compactOrNull(
+  deps: Pick<RunDeps, 'compact'>,
+  messages: UIMessage[],
+  why: 'threshold' | 'context-error',
+  signal: AbortSignal
+): Promise<UIMessage[] | null> {
+  try {
+    return (await deps.compact?.([...messages], why, signal)) ?? null
+  } catch (error) {
+    if (signal.aborted) throw error
+    console.warn('[cowork] compaction failed; continuing without it', error)
+    return null
+  }
+}
 
 /**
  * The HTTP status a failure carried, when it carried one.
@@ -814,6 +831,21 @@ export type RunDeps = {
    * once returned. janhq/jan#8864.
    */
   takeSteering?: () => UIMessage[] | Promise<UIMessage[]>
+  /**
+   * Compact the conversation when it needs it (`lib/compaction.ts`).
+   *
+   * Asked before every model call with `threshold`: the caller measures the
+   * request and returns a compacted history, or null to send it as it is.
+   * Asked once more with `context-error` when the provider refused a step for
+   * its length, and the step is retried with the compacted history. Every tool
+   * result of the previous step is in by then, so no call is parted from its
+   * result.
+   */
+  compact?: (
+    messages: UIMessage[],
+    why: 'threshold' | 'context-error',
+    signal: AbortSignal
+  ) => Promise<UIMessage[] | null>
 }
 
 export type RunOutcome = {
@@ -916,12 +948,21 @@ export async function runTurn(opts: {
     const steered = (await deps.takeSteering?.()) ?? []
     if (steered.length > 0) messages.push(...steered)
 
+    // Compacted here, at the same boundary: the next request would cross the
+    // window's threshold, so the run keeps going on a summary instead of
+    // stopping at the window.
+    if (deps.compact) {
+      const compacted = await compactOrNull(deps, messages, 'threshold', signal)
+      if (compacted) messages.splice(0, messages.length, ...compacted)
+    }
+
     // A snapshot, not the live array: the loop pushes to `messages` after the
     // stream is handed over, and the transport rewrites what it is given
     // (trimming, compaction) without expecting it to move underneath.
     let result: StepResult
     let attempt = 1
     let timedOut = false
+    let lengthRetried = false
     try {
       /**
        * One step, retried only where retrying can help. AH-021/AH-024/AH-025.
@@ -948,6 +989,27 @@ export async function runTurn(opts: {
           break
         } catch (failure) {
           timedOut = operation.timedOut()
+          // The provider refused the request for its length: compact once and
+          // send again, rather than ending a run the window could still hold.
+          if (
+            deps.compact &&
+            !lengthRetried &&
+            !timedOut &&
+            !signal.aborted &&
+            isContextLengthError(failure)
+          ) {
+            lengthRetried = true
+            const compacted = await compactOrNull(
+              deps,
+              messages,
+              'context-error',
+              signal
+            )
+            if (compacted) {
+              messages.splice(0, messages.length, ...compacted)
+              continue
+            }
+          }
           const decision = decideRetry({
             facts: {
               status: statusOf(failure),

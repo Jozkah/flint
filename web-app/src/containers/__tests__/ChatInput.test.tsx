@@ -999,8 +999,8 @@ describe('ChatInput slash commands', () => {
   it('opens the menu on a leading slash', async () => {
     const view = renderInput()
     await waitFor(() => expect(loadSlashCatalogMock).toHaveBeenCalled())
-    promptState = '/com'
-    fireEvent.change(getTextarea(), { target: { value: '/com' } })
+    promptState = '/comm'
+    fireEvent.change(getTextarea(), { target: { value: '/comm' } })
     view.rerender(<ChatInput />)
     await waitFor(() =>
       expect(screen.getByTestId('slash-menu')).toBeInTheDocument()

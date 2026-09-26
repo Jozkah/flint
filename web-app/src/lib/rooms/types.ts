@@ -228,6 +228,14 @@ export type RoomMessage = {
   directive?: ModeratorDirective
   /** The read-only tools a tool-capable participant used to produce this reply. */
   toolCalls?: RoomToolActivity[]
+  /** For system notes: the history was compacted here (drawn as a divider). */
+  compaction?: RoomCompaction
+}
+
+/** A compaction of the discussion, journaled so the divider survives reloads. */
+export type RoomCompaction = {
+  summarizedCount: number
+  summary: string
 }
 
 /**

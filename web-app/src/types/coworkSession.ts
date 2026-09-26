@@ -7,6 +7,8 @@
  * would mean a translation layer on every hop.
  */
 
+import type { CompactionRecord } from '@/lib/compaction'
+
 /** A single visible transcript entry. `tool` rows are display-only and carry the
  * structured call/result so the UI can render a tool card. */
 export type CoworkTurn = {
@@ -39,6 +41,12 @@ export type CoworkTurn = {
    * model. The reason is untrusted text from that session's agent.
    */
   stopNotice?: SessionStopNotice
+  /**
+   * Assistant-row only, display only: the conversation was compacted here.
+   * Drawn as a divider that expands to the summary; never sent to the model
+   * (the summary itself travels in `CoworkSession.messages`).
+   */
+  compaction?: CompactionRecord
   callId?: string
   name?: string
   args?: unknown

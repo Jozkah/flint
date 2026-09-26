@@ -421,6 +421,54 @@ describe('engine: context fitting', () => {
     expect(calls[0].messages[0].content).toContain('SUMMARY-X')
   })
 
+  it('journals a compaction divider carrying the count and the summary', async () => {
+    const p = await longRoom()
+    const { fn } = scriptedStream(() => ({ text: uniqueText() }))
+    await runRoom(
+      'room-1',
+      engineDeps(p, fn, { summarize: async () => 'SUMMARY-X', contextWindow: () => 2000 }),
+      signal()
+    )
+    const divider = messagesOf(p).find((m) => m.kind === 'system' && m.compaction)
+    expect(divider?.compaction?.summary).toBe('SUMMARY-X')
+    expect(divider?.compaction?.summarizedCount).toBeGreaterThan(0)
+  })
+
+  it('with Auto Compact off, leaves older history out instead of summarising', async () => {
+    const p = await longRoom()
+    const summarize = vi.fn(async () => 'SUMMARY-X')
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    await runRoom(
+      'room-1',
+      engineDeps(p, fn, {
+        summarize,
+        contextWindow: () => 2000,
+        compaction: () => ({ enabled: false }),
+      }),
+      signal()
+    )
+    expect(summarize).not.toHaveBeenCalled()
+    expect(calls[0].messages.map((m) => m.content).join('\n')).not.toContain('SUMMARY-X')
+    expect(messagesOf(p).some((m) => m.compaction)).toBe(false)
+  })
+
+  it("uses the user's Max Context Tokens as the window when set", async () => {
+    const p = await longRoom()
+    const summarize = vi.fn(async () => 'SUMMARY-X')
+    const { fn } = scriptedStream(() => ({ text: uniqueText() }))
+    await runRoom(
+      'room-1',
+      engineDeps(p, fn, {
+        summarize,
+        contextWindow: () => 2000,
+        compaction: () => ({ enabled: true, window: 200_000 }),
+      }),
+      signal()
+    )
+    // The whole discussion fits the user's window, so nothing is folded.
+    expect(summarize).not.toHaveBeenCalled()
+  })
+
   it('uses the speaker model to summarise when no summariser is injected', async () => {
     const p = await longRoom()
     const { fn, calls } = scriptedStream((input) =>

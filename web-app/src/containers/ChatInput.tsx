@@ -101,6 +101,7 @@ import {
 import { ExtensionManager } from '@/lib/extension'
 import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
+import { requestChatCompaction } from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { shouldShowTokenCounter } from '@/lib/tokenCounterVisibility'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
@@ -422,9 +423,24 @@ const ChatInput = memo(function ChatInput({
               description: t('slash:builtin.new'),
               run: () => void router.navigate({ to: route.home }),
             },
+            // Only in an open conversation, which registers how to compact
+            // itself (`lib/chatCompaction.ts`).
+            ...(currentThreadId
+              ? [
+                  {
+                    name: 'compact',
+                    description: t('slash:builtin.compact'),
+                    run: () => {
+                      if (!requestChatCompaction(currentThreadId)) {
+                        toast.info(t('common:budget.compactFailed'))
+                      }
+                    },
+                  },
+                ]
+              : []),
           ]
         : [],
-    [slashSurface, t, router]
+    [slashSurface, t, router, currentThreadId]
   )
   const slashCommands = useSlashCommands({
     surface: slashSurface,

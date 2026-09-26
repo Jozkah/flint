@@ -70,6 +70,8 @@ export class CoworkChatTransport extends CustomChatTransport {
   protected override recordsMemoryUsesOnFinish = false
   /** The Cowork run records every step; a chat run would duplicate it. */
   protected override recordsChatRun = false
+  // The run loop compacts, and persists the summary; see `runTurn`'s `compact`.
+  protected override compactsAtThreshold = false
 
   /**
    * JAN.md and the approved compatibility files: the instruction text above

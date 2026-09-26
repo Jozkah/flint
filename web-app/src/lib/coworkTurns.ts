@@ -121,6 +121,16 @@ export function coworkTurnsToUIMessages(
       } as any)
       return
     }
+    // The conversation was compacted here: a divider row, display only.
+    if (turn.compaction) {
+      flushAssistant()
+      messages.push({
+        id: `${idPrefix}-compaction-${i}`,
+        role: 'assistant',
+        parts: [{ type: 'data-compaction', data: turn.compaction }],
+      } as any)
+      return
+    }
     if (turn.role === 'user') {
       flushAssistant()
       if (turn.hidden && options.omitHiddenTurns) return

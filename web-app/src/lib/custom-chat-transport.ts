@@ -80,10 +80,24 @@ import {
 } from '@janhq/core'
 import {
   trimMessages,
-  compactMessages,
   estimateTokens,
   type ContextManagerConfig,
 } from './context-manager'
+import {
+  compactHistory,
+  estimateHistoryTokens,
+  resolveAutoCompact,
+  shouldCompact,
+  DEFAULT_KEEP_RECENT,
+  type CompactionRecord,
+} from '@/lib/compaction'
+import { modelSummarizer } from '@/lib/compactionSummarizer'
+import {
+  applyChatCompaction,
+  readChatCompaction,
+  stateAfter,
+  writeChatCompaction,
+} from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
 import { getCompactionPolicy, outputHeadroom, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
@@ -868,6 +882,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * succeed.
    */
   protected recordsChatRun = true
+  /**
+   * Whether this transport compacts a conversation at the threshold itself.
+   * Cowork compacts in its run loop, where the summary is persisted, and turns
+   * this off so a request is never compacted twice.
+   */
+  protected compactsAtThreshold = true
+  /** A compaction this request made, announced on its reply's metadata. */
+  private announcedCompaction: CompactionRecord | null = null
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1599,6 +1621,132 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return 'auto'
   }
 
+  /**
+   * Chat's automatic compaction (`lib/compaction.ts`).
+   *
+   * The summary in force is applied first: everything before its boundary is
+   * replaced by it. When the request is still past the threshold of the
+   * window, the older part is summarized again (the earlier summary folded
+   * in) and the new boundary remembered, so the next request reuses it.
+   */
+  private async compactAtThreshold(
+    threadId: string,
+    messages: UIMessage[],
+    opts: {
+      window: number
+      systemPromptTokens: number
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+      signal?: AbortSignal
+    }
+  ): Promise<UIMessage[]> {
+    const inForce = readChatCompaction(threadId)
+    const { history, stale } = applyChatCompaction(messages, inForce)
+    // The boundary message was edited or deleted: the summary no longer
+    // describes what precedes it.
+    if (stale) writeChatCompaction(threadId, null)
+
+    const projected = opts.systemPromptTokens + estimateHistoryTokens(history)
+    if (!shouldCompact(projected, opts.window)) return history
+
+    const result = await this.runCompaction(threadId, history, {
+      ...opts,
+      reason: 'threshold',
+    })
+    if (!result) return history
+    this.announcedCompaction = result.record
+    return result.messages
+  }
+
+  /** Compact, keep the result with the thread, and record it. */
+  private async runCompaction(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number | null
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+      reason: CompactionRecord['reason']
+      signal?: AbortSignal
+    }
+  ) {
+    const result = await compactHistory(history, {
+      summarize: modelSummarizer({
+        provider: opts.provider,
+        modelId: opts.modelId,
+        session: opts.session,
+        maxOutputTokens: opts.summaryMaxTokens,
+        window: opts.window,
+        model: () => this.model,
+      }),
+      keepRecent: opts.keepRecent,
+      reason: opts.reason,
+      signal: opts.signal,
+    })
+    if (!result) return null
+    // Kept with the thread, so a restart reuses it rather than summarizing
+    // the same messages again.
+    const state = stateAfter(result.messages, result.record, result.latestRequest)
+    if (state) writeChatCompaction(threadId, state)
+    // A compaction changes what the model sees from here on, so it is part of
+    // what the conversation did and goes in its record.
+    void recordLifecycle(
+      { session: opts.session, run: '', source: 'chat' },
+      {
+        id: `compaction:${result.record.at}`,
+        lifecycle: 'compaction',
+        phase: 'succeeded',
+        summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
+      }
+    )
+    return result
+  }
+
+  /**
+   * Compact this conversation now, whatever its size: the composer's
+   * `/compact` and the context-error banner's Compact button. The summary is
+   * kept with the thread and used by every later request. Resolves to what
+   * was done, or null when there was nothing to fold.
+   */
+  async compactNow(
+    threadId: string,
+    messages: UIMessage[],
+    signal?: AbortSignal
+  ): Promise<CompactionRecord | null> {
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    if (!modelId) return null
+    const params = this.getActiveInferenceParams()
+    let policy = DEFAULT_COMPACTION_POLICY
+    try {
+      policy = await getCompactionPolicy()
+    } catch {
+      // Defaults: a compaction was asked for either way.
+    }
+    const { history, stale } = applyChatCompaction(
+      messages,
+      readChatCompaction(threadId)
+    )
+    if (stale) writeChatCompaction(threadId, null)
+    const result = await this.runCompaction(threadId, history, {
+      window: usableContextValue(params.max_context_tokens) ?? null,
+      keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
+      summaryMaxTokens: policy.summaryMaxTokens,
+      provider: selection.selectedProvider,
+      modelId,
+      session: threadId,
+      reason: 'manual',
+      signal,
+    })
+    return result?.record ?? null
+  }
+
   async sendMessages(
     options: {
       chatId: string
@@ -1812,10 +1960,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       maxContextTokens > 0 ? await getCompactionPolicy() : DEFAULT_COMPACTION_POLICY
     // The per-model parameter still opts a model in; the policy opts every
     // surface in or out.
-    const autoCompact =
-      compaction.auto ||
-      inferenceParams.auto_compact === true ||
-      inferenceParams.auto_compact === 'true'
+    // The model's Auto Compact parameter, when set, decides; otherwise the
+    // shared policy does (`lib/compaction.ts`).
+    const autoCompact = resolveAutoCompact(inferenceParams, compaction.auto)
 
     let effectiveMessages = messagesToConvert
     if (maxContextTokens > 0) {
@@ -1832,38 +1979,33 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      if (autoCompact && compaction.strategy === 'summarize' && !contextShiftEnabled && this.model) {
-        const compactResult = await compactMessages(
+      this.announcedCompaction = null
+      if (
+        autoCompact &&
+        compaction.strategy === 'summarize' &&
+        !contextShiftEnabled &&
+        this.compactsAtThreshold
+      ) {
+        effectiveMessages = await this.compactAtThreshold(
+          threadId,
           messagesToConvert,
-          contextConfig,
-          this.model,
-          systemPromptTokens,
-          { session: options.chatId ?? '', modelId: selectedModel?.id ?? '' },
-          compaction.summaryMaxTokens
+          {
+            window: maxContextTokens,
+            systemPromptTokens,
+            keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
+            summaryMaxTokens: compaction.summaryMaxTokens,
+            provider: providerId,
+            modelId: selectedModel?.id ?? modelId,
+            session: options.chatId ?? threadId,
+            signal: options.abortSignal,
+          }
         )
-        effectiveMessages = compactResult.messages
-        if (compactResult.trimmedCount > 0) {
-          console.debug(
-            `[context-manager] Compacted ${compactResult.trimmedCount} messages` +
-              (compactResult.compactedSummary ? ' with summary' : ' (trim fallback)')
-          )
-          // A compaction changes what the model sees from here on, so it is
-          // part of what the conversation did and goes in its record.
-          void recordLifecycle(
-            { session: options.chatId ?? '', run: '', source: 'chat' },
-            {
-              id: `compaction:${Date.now()}`,
-              lifecycle: 'compaction',
-              phase: 'succeeded',
-              summary: compactResult.compactedSummary
-                ? `Compacted ${compactResult.trimmedCount} messages into a summary`
-                : `Dropped ${compactResult.trimmedCount} oldest messages (summary unavailable)`,
-            }
-          )
-        }
-      } else {
+      }
+      // A backstop either way: what still does not fit after compaction (or
+      // with compaction off) is trimmed from the oldest end, as before.
+      {
         const trimResult = trimMessages(
-          messagesToConvert,
+          effectiveMessages,
           contextConfig,
           systemPromptTokens
         )
@@ -2009,6 +2151,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // was reported or defaulted to zero.
     const usageCollector = createUsageCollector()
 
+    const announced = this.announcedCompaction
+    this.announcedCompaction = null
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
         // Start the clock at the first sign of output, whatever shape it
@@ -2057,7 +2201,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // again once the provider has answered (the snapshot reference is
         // known by then), so a reply persisted at any point carries it.
         if (part.type === 'start' || part.type === 'start-step') {
-          return attributionMetadata(requestAttributions, requestId, part.type)
+          const attribution = attributionMetadata(
+            requestAttributions,
+            requestId,
+            part.type
+          )
+          // The reply that follows a compaction carries it, so the chat can
+          // draw the divider where it happened and show the summary.
+          const compacted = part.type === 'start' ? announced : null
+          return compacted
+            ? { ...(attribution ?? {}), compaction: compacted }
+            : attribution
         }
 
         if (part.type === 'finish-step') {

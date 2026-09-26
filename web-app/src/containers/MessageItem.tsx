@@ -73,6 +73,8 @@ import { fetchedUrlOf } from '@/lib/webSources'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
 import { FlintMark } from '@/components/shell/FlintMark'
+import { CompactionDivider } from '@/containers/CompactionDivider'
+import type { CompactionRecord } from '@/lib/compaction'
 
 export type MessageItemProps = {
   message: UIMessage
@@ -629,6 +631,10 @@ export const MessageItem = memo(
         </div>
       ) : null
 
+    const compactionRecord = metadata?.compaction as
+      | CompactionRecord
+      | undefined
+
     // The model that answered, when the request recorded it.
     const answeredBy =
       message.role === 'assistant'
@@ -645,6 +651,10 @@ export const MessageItem = memo(
         )}
         onContextMenu={openContextMenu}
       >
+        {/* The request behind this reply compacted the conversation first. */}
+        {message.role === 'assistant' && compactionRecord ? (
+          <CompactionDivider record={compactionRecord} />
+        ) : null}
         {/* A small, quiet line naming who answered and when. */}
         {message.role === 'assistant' && (
           <div

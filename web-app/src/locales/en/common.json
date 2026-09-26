@@ -889,7 +889,17 @@
     "stoppedTokens": "Stopped — this request used its {{max}}-token allowance. Continue starts a new allowance.",
     "stoppedWindow": "Stopped before sending: the conversation no longer fits the model's context window ({{detail}}). If the model accepts more, raise Max Context Tokens in the assistant's model settings; otherwise start a new session.",
     "compact": "Compact",
+    "compacting": "Compacting…",
+    "compactFailed": "Nothing to compact yet.",
     "newSession": "New session"
+  },
+  "compaction": {
+    "divider_one": "Context compacted — {{count}} earlier message summarized",
+    "divider_other": "Context compacted — {{count}} earlier messages summarized",
+    "showSummary": "Show summary",
+    "hideSummary": "Hide summary",
+    "compactNow": "Compact",
+    "compactNowHint": "Summarize older messages so the conversation fits the model's context window"
   },
   "run": {
     "stopped": "Stopped.",

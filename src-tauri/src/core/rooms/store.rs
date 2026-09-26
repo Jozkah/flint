@@ -419,6 +419,18 @@ pub struct RoomMessage {
     /// reply. Absent on messages from participants without tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<RoomToolCall>>,
+    /// For system notes: the discussion was compacted here. Drawn as a
+    /// divider that expands to the summary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compaction: Option<RoomCompaction>,
+}
+
+/// A compaction of the discussion, journaled so its divider survives reloads.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomCompaction {
+    pub summarized_count: u64,
+    pub summary: String,
 }
 
 /// One tool a participant used in its turn, journaled for the transcript.

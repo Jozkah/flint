@@ -15,8 +15,10 @@ type Props =
        */
       cause?: 'window' | 'budget'
       detail?: string
-      /** Absent while Cowork has no compaction to run: no button, then. */
+      /** Summarizes older messages and continues. Absent: no button. */
       onCompact?: () => void
+      /** A compaction is under way: the button waits. */
+      compacting?: boolean
       onNewSession: () => void
     }
 
@@ -64,8 +66,11 @@ export function CoworkBudgetNotice(props: Props) {
               size="sm"
               className="h-7"
               onClick={props.onCompact}
+              disabled={props.compacting}
             >
-              {t('common:budget.compact')}
+              {props.compacting
+                ? t('common:budget.compacting')
+                : t('common:budget.compact')}
             </Button>
           ) : null}
           <Button

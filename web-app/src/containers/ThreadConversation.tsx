@@ -1,6 +1,14 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { addSnapshotSink } from '@/lib/providerFetch'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
@@ -83,6 +91,12 @@ import {
   parseContextOverflow,
 } from '@/utils/error'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { toast } from 'sonner'
+import { CompactionDivider } from '@/containers/CompactionDivider'
+import {
+  readChatCompaction,
+  registerChatCompactor,
+} from '@/lib/chatCompaction'
 import {
   parseServerContextLimit,
   rememberServerLimit,
@@ -478,6 +492,7 @@ export function ThreadConversation({
     addToolOutput,
     updateRagToolsAvailability,
     setContinueFromContent,
+    compactNow,
   } = useChat({
     sessionId: threadId,
     sessionTitle: thread?.title,
@@ -2169,6 +2184,49 @@ export function ThreadConversation({
   setContinueFromContentRef.current = setContinueFromContent
   setChatMessagesRef.current = setChatMessages
 
+  /**
+   * Compact this conversation now (`/compact`, the context banner's Compact
+   * button). The summary is kept with the thread and every later request
+   * sends it in place of the older messages; the divider marks where.
+   */
+  const [compacting, setCompacting] = useState(false)
+  const handleCompact = async (opts: { thenRegenerate?: boolean } = {}) => {
+    if (compacting || status === 'streaming' || status === 'submitted') return
+    setCompacting(true)
+    try {
+      const record = await compactNow(chatMessages)
+      if (!record) {
+        toast.info(t('common:budget.compactFailed'))
+        return
+      }
+      // From the context banner: the request failed for room, so it is sent
+      // again on the room compaction freed.
+      if (opts.thenRegenerate) handleRegenerate()
+    } catch (e) {
+      console.warn('[chat] compaction failed', e)
+      toast.error(t('common:budget.compactFailed'))
+    } finally {
+      setCompacting(false)
+    }
+  }
+  const handleCompactRef = useRef(handleCompact)
+  handleCompactRef.current = handleCompact
+  useEffect(
+    () =>
+      registerChatCompactor(threadId, () => handleCompactRef.current()),
+    [threadId]
+  )
+  // The compaction in force, drawn at its boundary unless the reply after it
+  // already carries it.
+  const compactionInForce = readChatCompaction(threadId)
+  const compactionShownOnReply =
+    !!compactionInForce &&
+    chatMessages.some(
+      (m) =>
+        (m.metadata as { compaction?: { at?: number } } | undefined)
+          ?.compaction?.at === compactionInForce.record.at
+    )
+
   useEffect(() => {
     if (
       (oomError || backendError || contextLimitError) &&
@@ -2590,8 +2648,13 @@ export function ThreadConversation({
                 )
                   return null
                 return (
+                  <Fragment key={message.id}>
+                  {compactionInForce &&
+                  !compactionShownOnReply &&
+                  compactionInForce.boundaryId === message.id ? (
+                    <CompactionDivider record={compactionInForce.record} />
+                  ) : null}
                   <MessageItem
-                    key={message.id}
                     message={message}
                     isFirstMessage={isFirstMessage}
                     isLastMessage={isLastMessage}
@@ -2609,6 +2672,7 @@ export function ThreadConversation({
                     isAnimating={!pendingContinueMessage}
                     hideActions={!!pendingContinueMessage}
                   />
+                  </Fragment>
                 )
               })}
               {pendingContinueMessage && status === 'submitted' && (
@@ -2724,7 +2788,23 @@ export function ThreadConversation({
                         // Only where Flint sets the window at load. For any
                         // other provider the server owns it, and raising a
                         // setting nothing sends cannot help (janhq/jan#8760).
-                        contextIsResizable(selectedProvider) ? (
+                        <>
+                        {/* The same way out Cowork's stop card offers:
+                        summarize older messages, then send again. */}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 mr-2 pointer-coarse:h-11"
+                          disabled={compacting}
+                          onClick={() =>
+                            void handleCompact({ thenRegenerate: true })
+                          }
+                        >
+                          {compacting
+                            ? t('common:budget.compacting')
+                            : t('common:compaction.compactNow')}
+                        </Button>
+                        {contextIsResizable(selectedProvider) ? (
                           <Button
                             variant="outline"
                             size="sm"
@@ -2751,7 +2831,8 @@ export function ThreadConversation({
                               Regenerate
                             </Button>
                           </div>
-                        )
+                        )}
+                        </>
                       ) : (
                         <Button
                           variant="outline"

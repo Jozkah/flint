@@ -1,0 +1,225 @@
+/**
+ * A Cowork run that outgrows its window keeps going: the run loop compacts
+ * between steps (and once more when the provider refuses a step for length)
+ * instead of stopping at the window.
+ */
+import { describe, it, expect, vi } from 'vitest'
+import type { UIMessage, UIMessageChunk } from 'ai'
+import { runTurn, type ToolOutcome } from '../coworkRunner'
+import {
+  compactHistory,
+  estimateHistoryTokens,
+  hasUnresolvedToolCall,
+  isSummaryMessage,
+  shouldCompact,
+  type CompactionRecord,
+} from '../compaction'
+
+const streamOf = (chunks: UIMessageChunk[]): ReadableStream<UIMessageChunk> =>
+  new ReadableStream({
+    start(c) {
+      for (const chunk of chunks) c.enqueue(chunk)
+      c.close()
+    },
+  })
+
+const toolStep = (id: string): UIMessageChunk[] => [
+  { type: 'tool-input-start', toolCallId: id, toolName: 'read' } as UIMessageChunk,
+  {
+    type: 'tool-input-available',
+    toolCallId: id,
+    toolName: 'read',
+    input: { path: `${id}.txt` },
+  } as UIMessageChunk,
+]
+
+const textStep = (text: string): UIMessageChunk[] => [
+  { type: 'text-delta', id: 't', delta: text } as UIMessageChunk,
+]
+
+const sink = () => ({
+  onText: vi.fn(),
+  onToolStart: vi.fn(),
+  onToolArgsDelta: vi.fn(),
+  onToolCall: vi.fn(),
+})
+
+const user = (text: string): UIMessage =>
+  ({ id: 'u0', role: 'user', parts: [{ type: 'text', text }] }) as UIMessage
+
+/** Every tool part sent to the model has its result beside it. */
+const everyCallResolved = (messages: UIMessage[]) =>
+  messages.every((m) => !hasUnresolvedToolCall(m))
+
+describe('Cowork run crossing the compaction threshold', () => {
+  it('compacts between steps and finishes instead of stopping', async () => {
+    const WINDOW = 4_000
+    // Each tool result is ~2,000 characters (~570 tokens): a handful of steps
+    // crosses 80% of a 4,000-token window.
+    const bigOutput = 'x'.repeat(2_000)
+    const steps = [
+      ...Array.from({ length: 10 }, (_, i) => toolStep(`c${i}`)),
+      textStep('done'),
+    ]
+    let i = 0
+    const sent: UIMessage[][] = []
+    const sendStep = vi.fn(async (messages: UIMessage[]) => {
+      sent.push(messages)
+      // A provider with a hard window: a request past it is refused.
+      if (estimateHistoryTokens(messages) > WINDOW) {
+        throw new Error("This model's maximum context length is 4000 tokens")
+      }
+      return streamOf(steps[Math.min(i++, steps.length - 1)])
+    })
+    const records: CompactionRecord[] = []
+    const summarize = vi.fn(async () => 'read c0..cN; nothing changed yet')
+    const compact = vi.fn(
+      async (messages: UIMessage[], why: 'threshold' | 'context-error') => {
+        if (why === 'threshold' && !shouldCompact(estimateHistoryTokens(messages), WINDOW)) {
+          return null
+        }
+        const result = await compactHistory(messages, {
+          summarize,
+          keepRecent: 2,
+          reason: why,
+        })
+        if (!result) return null
+        records.push(result.record)
+        return result.messages
+      }
+    )
+
+    const outcome = await runTurn({
+      messages: [user('read every file and report')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(async (): Promise<ToolOutcome> => ({ output: bigOutput })),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: (() => {
+          let n = 0
+          return () => `m${n++}`
+        })(),
+        compact,
+      },
+    })
+
+    expect(outcome.stoppedBy).toBe('done')
+    expect(outcome.steps).toBe(11)
+    // It compacted, more than once over a long run, and every request after
+    // the first compaction carried the summary rather than the whole history.
+    expect(records.length).toBeGreaterThanOrEqual(2)
+    expect(records.every((r) => r.reason === 'threshold')).toBe(true)
+    const afterFirst = sent.slice(-3)
+    for (const request of afterFirst) {
+      expect(request.some(isSummaryMessage)).toBe(true)
+      expect(estimateHistoryTokens(request)).toBeLessThanOrEqual(WINDOW)
+      expect(everyCallResolved(request)).toBe(true)
+    }
+    // Never more than one summary in a request: they fold, not stack.
+    for (const request of sent) {
+      expect(request.filter(isSummaryMessage).length).toBeLessThanOrEqual(1)
+    }
+    // The run's own history is the compacted one, so it is what is persisted.
+    expect(outcome.messages.filter(isSummaryMessage)).toHaveLength(1)
+    // The user's request survives the fold word for word.
+    const summaryText = (
+      outcome.messages.find(isSummaryMessage)!.parts[0] as { text: string }
+    ).text
+    expect(summaryText).toContain('read every file and report')
+  })
+
+  it('compacts and retries once when the provider refuses for length', async () => {
+    const history: UIMessage[] = [
+      user('first'),
+      { id: 'a0', role: 'assistant', parts: [{ type: 'text', text: 'one' }] } as UIMessage,
+      { id: 'u1', role: 'user', parts: [{ type: 'text', text: 'second' }] } as UIMessage,
+      { id: 'a1', role: 'assistant', parts: [{ type: 'text', text: 'two' }] } as UIMessage,
+      { id: 'u2', role: 'user', parts: [{ type: 'text', text: 'third' }] } as UIMessage,
+    ]
+    let calls = 0
+    const sendStep = vi.fn(async (messages: UIMessage[]) => {
+      calls += 1
+      if (!messages.some(isSummaryMessage)) {
+        throw new Error('prompt is too long: 9000 tokens > 8192 maximum')
+      }
+      return streamOf(textStep('ok'))
+    })
+    const compact = vi.fn(async (messages: UIMessage[], why: string) => {
+      if (why !== 'context-error') return null
+      return (
+        await compactHistory(messages, {
+          summarize: async () => 'earlier: first, second',
+          keepRecent: 1,
+          reason: 'context-error',
+        })
+      )?.messages ?? null
+    })
+
+    const outcome = await runTurn({
+      messages: history,
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+        compact,
+      },
+    })
+
+    expect(outcome.stoppedBy).toBe('done')
+    expect(calls).toBe(2)
+    expect(compact).toHaveBeenCalledWith(expect.any(Array), 'context-error', expect.anything())
+  })
+
+  it('retries only once: a second refusal ends the run as an error', async () => {
+    const sendStep = vi.fn(async () => {
+      throw new Error("This model's maximum context length is 8192 tokens")
+    })
+    const compact = vi.fn(async (messages: UIMessage[], why: string) =>
+      why === 'context-error' ? [...messages] : null
+    )
+    const outcome = await runTurn({
+      messages: [user('hi')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+        compact,
+      },
+    })
+    expect(outcome.stoppedBy).toBe('error')
+    expect(compact.mock.calls.filter((c) => c[1] === 'context-error')).toHaveLength(1)
+  })
+
+  it('with compaction off, a refusal ends the run as before', async () => {
+    const sendStep = vi.fn(async () => {
+      throw new Error("This model's maximum context length is 8192 tokens")
+    })
+    const sent: UIMessage[][] = []
+    sendStep.mockImplementation(async (...args: unknown[]) => {
+      sent.push(args[0] as UIMessage[])
+      throw new Error("This model's maximum context length is 8192 tokens")
+    })
+    const outcome = await runTurn({
+      messages: [user('hi')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep,
+        dispatch: vi.fn(),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+      },
+    })
+    expect(outcome.stoppedBy).toBe('error')
+    // Whatever the generic retry did, nothing was compacted.
+    expect(sent.every((request) => !request.some(isSummaryMessage))).toBe(true)
+  })
+})
