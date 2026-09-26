@@ -102,8 +102,10 @@ import {
 } from '@/lib/coworkTurns'
 import { reconcileToolActivity } from '@/lib/coworkActivityTimeline'
 import { useModelCapabilities } from '@/hooks/useModelCapabilities'
+import { useAssistant } from '@/hooks/useAssistant'
 import {
   ContextOverflowError,
+  coworkWindow,
   isContextOverflow,
   planTurn,
 } from '@/lib/coworkBudget'
@@ -418,8 +420,26 @@ export const Route = createFileRoute(route.cowork as any)({
  * training size -- the smaller number is the real limit.
  */
 const configuredContextTokens = (
-  caps: { contextTokens: number | null } | null | undefined
-): number | null => caps?.contextTokens ?? null
+  caps: { contextTokens: number | null; source?: string } | null | undefined,
+  acceptedPrompt?: number | null
+): number | null =>
+  coworkWindow({
+    // The user's Max Context Tokens is a decision about this window, the
+    // same one Chat honours; a bundled family guess is not.
+    userSet:
+      useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
+    capabilities: caps,
+    acceptedPrompt,
+  })
+
+/** The largest prompt the provider has already accepted in these turns. */
+const largestAcceptedPrompt = (
+  turns: readonly { usage?: { prompt_tokens?: number } }[] | undefined
+): number =>
+  (turns ?? []).reduce(
+    (max, turn) => Math.max(max, turn.usage?.prompt_tokens ?? 0),
+    0
+  )
 
 /** Stable empty lane, so a session with no run does not re-render per write. */
 const NO_LIVE_TURNS: CoworkTurn[] = []
@@ -2867,7 +2887,10 @@ function CoworkPage() {
     // would report a conversation one turn short of the one being sent.
     const measured = transport.measureContext(
       messages,
-      configuredContextTokens(modelCapabilities)
+      configuredContextTokens(
+        modelCapabilities,
+        largestAcceptedPrompt(current?.turns)
+      )
     )
     if (sid === sessionIdRef.current) setRunContext(measured)
 
@@ -4615,7 +4638,11 @@ function CoworkPage() {
                   {stoppedBy === 'tokens' && (
                     <CoworkBudgetNotice
                       kind="tokens"
-                      onCompact={() => toast.info(t('common:budget.compact'))}
+                      // An overflow carries its measurement; the spend cap
+                      // stops with none. Cowork has no compaction yet, so no
+                      // Compact button that could only show a toast.
+                      cause={runError ? 'window' : 'budget'}
+                      detail={runError ?? undefined}
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session.

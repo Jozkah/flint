@@ -175,6 +175,43 @@ export function planTurn(input: {
   }
 }
 
+/**
+ * The window a Cowork request is checked against.
+ *
+ * The user's own Max Context Tokens wins: it is a decision, and Chat already
+ * honours it. Without one, the resolved capability stands -- except a bundled
+ * family guess (`qwen3` = 32,768) that the provider has already disproved by
+ * accepting a larger prompt. A session was refused at "the window is 32,768"
+ * one step after the same endpoint had served a 78,814-token request, with
+ * Max Context Tokens set to 200,000; a guess contradicted by a real response
+ * is not a limit, so the window is then reported as not known.
+ */
+export function coworkWindow(input: {
+  userSet?: unknown
+  capabilities?: { contextTokens: number | null; source?: string } | null
+  /** The largest prompt the provider has accepted in this session. */
+  acceptedPrompt?: number | null
+}): number | null {
+  const user = positive(input.userSet)
+  if (user != null) return user
+  const known = input.capabilities?.contextTokens ?? null
+  if (known == null) return null
+  if (
+    input.capabilities?.source === 'bundled' &&
+    (input.acceptedPrompt ?? 0) > known
+  ) {
+    return null
+  }
+  return known
+}
+
+function positive(value: unknown): number | null {
+  const n = typeof value === 'string' && value.trim() ? Number(value) : value
+  return typeof n === 'number' && Number.isFinite(n) && n > 0
+    ? Math.floor(n)
+    : null
+}
+
 /** Raised instead of dispatching a request that cannot fit. */
 export class ContextOverflowError extends Error {
   readonly plan: TurnPlan

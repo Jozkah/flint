@@ -1,10 +1,24 @@
 import { CircleSlash } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { MAX_SESSION_TOKENS } from '@/lib/coworkBudget'
 
 type Props =
   | { kind: 'steps'; max: number; onContinue: () => void }
-  | { kind: 'tokens'; onCompact: () => void; onNewSession: () => void }
+  | {
+      kind: 'tokens'
+      /**
+       * Which cap stopped the run. `window`: the next request would not fit
+       * the model's context window (`detail` says by how much). `budget`: the
+       * request spent its token allowance. They are fixed in different
+       * places, so the notice has to say which one it was.
+       */
+      cause?: 'window' | 'budget'
+      detail?: string
+      /** Absent while Cowork has no compaction to run: no button, then. */
+      onCompact?: () => void
+      onNewSession: () => void
+    }
 
 /**
  * Why a run stopped short of an answer.
@@ -37,15 +51,23 @@ export function CoworkBudgetNotice(props: Props) {
         </>
       ) : (
         <>
-          <span>{t('common:budget.stoppedTokens')}</span>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7"
-            onClick={props.onCompact}
-          >
-            {t('common:budget.compact')}
-          </Button>
+          <span>
+            {props.cause === 'window'
+              ? t('common:budget.stoppedWindow', { detail: props.detail ?? '' })
+              : t('common:budget.stoppedTokens', {
+                  max: MAX_SESSION_TOKENS.toLocaleString(),
+                })}
+          </span>
+          {props.onCompact ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7"
+              onClick={props.onCompact}
+            >
+              {t('common:budget.compact')}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

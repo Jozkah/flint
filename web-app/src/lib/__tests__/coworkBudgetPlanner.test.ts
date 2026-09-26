@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   ContextOverflowError,
+  coworkWindow,
   isContextOverflow,
   planTurn,
   replyReserveFor,
@@ -52,4 +53,30 @@ it('fails with a typed error that says both numbers', () => {
   expect(error.message).toContain((40000).toLocaleString())
   expect(error.message).toContain((32768).toLocaleString())
   expect(error.plan.status).toBe('over')
+})
+
+describe('coworkWindow', () => {
+  const bundled = { contextTokens: 32768, source: 'bundled' }
+
+  it('uses the user’s Max Context Tokens over a bundled guess', () => {
+    expect(coworkWindow({ userSet: 200000, capabilities: bundled })).toBe(200000)
+    expect(coworkWindow({ userSet: '200000', capabilities: bundled })).toBe(200000)
+  })
+
+  it('drops a bundled guess the provider has already disproved', () => {
+    // qwen3 guessed at 32,768 after the endpoint served a 78,814-token prompt.
+    expect(coworkWindow({ capabilities: bundled, acceptedPrompt: 78814 })).toBeNull()
+    expect(coworkWindow({ capabilities: bundled, acceptedPrompt: 1000 })).toBe(32768)
+  })
+
+  it('keeps a discovered window whatever was accepted before', () => {
+    expect(
+      coworkWindow({
+        userSet: 0,
+        capabilities: { contextTokens: 32768, source: 'local-runtime' },
+        acceptedPrompt: 78814,
+      })
+    ).toBe(32768)
+    expect(coworkWindow({ capabilities: null })).toBeNull()
+  })
 })
