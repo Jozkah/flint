@@ -9,7 +9,11 @@ vi.mock('@/constants/providers', () => ({
   ],
 }))
 
-import { isProviderUsable, hasUsableProvider } from '../providerReadiness'
+import {
+  isProviderUsable,
+  hasUsableProvider,
+  isSetupCompleted,
+} from '../providerReadiness'
 
 const provider = (over: Record<string, unknown> = {}) =>
   ({ provider: 'openai', models: [], ...over }) as never
@@ -138,5 +142,27 @@ describe('hasUsableProvider', () => {
 
   it('tolerates a missing list', () => {
     expect(hasUsableProvider(undefined as never)).toBe(false)
+  })
+})
+
+describe('isSetupCompleted', () => {
+  const store = (value: string | null) => ({ getItem: () => value })
+
+  it('is true once setup was finished, with or without a model', () => {
+    expect(isSetupCompleted(store('true'))).toBe(true)
+  })
+
+  it('is false before setup was finished', () => {
+    expect(isSetupCompleted(store(null))).toBe(false)
+  })
+
+  it('is false when storage cannot be read', () => {
+    expect(
+      isSetupCompleted({
+        getItem: () => {
+          throw new Error('blocked')
+        },
+      })
+    ).toBe(false)
   })
 })

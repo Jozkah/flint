@@ -10,7 +10,7 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import SetupScreen from '@/containers/SetupScreen'
 import { route } from '@/constants/routes'
-import { hasUsableProvider } from '@/lib/providerReadiness'
+import { hasUsableProvider, isSetupCompleted } from '@/lib/providerReadiness'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
@@ -25,7 +25,7 @@ type ThreadModel = {
 type SearchParams = {
   threadModel?: ThreadModel
 }
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useThreads } from '@/hooks/useThreads'
 import DropdownModelProvider from '@/containers/DropdownModelProvider'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
@@ -58,14 +58,17 @@ function Index() {
   useTools()
 
   const hasValidProviders = hasUsableProvider(providers)
+  const [setupDone, setSetupDone] = useState(() => isSetupCompleted())
   const isPhone = useMediaQuery(PHONE_QUERY)
 
   useEffect(() => {
     setCurrentThreadId(undefined)
   }, [setCurrentThreadId])
 
-  if (!hasValidProviders) {
-    return <SetupScreen />
+  // Setup shows until the user finishes it. Finishing without a model is
+  // allowed; the home page's getting-started card then points at adding one.
+  if (!hasValidProviders && !setupDone) {
+    return <SetupScreen onFinished={() => setSetupDone(true)} />
   }
 
   const fillComposer = (text: string) => {

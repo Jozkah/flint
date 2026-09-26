@@ -1,5 +1,6 @@
 import { predefinedProviders } from '@/constants/providers'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import { localStorageKey } from '@/constants/localStorage'
 
 type ModelLike = {
   id: string
@@ -22,7 +23,7 @@ const KEYLESS_PREDEFINED_PROVIDERS = ['llamacpp', 'jan']
  * first-run setup, so counting it would end onboarding before the user has any
  * model to chat with.
  */
-function isChatCapable(model: ModelLike): boolean {
+export function isChatCapable(model: ModelLike): boolean {
   return !model.embedding && !model.capabilities?.includes('embeddings')
 }
 
@@ -53,4 +54,20 @@ export function isProviderUsable(provider: ProviderLike): boolean {
  */
 export function hasUsableProvider(providers: ProviderLike[]): boolean {
   return (providers ?? []).some(isProviderUsable)
+}
+
+/**
+ * Whether the user has finished onboarding, with or without a model.
+ *
+ * "Finish without a model" is a supported ending, so the setup screen cannot be
+ * gated on a usable provider alone: a user who finished with none would be sent
+ * straight back to it. Storage that cannot be read counts as not finished.
+ */
+export function isSetupCompleted(storage?: Pick<Storage, 'getItem'>): boolean {
+  try {
+    const s = storage ?? globalThis.localStorage
+    return s?.getItem(localStorageKey.setupCompleted) === 'true'
+  } catch {
+    return false
+  }
 }

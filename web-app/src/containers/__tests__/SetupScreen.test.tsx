@@ -528,6 +528,30 @@ describe('SetupScreen', () => {
       )
     })
 
+    it('leaves out the embedding model Flint installs for itself', async () => {
+      hoisted.providersMock.getProviderByName.mockReturnValue({
+        models: [
+          { id: 'all-MiniLM-L6-v2', embedding: true },
+          { id: 'local-a.gguf' },
+        ],
+      })
+      await renderPastSetup()
+
+      expect(
+        screen.getAllByTestId('setup-local-model').map((o) => o.textContent)
+      ).toEqual(['local-a.gguf'])
+    })
+
+    it('offers no model when only the embedding model is installed', async () => {
+      hoisted.providersMock.getProviderByName.mockReturnValue({
+        models: [{ id: 'all-MiniLM-L6-v2', embedding: true }],
+      })
+      await renderPastSetup()
+
+      expect(screen.queryAllByTestId('setup-local-model')).toHaveLength(0)
+      expect(screen.getByText('setup:finishNoModels')).toBeInTheDocument()
+    })
+
     it('explains what to do when there are none', async () => {
       await renderPastSetup()
 

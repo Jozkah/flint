@@ -25,6 +25,7 @@ import HeaderPage from './HeaderPage'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
 import { destinationFor, INTENTS } from '@/lib/onboarding'
+import { isChatCapable } from '@/lib/providerReadiness'
 
 /**
  * One page of the setup flow. The last page is not a readiness probe, so it
@@ -39,7 +40,12 @@ type WizardStep = {
   detail?: string
 }
 
-function SetupScreen() {
+type SetupScreenProps = {
+  /** Called once onboarding ends, so the host stops rendering this screen. */
+  onFinished?: () => void
+}
+
+function SetupScreen({ onFinished }: SetupScreenProps = {}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { getProviderByName, selectModelProvider, setProviders } =
@@ -109,6 +115,7 @@ function SetupScreen() {
 
       localStorage.setItem(localStorageKey.setupCompleted, 'true')
       useOnboardingGuide.getState().setSetupPage('welcome')
+      onFinished?.()
 
       if (!modelId) {
         navigate({ to: route.home, replace: true, search: {} })
@@ -133,7 +140,7 @@ function SetupScreen() {
         search: { threadModel: { id: modelId, provider: 'llamacpp' } },
       })
     },
-    [navigate, selectModelProvider]
+    [navigate, selectModelProvider, onFinished]
   )
 
   // A model imported while this page is open should appear in the list without
@@ -158,9 +165,13 @@ function SetupScreen() {
   const missingLibraries = dependencyWarning?.missingLibraries ?? []
   const dependencyBackend = dependencyWarning?.backend ?? ''
 
-  /** Local models already on disk. There is nowhere else they could come from. */
+  /**
+   * Local models already on disk that can hold a conversation. The embedding
+   * model Flint installs for itself is left out: starting a chat with it would
+   * end onboarding with nothing able to answer.
+   */
   const localModels = useMemo(
-    () => llamaProvider?.models ?? [],
+    () => (llamaProvider?.models ?? []).filter(isChatCapable),
     [llamaProvider]
   )
 
