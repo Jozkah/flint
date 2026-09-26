@@ -6,6 +6,8 @@ import {
   advertisedToolSchemas,
   executeTool,
   executeToolStreaming,
+  executeToolUnsandboxedRetry,
+  executeToolUnsandboxedWithdraw,
   previewChange,
   sandboxStatus,
   sandboxToolchains,
@@ -230,6 +232,12 @@ type AgentToolResult = {
   diff?: string
   /** What the call's command used (AH-174), failed or not. */
   resources?: ToolResources
+  /**
+   * Set when a `bash` call failed only because Windows' null device refuses
+   * sandboxed programs: the id `retryAgentToolUnsandboxed` redeems, once the
+   * user approves, to run the same call outside the sandbox.
+   */
+  unsandboxedRetry?: string
 }
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
@@ -364,7 +372,15 @@ export async function executeAgentTool(
             options.actor
           )
     const resources = result.resources ?? undefined
-    if (result.isError) return { error: result.content, resources }
+    if (result.isError) {
+      return {
+        error: result.content,
+        resources,
+        ...(result.unsandboxedRetry
+          ? { unsandboxedRetry: result.unsandboxedRetry }
+          : {}),
+      }
+    }
     return {
       content: result.content,
       diff: result.diff ?? undefined,
@@ -372,6 +388,38 @@ export async function executeAgentTool(
     }
   } catch (e) {
     return { error: messageOf(e) }
+  }
+}
+
+/**
+ * Run a failed `bash` call again outside the sandbox. Only after the user
+ * approved it: `retry` is the `unsandboxedRetry` id the failed call carried,
+ * and it names that exact call.
+ */
+export async function retryAgentToolUnsandboxed(
+  threadId: string,
+  retry: string
+): Promise<AgentToolResult & { ran: boolean }> {
+  try {
+    const result = await executeToolUnsandboxedRetry(threadId, retry)
+    const resources = result.resources ?? undefined
+    if (result.isError) return { error: result.content, resources, ran: true }
+    return { content: result.content, resources, ran: true }
+  } catch (e) {
+    // Refused before anything ran: the offer was used, expired, or unknown.
+    return { error: messageOf(e), ran: false }
+  }
+}
+
+/** Drop an unsandboxed-retry offer the user declined. Never throws. */
+export async function withdrawAgentToolUnsandboxed(
+  threadId: string,
+  retry: string
+): Promise<void> {
+  try {
+    await executeToolUnsandboxedWithdraw(threadId, retry)
+  } catch {
+    // An offer that cannot be withdrawn expires on its own.
   }
 }
 

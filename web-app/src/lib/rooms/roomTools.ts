@@ -18,6 +18,7 @@
 import { jsonSchema, type Tool } from 'ai'
 import { directEditAuthorize } from '@janhq/tauri-plugin-agent-tools-api'
 import { getAgentToolSchemas, executeAgentTool } from '@/lib/agentTools'
+import { offerUnsandboxedRetry } from '@/lib/nullDeviceRetry'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
@@ -92,7 +93,19 @@ export async function buildRoomTools(
 
   const run = (name: string, options: ExecOptions) => async (input: unknown) => {
     const result = await executeAgentTool(name, input, ctx.roomId, options)
-    const output = result.error ? `ERROR: ${result.error}` : asText(result.content)
+    // A room has no approval prompt, so an unsandboxed retry cannot be put to
+    // anyone: the failure stands, saying so, and the offer is withdrawn.
+    const error =
+      result.error && result.unsandboxedRetry
+        ? (
+            await offerUnsandboxedRetry({
+              threadId: ctx.roomId,
+              retry: result.unsandboxedRetry,
+              failure: result.error,
+            })
+          ).output
+        : result.error
+    const output = error ? `ERROR: ${error}` : asText(result.content)
     onActivity?.({ name, ok: !result.error, args: input, output: capOutput(output) })
     return output
   }

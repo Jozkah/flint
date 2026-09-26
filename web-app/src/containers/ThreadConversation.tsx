@@ -112,6 +112,10 @@ import {
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import {
+  NULL_DEVICE_RETRY_REASON,
+  offerUnsandboxedRetry,
+} from '@/lib/nullDeviceRetry'
+import {
   ThreadStatusMark,
   useThreadStatus,
 } from '@/containers/ThreadStatusMark'
@@ -929,7 +933,8 @@ export function ThreadConversation({
               // The diff is display-only, so it goes to the runtime store rather
               // than into `result`: anything in `result` reaches the model, and a
               // full diff there would duplicate the file it just wrote.
-              const { diff, ...rest } = agentResult
+              // The retry id is for this renderer only, never the model.
+              const { diff, unsandboxedRetry, ...rest } = agentResult
               if (diff) {
                 useToolCallRuntime
                   .getState()
@@ -937,6 +942,37 @@ export function ThreadConversation({
                 chatDiff = diff
               }
               result = rest
+              // Failed only because Windows' null device refuses sandboxed
+              // programs: offer this exact command outside the sandbox through
+              // the approval prompt, and answer with what happened.
+              if (toolName === 'bash' && rest.error && unsandboxedRetry) {
+                const settled = await offerUnsandboxedRetry({
+                  threadId,
+                  retry: unsandboxedRetry,
+                  failure: rest.error,
+                  failureResources: rest.resources,
+                  ask: () =>
+                    useToolApprovalRequests
+                      .getState()
+                      .requestApproval(
+                        toolCall.toolCallId,
+                        toolName,
+                        threadId,
+                        undefined,
+                        {
+                          input: toolCall.input,
+                          alwaysAsk: true,
+                          taskContext: NULL_DEVICE_RETRY_REASON,
+                          destructiveChecked: true,
+                          threadIsEphemeral: threadId === TEMPORARY_CHAT_ID,
+                          signal,
+                        }
+                      ),
+                })
+                result = settled.isError
+                  ? { error: settled.output, resources: settled.resources }
+                  : { content: settled.output, resources: settled.resources }
+              }
             } else if (ragToolNames.has(toolName)) {
               result = await serviceHub.rag().callTool({
                 toolName,
