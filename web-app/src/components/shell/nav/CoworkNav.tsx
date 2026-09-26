@@ -22,6 +22,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { SessionWorktreeDeleteChoice } from '@/containers/SessionWorktreeDeleteChoice'
+import { removeSessionWorktree } from '@/lib/coworkParallel'
+import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
@@ -380,6 +383,8 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     id: string
     title: string
   } | null>(null)
+  // Whether deleting it also removes its worktree and branch (default: keep).
+  const [removeWorktree, setRemoveWorktree] = useState(false)
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSession = () => {
@@ -473,12 +478,23 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     goCowork()
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (pendingDelete) {
+      if (removeWorktree) {
+        const removed = await removeSessionWorktree(pendingDelete.id)
+        // A worktree that could not be removed keeps its session, so the
+        // work stays reachable from somewhere.
+        if (!removed.ok) {
+          toast.error(removed.reason)
+          return
+        }
+      }
+      useCoworkParallel.getState().forgetSession(pendingDelete.id)
       // Stops the session's run -- only that one -- and drops everything held
       // for it (janhq/jan#8905).
       deleteCoworkSession(pendingDelete.id)
     }
+    setRemoveWorktree(false)
     setPendingDelete(null)
   }
 
@@ -582,6 +598,11 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               {t('common:deleteSessionBody', { title: pendingDelete?.title })}
             </DialogDescription>
           </DialogHeader>
+          <SessionWorktreeDeleteChoice
+            sessionId={pendingDelete?.id ?? null}
+            remove={removeWorktree}
+            onChange={setRemoveWorktree}
+          />
           <DialogFooter>
             <Button
               variant="ghost"
@@ -590,7 +611,11 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
             >
               {t('common:cancel')}
             </Button>
-            <Button variant="destructive" size="sm" onClick={confirmDelete}>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => void confirmDelete()}
+            >
               {t('common:delete')}
             </Button>
           </DialogFooter>

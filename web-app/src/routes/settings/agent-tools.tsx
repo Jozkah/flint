@@ -26,6 +26,7 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
 import type { SandboxStatus } from '@janhq/tauri-plugin-agent-tools-api'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import {
   storePath,
   revealStore,
@@ -68,6 +69,8 @@ const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 function AgentToolsContent() {
   const { t } = useTranslation()
   const hideCompletedTools = useCoworkDisplay((x) => x.hideCompletedTools)
+  const autoWorktree = useCoworkParallel((x) => x.autoWorktree)
+  const setAutoWorktree = useCoworkParallel((x) => x.setAutoWorktree)
   const setHideCompletedTools = useCoworkDisplay(
     (x) => x.setHideCompletedTools
   )
@@ -272,6 +275,20 @@ function AgentToolsContent() {
                 data-testid="hide-completed-tools"
                 checked={hideCompletedTools}
                 onCheckedChange={setHideCompletedTools}
+              />
+            }
+          />
+          {/* Parallel sessions on one folder: each new session in a Git
+              folder gets its own worktree and branch unless this is off. */}
+          <CardItem
+            title={t('common:coworkParallel.settingTitle')}
+            description={t('common:coworkParallel.settingDescription')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="auto-worktree"
+                checked={autoWorktree}
+                onCheckedChange={setAutoWorktree}
               />
             }
           />

@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { errorText } from '@/lib/errorText'
+import { getServiceHub } from '@/hooks/useServiceHub'
 
 /**
  * The Flint-owned worktrees this renderer knows about.
@@ -32,7 +33,32 @@ export type WorktreeRecord = {
    * discovered after it.
    */
   uncommittedAtCreation: string[]
+  /** The branch it was based on, and the one "Merge" targets. */
+  baseBranch?: string | null
+  /**
+   * What the source checkout held that the worktree does not carry -- a
+   * rebase or merge in progress. Said, not refused.
+   */
+  notes?: string[]
+  /**
+   * `copy` for a plain folder's "Work on a copy": not a Git worktree, so the
+   * Git health check does not apply and there is no branch.
+   */
+  kind?: 'worktree' | 'copy'
 }
+
+/** Mirrors the Rust `MergeOutcome`. */
+export type MergeOutcome = {
+  merged: boolean
+  fastForward: boolean
+  alreadyMerged: boolean
+  target: string
+  newTip: string | null
+  conflicts: string[]
+  committedPending: boolean
+}
+
+export type EnsureOptions = { title?: string; base?: string }
 
 /** Mirrors the Rust `WorktreeState`. */
 export type WorktreeState =
@@ -55,8 +81,22 @@ type WorktreesState = {
   ensure: (
     sessionId: string,
     project: string,
-    dataFolder: string
+    dataFolder: string,
+    options?: EnsureOptions
   ) => Promise<EnsureOutcome>
+  /**
+   * Merge a session's branch into its base branch. Uncommitted work in the
+   * worktree is committed first only when `commitMessage` is given.
+   */
+  merge: (
+    sessionId: string,
+    dataFolder: string,
+    commitMessage?: string
+  ) => Promise<{ ok: true; outcome: MergeOutcome } | { ok: false; reason: string }>
+  /** Commits on the session's branch its base does not have. */
+  unmerged: (record: WorktreeRecord) => Promise<string[]>
+  /** Rename the session's branch after its title. */
+  rename: (sessionId: string, dataFolder: string, title: string) => Promise<void>
   check: (sessionId: string) => Promise<WorktreeState | null>
   /**
    * Remove a session's worktree.
@@ -111,16 +151,22 @@ type WorktreesState = {
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
+async function dataFolderOf(): Promise<string> {
+  return (await getServiceHub().app().getJanDataFolder()) ?? ''
+}
+
 export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
   bySession: {},
   errorBySession: {},
 
-  ensure: async (sessionId, project, dataFolder) => {
+  ensure: async (sessionId, project, dataFolder, options) => {
     try {
       const record = await invoke<WorktreeRecord>('agent_worktree_ensure', {
         dataFolder,
         sessionId,
         project,
+        title: options?.title ?? null,
+        base: options?.base ?? null,
       })
       set((s) => ({
         bySession: { ...s.bySession, [sessionId]: record },
@@ -139,9 +185,72 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     }
   },
 
+  merge: async (sessionId, dataFolder, commitMessage) => {
+    const record = get().bySession[sessionId]
+    if (!record || record.kind === 'copy')
+      return { ok: false, reason: 'no worktree for this session' }
+    try {
+      const outcome = await invoke<MergeOutcome>('agent_worktree_merge', {
+        dataFolder,
+        record,
+        target: null,
+        commitMessage: commitMessage ?? null,
+      })
+      return { ok: true, outcome }
+    } catch (e) {
+      return { ok: false, reason: messageOf(e) }
+    }
+  },
+
+  unmerged: async (record) => {
+    if (record.kind === 'copy') return []
+    try {
+      return await invoke<string[]>('agent_worktree_unmerged', { record })
+    } catch {
+      return ['(could not be listed)']
+    }
+  },
+
+  rename: async (sessionId, dataFolder, title) => {
+    const record = get().bySession[sessionId]
+    if (!record || record.kind === 'copy') return
+    try {
+      const next = await invoke<WorktreeRecord>('agent_worktree_rename', {
+        dataFolder,
+        record,
+        sessionId,
+        title,
+      })
+      // Keep what only the renderer knew (notes, base) on the renamed record.
+      set((s) =>
+        s.bySession[sessionId]
+          ? {
+              bySession: {
+                ...s.bySession,
+                [sessionId]: { ...s.bySession[sessionId], branch: next.branch },
+              },
+            }
+          : s
+      )
+    } catch {
+      // A rename is cosmetic; the branch keeps its first name.
+    }
+  },
+
   check: async (sessionId) => {
     const record = get().bySession[sessionId]
     if (!record) return null
+    if (record.kind === 'copy') {
+      try {
+        await invoke('agent_copy_changes', {
+          dataFolder: await dataFolderOf(),
+          path: record.path,
+        })
+        return 'ready'
+      } catch {
+        return 'missing'
+      }
+    }
     try {
       return await invoke<WorktreeState>('agent_worktree_state', { record })
     } catch {
@@ -154,7 +263,13 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
     const record = get().bySession[sessionId]
     if (!record) return { ok: true }
     try {
-      await invoke('agent_worktree_discard', { dataFolder, record, force })
+      if (record.kind === 'copy')
+        await invoke('agent_copy_discard', {
+          dataFolder,
+          path: record.path,
+          force,
+        })
+      else await invoke('agent_worktree_discard', { dataFolder, record, force })
     } catch (e) {
       // The refusal names what would have been destroyed, and that is the
       // whole value of it: a caller that only learned "it failed" would have
@@ -188,6 +303,17 @@ export const useCoworkWorktrees = create<WorktreesState>()((set, get) => ({
   },
 
   pending: async (record) => {
+    if (record.kind === 'copy') {
+      try {
+        const changes = await invoke<{ path: string }[]>('agent_copy_changes', {
+          dataFolder: await dataFolderOf(),
+          path: record.path,
+        })
+        return changes.map((c) => c.path)
+      } catch {
+        return ['(could not be listed)']
+      }
+    }
     try {
       return await invoke<string[]>('agent_worktree_pending', { record })
     } catch {

@@ -333,6 +333,9 @@ import {
   useCoworkWorktrees,
   type WorktreeRecord,
 } from '@/hooks/useCoworkWorktrees'
+import { useAutoSessionWorktree } from '@/hooks/useAutoSessionWorktree'
+import { useCoworkParallel } from '@/hooks/useCoworkParallel'
+import { CoworkSessionWorktreeBar } from '@/containers/CoworkSessionWorktreeBar'
 import {
   applyDecision,
   conflictKey,
@@ -683,6 +686,22 @@ function CoworkPage() {
    * nothing touched.
    */
   const treeRoot = effective.readRoot ?? folder
+
+  // Parallel sessions on one folder: a new session in a Git folder works in
+  // its own worktree and branch by default (Settings > Agent tools).
+  const autoWorktree = useAutoSessionWorktree({
+    sessionId: session?.id ?? null,
+    title: session?.title,
+    folder,
+    extraFolders,
+    access,
+    turns: session?.turns.length ?? 0,
+    capabilityKnown: capabilityState.known,
+    managedWorktreeCapable:
+      capabilityState.known && capabilityState.managedWorktree,
+    busy: running,
+    currentBinding: () => bindingRef.current,
+  })
 
   useEffect(() => {
     let cancelled = false
@@ -1736,9 +1755,14 @@ function CoworkPage() {
     try {
       const dataFolder = await serviceHub.app().getJanDataFolder()
       if (!dataFolder) return false
+      const title = useCoworkSessions
+        .getState()
+        .sessions.find((x) => x.id === sid)?.title
       const created = await useCoworkWorktrees
         .getState()
-        .ensure(sid, folder, dataFolder)
+        .ensure(sid, folder, dataFolder, {
+          title: title && title !== 'New session' ? title : undefined,
+        })
       if (!created.ok) {
         toast.error(created.reason)
         return false
@@ -5092,7 +5116,37 @@ function CoworkPage() {
               />
               {/* The pull request for the folder's branch, if it has one, with
                   the same mark the session carries in the sidebar. */}
-              <PrBar folder={folder} className="mb-2" />
+              {session?.id && folder ? (
+                <CoworkSessionWorktreeBar
+                  sessionId={session.id}
+                  title={session.title}
+                  folder={folder}
+                  record={worktree}
+                  offerCopy={
+                    autoWorktree.isGit === false &&
+                    capabilityState.known &&
+                    capabilityState.managedWorktree &&
+                    (session.turns.length ?? 0) === 0
+                  }
+                  onWorkOnCopy={autoWorktree.workOnCopy}
+                  onCreatePr={(branch, base) =>
+                    handleSubmit(
+                      t('common:coworkParallel.prPrompt', {
+                        branch,
+                        base: base || 'the default branch',
+                      })
+                    )
+                  }
+                  onDiscarded={() => {
+                    const sid = session.id
+                    void useDirectEditGrants.getState().revokeSession(sid)
+                    useCoworkWorktrees.getState().forget(sid)
+                    useCoworkSessions.getState().setAccess(sid, 'review-only')
+                    useCoworkParallel.getState().mark(sid, folder, 'skipped')
+                  }}
+                />
+              ) : null}
+              <PrBar folder={treeRoot ?? folder} className="mb-2" />
               {/* AH-209: a folder with no JAN.md is offered a starting one,
                   proposed from a survey and written only when accepted. */}
               <CoworkProjectInit
