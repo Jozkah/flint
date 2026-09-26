@@ -75,6 +75,15 @@
   "start": "Iniciar",
   "stop": "Detener",
   "preview": "Vista previa",
+  "changes": {
+    "changedIn": "Cambiado en {{folder}} · editado en el sitio",
+    "changedInPlace": "Editado en el sitio · fuera del sandbox",
+    "staleRow": "Este archivo ya no difiere. La lista estaba desactualizada y se está volviendo a leer.",
+    "scopeLabel": "Qué cambios del proyecto listar",
+    "applyHint": "Copiar este archivo del sandbox de la sesión a {{folder}} como {{path}}",
+    "applyWhere": "¿Copiar a {{path}} en {{folder}}? La copia del sandbox es {{source}}.",
+    "applyConfirm": "Copiar allí"
+  },
   "compactWidth": "Ancho compacto",
   "fullWidth": "Ancho completo",
   "dark": "Oscuro",
@@ -476,5 +485,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "También adjuntas",
+    "addFolder": "Añadir otra carpeta",
+    "removeFolder": "Quitar {{folder}}",
+    "editable": "editable",
+    "inWorktree": "mediante worktree",
+    "footnoteEditable": "Flint puede cambiar archivos de esta carpeta directamente.",
+    "footnoteWorktree": "Flint cambia un worktree de Git de esta carpeta, nunca la carpeta en sí.",
+    "writesFolder": "Las carpetas adjuntas",
+    "writesFolderNote": "Las ediciones se aplican directamente en las carpetas marcadas como editables.",
+    "writesWorktree": "Worktree de la sesión",
+    "writesWorktreeNote": "Las ediciones se hacen en un worktree de Git para que las revises y fusiones."
+  },
+  "budget": {
+    "stoppedTokens": "Detenido: esta solicitud usó su asignación de {{max}} tokens. Continuar inicia una nueva asignación.",
+    "stoppedWindow": "Detenido antes de enviar: la conversación ya no cabe en la ventana de contexto del modelo ({{detail}}). Si el modelo admite más, aumenta Max Context Tokens en la configuración del modelo del asistente; si no, inicia una nueva sesión.",
+    "compacting": "Compactando…",
+    "compactFailed": "Aún no hay nada que compactar."
+  },
+  "compaction": {
+    "divider_one": "Contexto compactado: {{count}} mensaje anterior resumido",
+    "divider_other": "Contexto compactado: {{count}} mensajes anteriores resumidos",
+    "showSummary": "Mostrar resumen",
+    "hideSummary": "Ocultar resumen",
+    "compactNow": "Compactar",
+    "compactNowHint": "Resumir los mensajes antiguos para que la conversación quepa en la ventana de contexto del modelo"
+  },
+  "readiness": {
+    "builtinsUnknown": "Se genera al iniciar la primera ejecución",
+    "tokensPending": "Se mide al iniciar la primera ejecución",
+    "tokensEstimatedAtFirstRun": "~{{count}} tokens hasta ahora ({{method}}); las definiciones de herramientas integradas se miden en la primera ejecución"
+  },
+  "queue": {
+    "edit": "Editar",
+    "remove": "Quitar",
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "drag": "Arrastra para reordenar",
+    "held": "No enviado",
+    "heldHint": "La ejecución para la que se escribió esto no lo recibió. Envíalo como siguiente mensaje o descártalo",
+    "steer": "Dirigir ahora",
+    "steerHint": "Entregarlo al agente en su siguiente paso en lugar de esperar a que termine la ejecución (Ctrl+Intro desde el editor)",
+    "steering": "Dirigiendo",
+    "steeringHint": "Llega al agente en su siguiente paso; si la ejecución termina antes, se envía como siguiente mensaje"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "El árbol de trabajo de Git de la carpeta adjunta no tenía cambios sin confirmar cuando empezó esta ejecución."
+    },
+    "nothing": "Esta ejecución no cambió ningún archivo. Los cambios de ejecuciones anteriores de esta sesión siguen listados en Revisar cambios."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "No presente"
+    }
   }
 }

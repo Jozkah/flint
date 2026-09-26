@@ -63,6 +63,15 @@
   "start": "Mulai",
   "stop": "Hentikan",
   "preview": "Pratinjau",
+  "changes": {
+    "changedIn": "Diubah di {{folder}} · diedit langsung",
+    "changedInPlace": "Diedit langsung · di luar sandbox",
+    "staleRow": "File ini tidak lagi berbeda. Daftarnya sudah usang, jadi sedang dibaca ulang.",
+    "scopeLabel": "Perubahan proyek mana yang ditampilkan",
+    "applyHint": "Salin file ini dari sandbox sesi ke {{folder}} sebagai {{path}}",
+    "applyWhere": "Salin ke {{path}} di {{folder}}? Salinan sandbox adalah {{source}}.",
+    "applyConfirm": "Salin ke sana"
+  },
   "compactWidth": "Lebar Ringkas",
   "fullWidth": "Lebar Penuh",
   "dark": "Gelap",
@@ -406,5 +415,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Juga dilampirkan",
+    "addFolder": "Tambah folder lain",
+    "removeFolder": "Hapus {{folder}}",
+    "editable": "dapat diedit",
+    "inWorktree": "melalui worktree",
+    "footnoteEditable": "Flint dapat mengubah file di folder ini secara langsung.",
+    "footnoteWorktree": "Flint mengubah git worktree dari folder ini, tidak pernah folder itu sendiri.",
+    "writesFolder": "Folder yang dilampirkan",
+    "writesFolderNote": "Editan langsung masuk ke folder yang ditandai dapat diedit.",
+    "writesWorktree": "Worktree sesi",
+    "writesWorktreeNote": "Editan masuk ke git worktree untuk Anda tinjau dan gabungkan."
+  },
+  "budget": {
+    "stoppedTokens": "Dihentikan — permintaan ini telah memakai jatah {{max}} token. Lanjutkan memulai jatah baru.",
+    "stoppedWindow": "Dihentikan sebelum dikirim: percakapan tidak lagi muat di jendela konteks model ({{detail}}). Jika model menerima lebih, naikkan Max Context Tokens di pengaturan model asisten; jika tidak, mulai sesi baru.",
+    "compacting": "Memadatkan…",
+    "compactFailed": "Belum ada yang perlu dipadatkan."
+  },
+  "compaction": {
+    "divider_one": "Konteks dipadatkan — {{count}} pesan sebelumnya diringkas",
+    "divider_other": "Konteks dipadatkan — {{count}} pesan sebelumnya diringkas",
+    "showSummary": "Tampilkan ringkasan",
+    "hideSummary": "Sembunyikan ringkasan",
+    "compactNow": "Padatkan",
+    "compactNowHint": "Ringkas pesan lama agar percakapan muat di jendela konteks model"
+  },
+  "readiness": {
+    "builtinsUnknown": "Dibuat saat run pertama dimulai",
+    "tokensPending": "Diukur saat run pertama dimulai",
+    "tokensEstimatedAtFirstRun": "~{{count}} token sejauh ini ({{method}}); definisi alat bawaan diukur saat run pertama"
+  },
+  "queue": {
+    "edit": "Edit",
+    "remove": "Hapus",
+    "moveUp": "Pindah ke atas",
+    "moveDown": "Pindah ke bawah",
+    "drag": "Seret untuk mengurutkan ulang",
+    "held": "Tidak terkirim",
+    "heldHint": "Run yang dituju pesan ini tidak mengambilnya. Kirim sebagai pesan berikutnya atau buang",
+    "steer": "Arahkan sekarang",
+    "steerHint": "Serahkan ke agen pada langkah berikutnya alih-alih menunggu run selesai (Ctrl+Enter dari kolom tulis)",
+    "steering": "Mengarahkan",
+    "steeringHint": "Diteruskan ke agen pada langkah berikutnya; jika run selesai lebih dulu, dikirim sebagai pesan berikutnya"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Working tree Git dari folder yang dilampirkan tidak memiliki perubahan yang belum di-commit saat run ini dimulai."
+    },
+    "nothing": "Run ini tidak mengubah file apa pun. Perubahan dari run sebelumnya di sesi ini tetap tercantum di Tinjau perubahan."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Tidak ada"
+    }
   }
 }

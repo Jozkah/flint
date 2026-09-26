@@ -63,6 +63,15 @@
   "start": "Démarrer",
   "stop": "Arrêter",
   "preview": "Aperçu",
+  "changes": {
+    "changedIn": "Modifié dans {{folder}} · édité sur place",
+    "changedInPlace": "Édité sur place · hors du bac à sable",
+    "staleRow": "Ce fichier ne diffère plus. La liste n'était plus à jour ; elle est en cours de relecture.",
+    "scopeLabel": "Modifications du projet à afficher",
+    "applyHint": "Copier ce fichier du bac à sable de la session vers {{folder}} sous {{path}}",
+    "applyWhere": "Copier vers {{path}} dans {{folder}} ? La copie du bac à sable est {{source}}.",
+    "applyConfirm": "Copier ici"
+  },
   "compactWidth": "Largeur compacte",
   "fullWidth": "Pleine largeur",
   "dark": "Sombre",
@@ -409,5 +418,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Également joints",
+    "addFolder": "Ajouter un autre dossier",
+    "removeFolder": "Retirer {{folder}}",
+    "editable": "modifiable",
+    "inWorktree": "via un worktree",
+    "footnoteEditable": "Flint peut modifier directement les fichiers de ce dossier.",
+    "footnoteWorktree": "Flint modifie un worktree Git de ce dossier, jamais le dossier lui-même.",
+    "writesFolder": "Les dossiers joints",
+    "writesFolderNote": "Les modifications sont appliquées directement dans les dossiers marqués modifiables.",
+    "writesWorktree": "Worktree de la session",
+    "writesWorktreeNote": "Les modifications sont faites dans un worktree Git que vous pouvez relire et fusionner."
+  },
+  "budget": {
+    "stoppedTokens": "Arrêté — cette requête a épuisé son quota de {{max}} jetons. Continuer démarre un nouveau quota.",
+    "stoppedWindow": "Arrêté avant l'envoi : la conversation ne tient plus dans la fenêtre de contexte du modèle ({{detail}}). Si le modèle accepte davantage, augmentez Max Context Tokens dans les paramètres du modèle de l'assistant ; sinon, démarrez une nouvelle session.",
+    "compacting": "Compactage…",
+    "compactFailed": "Rien à compacter pour l'instant."
+  },
+  "compaction": {
+    "divider_one": "Contexte compacté — {{count}} message précédent résumé",
+    "divider_other": "Contexte compacté — {{count}} messages précédents résumés",
+    "showSummary": "Afficher le résumé",
+    "hideSummary": "Masquer le résumé",
+    "compactNow": "Compacter",
+    "compactNowHint": "Résumer les anciens messages pour que la conversation tienne dans la fenêtre de contexte du modèle"
+  },
+  "readiness": {
+    "builtinsUnknown": "Construit au démarrage de la première exécution",
+    "tokensPending": "Mesuré au démarrage de la première exécution",
+    "tokensEstimatedAtFirstRun": "~{{count}} jetons jusqu'ici ({{method}}) ; les définitions des outils intégrés sont mesurées à la première exécution"
+  },
+  "queue": {
+    "edit": "Modifier",
+    "remove": "Retirer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "drag": "Glisser pour réordonner",
+    "held": "Non envoyé",
+    "heldHint": "L'exécution pour laquelle ce message a été saisi ne l'a pas pris. Envoyez-le comme message suivant ou supprimez-le",
+    "steer": "Orienter maintenant",
+    "steerHint": "Transmettre à l'agent à sa prochaine étape au lieu d'attendre la fin de l'exécution (Ctrl+Entrée depuis la zone de saisie)",
+    "steering": "Orientation en cours",
+    "steeringHint": "Transmis à l'agent à sa prochaine étape ; si l'exécution se termine avant, il est envoyé comme message suivant"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "L'arbre de travail Git du dossier joint n'avait aucune modification non validée au démarrage de cette exécution."
+    },
+    "nothing": "Cette exécution n'a modifié aucun fichier. Les modifications des exécutions précédentes de cette session restent listées dans Examiner les modifications."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Absent"
+    }
   }
 }

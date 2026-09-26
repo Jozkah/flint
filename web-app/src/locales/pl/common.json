@@ -63,6 +63,15 @@
   "start": "Uruchom",
   "stop": "Zatrzymaj",
   "preview": "Podgląd",
+  "changes": {
+    "changedIn": "Zmieniono w {{folder}} · edytowano w miejscu",
+    "changedInPlace": "Edytowano w miejscu · poza piaskownicą",
+    "staleRow": "Ten plik już się nie różni. Lista była nieaktualna, więc jest wczytywana ponownie.",
+    "scopeLabel": "Które zmiany projektu wyświetlić",
+    "applyHint": "Skopiuj ten plik z piaskownicy sesji do {{folder}} jako {{path}}",
+    "applyWhere": "Skopiować do {{path}} w {{folder}}? Kopia w piaskownicy to {{source}}.",
+    "applyConfirm": "Skopiuj tam"
+  },
   "compactWidth": "Zwarta Szerokość",
   "fullWidth": "Pełna Szerokość",
   "dark": "Ciemny",
@@ -406,5 +415,63 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Również dołączone",
+    "addFolder": "Dodaj kolejny folder",
+    "removeFolder": "Usuń {{folder}}",
+    "editable": "edytowalny",
+    "inWorktree": "przez worktree",
+    "footnoteEditable": "Flint może zmieniać pliki w tym folderze bezpośrednio.",
+    "footnoteWorktree": "Flint zmienia git worktree tego folderu, nigdy sam folder.",
+    "writesFolder": "Dołączone foldery",
+    "writesFolderNote": "Zmiany trafiają bezpośrednio do folderów oznaczonych jako edytowalne.",
+    "writesWorktree": "Worktree sesji",
+    "writesWorktreeNote": "Zmiany trafiają do git worktree, który możesz przejrzeć i scalić."
+  },
+  "budget": {
+    "stoppedTokens": "Zatrzymano — to żądanie wykorzystało swój limit {{max}} tokenów. Kontynuuj rozpoczyna nowy limit.",
+    "stoppedWindow": "Zatrzymano przed wysłaniem: rozmowa nie mieści się już w oknie kontekstu modelu ({{detail}}). Jeśli model przyjmie więcej, zwiększ Max Context Tokens w ustawieniach modelu asystenta; w przeciwnym razie rozpocznij nową sesję.",
+    "compacting": "Kompaktowanie…",
+    "compactFailed": "Na razie nie ma czego kompaktować."
+  },
+  "compaction": {
+    "divider_one": "Kontekst skompaktowany — podsumowano {{count}} wcześniejszą wiadomość",
+    "divider_other": "Kontekst skompaktowany — podsumowano {{count}} wcześniejszej wiadomości",
+    "showSummary": "Pokaż podsumowanie",
+    "hideSummary": "Ukryj podsumowanie",
+    "compactNow": "Kompaktuj",
+    "compactNowHint": "Podsumuj starsze wiadomości, aby rozmowa zmieściła się w oknie kontekstu modelu",
+    "divider_few": "Kontekst skompaktowany — podsumowano {{count}} wcześniejsze wiadomości",
+    "divider_many": "Kontekst skompaktowany — podsumowano {{count}} wcześniejszych wiadomości"
+  },
+  "readiness": {
+    "builtinsUnknown": "Budowane przy pierwszym uruchomieniu",
+    "tokensPending": "Mierzone przy pierwszym uruchomieniu",
+    "tokensEstimatedAtFirstRun": "Dotąd ~{{count}} tokenów ({{method}}); definicje wbudowanych narzędzi są mierzone przy pierwszym uruchomieniu"
+  },
+  "queue": {
+    "edit": "Edytuj",
+    "remove": "Usuń",
+    "moveUp": "Przenieś w górę",
+    "moveDown": "Przenieś w dół",
+    "drag": "Przeciągnij, aby zmienić kolejność",
+    "held": "Nie wysłano",
+    "heldHint": "Przebieg, dla którego to wpisano, tego nie przyjął. Wyślij to jako następną wiadomość albo odrzuć",
+    "steer": "Pokieruj teraz",
+    "steerHint": "Przekaż agentowi w jego następnym kroku zamiast czekać na koniec przebiegu (Ctrl+Enter w edytorze)",
+    "steering": "Kierowanie",
+    "steeringHint": "Trafi do agenta w jego następnym kroku; jeśli przebieg skończy się wcześniej, zostanie wysłane jako następna wiadomość"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Drzewo robocze Git dołączonego folderu nie miało niezatwierdzonych zmian w chwili rozpoczęcia tego przebiegu."
+    },
+    "nothing": "Ten przebieg nie zmienił żadnych plików. Zmiany z wcześniejszych przebiegów tej sesji pozostają na liście w Przejrzyj zmiany."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Brak"
+    }
   }
 }

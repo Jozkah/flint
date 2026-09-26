@@ -1,0 +1,7 @@
+{
+  "unresolved": {
+    "stop": {
+      "tokens": "Der Lauf wurde an einem Token-Limit gestoppt (dem Kontextfenster oder dem Kontingent der Anfrage)."
+    }
+  }
+}

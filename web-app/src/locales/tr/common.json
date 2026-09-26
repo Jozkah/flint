@@ -138,7 +138,14 @@
   "changes": {
     "title": "Ajan değişiklikleri",
     "empty": "Ajanın yazdığı veya düzenlediği dosyalar burada görünecek.",
-    "a11y": "Ajan değişiklikleri: {{files}} dosya, {{additions}} eklendi, {{deletions}} silindi"
+    "a11y": "Ajan değişiklikleri: {{files}} dosya, {{additions}} eklendi, {{deletions}} silindi",
+    "changedIn": "{{folder}} içinde değiştirildi · yerinde düzenlendi",
+    "changedInPlace": "Yerinde düzenlendi · sandbox dışında",
+    "staleRow": "Bu dosya artık farklı değil. Liste güncel değildi, yeniden okunuyor.",
+    "scopeLabel": "Hangi proje değişikliklerinin listeleneceği",
+    "applyHint": "Bu dosyayı oturum sandbox'ından {{folder}} klasörüne {{path}} olarak kopyala",
+    "applyWhere": "{{folder}} içinde {{path}} konumuna kopyalansın mı? Sandbox kopyası: {{source}}.",
+    "applyConfirm": "Oraya kopyala"
   },
   "compactWidth": "Kompakt genişlik",
   "fullWidth": "Tam genişlik",
@@ -631,6 +638,17 @@
   "artifactsShowMore": "{{count}} tane daha göster",
   "workspace": {
     "readsFrom": "Şurada çalışır",
+    "alsoAttached": "Ayrıca eklenenler",
+    "addFolder": "Başka bir klasör ekle",
+    "removeFolder": "{{folder}} kaldır",
+    "editable": "düzenlenebilir",
+    "inWorktree": "worktree üzerinden",
+    "footnoteEditable": "Flint bu klasördeki dosyaları doğrudan değiştirebilir.",
+    "footnoteWorktree": "Flint bu klasörün bir git worktree'sini değiştirir, klasörün kendisini asla.",
+    "writesFolder": "Eklenen klasörler",
+    "writesFolderNote": "Düzenlemeler doğrudan düzenlenebilir olarak işaretlenen klasörlere yazılır.",
+    "writesWorktree": "Oturum worktree'si",
+    "writesWorktreeNote": "Düzenlemeler, inceleyip birleştirmeniz için bir git worktree'sine yazılır.",
     "footnote": "Ajan bu klasörü doğrudan okur ve düzenler. Değişiklikleri fark panelinde inceleyin.",
     "footnoteEmpty": "Ajanın projeniz üzerinde çalışması için bir klasör ekleyin. İçindeki dosyaları okuyabilir ve düzenleyebilir.",
     "attach": "Bir klasör ekle",
@@ -677,9 +695,20 @@
   "budget": {
     "stoppedSteps": "{{max}} adımda durduruldu. Ajan bitiremedi.",
     "keepGoing": "Devam et",
-    "stoppedTokens": "Durduruldu — bu oturum jeton bütçesine ulaştı.",
+    "stoppedTokens": "Durduruldu — bu istek {{max}} tokenlik payını kullandı. Devam et yeni bir pay başlatır.",
+    "stoppedWindow": "Göndermeden önce durduruldu: konuşma artık modelin bağlam penceresine sığmıyor ({{detail}}). Model daha fazlasını kabul ediyorsa asistanın model ayarlarında Max Context Tokens değerini artırın; aksi halde yeni bir oturum başlatın.",
     "compact": "Kısa bağlam",
+    "compacting": "Sıkıştırılıyor…",
+    "compactFailed": "Henüz sıkıştırılacak bir şey yok.",
     "newSession": "Yeni oturum"
+  },
+  "compaction": {
+    "divider_one": "Bağlam sıkıştırıldı — {{count}} önceki mesaj özetlendi",
+    "divider_other": "Bağlam sıkıştırıldı — {{count}} önceki mesaj özetlendi",
+    "showSummary": "Özeti göster",
+    "hideSummary": "Özeti gizle",
+    "compactNow": "Sıkıştır",
+    "compactNowHint": "Konuşmanın modelin bağlam penceresine sığması için eski mesajları özetle"
   },
   "run": {
     "stopped": "Durduruldu.",
@@ -694,5 +723,34 @@
   "askSelectedCount": "{{count}} öğe seçildi",
   "askSomethingElse": "Başka bir şey sor",
   "askSomethingElsePlaceholder": "Başka ne üzerinde çalışalım?",
-  "submit": "Gönder"
+  "submit": "Gönder",
+  "readiness": {
+    "builtinsUnknown": "İlk çalıştırma başladığında oluşturulur",
+    "tokensPending": "İlk çalıştırma başladığında ölçülür",
+    "tokensEstimatedAtFirstRun": "Şimdiye kadar ~{{count}} token ({{method}}); yerleşik araç tanımları ilk çalıştırmada ölçülür"
+  },
+  "queue": {
+    "edit": "Düzenle",
+    "remove": "Kaldır",
+    "moveUp": "Yukarı taşı",
+    "moveDown": "Aşağı taşı",
+    "drag": "Yeniden sıralamak için sürükleyin",
+    "held": "Gönderilmedi",
+    "heldHint": "Bunun yazıldığı çalıştırma onu almadı. Sonraki mesaj olarak gönderin veya silin",
+    "steer": "Şimdi yönlendir",
+    "steerHint": "Çalıştırmanın bitmesini beklemek yerine bunu ajana bir sonraki adımında ilet (yazma alanında Ctrl+Enter)",
+    "steering": "Yönlendiriliyor",
+    "steeringHint": "Ajana bir sonraki adımında gider; çalıştırma önce biterse sonraki mesaj olarak gönderilir"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Bu çalıştırma başladığında eklenen klasörün Git çalışma ağacında commit edilmemiş değişiklik yoktu."
+    },
+    "nothing": "Bu çalıştırma hiçbir dosyayı değiştirmedi. Bu oturumdaki önceki çalıştırmaların değişiklikleri Değişiklikleri incele altında listelenmeye devam eder."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Yok"
+    }
+  }
 }

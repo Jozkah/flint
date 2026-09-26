@@ -1,0 +1,7 @@
+{
+  "unresolved": {
+    "stop": {
+      "tokens": "A execução parou em um limite de tokens (a janela de contexto ou a cota da solicitação)."
+    }
+  }
+}

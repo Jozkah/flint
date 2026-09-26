@@ -1,0 +1,7 @@
+{
+  "unresolved": {
+    "stop": {
+      "tokens": "L'execució s'ha aturat en un límit de tokens (la finestra de context o l'assignació de la sol·licitud)."
+    }
+  }
+}

@@ -79,6 +79,15 @@
   "start": "開始",
   "stop": "停止",
   "preview": "プレビュー",
+  "changes": {
+    "changedIn": "{{folder}} で変更 · その場で編集",
+    "changedInPlace": "その場で編集 · サンドボックス外",
+    "staleRow": "このファイルはもう差分がありません。一覧が古かったため、再読み込みしています。",
+    "scopeLabel": "表示するプロジェクトの変更",
+    "applyHint": "このファイルをセッションのサンドボックスから {{folder}} に {{path}} としてコピー",
+    "applyWhere": "{{folder}} の {{path}} にコピーしますか？サンドボックスのコピーは {{source}} です。",
+    "applyConfirm": "そこにコピー"
+  },
   "compactWidth": "コンパクト幅",
   "fullWidth": "全幅",
   "dark": "ダーク",
@@ -520,5 +529,61 @@
     "forceQuit": "強制終了",
     "forcing": "強制終了しています…",
     "shuttingDown": "シャットダウンしています…"
+  },
+  "workspace": {
+    "alsoAttached": "その他の添付",
+    "addFolder": "フォルダーを追加",
+    "removeFolder": "{{folder}} を削除",
+    "editable": "編集可",
+    "inWorktree": "worktree 経由",
+    "footnoteEditable": "Flint はこのフォルダー内のファイルを直接変更できます。",
+    "footnoteWorktree": "Flint はこのフォルダーの git worktree を変更し、フォルダー自体は変更しません。",
+    "writesFolder": "添付したフォルダー",
+    "writesFolderNote": "編集は「編集可」と表示されたフォルダーに直接反映されます。",
+    "writesWorktree": "セッションの worktree",
+    "writesWorktreeNote": "編集は git worktree に反映され、レビューしてマージできます。"
+  },
+  "budget": {
+    "stoppedTokens": "停止しました — このリクエストは {{max}} トークンの割り当てを使い切りました。「続行」で新しい割り当てが始まります。",
+    "stoppedWindow": "送信前に停止しました：会話がモデルのコンテキストウィンドウに収まりません（{{detail}}）。モデルがより多く受け付ける場合は、アシスタントのモデル設定で Max Context Tokens を増やしてください。そうでなければ新しいセッションを開始してください。",
+    "compacting": "圧縮中…",
+    "compactFailed": "まだ圧縮するものはありません。"
+  },
+  "compaction": {
+    "divider_one": "コンテキストを圧縮しました — 以前のメッセージ {{count}} 件を要約",
+    "divider_other": "コンテキストを圧縮しました — 以前のメッセージ {{count}} 件を要約",
+    "showSummary": "要約を表示",
+    "hideSummary": "要約を隠す",
+    "compactNow": "圧縮",
+    "compactNowHint": "古いメッセージを要約して、会話をモデルのコンテキストウィンドウに収めます"
+  },
+  "readiness": {
+    "builtinsUnknown": "最初の実行開始時に作成",
+    "tokensPending": "最初の実行開始時に計測",
+    "tokensEstimatedAtFirstRun": "これまで約 {{count}} トークン（{{method}}）。組み込みツールの定義は最初の実行時に計測されます"
+  },
+  "queue": {
+    "edit": "編集",
+    "remove": "削除",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動",
+    "drag": "ドラッグして並べ替え",
+    "held": "未送信",
+    "heldHint": "入力時の実行はこのメッセージを受け取りませんでした。次のメッセージとして送信するか、破棄してください",
+    "steer": "今すぐ指示",
+    "steerHint": "実行の終了を待たずに、エージェントの次のステップで渡します（入力欄で Ctrl+Enter）",
+    "steering": "指示中",
+    "steeringHint": "エージェントの次のステップで渡されます。先に実行が終わった場合は次のメッセージとして送信されます"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "この実行の開始時、添付フォルダーの Git 作業ツリーに未コミットの変更はありませんでした。"
+    },
+    "nothing": "この実行ではファイルは変更されませんでした。このセッションの以前の実行による変更は「変更を確認」に引き続き表示されます。"
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "なし"
+    }
   }
 }
