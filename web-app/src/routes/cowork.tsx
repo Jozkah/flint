@@ -1477,7 +1477,9 @@ function CoworkPage() {
   // Read-only working-tree status for the attached repo, loaded lazily and kept
   // strictly separate from the sandbox diffs above. The chip's counts combine
   // both sources so it appears whenever either has changes.
-  const git = useCoworkGitStatus(treeRoot)
+  // Re-read when a run starts or settles: a run's edits, commits and undo
+  // change the tree, and a list loaded before them contradicts its own diffs.
+  const git = useCoworkGitStatus(treeRoot, running)
 
   /**
    * Ask the backend to authorize this folder, then switch the session.

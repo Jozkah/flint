@@ -255,6 +255,7 @@
     "diffError": "Couldn't load this file's diff.",
     "binary": "Binary file — no text diff to show.",
     "noDiff": "No diff to show.",
+    "staleRow": "This file no longer differs. The list was out of date, so it is being re-read.",
     "staged": "staged",
     "unstaged": "unstaged",
     "partiallyStaged": "partially staged",

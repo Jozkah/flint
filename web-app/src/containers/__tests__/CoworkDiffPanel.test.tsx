@@ -28,7 +28,7 @@ vi.mock('@/lib/coworkGit', async (importOriginal) => {
 import { CoworkDiffPanel } from '../CoworkDiffPanel'
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
 import type { CoworkGitState } from '@/hooks/useCoworkGitStatus'
-import type { GitStatus } from '@/lib/coworkGit'
+import { loadGitFileDiff, type GitStatus } from '@/lib/coworkGit'
 
 const sandboxFiles: CoworkFileDiff[] = [
   {
@@ -184,6 +184,49 @@ describe('CoworkDiffPanel', () => {
     expect(screen.queryByTestId('diff')).toBeNull()
     await userEvent.click(screen.getByText('src/a.ts'))
     expect(await screen.findByTestId('diff')).toHaveTextContent('added by git')
+  })
+
+  it('re-reads a stale list instead of showing counts over an empty diff', async () => {
+    // The status was read while the edits were uncommitted; the agent then
+    // committed them, so the row's diff is now empty.
+    vi.mocked(loadGitFileDiff).mockResolvedValueOnce({
+      diff: '',
+      binary: false,
+      truncated: false,
+    })
+    const refresh = vi.fn()
+    const status: GitStatus = {
+      branch: 'fix/stock-change',
+      repoRoot: '/home/user/KewScraper',
+      additions: 9,
+      deletions: 7,
+      files: [
+        {
+          path: 'integrations/ingestion.go',
+          origPath: null,
+          status: 'modified',
+          staged: false,
+          unstaged: true,
+          additions: 9,
+          deletions: 7,
+          binary: false,
+        },
+      ],
+    }
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[]}
+        folder="/home/user/KewScraper"
+        git={gitWith(status, { refresh })}
+        onClose={vi.fn()}
+      />
+    )
+    await userEvent.click(screen.getByText('integrations/ingestion.go'))
+    expect(
+      await screen.findByText('common:changes.staleRow')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('common:changes.noDiff')).toBeNull()
+    expect(refresh).toHaveBeenCalledTimes(1)
   })
 
   it('reports a clean working tree for an attached repo with no changes', () => {

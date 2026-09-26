@@ -25,7 +25,15 @@ export type CoworkGitState = {
  * overwrite a newer one. `nonce` advances on each settled load, giving the
  * panel a stable key to invalidate its per-file diff cache after a refresh.
  */
-export function useCoworkGitStatus(folder: string | null): CoworkGitState {
+export function useCoworkGitStatus(
+  folder: string | null,
+  /**
+   * Re-read the status whenever this changes. The tree moves under a running
+   * agent (edits, commits, undo), and a list read before that shows counts for
+   * changes that are gone.
+   */
+  refreshKey?: unknown
+): CoworkGitState {
   const [scope, setScope] = useState<GitScope>('working')
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [loading, setLoading] = useState(false)
@@ -65,6 +73,15 @@ export function useCoworkGitStatus(folder: string | null): CoworkGitState {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  const lastKey = useRef(refreshKey)
+  useEffect(() => {
+    if (Object.is(lastKey.current, refreshKey)) return
+    lastKey.current = refreshKey
+    refresh()
+    // Only the key triggers this; folder and scope changes reload above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey])
 
   return { scope, setScope, status, loading, error, nonce, refresh }
 }
