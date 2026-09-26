@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
 import { useIsThreadActive } from '@/hooks/useAppState'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useMessages } from '@/hooks/useMessages'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
@@ -209,10 +210,13 @@ const ThreadItem = memo(
       select: (params) => params.threadId,
     })
     const isSelected = currentThreadId === thread.id
+    const awaitingApproval = useToolApprovalRequests((s) =>
+      Object.values(s.pending ?? {}).some((p) => p.threadId === thread.id)
+    )
     const status = useThreadStatus(
       thread,
       isAppStateActive || isSessionStreaming,
-      false,
+      awaitingApproval,
       { id: thread.id, selected: isSelected }
     )
 

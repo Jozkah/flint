@@ -55,6 +55,7 @@ import {
   type CoworkSession,
 } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { memo, useCallback, useState } from 'react'
@@ -302,7 +303,8 @@ const SessionItem = memo(function SessionItem({
 })
 
 /**
- * The mark before a session: working, waiting on a pull request's review, or
+ * The mark before a session: waiting on the user, working, waiting on a pull
+ * request's review, or
  * recently active. A session whose folder is on a branch with a pull request
  * shows that request's state (read through the GitHub CLI).
  */
@@ -316,11 +318,21 @@ function SessionMark({
   selected: boolean
 }) {
   const pr = usePrStatus(session.folder)
-  const recency = useThreadStatus({ updated: session.updated }, running, false, {
+  // Waiting on the user: a tool approval or a question the run asked.
+  const awaitingApproval = useToolApprovalRequests((s) =>
+    Object.values(s.pending ?? {}).some((p) => p.threadId === session.id)
+  )
+  const awaitingAnswer = useCoworkRun(
+    (s) => (s.pendingAsks[session.id]?.length ?? 0) > 0
+  )
+  const waiting = awaitingApproval || awaitingAnswer
+  const recency = useThreadStatus({ updated: session.updated }, running, waiting, {
     id: `cowork:${session.id}`,
     selected,
   })
-  const status: ThreadStatus = running
+  const status: ThreadStatus = waiting
+    ? 'wait'
+    : running
     ? 'active'
     : pr
       ? pr.state === 'open'
