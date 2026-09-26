@@ -15,7 +15,7 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **MCP you can trust.** Servers are trusted by fingerprint, not the name they chose; OAuth tokens live in the secret store and refresh ahead of expiry with declared, enforced scopes; per-server liveness, logs and budgets; a server's documents and prompts; and imported servers launched confined or not at all.
 - **Native Skills and permissions.** User-level skills in the CLI and the agent loop that declare the tools they need and their version; a permission policy as a reviewed file a project cannot loosen; write authority issued as a grant over a root; and six versioned built-in roles enforced at the call site.
 - **A headless CLI.** A JSON-lines API that streams a run's canonical events with adjustable verbosity, a persistent local log and a local-only diagnostic bundle, and a harness benchmark against a fixed task set.
-- **A redesigned interface.** A sidebar and top header in place of the rail and status bar, an Overview dashboard as the start page, a neutral Slate default accent, Inter, duotone icons, restrained motion, phone layouts, chat groups with drag and undo delete, and pull-request status in Cowork — keeping the intention-led first run, global settings search, command palette and system monitor with filterable logs.
+- **A redesigned interface.** A sidebar and top header in place of the rail and status bar, an Overview dashboard as the start page, a neutral Slate default accent, Inter, duotone icons, restrained motion, phone layouts, groups for chats, Cowork sessions and rooms that carry their folders to everything inside them, with drag and undo delete, and pull-request status in Cowork — keeping the intention-led first run, global settings search, command palette and system monitor with filterable logs.
 - **Agent SDK and slash commands.** JavaScript and Python SDK clients speak a frozen protocol v1 over JSON-RPC. A host tool contract lets a client declare tools that it runs itself. Flint's built-in tools are also available over MCP. Slash commands now work in the Home, Cowork and Rooms composers.
 - **A sandbox that can reach the network, safely.** Agent runs now have network access by default through a LAN-capable sandbox, with a toggle that policy can restrict and a native `git_clone`. A long round of security hardening covers bash rules, symlinks, secrets, `web_fetch` to private addresses and repository git config.
 - **A git tool with real approvals.** Git and `gh` run outside the sandbox through a dedicated `git` tool: reads run freely, local changes follow the session's mode, and every push, pull request, issue or repository change shows an approval naming the exact command and remote. The agent's commits and pull requests credit Flint, switchable in Settings. Repository config that would run programs is refused, and MCP tools that approve their own commands are never offered.
@@ -111,6 +111,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
 
 ### Cowork workspace
+- feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line
 - feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
 - feat(cowork): a read-only code workspace, an Activity rail, and global settings search (#1)
 - feat(cowork): make the declared coding-harness modes real (#6)
@@ -262,6 +263,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(net): record what the model was sent and where every request goes, and trust custom certificate authorities (AH-190)
 
 ### Skills, permissions and security
+- feat(sandbox): a denial inside a package cache (Go modules, Cargo registry, npm, NuGet, Maven) names the cache root, so one read grant covers every package
 - feat(skills): user-level native skills in the CLI and the agent loop, declaring the tools they need and their version (AH-040, AH-121, AH-123, AH-124)
 - feat(cowork): offer enabled plugin skills to Cowork's skill tools, and refresh on plugin changes
 - feat(agent): a plugin lifecycle with typed errors, local installs, and enable/disable
@@ -359,6 +361,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(web): truncate long tool-card details, and keep string tracking across escaped quotes in tool-argument repair
 
 ### Design, onboarding and system
+- feat(groups): group Cowork sessions and rooms as well as chats, with folders on a group that every session, chat or room created in it or moved into it inherits; joining asks whether to keep, inherit, merge or add folders, and leaving asks whether to keep them
+- feat(chat): attach folders to a chat, read by its tools and never written
 - feat(design): a new interface design, replacing the Graphite and Atelier redesigns (#15, #11): a 250px sidebar (Workspace, Engine, Chats, Support) beside a main panel with a 52px top header and breadcrumb, and a local-status card in the sidebar footer
 - feat(design): new colour tokens, a neutral Slate default accent, a Violet accent and Inter as the interface font, with a derived, contrast-checked accent; a saved Vermilion accent moves to Slate once
 - feat(design): theme, accent, font size and motion apply before first paint (no white flash in dark mode), and a new start-up loader follows the theme and Reduce motion
