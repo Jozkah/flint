@@ -897,6 +897,37 @@ describe('run guards', () => {
     expect(out.steps).toBeLessThan(50)
   })
 
+  it('lets a success end a tool’s failure streak when it reports no isError', async () => {
+    // A session's gh calls failed five times with successes in between, and
+    // the run was stopped for "git failed 5 times in a row": a successful
+    // outcome leaves isError unset, and the streak skipped it as unknown.
+    const call = (n: number): UIMessageChunk[] => [
+      { type: 'tool-input-start', toolCallId: `c${n}`, toolName: 'git' } as UIMessageChunk,
+      {
+        type: 'tool-input-available',
+        toolCallId: `c${n}`,
+        toolName: 'git',
+        input: { args: ['issue', 'view', String(n)] },
+      } as UIMessageChunk,
+    ]
+    const steps = Array.from({ length: 10 }, (_, n) => call(n))
+    let n = 0
+    const d = deps(
+      [...steps, textStep('done')],
+      vi.fn(async (): Promise<ToolOutcome> =>
+        // fail, ok, fail, ok, ... -- never two failures in a row.
+        n++ % 2 === 0 ? { output: `ERROR ${n}`, isError: true } : { output: 'ok' }
+      )
+    )
+    const out = await runTurn({
+      messages: [user('hi')],
+      deps: d,
+      signal: new AbortController().signal,
+      maxSteps: 50,
+    })
+    expect(out.stoppedBy).toBe('done')
+  })
+
   it('does not call a stop by the user a timeout', async () => {
     const controller = new AbortController()
     const d = deps([textStep('done')])

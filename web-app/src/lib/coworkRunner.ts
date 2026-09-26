@@ -1080,7 +1080,10 @@ export async function runTurn(opts: {
       observed.push({
         tool: call.toolName,
         input: call.input,
-        failed: outcome.isError,
+        // Settled either way: a success leaves `isError` unset, and the guard
+        // reads `undefined` as "not known", which would let failures on
+        // either side of a success count as a streak.
+        failed: outcome.isError === true,
         error: outcome.isError ? outcome.output : undefined,
         path: pathOf(call.input),
         after: outcome.diff,
