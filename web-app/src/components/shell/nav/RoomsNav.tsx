@@ -41,7 +41,7 @@ import {
 import type { RoomSummary } from '@/lib/rooms/types'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
@@ -50,10 +50,7 @@ import { roomNavStatus } from '@/lib/rooms/navStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
 import { roomFolderAdapter } from '@/lib/groups/adapters'
-import { addNewItemToGroup, type FolderAdapter } from '@/lib/groups/inherit'
-
-/** A room created from a group's "+" within this long joins that group. */
-const PENDING_GROUP_MS = 10 * 60 * 1000
+import type { FolderAdapter } from '@/lib/groups/inherit'
 
 const RoomItem = memo(function RoomItem({
   room,
@@ -181,31 +178,13 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
   }, [api])
 
   const adapter = useMemo(() => roomFolderAdapter(api), [api])
-  // "+" on a group opens the create dialog; the room that appears next joins
-  // the group and inherits its folder.
-  const pendingGroup = useRef<{
-    groupId: string
-    known: Set<string>
-    at: number
-  } | null>(null)
-  useEffect(() => {
-    const pending = pendingGroup.current
-    if (!pending) return
-    if (Date.now() - pending.at > PENDING_GROUP_MS) {
-      pendingGroup.current = null
-      return
-    }
-    const created = summaries.find((r) => !pending.known.has(r.id))
-    if (!created) return
-    pendingGroup.current = null
-    void addNewItemToGroup('rooms', created.id, pending.groupId, adapter)
-  }, [summaries, adapter])
   const newRoom = (groupId?: string) => {
-    pendingGroup.current = groupId
-      ? { groupId, known: new Set(summaries.map((r) => r.id)), at: Date.now() }
-      : null
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    navigate({ to: route.rooms, search: { new: 1 } as any })
+    // The create dialog puts the new room in the group itself.
+    navigate({
+      to: route.rooms,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      search: (groupId ? { new: 1, group: groupId } : { new: 1 }) as any,
+    })
   }
   const roomIds = useMemo(() => summaries.map((r) => r.id), [summaries])
   const byId = useMemo(
