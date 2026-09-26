@@ -589,5 +589,12 @@
     "deleteKeep": "Conservar su worktree y rama ({{name}})",
     "deleteRemove": "Eliminar también su worktree y rama ({{name}})"
   },
-  "modelUnavailable": "{{model}} (no disponible)"
+  "modelUnavailable": "{{model}} (no disponible)",
+  "paramSearch": {
+    "addParameter": "Añadir parámetro",
+    "placeholder": "Buscar parámetros",
+    "noMatches": "Ningún parámetro coincide",
+    "noneForProvider": "Este proveedor no tiene parámetros ajustables.",
+    "maybeUnsupported": "Puede que {{providers}} no lo admita"
+  }
 }

@@ -520,5 +520,12 @@
     "deleteKeep": "Manter worktree e branch ({{name}})",
     "deleteRemove": "Remover também worktree e branch ({{name}})"
   },
-  "modelUnavailable": "{{model}} (indisponível)"
+  "modelUnavailable": "{{model}} (indisponível)",
+  "paramSearch": {
+    "addParameter": "Adicionar parâmetro",
+    "placeholder": "Buscar parâmetros",
+    "noMatches": "Nenhum parâmetro corresponde",
+    "noneForProvider": "Nenhum parâmetro ajustável para este provedor.",
+    "maybeUnsupported": "Pode não ser compatível com {{providers}}"
+  }
 }

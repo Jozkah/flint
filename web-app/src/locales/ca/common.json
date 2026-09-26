@@ -521,5 +521,12 @@
     "deleteKeep": "Conserva el seu worktree i branca ({{name}})",
     "deleteRemove": "Elimina també el seu worktree i branca ({{name}})"
   },
-  "modelUnavailable": "{{model}} (no disponible)"
+  "modelUnavailable": "{{model}} (no disponible)",
+  "paramSearch": {
+    "addParameter": "Afegeix paràmetre",
+    "placeholder": "Cerca paràmetres",
+    "noMatches": "Cap paràmetre coincideix",
+    "noneForProvider": "Aquest proveïdor no té paràmetres ajustables.",
+    "maybeUnsupported": "Pot ser que {{providers}} no ho admeti"
+  }
 }

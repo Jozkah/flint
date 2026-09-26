@@ -633,5 +633,12 @@
     "deleteKeep": "worktree とブランチを残す ({{name}})",
     "deleteRemove": "worktree とブランチ ({{name}}) も削除する"
   },
-  "modelUnavailable": "{{model}}（利用不可）"
+  "modelUnavailable": "{{model}}（利用不可）",
+  "paramSearch": {
+    "addParameter": "パラメーターを追加",
+    "placeholder": "パラメーターを検索",
+    "noMatches": "一致するパラメーターはありません",
+    "noneForProvider": "このプロバイダーには調整可能なパラメーターがありません。",
+    "maybeUnsupported": "{{providers}} ではサポートされていない可能性があります"
+  }
 }

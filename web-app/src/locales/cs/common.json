@@ -521,5 +521,12 @@
     "deleteKeep": "Ponechat worktree a větev ({{name}})",
     "deleteRemove": "Odstranit i worktree a větev ({{name}})"
   },
-  "modelUnavailable": "{{model}} (nedostupný)"
+  "modelUnavailable": "{{model}} (nedostupný)",
+  "paramSearch": {
+    "addParameter": "Přidat parametr",
+    "placeholder": "Hledat parametry",
+    "noMatches": "Žádné parametry neodpovídají",
+    "noneForProvider": "Tento poskytovatel nemá žádné nastavitelné parametry.",
+    "maybeUnsupported": "Nemusí být podporováno poskytovatelem {{providers}}"
+  }
 }

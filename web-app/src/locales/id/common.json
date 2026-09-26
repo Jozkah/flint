@@ -519,5 +519,12 @@
     "deleteKeep": "Simpan worktree dan branch-nya ({{name}})",
     "deleteRemove": "Hapus juga worktree dan branch-nya ({{name}})"
   },
-  "modelUnavailable": "{{model}} (tidak tersedia)"
+  "modelUnavailable": "{{model}} (tidak tersedia)",
+  "paramSearch": {
+    "addParameter": "Tambah parameter",
+    "placeholder": "Cari parameter",
+    "noMatches": "Tidak ada parameter yang cocok",
+    "noneForProvider": "Tidak ada parameter yang dapat diatur untuk penyedia ini.",
+    "maybeUnsupported": "Mungkin tidak didukung oleh {{providers}}"
+  }
 }

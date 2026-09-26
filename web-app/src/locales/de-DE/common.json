@@ -519,5 +519,12 @@
     "deleteKeep": "Worktree und Branch behalten ({{name}})",
     "deleteRemove": "Worktree und Branch ({{name}}) ebenfalls entfernen"
   },
-  "modelUnavailable": "{{model}} (nicht verfügbar)"
+  "modelUnavailable": "{{model}} (nicht verfügbar)",
+  "paramSearch": {
+    "addParameter": "Parameter hinzufügen",
+    "placeholder": "Parameter suchen",
+    "noMatches": "Keine passenden Parameter",
+    "noneForProvider": "Keine einstellbaren Parameter für diesen Anbieter.",
+    "maybeUnsupported": "Wird von {{providers}} möglicherweise nicht unterstützt"
+  }
 }

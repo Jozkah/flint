@@ -800,5 +800,12 @@
     "deleteKeep": "Worktree'sini ve dalını koru ({{name}})",
     "deleteRemove": "Worktree'sini ve dalını ({{name}}) da kaldır"
   },
-  "modelUnavailable": "{{model}} (kullanılamıyor)"
+  "modelUnavailable": "{{model}} (kullanılamıyor)",
+  "paramSearch": {
+    "addParameter": "Parametre ekle",
+    "placeholder": "Parametre ara",
+    "noMatches": "Eşleşen parametre yok",
+    "noneForProvider": "Bu sağlayıcı için ayarlanabilir parametre yok.",
+    "maybeUnsupported": "{{providers}} tarafından desteklenmeyebilir"
+  }
 }

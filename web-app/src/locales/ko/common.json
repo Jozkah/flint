@@ -588,5 +588,12 @@
     "deleteKeep": "worktree와 브랜치 유지 ({{name}})",
     "deleteRemove": "worktree와 브랜치({{name}})도 제거"
   },
-  "modelUnavailable": "{{model}} (사용할 수 없음)"
+  "modelUnavailable": "{{model}} (사용할 수 없음)",
+  "paramSearch": {
+    "addParameter": "매개변수 추가",
+    "placeholder": "매개변수 검색",
+    "noMatches": "일치하는 매개변수가 없습니다",
+    "noneForProvider": "이 공급자에는 조정 가능한 매개변수가 없습니다.",
+    "maybeUnsupported": "{{providers}}에서 지원되지 않을 수 있습니다"
+  }
 }
