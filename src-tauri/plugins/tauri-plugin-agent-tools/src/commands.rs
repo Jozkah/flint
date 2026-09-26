@@ -109,6 +109,7 @@ struct RetryCall {
     call_id: Option<String>,
     undo_run: Option<String>,
     actor: Option<ActorInput>,
+    extra_projects: Option<Vec<String>>,
 }
 
 fn retry_offers() -> &'static crate::unsandboxed_retry::Offers<RetryCall> {
@@ -963,6 +964,7 @@ pub async fn execute_tool_unsandboxed_retry(
         call.call_id,
         call.undo_run,
         call.actor,
+        call.extra_projects,
         None,
         true,
     )
@@ -1027,6 +1029,7 @@ async fn execute_tool_inner(
         call_id: call_id.clone(),
         undo_run: undo_run.clone(),
         actor: actor.clone(),
+        extra_projects: extra_projects.clone(),
     });
     // Refused before the tool runs, not after it has changed a file: a call
     // that cannot say who it is acting for must not leave a change that will
