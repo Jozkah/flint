@@ -147,6 +147,32 @@ describe('mailbox delivery', () => {
     expect(q('A')[0].held).toBe(true)
   })
 
+  it('auto-wakes a session open in a split-view pane, not only the current one', async () => {
+    const { useSplitConversation } = await import(
+      '@/hooks/useSplitConversation'
+    )
+    useSplitConversation.setState({ panes: [], sizes: [1] })
+    try {
+      useSessionMessaging.getState().setAutoWake('B', true)
+      fake.envelope('B', 'b1')
+      await delivery.onEvent({ sessionId: 'B', messageId: 'b1' })
+      expect(q('B')[0].held).toBe(true)
+      // Opening B in a pane beside A brings it into view.
+      useSplitConversation.getState().addPane({ kind: 'cowork', refId: 'B' })
+      expect(useCoworkSessions.getState().currentId).toBe('A')
+      expect(q('B')[0].held).toBe(false)
+      await flush()
+      expect(fake.state.b1).toBe('delivered')
+
+      // Mail arriving while B is already in its pane wakes it too.
+      fake.envelope('B', 'b2')
+      await delivery.onEvent({ sessionId: 'B', messageId: 'b2' })
+      expect(q('B').find((m) => m.id === 'mail:b2')?.held).toBe(false)
+    } finally {
+      useSplitConversation.setState({ panes: [], sizes: [1] })
+    }
+  })
+
   it('does not auto-wake on a reply while the last run was itself a wake-up', async () => {
     useSessionMessaging.getState().setAutoWake('A', true)
     // A wake-up released mail; the run it started is marked as a wake.
