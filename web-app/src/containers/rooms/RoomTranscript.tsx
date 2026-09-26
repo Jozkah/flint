@@ -24,6 +24,7 @@ import {
 } from './roomUi'
 import { RoomMessageText } from './RoomMessageText'
 import { RoomAvatar } from './RoomAvatar'
+import { CompactionDivider } from '@/containers/CompactionDivider'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -450,6 +451,13 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
         {messages.map((m) => {
           const toUser = m.to.kind === 'user'
           const chip = addressLabel(m.to, room, t)
+          if (m.kind === 'system' && m.compaction) {
+            return (
+              <div key={m.id} data-testid="room-message" data-kind="compaction">
+                <CompactionDivider record={m.compaction} />
+              </div>
+            )
+          }
           if (m.kind === 'system') {
             return (
               <div

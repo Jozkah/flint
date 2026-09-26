@@ -106,6 +106,17 @@ export type EngineDeps = {
   summarize?: SummarizeFn
   lookupProvider?: ProviderLookup
   contextWindow?: (model: RoomModelRef) => number
+  /**
+   * The compaction settings in force (`lib/compaction.ts`): whether older
+   * history is summarized (off: it is left out, as a trim), the threshold, and
+   * the user's own window, which wins over the model's reported one. Absent:
+   * summarized at the default threshold.
+   */
+  compaction?: () => {
+    enabled: boolean
+    threshold?: number
+    window?: number | null
+  }
   /** Backoff wait; resolves false when aborted. */
   sleep?: (ms: number, signal: AbortSignal) => Promise<boolean>
   random?: () => number
@@ -271,6 +282,8 @@ class RoomRun {
   }
 
   contextWindow(model: RoomModelRef): number {
+    const userSet = this.deps.compaction?.().window
+    if (userSet != null && userSet > 0) return userSet
     return this.deps.contextWindow?.(model) ?? contextWindowFor(model, this.lookup)
   }
 
@@ -411,6 +424,7 @@ class RoomRun {
     instruction: string | null,
     shrink: boolean
   ): Promise<BuiltPrompt> {
+    const compaction = this.deps.compaction?.() ?? { enabled: true }
     const built = await buildPrompt({
       room: this.room,
       messages: this.messages,
@@ -419,10 +433,32 @@ class RoomRun {
       contextWindow: this.contextWindow(model),
       maxOutputTokens: this.maxOutputTokens(),
       shrink,
-      summaryCache: this.summaryCache,
-      summarize: (older) => this.summarizeOlder(older, model),
+      threshold: compaction.threshold,
+      // Auto Compact off: older history is left out rather than summarized.
+      ...(compaction.enabled
+        ? {
+            summaryCache: this.summaryCache,
+            summarize: (older: RoomMessage[]) => this.summarizeOlder(older, model),
+          }
+        : {}),
     })
-    if (built.trimmed && !this.droppedNoted) {
+    // Each new summary is a divider in the transcript, expandable to the
+    // summary; journaled, so it is still there after a reload.
+    if (built.trimmed?.kind === 'summarized' && built.trimmed.fresh && built.trimmed.summary) {
+      this.droppedNoted = true
+      const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
+      await this.appendMessage(
+        this.message({
+          author: { kind: 'system' },
+          kind: 'system',
+          text: `The discussion outgrew ${who}'s context window, so the oldest ${built.trimmed.count} message(s) were compacted into a summary.`,
+          compaction: {
+            summarizedCount: built.trimmed.count,
+            summary: truncate(built.trimmed.summary),
+          },
+        })
+      )
+    } else if (built.trimmed && !this.droppedNoted) {
       this.droppedNoted = true
       const who = speaker.kind === 'participant' ? speaker.participant.name : 'the moderator'
       await this.system(

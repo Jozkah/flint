@@ -27,6 +27,7 @@ import {
   type RoomPersistence,
 } from './persistence'
 import { useRoomsStore } from './store'
+import { roomCompactionSettings } from './compactionSettings'
 import type { StreamReply } from './callError'
 import {
   DEFAULT_ROOM_LIMITS,
@@ -105,6 +106,7 @@ export type ControllerDeps = {
   newId?: () => string
   lookupProvider?: ProviderLookup
   contextWindow?: EngineDeps['contextWindow']
+  compaction?: EngineDeps['compaction']
   sleep?: EngineDeps['sleep']
   store?: typeof useRoomsStore
 }
@@ -205,6 +207,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     newId,
     lookupProvider: lookup,
     contextWindow: deps.contextWindow,
+    compaction: deps.compaction ?? roomCompactionSettings,
     sleep: deps.sleep,
     onUpdate: (u) => store().applyEngineUpdate(u),
   })

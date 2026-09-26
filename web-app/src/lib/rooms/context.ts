@@ -6,6 +6,7 @@
  */
 import { todayLine } from '@/lib/promptSafety'
 import { estimateTokens } from '@/lib/context-manager'
+import { DEFAULT_COMPACT_THRESHOLD, thresholdTokens } from '@/lib/compaction'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
@@ -252,7 +253,16 @@ export function fitNewest(
   return { kept: entries.slice(i), dropped: entries.slice(0, i) }
 }
 
-export type TrimNote = { kind: 'summarized' | 'dropped'; count: number } | null
+export type TrimNote =
+  | {
+      kind: 'summarized' | 'dropped'
+      count: number
+      /** The summary in force, when there is one. */
+      summary?: string
+      /** Written for this prompt rather than reused from the cache. */
+      fresh?: boolean
+    }
+  | null
 
 export type BuiltPrompt = {
   system: string
@@ -278,6 +288,11 @@ export type BuildPromptInput = {
   summarize?: (older: RoomMessage[]) => Promise<string | null>
   /** Summaries cached for the run, keyed by the newest summarised message. */
   summaryCache?: Map<string, string>
+  /**
+   * Share of the window at which older history is compacted, the same
+   * threshold Chat and Cowork use (`lib/compaction.ts`). Absent: the default.
+   */
+  threshold?: number
 }
 
 /** The most of a room prompt the skill catalog may take, in characters. Same
@@ -346,7 +361,16 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
   system = `${system}\n\n${todayLine()}`
   const cue = turnCue(input.room, input.speaker, input.instruction)
   const fixed = estimateTokens(system) + estimateTokens(cue) + SAFETY_MARGIN_TOKENS
-  let budget = Math.max(0, window - input.maxOutputTokens - fixed)
+  // History is compacted once the prompt would cross the threshold of the
+  // window, not only once it would overflow it: a summary written then still
+  // has room to be written in, and the reply still has room to be given.
+  let budget = Math.max(
+    0,
+    Math.min(
+      window - input.maxOutputTokens - fixed,
+      thresholdTokens(window, input.threshold ?? DEFAULT_COMPACT_THRESHOLD) - fixed
+    )
+  )
   if (input.shrink) budget = Math.floor(budget / 2)
 
   const entries = projectHistory(input.room, input.messages, input.speaker)
@@ -359,7 +383,9 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
   if (dropped.length > 0) {
     const key = `${dropped[dropped.length - 1].source.id}${input.shrink ? ':shrink' : ''}`
     let summary = input.summaryCache?.get(key) ?? null
+    let fresh = false
     if (summary == null && input.summarize) {
+      fresh = true
       try {
         summary = await input.summarize(dropped.map((d) => d.source))
       } catch (e) {
@@ -378,7 +404,12 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
       const refit = fitNewest(kept, Math.max(0, budget - tokens))
       kept = refit.kept
       summaryMessage = { role: 'user', content }
-      trimmed = { kind: 'summarized', count: dropped.length + refit.dropped.length }
+      trimmed = {
+        kind: 'summarized',
+        count: dropped.length + refit.dropped.length,
+        summary: summary.trim(),
+        fresh,
+      }
     } else {
       trimmed = { kind: 'dropped', count: dropped.length }
     }

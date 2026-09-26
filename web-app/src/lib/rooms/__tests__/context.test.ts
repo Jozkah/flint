@@ -211,6 +211,35 @@ describe('context projection', () => {
     expect(summarize).toHaveBeenCalledTimes(1)
   })
 
+  it('marks a summary written for this prompt as fresh, and a cached one not', async () => {
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(20)}` }))
+    const cache = new Map<string, string>()
+    const input = {
+      room,
+      messages,
+      speaker: bob,
+      contextWindow: 2000,
+      maxOutputTokens: 256,
+      summarize: async () => 'S',
+      summaryCache: cache,
+    }
+    const first = await buildPrompt(input)
+    expect(first.trimmed).toMatchObject({ kind: 'summarized', fresh: true, summary: 'S' })
+    const again = await buildPrompt(input)
+    expect(again.trimmed).toMatchObject({ kind: 'summarized', fresh: false })
+  })
+
+  it('compacts at the threshold of the window, before the window is full', async () => {
+    // About 4,300 tokens of history in a 6,000-token window: it fits the
+    // window (with 256 for the reply) but crosses 80% of it.
+    const messages = Array.from({ length: 30 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(40)}` }))
+    const summarize = vi.fn(async () => 'S')
+    const atDefault = await buildPrompt({ room, messages, speaker: bob, contextWindow: 6000, maxOutputTokens: 256, summarize })
+    expect(atDefault.trimmed?.kind).toBe('summarized')
+    const lax = await buildPrompt({ room, messages, speaker: bob, contextWindow: 6000, maxOutputTokens: 256, summarize, threshold: 1 })
+    expect(lax.trimmed).toBeNull()
+  })
+
   it('drops oldest messages when summarisation fails', async () => {
     const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(20)}` }))
     const built = await buildPrompt({
