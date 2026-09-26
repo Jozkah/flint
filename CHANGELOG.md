@@ -323,6 +323,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(chat): per-chat model settings and a reasoning-effort bar (#2)
 - feat(chat): temporary chat lifecycle — keep, discard, and a leave guard (#3)
 - feat(chat): split a conversation into two independent panes, with a Details inspector
+- feat(split): split view holds up to four panes (configurable) — Chat threads, Cowork sessions and a room side by side, opened from any row's menu, the header's Split button or Ctrl+\, switched with Ctrl+Alt+Left/Right, resizable, turning into tabs when the window is narrow, and restored after a restart
 - feat(chat): attach text and code without asking the model to see it
 - feat(composer): one @ menu for files, skills, agents and aliases, and name a selection as an alias
 - feat(web-search): native `web_search` / `web_fetch` tooling and provider improvements

@@ -26,6 +26,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
+  Columns2,
   DoorOpen,
   MoreHorizontal,
   Plus,
@@ -43,6 +44,7 @@ import { memo, useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
+import { openInSplit, reportSplitResult } from '@/lib/splitView'
 import { roomNavStatus } from '@/lib/rooms/navStatus'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
@@ -112,6 +114,15 @@ const RoomItem = memo(function RoomItem({
           <DropdownMenuItem onSelect={() => onSelect(room.id)}>
             <DoorOpen />
             <span>{t('common:open')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            data-testid="open-room-in-split"
+            onSelect={() =>
+              reportSplitResult(openInSplit({ kind: 'room', refId: room.id }), t)
+            }
+          >
+            <Columns2 />
+            <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

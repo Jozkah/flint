@@ -83,7 +83,16 @@
     "search": "Ara",
     "searchDesc": "Arama iletişim kutusunu açın.",
     "goToSettings": "Ayarlara Git",
-    "goToSettingsDesc": "Ayarları açın."
+    "goToSettingsDesc": "Ayarları açın.",
+    "splitViewSection": "Bölünmüş görünüm",
+    "splitView": "Bölünmüş görünüm",
+    "splitViewDesc": "Ekrandaki konuşmanın yanında başka bir konuşma açın.",
+    "maxPanes": "Bölünmüş görünümdeki bölmeler",
+    "maxPanesDesc": "Bölünmüş görünümün aynı anda kaç konuşma gösterdiği, ana konuşma dahil.",
+    "nextPane": "Sonraki bölme",
+    "nextPaneDesc": "Bölünmüş görünümde sonraki bölmeye geç.",
+    "previousPane": "Önceki bölme",
+    "previousPaneDesc": "Bölünmüş görünümde önceki bölmeye geç."
   },
   "interface": {
     "title": "Arayüz",

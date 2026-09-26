@@ -81,7 +81,16 @@
     "search": "Buscar",
     "searchDesc": "Abrir el diálogo de búsqueda.",
     "goToSettings": "Ir a Configuración",
-    "goToSettingsDesc": "Abrir configuración."
+    "goToSettingsDesc": "Abrir configuración.",
+    "splitViewSection": "Vista dividida",
+    "splitView": "Vista dividida",
+    "splitViewDesc": "Abrir otra conversación junto a la que está en pantalla.",
+    "maxPanes": "Paneles en la vista dividida",
+    "maxPanesDesc": "Cuántas conversaciones muestra a la vez la vista dividida, incluida la principal.",
+    "nextPane": "Panel siguiente",
+    "nextPaneDesc": "Ir al panel siguiente de la vista dividida.",
+    "previousPane": "Panel anterior",
+    "previousPaneDesc": "Ir al panel anterior de la vista dividida."
   },
   "interface": {
     "title": "Interfaz",

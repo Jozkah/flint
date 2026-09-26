@@ -77,7 +77,16 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Nawigacja",
     "goToSettings": "Przejdź do Ustawień",
-    "goToSettingsDesc": "Otwórz ustawienia."
+    "goToSettingsDesc": "Otwórz ustawienia.",
+    "splitViewSection": "Widok podzielony",
+    "splitView": "Widok podzielony",
+    "splitViewDesc": "Otwórz kolejną rozmowę obok tej na ekranie.",
+    "maxPanes": "Panele w widoku podzielonym",
+    "maxPanesDesc": "Ile rozmów widok podzielony pokazuje naraz, łącznie z główną.",
+    "nextPane": "Następny panel",
+    "nextPaneDesc": "Przejdź do następnego panelu widoku podzielonego.",
+    "previousPane": "Poprzedni panel",
+    "previousPaneDesc": "Przejdź do poprzedniego panelu widoku podzielonego."
   },
   "interface": {
     "title": "Wygląd",

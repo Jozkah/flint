@@ -77,7 +77,16 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Navigation",
     "goToSettings": "Gehe zu den Einstellungen",
-    "goToSettingsDesc": "Einstellungen öffnen."
+    "goToSettingsDesc": "Einstellungen öffnen.",
+    "splitViewSection": "Geteilte Ansicht",
+    "splitView": "Geteilte Ansicht",
+    "splitViewDesc": "Eine weitere Unterhaltung neben der aktuellen öffnen.",
+    "maxPanes": "Bereiche in der geteilten Ansicht",
+    "maxPanesDesc": "Wie viele Unterhaltungen die geteilte Ansicht gleichzeitig zeigt, die Hauptunterhaltung eingeschlossen.",
+    "nextPane": "Nächster Bereich",
+    "nextPaneDesc": "Zum nächsten Bereich der geteilten Ansicht wechseln.",
+    "previousPane": "Vorheriger Bereich",
+    "previousPaneDesc": "Zum vorherigen Bereich der geteilten Ansicht wechseln."
   },
   "interface": {
     "title": "Erscheinungsbild",

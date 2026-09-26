@@ -1,5 +1,6 @@
 import {
   Check,
+  Columns2,
   Copy,
   Folder,
   MoreHorizontal,
@@ -46,6 +47,7 @@ import {
 } from '@/components/ui/hover-card'
 import { useDraggable } from '@dnd-kit/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { openInSplit, reportSplitResult } from '@/lib/splitView'
 import { memo, useMemo, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
@@ -391,6 +393,18 @@ const ThreadItem = memo(
               </DropdownMenuSubContent>
             </DropdownMenuSub>
             <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid="open-thread-in-split"
+              onSelect={() =>
+                reportSplitResult(
+                  openInSplit({ kind: 'chat', refId: thread.id }),
+                  t
+                )
+              }
+            >
+              <Columns2 className="size-4" />
+              <span>{t('chat:split.openInSplit')}</span>
+            </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => {
                 void navigator.clipboard?.writeText(thread.id)

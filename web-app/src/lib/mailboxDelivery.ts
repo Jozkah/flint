@@ -24,6 +24,7 @@
  *
  * Nothing here reads or writes approvals, grants or policy.
  */
+import { useSplitConversation } from '@/hooks/useSplitConversation'
 import {
   sessionMailbox,
   wrapForModel,
@@ -152,6 +153,17 @@ export async function dequeueClaimedReady(
  * claim answers, the message goes back to the front of its own queue, still
  * ready and recorded as claimed, and is sent when `sid` is next in view.
  */
+/**
+ * A session is in view when it is the current Cowork session or is open in a
+ * split-view pane.
+ */
+export function isSessionInView(sid: string): boolean {
+  if (useCoworkSessions.getState().currentId === sid) return true
+  return useSplitConversation
+    .getState()
+    .panes.some((p) => p.kind === 'cowork' && p.refId === sid)
+}
+
 export async function drainIdleSession(
   sid: string,
   run: (text: string, from?: QueuedMessageSender) => void,
@@ -159,7 +171,7 @@ export async function drainIdleSession(
 ): Promise<void> {
   const next = await dequeueClaimedReady(sid, mailbox)
   if (!next) return
-  if (useCoworkSessions.getState().currentId !== sid) {
+  if (!isSessionInView(sid)) {
     if (next.from) preclaimed.add(next.from.messageId)
     useMessageQueue.setState((state) => ({
       queues: { ...state.queues, [sid]: [next, ...(state.queues[sid] ?? [])] },
@@ -240,7 +252,7 @@ export function createMailboxDelivery(
   const applyAutoWake = (sid: string) => {
     const { autoWake, lastRunWasWake } = useSessionMessaging.getState()
     if (!autoWake[sid]) return
-    if (useCoworkSessions.getState().currentId !== sid) return
+    if (!isSessionInView(sid)) return
     if (isRunning(sid)) return
     let released = false
     for (const m of queueOf(sid)) {
@@ -342,6 +354,17 @@ export function createMailboxDelivery(
         applyAutoWake(state.currentId)
       }
     })
+    // A session opened in a split-view pane comes into view too.
+    const offPanes = useSplitConversation.subscribe((state, prev) => {
+      if (state.panes === prev.panes) return
+      for (const p of state.panes) {
+        if (p.kind !== 'cowork' || !p.refId) continue
+        const before = prev.panes.some(
+          (q) => q.kind === 'cowork' && q.refId === p.refId
+        )
+        if (!before) applyAutoWake(p.refId)
+      }
+    })
     const offSettings = useSessionMessaging.subscribe((state, prev) => {
       if (state.autoWake === prev.autoWake) return
       for (const sid of Object.keys(state.autoWake)) {
@@ -352,6 +375,7 @@ export function createMailboxDelivery(
       offQueue()
       offRuns()
       offFocus()
+      offPanes()
       offSettings()
     }
   }

@@ -83,7 +83,16 @@
     "search": "検索",
     "searchDesc": "検索ダイアログを開きます。",
     "goToSettings": "設定に移動",
-    "goToSettingsDesc": "設定を開きます。"
+    "goToSettingsDesc": "設定を開きます。",
+    "splitViewSection": "分割ビュー",
+    "splitView": "分割ビュー",
+    "splitViewDesc": "表示中の会話の横に別の会話を開きます。",
+    "maxPanes": "分割ビューのペイン数",
+    "maxPanesDesc": "分割ビューで同時に表示する会話の数（メインを含む）。",
+    "nextPane": "次のペイン",
+    "nextPaneDesc": "分割ビューの次のペインへ移動します。",
+    "previousPane": "前のペイン",
+    "previousPaneDesc": "分割ビューの前のペインへ移動します。"
   },
   "interface": {
     "title": "外観",

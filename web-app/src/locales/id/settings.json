@@ -77,7 +77,16 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Navigasi",
     "goToSettings": "Buka Pengaturan",
-    "goToSettingsDesc": "Buka pengaturan."
+    "goToSettingsDesc": "Buka pengaturan.",
+    "splitViewSection": "Tampilan terbagi",
+    "splitView": "Tampilan terbagi",
+    "splitViewDesc": "Buka percakapan lain di samping yang ada di layar.",
+    "maxPanes": "Panel di tampilan terbagi",
+    "maxPanesDesc": "Berapa banyak percakapan yang ditampilkan sekaligus, termasuk yang utama.",
+    "nextPane": "Panel berikutnya",
+    "nextPaneDesc": "Pindah ke panel berikutnya di tampilan terbagi.",
+    "previousPane": "Panel sebelumnya",
+    "previousPaneDesc": "Pindah ke panel sebelumnya di tampilan terbagi."
   },
   "interface": {
     "title": "Tampilan",

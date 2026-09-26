@@ -30,6 +30,7 @@ import { useLocation, useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   Box,
+  Columns2,
   Plus,
   SlidersHorizontal,
   Copy,
@@ -61,6 +62,7 @@ import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
+import { openInSplit, reportSplitResult } from '@/lib/splitView'
 import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { memo, useCallback, useState } from 'react'
 import { toast } from 'sonner'
@@ -171,6 +173,18 @@ const SessionItem = memo(function SessionItem({
           <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
             <FileClock />
             <span>{t('common:fileActivity.menuItem')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            data-testid="open-session-in-split"
+            onSelect={() =>
+              reportSplitResult(
+                openInSplit({ kind: 'cowork', refId: session.id }),
+                t
+              )
+            }
+          >
+            <Columns2 />
+            <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           {/* AH-201. Copies the conversation and none of the access: the fork

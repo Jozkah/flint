@@ -77,7 +77,16 @@
     "shiftEnter": "Shift + Enter",
     "navigation": "Điều hướng",
     "goToSettings": "Đi tới Cài đặt",
-    "goToSettingsDesc": "Mở cài đặt."
+    "goToSettingsDesc": "Mở cài đặt.",
+    "splitViewSection": "Chia màn hình",
+    "splitView": "Chia màn hình",
+    "splitViewDesc": "Mở một cuộc trò chuyện khác bên cạnh cuộc đang hiển thị.",
+    "maxPanes": "Số khung khi chia màn hình",
+    "maxPanesDesc": "Số cuộc trò chuyện hiển thị cùng lúc khi chia màn hình, gồm cả cuộc chính.",
+    "nextPane": "Khung tiếp theo",
+    "nextPaneDesc": "Chuyển sang khung tiếp theo khi chia màn hình.",
+    "previousPane": "Khung trước",
+    "previousPaneDesc": "Chuyển sang khung trước khi chia màn hình."
   },
   "interface": {
     "title": "Giao diện",

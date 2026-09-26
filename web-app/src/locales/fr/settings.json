@@ -77,7 +77,16 @@
     "shiftEnter": "Maj + Entrée",
     "navigation": "Navigation",
     "goToSettings": "Aller aux paramètres",
-    "goToSettingsDesc": "Ouvrir les paramètres."
+    "goToSettingsDesc": "Ouvrir les paramètres.",
+    "splitViewSection": "Vue partagée",
+    "splitView": "Vue partagée",
+    "splitViewDesc": "Ouvrir une autre conversation à côté de celle affichée.",
+    "maxPanes": "Panneaux en vue partagée",
+    "maxPanesDesc": "Combien de conversations la vue partagée affiche à la fois, la principale comprise.",
+    "nextPane": "Panneau suivant",
+    "nextPaneDesc": "Passer au panneau suivant de la vue partagée.",
+    "previousPane": "Panneau précédent",
+    "previousPaneDesc": "Passer au panneau précédent de la vue partagée."
   },
   "interface": {
     "title": "Interface",

@@ -5,6 +5,12 @@ import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import HeaderPage from '@/containers/HeaderPage'
+import {
+  CoworkSplitWorkspace,
+  SplitToggleButton,
+} from '@/containers/SplitConversation'
+import { useCoworkPane, usePaneWidth } from '@/hooks/useCoworkPane'
+import { useLiveJobs } from '@/lib/coworkJobsPoller'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
 import { ensureCoworkEnabled } from '@/lib/coworkGate'
@@ -21,7 +27,6 @@ import { toast } from 'sonner'
 import { invoke } from '@tauri-apps/api/core'
 import { getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import {
-  bashJobsList,
   finishRunResources,
   projectListDir,
   projectReadFile,
@@ -425,15 +430,20 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 
-/** How often the backend's background-job list is re-read. Slower than the
- * activity panel's clock tick: the list changes when a command starts or ends,
- * not every second. */
-const JOB_POLL_MS = 3000
 
 export const Route = createFileRoute(route.cowork as any)({
   beforeLoad: () => ensureCoworkEnabled(),
-  component: CoworkPage,
+  component: CoworkRoute,
 })
+
+/** The current session, with any split-view panes beside it. */
+function CoworkRoute() {
+  return (
+    <CoworkSplitWorkspace>
+      <CoworkPage />
+    </CoworkSplitWorkspace>
+  )
+}
 
 /** Same shape the other Cowork surfaces use; kept local, as they do. */
 /**
@@ -484,8 +494,11 @@ const slashTitle = (text: string) => {
   return slash ? slashDisplay(slash.invocation) : text
 }
 
-function CoworkPage() {
+// Exported for split view, which shows a session in a pane of its own.
+export function CoworkPage() {
   const { t } = useTranslation()
+  // In a split-view pane: that pane's session, not the current one.
+  const coworkPane = useCoworkPane()
   const serviceHub = useServiceHub()
   // The session's own model when it has one (#215): the picker no longer
   // mirrors a session's choice into the global store, so the readiness card
@@ -497,7 +510,9 @@ function CoworkPage() {
     providers: modelProviders,
   } = useModelProvider()
   const viewedModel = useCoworkSessions(
-    (s) => s.sessions.find((x) => x.id === s.currentId)?.model
+    (s) =>
+      s.sessions.find((x) => x.id === (coworkPane?.sessionId ?? s.currentId))
+        ?.model
   )
   const { selectedModel, selectedProvider } = useMemo(
     () =>
@@ -523,7 +538,8 @@ function CoworkPage() {
   )
 
   const sessions = useCoworkSessions((s) => s.sessions)
-  const currentId = useCoworkSessions((s) => s.currentId)
+  const routeCurrentId = useCoworkSessions((s) => s.currentId)
+  const currentId = coworkPane?.sessionId ?? routeCurrentId
   const session = useMemo(
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
@@ -1879,29 +1895,9 @@ function CoworkPage() {
   // Scoped to the session on screen: the backend lists only that
   // conversation's jobs, and the list is dropped the moment the session
   // changes, so one session's jobs can never settle -- or block -- another's.
-  const [liveJobs, setLiveJobs] = useState<LiveJob[]>([])
+  // One shared poller serves every Cowork page mounted in split view.
   const liveJobsSession = session?.id
-  useEffect(() => {
-    setLiveJobs([])
-    if (!liveJobsSession) return
-    let alive = true
-    const poll = () => {
-      void bashJobsList(liveJobsSession)
-        .then((jobs) => {
-          if (alive) setLiveJobs(jobs)
-        })
-        .catch(() => {
-          // No backend (web build, or the command unavailable): the list still
-          // shows what the transcript knows.
-        })
-    }
-    poll()
-    const id = setInterval(poll, JOB_POLL_MS)
-    return () => {
-      alive = false
-      clearInterval(id)
-    }
-  }, [liveJobsSession])
+  const liveJobs: LiveJob[] = useLiveJobs(liveJobsSession)
 
   /**
    * What is holding this session's authority in place, if anything.
@@ -4419,8 +4415,12 @@ function CoworkPage() {
   // session details -- chosen from the context bar. The conversation stays
   // mounted while hidden, so the composer keeps its draft, and its scroll
   // position is put back on return.
-  const narrow = useMediaQuery('(max-width: 1099px)')
-  const phone = useMediaQuery('(max-width: 767px)')
+  // In a split-view pane the pane's width decides, not the window's.
+  const paneWidth = usePaneWidth()
+  const windowNarrow = useMediaQuery('(max-width: 1099px)')
+  const windowPhone = useMediaQuery('(max-width: 767px)')
+  const narrow = paneWidth != null ? paneWidth < 1100 : windowNarrow
+  const phone = paneWidth != null ? paneWidth < 768 : windowPhone
   const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
   const view: CoworkPhoneView = phone ? phoneView : 'content'
   const transcriptScroll = useRef<number | null>(null)
@@ -4641,6 +4641,7 @@ function CoworkPage() {
           )}
           {!phone && (
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {!coworkPane && <SplitToggleButton />}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
                 {detailsBody}
@@ -5197,6 +5198,7 @@ function CoworkPage() {
                 showSpeedToken={false}
                 initialMessage={true}
                 scopeKey={session?.id}
+                draftScope={coworkPane?.draftScope}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}

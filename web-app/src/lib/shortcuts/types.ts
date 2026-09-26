@@ -14,6 +14,9 @@ export enum ShortcutAction {
   ZOOM_IN = 'zoomIn',
   ZOOM_OUT = 'zoomOut',
   COMMAND_PALETTE = 'commandPalette',
+  SPLIT_VIEW = 'splitView',
+  NEXT_PANE = 'nextPane',
+  PREVIOUS_PANE = 'previousPane',
 }
 
 export interface ShortcutSpec {

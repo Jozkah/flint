@@ -83,6 +83,9 @@ export const REBINDABLE: ShortcutAction[] = [
   ShortcutAction.SEARCH,
   ShortcutAction.SWITCH_ASSISTANT,
   ShortcutAction.COMMAND_PALETTE,
+  ShortcutAction.SPLIT_VIEW,
+  ShortcutAction.NEXT_PANE,
+  ShortcutAction.PREVIOUS_PANE,
 ]
 
 export type BindResult =
