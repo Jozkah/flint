@@ -617,5 +617,6 @@
     "noMatches": "Nessun parametro corrisponde",
     "noneForProvider": "Nessun parametro regolabile per questo provider.",
     "maybeUnsupported": "Potrebbe non essere supportato da {{providers}}"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} non è più disponibile. Scegli un altro modello dal menu dei modelli."
 }

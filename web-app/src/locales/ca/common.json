@@ -528,5 +528,6 @@
     "noMatches": "Cap paràmetre coincideix",
     "noneForProvider": "Aquest proveïdor no té paràmetres ajustables.",
     "maybeUnsupported": "Pot ser que {{providers}} no ho admeti"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} ja no està disponible. Tria un altre model al menú de models."
 }

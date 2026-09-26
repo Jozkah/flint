@@ -528,5 +528,6 @@
     "noMatches": "Žádné parametry neodpovídají",
     "noneForProvider": "Tento poskytovatel nemá žádné nastavitelné parametry.",
     "maybeUnsupported": "Nemusí být podporováno poskytovatelem {{providers}}"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} už není k dispozici. Vyberte jiný model v nabídce modelů."
 }

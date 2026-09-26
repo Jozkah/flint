@@ -25,6 +25,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -4376,6 +4377,14 @@ export function CoworkPage() {
         if (node) node.scrollTop = remembered
       })
     }
+  }, [session?.id, scrollNode])
+  // Remembered in a layout cleanup: it runs while the transcript is still
+  // attached, on a session switch and when the page unmounts (leaving for
+  // Settings, closing a pane). A passive cleanup ran after the ref was
+  // detached, so an unmount remembered nothing.
+  useLayoutEffect(() => {
+    const sid = session?.id
+    if (!sid) return
     return () => {
       const node = scrollNode()
       if (node) {

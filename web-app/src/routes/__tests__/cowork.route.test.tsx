@@ -1471,6 +1471,43 @@ describe('two sessions side by side in split view', () => {
   })
 })
 
+describe('the scroll position, when the page goes away', () => {
+  it("remembers each split pane's own position on unmount", async () => {
+    useCoworkView.setState({ scrollBySession: {} } as any)
+    const base = { ...useCoworkSessions.getState().sessions[0], turns: PRIOR_TURNS }
+    useCoworkSessions.setState({
+      sessions: [base, { ...base, id: 'pane-session', created: 2 }],
+      currentId: SESSION,
+    })
+    const view = render(
+      <>
+        <div data-testid="left">
+          <PanePage />
+        </div>
+        <div data-testid="right">
+          <CoworkPaneContext.Provider value={{ sessionId: 'pane-session' }}>
+            <PanePage />
+          </CoworkPaneContext.Provider>
+        </div>
+      </>
+    )
+    await act(async () => {
+      await Promise.resolve()
+    })
+    const scroller = (pane: string) =>
+      screen
+        .getByTestId(pane)
+        .querySelector('[data-testid="scroller"]') as HTMLElement
+    Object.defineProperty(scroller('left'), 'scrollTop', { value: 111 })
+    Object.defineProperty(scroller('right'), 'scrollTop', { value: 222 })
+    view.unmount()
+    const remembered = useCoworkView.getState().scrollBySession
+    expect(remembered[SESSION]).toBe(111)
+    expect(remembered['pane-session']).toBe(222)
+    useCoworkView.setState({ scrollBySession: {} } as any)
+  })
+})
+
 describe("a session whose saved model no longer resolves", () => {
   it("runs with the picker's model and saves it on the session", async () => {
     seedSession({ model: { provider: 'removed-provider', id: 'qwen3.8-27b' } })

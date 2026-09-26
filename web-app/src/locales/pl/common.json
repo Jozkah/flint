@@ -528,5 +528,6 @@
     "noMatches": "Brak pasujących parametrów",
     "noneForProvider": "Ten dostawca nie ma parametrów do dostrojenia.",
     "maybeUnsupported": "Może nie być obsługiwane przez {{providers}}"
-  }
+  },
+  "sessionModelUnavailable": "{{model}} nie jest już dostępny. Wybierz inny model w menu modeli."
 }
