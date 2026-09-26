@@ -1263,11 +1263,12 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
     };
     // Workspaces whose sandbox holds a folder grant for a server stopping now,
     // withdrawn once they are down (restart re-grants on the next spawn).
-    let grant_workspaces: Vec<std::path::PathBuf> = {
+    let grant_holders: Vec<(serde_json::Value, Option<u32>)> = {
         let active_servers = state.mcp_active_servers.lock().await;
         active_servers
-            .values()
-            .filter_map(super::launch::folder_grant_workspace)
+            .iter()
+            .filter(|(_, config)| super::launch::folder_grant_workspace(config).is_some())
+            .map(|(name, config)| (config.clone(), pids_snapshot.get(name).copied()))
             .collect()
     };
     let servers_to_stop: Vec<(String, RunningMcpService, Option<u16>)> = {
@@ -1338,8 +1339,8 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
         futures_util::future::join_all(stop_handles),
     )
     .await;
-    for workspace in &grant_workspaces {
-        tauri_plugin_agent_tools::tools::appcontainer::revoke_roots(workspace);
+    for (config, pid) in &grant_holders {
+        super::launch::release_folder_grants(Some(config), *pid);
     }
 
     let failed_servers: Vec<String> = match results {

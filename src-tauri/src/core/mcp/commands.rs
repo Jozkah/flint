@@ -242,15 +242,14 @@ pub async fn deactivate_mcp_server<R: Runtime>(
 
     log::info!("Stopping server {name}...");
     let cancelled = service.cancel().await.map_err(|e| e.to_string());
-    // Withdrawn whether or not the cancel reported cleanly: the user turned
-    // the server off, and its folder access goes with it.
-    super::launch::release_folder_grants(stopped_config.as_ref());
-    cancelled?;
-
     let child_pid = {
         let mut pids = state.mcp_server_pids.lock().await;
         pids.remove(&name)
     };
+    // Withdrawn whether or not the cancel reported cleanly: the user turned
+    // the server off, and its folder access goes with it.
+    super::launch::release_folder_grants(stopped_config.as_ref(), child_pid);
+    cancelled?;
     // Reap the process group and confirm the port is released, then drop the lock.
     if name == "Jan Browser MCP" {
         if let Some(port) = bridge_port {

@@ -289,12 +289,14 @@ pub(super) fn folder_grant_workspace(config: &Value) -> Option<std::path::PathBu
         .map(std::path::PathBuf::from)
 }
 
-/// Withdraw the folder ACEs a stopped server's container held (AppContainer;
-/// a no-op elsewhere). The container is the session's, so a later command in
-/// that session re-grants exactly what its grant still covers.
-pub(super) fn release_folder_grants(config: Option<&Value>) {
-    if let Some(workspace) = config.and_then(folder_grant_workspace) {
-        tauri_plugin_agent_tools::tools::appcontainer::revoke_roots(&workspace);
+/// Withdraw the folder grants a stopped server held (AppContainer; a no-op
+/// elsewhere). `pid` is its sandbox helper's, the process the grants were
+/// recorded under. Only what no other live holder in the session's container
+/// (its shell, another server) still needs is revoked, so a command running
+/// in that session keeps its access.
+pub(super) fn release_folder_grants(config: Option<&Value>, pid: Option<u32>) {
+    if let (Some(workspace), Some(pid)) = (config.and_then(folder_grant_workspace), pid) {
+        tauri_plugin_agent_tools::tools::appcontainer::release_holder(&workspace, pid);
     }
 }
 

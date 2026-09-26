@@ -57,6 +57,13 @@ const START_DIR: &str = "--start-dir=";
 /// grant record, so the grants travel with the request (see
 /// [`crate::tools::toolchain_grants`]).
 const PATH_DIR: &str = "--path-dir=";
+/// Marks a spawn that holds its folder grants for as long as it runs (a
+/// confined MCP server), rather than as the session shell. Its grants are
+/// recorded under its own process id, so they stay while it lives and never
+/// replace the shell's (see [`union_roots`]).
+pub(crate) const OWN_HOLDER: &str = "--own-grant-holder";
+/// The holder every shell command of a session records its grants under.
+pub(crate) const SHELL_HOLDER: &str = "shell";
 
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
@@ -207,6 +214,9 @@ struct Request {
     /// write, so a command can list and build from them while every write
     /// still lands in the workspace.
     read_roots: Vec<PathBuf>,
+    /// True for a long-lived spawn (a confined MCP server) that holds its
+    /// grants under its own process id; false for a shell command.
+    own_holder: bool,
     /// Where the shell starts: the workspace, or one of `write_roots`.
     start_dir: PathBuf,
     allow_network: bool,
@@ -236,6 +246,7 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
     };
     let mut write_roots = Vec::new();
     let mut read_roots = Vec::new();
+    let mut own_holder = false;
     let mut path_dirs = Vec::new();
     let mut start_dir = None;
     loop {
@@ -245,6 +256,10 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         }
         if let Some(dir) = next.strip_prefix(PATH_DIR) {
             path_dirs.push(PathBuf::from(dir));
+            continue;
+        }
+        if next == OWN_HOLDER {
+            own_holder = true;
             continue;
         }
         if let Some(root) = next.strip_prefix(READ_ROOT) {
@@ -273,6 +288,7 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         scratch,
         write_roots,
         read_roots,
+        own_holder,
         start_dir,
         allow_network,
         path_dirs,
@@ -326,6 +342,20 @@ pub fn revoke_roots(workspace: &Path) {
 #[cfg(not(windows))]
 pub fn revoke_roots(_workspace: &Path) {}
 
+/// A long-lived holder (a confined MCP server whose helper had `pid`) has
+/// stopped: forget its grants and re-apply what the session's other holders
+/// still need. Nothing another live holder needs is withdrawn.
+#[cfg(windows)]
+pub fn release_holder(workspace: &Path, pid: u32) {
+    let name = moniker(workspace);
+    if let Err(e) = win::release_holder(&name, &format!("mcp-{pid}")) {
+        eprintln!("could not withdraw the folder grants of {name}/{pid}: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+pub fn release_holder(_workspace: &Path, _pid: u32) {}
+
 /// Withdraw every folder grant any container still holds. Called once at
 /// startup: grants live in process memory, so after a restart no session
 /// holds one, and an ACE left by the previous run (a crash, a quit mid-run)
@@ -336,6 +366,11 @@ pub fn sweep_recorded_roots() {
         return;
     };
     for entry in entries.flatten() {
+        // Each container's applied record is a file; its holders sit in a
+        // directory beside it, removed with the record.
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
         let name = entry.file_name().to_string_lossy().into_owned();
         if let Err(e) = win::revoke_recorded_roots(&name) {
             eprintln!("could not withdraw the folder grants of {name}: {e}");
@@ -934,6 +969,40 @@ pub(crate) fn roots_record(write: &[PathBuf], read: &[PathBuf]) -> String {
         .join("\n")
 }
 
+/// The folders a container must be granted: every live holder's, unioned.
+/// A folder any holder writes is written; one only read is read. So one
+/// holder changing its own set never withdraws what another still uses.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn union_roots(
+    holders: &[(Vec<PathBuf>, Vec<PathBuf>)],
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut write: Vec<PathBuf> = Vec::new();
+    let mut read: Vec<PathBuf> = Vec::new();
+    for (w, _) in holders {
+        for root in w {
+            if !write.contains(root) {
+                write.push(root.clone());
+            }
+        }
+    }
+    for (_, r) in holders {
+        for root in r {
+            if !write.contains(root) && !read.contains(root) {
+                read.push(root.clone());
+            }
+        }
+    }
+    (write, read)
+}
+
+/// Where a container's holders record what each needs, beside its record.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn holders_dir(record: &Path) -> PathBuf {
+    let mut name = record.as_os_str().to_os_string();
+    name.push(".holders");
+    PathBuf::from(name)
+}
+
 /// [`roots_record`] read back: `(write roots, read roots)`.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn parse_roots_record(text: &str) -> (Vec<PathBuf>, Vec<PathBuf>) {
@@ -1325,6 +1394,9 @@ mod win {
     /// record. Only ACEs naming this container's SID are removed.
     pub(super) fn revoke_recorded_roots(moniker: &str) -> Result<(), String> {
         let record = write_root_record(moniker);
+        let _lock = RecordLock::acquire(&record)?;
+        // Every holder goes: the grant they all rested on is gone.
+        let _ = std::fs::remove_dir_all(super::holders_dir(&record));
         let Ok(text) = std::fs::read_to_string(&record) else {
             return Ok(());
         };
@@ -1348,9 +1420,97 @@ mod win {
     /// as granted and no longer in `roots` is revoked before anything runs, then
     /// `roots` are granted and recorded. A recorded folder that is gone needs no
     /// revoking.
+    #[cfg(test)]
     pub(super) fn sync_write_roots(
         record: &Path,
         sid: PSID,
+        roots: &[PathBuf],
+        read_roots: &[PathBuf],
+    ) -> Result<(), String> {
+        sync_holder_roots(record, sid, super::SHELL_HOLDER, roots, read_roots)
+    }
+
+    /// Forget one holder and re-apply what the others need.
+    pub(super) fn release_holder(moniker: &str, holder: &str) -> Result<(), String> {
+        let record = write_root_record(moniker);
+        let _lock = RecordLock::acquire(&record)?;
+        let _ = std::fs::remove_file(super::holders_dir(&record).join(holder));
+        if !record.exists() {
+            return Ok(());
+        }
+        let sid = derive_sid(moniker)?;
+        apply_union(&record, sid.0)
+    }
+
+    /// Serializes every change to one container's grants across processes
+    /// (the app, each shell helper, each MCP helper), so two holders syncing
+    /// at once cannot interleave their read-modify-write of the record.
+    struct RecordLock(windows_sys::Win32::Foundation::HANDLE);
+
+    impl RecordLock {
+        fn acquire(record: &Path) -> Result<Self, String> {
+            use windows_sys::Win32::System::Threading::CreateMutexW;
+            let key = record.to_string_lossy().to_lowercase();
+            let name = wide(OsStr::new(&format!(
+                "Local\\JanAgentRoots.{:016x}",
+                super::fnv1a(key.as_bytes())
+            )));
+            let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+            if handle.is_null() {
+                return Err(format!("could not open the grant lock: {}", last_error()));
+            }
+            // WAIT_ABANDONED (a holder died holding it) still grants ownership.
+            let waited = unsafe { WaitForSingleObject(handle, 30_000) };
+            if waited == WAIT_FAILED || waited == 0x102 {
+                unsafe { CloseHandle(handle) };
+                return Err("timed out waiting for the grant lock".to_string());
+            }
+            Ok(Self(handle))
+        }
+    }
+
+    impl Drop for RecordLock {
+        fn drop(&mut self) {
+            use windows_sys::Win32::System::Threading::ReleaseMutex;
+            unsafe {
+                ReleaseMutex(self.0);
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    /// Is this holder still live? The shell always is (its record is replaced
+    /// by the next command); a process holder while its process runs.
+    fn holder_alive(holder: &str) -> bool {
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        if holder == super::SHELL_HOLDER {
+            return true;
+        }
+        let Some(pid) = holder.strip_prefix("mcp-").and_then(|p| p.parse::<u32>().ok()) else {
+            return false;
+        };
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code: u32 = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+
+    /// Record what `holder` needs, then make the container's ACEs the union
+    /// of every live holder's needs. A folder is revoked only when no live
+    /// holder needs it any more.
+    pub(super) fn sync_holder_roots(
+        record: &Path,
+        sid: PSID,
+        holder: &str,
         roots: &[PathBuf],
         read_roots: &[PathBuf],
     ) -> Result<(), String> {
@@ -1367,6 +1527,32 @@ mod win {
             .filter(|r| r.is_dir() && grant_refusal(r).is_none())
             .cloned()
             .collect();
+        let _lock = RecordLock::acquire(record)?;
+        let holders = super::holders_dir(record);
+        std::fs::create_dir_all(&holders).map_err(|e| format!("{}: {e}", holders.display()))?;
+        let mine = holders.join(holder);
+        std::fs::write(&mine, super::roots_record(roots, &read_roots))
+            .map_err(|e| format!("{}: {e}", mine.display()))?;
+        apply_union(record, sid)
+    }
+
+    /// Apply the union of every live holder's recorded needs, pruning holders
+    /// that have stopped. The caller holds the record's lock.
+    fn apply_union(record: &Path, sid: PSID) -> Result<(), String> {
+        let mut needs = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(super::holders_dir(record)) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !holder_alive(&name) {
+                    let _ = std::fs::remove_file(entry.path());
+                    continue;
+                }
+                let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+                needs.push(super::parse_roots_record(&text));
+            }
+        }
+        let (roots, read_roots) = super::union_roots(&needs);
+        let (roots, read_roots) = (&roots[..], read_roots);
         let (old_write, old_read) =
             super::parse_roots_record(&std::fs::read_to_string(record).unwrap_or_default());
         let previous: Vec<PathBuf> = old_write.into_iter().chain(old_read).collect();
@@ -1837,7 +2023,19 @@ mod win {
                 ));
             }
         }
-        sync_write_roots(&write_root_record(&name), sid.0, &req.write_roots, &req.read_roots).map_err(|detail| {
+        let holder = if req.own_holder {
+            format!("mcp-{}", std::process::id())
+        } else {
+            super::SHELL_HOLDER.to_string()
+        };
+        sync_holder_roots(
+            &write_root_record(&name),
+            sid.0,
+            &holder,
+            &req.write_roots,
+            &req.read_roots,
+        )
+        .map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
 
@@ -2447,6 +2645,87 @@ mod tests {
         assert!(!record.exists(), "the record outlived the revoke");
         std::fs::write(repo.join("owner.txt"), b"still mine").expect("owner keeps access");
 
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// One holder's set never withdraws what another still needs; write wins.
+    #[test]
+    fn grants_are_the_union_of_every_holder() {
+        let (a, b, c) = (PathBuf::from("/a"), PathBuf::from("/b"), PathBuf::from("/c"));
+        let shell = (vec![a.clone()], vec![b.clone()]);
+        let server = (vec![], vec![a.clone(), c.clone()]);
+        assert_eq!(
+            union_roots(&[shell.clone(), server.clone()]),
+            (vec![a.clone()], vec![b.clone(), c.clone()])
+        );
+        // A read-only holder does not demote another's write.
+        assert_eq!(union_roots(&[server, shell]).0, vec![a]);
+        assert_eq!(union_roots(&[]), (vec![], vec![]));
+        assert_eq!(
+            holders_dir(Path::new("C:\\t\\Jan.Agent.1")),
+            PathBuf::from("C:\\t\\Jan.Agent.1.holders")
+        );
+    }
+
+    /// The race: the shell holds write on a folder, then an MCP server in the
+    /// same container spawns with a different set. The shell keeps write.
+    /// Stopping the server withdraws only what nobody else needs, and a dead
+    /// holder's needs are pruned.
+    #[cfg(windows)]
+    #[test]
+    fn a_server_spawn_never_withdraws_the_shells_write() {
+        const FILE_WRITE_DATA: u32 = 0x2;
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_holders_{n}"));
+        let (repo, other, stale) = (base.join("repo"), base.join("other"), base.join("stale"));
+        for d in [&repo, &other, &stale] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let name = format!("jan.test.holders.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+        let record = win::write_root_record(&name);
+        let writable = |p: &Path| {
+            win::aces_for(p, psid).iter().any(|&(_, _, mask)| mask & FILE_WRITE_DATA != 0)
+        };
+        let server = format!("mcp-{n}"); // this test process: alive
+
+        win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
+            .unwrap();
+        assert!(writable(&repo));
+        // The server spawns wanting only to read `other`.
+        win::sync_holder_roots(&record, psid, &server, &[], std::slice::from_ref(&other))
+            .unwrap();
+        assert!(writable(&repo), "the server's spawn withdrew the shell's write");
+        assert!(!win::aces_for(&other, psid).is_empty(), "the server's read was not granted");
+
+        // The server stops: its read goes, the shell's write stays.
+        win::release_holder(&name, &server).unwrap();
+        assert!(writable(&repo), "stopping the server withdrew the shell's write");
+        assert!(win::aces_for(&other, psid).is_empty(), "the stopped server's grant stayed");
+
+        // A holder whose process is gone is pruned, not honoured.
+        std::fs::write(
+            holders_dir(&record).join("mcp-4294967291"),
+            roots_record(std::slice::from_ref(&stale), &[]),
+        )
+        .unwrap();
+        win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
+            .unwrap();
+        assert!(win::aces_for(&stale, psid).is_empty(), "a dead holder's folder was granted");
+        assert!(!holders_dir(&record).join("mcp-4294967291").exists());
+
+        win::revoke_recorded_roots(&name).unwrap();
+        assert!(win::aces_for(&repo, psid).is_empty());
+        assert!(!holders_dir(&record).exists());
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);

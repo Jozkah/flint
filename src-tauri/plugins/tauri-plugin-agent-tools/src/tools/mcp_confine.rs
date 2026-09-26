@@ -151,7 +151,9 @@ fn contained(root: &Path, path: &Path) -> bool {
 pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
     // Network stays available: a remote-fetching MCP server is an ordinary
     // thing to run, and the filesystem is what this is confining.
-    let mut policy = Policy::new(authority.workspace(), true);
+    // A server outlives any one shell command in its session and shares its
+    // container, so it holds its folder grants under its own process.
+    let mut policy = Policy::new(authority.workspace(), true).with_own_grant_holder();
 
     let repository = match authority {
         McpAuthority::ReviewOnly { repository, .. } => repository.clone(),

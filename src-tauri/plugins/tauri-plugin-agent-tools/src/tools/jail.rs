@@ -118,6 +118,10 @@ pub struct Policy {
     /// ([`Policy::with_start_dir`] ignores anything else), so the shell never
     /// starts somewhere it was not granted.
     pub start_dir: Option<PathBuf>,
+    /// The spawn holds its folder grants for as long as it runs (a confined
+    /// MCP server) instead of as the session shell. Only AppContainer, whose
+    /// grants outlive a spawn, reads it.
+    pub own_grant_holder: bool,
 }
 
 impl Policy {
@@ -132,11 +136,19 @@ impl Policy {
             read_roots: Vec::new(),
             write_roots: Vec::new(),
             start_dir: None,
+            own_grant_holder: false,
         }
     }
 
     /// Start the shell in `dir`, which must already be one of the write roots;
     /// anything else leaves the start at the workspace.
+    /// Hold folder grants for as long as this spawn runs. See
+    /// [`Policy::own_grant_holder`].
+    pub fn with_own_grant_holder(mut self) -> Self {
+        self.own_grant_holder = true;
+        self
+    }
+
     pub fn with_start_dir(mut self, dir: &Path) -> Self {
         if self.write_roots.iter().any(|r| r == dir) {
             self.start_dir = Some(dir.to_path_buf());
@@ -370,16 +382,27 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
                 appcontainer::await_startup_sweep();
                 helper_exe()?
             },
-            args: appcontainer::helper_args_at(
-                &policy.workspace,
-                policy.start_dir.as_deref(),
-                policy.scratch_root.as_deref(),
-                &policy.write_roots,
-                &policy.read_roots,
-                policy.allow_network,
-                &cfg.program,
-                &cfg.args,
-            ),
+            args: {
+                let mut args = appcontainer::helper_args_at(
+                    &policy.workspace,
+                    policy.start_dir.as_deref(),
+                    policy.scratch_root.as_deref(),
+                    &policy.write_roots,
+                    &policy.read_roots,
+                    policy.allow_network,
+                    &cfg.program,
+                    &cfg.args,
+                );
+                // A long-lived holder records its grants under its own
+                // process, beside the session shell's (see
+                // `appcontainer::union_roots`).
+                if policy.own_grant_holder {
+                    if let Some(at) = args.iter().position(|a| a == "--") {
+                        args.insert(at, appcontainer::OWN_HOLDER.to_string());
+                    }
+                }
+                args
+            },
             via_stdin: cfg.via_stdin,
             description: cfg.description,
             // The wrapper is a different program; the command language the
