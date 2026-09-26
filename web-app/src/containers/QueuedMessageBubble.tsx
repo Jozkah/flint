@@ -14,7 +14,6 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -22,6 +21,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { queueDropTarget } from '@/lib/queueDrag'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { QueuedMessage } from '@/stores/message-queue-store'
 
@@ -230,18 +230,6 @@ function SortableQueuedMessage(
       />
     </div>
   )
-}
-
-/**
- * Where a drop puts the dragged message: at the index of the one it was
- * dropped on. Null when nothing moves.
- */
-export function queueDropTarget(
-  event: Pick<DragEndEvent, 'active' | 'over'>
-): { id: string; overId: string } | null {
-  const { active, over } = event
-  if (!over || active.id === over.id) return null
-  return { id: String(active.id), overId: String(over.id) }
 }
 
 type QueuedMessageListProps = {

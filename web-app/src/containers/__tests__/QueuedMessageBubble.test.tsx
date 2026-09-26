@@ -8,8 +8,8 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 import {
   QueuedMessageChip,
   QueuedMessageList,
-  queueDropTarget,
 } from '../QueuedMessageBubble'
+import { queueDropTarget } from '@/lib/queueDrag'
 
 describe('QueuedMessageChip held', () => {
   const held = { id: 'h', text: 'held text', createdAt: 1, held: true }
