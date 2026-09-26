@@ -109,12 +109,12 @@ jobs:
           corepack prepare yarn@4.10.3 --activate
           yarn --version
           yarn config set -H enableImmutableInstalls false
-          echo "YARN_CACHE_DIR=$(yarn config get cacheFolder)" >> "$GITHUB_ENV"
+          echo "FLINT_YARN_CACHE_PATH=$(yarn config get cacheFolder)" >> "$GITHUB_ENV"
 
       - name: Restore the Yarn cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: ${{ env.YARN_CACHE_DIR }}
+          path: ${{ env.FLINT_YARN_CACHE_PATH }}
           key: yarn-${{ runner.os }}-${{ hashFiles('**/yarn.lock') }}
           restore-keys: |
             yarn-${{ runner.os }}-
