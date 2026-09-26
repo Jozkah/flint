@@ -849,7 +849,10 @@ const ChatInput = memo(function ChatInput({
   const mcpExtension = extensionManager.get<MCPExtension>(ExtensionTypeEnum.MCP)
   const MCPToolComponent = mcpExtension?.getToolComponent?.()
 
-  const handleSendMessage = async (typed: string) => {
+  const handleSendMessage = async (
+    typed: string,
+    { steer = false }: { steer?: boolean } = {}
+  ) => {
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
       setMessage('Please select a model to start chatting.')
       return
@@ -892,10 +895,13 @@ const ChatInput = memo(function ChatInput({
       // When the model is still streaming, or the previous turn's tools are
       // still pending or running, queue the message for later
       if ((isStreaming || threadBusy) && queueId) {
+        // Queued to go as its own turn after the run, unless the user asked
+        // (Ctrl+Enter) to hand it to the running turn at its next safe point.
         useMessageQueue.getState().enqueue(queueId, {
           id: generateId(),
           text: effectivePrompt,
           createdAt: Date.now(),
+          ...(steer ? { steer: true } : {}),
         })
         setPrompt('')
         return
@@ -2556,7 +2562,7 @@ const ChatInput = memo(function ChatInput({
             )}
             {queuedMessages.length > 0 && (
               <div className="flex flex-col gap-1 px-3 pt-2 pb-0">
-                {queuedMessages.map((msg) => (
+                {queuedMessages.map((msg, index) => (
                   <QueuedMessageChip
                     key={msg.id}
                     message={msg}
@@ -2567,6 +2573,24 @@ const ChatInput = memo(function ChatInput({
                       textareaRef.current?.focus()
                     }}
                     onRemove={removeQueuedMessage}
+                    // Steering only means something while a run works; a
+                    // held message waits for the user and is sent, not steered.
+                    onSteer={
+                      (isStreaming || threadBusy) && !msg.held && !msg.from
+                        ? (id) =>
+                            useMessageQueue.getState().steerNow(queueId, id)
+                        : undefined
+                    }
+                    onMoveUp={
+                      index > 0
+                        ? (id) => useMessageQueue.getState().move(queueId, id, -1)
+                        : undefined
+                    }
+                    onMoveDown={
+                      index < queuedMessages.length - 1
+                        ? (id) => useMessageQueue.getState().move(queueId, id, 1)
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -2697,8 +2721,10 @@ const ChatInput = memo(function ChatInput({
                   e.preventDefault()
                   // Submit prompt when Enter is pressed without Shift and prompt is not empty.
                   // If streaming, handleSendMessage will queue the message automatically.
+                  // Ctrl/Cmd+Enter during a run steers with the message
+                  // instead of queueing it; when idle it simply sends.
                   if ((prompt.trim() || hasSendableMedia) && !ingestingAny) {
-                    handleSendMessage(prompt)
+                    handleSendMessage(prompt, { steer: e.ctrlKey || e.metaKey })
                   }
                   // When Shift+Enter is pressed, a new line is added (default behavior)
                 }

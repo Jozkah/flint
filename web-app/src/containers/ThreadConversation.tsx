@@ -42,7 +42,8 @@ import {
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import { generateId, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
+import { generateId } from 'ai'
+import { chatFollowUp } from '@/lib/chatSteering'
 import type { UIMessage } from '@ai-sdk/react'
 import { useChatSessions } from '@/stores/chat-session-store'
 import {
@@ -330,17 +331,24 @@ export function ThreadConversation({
 
   const titleAbortRef = useRef<AbortController | null>(null)
 
+  // Steering (Steer now / Ctrl+Enter in the composer) is delivered at the
+  // tool loop's safe point; see chatFollowUp. Set once `sendMessage` exists.
+  const sendSteeringRef = useRef<((text: string) => void) | null>(null)
+
   // Check if we should follow up with tool calls (respects abort signal)
   const followUpMessage = useCallback(
-    ({ messages }: { messages: UIMessage[] }) => {
-      if (
-        !toolCallAbortController.current ||
-        toolCallAbortController.current?.signal.aborted
-      ) {
-        return false
-      }
-      return lastAssistantMessageIsCompleteWithToolCalls({ messages })
-    },
+    ({ messages }: { messages: UIMessage[] }) =>
+      chatFollowUp({
+        messages,
+        aborted:
+          !toolCallAbortController.current ||
+          toolCallAbortController.current.signal.aborted,
+        takeSteering: () =>
+          sendSteeringRef.current
+            ? useMessageQueue.getState().takeSteering(threadIdRef.current)
+            : [],
+        send: (text) => sendSteeringRef.current?.(text),
+      }),
     []
   )
 
@@ -1794,9 +1802,13 @@ export function ThreadConversation({
   // Sends a text-only queued message, bypassing attachment processing entirely.
   // This prevents stale or new attachments from leaking into auto-sent queue items.
   const sendQueuedMessage = useCallback(
-    async (text: string) => {
+    async (text: string, steered = false) => {
       const messageId = generateId()
       const userMessage = newUserThreadContent(threadId, text, [], messageId)
+      // janhq/jan#8864: marked where it entered a run as steering.
+      if (steered) {
+        userMessage.metadata = { ...(userMessage.metadata ?? {}), steered: true }
+      }
       addMessage(userMessage)
 
       sendMessage({
@@ -1807,6 +1819,12 @@ export function ThreadConversation({
     },
     [sendMessage, threadId, addMessage]
   )
+
+  sendSteeringRef.current = (text) => {
+    void sendQueuedMessage(text, true).catch((err) =>
+      console.error('Failed to deliver steering:', err)
+    )
+  }
 
   // Check for and send initial message from sessionStorage
   const initialMessageSentRef = useRef(false)

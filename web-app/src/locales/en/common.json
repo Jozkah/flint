@@ -1267,6 +1267,16 @@
       "not-captured": "No starting state recorded yet."
     }
   },
+  "queue": {
+    "edit": "Edit",
+    "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "steer": "Steer now",
+    "steerHint": "Hand this to the agent at its next step instead of waiting for the run to end (Ctrl+Enter from the composer)",
+    "steering": "Steering",
+    "steeringHint": "Goes to the agent at its next step; if the run ends first, it is sent as the next message"
+  },
   "steering": {
     "delivered": "Sent to the agent while it was working",
     "held_one": "1 message was not delivered: the run it was typed for did not take it",

@@ -3725,8 +3725,9 @@ function CoworkPage() {
             let n = baseMessages.length
             return () => `${sid}-asst-${n++}`
           })(),
-          // janhq/jan#8864. What was typed into this session's composer while
-          // the run worked, taken at the runner's safe boundaries. Only this
+          // janhq/jan#8864. What the user chose to steer with from this
+          // session's composer while the run worked (Steer now, Ctrl+Enter),
+          // taken at the runner's safe boundaries. Only this
           // session's queue: input typed in another session never reaches
           // this run, whichever session is in view. Shown in the transcript
           // where it entered the conversation, marked as steering.
@@ -3734,7 +3735,9 @@ function CoworkPage() {
             // Mail a tool already consumed (wait_for_reply, read_messages)
             // is dropped here, so it is never injected a second time.
             const taken = await takeClaimed(sid, () =>
-              useMessageQueue.getState().takeReady(sid)
+              // Only what the user chose to steer with (and mail). Plain
+              // queued input waits and goes as its own turn after the run.
+              useMessageQueue.getState().takeSteering(sid)
             )
             if (taken.length === 0) return []
             // Into this run's execution record, in sequence with its calls:

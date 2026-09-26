@@ -411,9 +411,10 @@ describe('a run belongs to the session that started it', () => {
     const a = await startRunIn('A')
     const b = await startRunIn('B')
     const queue = useMessageQueue.getState()
-    queue.enqueue('A', { id: 'a1', text: 'use pnpm', createdAt: 1 })
-    queue.enqueue('A', { id: 'a2', text: 'then test', createdAt: 2 })
-    queue.enqueue('B', { id: 'b1', text: 'for B only', createdAt: 3 })
+    queue.enqueue('A', { id: 'a1', text: 'use pnpm', createdAt: 1, steer: true })
+    queue.enqueue('A', { id: 'a0', text: 'after the run', createdAt: 1 })
+    queue.enqueue('A', { id: 'a2', text: 'then test', createdAt: 2, steer: true })
+    queue.enqueue('B', { id: 'b1', text: 'for B only', createdAt: 3, steer: true })
     let taken: any[] = []
     // Async: mailbox messages among the taken input are claimed first.
     await act(async () => {
@@ -421,8 +422,9 @@ describe('a run belongs to the session that started it', () => {
     })
     expect(taken.map((m: any) => m.parts[0].text)).toEqual(['use pnpm', 'then test'])
     expect(taken.every((m: any) => m.role === 'user')).toBe(true)
-    // Delivered: gone from the queue, in A's transcript, marked.
-    expect(useMessageQueue.getState().getQueue('A')).toEqual([])
+    // Delivered: gone from the queue, in A's transcript, marked. A plain
+    // queued message is not steering: it waits to go as its own turn.
+    expect(useMessageQueue.getState().getQueue('A').map((m) => m.id)).toEqual(['a0'])
     const liveA = useCoworkRun.getState().liveTurns.A ?? []
     expect(liveA.filter((t: any) => t.steered).map((t: any) => t.content)).toEqual([
       'use pnpm',
