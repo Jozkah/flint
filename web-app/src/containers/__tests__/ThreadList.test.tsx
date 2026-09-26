@@ -92,7 +92,9 @@ describe('ThreadList — long-URL overflow guard (#7959)', () => {
     expect(titleSpans.length).toBeGreaterThan(0)
 
     const titleEl = titleSpans[0]
-    expect(titleEl).toHaveClass('block', 'truncate')
+    // Fades at the edge rather than ending in an ellipsis.
+    expect(titleEl).toHaveClass('text-fade')
+    expect(titleEl).not.toHaveClass('truncate')
     // The row has a hover card; a native tooltip on top of it showed two
     // popups at once. The visible text stays the link's accessible name.
     expect(titleEl).not.toHaveAttribute('title')
@@ -124,7 +126,9 @@ describe('ThreadList — long-URL overflow guard (#7959)', () => {
       .getAllByText('common:newThread')
       .find((el) => el.tagName === 'SPAN')
     expect(titleEl).toBeDefined()
-    expect(titleEl).toHaveClass('block', 'truncate')
+    // Fades at the edge rather than ending in an ellipsis.
+    expect(titleEl).toHaveClass('text-fade')
+    expect(titleEl).not.toHaveClass('truncate')
     expect(titleEl).not.toHaveAttribute('title')
   })
 })

@@ -219,7 +219,7 @@ export function CoworkWorkspacePill({
                   <span className="sr-only">
                     {t('common:workspace.branchLabel')}:{' '}
                   </span>
-                  <span className="truncate font-mono">{gitBranch}</span>
+                  <span className="text-fade font-mono">{gitBranch}</span>
                 </p>
               )}
             </section>
