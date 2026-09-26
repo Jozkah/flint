@@ -52,6 +52,8 @@ describe('resolveSidebarTitlebar', () => {
   it('reserves the corner and hides the wordmark under the macOS overlay', () => {
     const r = resolveSidebarTitlebar(true, 0)
     expect(r.reserveLeft).toBe(true)
+    // Past the traffic lights (x=72) with the same 24px gap the header keeps.
+    expect(r.leftPadClass).toBe('pl-24')
     expect(r.showWordmarkLeft).toBe(false)
     // The native buttons already brand the corner: no second label on macOS.
     expect(r.showWordmarkRight).toBe(false)
@@ -60,6 +62,7 @@ describe('resolveSidebarTitlebar', () => {
   it('shows the wordmark on the left with no left-anchored controls', () => {
     const r = resolveSidebarTitlebar(false, 0)
     expect(r.reserveLeft).toBe(false)
+    expect(r.leftPadClass).toBeNull()
     expect(r.showWordmarkLeft).toBe(true)
     expect(r.showWordmarkRight).toBe(false)
   })
@@ -68,6 +71,7 @@ describe('resolveSidebarTitlebar', () => {
     const r = resolveSidebarTitlebar(false, 3)
     expect(r.controlsOnLeft).toBe(true)
     expect(r.reserveLeft).toBe(true)
+    expect(r.leftPadClass).toBe('pl-20')
     expect(r.showWordmarkLeft).toBe(false)
     expect(r.showWordmarkRight).toBe(true)
   })

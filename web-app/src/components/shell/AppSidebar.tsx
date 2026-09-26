@@ -116,7 +116,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   useSidebarGlide(navRef)
   const leftButtons = useTitlebarLayout((s) => s.layout.left.length)
   const macOverlay = useMemo(() => detectMacOverlay(), [])
-  const { reserveLeft } = resolveSidebarTitlebar(macOverlay, leftButtons)
+  const { leftPadClass } = resolveSidebarTitlebar(macOverlay, leftButtons)
   const providers = useModelProvider((s) => s.providers)
   const modelCount = useMemo(
     () =>
@@ -187,7 +187,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       <div
         className={cn(
           'flex shrink-0 items-center justify-between px-3 py-3.5',
-          reserveLeft && 'pl-20'
+          leftPadClass
         )}
         data-tauri-drag-region
       >

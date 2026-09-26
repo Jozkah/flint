@@ -121,6 +121,79 @@ fn sensor_kind(label: &str) -> &'static str {
     }
 }
 
+/// Apple Silicon publishes every raw PMU thermal point (`PMU tdie0..10`,
+/// `PMU tdev1..8`, `PMU TP0s..TP3g`, ...) as its own component: ~30 rows that
+/// all read within a degree of each other and mean nothing individually. This
+/// folds them into the handful a user can act on -- CPU die, SoC, SSD, battery
+/// -- reporting the hottest point of each group. `tcal` is a calibration
+/// reference, not a temperature anyone wants, and is dropped.
+///
+/// Only labels in the PMU family are folded; anything else (an Intel Mac's
+/// named sensors, an external reading) passes through untouched.
+fn condense_apple_sensors(raw: Vec<SensorDetails>) -> Vec<SensorDetails> {
+    if !raw.iter().any(|s| s.label.starts_with("PMU ")) {
+        return raw;
+    }
+    // Insertion-ordered so the page lists CPU first, then whatever follows.
+    let mut groups: Vec<(String, String, Vec<SensorDetails>)> = Vec::new();
+    let mut passthrough = Vec::new();
+    for sensor in raw {
+        let l = sensor.label.to_ascii_lowercase();
+        let target: Option<(&str, &str)> = if l.contains("tdie") {
+            Some(("CPU", "cpu"))
+        } else if l.starts_with("nand") {
+            Some(("SSD", "disk"))
+        } else if l.contains("battery") {
+            Some(("Battery", "other"))
+        } else if l.contains("tcal") {
+            None
+        } else if l.starts_with("pmu ") {
+            Some(("SoC", "other"))
+        } else {
+            passthrough.push(sensor);
+            continue;
+        };
+        let Some((label, kind)) = target else { continue };
+        match groups.iter_mut().find(|(g, _, _)| g == label) {
+            Some((_, _, members)) => members.push(sensor),
+            None => groups.push((label.to_string(), kind.to_string(), vec![sensor])),
+        }
+    }
+    let hottest = |vals: Vec<Option<f32>>| vals.into_iter().flatten().reduce(f32::max);
+    let order = ["CPU", "SoC", "SSD", "Battery"];
+    groups.sort_by_key(|(g, _, _)| order.iter().position(|o| o == g).unwrap_or(order.len()));
+    let mut out: Vec<SensorDetails> = groups
+        .into_iter()
+        .map(|(label, kind, members)| SensorDetails {
+            temperature: hottest(members.iter().map(|m| m.temperature).collect()),
+            max: hottest(members.iter().map(|m| m.max).collect()),
+            critical: hottest(members.iter().map(|m| m.critical).collect()),
+            source: if members.len() == 1 {
+                "sysinfo".into()
+            } else {
+                format!("hottest of {} sensors", members.len())
+            },
+            label,
+            kind,
+        })
+        .collect();
+    out.extend(passthrough);
+    out
+}
+
+/// macOS mounts the system APFS container several times over: `/` and
+/// `/System/Volumes/Data` are one volume group with one free-space figure, and
+/// `/System/Volumes/{VM,Preboot,Update,xarts,...}` are internal volumes the
+/// user never touches. Show the container once, at `/`, plus anything under
+/// `/Volumes` (external and secondary drives).
+fn hide_apple_system_volumes(disks: Vec<DiskDetails>) -> Vec<DiskDetails> {
+    disks
+        .into_iter()
+        .filter(|d| !d.mount_point.starts_with("/System/Volumes/"))
+        .filter(|d| !d.mount_point.starts_with("/private/var/vm"))
+        .collect()
+}
+
 /// Collect a snapshot, refreshing only what the page needs.
 pub fn get_system_snapshot() -> SystemSnapshot {
     let mut guard = COLLECTORS.lock().unwrap_or_else(|e| e.into_inner());
@@ -187,6 +260,8 @@ pub fn get_system_snapshot() -> SystemSnapshot {
             removable: d.is_removable(),
         })
         .collect();
+    #[cfg(target_os = "macos")]
+    let disks = hide_apple_system_volumes(disks);
 
     let mut networks: Vec<NetworkDetails> = c
         .networks
@@ -212,6 +287,8 @@ pub fn get_system_snapshot() -> SystemSnapshot {
             critical: comp.critical().filter(|t| t.is_finite()),
         })
         .collect();
+    #[cfg(target_os = "macos")]
+    let mut sensors = condense_apple_sensors(sensors);
     sensors.extend(crate::windows_sensors::sensors());
     for gpu in crate::get_system_info().gpus {
         if let Some((temp, critical)) = gpu.nvidia_temperature() {
@@ -310,6 +387,73 @@ mod tests {
                 assert!(n.total_received >= prev.total_received);
             }
         }
+    }
+
+    #[test]
+    fn apple_pmu_sensors_fold_into_groups() {
+        let mk = |label: &str, t: f32| SensorDetails {
+            label: label.into(),
+            kind: sensor_kind(label).into(),
+            source: "sysinfo".into(),
+            temperature: Some(t),
+            max: Some(t + 1.0),
+            critical: None,
+        };
+        let raw = vec![
+            mk("PMU tdev1", 36.0),
+            mk("PMU tdie1", 40.2),
+            mk("gas gauge battery", 30.0),
+            mk("PMU tdie3", 41.5),
+            mk("NAND CH0 temp", 31.0),
+            mk("PMU tcal", 51.8),
+            mk("PMU TP1g", 40.4),
+            mk("External probe", 22.0),
+        ];
+        let out = condense_apple_sensors(raw);
+        let labels: Vec<&str> = out.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(labels, ["CPU", "SoC", "SSD", "Battery", "External probe"]);
+        let cpu = &out[0];
+        assert_eq!(cpu.kind, "cpu");
+        assert_eq!(cpu.temperature, Some(41.5));
+        assert_eq!(cpu.max, Some(42.5));
+        assert_eq!(cpu.source, "hottest of 2 sensors");
+        assert_eq!(out[2].kind, "disk");
+        assert_eq!(out[2].source, "sysinfo");
+        assert!(out.iter().all(|s| !s.label.contains("tcal")));
+    }
+
+    #[test]
+    fn non_pmu_sensors_pass_through_unchanged() {
+        let raw = vec![SensorDetails {
+            label: "coretemp Package id 0".into(),
+            kind: "cpu".into(),
+            source: "sysinfo".into(),
+            temperature: Some(50.0),
+            max: None,
+            critical: None,
+        }];
+        assert_eq!(condense_apple_sensors(raw.clone()), raw);
+    }
+
+    #[test]
+    fn apple_system_volumes_are_hidden() {
+        let mk = |mount: &str| DiskDetails {
+            name: "Macintosh HD".into(),
+            mount_point: mount.into(),
+            file_system: "apfs".into(),
+            kind: "Unknown".into(),
+            total: 10,
+            available: 5,
+            removable: false,
+        };
+        let out = hide_apple_system_volumes(vec![
+            mk("/"),
+            mk("/System/Volumes/Data"),
+            mk("/System/Volumes/VM"),
+            mk("/Volumes/Backup"),
+        ]);
+        let mounts: Vec<&str> = out.iter().map(|d| d.mount_point.as_str()).collect();
+        assert_eq!(mounts, ["/", "/Volumes/Backup"]);
     }
 
     #[test]

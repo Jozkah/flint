@@ -106,6 +106,14 @@ export type SidebarTitlebar = {
   controlsOnLeft: boolean
   /** Keep the top-left corner clear (macOS overlay, or left-anchored buttons). */
   reserveLeft: boolean
+  /**
+   * Tailwind left-padding class for the sidebar header, or null when nothing
+   * sits in the corner. The macOS traffic lights start at x=20 and end at
+   * x=72 (three 12px buttons, 8px apart), so `pl-24` (96px) leaves the same
+   * 24px breathing room `CLUSTER_GAP_PX` gives the page header. Left-anchored
+   * custom buttons are narrower and keep `pl-20`.
+   */
+  leftPadClass: 'pl-24' | 'pl-20' | null
   /** Render the "Flint" wordmark on the left edge. */
   showWordmarkLeft: boolean
   /** Render the "Flint" wordmark inside the right control cluster instead. */
@@ -130,6 +138,7 @@ export function resolveSidebarTitlebar(
   return {
     controlsOnLeft,
     reserveLeft,
+    leftPadClass: macOverlay ? 'pl-24' : controlsOnLeft ? 'pl-20' : null,
     showWordmarkLeft: !reserveLeft,
     showWordmarkRight: controlsOnLeft,
   }

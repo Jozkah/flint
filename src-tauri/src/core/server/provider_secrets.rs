@@ -207,7 +207,48 @@ fn unique_tmp(path: &std::path::Path, ext: &str) -> PathBuf {
 static KEYRING_DOWN: AtomicBool = AtomicBool::new(false);
 
 fn keyring_down() -> bool {
-    KEYRING_DOWN.load(Ordering::Relaxed)
+    KEYRING_DOWN.load(Ordering::Relaxed) || !keyring_trusts_this_binary()
+}
+
+/// Whether the OS keyring can remember an access grant for this executable.
+///
+/// A macOS keychain item's ACL names the apps allowed to read it by their code
+/// signing identity. An ad-hoc signature (a local `tauri build` with no
+/// Developer ID) has no identity the ACL can hold onto, so every read of every
+/// item is a fresh "Flint wants to use your confidential information" dialog
+/// and "Always Allow" does not stick -- and the app reads one item per provider
+/// on every launch. Such a build goes straight to the encrypted file store,
+/// which needs no ACL. A build signed with any Apple-issued certificate
+/// (Developer ID, App Store, development) satisfies `anchor apple generic` and
+/// uses the keychain as before.
+#[cfg(not(target_os = "macos"))]
+fn keyring_trusts_this_binary() -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
+fn keyring_trusts_this_binary() -> bool {
+    use std::sync::OnceLock;
+    static TRUSTED: OnceLock<bool> = OnceLock::new();
+    *TRUSTED.get_or_init(|| {
+        use security_framework::os::macos::code_signing::{Flags, SecCode, SecRequirement};
+        use std::str::FromStr;
+        let signed = match (
+            SecCode::for_self(Flags::NONE),
+            SecRequirement::from_str("anchor apple generic"),
+        ) {
+            (Ok(code), Ok(req)) => code.check_validity(Flags::NONE, &req).is_ok(),
+            _ => false,
+        };
+        if !signed {
+            log::warn!(
+                "This binary is not signed with an Apple-issued certificate; the keychain \
+                 cannot remember an access grant for it, so provider secrets use the \
+                 encrypted file store instead"
+            );
+        }
+        signed
+    })
 }
 
 /// Whether an error means the keyring backend itself is unusable (vs. a normal
