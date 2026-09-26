@@ -112,7 +112,7 @@ export type EngineDeps = {
    * the user's own window, which wins over the model's reported one. Absent:
    * summarized at the default threshold.
    */
-  compaction?: () => {
+  compaction?: (model: RoomModelRef) => {
     enabled: boolean
     threshold?: number
     window?: number | null
@@ -282,7 +282,8 @@ class RoomRun {
   }
 
   contextWindow(model: RoomModelRef): number {
-    const userSet = this.deps.compaction?.().window
+    // The participant's own model decides: its Max Context Tokens when set.
+    const userSet = this.deps.compaction?.(model).window
     if (userSet != null && userSet > 0) return userSet
     return this.deps.contextWindow?.(model) ?? contextWindowFor(model, this.lookup)
   }
@@ -424,7 +425,7 @@ class RoomRun {
     instruction: string | null,
     shrink: boolean
   ): Promise<BuiltPrompt> {
-    const compaction = this.deps.compaction?.() ?? { enabled: true }
+    const compaction = this.deps.compaction?.(model) ?? { enabled: true }
     const built = await buildPrompt({
       room: this.room,
       messages: this.messages,

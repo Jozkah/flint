@@ -27,7 +27,14 @@ import {
   type RoomPersistence,
 } from './persistence'
 import { useRoomsStore } from './store'
-import { roomCompactionSettings } from './compactionSettings'
+import {
+  loadRoomCompactionPolicy,
+  roomCompactionSettingsFor,
+} from './compactionSettings'
+import {
+  DEFAULT_COMPACTION_POLICY,
+  type CompactionPolicy,
+} from '@/lib/compactionPolicy'
 import type { StreamReply } from './callError'
 import {
   DEFAULT_ROOM_LIMITS,
@@ -199,6 +206,8 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     store().applyEngineUpdate({ type: 'record', roomId, record })
   }
 
+  // Read when a run starts (the policy file is async); a run uses one policy.
+  let compactionPolicy: CompactionPolicy = DEFAULT_COMPACTION_POLICY
   const engineDeps = (): EngineDeps => ({
     persistence: persistence(),
     streamReply: deps.streamReply ?? defaultStreamReply,
@@ -207,7 +216,9 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     newId,
     lookupProvider: lookup,
     contextWindow: deps.contextWindow,
-    compaction: deps.compaction ?? roomCompactionSettings,
+    compaction:
+      deps.compaction ??
+      ((model) => roomCompactionSettingsFor(model, lookup, compactionPolicy)),
     sleep: deps.sleep,
     onUpdate: (u) => store().applyEngineUpdate(u),
   })
@@ -247,6 +258,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           const { room } = await persistence().getRoom(roomId)
           if (!guard(room)) return
         }
+        if (!deps.compaction) compactionPolicy = await loadRoomCompactionPolicy()
         await runRoom(roomId, engineDeps(), run.controller.signal, {
           command,
           intent: () => run.intent,
