@@ -32,6 +32,11 @@ struct Grant {
     session_id: String,
     /// Canonical, as the backend resolved it — never as the caller spelled it.
     root: PathBuf,
+    /// The session's additional attached folders, validated like `root` and
+    /// canonical. Always after `root` in what [`resolve_all`] returns, so the
+    /// primary stays the first write root (the one a managed worktree run's
+    /// shell starts in).
+    extra_roots: Vec<PathBuf>,
 }
 
 #[cfg(any(feature = "tauri", test))]
@@ -99,9 +104,31 @@ fn new_id() -> String {
 /// Nothing is published if any step fails: the registry is only touched after
 /// validation has succeeded.
 #[cfg(any(feature = "tauri", test))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn authorize(
     session_id: &str,
     folder: &str,
+    workspace: &Path,
+    data_folder: &Path,
+) -> Result<String, String> {
+    authorize_with_extras(session_id, folder, &[], workspace, data_folder)
+}
+
+/// [`authorize`], also covering the session's additional attached folders.
+///
+/// Each extra folder is validated exactly like the primary, and one that fails
+/// validation fails the whole grant: a run must never be told a folder is
+/// writable when it is not. Extras are attached directly, never through a
+/// managed worktree, so on a platform that can only confine a run to Jan's own
+/// worktrees (AppContainer) a user folder among them cannot be written. There
+/// they are left out of the grant rather than refused -- the primary's worktree
+/// stays writable and the extras stay readable, which is exactly what the
+/// primary folder itself gets on that platform.
+#[cfg(any(feature = "tauri", test))]
+pub fn authorize_with_extras(
+    session_id: &str,
+    folder: &str,
+    extras: &[String],
     workspace: &Path,
     data_folder: &Path,
 ) -> Result<String, String> {
@@ -129,6 +156,18 @@ pub fn authorize(
         ));
     }
 
+    let mut extra_roots: Vec<PathBuf> = Vec::new();
+    for extra in extras {
+        let extra =
+            crate::workspace::validate_read_root(Path::new(extra), workspace, Some(data_folder))?;
+        if !capability() && !is_owned_worktree(&extra, data_folder) {
+            continue;
+        }
+        if extra != root && !extra_roots.contains(&extra) {
+            extra_roots.push(extra);
+        }
+    }
+
     let id = new_id();
     let mut grants = registry().lock().map_err(|_| "grant registry poisoned")?;
     grants.retain(|_, grant| grant.session_id != session_id);
@@ -137,6 +176,7 @@ pub fn authorize(
         Grant {
             session_id: session_id.to_string(),
             root,
+            extra_roots,
         },
     );
     Ok(id)
@@ -221,10 +261,27 @@ pub fn revoke_session(session_id: &str) -> usize {
 /// to — so the answer is `None` and the run writes to its sandbox as if it had
 /// never been authorized at all.
 #[cfg(any(feature = "tauri", test))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn resolve(grant_id: &str, session_id: &str) -> Option<PathBuf> {
     let grants = registry().lock().ok()?;
     let grant = grants.get(grant_id)?;
     (grant.session_id == session_id).then(|| grant.root.clone())
+}
+
+/// Every root this grant authorizes -- the primary first, then the session's
+/// additional attached folders -- or nothing when the grant is not live and
+/// ours. Same session check as [`resolve`].
+#[cfg(any(feature = "tauri", test))]
+pub fn resolve_all(grant_id: &str, session_id: &str) -> Vec<PathBuf> {
+    let Ok(grants) = registry().lock() else {
+        return Vec::new();
+    };
+    match grants.get(grant_id) {
+        Some(grant) if grant.session_id == session_id => std::iter::once(grant.root.clone())
+            .chain(grant.extra_roots.iter().cloned())
+            .collect(),
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]
@@ -279,6 +336,48 @@ mod tests {
         assert_eq!(resolve(&id, "another-session"), None);
 
         revoke(&id);
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn extra_folders_resolve_after_the_primary() {
+        require_capability!();
+        let (ws, data, repo, session) = fixture();
+        let other = ws.parent().unwrap().join("second-repo");
+        std::fs::create_dir_all(&other).unwrap();
+        let extras = [
+            other.to_string_lossy().into_owned(),
+            // The primary again, and a duplicate: neither is listed twice.
+            repo.to_string_lossy().into_owned(),
+            other.to_string_lossy().into_owned(),
+        ];
+        let id = authorize_with_extras(&session, &repo.to_string_lossy(), &extras, &ws, &data)
+            .unwrap();
+
+        assert_eq!(
+            resolve_all(&id, &session),
+            vec![repo.canonicalize().unwrap(), other.canonicalize().unwrap()]
+        );
+        assert_eq!(resolve(&id, &session), Some(repo.canonicalize().unwrap()));
+        assert!(resolve_all(&id, "another-session").is_empty());
+
+        revoke(&id);
+        assert!(resolve_all(&id, &session).is_empty());
+        let _ = std::fs::remove_dir_all(ws.parent().unwrap());
+    }
+
+    #[test]
+    fn an_invalid_extra_folder_fails_the_whole_grant() {
+        let (ws, data, repo, session) = fixture();
+        let gone = ws.parent().unwrap().join("not-there");
+        let err = authorize_with_extras(
+            &session,
+            &repo.to_string_lossy(),
+            &[data.to_string_lossy().into_owned(), gone.to_string_lossy().into_owned()],
+            &ws,
+            &data,
+        );
+        assert!(err.is_err());
         let _ = std::fs::remove_dir_all(ws.parent().unwrap());
     }
 
@@ -392,6 +491,18 @@ mod tests {
         let id = authorize(&session, &owned.to_string_lossy(), &ws, &data)
             .expect("a Jan-owned worktree is authorized");
         assert_eq!(resolve(&id, &session), Some(owned.canonicalize().unwrap()));
+
+        // Extras are attached directly: a user folder among them stays out of
+        // the grant rather than failing the worktree's.
+        let with_extra = authorize_with_extras(
+            &session,
+            &owned.to_string_lossy(),
+            &[repo.to_string_lossy().into_owned()],
+            &ws,
+            &data,
+        )
+        .expect("the worktree is still authorized");
+        assert_eq!(resolve_all(&with_extra, &session), vec![owned.canonicalize().unwrap()]);
 
         let err = authorize(&session, &repo.to_string_lossy(), &ws, &data)
             .expect_err("the user's own folder is refused");

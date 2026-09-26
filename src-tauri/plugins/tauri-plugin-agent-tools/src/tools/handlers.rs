@@ -2723,8 +2723,8 @@ pub fn rebase_relative_paths(tool: &str, args: &mut serde_json::Value, base: &Pa
 
 /// Where `bash` starts when the run writes to a Jan-managed worktree (#322).
 ///
-/// Only when the granted write roots are exactly one directory inside Jan's
-/// owned worktrees dir: that is the Managed worktree destination, and the one
+/// Only when the first granted write root is a directory inside Jan's owned
+/// worktrees dir: that is the Managed worktree destination, and the one
 /// case where the shell is already confined to the worktree it would start in
 /// (the AppContainer ACE, the bwrap bind or the Seatbelt rule for that write
 /// root). Review-only runs have no write root and direct-edit runs a root that
@@ -2735,9 +2735,10 @@ pub fn rebase_relative_paths(tool: &str, args: &mut serde_json::Value, base: &Pa
 /// ([`working_folder`], [`rebase_relative_paths`]), so the two never
 /// disagree about what a relative path means.
 fn managed_worktree_start(write_roots: &[PathBuf], owned: Option<&Path>) -> Option<PathBuf> {
-    let [only] = write_roots else {
-        return None;
-    };
+    // The primary destination is the first root; the session's extra attached
+    // folders (and any `request_access` write grant) come after it and do not
+    // move the shell.
+    let only = write_roots.first()?;
     let owned = owned?.canonicalize().ok()?;
     let real = only.canonicalize().ok()?;
     (real.is_dir() && real.starts_with(&owned) && real != owned).then(|| only.clone())
@@ -6954,7 +6955,7 @@ on_failure = \"warn\"
     }
 
     /// #322: the shell starts in the managed worktree only when that is the
-    /// run's single write root under Jan's owned worktrees dir.
+    /// run's first write root under Jan's owned worktrees dir.
     #[test]
     fn bash_starts_in_the_managed_worktree_only_when_it_is_the_destination() {
         let data = unique_root();
@@ -6971,7 +6972,12 @@ on_failure = \"warn\"
         assert_eq!(managed_worktree_start(&[user_repo.clone()], Some(&owned)), None);
         // The owned dir itself, several roots, no mask root, a missing root.
         assert_eq!(managed_worktree_start(&[owned.clone()], Some(&owned)), None);
-        assert_eq!(managed_worktree_start(&[wt.clone(), user_repo], Some(&owned)), None);
+        assert_eq!(managed_worktree_start(&[user_repo.clone(), wt.clone()], Some(&owned)), None);
+        // Extra attached folders after the worktree keep the shell in it.
+        assert_eq!(
+            managed_worktree_start(&[wt.clone(), user_repo], Some(&owned)),
+            Some(wt.clone())
+        );
         assert_eq!(managed_worktree_start(&[wt.clone()], None), None);
         assert_eq!(managed_worktree_start(&[owned.join("gone")], Some(&owned)), None);
 

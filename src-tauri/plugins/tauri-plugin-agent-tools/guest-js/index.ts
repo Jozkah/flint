@@ -132,12 +132,15 @@ export async function managedWorktreeCapability(): Promise<boolean> {
 export async function directEditAuthorize(
   dataFolder: string,
   sessionId: string,
-  folder: string
+  folder: string,
+  /** The session's additional attached folders, covered by the same grant. */
+  extraFolders?: string[]
 ): Promise<string> {
   return await invoke('plugin:agent-tools|direct_edit_authorize', {
     dataFolder,
     sessionId,
     folder,
+    extraFolders,
   })
 }
 
@@ -1204,7 +1207,9 @@ export async function executeTool(
   /** The run this call belongs to; journals its file changes for undo. */
   undoRun?: string,
   /** Who is making this call (AH-110); journaled with every file it changes. */
-  actor?: ChangeActorInput
+  actor?: ChangeActorInput,
+  /** The session's additional attached folders, readable like `readOnlyProject`. */
+  extraProjects?: string[]
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool', {
     dataFolder,
@@ -1220,6 +1225,7 @@ export async function executeTool(
     callId,
     undoRun,
     actor,
+    extraProjects,
   })
 }
 
@@ -1387,6 +1393,8 @@ export async function executeToolStreaming(
     undoRun?: string
     /** Who is making this call (AH-110); journaled with every file it changes. */
     actor?: ChangeActorInput
+    /** The session's additional attached folders, readable like `readOnlyProject`. */
+    extraProjects?: string[]
   }
 ): Promise<ToolResult> {
   return await invoke('plugin:agent-tools|execute_tool_streaming', {
@@ -1404,6 +1412,7 @@ export async function executeToolStreaming(
     scope: options?.scope,
     callId: options?.callId,
     actor: options?.actor,
+    extraProjects: options?.extraProjects,
   })
 }
 
