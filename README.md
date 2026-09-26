@@ -66,6 +66,12 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full list and for what is not f
 
 Installers for Windows, macOS and Linux are attached to each release on the [Releases](https://github.com/Jozkah/flint/releases) page. If a release has no installer yet, [build Flint from source](docs/BUILDING.md).
 
+The installers are **not code-signed**, so your OS warns you the first time you open Flint:
+
+- **Windows:** SmartScreen shows "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+- **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
+
 **You bring your own models.** Import a GGUF file you already have (Models → llama.cpp → Import), use an MLX model on Apple silicon, or add a cloud provider with your own key. Flint does not download models for you.
 
 ## Getting started
