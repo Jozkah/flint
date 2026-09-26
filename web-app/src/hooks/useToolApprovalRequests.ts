@@ -167,6 +167,12 @@ type ToolApprovalRequestsState = {
    */
   approvedFingerprints: Record<string, string>
   /**
+   * Calls the user allowed by answering a prompt, as opposed to calls a mode
+   * or standing grant let through. Read by `approvalSourceFor` so the audit
+   * can tell the two apart.
+   */
+  answeredByPrompt: Record<string, true>
+  /**
    * threadId -> keys ({@link repeatCommandKey}) of the shell commands the
    * user answered "Allow once" for in that conversation. In memory only, so
    * a repeat of the same command can be shown as one; it never answers a
@@ -291,6 +297,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     queued: {},
     refusals: {},
     approvedFingerprints: {},
+    answeredByPrompt: {},
     allowedOnceCommands: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
@@ -527,7 +534,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           : {}),
         ...(decision === 'deny'
           ? { refusals: remember(s.refusals, [[toolCallId, 'denied']]) }
-          : {}),
+          : {
+              answeredByPrompt: remember(s.answeredByPrompt, [
+                [toolCallId, true as const],
+              ]),
+            }),
         ...(decision !== 'deny' && serverName && serverFingerprint
           ? {
               approvedFingerprints: remember(s.approvedFingerprints, [
@@ -649,4 +660,15 @@ export function wasCommandAllowedOnce(
 ): boolean {
   const key = repeatCommandKey(toolName, input)
   return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
+}
+
+/**
+ * How a call about to run was allowed: `prompted` when the user answered its
+ * prompt, `auto` when nothing asked (a mode, a standing grant, or a tool that
+ * needs no approval). Passed to the backend for its audit record only.
+ */
+export function approvalSourceFor(toolCallId: string): 'prompted' | 'auto' {
+  return useToolApprovalRequests.getState().answeredByPrompt[toolCallId]
+    ? 'prompted'
+    : 'auto'
 }

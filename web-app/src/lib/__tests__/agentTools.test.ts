@@ -387,6 +387,7 @@ describe('agentTools', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
 
@@ -403,6 +404,7 @@ describe('agentTools', () => {
       undefined,
       undefined,
       'thread',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -447,6 +449,7 @@ describe('agentTools', () => {
       undefined,
       undefined,
       undefined,
+      undefined,
       undefined
     )
   })
@@ -474,6 +477,7 @@ describe('agentTools', () => {
       '/home/u/repo',
       undefined,
       'thread',
+      undefined,
       undefined,
       undefined,
       undefined,
@@ -535,6 +539,7 @@ describe('agentTools', () => {
       undefined,
       undefined,
       'thread',
+      undefined,
       undefined,
       undefined,
       undefined,
