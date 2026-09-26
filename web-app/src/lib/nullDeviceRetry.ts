@@ -32,10 +32,22 @@ export const RETRY_UNAVAILABLE_NOTE =
   "outside the sandbox because Windows' null device refuses sandboxed " +
   'programs.]'
 
+/**
+ * The sandboxed run an approved unsandboxed rerun replaced. Display-only: the
+ * model gets the rerun's result, while the card keeps this collapsed under
+ * "first attempt" so the user can still see what the sandbox did.
+ */
+export type FirstAttempt = {
+  output: string
+  isError: true
+}
+
 export type NullDeviceRetryOutcome = {
   output: string
   isError: boolean
   resources?: ToolResources
+  /** Set only when the command actually ran again outside the sandbox. */
+  firstAttempt?: FirstAttempt
 }
 
 /**
@@ -84,11 +96,13 @@ export async function offerUnsandboxedRetry(opts: {
       resources: failureResources,
     }
   }
+  const firstAttempt: FirstAttempt = { output: failure, isError: true }
   if (rerun.error !== undefined) {
     return {
       output: RAN_UNSANDBOXED_NOTE + rerun.error,
       isError: true,
       resources: rerun.resources,
+      firstAttempt,
     }
   }
   return {
@@ -99,5 +113,6 @@ export async function offerUnsandboxedRetry(opts: {
         : JSON.stringify(rerun.content ?? '')),
     isError: false,
     resources: rerun.resources,
+    firstAttempt,
   }
 }

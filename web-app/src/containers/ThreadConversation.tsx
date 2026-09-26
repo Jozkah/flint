@@ -992,6 +992,11 @@ export function ThreadConversation({
                         }
                       ),
                 })
+                if (settled.firstAttempt) {
+                  useToolCallRuntime
+                    .getState()
+                    .recordFirstAttempt(toolCall.toolCallId, settled.firstAttempt)
+                }
                 result = settled.isError
                   ? { error: settled.output, resources: settled.resources }
                   : { content: settled.output, resources: settled.resources }

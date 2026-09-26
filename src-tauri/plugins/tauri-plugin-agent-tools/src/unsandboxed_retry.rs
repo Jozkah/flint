@@ -34,6 +34,49 @@ pub fn qualifies(tool: &str, sandboxed: bool, is_error: bool, content: &str) -> 
         && content.contains(crate::tools::jail::NULL_DEVICE_RETRY_TAG)
 }
 
+/// What the approval prompt says. Kept word for word with
+/// `NULL_DEVICE_RETRY_REASON` in web-app/src/lib/nullDeviceRetry.ts, so the
+/// desktop and the CLI put the same question.
+pub const NULL_DEVICE_RETRY_REASON: &str = "This command needs to run outside the sandbox \
+     because Windows' null device (NUL) refuses sandboxed programs. Allowing it runs this \
+     exact command once more, outside the sandbox, with your own permissions.";
+
+/// Put in front of the output of a command that ran outside the sandbox.
+/// Same text as the desktop's `RAN_UNSANDBOXED_NOTE`.
+pub const RAN_UNSANDBOXED_NOTE: &str = "[The sandboxed run failed because Windows' null \
+     device refuses sandboxed programs. The user allowed this command to run outside the \
+     sandbox; this is the result of that run.]\n";
+
+/// Appended to the original failure when the user said no.
+pub const RETRY_DECLINED_NOTE: &str = "\n[The user did not allow this command to run outside \
+     the sandbox, so it failed as shown above. Do not retry it inside the sandbox. Continue \
+     without it, or tell the user what it was needed for.]";
+
+/// Appended to the original failure when nothing could put the question.
+pub const RETRY_UNAVAILABLE_NOTE: &str = "\n[Running this command outside the sandbox could \
+     not be offered here. Do not retry it inside the sandbox. Tell the user it needs to run \
+     outside the sandbox because Windows' null device refuses sandboxed programs.]";
+
+/// How an offer ended, for [`model_text`].
+pub enum Settled<'a> {
+    /// Nothing could ask the user (a headless run, no terminal).
+    Unavailable,
+    /// The user said no.
+    Declined,
+    /// The user said yes; this is the unsandboxed run's own result.
+    Ran(&'a str),
+}
+
+/// What the model gets back once an offer is settled: the same text the
+/// desktop builds in `offerUnsandboxedRetry`.
+pub fn model_text(failure: &str, settled: Settled<'_>) -> String {
+    match settled {
+        Settled::Unavailable => format!("{failure}{RETRY_UNAVAILABLE_NOTE}"),
+        Settled::Declined => format!("{failure}{RETRY_DECLINED_NOTE}"),
+        Settled::Ran(output) => format!("{RAN_UNSANDBOXED_NOTE}{output}"),
+    }
+}
+
 struct Offer<P> {
     session: String,
     issued: Instant,
@@ -123,6 +166,37 @@ mod tests {
         assert!(!qualifies("bash", true, false, &out), "did not fail");
         assert!(!qualifies("read", true, true, &out), "not a shell");
         assert!(!qualifies("bash", true, true, "open NUL: Access is denied."));
+    }
+
+    #[test]
+    fn the_model_is_told_how_the_offer_ended() {
+        let fail = "open NUL: Access is denied.";
+        assert_eq!(
+            model_text(fail, Settled::Declined),
+            format!("{fail}{RETRY_DECLINED_NOTE}")
+        );
+        assert!(model_text(fail, Settled::Unavailable).contains("could not be offered here"));
+        let ran = model_text(fail, Settled::Ran("built\n[exit 0]"));
+        assert!(ran.starts_with(RAN_UNSANDBOXED_NOTE));
+        assert!(ran.ends_with("built\n[exit 0]"));
+        assert!(!ran.contains(fail), "the rerun replaces the failure");
+    }
+
+    /// The desktop matches the rerun note by its opening words to split it off
+    /// the card (web-app/src/lib/toolPresentation.ts), and puts the same
+    /// question; keep the texts identical.
+    #[test]
+    fn the_notes_match_the_desktop_text() {
+        assert_eq!(
+            RAN_UNSANDBOXED_NOTE,
+            "[The sandboxed run failed because Windows' null device refuses sandboxed \
+             programs. The user allowed this command to run outside the sandbox; this is the \
+             result of that run.]\n"
+        );
+        assert!(NULL_DEVICE_RETRY_REASON.contains(
+            "refuses sandboxed programs. Allowing it runs this exact command once more, \
+             outside the sandbox, with your own permissions."
+        ));
     }
 
     #[test]

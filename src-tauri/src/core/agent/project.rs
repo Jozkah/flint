@@ -386,6 +386,12 @@ pub(crate) struct ToolsSection {
     /// formatter it uses (AH-150).
     #[serde(default)]
     pub format_on_edit: Option<bool>,
+    /// Programs that open Windows' null device themselves, beyond the
+    /// built-in `go` and `git`. Where the null device refuses the sandbox, a
+    /// sandboxed command naming one is not run; the user is asked to run it
+    /// outside the sandbox instead.
+    #[serde(default)]
+    pub nul_programs: Vec<String>,
 }
 
 const AGENT_TOML_TEMPLATE: &str = r#"[agent]
@@ -442,6 +448,10 @@ allow_write = []
 # declares (rustfmt.toml/Cargo.toml, .prettierrc, pyproject [tool.ruff]/[tool.black],
 # go.mod) and that is actually installed.
 # format_on_edit = true
+# Programs that open Windows' null device (NUL) themselves, besides go and git.
+# Where NUL refuses sandboxed programs, a command running one is not run in the
+# sandbox; you are asked to allow it outside the sandbox instead.
+# nul_programs = ["bazel"]
 
 [skills]
 enabled = []
@@ -520,6 +530,8 @@ pub(crate) struct RunSettings {
     pub sandbox: Option<bool>,
     /// `[tools].format_on_edit` (AH-149); unset is off.
     pub format_on_edit: bool,
+    /// `[tools].nul_programs`.
+    pub nul_programs: Vec<String>,
     /// `[tools].allow_domains`, capped by the machine policy (Jozkah/jan#226).
     pub allow_domains: Vec<String>,
     /// `[tools].deny_domains` plus the machine policy's.
@@ -559,6 +571,7 @@ pub(crate) fn run_settings_for(project_root: &Path, profile: Option<&str>) -> Ru
         allow_home_read: cfg.tools.allow_home_read,
         sandbox: cfg.tools.sandbox,
         format_on_edit: cfg.tools.format_on_edit.unwrap_or(false),
+        nul_programs: cfg.tools.nul_programs,
         #[cfg(feature = "cli")]
         worktree: cfg.agent.worktree,
     }

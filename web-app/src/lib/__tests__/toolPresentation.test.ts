@@ -273,6 +273,18 @@ describe('parseBashOutput', () => {
     expect(r.signaled).toBe(false)
   })
 
+  it('takes the unsandboxed-rerun note off the output and flags it', () => {
+    const r = parseBashOutput(
+      "[The sandboxed run failed because Windows' null device refuses sandboxed " +
+        'programs. The user allowed this command to run outside the sandbox; ' +
+        'this is the result of that run.]\nbuilt\n[exit 0]'
+    )
+    expect(r.ranUnsandboxed).toBe(true)
+    expect(r.text).toBe('built')
+    expect(r.exit).toBe(0)
+    expect(parseBashOutput('built\n[exit 0]').ranUnsandboxed).toBe(false)
+  })
+
   it('handles a wrapped content payload and no output at all', () => {
     expect(parseBashOutput({ content: 'hi\n[exit 0]' }).text).toBe('hi')
     expect(parseBashOutput(undefined).text).toBe('')

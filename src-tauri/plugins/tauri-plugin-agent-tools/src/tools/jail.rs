@@ -1109,10 +1109,7 @@ pub fn failure_hint(
                  Use {fix}.]"
             ))
         }
-        FailureClass::DeviceFile => Some(device_hint(
-            backend() == Backend::AppContainer
-                && super::appcontainer::null_device_admits_sandbox() == Some(false),
-        )),
+        FailureClass::DeviceFile => Some(device_hint(null_device_refuses_sandbox())),
         _ => None,
     }
 }
@@ -1132,6 +1129,13 @@ pub const NULL_DEVICE_REFUSED_HINT: &str = "\n[device_path_sandbox_refused: this
      granting folder access cannot fix it. This command can only work outside the \
      sandbox, which needs the user's approval; Flint asks the user for it where it can. Do \
      not retry the same command inside the sandbox.]";
+
+/// Whether sandboxed commands run in an AppContainer that this machine's
+/// `\Device\Null` refuses, so a program that opens NUL itself cannot work.
+pub fn null_device_refuses_sandbox() -> bool {
+    backend() == Backend::AppContainer
+        && super::appcontainer::null_device_admits_sandbox() == Some(false)
+}
 
 /// The part of [`NULL_DEVICE_REFUSED_HINT`] that identifies it.
 pub const NULL_DEVICE_RETRY_TAG: &str = "[device_path_sandbox_refused:";

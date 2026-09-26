@@ -21,6 +21,7 @@ pub mod mcp_confine;
 pub mod owned;
 /// Paths whose backslashes JSON turned into control characters.
 pub mod path_repair;
+pub mod nul_programs;
 pub mod proc;
 /// Path containment for the filesystem tools. Distinct from [`jail`], which is
 /// kernel-level confinement for spawned commands.
@@ -155,6 +156,11 @@ pub struct ToolContext<'a> {
     /// gate is then the only thing between the model and the machine, which is
     /// why nothing else about the gate changes when this is off.
     pub sandbox: bool,
+    /// Programs besides [`nul_programs::DEFAULT_NUL_PROGRAMS`] that open
+    /// Windows' null device themselves (`[tools].nul_programs`). A sandboxed
+    /// command naming one is not run where the null device refuses the
+    /// sandbox; the user is offered to run it outside instead.
+    pub nul_programs: &'a [String],
     /// Where a tool sends output as it is produced, when the caller wants to
     /// show it live. `None` means "collect and return only", which is what every
     /// non-interactive caller wants.
@@ -264,6 +270,7 @@ impl<'a> ToolContext<'a> {
             available_tools: None,
             temporary: false,
             sandbox: true,
+            nul_programs: &[],
             on_output: None,
             read_roots: &[],
             write_roots: &[],
@@ -431,6 +438,12 @@ impl<'a> ToolContext<'a> {
     /// real `/tmp`, and leaving the scratch set would have the filesystem tools
     /// still rewriting `/tmp/...` into a directory the shell never looks at --
     /// two tools disagreeing about what one path means.
+    /// Add programs known to open the null device. See [`Self::nul_programs`].
+    pub fn with_nul_programs(mut self, programs: &'a [String]) -> Self {
+        self.nul_programs = programs;
+        self
+    }
+
     pub fn with_sandbox(mut self, sandbox: bool) -> Self {
         self.sandbox = sandbox;
         if !sandbox {

@@ -293,6 +293,10 @@ struct Pending {
     /// with the change in view; `None` for other tools.
     diff: Option<String>,
     offers_always: bool,
+    /// Why this call is being asked about when that is not obvious from the
+    /// call itself: a destructive command, a paused auto-approval, a command
+    /// that needs to run outside the sandbox.
+    reason: Option<String>,
     /// Highlighted option in the docked prompt (index into `options()`).
     selected: usize,
     /// Name of the subagent that requested this, when the call originated inside
@@ -360,18 +364,27 @@ impl Pending {
             .into_iter()
             .map(Line::from),
         );
-        let (lead, body) = match (&self.command, &self.path) {
-            (Some(command), _) => ("$ ", command.clone()),
-            (None, Some(path)) => ("on ", path.clone()),
-            (None, None) => return out,
+        let target = match (&self.command, &self.path) {
+            (Some(command), _) => Some(("$ ", command.clone())),
+            (None, Some(path)) => Some(("on ", path.clone())),
+            (None, None) => None,
         };
-        out.extend(gutter_lines(
-            // Terminal default foreground rather than an explicit white, which
-            // is invisible on a light background.
-            wrap_text(&body, Style::new(), max.saturating_sub(2).max(1)),
-            vec![Span::styled(lead, dim)],
-            vec![Span::raw("  ")],
-        ));
+        if let Some((lead, body)) = target {
+            out.extend(gutter_lines(
+                // Terminal default foreground rather than an explicit white,
+                // which is invisible on a light background.
+                wrap_text(&body, Style::new(), max.saturating_sub(2).max(1)),
+                vec![Span::styled(lead, dim)],
+                vec![Span::raw("  ")],
+            ));
+        }
+        if let Some(reason) = &self.reason {
+            out.extend(
+                wrap_text(reason, Style::new().yellow(), max)
+                    .into_iter()
+                    .map(Line::from),
+            );
+        }
         out
     }
 
@@ -5262,6 +5275,7 @@ impl App {
                 command,
                 diff,
                 offers_always,
+                reason,
                 ..
             } => {
                 // Don't close the tool group here: the prompt renders docked
@@ -5275,6 +5289,7 @@ impl App {
                     command,
                     diff,
                     offers_always,
+                    reason,
                     selected: 0,
                     subagent: None,
                 });
@@ -5459,6 +5474,7 @@ impl App {
                 command,
                 diff,
                 offers_always,
+                reason,
                 ..
             } => {
                 self.pending_queue.push_back(Pending {
@@ -5469,6 +5485,7 @@ impl App {
                     command,
                     diff,
                     offers_always,
+                    reason,
                     selected: 0,
                     subagent: Some(name.to_string()),
                 });
@@ -18792,9 +18809,30 @@ mod tests {
             command: Some("git status".into()),
             diff: None,
             offers_always,
+            reason: None,
             selected: 0,
             subagent: None,
         }
+    }
+
+    /// The unsandboxed-retry prompt names the command and says why it is
+    /// asked, with only once / deny on offer.
+    #[test]
+    fn a_permission_prompt_shows_its_reason_under_the_command() {
+        let mut p = pending(false);
+        p.command = Some("go build ./...".into());
+        p.reason = Some(
+            tauri_plugin_agent_tools::unsandboxed_retry::NULL_DEVICE_RETRY_REASON.to_string(),
+        );
+        let text: String = p
+            .detail_lines(400)
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("go build ./..."), "{text}");
+        assert!(text.contains("null device (NUL) refuses sandboxed programs"), "{text}");
+        assert_eq!(p.options().len(), 2, "allow once and deny only");
     }
 
     #[test]

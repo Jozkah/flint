@@ -245,6 +245,7 @@ export const ToolCallCard = memo(
             state={part.state}
             output={part.output}
             errorText={errorText}
+            attemptCallId={part.toolCallId}
           />
         </div>
       </ResultSection>

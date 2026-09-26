@@ -210,6 +210,16 @@ fn next_permission_id() -> String {
     )
 }
 
+/// Outstanding unsandboxed-retry offers for `bash` calls the null device
+/// refused, keyed by run. The same one-shot registry the desktop redeems
+/// through; here the payload is the call's own arguments.
+fn null_retry_offers() -> &'static tauri_plugin_agent_tools::unsandboxed_retry::Offers<serde_json::Value> {
+    static OFFERS: std::sync::OnceLock<
+        tauri_plugin_agent_tools::unsandboxed_retry::Offers<serde_json::Value>,
+    > = std::sync::OnceLock::new();
+    OFFERS.get_or_init(Default::default)
+}
+
 /// All state the orchestration loop threads from multiple subsystems. Grouped
 /// into a struct so the streaming and non-streaming entry points share one
 /// argument surface instead of a ten-parameter signature.
@@ -1256,6 +1266,8 @@ struct CompositeToolInvoker {
     /// its diff is shown (AH-149). Resolved once per run from
     /// `[tools].format_on_edit`.
     format_on_edit: bool,
+    /// `[tools].nul_programs`: programs besides go and git known to open NUL.
+    nul_programs: Vec<String>,
     /// Every tool this run could actually call: the built-ins plus whatever
     /// the connected MCP servers offer, narrowed by the allowlist (AH-124).
     /// Resolved once per run so a skill that names a tool nothing here
@@ -1498,6 +1510,7 @@ struct ResolvedSettings {
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
+    nul_programs: Vec<String>,
     /// The project's domain lists, capped by the machine policy.
     allow_domains: Vec<String>,
     deny_domains: Vec<String>,
@@ -1518,6 +1531,7 @@ fn resolve_run_settings(
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
+        nul_programs: settings.nul_programs,
         allow_domains: settings.allow_domains,
         deny_domains: settings.deny_domains,
     }
@@ -1737,6 +1751,7 @@ impl CompositeToolInvoker {
         // AH-149: whether an edited file goes through the project's formatter
         // before its diff is shown.
         .with_format_on_edit(self.format_on_edit)
+        .with_nul_programs(&self.nul_programs)
     }
 
     /// The same context, plus who this run is for the mailbox (AH-103).
@@ -1928,6 +1943,99 @@ impl CompositeToolInvoker {
         let decision = rx.await.unwrap_or(PermissionDecision::Deny);
         self.permission_requests.lock().await.remove(&request_id);
         decision
+    }
+
+    /// Whether anyone can answer a permission prompt in this run: an attached
+    /// interactive UI (the TUI, a duplex client), or a terminal the one-shot
+    /// CLI prompts on. Elsewhere a prompt is auto-denied, which would read as
+    /// the user saying no when nobody was asked.
+    fn can_prompt(&self) -> bool {
+        use std::io::IsTerminal;
+        self.ask_requests.is_some() || std::io::stdin().is_terminal()
+    }
+
+    /// A sandboxed `bash` call failed only because Windows' null device
+    /// refuses sandboxed programs. Register the one-shot unsandboxed offer,
+    /// put it to the user naming the command and why, and run the call again
+    /// outside the sandbox only on a yes. Returns what the model gets:
+    /// [`tauri_plugin_agent_tools::unsandboxed_retry::model_text`], the same
+    /// text the desktop builds. A run where nobody can be asked withdraws the
+    /// offer and says so.
+    async fn settle_null_device_refusal(
+        &self,
+        id: &str,
+        args: &serde_json::Value,
+        failure: String,
+    ) -> String {
+        use tauri_plugin_agent_tools::unsandboxed_retry::{
+            model_text, Settled, NULL_DEVICE_RETRY_REASON,
+        };
+        let offers = null_retry_offers();
+        let session = self.cancel_scope.run.clone();
+        let offer = offers.offer(&session, args.clone());
+        if !self.can_prompt() {
+            offers.withdraw(&offer, &session);
+            return model_text(&failure, Settled::Unavailable);
+        }
+        let request_id = next_permission_id();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.permission_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
+        let sent = self.events.send(StreamEvent::PermissionRequest {
+            request_id: request_id.clone(),
+            tool_name: "bash".to_string(),
+            capability: "exec".to_string(),
+            path: None,
+            command: args.get("command").and_then(|v| v.as_str()).map(String::from),
+            diff: None,
+            patch: None,
+            prompt_kind: "exec".to_string(),
+            // Once, for this exact call: an "always" would outlive the offer.
+            offers_always: false,
+            reason: Some(NULL_DEVICE_RETRY_REASON.to_string()),
+        });
+        if sent.is_err() {
+            self.permission_requests.lock().await.remove(&request_id);
+            offers.withdraw(&offer, &session);
+            return model_text(&failure, Settled::Unavailable);
+        }
+        let registered = self.call_token(id);
+        let waiting = registered.token().clone();
+        let decision = tokio::select! {
+            answer = rx => answer.unwrap_or(PermissionDecision::Deny),
+            _ = async {
+                while !waiting.is_stopped() {
+                    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                }
+            } => PermissionDecision::Deny,
+        };
+        self.permission_requests.lock().await.remove(&request_id);
+        let allowed = matches!(
+            decision,
+            PermissionDecision::AllowOnce | PermissionDecision::AllowAlways
+        ) && !waiting.is_stopped();
+        if !allowed {
+            offers.withdraw(&offer, &session);
+            return model_text(&failure, Settled::Declined);
+        }
+        // Redeemed, not re-read from `args`: the offer names the call it was
+        // made for, and it is spent by this one run.
+        let (Some(call), Some(tool)) = (
+            offers.redeem(&offer, &session),
+            tauri_plugin_agent_tools::tools::lookup("bash"),
+        ) else {
+            return model_text(&failure, Settled::Unavailable);
+        };
+        let ctx = self
+            .streaming_tool_context(id)
+            .with_cancel(registered.token().clone())
+            .with_sandbox(false);
+        let (output, _, _) =
+            tauri_plugin_agent_tools::tools::handlers::execute_builtin_with_diff(tool, &call, &ctx)
+                .await;
+        model_text(&failure, Settled::Ran(&output))
     }
 
     /// R18: opening or updating a pull request acts on someone else's
@@ -3937,6 +4045,24 @@ impl CompositeToolInvoker {
                     }
                 }
             };
+            // Failed only because Windows' null device refuses sandboxed
+            // programs: offer this exact command outside the sandbox, through
+            // the same prompt, and tell the model what happened -- the same
+            // offer and the same words as the desktop.
+            let text = if name == "bash"
+                && tauri_plugin_agent_tools::unsandboxed_retry::qualifies(
+                    name,
+                    self.sandbox,
+                    // A failed run, or one refused before it ran because its
+                    // program opens NUL (`tools::nul_programs`).
+                    tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&text)
+                        || text.trim_start().starts_with("ERROR"),
+                    &text,
+                ) {
+                self.settle_null_device_refusal(&id, &args, text).await
+            } else {
+                text
+            };
             // Transcript audit #12: a refusal of the arguments shows the call
             // it expected.
             let text = tauri_plugin_agent_tools::tools::call_shape::explain(name, &args, text);
@@ -5445,6 +5571,7 @@ async fn orchestrate_inner(
             routing,
             auto_mode,
             format_on_edit: settings.format_on_edit,
+            nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: allowed_names.clone(),
@@ -10280,6 +10407,7 @@ mod tests {
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing: Vec::new(),
             format_on_edit: false,
+            nul_programs: Vec::new(),
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
                 .iter()
                 .map(|t| t.name.to_string())

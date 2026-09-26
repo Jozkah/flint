@@ -61,6 +61,8 @@
     "exitCode": "exit {{code}}",
     "terminated": "terminated",
     "outputTruncated": "Output was truncated; only the last lines are shown.",
+    "ranUnsandboxed": "ran outside the sandbox",
+    "firstAttempt": "First attempt (in the sandbox)",
     "pollingJob": "waiting for background job {{id}}",
     "pathPlaceholder": "path",
     "reading": "Reading...",

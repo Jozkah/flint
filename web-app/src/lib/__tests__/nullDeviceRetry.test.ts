@@ -44,6 +44,7 @@ describe('offerUnsandboxedRetry', () => {
       output: RAN_UNSANDBOXED_NOTE + 'built\n[exit 0]',
       isError: false,
       resources: undefined,
+      firstAttempt: { output: FAILURE, isError: true },
     })
     expect(withdrawAgentToolUnsandboxed).not.toHaveBeenCalled()
   })
@@ -58,6 +59,7 @@ describe('offerUnsandboxedRetry', () => {
     })
     expect(out.isError).toBe(true)
     expect(out.output).toBe(RAN_UNSANDBOXED_NOTE + 'boom\n[exit 1]')
+    expect(out.firstAttempt).toEqual({ output: FAILURE, isError: true })
   })
 
   it('keeps the original failure when an allowed retry could not start', async () => {
