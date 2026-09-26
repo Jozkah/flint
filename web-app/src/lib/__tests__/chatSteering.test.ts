@@ -79,6 +79,37 @@ describe('chat steering at the tool loop safe point', () => {
   })
 })
 
+describe('steer when the model answers without a tool call', () => {
+  beforeEach(() => useMessageQueue.setState({ queues: {} }))
+
+  it('goes as the immediate next turn, marked steered, ahead of plain queued', () => {
+    q().enqueue('T', { id: '1', text: 'plain', createdAt: 1 })
+    q().enqueue('T', { id: '2', text: 'steer me', createdAt: 1 })
+    q().steerNow('T', '2')
+    // No safe point: the answer had no tool call, so nothing was taken.
+    const send = vi.fn()
+    expect(
+      chatFollowUp({
+        messages: finalAnswer,
+        aborted: false,
+        takeSteering: () => q().takeSteering('T'),
+        send,
+      })
+    ).toBe(false)
+    expect(send).not.toHaveBeenCalled()
+    // The run has ended: the steer goes first, marked.
+    expect(nextChatTurn('T')).toEqual({ text: 'steer me', steered: true })
+    expect(nextChatTurn('T')).toEqual({ text: 'plain', steered: false })
+    expect(nextChatTurn('T')).toBeNull()
+  })
+
+  it('joins several steers into one turn, in queue order', () => {
+    q().enqueue('T', { id: '1', text: 'a', createdAt: 1, steer: true })
+    q().enqueue('T', { id: '2', text: 'b', createdAt: 1, steer: true })
+    expect(nextChatTurn('T')).toEqual({ text: 'a\n\nb', steered: true })
+  })
+})
+
 describe('Stop holds the queue (Chat and Cowork)', () => {
   beforeEach(() => useMessageQueue.setState({ queues: {} }))
 
@@ -126,7 +157,7 @@ describe('chat queue after a stream error', () => {
     q().enqueue('T', { id: '2', text: 'two', createdAt: 1 })
     q().holdQueue('T')
     q().release('T', '2')
-    expect(nextChatTurn('T')).toEqual({ text: 'two' })
+    expect(nextChatTurn('T')).toEqual({ text: 'two', steered: false })
     q().removeMessage('T', '1')
     expect(q().getQueue('T')).toEqual([])
   })

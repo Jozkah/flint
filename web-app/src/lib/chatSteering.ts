@@ -53,8 +53,21 @@ export function holdQueueThenStop(queueIds: string[], stop: () => void): void {
  * What the chat sends once a run has ended (or failed): the next queued
  * message that is not held. Held messages -- typed for a run that failed or
  * was stopped -- wait for the user to Send or Discard them.
+ *
+ * Steering comes first. When the model answers without any tool call there is
+ * no safe point for chatFollowUp to hand it over at, so the run ends with the
+ * user's steer still waiting; it goes now, as the immediate next turn, marked
+ * steered like a steer delivered mid-run -- never after other queued messages
+ * and never unmarked.
  */
-export function nextChatTurn(threadId: string): { text: string } | null {
-  const next = useMessageQueue.getState().dequeueReady(threadId)
-  return next ? { text: next.text } : null
+export function nextChatTurn(
+  threadId: string
+): { text: string; steered: boolean } | null {
+  const queue = useMessageQueue.getState()
+  const steering = queue.takeSteering(threadId)
+  if (steering.length > 0) {
+    return { text: steering.map((m) => m.text).join('\n\n'), steered: true }
+  }
+  const next = queue.dequeueReady(threadId)
+  return next ? { text: next.text, steered: false } : null
 }

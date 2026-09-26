@@ -2336,7 +2336,7 @@ export function ThreadConversation({
     if (!next) return
 
     processingQueueRef.current = true
-    sendQueuedMessage(next.text)
+    sendQueuedMessage(next.text, next.steered)
       .catch((err) => {
         console.error('Failed to send queued message:', err)
       })
