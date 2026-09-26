@@ -9,7 +9,13 @@ import {
   CoworkSplitWorkspace,
   SplitToggleButton,
 } from '@/containers/SplitConversation'
-import { useCoworkPane, usePaneWidth } from '@/hooks/useCoworkPane'
+import {
+  ACTIVE_PANE_RING,
+  useCoworkPane,
+  usePaneChrome,
+  usePaneWidth,
+} from '@/hooks/useCoworkPane'
+import { PaneHeaderBar } from '@/containers/PaneHeaderBar'
 import { useLiveJobs } from '@/lib/coworkJobsPoller'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { route } from '@/constants/routes'
@@ -32,7 +38,14 @@ import {
   projectReadFile,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { cn } from '@/lib/utils'
-import { ArrowLeft, FileDiff, Loader2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  FileDiff,
+  Info,
+  Loader2,
+  MessageSquare,
+  PanelRight,
+} from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { basenameOf } from '@/lib/coworkPreview'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -4424,6 +4437,12 @@ export function CoworkPage() {
   // position is put back on return.
   // In a split-view pane the pane's width decides, not the window's.
   const paneWidth = usePaneWidth()
+  // In a split pane this page draws the pane's one header row: title, its
+  // own controls and the pane's, instead of the shell header's context bar,
+  // the phone view row and the conversation frame's title row.
+  const paneChrome = usePaneChrome()
+  // Narrow panes switch views by icon; wider ones spell the views out.
+  const compactViews = paneWidth != null && paneWidth < 520
   const windowNarrow = useMediaQuery('(max-width: 1099px)')
   const windowPhone = useMediaQuery('(max-width: 767px)')
   const narrow = paneWidth != null ? paneWidth < 1100 : windowNarrow
@@ -4625,8 +4644,128 @@ export function CoworkPage() {
     </>
   )
 
+  const runningChip = running ? (
+    <Chip className="border-transparent bg-transparent text-secondary-foreground">
+      <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden />
+      {/* Icon only on a phone or in a pane, where the title needs the room. */}
+      <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
+        {t('common:coworkLayout.running')}
+      </span>
+    </Chip>
+  ) : null
+
+  // The one primary action on the conversation, once there is something to
+  // review.
+  const reviewButton =
+    changeCounts.fileCount > 0 ? (
+      <Button
+        size="sm"
+        onClick={() => openRail({ kind: 'diff' })}
+        data-testid="cowork-header-review"
+        title={paneChrome ? t('common:coworkReview.open') : undefined}
+        className={cn(
+          'pointer-coarse:h-11',
+          paneChrome ? 'h-7 px-2' : 'max-md:px-2.5'
+        )}
+      >
+        <FileDiff aria-hidden />
+        <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
+          {t('common:coworkReview.open')}
+        </span>
+      </Button>
+    ) : null
+
+  // One view at a time on a phone (or a phone-width pane), chosen here rather
+  // than by swiping, so every view is reachable from the keyboard too. In a
+  // pane it is a compact segmented control in the pane's header, icons only
+  // when the pane is narrow.
+  const viewIcon = {
+    content: MessageSquare,
+    output: PanelRight,
+    details: Info,
+  } as const
+  const viewSwitch = (compact: boolean) => (
+    <div
+      role="group"
+      aria-label={t('common:coworkLayout.views')}
+      data-testid="cowork-view-switch"
+      className={cn(
+        'flex min-w-0 items-stretch overflow-hidden bg-muted shadow-[inset_0_0_0_0.8px_var(--border)]',
+        paneChrome
+          ? 'h-7 shrink-0 gap-0.5 rounded-lg p-0.5 pointer-coarse:h-11'
+          : 'h-9 flex-1 gap-1 rounded-[10px] p-1 pointer-coarse:h-11'
+      )}
+    >
+      {PHONE_VIEWS.map((option) => {
+        const label = t(`common:coworkLayout.${option}`)
+        const ViewIcon = viewIcon[option]
+        return (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={view === option}
+            aria-label={compact ? label : undefined}
+            title={compact ? label : undefined}
+            data-testid={`cowork-view-${option}`}
+            onClick={() => showView(option)}
+            className={cn(
+              'flex min-w-0 items-center justify-center rounded-md font-medium outline-none transition-[background-color,color,box-shadow] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40',
+              paneChrome ? 'px-2 text-xs' : 'flex-1 px-2 text-[12.5px]',
+              compact && 'w-7 px-0',
+              view === option
+                ? 'bg-card text-foreground shadow-lift'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {compact ? (
+              <ViewIcon className="size-3.5" aria-hidden />
+            ) : (
+              <span className="truncate">{label}</span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  // The composer's stop control is out of sight in the other phone views, so
+  // a running session can still be stopped from the header.
+  const headerStop =
+    phone && running && view !== 'content' ? (
+      <Button
+        variant="destructive"
+        size="sm"
+        className={cn('shrink-0 pointer-coarse:h-11', paneChrome && 'h-7')}
+        onClick={handleStop}
+        data-testid="cowork-header-stop"
+      >
+        {t('common:stop')}
+      </Button>
+    ) : null
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-card">
+      {paneChrome ? (
+        <PaneHeaderBar
+          paneId={paneChrome.paneId}
+          isActive={paneChrome.isActive}
+          title={session?.title || t('common:newSession')}
+          controls={paneChrome.controls}
+        >
+          {runningChip}
+          {reviewButton}
+          {headerStop}
+          {phone ? (
+            viewSwitch(compactViews)
+          ) : (
+            <CoworkSessionDetails summary={sessionDetailsSummary}>
+              {/* No context bar in a pane: the model is chosen here. */}
+              {modelSelector}
+              {detailsBody}
+            </CoworkSessionDetails>
+          )}
+        </PaneHeaderBar>
+      ) : (
       <HeaderPage>
         {/* The same row component the chat page uses, so the selector and the
             control beside it match in size, spacing and order. The session's
@@ -4657,52 +4796,15 @@ export function CoworkPage() {
           )}
         </PageHeaderRow>
       </HeaderPage>
+      )}
 
-      {phone && (
+      {phone && !paneChrome && (
         // On a phone the header has no room beside the breadcrumb, so the
         // view switch -- and Stop, while the composer is out of sight -- get a
         // row of their own over the page.
         <div className="flex shrink-0 items-center gap-2 pt-2 pb-2">
-          {/* One view at a time on a phone, chosen here rather than by
-              swiping, so every view is reachable from the keyboard too. */}
-          <div
-              role="group"
-              aria-label={t('common:coworkLayout.views')}
-              className="flex h-9 min-w-0 flex-1 items-stretch gap-1 overflow-hidden rounded-[10px] bg-muted p-1 shadow-[inset_0_0_0_0.8px_var(--border)] pointer-coarse:h-11"
-            >
-              {PHONE_VIEWS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  aria-pressed={view === option}
-                  data-testid={`cowork-view-${option}`}
-                  onClick={() => showView(option)}
-                  className={cn(
-                    'flex min-w-0 flex-1 items-center justify-center rounded-md px-2 text-[12.5px] font-medium outline-none transition-[background-color,color,box-shadow] duration-150 ease-expo focus-visible:ring-[3px] focus-visible:ring-ring/40',
-                    view === option
-                      ? 'bg-card text-foreground shadow-lift'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                >
-                  <span className="truncate">
-                    {t(`common:coworkLayout.${option}`)}
-                  </span>
-                </button>
-              ))}
-          </div>
-          {/* The composer's stop control is out of sight in the other phone
-              views, so a running session can still be stopped from here. */}
-          {running && view !== 'content' ? (
-            <Button
-              variant="destructive"
-              size="sm"
-              className="shrink-0 pointer-coarse:h-11"
-              onClick={handleStop}
-              data-testid="cowork-header-stop"
-            >
-              {t('common:stop')}
-            </Button>
-          ) : null}
+          {viewSwitch(false)}
+          {headerStop}
         </div>
       )}
       <CoworkInspectorProvider layout={inspectorLayout}>
@@ -4711,16 +4813,26 @@ export function CoworkPage() {
       <div
         className={cn(
           'relative flex h-full min-h-0 flex-1 overflow-hidden',
-          phone ? 'gap-0 pb-2' : 'gap-4 px-1 pt-3.5 pb-4'
+          // A pane sits flush under its header; the split gives the room.
+          paneChrome
+            ? phone
+              ? 'gap-0'
+              : 'gap-4'
+            : phone
+              ? 'gap-0 pb-2'
+              : 'gap-4 px-1 pt-3.5 pb-4'
         )}
       >
         <Frame
           className={cn(
             'h-full min-h-0 flex-1 motion-safe:animate-rise-in',
-            view !== 'content' && 'hidden'
+            view !== 'content' && 'hidden',
+            paneChrome?.isActive && ACTIVE_PANE_RING
           )}
           data-testid="cowork-content-view"
         >
+          {/* In a pane the title heads the pane instead: shown once. */}
+          {!paneChrome && (
           <FrameHeader
             icon={<Icon name="x-cowork" size={16} />}
             title={
@@ -4733,36 +4845,12 @@ export function CoworkPage() {
             }
             actions={
               <>
-                {running ? (
-                  <Chip className="border-transparent bg-transparent text-secondary-foreground">
-                    <Loader2
-                      className="size-3.5 motion-safe:animate-spin"
-                      aria-hidden
-                    />
-                    {/* Icon only on a phone, where the title needs the room. */}
-                    <span className="max-md:sr-only">
-                      {t('common:coworkLayout.running')}
-                    </span>
-                  </Chip>
-                ) : null}
-                {/* The one primary action on the conversation, once there is
-                    something to review. */}
-                {changeCounts.fileCount > 0 ? (
-                  <Button
-                    size="sm"
-                    onClick={() => openRail({ kind: 'diff' })}
-                    data-testid="cowork-header-review"
-                    className="pointer-coarse:h-11 max-md:px-2.5"
-                  >
-                    <FileDiff aria-hidden />
-                    <span className="max-md:sr-only">
-                      {t('common:coworkReview.open')}
-                    </span>
-                  </Button>
-                ) : null}
+                {runningChip}
+                {reviewButton}
               </>
             }
           />
+          )}
           <FrameBody className="min-h-0 overflow-hidden">
           <div className="relative flex-1">
             {displayedTurns.length === 0 ? (
@@ -5237,7 +5325,7 @@ export function CoworkPage() {
                 hideTokenCounter
                 surfaceControls={
                   <>
-                    {phone && sessionControls}
+                    {(phone || paneChrome) && sessionControls}
                     <CoworkSandboxChip />
                     {!inspectorVisible && railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">

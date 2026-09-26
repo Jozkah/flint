@@ -9,7 +9,15 @@ import {
   useRef,
 } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
-import { Columns2, List, Loader2, MessagesSquare, Plus, X } from 'lucide-react'
+import {
+  Columns2,
+  List,
+  Loader2,
+  MessagesSquare,
+  Plus,
+  Square,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
@@ -18,14 +26,25 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { NoHeaderSlot } from '@/components/shell/HeaderSlot'
+import {
+  NoHeaderSlot,
+  PaneHeaderSlot,
+} from '@/components/shell/HeaderSlot'
+import HeaderPage from '@/containers/HeaderPage'
+import { PaneHeaderBar } from '@/containers/PaneHeaderBar'
 import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { ThreadConversation } from '@/containers/ThreadConversation'
 import {
   ConversationPaneContext,
   type ConversationPane,
 } from '@/hooks/useConversationPane'
-import { CoworkPaneContext, PaneWidthContext } from '@/hooks/useCoworkPane'
+import {
+  CoworkPaneContext,
+  PaneChromeContext,
+  PaneWidthContext,
+  type PaneChrome,
+} from '@/hooks/useCoworkPane'
+import { plainTitle, usePaneTitle } from '@/hooks/useSplitPaneTitle'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
@@ -80,10 +99,6 @@ const paneFallback = (
   </div>
 )
 
-/** Thread titles can carry search-highlight markup. */
-const plainTitle = (title: string | undefined, fallback: string) =>
-  (title || fallback).replace(/<span[^>]*>|<\/span>/g, '')
-
 /** A binding as the user types it, e.g. `Ctrl+\`. */
 function shortcutText(spec: ShortcutSpec | undefined): string {
   if (!spec) return ''
@@ -134,50 +149,69 @@ export function SplitToggleButton() {
   )
 }
 
-/** Back to one conversation: the main pane stays, the others close. */
-function CloseSplitButton() {
-  const { t } = useTranslation()
-  const closeAll = useSplitConversation((s) => s.closeAll)
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-[30px] shrink-0 pointer-coarse:h-11"
-      onClick={closeAll}
-      aria-label={t('chat:split.close')}
-      data-testid="split-conversation-close"
-    >
-      <X className="size-4" aria-hidden />
-      <span className="hidden sm:inline">{t('chat:split.close')}</span>
-    </Button>
-  )
-}
-
-function AddPaneButton() {
+/**
+ * The split's own actions -- another pane, or back to one conversation -- as
+ * a compact icon group in the app's top header, at the right of the page's
+ * slot. Outside the shell (tests) the header renders in place.
+ */
+function SplitActions() {
   const { t } = useTranslation()
   const full = useSplitConversation((s) => s.panes.length + 1 >= s.maxPanes)
+  const maxPanes = useSplitConversation((s) => s.maxPanes)
+  const closeAll = useSplitConversation((s) => s.closeAll)
+  const addLabel = full
+    ? t('chat:split.full', { count: maxPanes })
+    : t('chat:split.addPane')
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-[30px] shrink-0 pointer-coarse:h-11"
-      disabled={full}
-      onClick={() =>
-        reportSplitResult(useSplitConversation.getState().addPane(), t)
-      }
-      aria-label={t('chat:split.addPane')}
-      title={
-        full
-          ? t('chat:split.full', {
-              count: useSplitConversation.getState().maxPanes,
-            })
-          : t('chat:split.addPane')
-      }
-      data-testid="split-add-pane"
-    >
-      <Plus className="size-4" aria-hidden />
-      <span className="hidden sm:inline">{t('chat:split.addPane')}</span>
-    </Button>
+    <HeaderPage>
+      <div
+        role="group"
+        aria-label={t('chat:split.label')}
+        data-testid="split-actions"
+        className="ml-auto flex shrink-0 items-center gap-0.5 rounded-lg bg-muted p-0.5 shadow-[inset_0_0_0_0.8px_var(--border)]"
+      >
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {/* A disabled button fires no pointer events: the span keeps the
+                tooltip saying why no pane can be added. */}
+            <span className="inline-flex">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+                disabled={full}
+                onClick={() =>
+                  reportSplitResult(
+                    useSplitConversation.getState().addPane(),
+                    t
+                  )
+                }
+                aria-label={t('chat:split.addPane')}
+                data-testid="split-add-pane"
+              >
+                <Plus className="size-4" aria-hidden />
+              </Button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{addLabel}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-11"
+              onClick={closeAll}
+              aria-label={t('chat:split.close')}
+              data-testid="split-conversation-close"
+            >
+              <Square className="size-3.5" aria-hidden />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t('chat:split.close')}</TooltipContent>
+        </Tooltip>
+      </div>
+    </HeaderPage>
   )
 }
 
@@ -242,27 +276,6 @@ export function PaneControls({ paneId }: { paneId: SplitPaneId }) {
   )
 }
 
-function usePaneTitle(kind: SplitTarget['kind'], refId?: string) {
-  const { t } = useTranslation()
-  const chatTitle = useThreads((s) =>
-    kind === 'chat' && refId ? s.threads?.[refId]?.title : undefined
-  )
-  const coworkTitle = useCoworkSessions((s) =>
-    kind === 'cowork' && refId
-      ? s.sessions.find((x) => x.id === refId)?.title
-      : undefined
-  )
-  const roomTitle = useRoomsStore((s) =>
-    kind === 'room' && refId
-      ? s.summaries.find((x) => x.id === refId)?.title
-      : undefined
-  )
-  if (!refId) return t('chat:split.newPane')
-  if (kind === 'chat') return plainTitle(chatTitle, t('common:newThread'))
-  if (kind === 'room') return roomTitle || t('chat:split.room')
-  return coworkTitle || t('chat:split.cowork')
-}
-
 function usePaneStreaming(kind: SplitTarget['kind'], refId?: string) {
   const chat = useChatSessions((s) =>
     kind === 'chat' && refId ? (s.sessions[refId]?.isStreaming ?? false) : false
@@ -316,7 +329,7 @@ function PaneTab({
       )}
     >
       <span className="sr-only">{label}: </span>
-      <span className="truncate">{title}</span>
+      <span className="text-fade">{title}</span>
       {streaming && (
         <>
           {/* Replying is activity, not selection: an icon, never the accent. */}
@@ -669,7 +682,10 @@ const ChatPane = memo(function ChatPane({
   )
 })
 
-/** The title row Cowork panes carry, as Chat panes carry their own. */
+/**
+ * The header row of a pane whose page draws none of its own (a room). Chat
+ * and Cowork pages draw the pane's header themselves, merged with their own.
+ */
 function PaneHeader({
   paneId,
   kind,
@@ -683,21 +699,27 @@ function PaneHeader({
 }) {
   const title = usePaneTitle(kind, refId)
   return (
-    <div
-      data-testid={`conversation-pane-header-${paneId}`}
-      data-active={isActive}
-      className={cn(
-        'flex h-9 shrink-0 items-center justify-between gap-2 rounded-t-xl bg-muted pr-1 pl-3',
-        isActive && 'shadow-[inset_0_2px_0_0_var(--acc)]'
-      )}
-    >
-      <span className="truncate text-sm font-medium text-secondary-foreground">
-        {title}
-      </span>
-      <div className="flex shrink-0 items-center">
-        <PaneControls paneId={paneId} />
-      </div>
-    </div>
+    <PaneHeaderBar
+      paneId={paneId}
+      isActive={isActive}
+      title={title}
+      controls={<PaneControls paneId={paneId} />}
+    />
+  )
+}
+
+/** What a Cowork page in a pane needs to draw the pane's header itself. */
+function usePaneChromeValue(
+  paneId: SplitPaneId,
+  isActive: boolean
+): PaneChrome {
+  return useMemo(
+    () => ({
+      paneId,
+      isActive,
+      controls: <PaneControls paneId={paneId} />,
+    }),
+    [paneId, isActive]
   )
 }
 
@@ -715,23 +737,18 @@ function CoworkPane({
     () => ({ sessionId, draftScope: paneDraftScope(paneId) }),
     [sessionId, paneId]
   )
+  const chrome = usePaneChromeValue(paneId, isActive)
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <PaneHeader
-        paneId={paneId}
-        kind="cowork"
-        refId={sessionId}
-        isActive={isActive}
-      />
-      <div className="min-h-0 flex-1 overflow-hidden">
-        <NoHeaderSlot>
-          <CoworkPaneContext.Provider value={scope}>
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <NoHeaderSlot>
+        <CoworkPaneContext.Provider value={scope}>
+          <PaneChromeContext.Provider value={chrome}>
             <Suspense fallback={paneFallback}>
               <CoworkPage key={sessionId} />
             </Suspense>
-          </CoworkPaneContext.Provider>
-        </NoHeaderSlot>
-      </div>
+          </PaneChromeContext.Provider>
+        </CoworkPaneContext.Provider>
+      </NoHeaderSlot>
     </div>
   )
 }
@@ -780,7 +797,6 @@ export function SplitWorkspace({
   primary: SplitTarget
   children: (state: PrimaryPaneState) => ReactNode
 }) {
-  const { t } = useTranslation()
   const panes = useSplitConversation((s) => s.panes)
   const storedActive = useSplitConversation((s) => s.activePane)
   const sizes = useSplitConversation((s) => s.sizes)
@@ -876,24 +892,22 @@ export function SplitWorkspace({
     [open, activeId]
   )
 
+  // A Cowork page as the main pane draws the pane's header itself.
+  const primaryChrome = usePaneChromeValue(
+    PRIMARY_PANE,
+    activeId === PRIMARY_PANE
+  )
+
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="split-workspace">
-      {open && (
+      {open && <SplitActions />}
+      {open && !sideBySide && (
+        // Only when the panes take turns: the strip that switches them.
         <div
-          className="flex h-10 shrink-0 items-center gap-2 px-1 pt-2"
+          className="flex h-10 shrink-0 items-center px-1 pt-2"
           data-testid="split-bar"
         >
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            {sideBySide ? (
-              <h1 className="truncate text-sm font-medium text-secondary-foreground">
-                {t('chat:split.label')}
-              </h1>
-            ) : (
-              <PaneTabs panes={shown} activeId={activeId} />
-            )}
-          </div>
-          <AddPaneButton />
-          <CloseSplitButton />
+          <PaneTabs panes={shown} activeId={activeId} />
         </div>
       )}
       <div
@@ -950,7 +964,7 @@ export function SplitWorkspace({
                 >
                 {isPrimary ? (
                   <>
-                    {open && primary.kind !== 'chat' ? (
+                    {open && primary.kind === 'room' ? (
                       <PaneHeader
                         paneId={PRIMARY_PANE}
                         kind={primary.kind}
@@ -959,7 +973,19 @@ export function SplitWorkspace({
                       />
                     ) : null}
                     <div className="relative min-h-0 flex-1">
-                      {children(primaryState)}
+                      {/* Always the same providers, split or not, so the
+                          route's conversation is never remounted. */}
+                      <PaneHeaderSlot inPane={open}>
+                        <PaneChromeContext.Provider
+                          value={
+                            open && primary.kind === 'cowork'
+                              ? primaryChrome
+                              : null
+                          }
+                        >
+                          {children(primaryState)}
+                        </PaneChromeContext.Provider>
+                      </PaneHeaderSlot>
                     </div>
                   </>
                 ) : !pane.refId ? (

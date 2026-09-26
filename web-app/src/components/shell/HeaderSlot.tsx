@@ -36,3 +36,22 @@ export function NoHeaderSlot({ children }: { children: ReactNode }) {
     </HeaderSlotContext.Provider>
   )
 }
+
+/**
+ * `NoHeaderSlot` while `inPane`, the shell's slot otherwise. The provider is
+ * always there, so turning split view on or off never remounts the page.
+ */
+export function PaneHeaderSlot({
+  inPane,
+  children,
+}: {
+  inPane: boolean
+  children: ReactNode
+}) {
+  const parent = useContext(HeaderSlotContext)
+  return (
+    <HeaderSlotContext.Provider value={inPane ? null : parent}>
+      {children}
+    </HeaderSlotContext.Provider>
+  )
+}
