@@ -110,6 +110,7 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
 }))
 
 vi.mock('@/lib/agentTools', () => ({
+  peekAgentToolSchemas: () => null,
   executeAgentTool: h.executeAgentTool,
   getSandboxToolchains: h.getSandboxToolchains,
   sandboxEnforces: () => true,

@@ -75,6 +75,7 @@ vi.mock('@janhq/tauri-plugin-llamacpp-api', () => ({
   getLoadedModels: vi.fn(async () => ['model-a', 'model-b']),
 }))
 vi.mock('@/lib/agentTools', () => ({
+  peekAgentToolSchemas: () => null,
   executeAgentTool: h.executeAgentTool,
   // Main's approval prompt asks for the diff first (AH-146); the real one
   // never throws and resolves to nothing when there is no diff.

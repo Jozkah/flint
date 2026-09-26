@@ -144,6 +144,10 @@ const h = vi.hoisted(() => {
 
   const messageQueueState: any = {
     dequeue: vi.fn(() => null),
+    dequeueReady: vi.fn(() => undefined),
+    takeSteering: vi.fn(() => []),
+    holdQueue: vi.fn(),
+    getQueue: vi.fn(() => []),
     clearQueue: vi.fn(),
   }
   const useMessageQueueMock: any = (_selector: any) => undefined
