@@ -209,11 +209,11 @@ describe('room detail route', () => {
     expect(screen.queryByRole('link', { name: 'All rooms' })).not.toBeInTheDocument()
   })
 
-  it('keeps narrow widths usable: the side panel is full width below lg', () => {
+  it('keeps narrow widths usable: the side panel is full width below the room container 5xl width', () => {
     const { api } = createFakeApi({ room: makeRoom() })
     renderWithApi(<Detail />, api)
     const panel = screen.getByTestId('room-side-panel')
-    expect(panel).toHaveClass('w-full', 'lg:w-[370px]')
+    expect(panel).toHaveClass('w-full', '@5xl/room:w-[370px]')
     expect(panel.className).not.toMatch(/(^|\s)min-w-\[/)
   })
 
