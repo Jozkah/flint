@@ -311,6 +311,8 @@ import {
   useSplitConversation,
 } from '@/hooks/useSplitConversation'
 import * as widthModule from '@/hooks/useElementWidth'
+import { SplitWorkspace } from '@/containers/SplitConversation'
+import { usePaneWidth } from '@/hooks/useCoworkPane'
 
 const width = (widthModule as any).__width as {
   setState: (s: { px: number }) => void
@@ -649,5 +651,46 @@ describe('split view', () => {
     expect(screen.getByTestId('split-bar')).toBeInTheDocument()
     expect(screen.getByTestId('split-pane-picker')).toBeInTheDocument()
     expect(h.mounts['thread-a']).toBe(1)
+  })
+})
+
+describe('the width a pane gives its page', () => {
+  const Probe = () => {
+    const w = usePaneWidth()
+    return <span data-testid="pane-width">{w === null ? 'window' : w}</span>
+  }
+  const renderProbe = () =>
+    render(
+      <SplitWorkspace primary={{ kind: 'cowork', refId: 's1' }}>
+        {() => <Probe />}
+      </SplitWorkspace>
+    )
+
+  beforeEach(() => {
+    useSplitConversation.setState({
+      panes: [],
+      sizes: [1],
+      activePane: PRIMARY_PANE,
+      maxPanes: 4,
+    })
+  })
+
+  it('is the window outside split view', () => {
+    width.setState({ px: 1600 })
+    renderProbe()
+    expect(screen.getByTestId('pane-width')).toHaveTextContent('window')
+  })
+
+  it("is the pane's share side by side, and the whole width as tabs", () => {
+    useSplitConversation.setState({
+      panes: [{ id: 'p2', kind: 'chat' }],
+      sizes: [0.25, 0.75],
+    })
+    width.setState({ px: 1600 })
+    renderProbe()
+    // A Cowork page in a 400px pane lays out for a phone, not the window.
+    expect(screen.getByTestId('pane-width')).toHaveTextContent('400')
+    act(() => width.setState({ px: 800 }))
+    expect(screen.getByTestId('pane-width')).toHaveTextContent('800')
   })
 })

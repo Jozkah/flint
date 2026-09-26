@@ -193,9 +193,10 @@ describe('room detail route', () => {
 
   it('loads the room and renders usage, transcript, composer, controls and editor', async () => {
     const { api } = createFakeApi({ room: makeRoom({ status: 'paused' }) })
-    const { container } = renderWithApi(<Detail />, api)
+    renderWithApi(<Detail />, api)
     await waitFor(() => expect(api.loadRoom).toHaveBeenCalledWith('r1'))
-    const root = container.firstElementChild!
+    // The room's own root, inside the split-view workspace's main pane.
+    const root = screen.getByTestId('header-page').parentElement!
     expect(root).toHaveClass('flex', 'flex-col', 'h-full')
     expect(root.firstElementChild).toHaveAttribute('data-testid', 'header-page')
     expect(within(screen.getByTestId('header-page')).getByText('Paused')).toBeInTheDocument()

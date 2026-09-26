@@ -92,6 +92,8 @@
     "noRecent": "No other conversations yet.",
     "change": "Change conversation",
     "noModel": "Choose a model before starting a new chat.",
-    "newChatFailed": "Couldn't start a new chat"
+    "newChatFailed": "Couldn't start a new chat",
+    "room": "Room",
+    "recentRooms": "Rooms"
   }
 }

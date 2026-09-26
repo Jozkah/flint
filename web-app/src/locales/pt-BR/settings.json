@@ -76,7 +76,11 @@
     "splitView": "Visualização dividida",
     "splitViewDesc": "Abrir outra conversa ao lado da que está na tela.",
     "maxPanes": "Painéis na visualização dividida",
-    "maxPanesDesc": "Quantas conversas a visualização dividida mostra ao mesmo tempo, incluindo a principal."
+    "maxPanesDesc": "Quantas conversas a visualização dividida mostra ao mesmo tempo, incluindo a principal.",
+    "nextPane": "Próximo painel",
+    "nextPaneDesc": "Ir para o próximo painel da visualização dividida.",
+    "previousPane": "Painel anterior",
+    "previousPaneDesc": "Ir para o painel anterior da visualização dividida."
   },
   "appearance": {
     "title": "Aparência",

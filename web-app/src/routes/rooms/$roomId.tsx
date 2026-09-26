@@ -1,9 +1,11 @@
 import { createFileRoute, useParams } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { MessagesSquare } from 'lucide-react'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import HeaderPage from '@/containers/HeaderPage'
+import { SplitWorkspace } from '@/containers/SplitConversation'
+import type { SplitTarget } from '@/hooks/useSplitConversation'
 import { Chip } from '@/components/ui/chip'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -29,9 +31,23 @@ export const Route = createFileRoute(route.roomDetail as any)({
   component: RoomPage,
 })
 
+/** The room the route names, with any split-view panes beside it. */
 function RoomPage() {
-  const { t } = useTranslation()
   const { roomId } = useParams({ from: '/rooms/$roomId' })
+  const primary = useMemo<SplitTarget>(
+    () => ({ kind: 'room', refId: roomId }),
+    [roomId]
+  )
+  return (
+    <SplitWorkspace primary={primary}>
+      {() => <RoomView roomId={roomId} />}
+    </SplitWorkspace>
+  )
+}
+
+/** One room: its conversation and its controls. Also a split-view pane. */
+export function RoomView({ roomId }: { roomId: string }) {
+  const { t } = useTranslation()
   const api = useRoomsApi()
   const state = useRoomsState()
   const [error, setError] = useState<RoomsUiError | null>(null)

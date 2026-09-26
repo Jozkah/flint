@@ -15,7 +15,13 @@ import { backendStorage } from '@/lib/backendStorage'
  * share it.
  */
 
-export type SplitPaneKind = 'chat' | 'cowork'
+export type SplitPaneKind = 'chat' | 'cowork' | 'room'
+
+/**
+ * The rooms engine holds one open room at a time, so split view shows at most
+ * one room: opening another retargets the pane that has one.
+ */
+export const SINGLE_INSTANCE_KINDS: readonly SplitPaneKind[] = ['room']
 
 /** `primary` for the route's pane, otherwise the extra pane's own id. */
 export type SplitPaneId = string
@@ -124,6 +130,8 @@ type SplitConversationState = {
   setSizes: (sizes: number[]) => void
   resizeDivider: (index: number, delta: number) => void
   setMaxPanes: (max: number) => void
+  /** Make the pane `step` places over the active one (wrapping). */
+  cyclePane: (step: number) => SplitPaneId
 }
 
 type Persisted = Pick<SplitConversationState, 'panes' | 'sizes' | 'maxPanes'>
@@ -166,7 +174,7 @@ function sanitize(persisted: unknown): Persisted {
         !!p &&
         typeof p.id === 'string' &&
         p.id !== PRIMARY_PANE &&
-        (p.kind === 'chat' || p.kind === 'cowork')
+        (p.kind === 'chat' || p.kind === 'cowork' || p.kind === 'room')
     )
     .slice(0, maxPanes - 1)
   return {
@@ -194,6 +202,18 @@ export const useSplitConversation = create<SplitConversationState>()(
           if (shown) {
             set({ activePane: shown.id })
             return 'shown'
+          }
+          if (SINGLE_INSTANCE_KINDS.includes(target.kind)) {
+            const same = panes.find((p) => p.kind === target.kind && p.refId)
+            if (same) {
+              set({
+                panes: panes.map((p) =>
+                  p.id === same.id ? { ...p, refId: target.refId } : p
+                ),
+                activePane: same.id,
+              })
+              return 'filled'
+            }
           }
           const empty = panes.find((p) => !p.refId)
           if (empty) {
@@ -267,6 +287,14 @@ export const useSplitConversation = create<SplitConversationState>()(
             delta
           ),
         }),
+
+      cyclePane: (step) => {
+        const ids = [PRIMARY_PANE, ...get().panes.map((p) => p.id)]
+        const at = Math.max(0, ids.indexOf(get().activePane))
+        const next = ids[(((at + step) % ids.length) + ids.length) % ids.length]
+        get().setActivePane(next)
+        return next
+      },
 
       setMaxPanes: (max) => {
         const maxPanes = clampMaxPanes(max)

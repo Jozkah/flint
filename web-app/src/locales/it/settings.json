@@ -80,7 +80,11 @@
     "splitView": "Vista divisa",
     "splitViewDesc": "Apri un'altra conversazione accanto a quella sullo schermo.",
     "maxPanes": "Riquadri nella vista divisa",
-    "maxPanesDesc": "Quante conversazioni mostra insieme la vista divisa, inclusa quella principale."
+    "maxPanesDesc": "Quante conversazioni mostra insieme la vista divisa, inclusa quella principale.",
+    "nextPane": "Riquadro successivo",
+    "nextPaneDesc": "Passa al riquadro successivo della vista divisa.",
+    "previousPane": "Riquadro precedente",
+    "previousPaneDesc": "Passa al riquadro precedente della vista divisa."
   },
   "interface": {
     "title": "Interfaccia",

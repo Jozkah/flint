@@ -38,6 +38,8 @@
     "noRecent": "Nie ma jeszcze innych rozmów.",
     "change": "Zmień rozmowę",
     "noModel": "Wybierz model przed rozpoczęciem nowego czatu.",
-    "newChatFailed": "Nie udało się rozpocząć nowego czatu"
+    "newChatFailed": "Nie udało się rozpocząć nowego czatu",
+    "room": "Pokój",
+    "recentRooms": "Pokoje"
   }
 }

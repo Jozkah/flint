@@ -9,7 +9,7 @@ import {
   useRef,
 } from 'react'
 import type { KeyboardEvent, PointerEvent, ReactNode, RefObject } from 'react'
-import { Columns2, List, Loader2, Plus, X } from 'lucide-react'
+import { Columns2, List, Loader2, MessagesSquare, Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
@@ -25,7 +25,8 @@ import {
   ConversationPaneContext,
   type ConversationPane,
 } from '@/hooks/useConversationPane'
-import { CoworkPaneContext } from '@/hooks/useCoworkPane'
+import { CoworkPaneContext, PaneWidthContext } from '@/hooks/useCoworkPane'
+import { useRoomsStore } from '@/lib/rooms/store'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useElementWidth } from '@/hooks/useElementWidth'
@@ -34,6 +35,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import {
   PANE_MIN_WIDTH,
   PRIMARY_PANE,
+  SINGLE_INSTANCE_KINDS,
   normalizeSizes,
   paneDraftScope,
   useSplitConversation,
@@ -67,6 +69,15 @@ import { useChatSessions } from '@/stores/chat-session-store'
 // needs it.
 const CoworkPage = lazy(() =>
   import('@/routes/cowork').then((m) => ({ default: m.CoworkPage }))
+)
+const RoomView = lazy(() =>
+  import('@/routes/rooms/$roomId').then((m) => ({ default: m.RoomView }))
+)
+
+const paneFallback = (
+  <div className="flex h-full items-center justify-center">
+    <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
+  </div>
 )
 
 /** Thread titles can carry search-highlight markup. */
@@ -241,10 +252,15 @@ function usePaneTitle(kind: SplitTarget['kind'], refId?: string) {
       ? s.sessions.find((x) => x.id === refId)?.title
       : undefined
   )
+  const roomTitle = useRoomsStore((s) =>
+    kind === 'room' && refId
+      ? s.summaries.find((x) => x.id === refId)?.title
+      : undefined
+  )
   if (!refId) return t('chat:split.newPane')
-  return kind === 'chat'
-    ? plainTitle(chatTitle, t('common:newThread'))
-    : coworkTitle || t('chat:split.cowork')
+  if (kind === 'chat') return plainTitle(chatTitle, t('common:newThread'))
+  if (kind === 'room') return roomTitle || t('chat:split.room')
+  return coworkTitle || t('chat:split.cowork')
 }
 
 function usePaneStreaming(kind: SplitTarget['kind'], refId?: string) {
@@ -254,7 +270,10 @@ function usePaneStreaming(kind: SplitTarget['kind'], refId?: string) {
   const cowork = useCoworkRun((s) =>
     kind === 'cowork' && refId ? Boolean(s.runs?.[refId]) : false
   )
-  return chat || cowork
+  const room = useRoomsStore((s) =>
+    kind === 'room' && refId ? s.runningRoomIds.includes(refId) : false
+  )
+  return chat || cowork || room
 }
 
 type ShownPane = { id: SplitPaneId; kind: SplitTarget['kind']; refId?: string }
@@ -454,7 +473,10 @@ function PanePicker({
   const { t } = useTranslation()
   const threads = useThreads((s) => s.threads)
   const sessions = useCoworkSessions((s) => s.sessions)
+  const rooms = useRoomsStore((s) => s.summaries)
   const coworkOn = isCoworkEnabled()
+  // One room at a time: the rooms engine holds a single open room.
+  const roomShown = exclude.some((p) => p.kind === 'room' && p.refId)
 
   const taken = (kind: SplitTarget['kind'], id: string) =>
     exclude.some((p) => p.kind === kind && p.refId === id)
@@ -469,6 +491,12 @@ function PanePicker({
         .sort((a, b) => (b.updated ?? 0) - (a.updated ?? 0))
         .slice(0, 4)
     : []
+
+  const recentRooms = roomShown
+    ? []
+    : [...(rooms ?? [])]
+        .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))
+        .slice(0, 4)
 
   const choose = (target: SplitTarget) => {
     const split = useSplitConversation.getState()
@@ -593,6 +621,23 @@ function PanePicker({
             </ul>
           </div>
         )}
+        {recentRooms.length > 0 && (
+          <div className="mt-3 w-full">
+            <h3 className="mb-0.5 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
+              {t('chat:split.recentRooms')}
+            </h3>
+            <ul className="flex flex-col">
+              {recentRooms.map((r) =>
+                row(
+                  r.id,
+                  { kind: 'room', refId: r.id },
+                  r.title || t('chat:split.room'),
+                  <MessagesSquare className="size-4 shrink-0" aria-hidden />
+                )
+              )}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -681,16 +726,39 @@ function CoworkPane({
       <div className="min-h-0 flex-1 overflow-hidden">
         <NoHeaderSlot>
           <CoworkPaneContext.Provider value={scope}>
-            <Suspense
-              fallback={
-                <div className="flex h-full items-center justify-center">
-                  <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
-                </div>
-              }
-            >
+            <Suspense fallback={paneFallback}>
               <CoworkPage key={sessionId} />
             </Suspense>
           </CoworkPaneContext.Provider>
+        </NoHeaderSlot>
+      </div>
+    </div>
+  )
+}
+
+/** A discussion room in a pane beside the main one. */
+function RoomPane({
+  paneId,
+  roomId,
+  isActive,
+}: {
+  paneId: SplitPaneId
+  roomId: string
+  isActive: boolean
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <PaneHeader
+        paneId={paneId}
+        kind="room"
+        refId={roomId}
+        isActive={isActive}
+      />
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <NoHeaderSlot>
+          <Suspense fallback={paneFallback}>
+            <RoomView key={roomId} roomId={roomId} />
+          </Suspense>
         </NoHeaderSlot>
       </div>
     </div>
@@ -752,8 +820,17 @@ export function SplitWorkspace({
       const valid =
         p.refId &&
         p.refId !== TEMPORARY_CHAT_ID &&
-        (p.kind === 'chat' ? chatValid[i] === '1' : coworkValid[i] === '1') &&
-        !out.some((o) => o.kind === p.kind && o.refId === p.refId)
+        (p.kind === 'chat'
+          ? chatValid[i] === '1'
+          : p.kind === 'cowork'
+            ? coworkValid[i] === '1'
+            : true) &&
+        !out.some(
+          (o) =>
+            o.kind === p.kind &&
+            (o.refId === p.refId ||
+              (SINGLE_INSTANCE_KINDS.includes(p.kind) && !!o.refId))
+        )
       out.push({ id: p.id, kind: p.kind, refId: valid ? p.refId : undefined })
     })
     return out
@@ -862,12 +939,21 @@ export function SplitWorkspace({
                   !visible && 'invisible'
                 )}
               >
+                <PaneWidthContext.Provider
+                  value={
+                    open
+                      ? sideBySide
+                        ? Math.round(width * shares[index])
+                        : Math.round(width)
+                      : null
+                  }
+                >
                 {isPrimary ? (
                   <>
-                    {open && primary.kind === 'cowork' ? (
+                    {open && primary.kind !== 'chat' ? (
                       <PaneHeader
                         paneId={PRIMARY_PANE}
-                        kind="cowork"
+                        kind={primary.kind}
                         refId={primary.refId}
                         isActive={isActive}
                       />
@@ -884,6 +970,12 @@ export function SplitWorkspace({
                     threadId={pane.refId}
                     isActive={isActive}
                   />
+                ) : pane.kind === 'room' ? (
+                  <RoomPane
+                    paneId={pane.id}
+                    roomId={pane.refId}
+                    isActive={isActive}
+                  />
                 ) : (
                   <CoworkPane
                     paneId={pane.id}
@@ -891,6 +983,7 @@ export function SplitWorkspace({
                     isActive={isActive}
                   />
                 )}
+                </PaneWidthContext.Provider>
               </div>
             </Fragment>
           )

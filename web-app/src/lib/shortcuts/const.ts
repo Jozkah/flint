@@ -56,4 +56,16 @@ export const PlatformShortcuts: ShortcutMap = {
 
   // Split view: another conversation beside the current one.
   [ShortcutAction.SPLIT_VIEW]: { key: '\\', usePlatformMetaKey: true },
+
+  // Move between split-view panes.
+  [ShortcutAction.NEXT_PANE]: {
+    key: 'ArrowRight',
+    usePlatformMetaKey: true,
+    altKey: true,
+  },
+  [ShortcutAction.PREVIOUS_PANE]: {
+    key: 'ArrowLeft',
+    usePlatformMetaKey: true,
+    altKey: true,
+  },
 }

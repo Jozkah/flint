@@ -57,6 +57,8 @@
     "noRecent": "暂无其他对话。",
     "change": "更换对话",
     "noModel": "开始新聊天前请先选择模型。",
-    "newChatFailed": "无法开始新聊天"
+    "newChatFailed": "无法开始新聊天",
+    "room": "房间",
+    "recentRooms": "房间"
   }
 }

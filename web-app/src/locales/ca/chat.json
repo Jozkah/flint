@@ -38,6 +38,8 @@
     "noRecent": "Encara no hi ha altres converses.",
     "change": "Canvia la conversa",
     "noModel": "Tria un model abans de començar un xat nou.",
-    "newChatFailed": "No s'ha pogut començar un xat nou"
+    "newChatFailed": "No s'ha pogut començar un xat nou",
+    "room": "Sala",
+    "recentRooms": "Sales"
   }
 }

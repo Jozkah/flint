@@ -38,6 +38,8 @@
     "noRecent": "Belum ada percakapan lain.",
     "change": "Ganti percakapan",
     "noModel": "Pilih model sebelum memulai obrolan baru.",
-    "newChatFailed": "Tidak dapat memulai obrolan baru"
+    "newChatFailed": "Tidak dapat memulai obrolan baru",
+    "room": "Ruang",
+    "recentRooms": "Ruang"
   }
 }

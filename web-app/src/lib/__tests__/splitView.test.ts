@@ -14,6 +14,7 @@ import {
 } from '@/hooks/useSplitConversation'
 import {
   currentPrimary,
+  focusPane,
   openInSplit,
   registerSplitNavigator,
   reportSplitResult,
@@ -93,6 +94,50 @@ describe('split view entry points', () => {
     expect(result).toBe('full')
     reportSplitResult(result, (key) => key)
     expect(toast.error).toHaveBeenCalledWith('chat:split.full')
+  })
+
+  it('opens a room beside a chat, and keeps one room on screen', () => {
+    at('/threads/thread-a')
+    expect(openInSplit({ kind: 'room', refId: 'room-1' })).toBe('added')
+    // A second room replaces the first: the engine holds one open room.
+    expect(openInSplit({ kind: 'room', refId: 'room-2' })).toBe('filled')
+    expect(split().panes).toMatchObject([{ kind: 'room', refId: 'room-2' }])
+  })
+
+  it('from a room, another room opens in its place', () => {
+    at('/rooms/room-1')
+    expect(currentPrimary()).toEqual({ kind: 'room', refId: 'room-1' })
+    expect(openInSplit({ kind: 'room', refId: 'room-2' })).toBe('primary')
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/rooms/$roomId',
+      params: { roomId: 'room-2' },
+    })
+    expect(openInSplit({ kind: 'chat', refId: 'thread-b' })).toBe('added')
+  })
+
+  it('moves between panes, wrapping, and focuses the composer', () => {
+    at('/threads/thread-a')
+    document.body.innerHTML = ''
+    openInSplit({ kind: 'chat', refId: 'b' })
+    openInSplit({ kind: 'chat', refId: 'c' })
+    const [b, c] = split().panes
+    const box = document.createElement('div')
+    box.id = `conversation-pane-${b.id}`
+    const input = document.createElement('textarea')
+    box.appendChild(input)
+    document.body.appendChild(box)
+
+    split().setActivePane('primary')
+    expect(focusPane(1)).toBe(true)
+    expect(split().activePane).toBe(b.id)
+    expect(document.activeElement).toBe(input)
+    focusPane(1)
+    expect(split().activePane).toBe(c.id)
+    focusPane(1)
+    expect(split().activePane).toBe('primary')
+    focusPane(-1)
+    expect(split().activePane).toBe(c.id)
+    document.body.innerHTML = ''
   })
 
   it('the shortcut splits only where a conversation is on screen', () => {

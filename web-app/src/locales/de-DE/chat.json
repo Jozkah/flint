@@ -38,6 +38,8 @@
     "noRecent": "Noch keine anderen Unterhaltungen.",
     "change": "Unterhaltung wechseln",
     "noModel": "Wähle ein Modell, bevor du einen neuen Chat beginnst.",
-    "newChatFailed": "Neuer Chat konnte nicht gestartet werden"
+    "newChatFailed": "Neuer Chat konnte nicht gestartet werden",
+    "room": "Raum",
+    "recentRooms": "Räume"
   }
 }

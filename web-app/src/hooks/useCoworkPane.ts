@@ -18,3 +18,14 @@ export const CoworkPaneContext = createContext<CoworkPane | null>(null)
 export function useCoworkPane(): CoworkPane | null {
   return useContext(CoworkPaneContext)
 }
+
+/**
+ * The width of the split-view pane a page is rendered in, or null outside
+ * split view. Layouts that switch at a breakpoint read this instead of the
+ * window's width, so a page in a narrow pane lays itself out for that pane.
+ */
+export const PaneWidthContext = createContext<number | null>(null)
+
+export function usePaneWidth(): number | null {
+  return useContext(PaneWidthContext)
+}

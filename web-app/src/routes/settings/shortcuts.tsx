@@ -104,6 +104,8 @@ function ShortcutKeys({ spec }: { spec: ShortcutSpec }) {
     if (lowerKey === 'shift') return 'Shift'
     if (lowerKey === 'ctrl') return 'Ctrl'
     if (lowerKey === 'alt') return 'Alt'
+    if (lowerKey === 'arrowright') return '→'
+    if (lowerKey === 'arrowleft') return '←'
     return key.toUpperCase()
   }
 
@@ -145,6 +147,8 @@ function Shortcuts() {
     [ShortcutAction.ZOOM_OUT]: t('settings:shortcuts.zoomOut'),
     [ShortcutAction.COMMAND_PALETTE]: t('settings:shortcuts.commandPalette'),
     [ShortcutAction.SPLIT_VIEW]: t('settings:shortcuts.splitView'),
+    [ShortcutAction.NEXT_PANE]: t('settings:shortcuts.nextPane'),
+    [ShortcutAction.PREVIOUS_PANE]: t('settings:shortcuts.previousPane'),
   }
   const commandName = (action: ShortcutAction) => names[action]
 
@@ -292,6 +296,26 @@ function Shortcuts() {
             actions={
               <ShortcutRebind action={ShortcutAction.SPLIT_VIEW} label={commandName}>
                 <ShortcutLabel action={ShortcutAction.SPLIT_VIEW} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-next-pane"
+            title={t('settings:shortcuts.nextPane')}
+            description={t('settings:shortcuts.nextPaneDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.NEXT_PANE} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.NEXT_PANE} />
+              </ShortcutRebind>
+            }
+          />
+          <CardItem
+            anchor="settings-shortcuts-previous-pane"
+            title={t('settings:shortcuts.previousPane')}
+            description={t('settings:shortcuts.previousPaneDesc')}
+            actions={
+              <ShortcutRebind action={ShortcutAction.PREVIOUS_PANE} label={commandName}>
+                <ShortcutLabel action={ShortcutAction.PREVIOUS_PANE} />
               </ShortcutRebind>
             }
           />

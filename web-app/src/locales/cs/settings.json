@@ -76,7 +76,11 @@
     "splitView": "Rozdělené zobrazení",
     "splitViewDesc": "Otevřít další konverzaci vedle té, která je na obrazovce.",
     "maxPanes": "Panely v rozděleném zobrazení",
-    "maxPanesDesc": "Kolik konverzací rozdělené zobrazení ukáže najednou, včetně hlavní."
+    "maxPanesDesc": "Kolik konverzací rozdělené zobrazení ukáže najednou, včetně hlavní.",
+    "nextPane": "Další panel",
+    "nextPaneDesc": "Přejít na další panel rozděleného zobrazení.",
+    "previousPane": "Předchozí panel",
+    "previousPaneDesc": "Přejít na předchozí panel rozděleného zobrazení."
   },
   "interface": {
     "title": "Rozhraní",

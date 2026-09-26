@@ -38,6 +38,8 @@
     "noRecent": "Chưa có cuộc trò chuyện nào khác.",
     "change": "Đổi cuộc trò chuyện",
     "noModel": "Hãy chọn mô hình trước khi bắt đầu cuộc trò chuyện mới.",
-    "newChatFailed": "Không thể bắt đầu cuộc trò chuyện mới"
+    "newChatFailed": "Không thể bắt đầu cuộc trò chuyện mới",
+    "room": "Phòng",
+    "recentRooms": "Phòng"
   }
 }

@@ -80,7 +80,11 @@
     "splitView": "분할 보기",
     "splitViewDesc": "화면의 대화 옆에 다른 대화를 엽니다.",
     "maxPanes": "분할 보기의 창 수",
-    "maxPanesDesc": "분할 보기에서 한 번에 표시할 대화 수(기본 대화 포함)."
+    "maxPanesDesc": "분할 보기에서 한 번에 표시할 대화 수(기본 대화 포함).",
+    "nextPane": "다음 창",
+    "nextPaneDesc": "분할 보기의 다음 창으로 이동합니다.",
+    "previousPane": "이전 창",
+    "previousPaneDesc": "분할 보기의 이전 창으로 이동합니다."
   },
   "interface": {
     "title": "인터페이스",

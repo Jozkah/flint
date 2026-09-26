@@ -76,7 +76,11 @@
     "splitView": "Vista dividida",
     "splitViewDesc": "Obre una altra conversa al costat de la que tens a la pantalla.",
     "maxPanes": "Panells a la vista dividida",
-    "maxPanesDesc": "Quantes converses mostra alhora la vista dividida, inclosa la principal."
+    "maxPanesDesc": "Quantes converses mostra alhora la vista dividida, inclosa la principal.",
+    "nextPane": "Panell següent",
+    "nextPaneDesc": "Passa al panell següent de la vista dividida.",
+    "previousPane": "Panell anterior",
+    "previousPaneDesc": "Passa al panell anterior de la vista dividida."
   },
   "interface": {
     "title": "Interfície",

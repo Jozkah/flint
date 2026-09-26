@@ -38,6 +38,8 @@
     "noRecent": "아직 다른 대화가 없습니다.",
     "change": "대화 변경",
     "noModel": "새 채팅을 시작하기 전에 모델을 선택하세요.",
-    "newChatFailed": "새 채팅을 시작할 수 없습니다"
+    "newChatFailed": "새 채팅을 시작할 수 없습니다",
+    "room": "룸",
+    "recentRooms": "룸"
   }
 }

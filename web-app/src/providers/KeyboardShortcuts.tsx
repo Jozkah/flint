@@ -14,6 +14,7 @@ import { TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useEffect } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
+  focusPane,
   registerSplitNavigator,
   reportSplitResult,
   splitCurrent,
@@ -38,6 +39,8 @@ export function KeyboardShortcutsProvider() {
   const switchAssistantShortcut = specFor(ShortcutAction.SWITCH_ASSISTANT)
   const paletteShortcut = specFor(ShortcutAction.COMMAND_PALETTE)
   const splitShortcut = specFor(ShortcutAction.SPLIT_VIEW)
+  const nextPaneShortcut = specFor(ShortcutAction.NEXT_PANE)
+  const previousPaneShortcut = specFor(ShortcutAction.PREVIOUS_PANE)
   const { t } = useTranslation()
 
   // Split view opens conversations from row menus that have no router.
@@ -110,6 +113,20 @@ export function KeyboardShortcutsProvider() {
     ...splitShortcut,
     callback: () => {
       reportSplitResult(splitCurrent(), t)
+    },
+  })
+
+  // Split view: move to the next or previous pane.
+  useKeyboardShortcut({
+    ...nextPaneShortcut,
+    callback: () => {
+      focusPane(1)
+    },
+  })
+  useKeyboardShortcut({
+    ...previousPaneShortcut,
+    callback: () => {
+      focusPane(-1)
     },
   })
 

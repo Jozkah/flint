@@ -38,6 +38,8 @@
     "noRecent": "Zatím žádné další konverzace.",
     "change": "Změnit konverzaci",
     "noModel": "Před zahájením nového chatu vyberte model.",
-    "newChatFailed": "Nový chat se nepodařilo zahájit"
+    "newChatFailed": "Nový chat se nepodařilo zahájit",
+    "room": "Místnost",
+    "recentRooms": "Místnosti"
   }
 }

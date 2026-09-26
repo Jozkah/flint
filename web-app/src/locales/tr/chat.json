@@ -57,6 +57,8 @@
     "noRecent": "Henüz başka konuşma yok.",
     "change": "Konuşmayı değiştir",
     "noModel": "Yeni bir sohbet başlatmadan önce bir model seçin.",
-    "newChatFailed": "Yeni sohbet başlatılamadı"
+    "newChatFailed": "Yeni sohbet başlatılamadı",
+    "room": "Oda",
+    "recentRooms": "Odalar"
   }
 }
