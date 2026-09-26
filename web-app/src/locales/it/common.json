@@ -75,6 +75,15 @@
   "start": "Avvia",
   "stop": "Interrompi",
   "preview": "Anteprima",
+  "changes": {
+    "changedIn": "Modificato in {{folder}} · modificato sul posto",
+    "changedInPlace": "Modificato sul posto · fuori dalla sandbox",
+    "staleRow": "Questo file non differisce più. L'elenco non era aggiornato e viene riletto.",
+    "scopeLabel": "Quali modifiche del progetto elencare",
+    "applyHint": "Copia questo file dalla sandbox della sessione in {{folder}} come {{path}}",
+    "applyWhere": "Copiare in {{path}} in {{folder}}? La copia nella sandbox è {{source}}.",
+    "applyConfirm": "Copia lì"
+  },
   "compactWidth": "Larghezza compatta",
   "fullWidth": "Larghezza intera",
   "dark": "Scuro",
@@ -230,7 +239,7 @@
     "title": "Elimina fornitore",
     "description": "Elimina questo fornitore e tutti i suoi modelli. Questa azione non può essere annullata.",
     "success": "Il fornitore {{provider}} è stato eliminato definitivamente.",
-      "confirmTitle": "Elimina fornitore: {{provider}}",
+    "confirmTitle": "Elimina fornitore: {{provider}}",
     "confirmDescription": "Sei sicuro di voler eliminare questo fornitore? Questa azione non può essere annullata.",
     "cancel": "Annulla",
     "delete": "Elimina"
@@ -497,5 +506,61 @@
     "forceQuit": "Uscita forzata",
     "forcing": "Chiusura forzata in corso…",
     "shuttingDown": "Arresto in corso…"
+  },
+  "workspace": {
+    "alsoAttached": "Allegate anche",
+    "addFolder": "Aggiungi un'altra cartella",
+    "removeFolder": "Rimuovi {{folder}}",
+    "editable": "modificabile",
+    "inWorktree": "tramite worktree",
+    "footnoteEditable": "Flint può modificare direttamente i file in questa cartella.",
+    "footnoteWorktree": "Flint modifica un worktree Git di questa cartella, mai la cartella stessa.",
+    "writesFolder": "Le cartelle allegate",
+    "writesFolderNote": "Le modifiche finiscono direttamente nelle cartelle contrassegnate come modificabili.",
+    "writesWorktree": "Worktree della sessione",
+    "writesWorktreeNote": "Le modifiche finiscono in un worktree Git da rivedere e unire."
+  },
+  "budget": {
+    "stoppedTokens": "Interrotto — questa richiesta ha esaurito la sua quota di {{max}} token. Continua avvia una nuova quota.",
+    "stoppedWindow": "Interrotto prima dell'invio: la conversazione non entra più nella finestra di contesto del modello ({{detail}}). Se il modello accetta di più, aumenta Max Context Tokens nelle impostazioni del modello dell'assistente; altrimenti avvia una nuova sessione.",
+    "compacting": "Compattazione…",
+    "compactFailed": "Ancora niente da compattare."
+  },
+  "compaction": {
+    "divider_one": "Contesto compattato — {{count}} messaggio precedente riassunto",
+    "divider_other": "Contesto compattato — {{count}} messaggi precedenti riassunti",
+    "showSummary": "Mostra riepilogo",
+    "hideSummary": "Nascondi riepilogo",
+    "compactNow": "Compatta",
+    "compactNowHint": "Riassumi i messaggi più vecchi perché la conversazione entri nella finestra di contesto del modello"
+  },
+  "readiness": {
+    "builtinsUnknown": "Generato all'avvio della prima esecuzione",
+    "tokensPending": "Misurato all'avvio della prima esecuzione",
+    "tokensEstimatedAtFirstRun": "~{{count}} token finora ({{method}}); le definizioni degli strumenti integrati vengono misurate alla prima esecuzione"
+  },
+  "queue": {
+    "edit": "Modifica",
+    "remove": "Rimuovi",
+    "moveUp": "Sposta su",
+    "moveDown": "Sposta giù",
+    "drag": "Trascina per riordinare",
+    "held": "Non inviato",
+    "heldHint": "L'esecuzione per cui era stato scritto non l'ha preso. Invialo come messaggio successivo o scartalo",
+    "steer": "Indirizza ora",
+    "steerHint": "Passalo all'agente al suo prossimo passo invece di attendere la fine dell'esecuzione (Ctrl+Invio dal compositore)",
+    "steering": "Indirizzamento",
+    "steeringHint": "Arriva all'agente al suo prossimo passo; se l'esecuzione termina prima, viene inviato come messaggio successivo"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "L'albero di lavoro Git della cartella allegata non aveva modifiche non committate all'avvio di questa esecuzione."
+    },
+    "nothing": "Questa esecuzione non ha modificato alcun file. Le modifiche delle esecuzioni precedenti di questa sessione restano elencate in Rivedi modifiche."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Non presente"
+    }
   }
 }

@@ -74,6 +74,15 @@
   "start": "시작",
   "stop": "중지",
   "preview": "미리보기",
+  "changes": {
+    "changedIn": "{{folder}}에서 변경됨 · 제자리 편집",
+    "changedInPlace": "제자리 편집 · 샌드박스 외부",
+    "staleRow": "이 파일은 더 이상 차이가 없습니다. 목록이 오래되어 다시 읽는 중입니다.",
+    "scopeLabel": "표시할 프로젝트 변경 사항",
+    "applyHint": "이 파일을 세션 샌드박스에서 {{folder}}에 {{path}}(으)로 복사",
+    "applyWhere": "{{folder}}의 {{path}}에 복사할까요? 샌드박스 사본은 {{source}}입니다.",
+    "applyConfirm": "거기에 복사"
+  },
   "compactWidth": "콤팩트 너비",
   "fullWidth": "전체 너비",
   "dark": "다크",
@@ -475,5 +484,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "함께 첨부됨",
+    "addFolder": "폴더 추가",
+    "removeFolder": "{{folder}} 제거",
+    "editable": "편집 가능",
+    "inWorktree": "worktree 사용",
+    "footnoteEditable": "Flint가 이 폴더의 파일을 직접 변경할 수 있습니다.",
+    "footnoteWorktree": "Flint는 이 폴더의 git worktree를 변경하며, 폴더 자체는 절대 변경하지 않습니다.",
+    "writesFolder": "첨부한 폴더",
+    "writesFolderNote": "편집 내용이 편집 가능으로 표시된 폴더에 바로 반영됩니다.",
+    "writesWorktree": "세션 worktree",
+    "writesWorktreeNote": "편집 내용이 git worktree에 반영되며, 검토 후 병합할 수 있습니다."
+  },
+  "budget": {
+    "stoppedTokens": "중지됨 — 이 요청이 {{max}}토큰 할당량을 모두 사용했습니다. 계속하면 새 할당량이 시작됩니다.",
+    "stoppedWindow": "전송 전에 중지됨: 대화가 더 이상 모델의 컨텍스트 창에 맞지 않습니다({{detail}}). 모델이 더 많이 받을 수 있다면 어시스턴트의 모델 설정에서 Max Context Tokens를 늘리고, 그렇지 않으면 새 세션을 시작하세요.",
+    "compacting": "압축 중…",
+    "compactFailed": "아직 압축할 내용이 없습니다."
+  },
+  "compaction": {
+    "divider_one": "컨텍스트 압축됨 — 이전 메시지 {{count}}개 요약",
+    "divider_other": "컨텍스트 압축됨 — 이전 메시지 {{count}}개 요약",
+    "showSummary": "요약 보기",
+    "hideSummary": "요약 숨기기",
+    "compactNow": "압축",
+    "compactNowHint": "대화가 모델의 컨텍스트 창에 맞도록 오래된 메시지를 요약합니다"
+  },
+  "readiness": {
+    "builtinsUnknown": "첫 실행 시작 시 생성",
+    "tokensPending": "첫 실행 시작 시 측정",
+    "tokensEstimatedAtFirstRun": "지금까지 약 {{count}}토큰({{method}}); 기본 제공 도구 정의는 첫 실행 시 측정됩니다"
+  },
+  "queue": {
+    "edit": "편집",
+    "remove": "제거",
+    "moveUp": "위로 이동",
+    "moveDown": "아래로 이동",
+    "drag": "드래그하여 순서 변경",
+    "held": "전송 안 됨",
+    "heldHint": "이 메시지를 입력한 실행이 받지 않았습니다. 다음 메시지로 보내거나 삭제하세요",
+    "steer": "지금 방향 지시",
+    "steerHint": "실행이 끝날 때까지 기다리지 않고 에이전트의 다음 단계에 전달합니다(입력창에서 Ctrl+Enter)",
+    "steering": "방향 지시 중",
+    "steeringHint": "에이전트의 다음 단계에 전달됩니다. 실행이 먼저 끝나면 다음 메시지로 전송됩니다"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "이 실행이 시작될 때 첨부한 폴더의 Git 작업 트리에 커밋되지 않은 변경 사항이 없었습니다."
+    },
+    "nothing": "이 실행은 파일을 변경하지 않았습니다. 이 세션의 이전 실행에서 생긴 변경 사항은 변경 사항 검토에 계속 표시됩니다."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "없음"
+    }
   }
 }

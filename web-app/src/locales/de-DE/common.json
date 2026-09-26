@@ -63,6 +63,15 @@
   "start": "Start",
   "stop": "Stop",
   "preview": "Vorschau",
+  "changes": {
+    "changedIn": "Geändert in {{folder}} · direkt bearbeitet",
+    "changedInPlace": "Direkt bearbeitet · außerhalb der Sandbox",
+    "staleRow": "Diese Datei unterscheidet sich nicht mehr. Die Liste war veraltet und wird neu eingelesen.",
+    "scopeLabel": "Welche Projektänderungen aufgelistet werden",
+    "applyHint": "Diese Datei aus der Sitzungs-Sandbox nach {{folder}} als {{path}} kopieren",
+    "applyWhere": "Nach {{path}} in {{folder}} kopieren? Die Sandbox-Kopie ist {{source}}.",
+    "applyConfirm": "Dorthin kopieren"
+  },
   "compactWidth": "Kompakte Breite",
   "fullWidth": "Volle Breite",
   "dark": "Dunkel",
@@ -406,5 +415,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Ebenfalls angehängt",
+    "addFolder": "Weiteren Ordner hinzufügen",
+    "removeFolder": "{{folder}} entfernen",
+    "editable": "bearbeitbar",
+    "inWorktree": "über Worktree",
+    "footnoteEditable": "Flint darf Dateien in diesem Ordner direkt ändern.",
+    "footnoteWorktree": "Flint ändert einen Git-Worktree dieses Ordners, nie den Ordner selbst.",
+    "writesFolder": "Die angehängten Ordner",
+    "writesFolderNote": "Änderungen landen direkt in den als bearbeitbar markierten Ordnern.",
+    "writesWorktree": "Sitzungs-Worktree",
+    "writesWorktreeNote": "Änderungen landen in einem Git-Worktree, den du prüfen und zusammenführen kannst."
+  },
+  "budget": {
+    "stoppedTokens": "Gestoppt — diese Anfrage hat ihr Kontingent von {{max}} Tokens aufgebraucht. „Fortsetzen“ startet ein neues Kontingent.",
+    "stoppedWindow": "Vor dem Senden gestoppt: Die Unterhaltung passt nicht mehr in das Kontextfenster des Modells ({{detail}}). Wenn das Modell mehr verarbeiten kann, erhöhe „Max Context Tokens“ in den Modelleinstellungen des Assistenten; andernfalls starte eine neue Sitzung.",
+    "compacting": "Wird komprimiert…",
+    "compactFailed": "Noch nichts zu komprimieren."
+  },
+  "compaction": {
+    "divider_one": "Kontext komprimiert — {{count}} frühere Nachricht zusammengefasst",
+    "divider_other": "Kontext komprimiert — {{count}} frühere Nachrichten zusammengefasst",
+    "showSummary": "Zusammenfassung anzeigen",
+    "hideSummary": "Zusammenfassung ausblenden",
+    "compactNow": "Komprimieren",
+    "compactNowHint": "Ältere Nachrichten zusammenfassen, damit die Unterhaltung in das Kontextfenster des Modells passt"
+  },
+  "readiness": {
+    "builtinsUnknown": "Wird beim ersten Lauf erstellt",
+    "tokensPending": "Wird beim ersten Lauf gemessen",
+    "tokensEstimatedAtFirstRun": "Bisher ~{{count}} Tokens ({{method}}); integrierte Werkzeugdefinitionen werden beim ersten Lauf gemessen"
+  },
+  "queue": {
+    "edit": "Bearbeiten",
+    "remove": "Entfernen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "drag": "Zum Neuordnen ziehen",
+    "held": "Nicht gesendet",
+    "heldHint": "Der Lauf, für den dies geschrieben wurde, hat es nicht übernommen. Sende es als nächste Nachricht oder verwirf es",
+    "steer": "Jetzt lenken",
+    "steerHint": "Beim nächsten Schritt an den Agenten übergeben, statt auf das Ende des Laufs zu warten (Strg+Enter im Eingabefeld)",
+    "steering": "Wird gelenkt",
+    "steeringHint": "Geht beim nächsten Schritt an den Agenten; endet der Lauf vorher, wird es als nächste Nachricht gesendet"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Der Git-Arbeitsbaum des angehängten Ordners hatte beim Start dieses Laufs keine nicht committeten Änderungen."
+    },
+    "nothing": "Dieser Lauf hat keine Dateien geändert. Änderungen aus früheren Läufen dieser Sitzung bleiben unter „Änderungen prüfen“ aufgelistet."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Nicht vorhanden"
+    }
   }
 }

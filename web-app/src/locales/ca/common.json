@@ -56,6 +56,15 @@
   "start": "Inicia",
   "stop": "Atura",
   "preview": "Previsualitza",
+  "changes": {
+    "changedIn": "Canviat a {{folder}} · editat al lloc",
+    "changedInPlace": "Editat al lloc · fora del sandbox",
+    "staleRow": "Aquest fitxer ja no difereix. La llista estava desactualitzada i s'està tornant a llegir.",
+    "scopeLabel": "Quins canvis del projecte llistar",
+    "applyHint": "Copia aquest fitxer del sandbox de la sessió a {{folder}} com a {{path}}",
+    "applyWhere": "Vols copiar a {{path}} a {{folder}}? La còpia del sandbox és {{source}}.",
+    "applyConfirm": "Copia-hi"
+  },
   "compactWidth": "Amplada compacta",
   "fullWidth": "Amplada completa",
   "dark": "Fosc",
@@ -408,5 +417,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "També adjuntes",
+    "addFolder": "Afegeix una altra carpeta",
+    "removeFolder": "Treu {{folder}}",
+    "editable": "editable",
+    "inWorktree": "mitjançant worktree",
+    "footnoteEditable": "Flint pot canviar fitxers d'aquesta carpeta directament.",
+    "footnoteWorktree": "Flint canvia un worktree de Git d'aquesta carpeta, mai la carpeta mateixa.",
+    "writesFolder": "Les carpetes adjuntes",
+    "writesFolderNote": "Les edicions s'apliquen directament a les carpetes marcades com a editables.",
+    "writesWorktree": "Worktree de la sessió",
+    "writesWorktreeNote": "Les edicions es fan en un worktree de Git perquè les revisis i les fusionis."
+  },
+  "budget": {
+    "stoppedTokens": "Aturat: aquesta sol·licitud ha esgotat la seva assignació de {{max}} tokens. Continua inicia una assignació nova.",
+    "stoppedWindow": "Aturat abans d'enviar: la conversa ja no cap a la finestra de context del model ({{detail}}). Si el model n'accepta més, augmenta Max Context Tokens a la configuració del model de l'assistent; si no, inicia una sessió nova.",
+    "compacting": "Compactant…",
+    "compactFailed": "Encara no hi ha res a compactar."
+  },
+  "compaction": {
+    "divider_one": "Context compactat: {{count}} missatge anterior resumit",
+    "divider_other": "Context compactat: {{count}} missatges anteriors resumits",
+    "showSummary": "Mostra el resum",
+    "hideSummary": "Amaga el resum",
+    "compactNow": "Compacta",
+    "compactNowHint": "Resumeix els missatges antics perquè la conversa càpiga a la finestra de context del model"
+  },
+  "readiness": {
+    "builtinsUnknown": "Es genera en iniciar la primera execució",
+    "tokensPending": "Es mesura en iniciar la primera execució",
+    "tokensEstimatedAtFirstRun": "~{{count}} tokens fins ara ({{method}}); les definicions d'eines integrades es mesuren a la primera execució"
+  },
+  "queue": {
+    "edit": "Edita",
+    "remove": "Treu",
+    "moveUp": "Mou amunt",
+    "moveDown": "Mou avall",
+    "drag": "Arrossega per reordenar",
+    "held": "No enviat",
+    "heldHint": "L'execució per a la qual es va escriure no l'ha agafat. Envia-ho com a missatge següent o descarta-ho",
+    "steer": "Dirigeix ara",
+    "steerHint": "Lliura-ho a l'agent al seu pas següent en lloc d'esperar que acabi l'execució (Ctrl+Retorn des de l'editor)",
+    "steering": "Dirigint",
+    "steeringHint": "Arriba a l'agent al seu pas següent; si l'execució acaba abans, s'envia com a missatge següent"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "L'arbre de treball de Git de la carpeta adjunta no tenia canvis sense confirmar quan va començar aquesta execució."
+    },
+    "nothing": "Aquesta execució no ha canviat cap fitxer. Els canvis d'execucions anteriors d'aquesta sessió continuen llistats a Revisa els canvis."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "No present"
+    }
   }
 }

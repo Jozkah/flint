@@ -1,0 +1,7 @@
+{
+  "unresolved": {
+    "stop": {
+      "tokens": "L'exécution s'est arrêtée à une limite de jetons (la fenêtre de contexte ou le quota de la requête)."
+    }
+  }
+}

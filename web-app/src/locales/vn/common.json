@@ -63,6 +63,15 @@
   "start": "Bắt đầu",
   "stop": "Dừng",
   "preview": "Xem trước",
+  "changes": {
+    "changedIn": "Đã thay đổi trong {{folder}} · sửa trực tiếp",
+    "changedInPlace": "Sửa trực tiếp · ngoài sandbox",
+    "staleRow": "Tệp này không còn khác biệt. Danh sách đã lỗi thời nên đang được đọc lại.",
+    "scopeLabel": "Những thay đổi dự án nào cần liệt kê",
+    "applyHint": "Sao chép tệp này từ sandbox của phiên vào {{folder}} dưới dạng {{path}}",
+    "applyWhere": "Sao chép tới {{path}} trong {{folder}}? Bản sao trong sandbox là {{source}}.",
+    "applyConfirm": "Sao chép tới đó"
+  },
   "compactWidth": "Chiều rộng nhỏ gọn",
   "fullWidth": "Chiều rộng đầy đủ",
   "dark": "Tối",
@@ -406,5 +415,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Cũng được đính kèm",
+    "addFolder": "Thêm thư mục khác",
+    "removeFolder": "Gỡ {{folder}}",
+    "editable": "có thể sửa",
+    "inWorktree": "qua worktree",
+    "footnoteEditable": "Flint có thể thay đổi trực tiếp các tệp trong thư mục này.",
+    "footnoteWorktree": "Flint thay đổi một git worktree của thư mục này, không bao giờ thay đổi chính thư mục.",
+    "writesFolder": "Các thư mục đính kèm",
+    "writesFolderNote": "Các chỉnh sửa được ghi thẳng vào những thư mục được đánh dấu có thể sửa.",
+    "writesWorktree": "Worktree của phiên",
+    "writesWorktreeNote": "Các chỉnh sửa được ghi vào một git worktree để bạn xem lại và hợp nhất."
+  },
+  "budget": {
+    "stoppedTokens": "Đã dừng — yêu cầu này đã dùng hết hạn mức {{max}} token. Tiếp tục sẽ bắt đầu hạn mức mới.",
+    "stoppedWindow": "Đã dừng trước khi gửi: cuộc trò chuyện không còn vừa cửa sổ ngữ cảnh của mô hình ({{detail}}). Nếu mô hình chấp nhận nhiều hơn, hãy tăng Max Context Tokens trong cài đặt mô hình của trợ lý; nếu không, hãy bắt đầu phiên mới.",
+    "compacting": "Đang nén…",
+    "compactFailed": "Chưa có gì để nén."
+  },
+  "compaction": {
+    "divider_one": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",
+    "divider_other": "Đã nén ngữ cảnh — đã tóm tắt {{count}} tin nhắn trước đó",
+    "showSummary": "Hiện tóm tắt",
+    "hideSummary": "Ẩn tóm tắt",
+    "compactNow": "Nén",
+    "compactNowHint": "Tóm tắt các tin nhắn cũ để cuộc trò chuyện vừa cửa sổ ngữ cảnh của mô hình"
+  },
+  "readiness": {
+    "builtinsUnknown": "Được tạo khi lần chạy đầu tiên bắt đầu",
+    "tokensPending": "Được đo khi lần chạy đầu tiên bắt đầu",
+    "tokensEstimatedAtFirstRun": "~{{count}} token cho đến nay ({{method}}); định nghĩa công cụ tích hợp được đo ở lần chạy đầu tiên"
+  },
+  "queue": {
+    "edit": "Sửa",
+    "remove": "Xóa",
+    "moveUp": "Di chuyển lên",
+    "moveDown": "Di chuyển xuống",
+    "drag": "Kéo để sắp xếp lại",
+    "held": "Chưa gửi",
+    "heldHint": "Lần chạy mà tin này được gõ cho đã không nhận nó. Gửi nó làm tin nhắn tiếp theo hoặc bỏ đi",
+    "steer": "Điều hướng ngay",
+    "steerHint": "Giao cho tác tử ở bước tiếp theo thay vì chờ lần chạy kết thúc (Ctrl+Enter từ khung soạn)",
+    "steering": "Đang điều hướng",
+    "steeringHint": "Đến tác tử ở bước tiếp theo; nếu lần chạy kết thúc trước, nó được gửi làm tin nhắn tiếp theo"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Cây làm việc Git của thư mục đính kèm không có thay đổi chưa commit khi lần chạy này bắt đầu."
+    },
+    "nothing": "Lần chạy này không thay đổi tệp nào. Các thay đổi từ những lần chạy trước trong phiên này vẫn được liệt kê trong Xem lại thay đổi."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Không có"
+    }
   }
 }

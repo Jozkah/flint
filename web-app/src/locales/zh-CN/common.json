@@ -577,7 +577,14 @@
   "changes": {
     "title": "Agent 更改",
     "empty": "Agent 写入或编辑的文件将显示在这里。",
-    "a11y": "Agent 更改：{{files}} 个文件，新增 {{additions}} 行，删除 {{deletions}} 行"
+    "a11y": "Agent 更改：{{files}} 个文件，新增 {{additions}} 行，删除 {{deletions}} 行",
+    "changedIn": "已在 {{folder}} 中更改 · 原地编辑",
+    "changedInPlace": "原地编辑 · 在沙盒之外",
+    "staleRow": "此文件已不再有差异。列表已过时，正在重新读取。",
+    "scopeLabel": "要列出哪些项目更改",
+    "applyHint": "将此文件从会话沙盒复制到 {{folder}}，保存为 {{path}}",
+    "applyWhere": "复制到 {{folder}} 中的 {{path}}？沙盒副本为 {{source}}。",
+    "applyConfirm": "复制到此处"
   },
   "multimodal": "多模态",
   "noAssistant": "无助手",
@@ -633,6 +640,17 @@
   "artifactsShowMore": "显示更多 {{count}} 条",
   "workspace": {
     "readsFrom": "工作于",
+    "alsoAttached": "其他附加",
+    "addFolder": "添加其他文件夹",
+    "removeFolder": "移除 {{folder}}",
+    "editable": "可编辑",
+    "inWorktree": "通过 worktree",
+    "footnoteEditable": "Flint 可以直接更改此文件夹中的文件。",
+    "footnoteWorktree": "Flint 更改的是此文件夹的 git worktree，绝不直接更改文件夹本身。",
+    "writesFolder": "附加的文件夹",
+    "writesFolderNote": "编辑直接写入标记为可编辑的文件夹。",
+    "writesWorktree": "会话 worktree",
+    "writesWorktreeNote": "编辑写入 git worktree，供你审阅并合并。",
     "footnote": "Agent 会直接读取和编辑此文件夹。可在 diff 面板中查看更改内容。",
     "footnoteEmpty": "附加一个文件夹，让 Agent 处理你的项目。它可以读取和编辑其中的文件。",
     "attach": "附加文件夹",
@@ -679,9 +697,20 @@
   "budget": {
     "stoppedSteps": "已在 {{max}} 步停止。Agent 尚未完成。",
     "keepGoing": "继续",
-    "stoppedTokens": "已停止——本次会话已达 token 预算上限。",
+    "stoppedTokens": "已停止 — 此请求已用完 {{max}} 个令牌的额度。继续将开始新的额度。",
+    "stoppedWindow": "发送前已停止：对话已超出模型的上下文窗口（{{detail}}）。如果模型能接受更多，请在助手的模型设置中调高 Max Context Tokens；否则请开始新会话。",
     "compact": "压缩",
+    "compacting": "正在压缩…",
+    "compactFailed": "暂无可压缩的内容。",
     "newSession": "新会话"
+  },
+  "compaction": {
+    "divider_one": "上下文已压缩 — 已总结 {{count}} 条较早的消息",
+    "divider_other": "上下文已压缩 — 已总结 {{count}} 条较早的消息",
+    "showSummary": "显示摘要",
+    "hideSummary": "隐藏摘要",
+    "compactNow": "压缩",
+    "compactNowHint": "总结较早的消息，使对话适合模型的上下文窗口"
   },
   "run": {
     "stopped": "已停止。",
@@ -696,5 +725,34 @@
   "askSelectedCount": "已选择 {{count}} 项",
   "askSomethingElse": "其他问题",
   "askSomethingElsePlaceholder": "输入你自己的答案",
-  "submit": "提交"
+  "submit": "提交",
+  "readiness": {
+    "builtinsUnknown": "首次运行开始时生成",
+    "tokensPending": "首次运行开始时测量",
+    "tokensEstimatedAtFirstRun": "目前约 {{count}} 个令牌（{{method}}）；内置工具定义在首次运行时测量"
+  },
+  "queue": {
+    "edit": "编辑",
+    "remove": "移除",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "drag": "拖动以重新排序",
+    "held": "未发送",
+    "heldHint": "输入时对应的运行没有接收它。将其作为下一条消息发送或丢弃",
+    "steer": "立即引导",
+    "steerHint": "在代理的下一步交给它，而不是等待运行结束（在输入框中按 Ctrl+Enter）",
+    "steering": "引导中",
+    "steeringHint": "将在代理的下一步送达；如果运行先结束，则作为下一条消息发送"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "此运行开始时，附加文件夹的 Git 工作树中没有未提交的更改。"
+    },
+    "nothing": "此运行未更改任何文件。此会话中之前运行的更改仍列在“审阅更改”中。"
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "不存在"
+    }
+  }
 }

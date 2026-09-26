@@ -63,6 +63,15 @@
   "start": "開始",
   "stop": "停止",
   "preview": "預覽",
+  "changes": {
+    "changedIn": "已在 {{folder}} 中變更 · 原地編輯",
+    "changedInPlace": "原地編輯 · 在沙盒之外",
+    "staleRow": "此檔案已不再有差異。清單已過時，正在重新讀取。",
+    "scopeLabel": "要列出哪些專案變更",
+    "applyHint": "將此檔案從工作階段沙盒複製到 {{folder}}，儲存為 {{path}}",
+    "applyWhere": "複製到 {{folder}} 中的 {{path}}？沙盒副本為 {{source}}。",
+    "applyConfirm": "複製到此處"
+  },
   "compactWidth": "緊湊寬度",
   "fullWidth": "全寬",
   "dark": "深色",
@@ -406,5 +415,61 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "其他附加",
+    "addFolder": "新增其他資料夾",
+    "removeFolder": "移除 {{folder}}",
+    "editable": "可編輯",
+    "inWorktree": "透過 worktree",
+    "footnoteEditable": "Flint 可以直接變更此資料夾中的檔案。",
+    "footnoteWorktree": "Flint 變更的是此資料夾的 git worktree，絕不直接變更資料夾本身。",
+    "writesFolder": "附加的資料夾",
+    "writesFolderNote": "編輯會直接寫入標示為可編輯的資料夾。",
+    "writesWorktree": "工作階段 worktree",
+    "writesWorktreeNote": "編輯會寫入 git worktree，供你檢閱並合併。"
+  },
+  "budget": {
+    "stoppedTokens": "已停止 — 此要求已用完 {{max}} 個權杖的額度。繼續將開始新的額度。",
+    "stoppedWindow": "傳送前已停止：對話已超出模型的上下文視窗（{{detail}}）。如果模型能接受更多，請在助理的模型設定中調高 Max Context Tokens；否則請開始新的工作階段。",
+    "compacting": "正在壓縮…",
+    "compactFailed": "目前沒有可壓縮的內容。"
+  },
+  "compaction": {
+    "divider_one": "上下文已壓縮 — 已摘要 {{count}} 則較早的訊息",
+    "divider_other": "上下文已壓縮 — 已摘要 {{count}} 則較早的訊息",
+    "showSummary": "顯示摘要",
+    "hideSummary": "隱藏摘要",
+    "compactNow": "壓縮",
+    "compactNowHint": "摘要較早的訊息，讓對話符合模型的上下文視窗"
+  },
+  "readiness": {
+    "builtinsUnknown": "首次執行開始時產生",
+    "tokensPending": "首次執行開始時測量",
+    "tokensEstimatedAtFirstRun": "目前約 {{count}} 個權杖（{{method}}）；內建工具定義會在首次執行時測量"
+  },
+  "queue": {
+    "edit": "編輯",
+    "remove": "移除",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "drag": "拖曳以重新排序",
+    "held": "未傳送",
+    "heldHint": "輸入時對應的執行沒有接收它。將其作為下一則訊息傳送或捨棄",
+    "steer": "立即引導",
+    "steerHint": "在代理的下一步交給它，而不是等待執行結束（在輸入框中按 Ctrl+Enter）",
+    "steering": "引導中",
+    "steeringHint": "會在代理的下一步送達；如果執行先結束，則作為下一則訊息傳送"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "此執行開始時，附加資料夾的 Git 工作樹中沒有未提交的變更。"
+    },
+    "nothing": "此執行未變更任何檔案。此工作階段中先前執行的變更仍列在「檢閱變更」中。"
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "不存在"
+    }
   }
 }

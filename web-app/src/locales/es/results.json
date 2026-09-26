@@ -1,0 +1,7 @@
+{
+  "unresolved": {
+    "stop": {
+      "tokens": "La ejecución se detuvo en un límite de tokens (la ventana de contexto o la asignación de la solicitud)."
+    }
+  }
+}

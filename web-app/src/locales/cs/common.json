@@ -63,6 +63,15 @@
   "start": "Spustit",
   "stop": "Zastavit",
   "preview": "Náhled",
+  "changes": {
+    "changedIn": "Změněno v {{folder}} · upraveno na místě",
+    "changedInPlace": "Upraveno na místě · mimo sandbox",
+    "staleRow": "Tento soubor se už neliší. Seznam byl zastaralý, proto se načítá znovu.",
+    "scopeLabel": "Které změny projektu zobrazit",
+    "applyHint": "Zkopírovat tento soubor ze sandboxu relace do {{folder}} jako {{path}}",
+    "applyWhere": "Zkopírovat do {{path}} v {{folder}}? Kopie v sandboxu je {{source}}.",
+    "applyConfirm": "Zkopírovat sem"
+  },
   "compactWidth": "Kompaktní šířka",
   "fullWidth": "Plná šířka",
   "dark": "Tmavý",
@@ -406,5 +415,63 @@
     "forceQuit": "Force quit",
     "forcing": "Force quitting…",
     "shuttingDown": "Shutting down…"
+  },
+  "workspace": {
+    "alsoAttached": "Také připojeno",
+    "addFolder": "Přidat další složku",
+    "removeFolder": "Odebrat {{folder}}",
+    "editable": "upravitelné",
+    "inWorktree": "přes worktree",
+    "footnoteEditable": "Flint může soubory v této složce měnit přímo.",
+    "footnoteWorktree": "Flint mění git worktree této složky, nikdy složku samotnou.",
+    "writesFolder": "Připojené složky",
+    "writesFolderNote": "Úpravy se zapisují přímo do složek označených jako upravitelné.",
+    "writesWorktree": "Worktree relace",
+    "writesWorktreeNote": "Úpravy se zapisují do git worktree, který si zkontrolujete a sloučíte."
+  },
+  "budget": {
+    "stoppedTokens": "Zastaveno — tento požadavek vyčerpal svůj limit {{max}} tokenů. Pokračovat začne nový limit.",
+    "stoppedWindow": "Zastaveno před odesláním: konverzace se už nevejde do kontextového okna modelu ({{detail}}). Pokud model zvládne více, zvyšte Max Context Tokens v nastavení modelu asistenta; jinak začněte novou relaci.",
+    "compacting": "Zhušťování…",
+    "compactFailed": "Zatím není co zhustit."
+  },
+  "compaction": {
+    "divider_one": "Kontext zhuštěn — shrnuta {{count}} starší zpráva",
+    "divider_other": "Kontext zhuštěn — shrnuto {{count}} starších zpráv",
+    "showSummary": "Zobrazit shrnutí",
+    "hideSummary": "Skrýt shrnutí",
+    "compactNow": "Zhustit",
+    "compactNowHint": "Shrnout starší zprávy, aby se konverzace vešla do kontextového okna modelu",
+    "divider_few": "Kontext zhuštěn — shrnuty {{count}} starší zprávy",
+    "divider_many": "Kontext zhuštěn — shrnuto {{count}} starší zprávy"
+  },
+  "readiness": {
+    "builtinsUnknown": "Sestaví se při prvním spuštění",
+    "tokensPending": "Změří se při prvním spuštění",
+    "tokensEstimatedAtFirstRun": "Zatím ~{{count}} tokenů ({{method}}); definice vestavěných nástrojů se změří při prvním spuštění"
+  },
+  "queue": {
+    "edit": "Upravit",
+    "remove": "Odebrat",
+    "moveUp": "Posunout nahoru",
+    "moveDown": "Posunout dolů",
+    "drag": "Přetažením změníte pořadí",
+    "held": "Neodesláno",
+    "heldHint": "Běh, pro který to bylo napsáno, to nepřevzal. Odešlete to jako další zprávu, nebo to zahoďte",
+    "steer": "Nasměrovat hned",
+    "steerHint": "Předat agentovi v jeho dalším kroku místo čekání na konec běhu (Ctrl+Enter v editoru)",
+    "steering": "Směrování",
+    "steeringHint": "Dostane se k agentovi v jeho dalším kroku; pokud běh skončí dřív, odešle se jako další zpráva"
+  },
+  "coworkOrigins": {
+    "baseline": {
+      "clean": "Pracovní strom Gitu připojené složky neměl při spuštění tohoto běhu žádné necommitnuté změny."
+    },
+    "nothing": "Tento běh nezměnil žádné soubory. Změny z dřívějších běhů této relace zůstávají v Kontrola změn."
+  },
+  "claudeCompat": {
+    "state": {
+      "absent": "Chybí"
+    }
   }
 }
