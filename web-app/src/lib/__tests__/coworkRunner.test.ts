@@ -892,7 +892,10 @@ describe('run guards', () => {
       maxSteps: 50,
     })
     expect(out.stoppedBy).toBe('loop')
-    expect(out.errorText).toContain('not making progress')
+    // errorText is what the user reads on the stop notice: written to them,
+    // not the model's "say what you were trying to do and wait" instruction.
+    expect(out.errorText).toContain('Flint stopped the run')
+    expect(out.errorText).not.toContain('wait for instructions')
     // Stopped well before the step cap, which is the point of the guard.
     expect(out.steps).toBeLessThan(50)
   })

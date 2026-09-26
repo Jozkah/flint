@@ -21,7 +21,7 @@ import {
 import {
   detectLoop,
   loopFinalTurnNote,
-  loopStopMessage,
+  loopStopNotice,
   type ObservedCall,
 } from '@/lib/runLoopGuard'
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
@@ -1218,7 +1218,7 @@ export async function runTurn(opts: {
         usage,
         sessionTokens: spend.spent,
         stoppedBy: 'loop',
-        errorText: loopStopMessage(loop),
+        errorText: loopStopNotice(loop),
       }
     }
 
