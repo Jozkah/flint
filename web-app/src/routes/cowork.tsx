@@ -1975,7 +1975,7 @@ function CoworkPage() {
         session: sid,
         run: runId,
         kind: 'run.started',
-        payload: { model: selectedModel.id, title: text },
+        payload: { model: selectedModel.id, title: runTitle(hidden ? null : text, current?.messages) ?? null },
       },
     ])
     const recordRunEnded = (ending: RunEnding | null) =>
