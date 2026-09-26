@@ -64,6 +64,8 @@ permissions = [
     "allow-advertised-tool-schemas",
     "allow-execute-tool",
     "allow-execute-tool-streaming",
+    "allow-execute-tool-unsandboxed-retry",
+    "allow-execute-tool-unsandboxed-withdraw",
     "allow-tool-resources-finish-run",
     "allow-undo-journal",
     "allow-undo-turn",

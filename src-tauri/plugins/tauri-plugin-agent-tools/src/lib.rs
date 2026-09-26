@@ -57,6 +57,7 @@ pub mod snapshot;
 pub mod subject;
 pub mod tools;
 pub mod undo;
+pub mod unsandboxed_retry;
 pub mod usage;
 pub mod utility;
 pub mod worker;
@@ -173,6 +174,8 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::advertised_tool_schemas,
             commands::execute_tool,
             commands::execute_tool_streaming,
+            commands::execute_tool_unsandboxed_retry,
+            commands::execute_tool_unsandboxed_withdraw,
             commands::tool_resources_finish_run,
             commands::undo_journal,
             commands::undo_turn,
