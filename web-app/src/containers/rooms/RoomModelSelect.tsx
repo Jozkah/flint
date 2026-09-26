@@ -4,7 +4,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import { offersModels } from '@/lib/providerOffers'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn } from '@/lib/utils'
+import { cn, getProviderTitle } from '@/lib/utils'
 
 type ProviderLike = Pick<ModelProvider, 'provider' | 'models'> &
   Partial<Pick<ModelProvider, 'api_key' | 'api_key_fallbacks'>>
@@ -115,8 +115,10 @@ export function RoomModelSelect({
           key={provider.provider}
           label={
             isProviderUsable(provider)
-              ? provider.provider
-              : t('rooms:model.notConfigured', { provider: provider.provider })
+              ? getProviderTitle(provider.provider)
+              : t('rooms:model.notConfigured', {
+                  provider: getProviderTitle(provider.provider),
+                })
           }
         >
           {models.map((m) => (

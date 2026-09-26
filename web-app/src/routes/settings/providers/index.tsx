@@ -46,6 +46,7 @@ import { RowMenu } from '@/containers/engine/RowMenu'
 import {
   ProviderCardMenu,
   RemoveProviderDialog,
+  RenameProviderDialog,
 } from '@/containers/engine/ProviderCardMenu'
 import { useRemoveProvider } from '@/hooks/useRemoveProvider'
 import { modelLogo, providerLogo } from '@/lib/brandLogos'
@@ -98,6 +99,7 @@ function ModelProviders() {
     null
   )
   const removeProvider = useRemoveProvider()
+  const [renaming, setRenaming] = useState<ProviderObject | null>(null)
 
   const toggleProvider = async (provider: ProviderObject, active: boolean) => {
     if (!active && provider.provider.toLowerCase() === 'llamacpp') {
@@ -518,6 +520,7 @@ function ModelProviders() {
                           onOpenChange={(o) => setMenuFor(o ? provider.provider : null)}
                           onEdit={() => openProvider(provider.provider)}
                           onToggle={() => void toggleProvider(provider, !provider.active)}
+                          onRename={() => setRenaming(provider)}
                           onRemove={() => setPendingRemoval(provider)}
                         />
                         <Switch
@@ -785,6 +788,15 @@ function ModelProviders() {
             </div>
           </FrameBody>
         </Frame>
+        <RenameProviderDialog
+          provider={renaming}
+          defaultTitle={renaming?.provider ?? ''}
+          onOpenChange={(o) => !o && setRenaming(null)}
+          onSave={(displayName) => {
+            if (renaming) updateProvider(renaming.provider, { displayName })
+            setRenaming(null)
+          }}
+        />
         <RemoveProviderDialog
           provider={pendingRemoval}
           title={pendingRemoval ? getProviderTitle(pendingRemoval.provider) : ''}

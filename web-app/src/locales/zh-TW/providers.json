@@ -64,7 +64,8 @@
     "edit": "編輯設定",
     "enable": "開啟",
     "disable": "關閉",
-    "remove": "移除提供者"
+    "remove": "移除提供者",
+    "rename": "重新命名"
   },
   "removeProvider": {
     "confirmTitle": "要移除 {{provider}} 嗎？",
@@ -73,5 +74,12 @@
     "cancel": "取消",
     "remove": "移除",
     "success": "已移除 {{provider}}。"
+  },
+  "renameProvider": {
+    "title": "重新命名提供者",
+    "description": "只變更 Flint 中顯示的名稱。聊天、API 金鑰和設定照常運作。留空則使用預設名稱。",
+    "label": "提供者名稱",
+    "cancel": "取消",
+    "save": "儲存"
   }
 }

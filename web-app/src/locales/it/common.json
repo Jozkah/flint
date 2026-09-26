@@ -609,5 +609,6 @@
     },
     "deleteKeep": "Mantieni worktree e branch ({{name}})",
     "deleteRemove": "Rimuovi anche worktree e branch ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (non disponibile)"
 }

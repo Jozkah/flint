@@ -126,7 +126,8 @@
     "edit": "Ayarları düzenle",
     "enable": "Aç",
     "disable": "Kapat",
-    "remove": "Sağlayıcıyı kaldır"
+    "remove": "Sağlayıcıyı kaldır",
+    "rename": "Yeniden adlandır"
   },
   "removeProvider": {
     "confirmTitle": "{{provider}} kaldırılsın mı?",
@@ -135,5 +136,12 @@
     "cancel": "İptal",
     "remove": "Kaldır",
     "success": "{{provider}} kaldırıldı."
+  },
+  "renameProvider": {
+    "title": "Sağlayıcıyı yeniden adlandır",
+    "description": "Yalnızca Flint'te gösterilen adı değiştirir. Sohbetler, API anahtarları ve ayarlar çalışmaya devam eder. Varsayılan adı kullanmak için boş bırakın.",
+    "label": "Sağlayıcı adı",
+    "cancel": "İptal",
+    "save": "Kaydet"
   }
 }

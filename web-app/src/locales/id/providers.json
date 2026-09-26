@@ -64,7 +64,8 @@
     "edit": "Edit pengaturan",
     "enable": "Aktifkan",
     "disable": "Nonaktifkan",
-    "remove": "Hapus penyedia"
+    "remove": "Hapus penyedia",
+    "rename": "Ganti nama"
   },
   "removeProvider": {
     "confirmTitle": "Hapus {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Batal",
     "remove": "Hapus",
     "success": "{{provider}} telah dihapus."
+  },
+  "renameProvider": {
+    "title": "Ganti nama penyedia",
+    "description": "Hanya mengubah nama yang ditampilkan di Flint. Obrolan, kunci API, dan pengaturan tetap berfungsi. Kosongkan untuk memakai nama bawaan.",
+    "label": "Nama penyedia",
+    "cancel": "Batal",
+    "save": "Simpan"
   }
 }

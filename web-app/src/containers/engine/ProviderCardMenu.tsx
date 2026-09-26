@@ -1,4 +1,6 @@
-import { MoreHorizontal, Pencil, Power, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { MoreHorizontal, Pencil, Power, TextCursorInput, Trash2 } from 'lucide-react'
+import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,6 +33,7 @@ export function ProviderCardMenu({
   onOpenChange,
   onEdit,
   onToggle,
+  onRename,
   onRemove,
   className,
 }: {
@@ -40,6 +43,7 @@ export function ProviderCardMenu({
   onOpenChange: (open: boolean) => void
   onEdit: () => void
   onToggle: () => void
+  onRename: () => void
   onRemove: () => void
   className?: string
 }) {
@@ -66,6 +70,12 @@ export function ProviderCardMenu({
           <DropdownMenuItem onSelect={onEdit}>
             <Pencil />
             {t('providers:cardMenu.edit')}
+          </DropdownMenuItem>
+        )}
+        {actions.includes('rename') && (
+          <DropdownMenuItem onSelect={onRename}>
+            <TextCursorInput />
+            {t('providers:cardMenu.rename')}
           </DropdownMenuItem>
         )}
         {actions.includes('toggle') && (
@@ -143,5 +153,87 @@ export function RemoveProviderDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+/**
+ * Renames a provider for display only. The provider key, its keyring secret
+ * and the threads that reference it keep the original name; an empty name
+ * returns to the default title.
+ */
+export function RenameProviderDialog({
+  provider,
+  defaultTitle,
+  onOpenChange,
+  onSave,
+}: {
+  provider: ProviderObject | null
+  /** The built-in title, shown as the placeholder. */
+  defaultTitle: string
+  onOpenChange: (open: boolean) => void
+  onSave: (displayName: string | undefined) => void
+}) {
+  const { t } = useTranslation()
+  return (
+    <Dialog open={!!provider} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="rename-provider-dialog">
+        {provider && (
+          <RenameForm
+            key={provider.provider}
+            initial={provider.displayName ?? ''}
+            placeholder={defaultTitle}
+            onSave={onSave}
+            t={t}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RenameForm({
+  initial,
+  placeholder,
+  onSave,
+  t,
+}: {
+  initial: string
+  placeholder: string
+  onSave: (displayName: string | undefined) => void
+  t: (key: string, options?: Record<string, unknown>) => string
+}) {
+  const [value, setValue] = useState(initial)
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        onSave(value.trim() || undefined)
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>{t('providers:renameProvider.title')}</DialogTitle>
+        <DialogDescription>
+          {t('providers:renameProvider.description')}
+        </DialogDescription>
+      </DialogHeader>
+      <Input
+        autoFocus
+        className="mt-3"
+        aria-label={t('providers:renameProvider.label')}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <DialogFooter className="mt-4">
+        <DialogClose asChild>
+          <Button type="button" variant="ghost" size="sm" className="pointer-coarse:h-11">
+            {t('providers:renameProvider.cancel')}
+          </Button>
+        </DialogClose>
+        <Button type="submit" size="sm" className="pointer-coarse:h-11">
+          {t('providers:renameProvider.save')}
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }

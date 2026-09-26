@@ -588,5 +588,6 @@
     },
     "deleteKeep": "Conservar su worktree y rama ({{name}})",
     "deleteRemove": "Eliminar también su worktree y rama ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (no disponible)"
 }

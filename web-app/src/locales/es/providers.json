@@ -64,7 +64,8 @@
     "edit": "Editar configuración",
     "enable": "Activar",
     "disable": "Desactivar",
-    "remove": "Eliminar proveedor"
+    "remove": "Eliminar proveedor",
+    "rename": "Renombrar"
   },
   "removeProvider": {
     "confirmTitle": "¿Eliminar {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Cancelar",
     "remove": "Eliminar",
     "success": "Se eliminó {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Renombrar proveedor",
+    "description": "Solo cambia el nombre que se muestra en Flint. Los chats, las claves API y la configuración siguen funcionando. Déjalo vacío para usar el nombre predeterminado.",
+    "label": "Nombre del proveedor",
+    "cancel": "Cancelar",
+    "save": "Guardar"
   }
 }

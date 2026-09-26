@@ -175,7 +175,8 @@
     "edit": "Edit settings",
     "enable": "Turn on",
     "disable": "Turn off",
-    "remove": "Remove provider"
+    "remove": "Remove provider",
+    "rename": "Rename"
   },
   "removeProvider": {
     "confirmTitle": "Remove {{provider}}?",
@@ -184,5 +185,12 @@
     "cancel": "Cancel",
     "remove": "Remove",
     "success": "{{provider}} was removed."
+  },
+  "renameProvider": {
+    "title": "Rename provider",
+    "description": "Changes only the name shown in Flint. Chats, API keys and settings keep working. Leave empty to use the default name.",
+    "label": "Provider name",
+    "cancel": "Cancel",
+    "save": "Save"
   }
 }

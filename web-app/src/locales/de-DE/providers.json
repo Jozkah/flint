@@ -64,7 +64,8 @@
     "edit": "Einstellungen bearbeiten",
     "enable": "Einschalten",
     "disable": "Ausschalten",
-    "remove": "Anbieter entfernen"
+    "remove": "Anbieter entfernen",
+    "rename": "Umbenennen"
   },
   "removeProvider": {
     "confirmTitle": "{{provider}} entfernen?",
@@ -73,5 +74,12 @@
     "cancel": "Abbrechen",
     "remove": "Entfernen",
     "success": "{{provider}} wurde entfernt."
+  },
+  "renameProvider": {
+    "title": "Anbieter umbenennen",
+    "description": "Ändert nur den in Flint angezeigten Namen. Chats, API-Schlüssel und Einstellungen funktionieren weiter. Leer lassen für den Standardnamen.",
+    "label": "Anbietername",
+    "cancel": "Abbrechen",
+    "save": "Speichern"
   }
 }

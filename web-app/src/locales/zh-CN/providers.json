@@ -126,7 +126,8 @@
     "edit": "编辑设置",
     "enable": "开启",
     "disable": "关闭",
-    "remove": "移除提供商"
+    "remove": "移除提供商",
+    "rename": "重命名"
   },
   "removeProvider": {
     "confirmTitle": "移除 {{provider}}？",
@@ -135,5 +136,12 @@
     "cancel": "取消",
     "remove": "移除",
     "success": "已移除 {{provider}}。"
+  },
+  "renameProvider": {
+    "title": "重命名提供商",
+    "description": "只更改 Flint 中显示的名称。聊天、API 密钥和设置照常工作。留空则使用默认名称。",
+    "label": "提供商名称",
+    "cancel": "取消",
+    "save": "保存"
   }
 }

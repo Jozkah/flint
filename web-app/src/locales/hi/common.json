@@ -588,5 +588,6 @@
     },
     "deleteKeep": "इसका worktree और ब्रांच रखें ({{name}})",
     "deleteRemove": "इसका worktree और ब्रांच ({{name}}) भी हटाएँ"
-  }
+  },
+  "modelUnavailable": "{{model}} (अनुपलब्ध)"
 }

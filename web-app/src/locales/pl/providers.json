@@ -64,7 +64,8 @@
     "edit": "Edytuj ustawienia",
     "enable": "Włącz",
     "disable": "Wyłącz",
-    "remove": "Usuń dostawcę"
+    "remove": "Usuń dostawcę",
+    "rename": "Zmień nazwę"
   },
   "removeProvider": {
     "confirmTitle": "Usunąć {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Anuluj",
     "remove": "Usuń",
     "success": "Usunięto {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Zmień nazwę dostawcy",
+    "description": "Zmienia tylko nazwę wyświetlaną we Flint. Czaty, klucze API i ustawienia działają dalej. Pozostaw puste, aby użyć nazwy domyślnej.",
+    "label": "Nazwa dostawcy",
+    "cancel": "Anuluj",
+    "save": "Zapisz"
   }
 }

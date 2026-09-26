@@ -64,7 +64,8 @@
     "edit": "Edita la configuració",
     "enable": "Activa",
     "disable": "Desactiva",
-    "remove": "Elimina el proveïdor"
+    "remove": "Elimina el proveïdor",
+    "rename": "Canvia el nom"
   },
   "removeProvider": {
     "confirmTitle": "Vols eliminar {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Cancel·la",
     "remove": "Elimina",
     "success": "S'ha eliminat {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Canvia el nom del proveïdor",
+    "description": "Només canvia el nom que es mostra a Flint. Els xats, les claus API i la configuració continuen funcionant. Deixa-ho buit per fer servir el nom predeterminat.",
+    "label": "Nom del proveïdor",
+    "cancel": "Cancel·la",
+    "save": "Desa"
   }
 }

@@ -112,7 +112,8 @@
     "edit": "設定を編集",
     "enable": "オンにする",
     "disable": "オフにする",
-    "remove": "プロバイダーを削除"
+    "remove": "プロバイダーを削除",
+    "rename": "名前を変更"
   },
   "removeProvider": {
     "confirmTitle": "{{provider}} を削除しますか？",
@@ -121,5 +122,12 @@
     "cancel": "キャンセル",
     "remove": "削除",
     "success": "{{provider}} を削除しました。"
+  },
+  "renameProvider": {
+    "title": "プロバイダー名を変更",
+    "description": "Flint に表示される名前だけが変わります。チャット、API キー、設定はそのまま使えます。空欄にすると既定の名前に戻ります。",
+    "label": "プロバイダー名",
+    "cancel": "キャンセル",
+    "save": "保存"
   }
 }

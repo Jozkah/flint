@@ -242,6 +242,7 @@ describe('Models page (/settings/providers)', () => {
       .map((i) => i.textContent)
     expect(items).toEqual([
       'providers:cardMenu.edit',
+      'providers:cardMenu.rename',
       'providers:cardMenu.disable',
       'providers:cardMenu.remove',
     ])
@@ -258,6 +259,7 @@ describe('Models page (/settings/providers)', () => {
         .map((i) => i.textContent)
       expect(items).toEqual([
         'providers:cardMenu.edit',
+        'providers:cardMenu.rename',
         'providers:cardMenu.disable',
       ])
     }
@@ -322,5 +324,26 @@ describe('Models page (/settings/providers)', () => {
     expect(head.className).toContain('grid-cols-[var(--tbox-cols)]')
     // Fits the frame: no forced minimum width that makes it scroll sideways.
     expect(tbox.className).not.toMatch(/min-w-\[/)
+  })
+
+  it('renames a provider for display only, keeping its internal key', async () => {
+    const user = userEvent.setup()
+    await renderPage()
+    await openCardMenu(user, 'Qwen 3.8 500k (8081)')
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'providers:cardMenu.rename' })
+    )
+    const dialog = await screen.findByTestId('rename-provider-dialog')
+    const input = within(dialog).getByRole('textbox', {
+      name: 'providers:renameProvider.label',
+    })
+    await user.clear(input)
+    await user.type(input, 'Home Qwen')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'providers:renameProvider.save' })
+    )
+    expect(h.updateProvider).toHaveBeenCalledWith('Qwen 3.8 500k (8081)', {
+      displayName: 'Home Qwen',
+    })
   })
 })

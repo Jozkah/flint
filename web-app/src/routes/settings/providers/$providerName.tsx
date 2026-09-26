@@ -674,7 +674,7 @@ function ProviderDetail() {
         toast.success(t('providers:models'), {
           description: t('providers:refreshModelsSuccess', {
             count: modelsToAdd.length,
-            provider: provider.provider,
+            provider: getProviderTitle(provider.provider),
           }),
         })
       } else {
@@ -684,7 +684,7 @@ function ProviderDetail() {
       }
     } catch (error) {
       console.error(
-        t('providers:refreshModelsFailed', { provider: provider.provider }),
+        t('providers:refreshModelsFailed', { provider: getProviderTitle(provider.provider) }),
         error
       )
       // Show what actually failed. The service throws a message naming the
@@ -694,7 +694,7 @@ function ProviderDetail() {
       toast.error(t('providers:models'), {
         description: errorText(
           error,
-          t('providers:refreshModelsFailed', { provider: provider.provider })
+          t('providers:refreshModelsFailed', { provider: getProviderTitle(provider.provider) })
         ),
       })
     } finally {

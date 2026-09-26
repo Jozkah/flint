@@ -530,5 +530,6 @@
     },
     "deleteKeep": "Сохранить worktree и ветку ({{name}})",
     "deleteRemove": "Удалить также worktree и ветку ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (недоступна)"
 }

@@ -106,7 +106,8 @@
     "edit": "Modifica impostazioni",
     "enable": "Attiva",
     "disable": "Disattiva",
-    "remove": "Rimuovi provider"
+    "remove": "Rimuovi provider",
+    "rename": "Rinomina"
   },
   "removeProvider": {
     "confirmTitle": "Rimuovere {{provider}}?",
@@ -115,5 +116,12 @@
     "cancel": "Annulla",
     "remove": "Rimuovi",
     "success": "{{provider}} è stato rimosso."
+  },
+  "renameProvider": {
+    "title": "Rinomina provider",
+    "description": "Cambia solo il nome mostrato in Flint. Chat, chiavi API e impostazioni continuano a funzionare. Lascia vuoto per usare il nome predefinito.",
+    "label": "Nome del provider",
+    "cancel": "Annulla",
+    "save": "Salva"
   }
 }

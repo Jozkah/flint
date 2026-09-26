@@ -64,7 +64,8 @@
     "edit": "Modifier les paramètres",
     "enable": "Activer",
     "disable": "Désactiver",
-    "remove": "Supprimer le fournisseur"
+    "remove": "Supprimer le fournisseur",
+    "rename": "Renommer"
   },
   "removeProvider": {
     "confirmTitle": "Supprimer {{provider}} ?",
@@ -73,5 +74,12 @@
     "cancel": "Annuler",
     "remove": "Supprimer",
     "success": "{{provider}} a été supprimé."
+  },
+  "renameProvider": {
+    "title": "Renommer le fournisseur",
+    "description": "Change uniquement le nom affiché dans Flint. Les discussions, clés API et paramètres continuent de fonctionner. Laissez vide pour utiliser le nom par défaut.",
+    "label": "Nom du fournisseur",
+    "cancel": "Annuler",
+    "save": "Enregistrer"
   }
 }

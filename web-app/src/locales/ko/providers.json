@@ -64,7 +64,8 @@
     "edit": "설정 편집",
     "enable": "켜기",
     "disable": "끄기",
-    "remove": "공급자 제거"
+    "remove": "공급자 제거",
+    "rename": "이름 변경"
   },
   "removeProvider": {
     "confirmTitle": "{{provider}}을(를) 제거할까요?",
@@ -73,5 +74,12 @@
     "cancel": "취소",
     "remove": "제거",
     "success": "{{provider}}이(가) 제거되었습니다."
+  },
+  "renameProvider": {
+    "title": "공급자 이름 변경",
+    "description": "Flint에 표시되는 이름만 바뀝니다. 채팅, API 키, 설정은 그대로 작동합니다. 기본 이름을 쓰려면 비워 두세요.",
+    "label": "공급자 이름",
+    "cancel": "취소",
+    "save": "저장"
   }
 }

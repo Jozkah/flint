@@ -518,5 +518,6 @@
     },
     "deleteKeep": "Worktree und Branch behalten ({{name}})",
     "deleteRemove": "Worktree und Branch ({{name}}) ebenfalls entfernen"
-  }
+  },
+  "modelUnavailable": "{{model}} (nicht verfügbar)"
 }

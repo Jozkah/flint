@@ -519,5 +519,6 @@
     },
     "deleteKeep": "Manter worktree e branch ({{name}})",
     "deleteRemove": "Remover também worktree e branch ({{name}})"
-  }
+  },
+  "modelUnavailable": "{{model}} (indisponível)"
 }

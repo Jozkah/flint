@@ -64,7 +64,8 @@
     "edit": "Chỉnh sửa cài đặt",
     "enable": "Bật",
     "disable": "Tắt",
-    "remove": "Xóa nhà cung cấp"
+    "remove": "Xóa nhà cung cấp",
+    "rename": "Đổi tên"
   },
   "removeProvider": {
     "confirmTitle": "Xóa {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Hủy",
     "remove": "Xóa",
     "success": "Đã xóa {{provider}}."
+  },
+  "renameProvider": {
+    "title": "Đổi tên nhà cung cấp",
+    "description": "Chỉ đổi tên hiển thị trong Flint. Các cuộc trò chuyện, khóa API và cài đặt vẫn hoạt động. Để trống để dùng tên mặc định.",
+    "label": "Tên nhà cung cấp",
+    "cancel": "Hủy",
+    "save": "Lưu"
   }
 }

@@ -24,13 +24,13 @@ export function isRemovableProvider(providerName: string): boolean {
   return true
 }
 
-export type ProviderMenuAction = 'edit' | 'toggle' | 'remove'
+export type ProviderMenuAction = 'edit' | 'rename' | 'toggle' | 'remove'
 
 /** The actions a provider card offers, by who added the provider. */
 export function providerMenuActions(providerName: string): ProviderMenuAction[] {
   return isRemovableProvider(providerName)
-    ? ['edit', 'toggle', 'remove']
-    : ['edit', 'toggle']
+    ? ['edit', 'rename', 'toggle', 'remove']
+    : ['edit', 'rename', 'toggle']
 }
 
 /**

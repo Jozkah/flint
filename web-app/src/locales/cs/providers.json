@@ -64,7 +64,8 @@
     "edit": "Upravit nastavení",
     "enable": "Zapnout",
     "disable": "Vypnout",
-    "remove": "Odebrat poskytovatele"
+    "remove": "Odebrat poskytovatele",
+    "rename": "Přejmenovat"
   },
   "removeProvider": {
     "confirmTitle": "Odebrat {{provider}}?",
@@ -73,5 +74,12 @@
     "cancel": "Zrušit",
     "remove": "Odebrat",
     "success": "{{provider}} byl odebrán."
+  },
+  "renameProvider": {
+    "title": "Přejmenovat poskytovatele",
+    "description": "Mění jen název zobrazený ve Flintu. Chaty, API klíče a nastavení fungují dál. Ponechte prázdné pro výchozí název.",
+    "label": "Název poskytovatele",
+    "cancel": "Zrušit",
+    "save": "Uložit"
   }
 }
