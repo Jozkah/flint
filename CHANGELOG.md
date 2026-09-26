@@ -42,67 +42,34 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(web-app): show a command's non-zero exit as an amber failed check
 - feat(agent): rerun existing tests after a change, and test with real files
 - build: rebuild the Tauri plugin APIs before the web-app typecheck
-- fix(agent-tools): offer toolchain grants only for real install folders
-- fix(cowork): say a turn was read-only, and make Continue start a run
-- fix(cowork): a repository-bound session starts in Ask, not Review
-- fix(agent-tools): drop a repeated sentence from the read path description
-- fix(tools): name close matches, drop dead MCP tools, show expected shapes
-- fix(git-tool): accept gh -R before the subcommand and teach gh shapes
-- fix(agent-tools): recover paths whose backslash JSON turned into a TAB
-- fix(activity): keep finished calls finished across a restart
-- fix: rank shells for the model and stop offering self-approval tools
 - feat(web-app): remind about waiting approvals, never drop them silently
 - fix(web-app): cap web_fetch text and skip a URL that just failed
 - fix(web-app): title a chat once, and never keep the raw prompt
-- fix(web-app): name continued runs after the request, and amber for command failures
-- fix(agent-tools): file tools and the shell share one working folder
 - fix(web-app): keep tool results and failures in saved chats
-- fix(agent-tools): carry toolchain grants into the sandbox helper
-- fix(agent-tools): refuse repo config that runs programs, and .git writes
 - feat: a first-class git tool, and no self-approving MCP tools
 - fix(web-app): say so when a chat turn returns nothing at all
-- fix(web-app): let the Chat loop guard see approve/execute loops
 - feat(agent): state the shell, sandbox limits and working rules up front
 - feat(agent): teach the agent when and how to use `ask`
 - feat(cowork): state the shell, sandbox limits and working rules up front
 - feat(cowork): teach the agent to ask, and show the plan in plan review
 - feat(web-app): drive cards and usage bars across System Monitor
 - feat(hardware): CPU and drive temperatures on Windows
-- fix(cowork): do not stall Auto mode on writes inside the session's own tree
 - feat(agent-tools): let the Windows sandbox use a user-installed toolchain
 - feat(web-app): drives, network, temperatures and more on System Monitor
 - feat(web-app): generate MCP server descriptions with AI
 - feat(hardware): a detailed system snapshot for the System Monitor
-- fix(web-app): responsive overview cards and a bounded activity feed
-- fix(web-app): sidebar dots clear once seen; collapsed groups keep running items
-- fix(web-app): Cowork header drops pill labels sooner
-- fix(web-app): tool approvals stand out as something to answer
-- fix(cli): honest reachability, --provider by name, default policy export, closed pipes
-- fix(agent): give checkpoint commits a short Cowork subject
-- fix(agent-tools): let plain tool output through the credential filter
 - feat(cowork): apply a Review only file to the attached folder
-- fix(cowork): keep the inspector drawer off the composer
 - fix(web-app): list unreachable providers' models last, muted
 - fix(web-app): show a fallback reply when a run ends after tools with no text
 - fix(web-app): make the composer tools control a single button
-- fix(rooms): settings panel hint and control names
 - fix(web-app): title a chat once, and again when its first message is edited
-- fix(rooms): allow wrap-up actions on a completed room
 - fix(web-app): give the delete-message confirm button its own name
-- fix(web-app): say group, not collection, in the chat row's New group dialog
 - fix(web-app): hide tokens/sec for tiny or instant replies
-- fix(web-app): Cowork header pills no longer overlap on narrow windows
 - feat(web-app): collapsible Details sections and richer Activity rows
-- fix(web-app): uniform timeline dots and a full-size live tool timeline
-- fix(web-app): steady chat header title, status dot and model pill
-- fix(web-app): read the rooms ?new flag with useSearch
-- fix(rooms): the sidebar's New room opens the create dialog
 - fix(a11y): name every settings control, valid lists and ARIA, focusable log
 - docs(readme): build the bundled extensions before yarn dev
 - fix(server): say the Local API port is taken when another app holds it
 - fix(chat): a new chat gets its own transport; servers named in a message are routed
-- fix: submenus, chat groups, curl in the Windows shell, Flint branding
-- fix(web-app): a web preview drag no longer crashes the app; Move to group
 
 ### Local-first and privacy
 - fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing "Expected 'function.name' to be a string" generation failures
@@ -111,10 +78,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(local-only): finish removing telemetry, update checking and model discovery, and guard the whole repo
 - refactor(privacy): remove telemetry build vars, the analytics injection, the catalogue URLs and the update feed
 - refactor(core): remove the updater, the CLI's telemetry, and the mirror
-- fix(local-only): guard the shipped bundle, and stop downloading an embedding model at startup
 - fix(privacy): stop telling Google what the web search returned
 - fix(docs): fetch OpenAI status directly and never report a fake "operational", and leave analytics out of a docs build that has no GTM secret
-- fix(downloads): remove the remaining unreachable model-download commands, helpers and strings
 
 ### Flint identity and migration
 - rebrand(ui): present the product as Flint — app name, window title, sidebar wordmark, default assistant, and every locale
@@ -141,8 +106,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(app): fall back from a data folder that is gone, without moving the user's data (#8855)
 - chore(compat): keep the `jan.ai.app` identifier, legacy data locations and persisted IDs so an existing Jan install upgrades in place
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
-- fix(migration): keep the reused profile locked for the whole session and release the lock on a force quit, refuse copy or move from a newer schema, never follow directory symlinks, never execute paths supplied by a webview plan, and keep the assistant open while a migration runs
-- fix(scripts): dev and install scripts build and launch the `flint` binary and no longer call the removed `jan update`
 
 ### Cowork workspace
 - feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
@@ -162,20 +125,10 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(proposals): a proposed change is stored, bound and applied by the backend
 - feat(patch): an approval applies to the file that was reviewed, or not at all
 - feat(changes): say which agent made every change, durably (AH-110)
-- fix(cowork): "Execute plan" leaves plan mode and continues, and an unanswered question is never read as approval
-- fix(cowork): stop blank "New session" entries from piling up, and stop Cowork steps from opening chat runs
-- fix(cowork): an accepted opening proposal can continue with write tools; bash starts in the managed worktree it writes to; the source branch stays out of a worktree session's prompt
 - feat(cowork): preview the restore diff before rewinding, and stream bash output live
 - feat(cowork): point out a repeated bash command in the approval dialog and on its approval card
 - feat(cowork): tell the model its real environment and working directory, and which toolchains the sandbox can run
 - feat(cowork): say that MCP servers from Settings are not offered
-- fix(cowork): "Show in Activity" works, session details and the header fit, run times are readable, and Windows folder paths are shortened in the session-details label
-- fix(cowork): open every file of a multi-file pick in the code panel, keep a session's model choice out of the global chat model, and ignore late git-branch or team-review answers for a folder or session that has moved on
-- fix(cowork): hold a failed team for one minute for a restart, and keep a killed check's outcome consistent with its verdict
-- fix(cowork): resume arguments correctly, apply the loop guard on the closing turn, limit shell failures, count sandbox-blocked commands as unfinished, and report the outcome honestly
-- fix(worktree): refuse a managed worktree over an in-progress merge, rebase, cherry-pick or revert; discard only a worktree that Git lists on the record's branch; refuse filter programs in checkpoints
-- fix(proposals): keep a file's mode when a proposal replaces it, apply empty added or deleted files as whole-file changes, and say what was left on disk when an apply fails
-- fix(preview): serve HTML previews from their own URI scheme, let the in-app web preview frame https pages, and disable Open Preview for paths outside the session root
 
 ### Agent runtime and harness
 - feat(agent): core execution — a run that can be reconstructed (#8)
@@ -205,15 +158,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): tell the model when a background bash job finishes
 - feat(agent): load MCP tools on demand when there are too many to send, and bound the skill catalogue in the system prompt
 - feat(agent-tools): tolerant fallback matching for `edit` `old_string`, and atomic file replacement in `write` and `edit`
-- fix(agent): a corrected and reordered system prompt that describes only the tools a run is offered, with chat, Cowork and room prompts aligned to it
-- fix(agent): return malformed tool calls to the model as errors, stop a turn whose tool keeps failing, and refuse truncated MCP arguments
-- fix(agent): register a subagent before it can run, release aborted slots, and leave a finished child alone during teardown
-- fix(agent): lower bash output caps to match the read tool, cap `find` output, and check size and file type before `read` and `grep` load a file
-- fix(agent-tools): fall back to a native shell when bash cannot spawn, run nested PowerShell at the workspace, report PowerShell status honestly, give clearer shell and file errors, and stop marking a read of text that starts with "ERROR" as a failure
-- fix(agent-tools): the screenshot tool renders on Windows, finds Chrome and Edge at their default paths, and confines page renders to themselves
-- fix(agent): write `config.toml`, `agent.toml` and subagent definitions atomically, and load Claude Code plugin agents whose frontmatter is not strict YAML
-- fix(verify): keep completion verification inside the session's token budget
-- fix(reminder): typed `<SYSTEM>` text can no longer pass for a reminder
 
 ### Repository intelligence and version control
 - feat(agent): repository intelligence (#9)
@@ -231,9 +175,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(tools): gate destructive git apart from safe git usage
 - feat(agent): check dependencies against the licences a project allows (AH-158)
 - feat(hooks): the project's own commands run around a tool call (AH-127/128/129), and command hooks on lifecycle events receive a redacted JSON payload
-- fix(agent): recover malformed tool-call arguments conservatively; MCP calls whose arguments cannot be recovered get an invalid-arguments error
-- fix(agent): on Windows, commands chained with `&&` or `||` run on a shell that can parse them
-- fix(agent-tools): raise sandbox limits to 65536 open files and 16 GiB file size
 - feat(agent-tools): tool descriptions say when to use each tool, and `edit` gains `replace_all`
 - feat(agent): named per-project profiles, chosen per run (AH-186)
 - feat(agent): rules about which model answers what (AH-194)
@@ -241,18 +182,12 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(diagnostics): the compiler's answer, in the turn that caused it (AH-063/064)
 - feat(agent): native-git recovery for private GitHub repositories - a `git_inspect` tool, steering to `gh`/`git` over anonymous web crawling, and a structured RecoveryReport
 - feat(agent): native `git_clone` with guidance in the prompt, and point git use at `git_inspect`
-- fix(agent): build the `symbol_find` index off the runtime and stop it with the run, bound the files LSP reads for snippets, and resolve nested Rust `use` paths to the deepest module
-- fix(agent): never read a review comment path outside the project, keep scratch git indexes in a private temp directory, and propose `./gradlew.bat` so bash finds the Gradle wrapper
 - feat(grep): group results by file and highlight matches
 
 ### Discussion Rooms
 - feat(rooms): the Discussion Room engine, store and controller
 - feat(rooms): the Discussion Rooms UI — list, room page, editor, transcript and controls
 - feat(rooms): persistence commands and a typed service
-- fix(rooms): frame transcript text, cap dissent, classify storage errors, and redact
-- fix(rooms): refuse ids Windows would alias (trailing dot, device names)
-- fix(rooms): show the provider on a model name that several providers offer, and keep participant availability current while the editor has unsaved changes
-- fix(rooms): explain a blocked Next-speaker choice in every mode, flag limits raised to their minimum, and re-read the room inside the queue when applying editor edits
 
 ### Cross-session messaging
 - feat(agent-tools): backend mailbox for cross-session messaging
@@ -262,19 +197,9 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(messaging): message cards, reply, and a wake-up switch
 - feat(messaging): `stop_session`, a permission-safe stop of a same-project peer
 - feat(agent-tools): confine a local MCP server to its session's authority
-- fix(messaging): claim mail at drain, fence bodies, scrub, and recover the registry
-- fix(messaging): `stop_session` needs `fs.read`, like the mailbox it writes to
-- fix(session-messaging): recover a corrupt mailbox state file, with a self-contained isolation smoke
-- fix(cowork): a run belongs to the session that started it (#8905)
-- fix(cowork): Stop ends a run whatever it is waiting on (#8905)
-- fix(cowork): give every file an explicit origin, and stop project reads crossing projects
 - feat(cowork): Cowork in the new design, with an output rail and Activity, Preview, Code and session-details panels
 - feat(cowork): the run summary shows while the run is going
 - feat(cowork): pull-request state and checks for a Cowork folder, read through the GitHub CLI (`agent_pr_status`) with no token stored
-- fix(cowork): Stop all aborts the model stream, tool loop, subagents and pending asks
-- fix(windows): sandboxed shells, background jobs and git helpers no longer flash console windows
-- fix(mailbox): add retention to the session mailbox files, escape newlines in the compaction writer, and send idle-drained mail only into the session it came from
-- fix(cli): `agent mail --from` and `--body` must be given together
 
 ### Agent SDK
 - feat(sdk): JavaScript and Python agent SDK clients, with preview documentation and examples
@@ -308,8 +233,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(memory): inject remembered facts into the real system prompt, and make the automatic-save setting govern saving
 - feat(memory): idle-time memory consolidation ("autoDream")
 - feat(chat,context): project memory binding, request attribution and a verified context panel
-- fix(memory): forgetting reaches the prompts it was already sent in (AH-083), and the automatic-save toggle reaches the backend
-- fix(memory): skip conflicts between records from different sessions or projects, cap `move_scope`, never migrate a legacy note that holds a credential, discard proposal lists that arrive after a thread switch, and write notes atomically
 
 ### Context, usage and cost
 - feat(context): learn a model's real window from the server that refused it, and classify what filled it (AH-077, AH-087)
@@ -319,7 +242,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): attribute CPU and memory to the run that used them (AH-174)
 - fix(context): stop treating a missing context window as a window of zero, and stop guessing 32k for unknown models
 - feat(cli): `--max-budget-usd` and `--max-session-tokens` ceilings, and `--max-turns`, which exits with code 53 when turns run out with tools still in flight
-- fix(budget): charge late prompt counts against the last total, and count a top-level system field as the system prompt
 - fix(chat): report a compaction summary only when the re-trim kept it
 
 ### Activity and timeline
@@ -327,9 +249,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(timeline): a Timeline rail over the session's event log; step through a finished run and see what kind of failure it was (AH-172, AH-176)
 - feat(tree): what a run started, as a tree (AH-173)
 - feat(net): record what the model was sent and where every request goes, and trust custom certificate authorities (AH-190)
-- fix(activity): keep a diff per invocation so a reused call id cannot overwrite it, and load stored diffs by invocation
-- fix(retention): age out stored diffs, permission decisions, undo journals and orphaned blobs, and cap the legacy tool-activity and prompt logs
-- fix(timeline): read each event once when two reads overlap
 
 ### Skills, permissions and security
 - feat(skills): user-level native skills in the CLI and the agent loop, declaring the tools they need and their version (AH-040, AH-121, AH-123, AH-124)
@@ -344,24 +263,12 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(security): enforce the project's tool policy on the desktop path
 - feat(agent): an autonomous-mode safety classifier (findings F1), off by default
 - security(harness): detect credentials once, and redact them on every durable path
-- fix(secrets): take credentials out of tool output before the transcript keeps it
 - fix(mcp): scrub server stderr before it reaches the application log
 - fix(security): guard archive extraction paths, and keep the legacy filesystem commands inside the data folder
 - fix(server): stop forwarding the caller's Origin and Referer upstream, and make the Local API Server CORS switch actually switch CORS (#8836)
-- fix(gate): an exec grant covers the command the user was shown, and no other
 - feat(agent): network is on by default in a LAN-capable sandbox, with a toggle that policy can restrict
 - feat(settings): control the auto-approve pause from the Permissions page, and bring the destructive-command guard to Chat
-- fix(security): judge every command in a chained or wrapped bash line, see through shell spellings of `.jan`, and close four ways past the read-only command allowlist
 - fix(security): keep `web_fetch` off local and private addresses, and refuse cross-origin redirects on Local API Server upstream calls
-- fix(security): check deny rules and secret names on symlink targets, resolve dangling links before writes, fold Windows name variants and case, reject drive-relative names, and keep relative allow rules inside the project
-- fix(security): skip credential files in directory grep, bind stored credentials to the provider's origin, and reject executable repository git config
-- fix(security): the redaction scanner catches escaped JSON, padded and non-first secrets, and named secrets next to tokens, and no longer mistakes long lines of code for keys
-- fix(security): honour ask rules and domain lists in the CLI, and judge undo and redo paths by where they really lead
-- fix(sandbox): hide every write root's `.jan` from the shell and file tools, revoke AppContainer access from worktrees no longer granted, mask `/run` in bubblewrap, and scope the Seatbelt network rule to IP traffic
-- fix(sandbox): the Windows sandbox runs readable toolchains, keeps Git for Windows off its PATH, explains denials accurately (including the NUL device), and gives Go a writable cache
-- fix(access): time out an unanswered `request_access` prompt, require consent before a policy import loosens deny to read-only, and stop wildcard rules from naming secrets or git operations
-- fix(auto-mode): match allow and soft-deny exceptions per simple command
-- fix(plugins): refuse option-like marketplace repositories, check out plugin symlinks as plain files, and stage skill and Claude Code imports before swapping them in
 - fix(secrets): serialize secret-file updates across processes, never key the fallback file with a public constant, keep the local API key and proxy password in the keyring, and wipe keyring secrets on a full reset
 - fix(proxy): stop forwarding the local `X-Api-Key` to the upstream provider
 
@@ -372,11 +279,6 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(sessions): hand a session to another computer and say what did not come along
 - feat(agent): search past runs and take a transcript out (AH-178)
 - feat(cli): `flint doctor` prints hardware info (`--json`), and `flint cli models list-local|info|delete` manage local models
-- fix(cli): repoint a default model the provider no longer offers on re-login, open sign-in URLs on Windows without `cmd.exe`, and bound and cap device-login timing
-- fix(cli): `flint threads delete` drops the thread's snapshot reference, `-v/--verbose` is registered, and headless colour follows `NO_COLOR` and the terminal
-- fix(tui): keep bracketed paste out of the composer behind overlays, let `/context` and sign-in hold the keyboard over a question, refuse out-of-range `/settings` values, and label exec grants "Allow this exact command"
-- perf(tui): save mid-turn snapshots off the render loop, and track the partial reply length instead of rescanning it
-- fix(cli): the `flint` CLI build no longer compiles the desktop-only pull-request status command, and builds without warnings
 
 ### Models, providers and inference
 - feat(models): evidence-based model fit, a real compatibility test, and a preferred default
@@ -454,10 +356,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(settings): a Permissions page to inspect and revoke grants, and a Memory page
 - feat(search): a redesigned search dialog and command palette, with rebindable shortcuts
 - feat(system): a system monitor and filterable log viewers
-- fix(ui): one header-row component so the two pages cannot drift, and a closed dialog stops swallowing clicks
-- fix(design): keep keyboard focus rings visible, and use the navigation sheet below 1024px
 - feat(settings): a new settings layout; Appearance gains a Reduce motion switch, an accent picker with a custom colour picker, and a font size that scales the whole interface
-- fix(ui): warnings use an amber that reads in both themes
 - fix(a11y): name the message edit and delete buttons
 
 ---
@@ -470,4 +369,3 @@ Flint is an independent fork of [Jan](https://github.com/janhq/jan) by [janhq](h
 - fix(app): write the app configuration and `projects.json` atomically, clean up agent and MCP processes on force quit, and log an unusable store instead of crashing
 - fix(windows): keep an aborted upgrade usable, clean up stale `.old` binaries, and never delete the install directory recursively
 - fix(build): pick sidecar downloads from the host triple, fetch AppImage tools for the host architecture, stop the AppImage repackage when a step fails, and read the pinned llama.cpp tag correctly on Windows checkouts with CRLF line endings
-- fix(skills): a real skill named "jan" wins over the legacy alias
