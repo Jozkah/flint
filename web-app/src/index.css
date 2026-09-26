@@ -548,6 +548,18 @@ html.preload *::after {
   transition: none !important;
 }
 
+/* Set by useAppViewport while the window is being resized (until 150ms after
+   the last resize event). Transitions, animations and backdrop blur all
+   repaint on every frame of a resize drag; pausing them keeps the drag smooth
+   and nothing about the settled look changes. */
+html.resizing *,
+html.resizing *::before,
+html.resizing *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+  backdrop-filter: none !important;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
