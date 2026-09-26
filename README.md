@@ -14,7 +14,7 @@ Flint is an independent fork of the open-source [Jan](https://github.com/janhq/j
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/01-overview.png" alt="Flint's Overview: tokens generated, generation speed and tool-call success, token throughput by day, latest activity and agent runs" width="100%">
+  <img src="docs/screenshots/01-overview.png" alt="Flint's Overview dashboard: tokens generated, generation speed and tool-call success, token throughput by day, latest activity and a table of agent runs" width="100%">
 </p>
 
 ## What Flint is
@@ -40,27 +40,15 @@ See [docs/FEATURES.md](docs/FEATURES.md) for the full list and for what is not f
 
 ## Screenshots
 
-| | |
-|---|---|
-| <img src="docs/screenshots/03-chat.png" alt="Chat with tool calls, a terminal block and pull-request status" width="100%"><br>Chat with tool calls | <img src="docs/screenshots/04-cowork.png" alt="Cowork: an agent working in a project folder" width="100%"><br>Cowork: an agent working in a project |
-| <img src="docs/screenshots/06-room.png" alt="A room with several models discussing" width="100%"><br>A Discussion Room | <img src="docs/screenshots/08-models.png" alt="Models" width="100%"><br>Models |
-| <img src="docs/screenshots/11-tools-mcp.png" alt="Tools & MCP" width="100%"><br>Tools & MCP | <img src="docs/screenshots/17-settings-permissions.png" alt="Settings: Permissions" width="100%"><br>Permissions |
-| <img src="docs/screenshots/21-chat-light.png" alt="Chat, light theme" width="100%"><br>Chat, light theme | <img src="docs/screenshots/22-cowork-light.png" alt="Cowork, light theme" width="100%"><br>Cowork, light theme |
-
-<details>
-<summary>More screenshots</summary>
+All screenshots use an invented example project ("acme-weather") and made-up data.
 
 | | |
 |---|---|
-| <img src="docs/screenshots/02-new-chat.png" alt="New chat" width="100%"><br>New chat | <img src="docs/screenshots/05-rooms.png" alt="Rooms" width="100%"><br>Rooms |
-| <img src="docs/screenshots/07-library.png" alt="Library" width="100%"><br>Library | <img src="docs/screenshots/09-provider-llamacpp.png" alt="A local provider (llama.cpp)" width="100%"><br>A local provider (llama.cpp) |
-| <img src="docs/screenshots/10-provider-openai.png" alt="A cloud provider" width="100%"><br>A cloud provider | <img src="docs/screenshots/12-extensions.png" alt="Extensions" width="100%"><br>Extensions |
-| <img src="docs/screenshots/13-system-monitor.png" alt="System Monitor" width="100%"><br>System Monitor | <img src="docs/screenshots/14-logs.png" alt="Logs" width="100%"><br>Logs |
-| <img src="docs/screenshots/15-settings-appearance.png" alt="Settings: Appearance" width="100%"><br>Settings: Appearance | <img src="docs/screenshots/16-settings-memory.png" alt="Settings: Memory" width="100%"><br>Settings: Memory |
-| <img src="docs/screenshots/20-overview-light.png" alt="Overview, light theme" width="100%"><br>Overview, light theme | <img src="docs/screenshots/23-room-light.png" alt="A room, light theme" width="100%"><br>A room, light theme |
-| <img src="docs/screenshots/24-models-light.png" alt="Models, light theme" width="100%"><br>Models, light theme | |
-
-</details>
+| <img src="docs/screenshots/02-split-code-panel.png" alt="Split view: a Cowork session with the Code panel open on an edited TypeScript file, showing change markers in the gutter and inline blame, beside a chat thread" width="100%"><br>Split view: Code panel with change markers and blame, beside a chat | <img src="docs/screenshots/03-cowork-tools.png" alt="A Cowork run with tool call cards for read, bash and edit, a failed test run, and the file diff in the Changes panel" width="100%"><br>Cowork: tool calls and a diff |
+| <img src="docs/screenshots/04-approval.png" alt="An approval card asking to run git push, with Allow once, Allow in this conversation and Always allow options, and the approvals pill in the header" width="100%"><br>Approval card and the header approvals pill | <img src="docs/screenshots/05-pr-bar.png" alt="Two Cowork sessions side by side: one with an open pull request #12 and its checks, one with merged pull request #11" width="100%"><br>Pull request bar: open and merged |
+| <img src="docs/screenshots/06-what-changed.png" alt="The What changed card of a finished Cowork run: files Flint changed in a managed worktree and the tests and checks that passed" width="100%"><br>What changed: the run's own record | <img src="docs/screenshots/07-sidebar-groups.png" alt="The sidebar with Cowork sessions and Rooms sorted into groups that are bound to project folders" width="100%"><br>Sidebar groups with folders |
+| <img src="docs/screenshots/08-room.png" alt="A Discussion Room where three models discuss a retry policy, with tool chips for web search, file reads and a refused test run, and a vote" width="100%"><br>A Discussion Room with tool chips | <img src="docs/screenshots/09-models.png" alt="The Models page: provider cards with an open actions menu, and the table of installed models with size, context, speed and status" width="100%"><br>Models: providers and installed models |
+| <img src="docs/screenshots/10-queued-messages.png" alt="The Cowork composer with a steering message and a queued message waiting while the run works" width="100%"><br>Steering and queued messages | <img src="docs/screenshots/11-split-code-panel-light.png" alt="The split view with the Code panel in the light theme" width="100%"><br>Light theme |
 
 ## Install
 
