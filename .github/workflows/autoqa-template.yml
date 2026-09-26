@@ -65,7 +65,7 @@ jobs:
 
       - name: Download artifact (if source_type is local)
         if: inputs.source_type == 'local'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.artifact_name_windows }}
           path: ${{ runner.temp }}/windows-artifact
@@ -183,7 +183,7 @@ jobs:
 
       - name: Download artifact (if source_type is local)
         if: inputs.source_type == 'local'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.artifact_name_ubuntu }}
           path: ${{ runner.temp }}/ubuntu-artifact
@@ -329,7 +329,7 @@ jobs:
 
       - name: Download artifact (if source_type is local)
         if: inputs.source_type == 'local'
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ inputs.artifact_name_macos }}
           path: ${{ runner.temp }}/macos-artifact

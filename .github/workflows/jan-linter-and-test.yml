@@ -332,14 +332,14 @@ jobs:
           cat ./coverage/lcov.info rust-lcov.info > merged-lcov.info
 
       - name: Download code coverage report from base branch
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ref-lcov.info
 
       - name: Download Rust code coverage report from base branch
         id: download-rust-cov
         continue-on-error: true
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ref-rust-lcov.info
           path: base-rust-cov
