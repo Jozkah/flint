@@ -111,7 +111,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
 
 ### Cowork workspace
-- feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line
+- feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line; the editor gutter marks added, changed and deleted lines against the repository, and inline blame shows each line's author and commit with links to the commit and its pull request
 - feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
 - feat(cowork): a read-only code workspace, an Activity rail, and global settings search (#1)
 - feat(cowork): make the declared coding-harness modes real (#6)
@@ -273,7 +273,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(policy): a permission policy as a reviewed file a project cannot loosen (AH-052, AH-187)
 - feat(agent-tools): issue write authority as a grant over a root, not a path, and hold the shell to the same roots
 - feat(cowork): separate where Flint may write from how freely it acts, and default a repository to review
-- feat(agent-tools): offer an unsandboxed retry, through the approval prompt, when Windows' NUL device refuses the sandbox; the card shows the rerun with the first attempt collapsed, the CLI asks the same y/n question, and programs known to open NUL (`go`, `git`, configurable with `[tools].nul_programs` in agent.toml) are offered up front instead of failing first
+- feat(agent-tools): offer an unsandboxed retry, through the approval prompt, when Windows' NUL device refuses the sandbox; the card shows the rerun with the first attempt collapsed, the CLI asks the same y/n question, and programs known to open NUL (`go`, `git`, configurable with `[tools].nul_programs` in agent.toml) are offered up front instead of failing first; the rerun prompt also offers **Allow for this conversation** so later NUL refusals in the same chat rerun without asking again
 - feat(security): enforce the project's tool policy on the desktop path
 - feat(agent): an autonomous-mode safety classifier (findings F1), off by default
 - security(harness): detect credentials once, and redact them on every durable path
