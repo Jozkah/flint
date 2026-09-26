@@ -312,7 +312,7 @@ import {
 } from '@/hooks/useSplitConversation'
 import * as widthModule from '@/hooks/useElementWidth'
 import { SplitWorkspace } from '@/containers/SplitConversation'
-import { usePaneWidth } from '@/hooks/useCoworkPane'
+import { usePaneChrome, usePaneWidth } from '@/hooks/useCoworkPane'
 
 const width = (widthModule as any).__width as {
   setState: (s: { px: number }) => void
@@ -645,12 +645,108 @@ describe('split view', () => {
   it('opens a new pane from the header Split action', () => {
     useSplitConversation.setState({ panes: [], sizes: [1] })
     renderRoute()
-    expect(screen.queryByTestId('split-bar')).toBeNull()
+    expect(screen.queryByTestId('split-actions')).toBeNull()
     fireEvent.click(screen.getByTestId('split-conversation-open'))
     expect(split().panes).toHaveLength(1)
-    expect(screen.getByTestId('split-bar')).toBeInTheDocument()
+    expect(screen.getByTestId('split-actions')).toBeInTheDocument()
     expect(screen.getByTestId('split-pane-picker')).toBeInTheDocument()
     expect(h.mounts['thread-a']).toBe(1)
+  })
+})
+
+describe('split pane chrome', () => {
+  beforeEach(() => {
+    width.setState({ px: 1600 })
+    useSplitConversation.setState({
+      panes: [{ id: 'secondary', kind: 'chat', refId: 'thread-b' }],
+      sizes: [0.5, 0.5],
+      activePane: PRIMARY_PANE,
+      maxPanes: 4,
+    })
+  })
+
+  it("puts the split's actions in the page header, with no title row of its own", () => {
+    renderRoute()
+    const actions = screen.getByTestId('split-actions')
+    expect(actions.closest('[data-testid="header-page"]')).not.toBeNull()
+    expect(within(actions).getByTestId('split-add-pane')).toBeInTheDocument()
+    expect(
+      within(actions).getByTestId('split-conversation-close')
+    ).toBeInTheDocument()
+    // Side by side there is no separate "Split view" bar.
+    expect(screen.queryByTestId('split-bar')).toBeNull()
+    expect(screen.queryByText('chat:split.label')).toBeNull()
+  })
+
+  it("shows each pane's title once, in its header", () => {
+    renderRoute()
+    const side = pane('secondary')
+    expect(within(side).getAllByText('Beta')).toHaveLength(1)
+    expect(within(side).getByTestId('conversation-title')).toHaveClass(
+      'text-fade'
+    )
+  })
+
+  it('marks the active pane', () => {
+    renderRoute()
+    const header = (id: string) =>
+      screen.getByTestId(`conversation-pane-header-${id}`)
+    expect(header('primary')).toHaveAttribute('data-active', 'true')
+    expect(header('secondary')).toHaveAttribute('data-active', 'false')
+    act(() => split().setActivePane('secondary'))
+    expect(header('primary')).toHaveAttribute('data-active', 'false')
+    expect(header('secondary')).toHaveAttribute('data-active', 'true')
+  })
+})
+
+describe('a Cowork page as the main pane', () => {
+  const Probe = () => {
+    const chrome = usePaneChrome()
+    return (
+      <span data-testid="pane-chrome">
+        {chrome ? `${chrome.paneId}:${chrome.isActive}` : 'none'}
+      </span>
+    )
+  }
+  const renderCowork = () =>
+    render(
+      <SplitWorkspace primary={{ kind: 'cowork', refId: 's1' }}>
+        {() => <Probe />}
+      </SplitWorkspace>
+    )
+
+  beforeEach(() => {
+    width.setState({ px: 1600 })
+    useSplitConversation.setState({
+      panes: [],
+      sizes: [1],
+      activePane: PRIMARY_PANE,
+      maxPanes: 4,
+    })
+  })
+
+  it('draws no pane header outside split view', () => {
+    renderCowork()
+    expect(screen.getByTestId('pane-chrome')).toHaveTextContent('none')
+  })
+
+  it('draws the pane header itself when split, and follows the active pane', () => {
+    useSplitConversation.setState({
+      panes: [{ id: 'p2', kind: 'chat' }],
+      sizes: [0.5, 0.5],
+    })
+    renderCowork()
+    expect(screen.getByTestId('pane-chrome')).toHaveTextContent(
+      'primary:true'
+    )
+    // The split draws no second header over it.
+    expect(
+      screen.queryByTestId('conversation-pane-header-primary')
+    ).toBeNull()
+    act(() => split().setActivePane('p2'))
+    expect(screen.getByTestId('pane-chrome')).toHaveTextContent(
+      'primary:false'
+    )
   })
 })
 

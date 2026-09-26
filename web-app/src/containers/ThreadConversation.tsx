@@ -184,6 +184,7 @@ import {
   useConversationModel,
   useConversationPane,
 } from '@/hooks/useConversationPane'
+import { ACTIVE_PANE_RING } from '@/hooks/useCoworkPane'
 import {
   paneDraftScope,
   useSplitConversation,
@@ -2499,7 +2500,19 @@ export function ThreadConversation({
       <Icon name="comment" size={16} />
       <h1
         data-testid="conversation-title"
-        className="min-w-0 truncate text-sm leading-none font-medium text-secondary-foreground"
+        // In a split pane the title fades out, as the sidebar's do, and the
+        // pane being worked in has it in the foreground colour. text-fade is
+        // added after cn(): tailwind-merge takes it for a text colour and
+        // would drop it.
+        className={
+          cn(
+            'min-w-0 text-sm leading-none font-medium',
+            isSplit ? 'flex-1' : 'truncate',
+            isSplit && isActive
+              ? 'text-foreground'
+              : 'text-secondary-foreground'
+          ) + (isSplit ? ' text-fade' : '')
+        }
         title={plainThreadTitle}
       >
         {plainThreadTitle}
@@ -2673,10 +2686,10 @@ export function ThreadConversation({
         <Frame
           className={cn(
             'h-full min-h-0 min-w-0 flex-1',
-            // The pane being worked in shows a thin accent edge.
+            // The pane being worked in: its hairline in the ring colour.
             isSplit &&
               isActive &&
-              'shadow-[inset_0_0_0_0.8px_var(--border),inset_0_2px_0_0_var(--acc)]',
+              ACTIVE_PANE_RING,
             detailsOpen &&
               narrowView === 'details' &&
               '@max-3xl/conv:invisible'

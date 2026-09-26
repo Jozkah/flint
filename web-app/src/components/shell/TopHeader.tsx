@@ -22,6 +22,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useRoomsState } from '@/containers/rooms/roomsBindings'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useActiveSidePaneTitle } from '@/hooks/useSplitPaneTitle'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getProviderTitle, cn } from '@/lib/utils'
@@ -147,7 +148,15 @@ export function TopHeader() {
   const { open, toggle, isMobile, setOpenMobile } = useShellNav()
   const headerSlot = useHeaderSlot()
   const crumb = crumbForPath(pathname)
-  const dynamicName = useCurrentName(crumb)
+  const routeName = useCurrentName(crumb)
+  // In split view the breadcrumb names the pane being worked in.
+  const sidePaneName = useActiveSidePaneTitle()
+  const dynamicName =
+    crumb.dynamic === 'session' ||
+    crumb.dynamic === 'thread' ||
+    crumb.dynamic === 'room'
+      ? (sidePaneName ?? routeName)
+      : routeName
   const current = crumb.currentKey
     ? t(crumb.currentKey)
     : dynamicName ||
