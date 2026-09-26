@@ -1021,6 +1021,25 @@ pub fn failure_hint(
     }
 }
 
+/// The note for a command that failed because this machine's null device
+/// refuses sandboxed processes.
+///
+/// It doubles as the signal that the command may be offered to the user to run
+/// outside the sandbox: `execute_tool` looks for [`NULL_DEVICE_RETRY_TAG`] in a
+/// failed sandboxed `bash` result and, when it is there, registers an
+/// unsandboxed retry the user can approve. So the model is told what happens
+/// next rather than told to give up.
+pub const NULL_DEVICE_REFUSED_HINT: &str = "\n[device_path_sandbox_refused: this machine's \
+     null device (NUL) does not admit sandboxed processes: its security descriptor grants \
+     Everyone but not ALL APPLICATION PACKAGES, so any program that opens NUL itself (go, \
+     git, some build tools) fails inside the sandbox. It is not a folder permission, so \
+     granting folder access cannot fix it. This command can only work outside the \
+     sandbox, which needs the user's approval; Flint asks the user for it where it can. Do \
+     not retry the same command inside the sandbox.]";
+
+/// The part of [`NULL_DEVICE_REFUSED_HINT`] that identifies it.
+pub const NULL_DEVICE_RETRY_TAG: &str = "[device_path_sandbox_refused:";
+
 /// The note for a failure on a device path. `null_denied` is true when this
 /// machine's `\Device\Null` refuses AppContainers outright (see
 /// [`super::appcontainer::null_device_admits_sandbox`]): then a program that
@@ -1028,12 +1047,7 @@ pub fn failure_hint(
 /// and advice to use the shell's null syntax would be wrong.
 fn device_hint(null_denied: bool) -> String {
     if null_denied {
-        "\n[device_path: this machine's null device (NUL) does not admit sandboxed \
-         processes: its security descriptor grants Everyone but not ALL APPLICATION \
-         PACKAGES, so any program that opens NUL itself (go, git, some build tools) fails \
-         inside the sandbox. It is not a folder permission, so granting access cannot fix \
-         it. Report it to the user rather than retrying.]"
-            .to_string()
+        NULL_DEVICE_REFUSED_HINT.to_string()
     } else {
         "\n[device_path: the failure is on a device path (such as the null device), \
          not on a file the sandbox is hiding. Discard output with the shell's own null \
@@ -2131,6 +2145,9 @@ mod tests {
     fn a_null_device_that_refuses_the_sandbox_is_not_blamed_on_a_folder() {
         let hint = device_hint(true);
         assert!(hint.contains("ALL APPLICATION PACKAGES"), "{hint}");
+        assert!(hint.contains(NULL_DEVICE_RETRY_TAG), "{hint}");
+        assert!(hint.contains("outside the"), "{hint}");
+        assert!(!hint.contains("Report it to the user"), "{hint}");
         assert!(!hint.contains("request_access"), "{hint}");
         assert!(!hint.contains("writes are limited"), "{hint}");
         assert!(device_hint(false).contains("null syntax"));

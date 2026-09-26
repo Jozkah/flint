@@ -83,6 +83,38 @@ pub struct ToolResult {
     /// (AH-174). Present only for a call that ran a command under a run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub resources: Option<crate::resources::Resources>,
+    /// Set when this `bash` call failed only because the machine's null device
+    /// refuses sandboxed processes: an opaque id the renderer can redeem with
+    /// `execute_tool_unsandboxed_retry`, once the user approves, to run the
+    /// same call outside the sandbox. Never part of model context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unsandboxed_retry: Option<String>,
+}
+
+/// Everything `execute_tool_inner` needs to run a call again, kept by an
+/// unsandboxed-retry offer. The command is the one that failed, not one the
+/// renderer names at redemption time.
+#[derive(Clone)]
+struct RetryCall {
+    data_folder: String,
+    thread_id: String,
+    project: Option<String>,
+    name: String,
+    args: serde_json::Value,
+    enabled_skills: Option<Vec<String>>,
+    allow_network: Option<bool>,
+    read_only_project: Option<String>,
+    write_grant: Option<String>,
+    scope: Option<WorkspaceScope>,
+    call_id: Option<String>,
+    undo_run: Option<String>,
+    actor: Option<ActorInput>,
+}
+
+fn retry_offers() -> &'static crate::unsandboxed_retry::Offers<RetryCall> {
+    static OFFERS: std::sync::OnceLock<crate::unsandboxed_retry::Offers<RetryCall>> =
+        std::sync::OnceLock::new();
+    OFFERS.get_or_init(Default::default)
 }
 
 /// The permanent store root holding `memory/` and `skills/`.
@@ -834,6 +866,7 @@ pub async fn execute_tool(
         undo_run,
         actor,
         None,
+        false,
     )
     .await
 }
@@ -882,8 +915,57 @@ pub async fn execute_tool_streaming(
         undo_run,
         actor,
         Some(sink),
+        false,
     )
     .await
+}
+
+/// Run a `bash` call again outside the sandbox, after the user approved it.
+///
+/// `retry` is the id a failed call's [`ToolResult::unsandboxed_retry`]
+/// carried; it names that exact call (command, folder, grants) and is valid
+/// once, in the session it was issued to. The renderer asks the user before
+/// calling this, and nothing else can reach it: the model only ever calls
+/// `execute_tool`, and the id is never in the text a model reads.
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn execute_tool_unsandboxed_retry(
+    thread_id: String,
+    retry: String,
+) -> Result<ToolResult, AgentToolsError> {
+    let Some(call) = retry_offers().redeem(&retry, &thread_id) else {
+        return Err(AgentToolsError::from(
+            "this unsandboxed retry is no longer available (already used, expired, or \
+             issued to another session)"
+                .to_string(),
+        ));
+    };
+    execute_tool_inner(
+        call.data_folder,
+        call.thread_id,
+        call.project,
+        call.name,
+        call.args,
+        call.enabled_skills,
+        call.allow_network,
+        call.read_only_project,
+        call.write_grant,
+        call.scope,
+        call.call_id,
+        call.undo_run,
+        call.actor,
+        None,
+        true,
+    )
+    .await
+}
+
+/// Drop an unsandboxed-retry offer the user declined, so the id cannot be
+/// redeemed later.
+#[cfg(feature = "tauri")]
+#[tauri::command]
+pub async fn execute_tool_unsandboxed_withdraw(thread_id: String, retry: String) {
+    retry_offers().withdraw(&retry, &thread_id);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -915,7 +997,27 @@ async fn execute_tool_inner(
     // without an actor, which reads as unknown rather than as anyone.
     actor: Option<ActorInput>,
     sink: Option<crate::tools::OutputSink>,
+    // True only for a call the user approved to run outside the sandbox,
+    // redeemed through `execute_tool_unsandboxed_retry`.
+    unsandboxed: bool,
 ) -> Result<ToolResult, AgentToolsError> {
+    // Kept before anything consumes the arguments, in case this call ends in
+    // the one failure the user can be offered an unsandboxed retry for.
+    let retry_call = (!unsandboxed && name == "bash").then(|| RetryCall {
+        data_folder: data_folder.clone(),
+        thread_id: thread_id.clone(),
+        project: project.clone(),
+        name: name.clone(),
+        args: args.clone(),
+        enabled_skills: enabled_skills.clone(),
+        allow_network,
+        read_only_project: read_only_project.clone(),
+        write_grant: write_grant.clone(),
+        scope,
+        call_id: call_id.clone(),
+        undo_run: undo_run.clone(),
+        actor: actor.clone(),
+    });
     // Refused before the tool runs, not after it has changed a file: a call
     // that cannot say who it is acting for must not leave a change that will
     // later be attributed to someone.
@@ -1213,6 +1315,9 @@ async fn execute_tool_inner(
     if let Some(sink) = sink {
         ctx = ctx.with_output_sink(sink);
     }
+    if unsandboxed {
+        ctx = ctx.with_sandbox(false);
+    }
     // A Cowork session is a conversation with a stable id and a messaging
     // identity; bind both so `memory_propose` attributes to it and the mailbox
     // tools know who is calling. A chat thread gets neither, so the mailbox
@@ -1292,12 +1397,16 @@ async fn execute_tool_inner(
         (Some(run), Some(call)) => crate::resources::take_call(run, call),
         _ => None,
     };
+    let unsandboxed_retry = retry_call
+        .filter(|_| crate::unsandboxed_retry::qualifies(&name, !unsandboxed, is_error, &content))
+        .map(|call| retry_offers().offer(&thread_id, call));
     Ok(ToolResult {
         content,
         diff,
         is_error,
         error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
         resources,
+        unsandboxed_retry,
     })
 }
 

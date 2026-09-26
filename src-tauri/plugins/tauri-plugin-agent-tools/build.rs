@@ -67,6 +67,8 @@ const COMMANDS: &[&str] = &[
     "advertised_tool_schemas",
     "execute_tool",
     "execute_tool_streaming",
+    "execute_tool_unsandboxed_retry",
+    "execute_tool_unsandboxed_withdraw",
     "tool_resources_finish_run",
     "undo_journal",
     "undo_turn",

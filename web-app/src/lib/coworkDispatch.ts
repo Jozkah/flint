@@ -40,6 +40,10 @@ import {
   type ToolActivityContext,
 } from '@/lib/toolActivity'
 import { WEB_TOOL_NAMES, executeWebTool } from '@/lib/webSearchTool'
+import {
+  NULL_DEVICE_RETRY_REASON,
+  offerUnsandboxedRetry,
+} from '@/lib/nullDeviceRetry'
 import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import { gateStopSession } from '@/lib/sessionStopGate'
 import {
@@ -708,6 +712,30 @@ async function routeCoworkTool(
       })
     } finally {
       shellDone?.()
+    }
+    // Failed only because Windows' null device refuses sandboxed programs:
+    // offer the user this exact command outside the sandbox, through the same
+    // prompt as any other approval, and answer the model with what happened.
+    if (toolName === 'bash' && result.error && result.unsandboxedRetry) {
+      const onApprove = ctx.onApprove
+      resetAutoApproveStreak(ctx.sessionId)
+      const settled = await offerUnsandboxedRetry({
+        threadId: ctx.sessionId,
+        retry: result.unsandboxedRetry,
+        failure: result.error,
+        failureResources: result.resources,
+        ask: onApprove
+          ? () =>
+              unlessStopped(
+                onApprove(call.toolCallId, toolName, call.input, undefined, signal, {
+                  alwaysAsk: true,
+                  reason: NULL_DEVICE_RETRY_REASON,
+                }),
+                signal
+              )
+          : undefined,
+      })
+      return settled
     }
     if (result.error) {
       if (readPath && isMissingPathError(result.error)) {

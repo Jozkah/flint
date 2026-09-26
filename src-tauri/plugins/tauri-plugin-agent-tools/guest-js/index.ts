@@ -1223,6 +1223,32 @@ export async function executeTool(
   })
 }
 
+/**
+ * Run a failed `bash` call again outside the sandbox, after the user approved
+ * it. `retry` is the `unsandboxedRetry` id the failed call's result carried; it
+ * names that exact call and is valid once, in the session it was issued to.
+ */
+export async function executeToolUnsandboxedRetry(
+  threadId: string,
+  retry: string
+): Promise<ToolResult> {
+  return await invoke('plugin:agent-tools|execute_tool_unsandboxed_retry', {
+    threadId,
+    retry,
+  })
+}
+
+/** Drop an unsandboxed-retry offer the user declined. */
+export async function executeToolUnsandboxedWithdraw(
+  threadId: string,
+  retry: string
+): Promise<void> {
+  await invoke('plugin:agent-tools|execute_tool_unsandboxed_withdraw', {
+    threadId,
+    retry,
+  })
+}
+
 /** One turn's file changes that can be undone or redone. AH-202. */
 /** Who made a change (AH-110). `id` is the identity, `label` is for reading. */
 export type ChangeActorKind = 'primary' | 'named' | 'role'

@@ -37,6 +37,13 @@ export interface ToolResult {
   isError: boolean
   /** Present for a call that ran a command under a run (AH-174). */
   resources?: ToolResources
+  /**
+   * Set when a `bash` call failed only because this machine's null device
+   * refuses sandboxed processes: an opaque id that, once the user approves,
+   * runs the same call outside the sandbox via `executeToolUnsandboxedRetry`.
+   * Never part of model context.
+   */
+  unsandboxedRetry?: string
 }
 
 /**
