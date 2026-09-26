@@ -88,11 +88,16 @@ import {
   estimateHistoryTokens,
   resolveAutoCompact,
   shouldCompact,
-  summaryMessage,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
 import { modelSummarizer } from '@/lib/compactionSummarizer'
+import {
+  applyChatCompaction,
+  readChatCompaction,
+  stateAfter,
+  writeChatCompaction,
+} from '@/lib/chatCompaction'
 import { recordLifecycle } from '@/lib/toolActivity'
 import { getCompactionPolicy, outputHeadroom, DEFAULT_COMPACTION_POLICY } from '@/lib/compactionPolicy'
 import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, endChatRun, markChatAwaitingTools, nextChatInvocation, recordChatMessage, recordChatUsage } from '@/lib/chatRun'
@@ -883,15 +888,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * this off so a request is never compacted twice.
    */
   protected compactsAtThreshold = true
-  /**
-   * Per conversation: the summary in force and the first message it did not
-   * fold. Reused on every request until the threshold is crossed again, so a
-   * long chat is summarized once per crossing rather than once per turn.
-   */
-  private compactions = new Map<
-    string,
-    { record: CompactionRecord; boundaryId: string; latestRequest: string | null }
-  >()
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
   public model: LanguageModel | null = null
@@ -1647,26 +1643,39 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       signal?: AbortSignal
     }
   ): Promise<UIMessage[]> {
-    let history = messages
-    const inForce = this.compactions.get(threadId)
-    if (inForce) {
-      const at = messages.findIndex((m) => m.id === inForce.boundaryId)
-      if (at > 0) {
-        history = [
-          ...messages.slice(0, at).filter((m) => m.role === 'system'),
-          summaryMessage(inForce.record, inForce.latestRequest),
-          ...messages.slice(at),
-        ]
-      } else if (at < 0) {
-        // The boundary message was edited or deleted: the summary no longer
-        // describes what precedes it.
-        this.compactions.delete(threadId)
-      }
-    }
+    const inForce = readChatCompaction(threadId)
+    const { history, stale } = applyChatCompaction(messages, inForce)
+    // The boundary message was edited or deleted: the summary no longer
+    // describes what precedes it.
+    if (stale) writeChatCompaction(threadId, null)
 
     const projected = opts.systemPromptTokens + estimateHistoryTokens(history)
     if (!shouldCompact(projected, opts.window)) return history
 
+    const result = await this.runCompaction(threadId, history, {
+      ...opts,
+      reason: 'threshold',
+    })
+    if (!result) return history
+    this.announcedCompaction = result.record
+    return result.messages
+  }
+
+  /** Compact, keep the result with the thread, and record it. */
+  private async runCompaction(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number | null
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+      reason: CompactionRecord['reason']
+      signal?: AbortSignal
+    }
+  ) {
     const result = await compactHistory(history, {
       summarize: modelSummarizer({
         provider: opts.provider,
@@ -1677,22 +1686,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         model: () => this.model,
       }),
       keepRecent: opts.keepRecent,
-      reason: 'threshold',
+      reason: opts.reason,
       signal: opts.signal,
     })
-    if (!result) return history
-    const summaryIndex = result.messages.findIndex(
-      (m) => (m.metadata as { compaction?: unknown } | undefined)?.compaction
-    )
-    const boundary = result.messages[summaryIndex + 1]
-    if (boundary) {
-      this.compactions.set(threadId, {
-        record: result.record,
-        boundaryId: boundary.id,
-        latestRequest: result.latestRequest,
-      })
-    }
-    this.announcedCompaction = result.record
+    if (!result) return null
+    // Kept with the thread, so a restart reuses it rather than summarizing
+    // the same messages again.
+    const state = stateAfter(result.messages, result.record, result.latestRequest)
+    if (state) writeChatCompaction(threadId, state)
     // A compaction changes what the model sees from here on, so it is part of
     // what the conversation did and goes in its record.
     void recordLifecycle(
@@ -1704,7 +1705,46 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         summary: `Compacted ${result.record.summarizedCount} messages into a summary`,
       }
     )
-    return result.messages
+    return result
+  }
+
+  /**
+   * Compact this conversation now, whatever its size: the composer's
+   * `/compact` and the context-error banner's Compact button. The summary is
+   * kept with the thread and used by every later request. Resolves to what
+   * was done, or null when there was nothing to fold.
+   */
+  async compactNow(
+    threadId: string,
+    messages: UIMessage[],
+    signal?: AbortSignal
+  ): Promise<CompactionRecord | null> {
+    const selection = this.getModelSelection()
+    const modelId = selection.selectedModel?.id
+    if (!modelId) return null
+    const params = this.getActiveInferenceParams()
+    let policy = DEFAULT_COMPACTION_POLICY
+    try {
+      policy = await getCompactionPolicy()
+    } catch {
+      // Defaults: a compaction was asked for either way.
+    }
+    const { history, stale } = applyChatCompaction(
+      messages,
+      readChatCompaction(threadId)
+    )
+    if (stale) writeChatCompaction(threadId, null)
+    const result = await this.runCompaction(threadId, history, {
+      window: usableContextValue(params.max_context_tokens) ?? null,
+      keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
+      summaryMaxTokens: policy.summaryMaxTokens,
+      provider: selection.selectedProvider,
+      modelId,
+      session: threadId,
+      reason: 'manual',
+      signal,
+    })
+    return result?.record ?? null
   }
 
   async sendMessages(

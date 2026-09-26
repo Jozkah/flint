@@ -181,9 +181,19 @@ export function useChat(
     []
   )
 
+  // Manual compaction of this conversation (`/compact`, the banner's button).
+  const compactNow = useCallback(
+    async (messages: UIMessage[]) =>
+      sessionId && transportRef.current
+        ? transportRef.current.compactNow(sessionId, messages)
+        : null,
+    [sessionId]
+  )
+
   return {
     ...chatResult,
     updateRagToolsAvailability,
     setContinueFromContent,
+    compactNow,
   }
 }
