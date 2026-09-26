@@ -260,3 +260,98 @@ describe('the copied diagnostics', () => {
     }
   })
 })
+
+describe('every row ends in an answer', () => {
+  beforeEach(() => {
+    environmentReadiness.mockReset()
+    environmentReadinessRetry.mockReset()
+  })
+
+  it('says what the panel is for, and what an expanded row checks', async () => {
+    environmentReadiness.mockResolvedValue(windowsWithoutBash())
+    render(<CoworkEnvironmentReadiness />)
+    expect(
+      screen.getByTestId('environment-readiness-description')
+    ).toHaveTextContent(/before a run/)
+    await userEvent.click(await screen.findByText('Context'))
+    expect(screen.getByTestId('readiness-description-context')).toHaveTextContent(
+      /context window/
+    )
+  })
+
+  it('shows a row nobody reported on as timed out with a Retry, not a spinner', async () => {
+    environmentReadiness.mockResolvedValue({
+      ...windowsWithoutBash(),
+      components: windowsWithoutBash().components.map((c) =>
+        c.component === 'model'
+          ? report('model', 'checking', 'not-probed', 'Still checking.', {
+              checkedAtMs: null,
+            })
+          : c
+      ),
+    })
+    render(<CoworkEnvironmentReadiness />)
+    const summary = await screen.findByTestId('readiness-summary-model')
+    await waitFor(() => expect(summary).toHaveTextContent(/Timed out/))
+    expect(screen.getByTestId('readiness-tone-model')).toHaveTextContent('timed out')
+    await userEvent.click(screen.getByText('Model'))
+    expect(screen.getByTestId('readiness-retry-model')).toBeInTheDocument()
+  })
+
+  it('gives up on a probe that never settles and offers a Retry', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      environmentReadiness.mockReturnValueOnce(new Promise(() => {}))
+      render(<CoworkEnvironmentReadiness />)
+      await vi.advanceTimersByTimeAsync(10_500)
+      expect(await screen.findByText(/Timed out after 10 s/)).toBeInTheDocument()
+      environmentReadiness.mockResolvedValue(windowsWithoutBash())
+      await userEvent.click(screen.getByTestId('environment-readiness-reload'))
+      expect(await screen.findByText('Shell')).toBeInTheDocument()
+      expect(environmentReadiness).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows not-applicable components as such and does not count them', async () => {
+    environmentReadiness.mockResolvedValue({
+      ...windowsWithoutBash(),
+      components: windowsWithoutBash().components.map((c) =>
+        c.component === 'mcp'
+          ? report('mcp', 'blocked', 'mcp-none-configured', 'No MCP servers are configured.')
+          : c
+      ),
+    })
+    render(<CoworkEnvironmentReadiness />)
+    expect(await screen.findByTestId('readiness-summary-mcp')).toHaveTextContent(
+      'Not applicable: No MCP servers are configured.'
+    )
+    expect(screen.getByTestId('readiness-tone-mcp')).toHaveTextContent('not applicable')
+    expect(screen.getByTestId('environment-readiness-unready')).toHaveTextContent(
+      '1 unavailable'
+    )
+  })
+
+  it('shows a PowerShell-only shell as information, not a fault', async () => {
+    environmentReadiness.mockResolvedValue({
+      ...windowsWithoutBash(),
+      components: windowsWithoutBash().components.map((c) =>
+        c.component === 'shell'
+          ? report(
+              'shell',
+              'degraded',
+              'shell-non-posix-only',
+              'Only powershell could be started in the sandbox, so commands written in POSIX sh are refused.'
+            )
+          : c
+      ),
+    })
+    render(<CoworkEnvironmentReadiness />)
+    expect(await screen.findByTestId('readiness-summary-shell')).toHaveTextContent(
+      /Runs PowerShell/
+    )
+    expect(screen.getByTestId('readiness-tone-shell')).toHaveTextContent('info')
+    expect(screen.queryByTestId('environment-readiness-unready')).toBeNull()
+  })
+})

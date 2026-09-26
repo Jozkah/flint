@@ -169,6 +169,7 @@ import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
+import { rendererReadinessReports } from '@/lib/coworkRendererReadiness'
 import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
@@ -720,6 +721,25 @@ function CoworkPage() {
   // Counted only to say that they are not offered here (the run is given none).
   const settingsMcpServers = useMCPServers(
     (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
+  )
+  // Model, context, MCP and local runtime are facts only this page holds; the
+  // backend leaves them "checking" until they are reported.
+  const rendererReports = useMemo(
+    () =>
+      rendererReadinessReports({
+        model: selectedModel?.id
+          ? {
+              id: selectedModel.id,
+              provider: selectedProvider ?? '',
+              supportsTools: selectedModel.capabilities
+                ? selectedModel.capabilities.includes('tools')
+                : null,
+            }
+          : null,
+        contextTokens: configuredContextTokens(modelCapabilities),
+        settingsMcpServers,
+      }),
+    [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers]
   )
   const readiness = useMemo<ReadinessManifest>(() => {
     const registry = mergeSkillRegistry(compat, {
@@ -4174,6 +4194,7 @@ function CoworkPage() {
           composer: someone whose session works should never read it. */}
       <CoworkEnvironmentReadiness
         projectRoot={folder ?? undefined}
+        reported={rendererReports}
         collapsible
       />
       {runContext && <CoworkContextBreakdown context={runContext} />}
