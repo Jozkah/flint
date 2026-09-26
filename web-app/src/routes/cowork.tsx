@@ -865,6 +865,9 @@ function CoworkPage() {
       // server never gets authority the run itself does not have.
       writableRepository:
         effective.access === 'edit-folder' ? effective.writeRoot : null,
+      // The session's extra folders, readable to a confined server as they
+      // are to the run's own tools.
+      readRoots: extraFolders,
     })
 
   /**
@@ -4190,7 +4193,11 @@ function CoworkPage() {
         gitBranch={gitBranch}
         onAttach={() => void attachFolder()}
         onDetach={detachFolder}
+        access={effective.access}
         extraFolders={extraFolders}
+        extraFoldersWritable={
+          capabilityState.known && capabilityState.directEdit
+        }
         onAddExtra={() => void addExtraFolder()}
         onRemoveExtra={(extra) => void removeExtraFolder(extra)}
       />
