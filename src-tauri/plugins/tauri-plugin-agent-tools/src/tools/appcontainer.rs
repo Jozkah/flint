@@ -346,6 +346,85 @@ pub fn sweep_recorded_roots() {
 #[cfg(not(windows))]
 pub fn sweep_recorded_roots() {}
 
+/// Holds sandboxed spawns back while the startup sweep runs, so no command
+/// starts with a grant the sweep is about to withdraw (or re-grants a folder
+/// the sweep then strips mid-command). Idle and finished both let a spawn
+/// through at once; only a sweep in progress makes it wait.
+pub struct SweepGate {
+    /// 0 idle, 1 running, 2 finished.
+    state: std::sync::Mutex<u8>,
+    changed: std::sync::Condvar,
+}
+
+impl SweepGate {
+    pub const fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new(0),
+            changed: std::sync::Condvar::new(),
+        }
+    }
+
+    pub fn begin(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = 1;
+        }
+    }
+
+    pub fn finish(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = 2;
+        }
+        self.changed.notify_all();
+    }
+
+    /// Wait until no sweep is running, at most `timeout`. True when none is.
+    pub fn wait(&self, timeout: std::time::Duration) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return true;
+        };
+        match self.changed.wait_timeout_while(state, timeout, |s| *s == 1) {
+            Ok((state, _)) => *state != 1,
+            Err(_) => true,
+        }
+    }
+}
+
+impl Default for SweepGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static STARTUP_SWEEP: SweepGate = SweepGate::new();
+
+/// Run [`sweep_recorded_roots`] off the calling thread, with every sandboxed
+/// spawn held at [`await_startup_sweep`] until it is done. The gate closes
+/// before this returns, so a spawn issued right after cannot slip ahead.
+pub fn start_startup_sweep() {
+    STARTUP_SWEEP.begin();
+    std::thread::spawn(|| {
+        // Opened again even if the sweep panics, so spawns are not held for
+        // the whole timeout.
+        struct Open;
+        impl Drop for Open {
+            fn drop(&mut self) {
+                STARTUP_SWEEP.finish();
+            }
+        }
+        let _open = Open;
+        sweep_recorded_roots();
+    });
+}
+
+/// Wait for a startup sweep in progress. Bounded: a sweep stuck on one ACL
+/// must not stop every command for good, so after the timeout the spawn goes
+/// ahead (the helper re-grants exactly what it is authorized for anyway).
+pub fn await_startup_sweep() {
+    if !STARTUP_SWEEP.wait(std::time::Duration::from_secs(10)) {
+        eprintln!("the startup folder-grant sweep is still running; starting the command anyway");
+    }
+}
+
 /// Why the container must never be granted `path`, or `None` when it may be.
 ///
 /// A grant is inheritable, so granting a folder grants everything under it:
@@ -2068,6 +2147,37 @@ mod tests {
                 AclStep::Revoke(b.clone()),
             ]
         );
+    }
+
+    /// A spawn waits while a sweep runs and goes through at once otherwise.
+    #[test]
+    fn spawns_wait_for_a_running_sweep_only() {
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        let gate = Arc::new(SweepGate::new());
+        // Idle: no wait.
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)));
+        assert!(t.elapsed() < Duration::from_secs(1));
+
+        gate.begin();
+        // Running: a short wait times out.
+        assert!(!gate.wait(Duration::from_millis(50)));
+        let finisher = {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(200));
+                gate.finish();
+            })
+        };
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)), "the sweep's end must release the spawn");
+        assert!(t.elapsed() >= Duration::from_millis(150), "the spawn went ahead mid-sweep");
+        finisher.join().unwrap();
+        // Finished: no wait.
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)));
+        assert!(t.elapsed() < Duration::from_secs(1));
     }
 
     #[test]

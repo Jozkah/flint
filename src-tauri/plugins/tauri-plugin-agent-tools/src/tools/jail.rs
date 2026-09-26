@@ -365,7 +365,11 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // the running binary cannot be located there is no wrapper to run, and
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
-            program: helper_exe()?,
+            // Never mid-sweep: see `appcontainer::start_startup_sweep`.
+            program: {
+                appcontainer::await_startup_sweep();
+                helper_exe()?
+            },
             args: appcontainer::helper_args_at(
                 &policy.workspace,
                 policy.start_dir.as_deref(),
