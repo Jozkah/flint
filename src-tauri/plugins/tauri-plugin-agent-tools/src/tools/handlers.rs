@@ -1894,6 +1894,17 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
     // `denial_hint` reads, and an unconfined command can still hit a plain
     // filesystem permission error worth explaining.
     let shell = if ctx.sandbox {
+        // A program that opens NUL itself cannot run in a sandbox this
+        // machine's null device refuses. Not run only to fail (and perhaps
+        // half-run a chain): answered with the null-device refusal up front,
+        // so the surface asks the user to run it outside the sandbox now.
+        if jail::null_device_refuses_sandbox() {
+            if let Some(program) =
+                super::nul_programs::opens_null_device(command, ctx.nul_programs)
+            {
+                return super::nul_programs::not_run_refusal(&program);
+            }
+        }
         // Which shell can be confined is decided by probing, not by assuming.
         // A shell that starts fine on its own can still fail inside the
         // sandbox: on Windows, Git Bash is built on the MSYS2 runtime, which

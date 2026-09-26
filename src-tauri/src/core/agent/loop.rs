@@ -1266,6 +1266,8 @@ struct CompositeToolInvoker {
     /// its diff is shown (AH-149). Resolved once per run from
     /// `[tools].format_on_edit`.
     format_on_edit: bool,
+    /// `[tools].nul_programs`: programs besides go and git known to open NUL.
+    nul_programs: Vec<String>,
     /// Every tool this run could actually call: the built-ins plus whatever
     /// the connected MCP servers offer, narrowed by the allowlist (AH-124).
     /// Resolved once per run so a skill that names a tool nothing here
@@ -1508,6 +1510,7 @@ struct ResolvedSettings {
     sandbox: bool,
     /// `[tools].format_on_edit` (AH-149): unset is off, on every surface.
     format_on_edit: bool,
+    nul_programs: Vec<String>,
     /// The project's domain lists, capped by the machine policy.
     allow_domains: Vec<String>,
     deny_domains: Vec<String>,
@@ -1528,6 +1531,7 @@ fn resolve_run_settings(
         allow_home_read: resolve_allow_home_read(settings.allow_home_read),
         sandbox: resolve_sandbox(sandbox_flag, settings.sandbox),
         format_on_edit: settings.format_on_edit,
+        nul_programs: settings.nul_programs,
         allow_domains: settings.allow_domains,
         deny_domains: settings.deny_domains,
     }
@@ -1747,6 +1751,7 @@ impl CompositeToolInvoker {
         // AH-149: whether an edited file goes through the project's formatter
         // before its diff is shown.
         .with_format_on_edit(self.format_on_edit)
+        .with_nul_programs(&self.nul_programs)
     }
 
     /// The same context, plus who this run is for the mailbox (AH-103).
@@ -4048,7 +4053,10 @@ impl CompositeToolInvoker {
                 && tauri_plugin_agent_tools::unsandboxed_retry::qualifies(
                     name,
                     self.sandbox,
-                    tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&text),
+                    // A failed run, or one refused before it ran because its
+                    // program opens NUL (`tools::nul_programs`).
+                    tauri_plugin_agent_tools::tools::handlers::bash_result_failed(&text)
+                        || text.trim_start().starts_with("ERROR"),
                     &text,
                 ) {
                 self.settle_null_device_refusal(&id, &args, text).await
@@ -5563,6 +5571,7 @@ async fn orchestrate_inner(
             routing,
             auto_mode,
             format_on_edit: settings.format_on_edit,
+            nul_programs: settings.nul_programs.clone(),
             available_tools,
             live_conversation: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             allowed_tools: allowed_names.clone(),
@@ -10398,6 +10407,7 @@ mod tests {
             auto_approved_streak: std::sync::atomic::AtomicU32::new(0),
             routing: Vec::new(),
             format_on_edit: false,
+            nul_programs: Vec::new(),
             available_tools: tauri_plugin_agent_tools::tools::BUILTIN_TOOLS
                 .iter()
                 .map(|t| t.name.to_string())

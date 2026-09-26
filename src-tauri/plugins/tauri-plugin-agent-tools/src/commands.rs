@@ -1325,7 +1325,9 @@ async fn execute_tool_inner(
         .with_job_owner(&thread_id)
         // ... and survive the app that started them, as a record (AH-101).
         .with_job_record_to(Path::new(&data_folder))
-        .with_skill_project(skill_project.as_deref());
+        .with_skill_project(skill_project.as_deref())
+        // Programs the project says open NUL themselves (`[tools].nul_programs`).
+        .with_nul_programs(&policy.nul_programs);
     if let Some(id) = call_id.as_deref() {
         ctx = ctx.with_call_id(id);
     }

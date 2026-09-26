@@ -44,6 +44,10 @@ struct ToolsSection {
     /// Destinations nothing may reach, whatever else says otherwise.
     #[serde(default)]
     deny_domains: Vec<String>,
+    /// Programs that open Windows' null device themselves, beyond the
+    /// built-in list (see `tools::nul_programs`).
+    #[serde(default)]
+    nul_programs: Vec<String>,
 }
 
 /// What one project's configuration decides.
@@ -51,6 +55,8 @@ struct ToolsSection {
 pub struct ProjectPolicy {
     pub permissions: ToolPermissions,
     pub network: NetworkPolicy,
+    /// `[tools].nul_programs`: added to the programs known to open NUL.
+    pub nul_programs: Vec<String>,
 }
 
 impl Default for ProjectPolicy {
@@ -61,6 +67,7 @@ impl Default for ProjectPolicy {
         Self {
             permissions: ToolPermissions::allow_all(),
             network: NetworkPolicy::open(),
+            nul_programs: Vec::new(),
         }
     }
 }
@@ -147,6 +154,7 @@ pub fn load_under(
             allow_domains: org.clamp_allow_domains(&tools.allow_domains),
             deny_domains: org.clamp_deny_domains(&tools.deny_domains),
         },
+        nul_programs: tools.nul_programs,
     }
 }
 
@@ -167,6 +175,7 @@ fn clamp(policy: ProjectPolicy, org: &crate::org_policy::OrgPolicy) -> ProjectPo
             allow_domains: org.clamp_allow_domains(&policy.network.allow_domains),
             deny_domains: org.clamp_deny_domains(&policy.network.deny_domains),
         },
+        nul_programs: policy.nul_programs,
     }
 }
 
