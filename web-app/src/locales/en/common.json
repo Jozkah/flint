@@ -260,7 +260,7 @@
     "unstaged": "unstaged",
     "partiallyStaged": "partially staged",
     "renamedFrom": "from {{path}}",
-    "scopeLabel": "Comparison",
+    "scopeLabel": "Which project changes to list",
     "scope": {
       "working": "Working tree",
       "staged": "Staged changes",
@@ -270,6 +270,9 @@
     "truncated_other": "{{count}} more lines not shown",
     "openFile": "Open",
     "applyToFolder": "Apply to folder",
+    "applyHint": "Copy this file from the session sandbox into {{folder}} as {{path}}",
+    "applyWhere": "Copy to {{path}} in {{folder}}? The sandbox copy is {{source}}.",
+    "applyConfirm": "Copy there",
     "applyExists": "A file with this name is already in the folder. Replace it?",
     "applyReplace": "Replace",
     "applyCreated": "Copied into the folder.",

@@ -57,6 +57,13 @@ const noGit: CoworkGitState = {
   refresh: vi.fn(),
 }
 
+const plainPlan = (path: string) => ({
+  source: path,
+  folder: '/home/user/proj',
+  destination: path,
+  remapped: false,
+})
+
 function gitWith(status: GitStatus, over: Partial<CoworkGitState> = {}): CoworkGitState {
   return { ...noGit, status, ...over }
 }
@@ -410,9 +417,10 @@ describe('what the Changes panel claims about each file', () => {
         git={noGit}
         onClose={vi.fn()}
         onApplyFile={onApplyFile}
+        applyPlanFor={plainPlan}
       />
     )
-    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
     expect(onApplyFile).toHaveBeenLastCalledWith('report.md', false)
     expect(await screen.findByRole('alert')).toHaveTextContent('common:changes.applyExists')
     await user.click(screen.getByRole('button', { name: 'common:changes.applyReplace' }))
@@ -430,15 +438,69 @@ describe('what the Changes panel claims about each file', () => {
         git={noGit}
         onClose={vi.fn()}
         onApplyFile={onApplyFile}
+        applyPlanFor={plainPlan}
       />
     )
-    await user.click(screen.getByRole('button', { name: 'common:changes.applyToFolder' }))
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
     expect(await screen.findByText(/common:changes.applyFailed.*denied/)).toBeInTheDocument()
     rerender(
       <CoworkDiffPanel sandboxFiles={[sandboxFiles[0]]} folder={null} git={noGit} onClose={vi.fn()} />
     )
     expect(
-      screen.queryByRole('button', { name: 'common:changes.applyToFolder' })
+      screen.queryByRole('button', { name: /common:changes.applyHint/ })
     ).not.toBeInTheDocument()
+  })
+
+  it('offers no Apply for a file it could only fail to copy', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[sandboxFiles[0]]}
+        folder="/home/user/proj"
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={vi.fn()}
+        applyPlanFor={() => null}
+      />
+    )
+    expect(
+      screen.queryByRole('button', { name: /common:changes.applyHint/ })
+    ).toBeNull()
+  })
+
+  it('shows a guessed destination and copies only once it is accepted', async () => {
+    const user = userEvent.setup()
+    const onApplyFile = vi.fn().mockResolvedValue('created')
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[{ ...sandboxFiles[0], path: 'KewScraper/go.mod' }]}
+        folder="C:\\Coding\\KewScraper"
+        git={noGit}
+        onClose={vi.fn()}
+        onApplyFile={onApplyFile}
+        applyPlanFor={(path) => ({
+          source: path,
+          folder: 'C:\\Coding\\KewScraper',
+          destination: 'go.mod',
+          remapped: true,
+        })}
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /common:changes.applyHint/ }))
+    expect(onApplyFile).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent('"path":"go.mod"')
+    await user.click(screen.getByRole('button', { name: 'common:changes.applyConfirm' }))
+    expect(onApplyFile).toHaveBeenCalledWith('KewScraper/go.mod', false)
+  })
+
+  it('offers the comparison scope only for a Git repository', () => {
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={sandboxFiles}
+        folder="/home/user/proj"
+        git={noGit}
+        onClose={vi.fn()}
+      />
+    )
+    expect(screen.queryByTitle('common:changes.scopeLabel')).toBeNull()
   })
 })

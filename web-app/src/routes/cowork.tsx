@@ -201,7 +201,7 @@ import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import {
   applySandboxFile,
-  sandboxRelativePath,
+  planSandboxApply,
 } from '@/lib/coworkSandboxApply'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
@@ -4942,15 +4942,24 @@ function CoworkPage() {
             onOpenFile={openToolPath}
             // Review only leaves the run's output in the sandbox; this is the
             // explicit per-file step that brings one file into the folder.
+            // One folder today; a list so more attached folders slot in.
+            applyPlanFor={(path) =>
+              planSandboxApply(workspacePath, folder ? [folder] : [], path)
+            }
             onApplyFile={
               folder && session?.id
                 ? async (path, overwrite) => {
-                    const relative = sandboxRelativePath(workspacePath, path)
-                    if (!relative) throw new Error(`${path} is not in the session sandbox`)
+                    const plan = planSandboxApply(
+                      workspacePath,
+                      [folder],
+                      path
+                    )
+                    if (!plan) throw new Error(`${path} is not in the session sandbox`)
                     const outcome = await applySandboxFile({
                       session: session.id,
-                      path: relative,
-                      project: folder,
+                      path: plan.source,
+                      project: plan.folder,
+                      destination: plan.destination,
                       overwrite,
                     })
                     if (outcome !== 'exists') git.refresh()

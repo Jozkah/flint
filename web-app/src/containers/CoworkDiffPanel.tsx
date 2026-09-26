@@ -19,8 +19,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { CoworkFileDiff } from '@/lib/coworkDiffs'
-import type { SandboxApplyOutcome } from '@/lib/coworkSandboxApply'
+import type {
+  SandboxApplyOutcome,
+  SandboxApplyPlan,
+} from '@/lib/coworkSandboxApply'
 import { errorText } from '@/lib/errorText'
+import { basenameOf } from '@/lib/coworkPreview'
 import {
   loadGitFileDiff,
   repoName,
@@ -254,6 +258,8 @@ function FileRow({
 type ApplyState =
   | { kind: 'idle' }
   | { kind: 'busy' }
+  /** A guessed destination, shown for the user to accept before copying. */
+  | { kind: 'where' }
   | { kind: 'confirm' }
   | { kind: 'done'; outcome: 'created' | 'replaced' }
   | { kind: 'error'; message: string }
@@ -264,9 +270,11 @@ type ApplyState =
  */
 function SandboxApply({
   path,
+  plan,
   onApply,
 }: {
   path: string
+  plan: SandboxApplyPlan
   onApply: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
 }) {
   const { t } = useTranslation()
@@ -285,9 +293,35 @@ function SandboxApply({
   const button =
     'rounded-md border-[0.8px] border-border bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground hover:text-foreground disabled:opacity-50'
 
+  const folderName = basenameOf(plan.folder) || plan.folder
+  const hint = t('common:changes.applyHint', {
+    folder: folderName,
+    path: plan.destination,
+  })
+
   return (
     <div className="flex flex-wrap items-center gap-2 px-3 pb-2 pl-8 text-[11px] text-muted-foreground">
-      {state.kind === 'confirm' ? (
+      {state.kind === 'where' ? (
+        <>
+          <span role="alert">
+            {t('common:changes.applyWhere', {
+              folder: folderName,
+              path: plan.destination,
+              source: plan.source,
+            })}
+          </span>
+          <button type="button" className={button} onClick={() => void apply(false)}>
+            {t('common:changes.applyConfirm')}
+          </button>
+          <button
+            type="button"
+            className={button}
+            onClick={() => setState({ kind: 'idle' })}
+          >
+            {t('common:cancel')}
+          </button>
+        </>
+      ) : state.kind === 'confirm' ? (
         <>
           <span role="alert">{t('common:changes.applyExists')}</span>
           <button type="button" className={button} onClick={() => void apply(true)}>
@@ -307,7 +341,12 @@ function SandboxApply({
             type="button"
             className={button}
             disabled={state.kind === 'busy'}
-            onClick={() => void apply(false)}
+            title={hint}
+            aria-label={hint}
+            // A guessed destination is shown before anything is copied.
+            onClick={() =>
+              plan.remapped ? setState({ kind: 'where' }) : void apply(false)
+            }
           >
             {t('common:changes.applyToFolder')}
           </button>
@@ -351,6 +390,7 @@ export function CoworkDiffPanel({
   onClose,
   onOpenFile,
   onApplyFile,
+  applyPlanFor,
   header,
   footer,
   branch,
@@ -381,6 +421,12 @@ export function CoworkDiffPanel({
    * folder to copy into.
    */
   onApplyFile?: (path: string, overwrite: boolean) => Promise<SandboxApplyOutcome>
+  /**
+   * Where a sandbox file would be copied, or null when it cannot be (a file
+   * Flint edited in place, outside the sandbox). No plan, no Apply button:
+   * one that can only fail is worse than none.
+   */
+  applyPlanFor?: (path: string) => SandboxApplyPlan | null
   folder: string | null
   git: CoworkGitState
   onClose: () => void
@@ -471,8 +517,14 @@ export function CoworkDiffPanel({
         {header}
         {showProject ? (
           <div className="flex shrink-0 items-center gap-1 px-3 pt-2.5 pb-2">
+            {/* The comparison only changes the Git list: shown for a
+                repository, and labelled as the project's. */}
+            {git.status ? (
             <DropdownMenu>
-              <DropdownMenuTrigger className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-xs font-medium text-secondary-foreground outline-none transition-[box-shadow,color] hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:shadow-lift">
+              <DropdownMenuTrigger
+                aria-label={t('common:changes.scopeLabel')}
+                title={t('common:changes.scopeLabel')}
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] border-border bg-card px-2.5 text-xs font-medium text-secondary-foreground outline-none transition-[box-shadow,color] hover:text-foreground hover:shadow-lift focus-visible:ring-[3px] focus-visible:ring-ring/40 data-[state=open]:shadow-lift">
                 {t(`common:changes.scope.${git.scope}`)}
                 <ChevronDown size={12} className="shrink-0" />
               </DropdownMenuTrigger>
@@ -489,6 +541,7 @@ export function CoworkDiffPanel({
                 </DropdownMenuRadioGroup>
               </DropdownMenuContent>
             </DropdownMenu>
+            ) : null}
             <div className="ml-auto flex items-center gap-0.5">
               <button
                 type="button"
@@ -634,6 +687,7 @@ export function CoworkDiffPanel({
                 {sandboxFiles.map((file) => {
                   const id = `sandbox:${file.path}`
                   const isExpanded = expanded.has(id)
+                  const plan = onApplyFile ? applyPlanFor?.(file.path) : null
                   return (
                     <FileRow
                       key={id}
@@ -642,8 +696,12 @@ export function CoworkDiffPanel({
                         onOpenFile ? () => onOpenFile(file.path) : undefined
                       }
                       after={
-                        onApplyFile ? (
-                          <SandboxApply path={file.path} onApply={onApplyFile} />
+                        onApplyFile && plan ? (
+                          <SandboxApply
+                            path={file.path}
+                            plan={plan}
+                            onApply={onApplyFile}
+                          />
                         ) : undefined
                       }
                       additions={file.additions}
