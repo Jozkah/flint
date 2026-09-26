@@ -685,6 +685,13 @@
       "outside": "このセッションが読めるフォルダーの外です。",
       "extra-folder": "追加で接続したフォルダー内です。コードパネルはメインのフォルダーを表示します。",
       "no-session": "先にセッションを開始してください。"
-    }
+    },
+    "settings": "コードパネルの設定",
+    "changeMarkers": "変更マーカー",
+    "inlineBlame": "インライン blame",
+    "notCommitted": "未コミット",
+    "pullRequest": "プルリクエスト #{{number}}",
+    "changeAt": "{{line}} 行目の変更",
+    "revertChange": "元に戻す"
   }
 }

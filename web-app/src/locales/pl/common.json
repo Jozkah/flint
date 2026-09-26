@@ -573,6 +573,13 @@
       "outside": "Poza folderami, które ta sesja może czytać.",
       "extra-folder": "W dodatkowym dołączonym folderze; panel Kod przegląda folder główny.",
       "no-session": "Najpierw rozpocznij sesję."
-    }
+    },
+    "settings": "Ustawienia panelu Kod",
+    "changeMarkers": "Znaczniki zmian",
+    "inlineBlame": "Blame w wierszu",
+    "notCommitted": "Jeszcze niezatwierdzone",
+    "pullRequest": "Pull request nr {{number}}",
+    "changeAt": "Zmiana w wierszu {{line}}",
+    "revertChange": "Przywróć"
   }
 }

@@ -852,6 +852,13 @@
       "outside": "Bu oturumun okuyabildiği klasörlerin dışında.",
       "extra-folder": "Ek bir bağlı klasörde; Kod paneli ana klasöre göz atar.",
       "no-session": "Önce oturumu başlatın."
-    }
+    },
+    "settings": "Kod paneli ayarları",
+    "changeMarkers": "Değişiklik işaretleri",
+    "inlineBlame": "Satır içi blame",
+    "notCommitted": "Henüz commit edilmedi",
+    "pullRequest": "Pull request #{{number}}",
+    "changeAt": "{{line}}. satırdaki değişiklik",
+    "revertChange": "Geri al"
   }
 }

@@ -572,6 +572,13 @@
       "outside": "Fora das pastas que esta sessão pode ler.",
       "extra-folder": "Em uma pasta anexada extra; o painel Código navega pela pasta principal.",
       "no-session": "Inicie a sessão primeiro."
-    }
+    },
+    "settings": "Configurações do painel Código",
+    "changeMarkers": "Marcadores de alteração",
+    "inlineBlame": "Blame em linha",
+    "notCommitted": "Ainda não commitado",
+    "pullRequest": "Pull request nº {{number}}",
+    "changeAt": "Alteração na linha {{line}}",
+    "revertChange": "Reverter"
   }
 }

@@ -573,6 +573,13 @@
       "outside": "Fora de les carpetes que aquesta sessió pot llegir.",
       "extra-folder": "En una carpeta adjuntada addicional; el tauler Codi explora la carpeta principal.",
       "no-session": "Primer inicia la sessió."
-    }
+    },
+    "settings": "Configuració del tauler Codi",
+    "changeMarkers": "Marcadors de canvis",
+    "inlineBlame": "Blame en línia",
+    "notCommitted": "Encara sense confirmar",
+    "pullRequest": "Pull request núm. {{number}}",
+    "changeAt": "Canvi a la línia {{line}}",
+    "revertChange": "Reverteix"
   }
 }

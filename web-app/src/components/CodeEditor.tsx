@@ -35,6 +35,8 @@ import {
 } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { loadEditorLanguage } from '@/lib/codeEditorLanguages'
+import type { BlameCommit, ChangeHunk } from '@/lib/codeGutter'
+import { gitOverlays, setBlame, setHunks } from './codeEditorGit'
 
 /**
  * The Code panel's editor: CodeMirror 6 with undo/redo, find (Ctrl+F),
@@ -66,6 +68,15 @@ export type CodeEditorProps = {
   /** Scroll to and place the cursor on this 1-based line. `at` makes a
    * repeat request for the same line move there again. */
   reveal?: { line: number; at: number } | null
+  /** Change markers against HEAD (or the original); empty hides them. */
+  hunks?: ChangeHunk[]
+  /** Blame per 1-based line, and how to label a commit; null hides it. */
+  blame?: {
+    lines: (BlameCommit | undefined)[]
+    label: (commit: BlameCommit) => string
+  } | null
+  onHunk?: (hunk: ChangeHunk) => void
+  onBlameHover?: (commit: BlameCommit, el: HTMLElement | null) => void
 }
 
 /** One Dark Pro / One Light, the palettes behind the viewer's Shiki themes. */
@@ -171,6 +182,10 @@ export function CodeEditor({
   onSave,
   onSelection,
   reveal,
+  hunks,
+  blame,
+  onHunk,
+  onBlameHover,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -178,8 +193,8 @@ export function CodeEditor({
   const theme = useRef(new Compartment())
   const wrap = useRef(new Compartment())
   // Latest callbacks, read by extensions built once per document.
-  const handlers = useRef({ onChange, onSave, onSelection })
-  handlers.current = { onChange, onSave, onSelection }
+  const handlers = useRef({ onChange, onSave, onSelection, onHunk, onBlameHover })
+  handlers.current = { onChange, onSave, onSelection, onHunk, onBlameHover }
 
   const buildState = (doc: string) =>
     EditorState.create({
@@ -241,6 +256,11 @@ export function CodeEditor({
           }
         }),
         baseTheme,
+        gitOverlays({
+          onHunk: (hunk) => handlers.current.onHunk?.(hunk),
+          onBlameHover: (commit, el) =>
+            handlers.current.onBlameHover?.(commit, el),
+        }),
         theme.current.of(highlightFor(isDark)),
         wrap.current.of(wordWrap ? EditorView.lineWrapping : []),
         language.current.of([]),
@@ -277,6 +297,14 @@ export function CodeEditor({
     if (current === value) return
     v.dispatch({ changes: { from: 0, to: current.length, insert: value } })
   }, [value])
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setHunks.of(hunks ?? []) })
+  }, [hunks, docKey])
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setBlame.of(blame ?? null) })
+  }, [blame, docKey])
 
   useEffect(() => {
     let alive = true

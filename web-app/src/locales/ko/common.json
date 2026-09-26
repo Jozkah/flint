@@ -640,6 +640,13 @@
       "outside": "이 세션이 읽을 수 있는 폴더 밖에 있습니다.",
       "extra-folder": "추가로 연결한 폴더에 있습니다. 코드 패널은 기본 폴더를 탐색합니다.",
       "no-session": "먼저 세션을 시작하세요."
-    }
+    },
+    "settings": "코드 패널 설정",
+    "changeMarkers": "변경 표시",
+    "inlineBlame": "인라인 blame",
+    "notCommitted": "아직 커밋되지 않음",
+    "pullRequest": "풀 리퀘스트 #{{number}}",
+    "changeAt": "{{line}}번째 줄 변경",
+    "revertChange": "되돌리기"
   }
 }

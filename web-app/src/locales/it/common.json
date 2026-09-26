@@ -662,6 +662,13 @@
       "outside": "Fuori dalle cartelle che questa sessione può leggere.",
       "extra-folder": "In una cartella collegata aggiuntiva; il pannello Codice esplora la cartella principale.",
       "no-session": "Avvia prima la sessione."
-    }
+    },
+    "settings": "Impostazioni del pannello Codice",
+    "changeMarkers": "Indicatori di modifica",
+    "inlineBlame": "Blame in linea",
+    "notCommitted": "Non ancora in un commit",
+    "pullRequest": "Pull request n. {{number}}",
+    "changeAt": "Modifica alla riga {{line}}",
+    "revertChange": "Ripristina"
   }
 }

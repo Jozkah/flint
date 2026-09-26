@@ -571,6 +571,13 @@
       "outside": "在此工作階段可讀取的資料夾之外。",
       "extra-folder": "位於額外附加的資料夾中；程式碼面板瀏覽的是主資料夾。",
       "no-session": "請先開始工作階段。"
-    }
+    },
+    "settings": "程式碼面板設定",
+    "changeMarkers": "變更標記",
+    "inlineBlame": "行內 blame",
+    "notCommitted": "尚未提交",
+    "pullRequest": "提取要求 #{{number}}",
+    "changeAt": "第 {{line}} 行的變更",
+    "revertChange": "還原"
   }
 }

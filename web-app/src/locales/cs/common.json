@@ -573,6 +573,13 @@
       "outside": "Mimo složky, které tato relace může číst.",
       "extra-folder": "V další připojené složce; panel Kód prochází hlavní složku.",
       "no-session": "Nejprve spusťte relaci."
-    }
+    },
+    "settings": "Nastavení panelu Kód",
+    "changeMarkers": "Značky změn",
+    "inlineBlame": "Blame v řádku",
+    "notCommitted": "Zatím necommitováno",
+    "pullRequest": "Pull request č. {{number}}",
+    "changeAt": "Změna na řádku {{line}}",
+    "revertChange": "Vrátit"
   }
 }

@@ -571,6 +571,13 @@
       "outside": "Di luar folder yang dapat dibaca sesi ini.",
       "extra-folder": "Di folder tambahan yang terlampir; panel Kode menelusuri folder utama.",
       "no-session": "Mulai sesi terlebih dahulu."
-    }
+    },
+    "settings": "Pengaturan panel Kode",
+    "changeMarkers": "Penanda perubahan",
+    "inlineBlame": "Blame sebaris",
+    "notCommitted": "Belum di-commit",
+    "pullRequest": "Pull request #{{number}}",
+    "changeAt": "Perubahan di baris {{line}}",
+    "revertChange": "Kembalikan"
   }
 }

@@ -641,6 +641,13 @@
       "outside": "Fuera de las carpetas que esta sesión puede leer.",
       "extra-folder": "En una carpeta adjunta adicional; el panel Código explora la carpeta principal.",
       "no-session": "Inicia primero la sesión."
-    }
+    },
+    "settings": "Ajustes del panel Código",
+    "changeMarkers": "Marcadores de cambios",
+    "inlineBlame": "Blame en línea",
+    "notCommitted": "Aún sin confirmar",
+    "pullRequest": "Pull request n.º {{number}}",
+    "changeAt": "Cambio en la línea {{line}}",
+    "revertChange": "Revertir"
   }
 }

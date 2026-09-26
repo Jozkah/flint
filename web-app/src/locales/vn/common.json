@@ -571,6 +571,13 @@
       "outside": "Nằm ngoài các thư mục phiên này có thể đọc.",
       "extra-folder": "Trong một thư mục đính kèm thêm; bảng Mã duyệt thư mục chính.",
       "no-session": "Hãy bắt đầu phiên trước."
-    }
+    },
+    "settings": "Cài đặt bảng Mã",
+    "changeMarkers": "Dấu thay đổi",
+    "inlineBlame": "Blame nội dòng",
+    "notCommitted": "Chưa commit",
+    "pullRequest": "Pull request #{{number}}",
+    "changeAt": "Thay đổi tại dòng {{line}}",
+    "revertChange": "Hoàn tác"
   }
 }

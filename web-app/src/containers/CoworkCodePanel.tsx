@@ -88,6 +88,18 @@ import {
 } from '@/hooks/useCoworkUserEdits'
 import { detectLanguage } from '@/lib/coworkCode'
 
+import {
+  BlameCard,
+  CodeOverlayMenu,
+  HunkPopover,
+} from '@/containers/CodeGitOverlays'
+import {
+  useBlameHover,
+  useBlameLabel,
+  useCodeGitOverlays,
+} from '@/hooks/useCodeGitOverlays'
+import { revertHunk, type ChangeHunk } from '@/lib/codeGutter'
+
 // The editor and its grammars load on first edit, not with the app.
 const CodeEditor = lazy(() => import('@/components/CodeEditor'))
 
@@ -842,6 +854,57 @@ export function CoworkCodePanel({
     [conflict, buffers, setBuffers, writeActive]
   )
 
+  // ---- Git overlays: change markers against HEAD, and inline blame. ----
+  const gitTab = editable && active?.origin.kind === 'project' ? active : null
+  const copyOfProject = gitTab ? sandboxCopyOf(gitTab) : null
+  // A Review only sandbox copy is compared with the project file it copies.
+  const [original, setOriginal] = useState<string | null>(null)
+  useEffect(() => {
+    setOriginal(null)
+    if (!copyOfProject || !folder || !dataFolder) return
+    let alive = true
+    void projectReadFile(dataFolder, folder, copyOfProject, false)
+      .then((file) => {
+        if (alive && !file.binary && !file.oversized) setOriginal(file.content)
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [copyOfProject, folder, dataFolder])
+  const overlays = useCodeGitOverlays({
+    root: gitTab ? folder : null,
+    path: gitTab?.path ?? null,
+    text: activeBuffer?.text ?? null,
+    disk: activeBuffer?.base ?? null,
+    original: copyOfProject ? original : undefined,
+    savedCount: userEdits.length,
+  })
+  const blameLabel = useBlameLabel()
+  const blameForEditor = useMemo(
+    () =>
+      overlays.blameLines && !copyOfProject
+        ? { lines: overlays.blameLines, label: blameLabel }
+        : null,
+    [overlays.blameLines, copyOfProject, blameLabel]
+  )
+  const blameHover = useBlameHover()
+  const [openHunk, setOpenHunk] = useState<ChangeHunk | null>(null)
+  useEffect(() => setOpenHunk(null), [activeId])
+  const revertOpenHunk = () => {
+    if (!openHunk || !activeId) return
+    const hunk = openHunk
+    setBuffers((current) => {
+      const buffer = current[activeId]
+      if (!buffer) return current
+      return {
+        ...current,
+        [activeId]: { base: buffer.base, text: revertHunk(buffer.text, hunk) },
+      }
+    })
+    setOpenHunk(null)
+  }
+
   const readOnlyText = (reason: ReadOnlyReason): string =>
     t(`common:codePanel.readOnlyReason.${reason}`)
 
@@ -1324,6 +1387,7 @@ export function CoworkCodePanel({
                       >
                         <WrapText className="size-3.5" />
                       </Button>
+                      <CodeOverlayMenu />
                       <Button
                         size="xs"
                         variant="ghost"
@@ -1381,8 +1445,29 @@ export function CoworkCodePanel({
                               ? state.reveal
                               : null
                           }
+                          hunks={overlays.hunks}
+                          blame={blameForEditor}
+                          onHunk={setOpenHunk}
+                          onBlameHover={blameHover.onBlameHover}
                         />
                       </Suspense>
+                      {openHunk && (
+                        <HunkPopover
+                          hunk={openHunk}
+                          onRevert={revertOpenHunk}
+                          onClose={() => setOpenHunk(null)}
+                        />
+                      )}
+                      {blameHover.hover && folder && (
+                        <BlameCard
+                          commit={blameHover.hover.commit}
+                          anchor={blameHover.hover.anchor}
+                          root={folder}
+                          webUrl={overlays.webUrl}
+                          onEnter={blameHover.keep}
+                          onLeave={blameHover.leave}
+                        />
+                      )}
                       {selection && selection.path === active.path && (
                         <div className="absolute bottom-2 left-2 z-10 inline-flex">
                           <Button

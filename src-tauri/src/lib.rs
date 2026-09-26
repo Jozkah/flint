@@ -209,6 +209,9 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_checkpoint_forget,
         core::agent::commands::agent_git_status,
         core::agent::commands::agent_git_file_diff,
+        core::agent::commands::agent_git_head_file,
+        core::agent::commands::agent_git_blame,
+        core::agent::commands::agent_git_pr_for_commit,
         core::agent::commands::agent_subagent_list,
         core::agent::commands::consolidate_memory,
         // Remote provider commands

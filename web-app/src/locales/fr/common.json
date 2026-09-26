@@ -574,6 +574,13 @@
       "outside": "En dehors des dossiers que cette session peut lire.",
       "extra-folder": "Dans un dossier attaché supplémentaire ; le panneau Code parcourt le dossier principal.",
       "no-session": "Démarrez d’abord la session."
-    }
+    },
+    "settings": "Paramètres du panneau Code",
+    "changeMarkers": "Marqueurs de modification",
+    "inlineBlame": "Blame en ligne",
+    "notCommitted": "Pas encore commité",
+    "pullRequest": "Pull request n° {{number}}",
+    "changeAt": "Modification à la ligne {{line}}",
+    "revertChange": "Rétablir"
   }
 }

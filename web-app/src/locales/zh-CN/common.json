@@ -854,6 +854,13 @@
       "outside": "在此会话可读取的文件夹之外。",
       "extra-folder": "位于额外附加的文件夹中；代码面板浏览的是主文件夹。",
       "no-session": "请先开始会话。"
-    }
+    },
+    "settings": "代码面板设置",
+    "changeMarkers": "更改标记",
+    "inlineBlame": "行内 blame",
+    "notCommitted": "尚未提交",
+    "pullRequest": "拉取请求 #{{number}}",
+    "changeAt": "第 {{line}} 行的更改",
+    "revertChange": "还原"
   }
 }

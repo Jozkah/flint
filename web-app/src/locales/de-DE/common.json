@@ -571,6 +571,13 @@
       "outside": "Außerhalb der Ordner, die diese Sitzung lesen kann.",
       "extra-folder": "In einem zusätzlich verbundenen Ordner; der Code-Bereich zeigt den Hauptordner.",
       "no-session": "Starte zuerst die Sitzung."
-    }
+    },
+    "settings": "Einstellungen des Code-Bereichs",
+    "changeMarkers": "Änderungsmarkierungen",
+    "inlineBlame": "Inline-Blame",
+    "notCommitted": "Noch nicht committet",
+    "pullRequest": "Pull-Request #{{number}}",
+    "changeAt": "Änderung in Zeile {{line}}",
+    "revertChange": "Zurücksetzen"
   }
 }

@@ -1392,11 +1392,137 @@ pub fn file_diff(
     Ok(cap_diff(diff, max_bytes, binary))
 }
 
+/// Run a read-only `git -C <dir>` and return stdout exactly as written.
+fn git_read_raw(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C")
+        .arg(dir)
+        .args(crate::core::agent::vcs::HARDENED)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd
+        .output()
+        .map_err(|e| format!("failed to launch git: {e}"))?;
+    if out.status.success() {
+        Ok(out.stdout)
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// A file as committed at HEAD, for the Code panel's change gutter. `path` is
+/// relative to `project` (which may sit below the repository root). `None`
+/// when the file is not in HEAD, the folder is not a repository, or the
+/// committed bytes are binary or too large to diff in the editor.
+pub fn head_file(project: &Path, path: &str) -> Result<Option<String>, String> {
+    safe_rel(path)?;
+    let Some(root) = repo_root(project) else {
+        return Ok(None);
+    };
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
+    let spec = format!("HEAD:./{}", path.replace('\\', "/"));
+    let Ok(bytes) = git_read_raw(project, &["show", "--no-textconv", &spec]) else {
+        return Ok(None);
+    };
+    if bytes.len() as u64 > MAX_INLINE_FILE_BYTES || looks_binary(&bytes) {
+        return Ok(None);
+    }
+    Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
+}
+
+/// `git blame --porcelain` for one file, raw; parsed in the web app.
+pub fn blame(project: &Path, path: &str) -> Result<Option<String>, String> {
+    safe_rel(path)?;
+    let Some(root) = repo_root(project) else {
+        return Ok(None);
+    };
+    crate::core::agent::vcs::refuse_program_config(&root).map_err(|e| e.message)?;
+    match git_read_raw(project, &["blame", "--porcelain", "--", path]) {
+        Ok(bytes) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+        // Untracked or outside the repository: nothing to blame.
+        Err(_) => Ok(None),
+    }
+}
+
+/// The GitHub web URL of `origin`, when it is on GitHub.
+pub fn github_web_url(project: &Path) -> Option<String> {
+    let raw = git_read_raw(project, &["remote", "get-url", "origin"]).ok()?;
+    parse_github_remote(String::from_utf8_lossy(&raw).trim())
+}
+
+/// `git@github.com:o/r.git` or `https://github.com/o/r(.git)` to
+/// `https://github.com/o/r`; anything else is not GitHub.
+pub fn parse_github_remote(remote: &str) -> Option<String> {
+    let rest = remote
+        .strip_prefix("git@github.com:")
+        .or_else(|| remote.strip_prefix("https://github.com/"))
+        .or_else(|| remote.strip_prefix("ssh://git@github.com/"))?;
+    let rest = rest.trim_end_matches('/').trim_end_matches(".git");
+    let mut parts = rest.split('/');
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    let ok = |s: &str| {
+        !s.is_empty()
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    (ok(owner) && ok(repo) && parts.next().is_none())
+        .then(|| format!("https://github.com/{owner}/{repo}"))
+}
+
+/// The pull request a commit belongs to, through `gh`, when it is installed
+/// and signed in. `None` for anything else: a missing `gh` is not an error.
+pub fn pr_for_commit(project: &Path, sha: &str) -> Option<(u64, String)> {
+    if sha.len() < 7 || sha.len() > 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut cmd = Command::new("gh");
+    cmd.current_dir(project)
+        .args(["pr", "list", "--search", sha, "--state", "all", "--json", "number,url", "--limit", "1"])
+        .env("GH_PROMPT_DISABLED", "1");
+    jan_utils::system::hide_console_window(&mut cmd);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let list: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let first = list.as_array()?.first()?;
+    let url = first.get("url")?.as_str()?;
+    if !url.starts_with("https://github.com/") {
+        return None;
+    }
+    Some((first.get("number")?.as_u64()?, url.to_string()))
+}
+
 /// Pure-parser tests for the review-panel plumbing. These need neither git nor
 /// the `cli` feature, so they always run.
 #[cfg(test)]
 mod review_tests {
     use super::*;
+
+    #[test]
+    fn only_a_github_origin_gets_a_web_url() {
+        for remote in [
+            "git@github.com:Jozkah/flint.git",
+            "https://github.com/Jozkah/flint",
+            "https://github.com/Jozkah/flint.git/",
+            "ssh://git@github.com/Jozkah/flint.git",
+        ] {
+            assert_eq!(
+                parse_github_remote(remote).as_deref(),
+                Some("https://github.com/Jozkah/flint"),
+                "{remote}"
+            );
+        }
+        for remote in [
+            "https://gitlab.com/a/b",
+            "https://github.com/a",
+            "https://github.com/a/b/c",
+            "https://github.com/a/b\"onclick",
+        ] {
+            assert_eq!(parse_github_remote(remote), None, "{remote}");
+        }
+    }
 
     #[test]
     fn numstat_parses_normal_and_binary() {
