@@ -18,12 +18,13 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **A redesigned interface.** A sidebar and top header in place of the rail and status bar, an Overview dashboard as the start page, a neutral Slate default accent, Inter, duotone icons, restrained motion, phone layouts, chat groups with drag and undo delete, and pull-request status in Cowork — keeping the intention-led first run, global settings search, command palette and system monitor with filterable logs.
 - **Agent SDK and slash commands.** JavaScript and Python SDK clients speak a frozen protocol v1 over JSON-RPC. A host tool contract lets a client declare tools that it runs itself. Flint's built-in tools are also available over MCP. Slash commands now work in the Home, Cowork and Rooms composers.
 - **A sandbox that can reach the network, safely.** Agent runs now have network access by default through a LAN-capable sandbox, with a toggle that policy can restrict and a native `git_clone`. A long round of security hardening covers bash rules, symlinks, secrets, `web_fetch` to private addresses and repository git config.
-- **A git tool with real approvals.** Git and `gh` run outside the sandbox through a dedicated `git` tool: reads run freely, local changes follow the session's mode, and every push, pull request, issue or repository change shows an approval naming the exact command and remote. Repository config that would run programs is refused, and MCP tools that approve their own commands are never offered.
+- **A git tool with real approvals.** Git and `gh` run outside the sandbox through a dedicated `git` tool: reads run freely, local changes follow the session's mode, and every push, pull request, issue or repository change shows an approval naming the exact command and remote. The agent's commits and pull requests credit Flint, switchable in Settings. Repository config that would run programs is refused, and MCP tools that approve their own commands are never offered.
 - **Toolchains in the Windows sandbox.** Settings → Agent Tools lets the sandbox use a toolchain installed in your profile (such as Python) by granting one folder, revocable at any time; folders that need an administrator show the exact command instead. When Windows' NUL device refuses sandboxed programs, Flint offers to rerun that one command outside the sandbox, with your approval, and asks up front for programs known to need it.
 - **Agents that ask, verify and stop looping.** The agent asks structured questions with its own suggested options, is told the shell, sandbox limits and access mode up front, reruns existing tests after a change, and a loop guard now catches repeated approve/execute cycles.
 - **Long runs that keep going, and messages that wait their turn.** Chat, Cowork and Rooms compact the context automatically as it fills, with `/compact` to do it by hand. A message sent while a run is working waits in a queue you can edit, drag to reorder or remove, or steers the run at its next tool call; Stop keeps the queue for you to send or discard.
 - **A richer System Monitor.** Drives, network rates, temperatures, per-core CPU, swap, uptime and host details, with usage bars throughout.
 - **AI-written MCP descriptions.** Generate "About this server" text for your MCP servers with a model you choose, reviewing each one before it is saved.
+- **Parallel sessions and split view.** Each new Cowork session in a Git folder gets its own worktree and branch, merged back, opened as a pull request or discarded from the session; plain folders can work on a copy. Up to four Chat, Cowork or Room panes sit side by side, with keyboard shortcuts.
 
 ## Migration
 
@@ -44,6 +45,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): rerun existing tests after a change, and test with real files
 - build: rebuild the Tauri plugin APIs before the web-app typecheck
 - feat(web-app): remind about waiting approvals, never drop them silently
+- feat(web-app): the approval reminder toast opens the waiting conversation; header pills count approvals waiting and runs in progress, each with a hover card that jumps to them; long sidebar titles fade at the edge instead of ending in an ellipsis
 - fix(web-app): cap web_fetch text and skip a URL that just failed
 - fix(web-app): title a chat once, and never keep the raw prompt
 - fix(web-app): keep tool results and failures in saved chats
