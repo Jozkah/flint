@@ -124,6 +124,14 @@ pub struct Policy {
     /// denied" there stops retrying from the shell instead of asking again for
     /// access it already has.
     pub unreachable_grants: Vec<PathBuf>,
+    /// Attached read-only folders the backend refuses to open to the shell at
+    /// all (on AppContainer, those `appcontainer::grant_refusal` names, which
+    /// the helper skips). Not a permission: only named in failure notes.
+    pub unreachable_read_grants: Vec<PathBuf>,
+    /// The spawn holds its folder grants for as long as it runs (a confined
+    /// MCP server) instead of as the session shell. Only AppContainer, whose
+    /// grants outlive a spawn, reads it.
+    pub own_grant_holder: bool,
 }
 
 impl Policy {
@@ -139,12 +147,28 @@ impl Policy {
             write_roots: Vec::new(),
             start_dir: None,
             unreachable_grants: Vec::new(),
+            unreachable_read_grants: Vec::new(),
+            own_grant_holder: false,
         }
     }
 
     /// Record grants the shell cannot reach. See [`Policy::unreachable_grants`].
     pub fn with_unreachable_grants(mut self, roots: Vec<PathBuf>) -> Self {
         self.unreachable_grants = roots;
+        self
+    }
+
+    /// Record read-only grants the shell cannot open. See
+    /// [`Policy::unreachable_read_grants`].
+    pub fn with_unreachable_read_grants(mut self, roots: Vec<PathBuf>) -> Self {
+        self.unreachable_read_grants = roots;
+        self
+    }
+
+    /// Hold folder grants for as long as this spawn runs. See
+    /// [`Policy::own_grant_holder`].
+    pub fn with_own_grant_holder(mut self) -> Self {
+        self.own_grant_holder = true;
         self
     }
 
@@ -241,15 +265,14 @@ fn home_dir() -> Option<PathBuf> {
 /// false of `bash`, which is not a feature — it is a wrong answer.
 ///
 /// Seatbelt takes a subpath rule per root and bubblewrap a read-write bind, so
-/// both express it directly. AppContainer grants writes only by placing an ACE
-/// on the thread workspace; authorizing a repository would mean writing an ACE
-/// onto the user's own folder, which this backend does not do. Until it does,
-/// Windows reports unsupported rather than silently granting less than the UI
-/// would promise.
+/// both express it directly. AppContainer grants the container's SID an
+/// inheritable ACE on each authorized folder, recorded so exactly those ACEs
+/// are withdrawn when the grant goes (see `appcontainer::revoke_roots`), and
+/// refuses drive roots, the profile and system folders
+/// (`appcontainer::grant_refusal`).
 pub fn supports_write_roots(backend: Backend) -> bool {
     match backend {
-        Backend::Seatbelt | Backend::Bubblewrap => true,
-        Backend::AppContainer => false,
+        Backend::Seatbelt | Backend::Bubblewrap | Backend::AppContainer => true,
         // Nothing enforces anything; `bash` is withheld entirely.
         Backend::None => false,
     }
@@ -379,16 +402,32 @@ pub fn wrap(cfg: &ShellConfig, policy: &Policy) -> Option<ShellConfig> {
         // the running binary cannot be located there is no wrapper to run, and
         // returning `cfg` unchanged would run the command with no confinement.
         Backend::AppContainer => Some(ShellConfig {
-            program: helper_exe()?,
-            args: appcontainer::helper_args_at(
-                &policy.workspace,
-                policy.start_dir.as_deref(),
-                policy.scratch_root.as_deref(),
-                &policy.write_roots,
-                policy.allow_network,
-                &cfg.program,
-                &cfg.args,
-            ),
+            // Never mid-sweep: see `appcontainer::start_startup_sweep`.
+            program: {
+                appcontainer::await_startup_sweep();
+                helper_exe()?
+            },
+            args: {
+                let mut args = appcontainer::helper_args_at(
+                    &policy.workspace,
+                    policy.start_dir.as_deref(),
+                    policy.scratch_root.as_deref(),
+                    &policy.write_roots,
+                    &policy.read_roots,
+                    policy.allow_network,
+                    &cfg.program,
+                    &cfg.args,
+                );
+                // A long-lived holder records its grants under its own
+                // process, beside the session shell's (see
+                // `appcontainer::union_roots`).
+                if policy.own_grant_holder {
+                    if let Some(at) = args.iter().position(|a| a == "--") {
+                        args.insert(at, appcontainer::OWN_HOLDER.to_string());
+                    }
+                }
+                args
+            },
             via_stdin: cfg.via_stdin,
             description: cfg.description,
             // The wrapper is a different program; the command language the
@@ -920,48 +959,105 @@ fn named_paths(output: &str) -> Vec<PathBuf> {
 }
 
 /// A note for output that shows the shell refused, or could not see, a path
-/// inside a folder granted to the file tools but not to the shell.
+/// inside a folder the session was granted.
 ///
 /// Checked whatever the exit code: `Set-Location X; ...; "EXIT=$LASTEXITCODE"`
 /// ends with a successful statement, and the model then read "COPIED" after a
 /// `Copy-Item` that was denied. Without it a session retried `Set-Location`,
 /// `Push-Location`, `go -C` and `Copy-Item` against a folder the shell could
 /// never open, and the generic advice was to request access it already had.
+///
+/// Worded for the grant actually held:
+/// - a folder the file tools may edit but the shell cannot open at all
+///   ([`Policy::unreachable_grants`]);
+/// - an attached folder the shell was refused even read access to
+///   ([`Policy::unreachable_read_grants`]);
+/// - a folder the shell may read but not write (an attached folder under
+///   Review only, whose writes land in the session workspace).
+///
+/// A folder under "Edit this folder" that the shell holds read+write access
+/// to (every enforcing backend, AppContainer included) gets no note.
 pub fn unreachable_grant_note(policy: &Policy, output: &str) -> Option<String> {
-    if policy.unreachable_grants.is_empty() {
+    if policy.unreachable_grants.is_empty()
+        && policy.unreachable_read_grants.is_empty()
+        && policy.read_roots.is_empty()
+    {
         return None;
     }
     let lower = output.to_ascii_lowercase();
     let refused = lower.contains("access is denied")
         || lower.contains("permission denied")
         || lower.contains("because it does not exist")
-        || lower.contains("cannot find the path");
+        || lower.contains("cannot find the path")
+        || lower.contains("is denied");
     if !refused {
         return None;
     }
     let named = named_paths(output);
-    let hit: Vec<String> = policy
-        .unreachable_grants
+    let within = |root: &PathBuf, p: &Path| {
+        let probe = Policy {
+            write_roots: vec![root.clone()],
+            ..Policy::new(Path::new(""), false)
+        };
+        shell_writable(&probe, p)
+    };
+    let hits = |roots: &[PathBuf]| -> Vec<String> {
+        roots
+            .iter()
+            .filter(|r| named.iter().any(|p| within(r, p)))
+            .map(|r| r.display().to_string())
+            .collect()
+    };
+    let edit = hits(&policy.unreachable_grants);
+    if !edit.is_empty() {
+        return Some(format!(
+            "\n[sandbox: {} is granted to the file tools (read, write, edit, grep) but shell \
+             commands cannot open it on this platform, so any command there fails with \"Access \
+             is denied\" or \"does not exist\" whatever its exit code says. Do not retry it from \
+             the shell or request access again. Use the file tools for that folder, and give the \
+             user the command to run there themselves.]",
+            edit.join(", ")
+        ));
+    }
+    let read = hits(&policy.unreachable_read_grants);
+    if !read.is_empty() {
+        return Some(format!(
+            "\n[sandbox: {} is attached to this session for reading, but shell commands cannot \
+             open it on this platform (the sandbox is never granted a drive root, a folder that \
+             is or holds the user profile, or a system folder), so any command there fails with \
+             \"Access is denied\" or \"does not exist\" whatever its exit code says. Do not retry \
+             it from the shell or request access again. Use the read, ls, find and grep tools \
+             for that folder, and give the user the command to run there themselves.]",
+            read.join(", ")
+        ));
+    }
+    // Read-only to the shell: only a denial on a path it could not write
+    // there is this; a failed read under a readable folder is something else.
+    let read_only: Vec<PathBuf> = policy
+        .read_roots
         .iter()
-        .filter(|root| {
-            let probe = Policy {
-                write_roots: vec![(*root).clone()],
-                ..Policy::new(Path::new(""), false)
-            };
-            named.iter().any(|p| shell_writable(&probe, p))
+        .filter(|r| !policy.write_roots.contains(r))
+        .cloned()
+        .collect();
+    let ro: Vec<String> = read_only
+        .iter()
+        .filter(|r| {
+            named
+                .iter()
+                .any(|p| within(r, p) && !shell_writable(policy, p))
         })
         .map(|r| r.display().to_string())
         .collect();
-    if hit.is_empty() {
+    if ro.is_empty() {
         return None;
     }
     Some(format!(
-        "\n[sandbox: {} is granted to the file tools (read, write, edit, grep) but shell \
-         commands cannot open it on this platform, so any command there fails with \"Access \
-         is denied\" or \"does not exist\" whatever its exit code says. Do not retry it from \
-         the shell or request access again. Use the file tools for that folder, and give the \
-         user the command to run there themselves.]",
-        hit.join(", ")
+        "\n[sandbox: {} is attached read-only (Review only): shell commands can read and build \
+         from it but cannot write there, so a write fails with \"Access is denied\". Write in \
+         the session workspace instead; the user brings changes across with Review changes > \
+         Apply to folder, or switches the folder to Edit this folder. Do not retry the write \
+         there.]",
+        ro.join(", ")
     ))
 }
 
@@ -2068,6 +2164,35 @@ mod tests {
     }
 
     #[test]
+    fn a_read_only_grant_is_named_for_a_denied_write_only() {
+        let attached = PathBuf::from("C:/Users/me/Coding/lib");
+        let p = Policy::new(Path::new("C:/data/ws"), false).with_read_roots(vec![attached.clone()]);
+        let out = "Set-Content : Access is denied: 'C:\\Users\\me\\Coding\\lib\\x.go'\n[exit 1]";
+        let note = unreachable_grant_note(&p, out).expect("names the read-only folder");
+        assert!(note.contains("Review only"), "{note}");
+        assert!(note.contains("Apply to folder"), "{note}");
+        // Not a dead end: that wording is for folders the shell cannot open.
+        assert!(!note.contains("cannot open it on this platform"), "{note}");
+        // Under Edit this folder the shell writes there too: no note.
+        let edit = Policy::new(Path::new("C:/data/ws"), false)
+            .with_read_roots(vec![attached.clone()])
+            .with_write_roots(vec![attached]);
+        assert!(unreachable_grant_note(&edit, out).is_none());
+    }
+
+    #[test]
+    fn a_read_grant_the_sandbox_refused_is_a_dead_end() {
+        let refused = PathBuf::from("C:/Users");
+        let p = Policy::new(Path::new("C:/data/ws"), false)
+            .with_read_roots(vec![refused.clone()])
+            .with_unreachable_read_grants(vec![refused]);
+        let out = "Get-ChildItem : Access is denied: 'C:\\Users\\me'\n[exit 1]";
+        let note = unreachable_grant_note(&p, out).expect("names the refused folder");
+        assert!(note.contains("cannot open it on this platform"), "{note}");
+        assert!(note.contains("for reading"), "{note}");
+    }
+
+    #[test]
     fn denial_hint_names_the_workspace_and_network_state() {
         let hint = denial_hint(&policy());
         assert!(hint.contains("/data/agent-workspace/threads/t1"));
@@ -2434,11 +2559,10 @@ mod tests {
         assert!(String::from_utf8_lossy(&out.stdout).contains("ok"));
     }
 
-    /// AppContainer confines a run to a Jan-owned worktree and nothing else:
-    /// every root inside the owned folder, the owned folder itself refused, a
-    /// root outside it refused, and no owned folder at all refused.
+    /// Every enforcing backend, AppContainer included, holds a shell to the
+    /// roots it was given; no backend holds nothing.
     #[test]
-    fn appcontainer_confines_only_jan_owned_roots() {
+    fn enforcing_backends_confine_authorized_roots() {
         let base = std::env::temp_dir().join(format!("jan_owned_roots_{}", std::process::id()));
         let owned = base.join("worktrees");
         let inside = owned.join("repo").join("s1");
@@ -2448,12 +2572,7 @@ mod tests {
         }
         let ac = Backend::AppContainer;
         assert!(can_confine_write_roots(ac, &[inside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[outside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[owned.clone()], Some(&owned)));
-        assert!(!can_confine_write_roots(ac, &[inside.clone()], None));
-        assert!(!can_confine_write_roots(ac, &[inside.join("..").join("..").join("..").join("user-repo")], Some(&owned)));
-        // The general backends hold any root; no backend holds nothing.
+        assert!(can_confine_write_roots(ac, &[inside.clone(), outside.clone()], Some(&owned)));
         assert!(can_confine_write_roots(Backend::Seatbelt, &[outside.clone()], None));
         assert!(!can_confine_write_roots(Backend::None, &[inside], Some(&owned)));
         assert!(supports_owned_write_roots(ac));
@@ -2464,7 +2583,7 @@ mod tests {
     fn only_backends_that_can_confine_a_repository_support_direct_editing() {
         assert!(supports_write_roots(Backend::Seatbelt));
         assert!(supports_write_roots(Backend::Bubblewrap));
-        assert!(!supports_write_roots(Backend::AppContainer));
+        assert!(supports_write_roots(Backend::AppContainer));
         assert!(!supports_write_roots(Backend::None));
     }
 }

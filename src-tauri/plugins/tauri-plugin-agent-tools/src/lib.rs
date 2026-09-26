@@ -203,6 +203,12 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_stop_resolve
         ])
         .setup(|app, _api| {
+            // Folder grants live in process memory, so none survives a
+            // restart; withdraw any sandbox ACE a previous run left on a
+            // user's folder (a crash, a quit mid-run) before anything runs.
+            // Off the setup thread (it touches ACLs, which can be slow), with
+            // every sandboxed spawn held until it is done.
+            tools::appcontainer::start_startup_sweep();
             // Every mailbox append -- from a command or from a tool handler,
             // which has no AppHandle -- is announced through this one hook.
             use tauri::Emitter;

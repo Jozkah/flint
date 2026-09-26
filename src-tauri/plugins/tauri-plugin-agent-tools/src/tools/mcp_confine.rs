@@ -55,6 +55,10 @@ pub enum ConfineError {
     /// cannot be honoured. Windows today: writes are granted by an ACE on the
     /// thread workspace, never on the user's own folder.
     NoWriteRoots(&'static str),
+    /// `edit-folder` on a backend whose folder grants are held per session
+    /// (AppContainer), asked for by a session that holds no live grant for
+    /// the folder.
+    NoGrant,
     /// The working directory the configuration asked for is outside every root
     /// this session may use.
     WorkingDirEscapes(PathBuf),
@@ -73,6 +77,9 @@ impl ConfineError {
             }
             Self::NoWriteRoots(backend) => {
                 format!("the {backend} backend cannot confine writes to one folder")
+            }
+            Self::NoGrant => {
+                "this session does not hold a grant to edit that folder".to_string()
             }
             Self::WorkingDirEscapes(path) => format!(
                 "the working directory resolves outside this session's roots: {}",
@@ -144,7 +151,9 @@ fn contained(root: &Path, path: &Path) -> bool {
 pub fn policy_for(authority: &McpAuthority, jan_data: Option<&Path>) -> Policy {
     // Network stays available: a remote-fetching MCP server is an ordinary
     // thing to run, and the filesystem is what this is confining.
-    let mut policy = Policy::new(authority.workspace(), true);
+    // A server outlives any one shell command in its session and shares its
+    // container, so it holds its folder grants under its own process.
+    let mut policy = Policy::new(authority.workspace(), true).with_own_grant_holder();
 
     let repository = match authority {
         McpAuthority::ReviewOnly { repository, .. } => repository.clone(),
@@ -199,9 +208,22 @@ pub fn confined_command(
     if !backend.enforces() {
         return Err(ConfineError::NoBackend);
     }
-    if matches!(authority, McpAuthority::EditFolder { .. }) && !jail::supports_write_roots(backend)
-    {
+    if matches!(authority, McpAuthority::EditFolder { .. }) && !supports_edit_folder(backend) {
         return Err(ConfineError::NoWriteRoots(backend.as_str()));
+    }
+    // On AppContainer the folder ACE outlives any one spawn: it is granted to
+    // the session's container and withdrawn with the session's grant (and on
+    // server stop, and at startup). So the server may only be given a folder
+    // the session's grant actually covers right now.
+    if let McpAuthority::EditFolder {
+        workspace,
+        repository,
+        ..
+    } = authority
+    {
+        if backend == Backend::AppContainer && !session_holds_grant(workspace, repository) {
+            return Err(ConfineError::NoGrant);
+        }
     }
 
     // Where it runs is part of what it may reach. A configuration naming the
@@ -254,8 +276,21 @@ pub fn confinement_backend() -> &'static str {
 }
 
 /// Does this backend support the `edit-folder` case?
+///
+/// On AppContainer only under a live session grant: see [`confined_command`].
 pub fn supports_edit_folder(backend: Backend) -> bool {
     jail::supports_write_roots(backend)
+}
+
+#[cfg(any(feature = "tauri", test))]
+fn session_holds_grant(workspace: &Path, folder: &Path) -> bool {
+    crate::grants::workspace_holds_grant(workspace, folder)
+}
+
+/// Without the desktop there are no session grants, so nothing is covered.
+#[cfg(not(any(feature = "tauri", test)))]
+fn session_holds_grant(_workspace: &Path, _folder: &Path) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -543,13 +578,11 @@ mod tests {
         assert!(allowed_env(&[], &supplied).is_empty());
     }
 
-    /// Windows grants writes by an ACE on the thread workspace, never on the
-    /// user's own folder, so `edit-folder` cannot be honoured there.
     #[test]
     fn edit_folder_is_unsupported_where_writes_cannot_be_confined() {
         assert!(supports_edit_folder(Backend::Seatbelt));
         assert!(supports_edit_folder(Backend::Bubblewrap));
-        assert!(!supports_edit_folder(Backend::AppContainer));
+        assert!(supports_edit_folder(Backend::AppContainer));
         assert!(!supports_edit_folder(Backend::None));
     }
 

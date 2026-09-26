@@ -63,6 +63,11 @@ export type DispatchContext = {
    */
   activity?: Partial<ToolActivityContext>
   readOnlyFolder: string | null
+  /**
+   * The session's additional attached folders, readable (and, under a live
+   * grant, writable) exactly like the primary one.
+   */
+  extraFolders?: readonly string[]
   /** What this session is allowed to do. */
   mode: CoworkMode
   /** Mirrors the advertised set. Refused when off, so a call to a tool that was
@@ -470,6 +475,7 @@ async function routeCoworkTool(
               ctx.sessionId,
               {
                 readOnlyProject: ctx.readOnlyFolder,
+                extraProjects: ctx.extraFolders,
                 scope: 'session',
                 writeGrant: ctx.writeGrant,
               }
@@ -684,6 +690,7 @@ async function routeCoworkTool(
       // sandbox because no chat thread claims it.
       result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
         readOnlyProject: ctx.readOnlyFolder,
+        extraProjects: ctx.extraFolders,
         scope: 'session',
         writeGrant: ctx.writeGrant,
         // The run the change belongs to, so it can be undone from it (AH-202).

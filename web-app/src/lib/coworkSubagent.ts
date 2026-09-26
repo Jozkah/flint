@@ -320,6 +320,9 @@ export type RunSubagentOptions = {
   system: {
     workspacePath: string | null
     readOnlyFolder: string | null
+    /** The session's extra attached folders, as the parent was told. */
+    extraFolders?: readonly string[]
+    extraFoldersWritable?: boolean
     bashAvailable: boolean
     /**
      * The run's frozen access, so the child is told the same thing the parent
@@ -430,6 +433,8 @@ export async function runSubagent(
     const system = buildSubagentSystemPrompt(resolved.systemPrompt, {
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
+      extraFolders: opts.system.extraFolders,
+      extraFoldersWritable: opts.system.extraFoldersWritable,
       bashAvailable: opts.system.bashAvailable && 'bash' in tools,
       folderAccess: opts.system.folderAccess,
       projectInstructions: opts.system.projectInstructions,

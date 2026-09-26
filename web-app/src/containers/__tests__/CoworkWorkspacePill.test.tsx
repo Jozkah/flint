@@ -151,4 +151,51 @@ describe('CoworkWorkspacePill', () => {
     await userEvent.click(screen.getByText('common:workspace.detach'))
     expect(onDetach).toHaveBeenCalled()
   })
+
+  describe('folder access badges', () => {
+    const open = async (props: Record<string, unknown>) => {
+      render(
+        <CoworkWorkspacePill
+          folder="C:/repo/a"
+          extraFolders={['C:/repo/b']}
+          onAttach={vi.fn()}
+          onDetach={vi.fn()}
+          {...props}
+        />
+      )
+      await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+      return Array.from(document.querySelectorAll('span[data-access]')).map(
+        (el) => el.getAttribute('data-access')
+      )
+    }
+
+    it('marks every folder read-only under Review only', async () => {
+      expect(await open({ access: 'review-only', extraFoldersWritable: true })).toEqual([
+        'read-only',
+        'read-only',
+      ])
+      expect(screen.getByText('common:workspace.sandbox')).toBeInTheDocument()
+    })
+
+    it('marks the folders editable under Edit this folder', async () => {
+      expect(await open({ access: 'edit-folder', extraFoldersWritable: true })).toEqual([
+        'editable',
+        'editable',
+      ])
+      expect(screen.queryAllByText('common:workspace.readOnly')).toHaveLength(0)
+      expect(screen.getByText('common:workspace.writesFolder')).toBeInTheDocument()
+    })
+
+    it('marks the primary as a worktree and extras by the grant under Managed worktree', async () => {
+      expect(await open({ access: 'managed-worktree', extraFoldersWritable: false })).toEqual([
+        'worktree',
+        'read-only',
+      ])
+      expect(screen.getByText('common:workspace.writesWorktree')).toBeInTheDocument()
+    })
+
+    it('defaults to read-only when no access is given', async () => {
+      expect(await open({})).toEqual(['read-only', 'read-only'])
+    })
+  })
 })

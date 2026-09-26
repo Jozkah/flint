@@ -6,7 +6,10 @@ import {
   FolderOpen,
   FolderPlus,
   GitBranch,
+  GitFork,
   Lock,
+  Pencil,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -20,6 +23,40 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { basenameOf } from '@/lib/coworkPreview'
 import { truncateMiddle } from '@/lib/utils'
 
+type AccessMode = 'review-only' | 'managed-worktree' | 'edit-folder'
+
+/** What a folder's badge says: read-only, editable, or edited via a worktree. */
+type FolderAccess = 'read-only' | 'editable' | 'worktree'
+
+const BADGE: Record<
+  FolderAccess,
+  { icon: typeof Lock; label: string; title: string }
+> = {
+  'read-only': {
+    icon: Lock,
+    label: 'common:workspace.readOnly',
+    title: 'common:workspace.footnote',
+  },
+  editable: {
+    icon: Pencil,
+    label: 'common:workspace.editable',
+    title: 'common:workspace.footnoteEditable',
+  },
+  worktree: {
+    icon: GitFork,
+    label: 'common:workspace.inWorktree',
+    title: 'common:workspace.footnoteWorktree',
+  },
+}
+
+/** The primary folder's access under `access`. */
+export const primaryFolderAccess = (access?: AccessMode): FolderAccess =>
+  access === 'edit-folder'
+    ? 'editable'
+    : access === 'managed-worktree'
+      ? 'worktree'
+      : 'read-only'
+
 type Props = {
   /** Attached project folder, or null when the session is sandbox-only. */
   folder: string | null
@@ -28,6 +65,19 @@ type Props = {
   gitBranch?: string | null
   onAttach: () => void
   onDetach: () => void
+  /**
+   * The session's effective access, which decides what each folder's badge
+   * says. Absent reads as Review only: a label must never claim more than
+   * the backend grants.
+   */
+  access?: AccessMode
+  /** Folders attached beside `folder`, like a multi-root workspace. */
+  extraFolders?: readonly string[]
+  /** Whether the run's grant covers `extraFolders` (attached directly). */
+  extraFoldersWritable?: boolean
+  /** Pick another folder to attach beside the primary one. */
+  onAddExtra?: () => void
+  onRemoveExtra?: (folder: string) => void
 }
 
 /**
@@ -48,10 +98,32 @@ export function CoworkWorkspacePill({
   gitBranch,
   onAttach,
   onDetach,
+  access = 'review-only',
+  extraFolders = [],
+  extraFoldersWritable = false,
+  onAddExtra,
+  onRemoveExtra,
 }: Props) {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
+  const primaryAccess = primaryFolderAccess(access)
+  const extraAccess: FolderAccess =
+    access !== 'review-only' && extraFoldersWritable ? 'editable' : 'read-only'
+  const TriggerIcon = BADGE[primaryAccess].icon
+  const badge = (kind: FolderAccess, size: number) => {
+    const Icon = BADGE[kind].icon
+    return (
+      <span
+        className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[10.5px] font-medium text-secondary-foreground"
+        title={t(BADGE[kind].title)}
+        data-access={kind}
+      >
+        <Icon size={size} aria-hidden />
+        {t(BADGE[kind].label)}
+      </span>
+    )
+  }
 
   return (
     <Popover>
@@ -88,9 +160,15 @@ export function CoworkWorkspacePill({
                   · {gitBranch}
                 </span>
               ) : null}
-              <Lock
+              {extraFolders.length > 0 ? (
+                <span aria-hidden className="font-normal text-muted-foreground">
+                  +{extraFolders.length}
+                </span>
+              ) : null}
+              <TriggerIcon
                 className="size-3 shrink-0 text-muted-foreground"
                 aria-hidden
+                data-access={primaryAccess}
               />
             </>
           ) : (
@@ -133,13 +211,7 @@ export function CoworkWorkspacePill({
                     {truncateMiddle(folder, 40)}
                   </p>
                 </div>
-                <span
-                  className="inline-flex h-5 shrink-0 items-center gap-1 rounded-md border-[0.8px] border-border bg-card px-1.5 text-[10.5px] font-medium text-secondary-foreground"
-                  title={t('common:workspace.footnote')}
-                >
-                  <Lock size={10} aria-hidden />
-                  {t('common:workspace.readOnly')}
-                </span>
+                {badge(primaryAccess, 10)}
               </div>
               {gitBranch && (
                 <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -151,6 +223,62 @@ export function CoworkWorkspacePill({
                 </p>
               )}
             </section>
+
+            {/* Folders attached beside the primary one. Each is treated like
+                it; the shell still starts in the primary. */}
+            {extraFolders.length > 0 || onAddExtra ? (
+              <section className="px-2.5 pb-2.5">
+                {extraFolders.length > 0 ? (
+                  <>
+                    <p className="text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
+                      {t('common:workspace.alsoAttached')}
+                    </p>
+                    <ul className="mt-1.5 space-y-1">
+                      {extraFolders.map((extra) => (
+                        <li key={extra} className="flex items-center gap-2">
+                          <Folder
+                            size={13}
+                            className="shrink-0 text-muted-foreground"
+                            aria-hidden
+                          />
+                          <span
+                            className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground"
+                            title={extra}
+                          >
+                            {truncateMiddle(extra, 40)}
+                          </span>
+                          {badge(extraAccess, 9)}
+                          {onRemoveExtra ? (
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              className="shrink-0"
+                              aria-label={t('common:workspace.removeFolder', {
+                                folder: basenameOf(extra),
+                              })}
+                              onClick={() => onRemoveExtra(extra)}
+                            >
+                              <X size={12} aria-hidden />
+                            </Button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {onAddExtra ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1.5 h-7 px-1.5 text-xs text-muted-foreground"
+                    onClick={onAddExtra}
+                  >
+                    <FolderPlus size={13} aria-hidden />
+                    {t('common:workspace.addFolder')}
+                  </Button>
+                ) : null}
+              </section>
+            ) : null}
 
             <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />
 
@@ -168,12 +296,20 @@ export function CoworkWorkspacePill({
                 />
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold">
-                    {t('common:workspace.sandbox')}
+                    {primaryAccess === 'editable'
+                      ? t('common:workspace.writesFolder')
+                      : primaryAccess === 'worktree'
+                        ? t('common:workspace.writesWorktree')
+                        : t('common:workspace.sandbox')}
                   </p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
-                    {workspacePath
-                      ? t('common:workspace.sandboxNote')
-                      : t('common:workspace.sandboxPending')}
+                    {primaryAccess === 'editable'
+                      ? t('common:workspace.writesFolderNote')
+                      : primaryAccess === 'worktree'
+                        ? t('common:workspace.writesWorktreeNote')
+                        : workspacePath
+                          ? t('common:workspace.sandboxNote')
+                          : t('common:workspace.sandboxPending')}
                   </p>
                 </div>
               </div>

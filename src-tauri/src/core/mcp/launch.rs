@@ -275,10 +275,53 @@ pub(super) fn confined_mcp_command(
     Ok(confined)
 }
 
+/// The session workspace whose sandbox container an imported server was
+/// given a folder to edit in, read from its stored configuration.
+///
+/// `None` for every other server: a user-configured one, a review-only one, a
+/// remote one. Those hold no folder grant to withdraw.
+pub(super) fn folder_grant_workspace(config: &Value) -> Option<std::path::PathBuf> {
+    let confinement = config.get("janConfinement")?.as_object()?;
+    confinement.get("writableRepository")?.as_str()?;
+    confinement
+        .get("workspace")?
+        .as_str()
+        .map(std::path::PathBuf::from)
+}
+
+/// Withdraw the folder grants a stopped server held (AppContainer; a no-op
+/// elsewhere). `pid` is its sandbox helper's, the process the grants were
+/// recorded under. Only what no other live holder in the session's container
+/// (its shell, another server) still needs is revoked, so a command running
+/// in that session keeps its access.
+pub(super) fn release_folder_grants(config: Option<&Value>, pid: Option<u32>) {
+    if let (Some(workspace), Some(pid)) = (config.and_then(folder_grant_workspace), pid) {
+        tauri_plugin_agent_tools::tools::appcontainer::release_holder(&workspace, pid);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::core::mcp::models::McpConfinement;
+
+    #[test]
+    fn only_a_folder_editing_imported_server_has_a_grant_to_release() {
+        let editing = serde_json::json!({
+            "command": "node",
+            "janConfinement": { "workspace": "/ws", "writableRepository": "/repo" }
+        });
+        assert_eq!(
+            folder_grant_workspace(&editing),
+            Some(std::path::PathBuf::from("/ws"))
+        );
+        let review = serde_json::json!({
+            "command": "node",
+            "janConfinement": { "workspace": "/ws", "repository": "/repo" }
+        });
+        assert_eq!(folder_grant_workspace(&review), None);
+        assert_eq!(folder_grant_workspace(&serde_json::json!({ "command": "node" })), None);
+    }
 
     fn params(imported: bool, confinement: Option<McpConfinement>) -> McpServerConfig {
         McpServerConfig {

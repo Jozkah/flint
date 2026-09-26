@@ -275,6 +275,11 @@ export type AgentToolOptions = {
    */
   readOnlyProject?: string | null
   /**
+   * The session's additional attached folders, each readable exactly like
+   * `readOnlyProject` and validated the same way by Rust.
+   */
+  extraProjects?: readonly string[] | null
+  /**
    * Which sandbox namespace `threadId` names. Load-bearing: a Cowork session id
    * is not a chat thread id, so running one under `'thread'` would put its files
    * where the thread sweep's keep-list can never mention them — and the sweep
@@ -369,7 +374,8 @@ export async function executeAgentTool(
             options.scope ?? ('thread' as WorkspaceScope),
             options.callId,
             options.undoRun,
-            options.actor
+            options.actor,
+            extraProjectsOf(options)
           )
     const resources = result.resources ?? undefined
     if (result.isError) {
@@ -455,8 +461,15 @@ async function runStreaming(
     callId: options.callId,
     undoRun: options.undoRun,
     actor: options.actor,
+    extraProjects: extraProjectsOf(options),
   })
 }
+
+/** The extra folders as the binding takes them: absent when there are none. */
+const extraProjectsOf = (options: AgentToolOptions): string[] | undefined =>
+  options.extraProjects && options.extraProjects.length > 0
+    ? [...options.extraProjects]
+    : undefined
 
 /**
  * The diff a `write` or `edit` call would make, for its approval prompt

@@ -45,6 +45,9 @@ const NET_ON: &str = "--net";
 const NET_OFF: &str = "--no-net";
 /// Prefix of a helper argument naming one authorized write root.
 const WRITE_ROOT: &str = "--write-root=";
+/// Prefix of a helper argument naming one folder the container may read (and
+/// execute from) but not write: an attached folder under Review only.
+const READ_ROOT: &str = "--read-root=";
 /// Prefix of the helper argument naming the directory the shell starts in, when
 /// that is not the workspace. It must be one of the write roots (see
 /// [`parse_request`]): the container can only start somewhere it was granted.
@@ -54,6 +57,13 @@ const START_DIR: &str = "--start-dir=";
 /// grant record, so the grants travel with the request (see
 /// [`crate::tools::toolchain_grants`]).
 const PATH_DIR: &str = "--path-dir=";
+/// Marks a spawn that holds its folder grants for as long as it runs (a
+/// confined MCP server), rather than as the session shell. Its grants are
+/// recorded under its own process id, so they stay while it lives and never
+/// replace the shell's (see [`union_roots`]).
+pub(crate) const OWN_HOLDER: &str = "--own-grant-holder";
+/// The holder every shell command of a session records its grants under.
+pub(crate) const SHELL_HOLDER: &str = "shell";
 
 /// Exit code when the helper itself fails, distinct from anything a shell
 /// reports so a setup failure is not mistaken for a command failure.
@@ -99,7 +109,7 @@ pub fn helper_args(
     program: &Path,
     args: &[String],
 ) -> Vec<String> {
-    helper_args_at(workspace, None, scratch, write_roots, allow_network, program, args)
+    helper_args_at(workspace, None, scratch, write_roots, &[], allow_network, program, args)
 }
 
 /// [`helper_args`], with the shell started in `start` rather than the
@@ -110,6 +120,7 @@ pub fn helper_args_at(
     start: Option<&Path>,
     scratch: Option<&Path>,
     write_roots: &[PathBuf],
+    read_roots: &[PathBuf],
     allow_network: bool,
     program: &Path,
     args: &[String],
@@ -126,6 +137,10 @@ pub fn helper_args_at(
     // mistaken for the separator or for the shell that follows it.
     for root in write_roots {
         out.push(format!("{WRITE_ROOT}{}", root.to_string_lossy()));
+    }
+    // A folder both readable and writable is granted once, writable.
+    for root in read_roots.iter().filter(|r| !write_roots.contains(r)) {
+        out.push(format!("{READ_ROOT}{}", root.to_string_lossy()));
     }
     if let Some(start) = start.filter(|s| *s != workspace) {
         out.push(format!("{START_DIR}{}", start.to_string_lossy()));
@@ -191,10 +206,17 @@ fn command_line(program: &Path, args: &[String]) -> String {
 struct Request {
     workspace: PathBuf,
     scratch: Option<PathBuf>,
-    /// Folders the run was authorized to write besides its workspace. The
-    /// caller only passes Jan-owned worktrees here (see
-    /// [`super::jail::can_confine_write_roots`]); the helper grants each an ACE.
+    /// Folders the run was authorized to write besides its workspace: a
+    /// managed worktree, or the user's own folders under "Edit this folder".
+    /// The helper grants each an ACE, refusing any [`grant_refusal`] names.
     write_roots: Vec<PathBuf>,
+    /// Attached folders the run may only read: granted read+execute, never
+    /// write, so a command can list and build from them while every write
+    /// still lands in the workspace.
+    read_roots: Vec<PathBuf>,
+    /// True for a long-lived spawn (a confined MCP server) that holds its
+    /// grants under its own process id; false for a shell command.
+    own_holder: bool,
     /// Where the shell starts: the workspace, or one of `write_roots`.
     start_dir: PathBuf,
     allow_network: bool,
@@ -223,6 +245,8 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         s => Some(PathBuf::from(s)),
     };
     let mut write_roots = Vec::new();
+    let mut read_roots = Vec::new();
+    let mut own_holder = false;
     let mut path_dirs = Vec::new();
     let mut start_dir = None;
     loop {
@@ -232,6 +256,14 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         }
         if let Some(dir) = next.strip_prefix(PATH_DIR) {
             path_dirs.push(PathBuf::from(dir));
+            continue;
+        }
+        if next == OWN_HOLDER {
+            own_holder = true;
+            continue;
+        }
+        if let Some(root) = next.strip_prefix(READ_ROOT) {
+            read_roots.push(PathBuf::from(root));
             continue;
         }
         if let Some(start) = next.strip_prefix(START_DIR) {
@@ -255,6 +287,8 @@ fn parse_request<I: IntoIterator<Item = String>>(argv: I) -> Option<Request> {
         workspace,
         scratch,
         write_roots,
+        read_roots,
+        own_holder,
         start_dir,
         allow_network,
         path_dirs,
@@ -286,11 +320,210 @@ pub fn available() -> bool {
 /// only granted on a directory that no longer exists.
 #[cfg(windows)]
 pub fn release(workspace: &Path) {
+    revoke_roots(workspace);
     win::delete_profile(&moniker(workspace));
 }
 
 #[cfg(not(windows))]
 pub fn release(_workspace: &Path) {}
+
+/// Remove every ACE this workspace's container was given on an attached
+/// folder or worktree, now, rather than at its next command. Called when a
+/// session's grant is revoked or replaced: the next command re-grants exactly
+/// what is still authorized. Only ACEs naming this container are touched.
+#[cfg(windows)]
+pub fn revoke_roots(workspace: &Path) {
+    let name = moniker(workspace);
+    if let Err(e) = win::revoke_recorded_roots(&name) {
+        eprintln!("could not withdraw the folder grants of {name}: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+pub fn revoke_roots(_workspace: &Path) {}
+
+/// A long-lived holder (a confined MCP server whose helper had `pid`) has
+/// stopped: forget its grants and re-apply what the session's other holders
+/// still need. Nothing another live holder needs is withdrawn.
+#[cfg(windows)]
+pub fn release_holder(workspace: &Path, pid: u32) {
+    let name = moniker(workspace);
+    if let Err(e) = win::release_holder(&name, &format!("mcp-{pid}")) {
+        eprintln!("could not withdraw the folder grants of {name}/{pid}: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+pub fn release_holder(_workspace: &Path, _pid: u32) {}
+
+/// Withdraw every folder grant any container still holds. Called once at
+/// startup: grants live in process memory, so after a restart no session
+/// holds one, and an ACE left by the previous run (a crash, a quit mid-run)
+/// is authority nobody can see. Commands re-grant what applies when they run.
+#[cfg(windows)]
+pub fn sweep_recorded_roots() {
+    let Ok(entries) = std::fs::read_dir(win::roots_record_dir()) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        // Each container's applied record is a file; its holders sit in a
+        // directory beside it, removed with the record.
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if let Err(e) = win::revoke_recorded_roots(&name) {
+            eprintln!("could not withdraw the folder grants of {name}: {e}");
+        }
+    }
+}
+
+#[cfg(not(windows))]
+pub fn sweep_recorded_roots() {}
+
+/// Holds sandboxed spawns back while the startup sweep runs, so no command
+/// starts with a grant the sweep is about to withdraw (or re-grants a folder
+/// the sweep then strips mid-command). Idle and finished both let a spawn
+/// through at once; only a sweep in progress makes it wait.
+pub struct SweepGate {
+    /// 0 idle, 1 running, 2 finished.
+    state: std::sync::Mutex<u8>,
+    changed: std::sync::Condvar,
+}
+
+impl SweepGate {
+    pub const fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new(0),
+            changed: std::sync::Condvar::new(),
+        }
+    }
+
+    pub fn begin(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = 1;
+        }
+    }
+
+    pub fn finish(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            *state = 2;
+        }
+        self.changed.notify_all();
+    }
+
+    /// Wait until no sweep is running, at most `timeout`. True when none is.
+    pub fn wait(&self, timeout: std::time::Duration) -> bool {
+        let Ok(state) = self.state.lock() else {
+            return true;
+        };
+        match self.changed.wait_timeout_while(state, timeout, |s| *s == 1) {
+            Ok((state, _)) => *state != 1,
+            Err(_) => true,
+        }
+    }
+}
+
+impl Default for SweepGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+static STARTUP_SWEEP: SweepGate = SweepGate::new();
+
+/// Run [`sweep_recorded_roots`] off the calling thread, with every sandboxed
+/// spawn held at [`await_startup_sweep`] until it is done. The gate closes
+/// before this returns, so a spawn issued right after cannot slip ahead.
+pub fn start_startup_sweep() {
+    STARTUP_SWEEP.begin();
+    std::thread::spawn(|| {
+        // Opened again even if the sweep panics, so spawns are not held for
+        // the whole timeout.
+        struct Open;
+        impl Drop for Open {
+            fn drop(&mut self) {
+                STARTUP_SWEEP.finish();
+            }
+        }
+        let _open = Open;
+        sweep_recorded_roots();
+    });
+}
+
+/// Wait for a startup sweep in progress. Bounded: a sweep stuck on one ACL
+/// must not stop every command for good, so after the timeout the spawn goes
+/// ahead (the helper re-grants exactly what it is authorized for anyway).
+pub fn await_startup_sweep() {
+    if !STARTUP_SWEEP.wait(std::time::Duration::from_secs(10)) {
+        eprintln!("the startup folder-grant sweep is still running; starting the command anyway");
+    }
+}
+
+/// Why the container must never be granted `path`, or `None` when it may be.
+///
+/// A grant is inheritable, so granting a folder grants everything under it:
+/// a drive root, the user's profile (or a folder holding it), Windows,
+/// Program Files or Flint's own data folder would hand the sandbox the whole
+/// machine, the user's keys or Flint's settings. Checked by the helper for
+/// every folder it grants, whatever asked for it; the data folder itself is
+/// also refused when a grant is authorized ([`crate::grants`]).
+pub fn grant_refusal(path: &Path) -> Option<String> {
+    let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
+    let protected: Vec<PathBuf> = [
+        "SystemRoot",
+        "windir",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+        "ProgramW6432",
+    ]
+    .iter()
+    .filter_map(|v| std::env::var_os(v).map(PathBuf::from))
+    .collect();
+    // Flint's data folder is checked where the grant is issued, which knows
+    // it: its managed worktrees live inside it and must stay grantable.
+    grant_refusal_in(path, profile.as_deref(), &protected)
+}
+
+/// [`grant_refusal`] against explicit locations, so it is testable anywhere.
+pub fn grant_refusal_in(
+    path: &Path,
+    profile: Option<&Path>,
+    protected: &[PathBuf],
+) -> Option<String> {
+    // Compared case-insensitively with one separator, as Windows resolves them.
+    let key = |p: &Path| -> Vec<String> {
+        p.to_string_lossy()
+            .replace('/', "\\")
+            .trim_start_matches("\\\\?\\")
+            .to_lowercase()
+            .split('\\')
+            .filter(|c| !c.is_empty() && *c != ".")
+            .map(str::to_string)
+            .collect()
+    };
+    let target = key(path);
+    if target.len() <= 1 || target.iter().any(|c| c == "..") {
+        return Some(format!(
+            "{} is a drive root or not a plain folder path",
+            path.display()
+        ));
+    }
+    if let Some(home) = profile.map(key).filter(|h| !h.is_empty()) {
+        if home.starts_with(&target) {
+            return Some(format!("{} is or holds the user profile", path.display()));
+        }
+    }
+    for dir in protected.iter().map(|d| key(d)).filter(|d| !d.is_empty()) {
+        if target.starts_with(&dir) || dir.starts_with(&target) {
+            return Some(format!(
+                "{} is, holds or is inside a protected system or Flint folder",
+                path.display()
+            ));
+        }
+    }
+    None
+}
 
 /// Does this SDDL string carry an allow ACE for every AppContainer?
 ///
@@ -662,6 +895,9 @@ pub(crate) enum AclStep {
     /// by the parent's right, so the denied `.jan` cannot be renamed away and
     /// replaced (see [`win::sync_write_roots`]).
     GrantRoot(PathBuf),
+    /// Grant the container read and execute on an attached folder, nothing
+    /// more: writes still land in the workspace.
+    GrantRead(PathBuf),
 }
 
 /// What [`win::sync_write_roots`] must do to move from the `previous` write
@@ -674,16 +910,30 @@ pub(crate) enum AclStep {
 /// cut off and has nothing to revoke, but is revoked anyway to clear an
 /// ACE an earlier build left)
 /// (Jozkah/jan#217); one that is gone (`!is_dir`) needs nothing.
-#[cfg_attr(not(windows), allow(dead_code))]
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn write_root_acl_plan(
     previous: &[PathBuf],
     roots: &[PathBuf],
     is_dir: impl Fn(&Path) -> bool,
 ) -> Vec<AclStep> {
+    root_acl_plan(previous, roots, &[], is_dir)
+}
+
+/// [`write_root_acl_plan`], plus folders granted read-only. A folder recorded
+/// before and in neither list now is revoked; a read root that is also a write
+/// root is granted once, writable. A read root's `.jan` is left as the user
+/// has it: nothing is written into a folder under Review only.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn root_acl_plan(
+    previous: &[PathBuf],
+    roots: &[PathBuf],
+    read_roots: &[PathBuf],
+    is_dir: impl Fn(&Path) -> bool,
+) -> Vec<AclStep> {
     let jan = |root: &Path| root.join(crate::tools::sandbox::JAN_DIR);
     let mut steps = Vec::new();
     for old in previous {
-        if !roots.contains(old) && is_dir(old) {
+        if !roots.contains(old) && !read_roots.contains(old) && is_dir(old) {
             if is_dir(&jan(old)) {
                 steps.push(AclStep::Revoke(jan(old)));
             }
@@ -694,12 +944,81 @@ pub(crate) fn write_root_acl_plan(
         steps.push(AclStep::IsolateJan(jan(root)));
         steps.push(AclStep::GrantRoot(root.clone()));
     }
+    for root in read_roots {
+        if !roots.contains(root) {
+            steps.push(AclStep::GrantRead(root.clone()));
+        }
+    }
     steps
+}
+
+/// The record of what a container was granted: one line per folder, the bare
+/// path for a write root (the format every earlier build wrote) and `r<TAB>`
+/// before it for a read root.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn roots_record(write: &[PathBuf], read: &[PathBuf]) -> String {
+    write
+        .iter()
+        .map(|r| r.to_string_lossy().into_owned())
+        .chain(
+            read.iter()
+                .filter(|r| !write.contains(r))
+                .map(|r| format!("r\t{}", r.to_string_lossy())),
+        )
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The folders a container must be granted: every live holder's, unioned.
+/// A folder any holder writes is written; one only read is read. So one
+/// holder changing its own set never withdraws what another still uses.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn union_roots(
+    holders: &[(Vec<PathBuf>, Vec<PathBuf>)],
+) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let mut write: Vec<PathBuf> = Vec::new();
+    let mut read: Vec<PathBuf> = Vec::new();
+    for (w, _) in holders {
+        for root in w {
+            if !write.contains(root) {
+                write.push(root.clone());
+            }
+        }
+    }
+    for (_, r) in holders {
+        for root in r {
+            if !write.contains(root) && !read.contains(root) {
+                read.push(root.clone());
+            }
+        }
+    }
+    (write, read)
+}
+
+/// Where a container's holders record what each needs, beside its record.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn holders_dir(record: &Path) -> PathBuf {
+    let mut name = record.as_os_str().to_os_string();
+    name.push(".holders");
+    PathBuf::from(name)
+}
+
+/// [`roots_record`] read back: `(write roots, read roots)`.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn parse_roots_record(text: &str) -> (Vec<PathBuf>, Vec<PathBuf>) {
+    let (mut write, mut read) = (Vec::new(), Vec::new());
+    for line in text.lines().filter(|l| !l.is_empty()) {
+        match line.strip_prefix("r\t") {
+            Some(path) => read.push(PathBuf::from(path)),
+            None => write.push(PathBuf::from(line)),
+        }
+    }
+    (write, read)
 }
 
 #[cfg(windows)]
 mod win {
-    use super::{write_root_acl_plan, AclStep};
+    use super::{grant_refusal, root_acl_plan, AclStep};
     use super::{
         command_line, create_process_requirement, moniker, runtime_startup_requirement,
         shell_runtime_dirs, LaunchFailure, Request, Stage,
@@ -729,7 +1048,9 @@ mod win {
         DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE, PSECURITY_DESCRIPTOR, PSID,
         SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
     };
-    use windows_sys::Win32::Storage::FileSystem::{FILE_ALL_ACCESS, FILE_DELETE_CHILD};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ALL_ACCESS, FILE_DELETE_CHILD, FILE_GENERIC_EXECUTE, FILE_GENERIC_READ,
+    };
     use windows_sys::Win32::System::Console::{
         GetStdHandle, STD_ERROR_HANDLE, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
     };
@@ -1061,10 +1382,33 @@ mod win {
     /// Where the write roots last granted to a container are recorded: in the
     /// host's temp folder, which the container cannot write, so a sandboxed
     /// command cannot erase the record to keep a grant alive.
-    fn write_root_record(moniker: &str) -> PathBuf {
-        std::env::temp_dir()
-            .join("jan-appcontainer-write-roots")
-            .join(moniker)
+    pub(super) fn write_root_record(moniker: &str) -> PathBuf {
+        roots_record_dir().join(moniker)
+    }
+
+    pub(super) fn roots_record_dir() -> PathBuf {
+        std::env::temp_dir().join("jan-appcontainer-write-roots")
+    }
+
+    /// Revoke every folder the named container has recorded, then forget the
+    /// record. Only ACEs naming this container's SID are removed.
+    pub(super) fn revoke_recorded_roots(moniker: &str) -> Result<(), String> {
+        let record = write_root_record(moniker);
+        let _lock = RecordLock::acquire(&record)?;
+        // Every holder goes: the grant they all rested on is gone.
+        let _ = std::fs::remove_dir_all(super::holders_dir(&record));
+        let Ok(text) = std::fs::read_to_string(&record) else {
+            return Ok(());
+        };
+        let sid = derive_sid(moniker)?;
+        let (write, read) = super::parse_roots_record(&text);
+        let previous: Vec<PathBuf> = write.into_iter().chain(read).collect();
+        for step in root_acl_plan(&previous, &[], &[], |p| p.is_dir()) {
+            if let AclStep::Revoke(path) = step {
+                revoke_path(&path, sid.0)?;
+            }
+        }
+        std::fs::remove_file(&record).map_err(|e| format!("{}: {e}", record.display()))
     }
 
     /// Make the container's ACEs on authorized folders match `roots` exactly.
@@ -1076,25 +1420,150 @@ mod win {
     /// as granted and no longer in `roots` is revoked before anything runs, then
     /// `roots` are granted and recorded. A recorded folder that is gone needs no
     /// revoking.
+    #[cfg(test)]
     pub(super) fn sync_write_roots(
         record: &Path,
         sid: PSID,
         roots: &[PathBuf],
+        read_roots: &[PathBuf],
     ) -> Result<(), String> {
-        let previous: Vec<PathBuf> = std::fs::read_to_string(record)
-            .unwrap_or_default()
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(PathBuf::from)
+        sync_holder_roots(record, sid, super::SHELL_HOLDER, roots, read_roots)
+    }
+
+    /// Forget one holder and re-apply what the others need.
+    pub(super) fn release_holder(moniker: &str, holder: &str) -> Result<(), String> {
+        let record = write_root_record(moniker);
+        let _lock = RecordLock::acquire(&record)?;
+        let _ = std::fs::remove_file(super::holders_dir(&record).join(holder));
+        if !record.exists() {
+            return Ok(());
+        }
+        let sid = derive_sid(moniker)?;
+        apply_union(&record, sid.0)
+    }
+
+    /// Serializes every change to one container's grants across processes
+    /// (the app, each shell helper, each MCP helper), so two holders syncing
+    /// at once cannot interleave their read-modify-write of the record.
+    struct RecordLock(windows_sys::Win32::Foundation::HANDLE);
+
+    impl RecordLock {
+        fn acquire(record: &Path) -> Result<Self, String> {
+            use windows_sys::Win32::System::Threading::CreateMutexW;
+            let key = record.to_string_lossy().to_lowercase();
+            let name = wide(OsStr::new(&format!(
+                "Local\\JanAgentRoots.{:016x}",
+                super::fnv1a(key.as_bytes())
+            )));
+            let handle = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+            if handle.is_null() {
+                return Err(format!("could not open the grant lock: {}", last_error()));
+            }
+            // WAIT_ABANDONED (a holder died holding it) still grants ownership.
+            let waited = unsafe { WaitForSingleObject(handle, 30_000) };
+            if waited == WAIT_FAILED || waited == 0x102 {
+                unsafe { CloseHandle(handle) };
+                return Err("timed out waiting for the grant lock".to_string());
+            }
+            Ok(Self(handle))
+        }
+    }
+
+    impl Drop for RecordLock {
+        fn drop(&mut self) {
+            use windows_sys::Win32::System::Threading::ReleaseMutex;
+            unsafe {
+                ReleaseMutex(self.0);
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    /// Is this holder still live? The shell always is (its record is replaced
+    /// by the next command); a process holder while its process runs.
+    fn holder_alive(holder: &str) -> bool {
+        use windows_sys::Win32::System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        };
+        if holder == super::SHELL_HOLDER {
+            return true;
+        }
+        let Some(pid) = holder.strip_prefix("mcp-").and_then(|p| p.parse::<u32>().ok()) else {
+            return false;
+        };
+        const STILL_ACTIVE: u32 = 259;
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+            if handle.is_null() {
+                return false;
+            }
+            let mut code: u32 = 0;
+            let ok = GetExitCodeProcess(handle, &mut code);
+            CloseHandle(handle);
+            ok != 0 && code == STILL_ACTIVE
+        }
+    }
+
+    /// Record what `holder` needs, then make the container's ACEs the union
+    /// of every live holder's needs. A folder is revoked only when no live
+    /// holder needs it any more.
+    pub(super) fn sync_holder_roots(
+        record: &Path,
+        sid: PSID,
+        holder: &str,
+        roots: &[PathBuf],
+        read_roots: &[PathBuf],
+    ) -> Result<(), String> {
+        // A write grant on a forbidden folder is refused outright; a read one
+        // is simply not made, so the run keeps its file tools and loses only
+        // the shell's view of that folder.
+        for root in roots {
+            if let Some(why) = grant_refusal(root) {
+                return Err(format!("refusing to grant the sandbox {why}"));
+            }
+        }
+        let read_roots: Vec<PathBuf> = read_roots
+            .iter()
+            .filter(|r| r.is_dir() && grant_refusal(r).is_none())
+            .cloned()
             .collect();
-        for step in write_root_acl_plan(&previous, roots, |p| p.is_dir()) {
+        let _lock = RecordLock::acquire(record)?;
+        let holders = super::holders_dir(record);
+        std::fs::create_dir_all(&holders).map_err(|e| format!("{}: {e}", holders.display()))?;
+        let mine = holders.join(holder);
+        std::fs::write(&mine, super::roots_record(roots, &read_roots))
+            .map_err(|e| format!("{}: {e}", mine.display()))?;
+        apply_union(record, sid)
+    }
+
+    /// Apply the union of every live holder's recorded needs, pruning holders
+    /// that have stopped. The caller holds the record's lock.
+    fn apply_union(record: &Path, sid: PSID) -> Result<(), String> {
+        let mut needs = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(super::holders_dir(record)) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !holder_alive(&name) {
+                    let _ = std::fs::remove_file(entry.path());
+                    continue;
+                }
+                let text = std::fs::read_to_string(entry.path()).unwrap_or_default();
+                needs.push(super::parse_roots_record(&text));
+            }
+        }
+        let (roots, read_roots) = super::union_roots(&needs);
+        let (roots, read_roots) = (&roots[..], read_roots);
+        let (old_write, old_read) =
+            super::parse_roots_record(&std::fs::read_to_string(record).unwrap_or_default());
+        let previous: Vec<PathBuf> = old_write.into_iter().chain(old_read).collect();
+        for step in root_acl_plan(&previous, roots, &read_roots, |p| p.is_dir()) {
             match step {
                 AclStep::Revoke(path) => revoke_path(&path, sid)?,
                 // Jozkah/jan#124: the worktree's `.jan` holds the project's
                 // agent policy and hooks. Created when missing so it is cut
-                // off before the shell could make one of its own. These
-                // are Jan-owned worktrees only (the caller refuses any other
-                // root on AppContainer), never a folder of the user's.
+                // off before the shell could make one of its own. A write root
+                // is a managed worktree or, under "Edit this folder", a folder
+                // the user authorized; the other backends hide its `.jan` too.
                 AclStep::IsolateJan(jan) => {
                     if !jan.exists() {
                         std::fs::create_dir_all(&jan)
@@ -1112,13 +1581,21 @@ mod win {
                 AclStep::GrantRoot(root) => {
                     set_access(&root, sid, SET_ACCESS, FILE_ALL_ACCESS & !FILE_DELETE_CHILD)?
                 }
+                // SET_ACCESS: a folder that was writable last command and is
+                // read-only now must lose the write ACE, not keep it merged.
+                AclStep::GrantRead(root) => set_access(
+                    &root,
+                    sid,
+                    SET_ACCESS,
+                    FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+                )?,
             }
         }
         if let Some(parent) = record.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
         }
-        let listed: Vec<String> = roots.iter().map(|r| r.to_string_lossy().into_owned()).collect();
-        std::fs::write(record, listed.join("\n")).map_err(|e| format!("{}: {e}", record.display()))
+        let listed = super::roots_record(roots, &read_roots);
+        std::fs::write(record, listed).map_err(|e| format!("{}: {e}", record.display()))
     }
 
     /// Give `path` a protected DACL holding every ACE it has now, explicit or
@@ -1532,8 +2009,8 @@ mod win {
         grant_path(&granted, sid.0).map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
-        // Authorized write roots: Jan-owned worktrees only, checked by the
-        // caller before it asked. A missing one is refused rather than skipped,
+        // Authorized write roots: a managed worktree or folders the user
+        // authorized to edit, each checked against `grant_refusal`. A missing one is refused rather than skipped,
         // so a run is never told it can write somewhere it cannot. Folders
         // granted to this container before and no longer authorized lose their
         // ACE first.
@@ -1546,7 +2023,19 @@ mod win {
                 ));
             }
         }
-        sync_write_roots(&write_root_record(&name), sid.0, &req.write_roots).map_err(|detail| {
+        let holder = if req.own_holder {
+            format!("mcp-{}", std::process::id())
+        } else {
+            super::SHELL_HOLDER.to_string()
+        };
+        sync_holder_roots(
+            &write_root_record(&name),
+            sid.0,
+            &holder,
+            &req.write_roots,
+            &req.read_roots,
+        )
+        .map_err(|detail| {
             LaunchFailure::new(Stage::SandboxPolicy, "SetNamedSecurityInfoW", detail)
         })?;
 
@@ -1824,6 +2313,131 @@ mod tests {
         );
     }
 
+    /// Review only: attached folders are granted read-only, their `.jan` left
+    /// alone; a folder switching between read and write is re-granted, not
+    /// revoked; one in neither list any more is revoked.
+    #[test]
+    fn the_acl_plan_grants_read_roots_read_only() {
+        let (a, b) = (PathBuf::from("/w/a"), PathBuf::from("/w/b"));
+        let dirs = [a.clone(), a.join(".jan"), b.clone()];
+        let is_dir = |p: &Path| dirs.iter().any(|d| d == p);
+
+        assert_eq!(
+            root_acl_plan(&[], &[], std::slice::from_ref(&a), is_dir),
+            vec![AclStep::GrantRead(a.clone())]
+        );
+        // Written last time, read-only now: re-granted read, not revoked.
+        assert_eq!(
+            root_acl_plan(std::slice::from_ref(&a), &[], std::slice::from_ref(&a), is_dir),
+            vec![AclStep::GrantRead(a.clone())]
+        );
+        // In both lists: granted once, writable.
+        assert_eq!(
+            root_acl_plan(&[], std::slice::from_ref(&a), std::slice::from_ref(&a), is_dir),
+            vec![AclStep::IsolateJan(a.join(".jan")), AclStep::GrantRoot(a.clone())]
+        );
+        // Everything withdrawn: every recorded folder revoked, and nothing else.
+        assert_eq!(
+            root_acl_plan(&[a.clone(), b.clone()], &[], &[], is_dir),
+            vec![
+                AclStep::Revoke(a.join(".jan")),
+                AclStep::Revoke(a.clone()),
+                AclStep::Revoke(b.clone()),
+            ]
+        );
+    }
+
+    /// A spawn waits while a sweep runs and goes through at once otherwise.
+    #[test]
+    fn spawns_wait_for_a_running_sweep_only() {
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+        let gate = Arc::new(SweepGate::new());
+        // Idle: no wait.
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)));
+        assert!(t.elapsed() < Duration::from_secs(1));
+
+        gate.begin();
+        // Running: a short wait times out.
+        assert!(!gate.wait(Duration::from_millis(50)));
+        let finisher = {
+            let gate = gate.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(200));
+                gate.finish();
+            })
+        };
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)), "the sweep's end must release the spawn");
+        assert!(t.elapsed() >= Duration::from_millis(150), "the spawn went ahead mid-sweep");
+        finisher.join().unwrap();
+        // Finished: no wait.
+        let t = Instant::now();
+        assert!(gate.wait(Duration::from_secs(5)));
+        assert!(t.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn the_roots_record_round_trips_and_reads_the_old_format() {
+        let (w, r) = (PathBuf::from("C:\\w"), PathBuf::from("C:\\r"));
+        let text = roots_record(&[w.clone()], &[r.clone(), w.clone()]);
+        assert_eq!(parse_roots_record(&text), (vec![w.clone()], vec![r.clone()]));
+        // What an earlier build wrote: bare paths, all write roots.
+        assert_eq!(parse_roots_record("C:\\w\n"), (vec![w], vec![]));
+    }
+
+    #[test]
+    fn read_roots_travel_to_the_helper() {
+        let (w, r) = (PathBuf::from("C:\\w"), PathBuf::from("C:\\r"));
+        let args = helper_args_at(
+            &ws(),
+            None,
+            None,
+            &[w.clone()],
+            &[r.clone(), w.clone()],
+            false,
+            Path::new("bash.exe"),
+            &[],
+        );
+        let req = parse_request(args).expect("parses");
+        assert_eq!(req.write_roots, vec![w]);
+        assert_eq!(req.read_roots, vec![r]);
+    }
+
+    #[test]
+    fn grants_refuse_drive_roots_the_profile_and_system_folders() {
+        let profile = Path::new("C:\\Users\\me");
+        let protected = [
+            PathBuf::from("C:\\Windows"),
+            PathBuf::from("C:\\Program Files"),
+        ];
+        let refused = |p: &str| grant_refusal_in(Path::new(p), Some(profile), &protected).is_some();
+        for p in [
+            "C:\\",
+            "c:",
+            "D:\\",
+            "C:\\Users",
+            "c:/users/ME/",
+            "C:\\Windows",
+            "C:\\windows\\System32",
+            "C:\\Program Files\\Git",
+            "C:\\Users\\me\\..\\other",
+        ] {
+            assert!(refused(p), "{p} must be refused");
+        }
+        for p in [
+            "C:\\Users\\me\\code\\repo",
+            "D:\\work\\repo",
+            "C:\\ProgramData2\\x",
+            "C:\\Program Files Extra\\x",
+        ] {
+            assert!(!refused(p), "{p} must be allowed");
+        }
+        // Long-path spellings compare like their plain form.
+        assert!(refused("\\\\?\\C:\\Users\\me"));
+    }
+
     /// Jozkah/jan#124: every granted worktree gets its `.jan` cut off, and a
     /// worktree no longer granted is revoked, `.jan` included.
     #[test]
@@ -1882,7 +2496,7 @@ mod tests {
         // The record already lists it, as after an upgrade: nothing is revoked.
         std::fs::write(&record, wt.to_string_lossy().as_bytes()).unwrap();
 
-        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt), &[]).unwrap();
         let allows: Vec<u32> = win::aces_for(&wt, psid)
             .into_iter()
             .filter(|&(ty, flags, _)| ty == 0 && flags & 0x10 == 0)
@@ -1894,7 +2508,7 @@ mod tests {
             "FILE_DELETE_CHILD survived the regrant: {allows:x?}"
         );
 
-        win::sync_write_roots(&record, psid, &[]).unwrap();
+        win::sync_write_roots(&record, psid, &[], &[]).unwrap();
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
@@ -1927,7 +2541,7 @@ mod tests {
         let jan = wt.join(".jan");
         let policy = jan.join("agent/agent.toml");
         for pass in 0..3 {
-            win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
+            win::sync_write_roots(&record, psid, std::slice::from_ref(&wt), &[]).unwrap();
             let aces = win::aces_for(&jan, psid);
             assert!(aces.is_empty(), "pass {pass}: .jan names the container: {aces:x?}");
             let aces = win::aces_for(&policy, psid);
@@ -1937,7 +2551,7 @@ mod tests {
             // The rest of the worktree stays writable.
             assert_ne!(win::effective_rights(&wt.join("main.rs"), psid), 0, "pass {pass}: main.rs");
         }
-        win::sync_write_roots(&record, psid, &[]).unwrap();
+        win::sync_write_roots(&record, psid, &[], &[]).unwrap();
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
@@ -1965,14 +2579,14 @@ mod tests {
         };
         let psid = win::sid_ptr(&sid);
 
-        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt)).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&wt), &[]).unwrap();
         assert!(win::acl_names(&wt, psid), "the authorized worktree was not granted");
         // Jozkah/jan#124: its `.jan` exists and names the container nowhere.
         assert!(wt.join(".jan").is_dir(), "the worktree's .jan was not created");
         let jan_aces = win::aces_for(&wt.join(".jan"), psid);
         assert!(jan_aces.is_empty(), "the worktree's .jan names the container: {jan_aces:?}");
 
-        win::sync_write_roots(&record, psid, std::slice::from_ref(&other)).unwrap();
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&other), &[]).unwrap();
         assert!(!win::acl_names(&wt, psid), "the revoked worktree kept its ACE");
         assert!(
             win::aces_for(&wt.join(".jan"), psid).is_empty(),
@@ -1980,9 +2594,138 @@ mod tests {
         );
         assert!(win::acl_names(&other, psid));
 
-        win::sync_write_roots(&record, psid, &[]).unwrap();
+        win::sync_write_roots(&record, psid, &[], &[]).unwrap();
         assert!(!win::acl_names(&other, psid));
 
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// Review only then Edit this folder then revoked, on a real ACL: a read
+    /// root's ACE carries no write right, becoming a write root adds it, and
+    /// withdrawing the recorded grants leaves no ACE naming the container and
+    /// the folder as writable to its owner as before.
+    #[cfg(windows)]
+    #[test]
+    fn a_user_folder_is_granted_read_then_write_then_withdrawn() {
+        const FILE_WRITE_DATA: u32 = 0x2;
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_user_folder_{n}"));
+        let repo = base.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let name = format!("jan.test.userfolder.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+        let record = win::write_root_record(&name);
+
+        win::sync_write_roots(&record, psid, &[], std::slice::from_ref(&repo)).unwrap();
+        let aces = win::aces_for(&repo, psid);
+        assert!(!aces.is_empty(), "the read root was not granted");
+        assert!(
+            aces.iter().all(|&(_, _, mask)| mask & FILE_WRITE_DATA == 0),
+            "a read root must not be writable: {aces:x?}"
+        );
+        assert!(!repo.join(".jan").exists(), "nothing is written into a read root");
+
+        win::sync_write_roots(&record, psid, std::slice::from_ref(&repo), &[]).unwrap();
+        assert!(
+            win::aces_for(&repo, psid).iter().any(|&(_, _, mask)| mask & FILE_WRITE_DATA != 0),
+            "the write root was not granted write"
+        );
+
+        win::revoke_recorded_roots(&name).unwrap();
+        assert!(win::aces_for(&repo, psid).is_empty(), "an ACE outlived the revoke");
+        assert!(!record.exists(), "the record outlived the revoke");
+        std::fs::write(repo.join("owner.txt"), b"still mine").expect("owner keeps access");
+
+        drop(sid);
+        win::delete_profile(&name);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// One holder's set never withdraws what another still needs; write wins.
+    #[test]
+    fn grants_are_the_union_of_every_holder() {
+        let (a, b, c) = (PathBuf::from("/a"), PathBuf::from("/b"), PathBuf::from("/c"));
+        let shell = (vec![a.clone()], vec![b.clone()]);
+        let server = (vec![], vec![a.clone(), c.clone()]);
+        assert_eq!(
+            union_roots(&[shell.clone(), server.clone()]),
+            (vec![a.clone()], vec![b.clone(), c.clone()])
+        );
+        // A read-only holder does not demote another's write.
+        assert_eq!(union_roots(&[server, shell]).0, vec![a]);
+        assert_eq!(union_roots(&[]), (vec![], vec![]));
+        assert_eq!(
+            holders_dir(Path::new("C:\\t\\Jan.Agent.1")),
+            PathBuf::from("C:\\t\\Jan.Agent.1.holders")
+        );
+    }
+
+    /// The race: the shell holds write on a folder, then an MCP server in the
+    /// same container spawns with a different set. The shell keeps write.
+    /// Stopping the server withdraws only what nobody else needs, and a dead
+    /// holder's needs are pruned.
+    #[cfg(windows)]
+    #[test]
+    fn a_server_spawn_never_withdraws_the_shells_write() {
+        const FILE_WRITE_DATA: u32 = 0x2;
+        let n = std::process::id();
+        let base = std::env::temp_dir().join(format!("jan_ac_holders_{n}"));
+        let (repo, other, stale) = (base.join("repo"), base.join("other"), base.join("stale"));
+        for d in [&repo, &other, &stale] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let name = format!("jan.test.holders.{n}");
+        let sid = match win::test_profile(&name) {
+            Ok(sid) => sid,
+            Err(e) => {
+                eprintln!("skipped: no AppContainer profile here: {e}");
+                return;
+            }
+        };
+        let psid = win::sid_ptr(&sid);
+        let record = win::write_root_record(&name);
+        let writable = |p: &Path| {
+            win::aces_for(p, psid).iter().any(|&(_, _, mask)| mask & FILE_WRITE_DATA != 0)
+        };
+        let server = format!("mcp-{n}"); // this test process: alive
+
+        win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
+            .unwrap();
+        assert!(writable(&repo));
+        // The server spawns wanting only to read `other`.
+        win::sync_holder_roots(&record, psid, &server, &[], std::slice::from_ref(&other))
+            .unwrap();
+        assert!(writable(&repo), "the server's spawn withdrew the shell's write");
+        assert!(!win::aces_for(&other, psid).is_empty(), "the server's read was not granted");
+
+        // The server stops: its read goes, the shell's write stays.
+        win::release_holder(&name, &server).unwrap();
+        assert!(writable(&repo), "stopping the server withdrew the shell's write");
+        assert!(win::aces_for(&other, psid).is_empty(), "the stopped server's grant stayed");
+
+        // A holder whose process is gone is pruned, not honoured.
+        std::fs::write(
+            holders_dir(&record).join("mcp-4294967291"),
+            roots_record(std::slice::from_ref(&stale), &[]),
+        )
+        .unwrap();
+        win::sync_holder_roots(&record, psid, SHELL_HOLDER, std::slice::from_ref(&repo), &[])
+            .unwrap();
+        assert!(win::aces_for(&stale, psid).is_empty(), "a dead holder's folder was granted");
+        assert!(!holders_dir(&record).join("mcp-4294967291").exists());
+
+        win::revoke_recorded_roots(&name).unwrap();
+        assert!(win::aces_for(&repo, psid).is_empty());
+        assert!(!holders_dir(&record).exists());
         drop(sid);
         win::delete_profile(&name);
         let _ = std::fs::remove_dir_all(&base);
@@ -2083,7 +2826,7 @@ mod tests {
     fn the_helper_round_trips_a_start_dir_inside_the_write_roots() {
         let wt = PathBuf::from(r"C:\Users\me\.jan\worktrees\repo\session-1");
         let roots = vec![wt.clone()];
-        let args = helper_args_at(&ws(), Some(&wt), None, &roots, false, Path::new("bash.exe"), &[]);
+        let args = helper_args_at(&ws(), Some(&wt), None, &roots, &[], false, Path::new("bash.exe"), &[]);
         let req = parse_request(args).expect("parsed");
         assert_eq!(req.start_dir, wt);
         assert_eq!(req.write_roots, roots);
@@ -2093,7 +2836,7 @@ mod tests {
 
         let elsewhere = PathBuf::from(r"C:\Users\me\repo");
         let args =
-            helper_args_at(&ws(), Some(&elsewhere), None, &roots, false, Path::new("bash.exe"), &[]);
+            helper_args_at(&ws(), Some(&elsewhere), None, &roots, &[], false, Path::new("bash.exe"), &[]);
         assert!(parse_request(args).is_none(), "a start dir outside the grants must be refused");
     }
 

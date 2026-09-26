@@ -1261,6 +1261,16 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
         let pids = state.mcp_server_pids.lock().await;
         pids.clone()
     };
+    // Workspaces whose sandbox holds a folder grant for a server stopping now,
+    // withdrawn once they are down (restart re-grants on the next spawn).
+    let grant_holders: Vec<(serde_json::Value, Option<u32>)> = {
+        let active_servers = state.mcp_active_servers.lock().await;
+        active_servers
+            .iter()
+            .filter(|(_, config)| super::launch::folder_grant_workspace(config).is_some())
+            .map(|(name, config)| (config.clone(), pids_snapshot.get(name).copied()))
+            .collect()
+    };
     let servers_to_stop: Vec<(String, RunningMcpService, Option<u16>)> = {
         let mut servers_map = state.mcp_servers.lock().await;
         let keys: Vec<String> = servers_map.keys().cloned().collect();
@@ -1329,6 +1339,9 @@ pub async fn stop_mcp_servers_with_context<R: Runtime>(
         futures_util::future::join_all(stop_handles),
     )
     .await;
+    for (config, pid) in &grant_holders {
+        super::launch::release_folder_grants(Some(config), *pid);
+    }
 
     let failed_servers: Vec<String> = match results {
         Ok(results) => {

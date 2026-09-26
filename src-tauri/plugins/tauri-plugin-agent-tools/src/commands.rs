@@ -219,13 +219,16 @@ pub async fn direct_edit_authorize(
     data_folder: String,
     session_id: String,
     folder: String,
+    // The session's additional attached folders, covered by the same grant.
+    extra_folders: Option<Vec<String>>,
 ) -> Result<String, AgentToolsError> {
     // The session's own workspace, which the folder must not overlap.
     let workspace =
         workspace::ensure_session_workspace(Path::new(&data_folder), &session_id).await?;
-    Ok(crate::grants::authorize(
+    Ok(crate::grants::authorize_with_extras(
         &session_id,
         &folder,
+        &extra_folders.unwrap_or_default(),
         &workspace,
         Path::new(&data_folder),
     )?)
@@ -850,6 +853,9 @@ pub async fn execute_tool(
     // change can always name the agent that made it. `None` records the change
     // without an actor, which reads as unknown rather than as anyone.
     actor: Option<ActorInput>,
+    // The session's additional attached folders, each readable exactly like
+    // `read_only_project` and validated the same way.
+    extra_projects: Option<Vec<String>>,
 ) -> Result<ToolResult, AgentToolsError> {
     execute_tool_inner(
         data_folder,
@@ -865,6 +871,7 @@ pub async fn execute_tool(
         call_id,
         undo_run,
         actor,
+        extra_projects,
         None,
         false,
     )
@@ -897,6 +904,7 @@ pub async fn execute_tool_streaming(
     // change can always name the agent that made it. `None` records the change
     // without an actor, which reads as unknown rather than as anyone.
     actor: Option<ActorInput>,
+    extra_projects: Option<Vec<String>>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
     let sink = output_sink(on_output, call_id.clone());
@@ -914,6 +922,7 @@ pub async fn execute_tool_streaming(
         call_id,
         undo_run,
         actor,
+        extra_projects,
         Some(sink),
         false,
     )
@@ -996,6 +1005,7 @@ async fn execute_tool_inner(
     // change can always name the agent that made it. `None` records the change
     // without an actor, which reads as unknown rather than as anyone.
     actor: Option<ActorInput>,
+    extra_projects: Option<Vec<String>>,
     sink: Option<crate::tools::OutputSink>,
     // True only for a call the user approved to run outside the sandbox,
     // redeemed through `execute_tool_unsandboxed_retry`.
@@ -1051,15 +1061,23 @@ async fn execute_tool_inner(
         )?],
         None => Vec::new(),
     };
+    // The session's other attached folders: readable like the primary, after it.
+    for path in extra_projects.iter().flatten() {
+        let validated =
+            workspace::validate_read_root(Path::new(path), &root, Some(Path::new(&data_folder)))?;
+        if !read_roots.contains(&validated) {
+            read_roots.push(validated);
+        }
+    }
     // Resolved against this thread, so a grant issued to another session — or
     // one already revoked — authorizes nothing and the run simply writes to its
     // own workspace. Validation happened when the grant was issued; what
-    // matters here is that it is still live and still ours.
+    // matters here is that it is still live and still ours. The grant covers
+    // the primary folder first and then the session's extra folders.
     let write_roots: Vec<PathBuf> = write_grant
         .as_deref()
-        .and_then(|id| crate::grants::resolve(id, &thread_id))
-        .into_iter()
-        .collect();
+        .map(|id| crate::grants::resolve_all(id, &thread_id))
+        .unwrap_or_default();
     // Folders the user granted through `request_access`, re-resolved now so a
     // grant whose folder has since become a link elsewhere no longer applies.
     let (access_read, access_write) = crate::access::active_roots(
@@ -1480,8 +1498,8 @@ async fn writable_roots_now(
         .ensure(Path::new(data_folder), session_id)
         .await?;
     let mut roots = vec![root, workspace::scratch_dir(session_id)];
-    if let Some(granted) = write_grant.and_then(|id| crate::grants::resolve(id, session_id)) {
-        roots.push(granted);
+    if let Some(id) = write_grant {
+        roots.extend(crate::grants::resolve_all(id, session_id));
     }
     Ok(roots)
 }
@@ -2165,6 +2183,7 @@ mod tests {
             None,
             Some("run-1".into()),
             actor("agent", ""),
+            None,
         )
         .await
         .expect("the write runs");
@@ -2184,6 +2203,7 @@ mod tests {
             None,
             Some("run-1".into()),
             actor("agent:explorer", "Explorer"),
+            None,
         )
         .await
         .expect("the write runs");
@@ -2220,6 +2240,7 @@ mod tests {
             None,
             Some("run-1".into()),
             actor("session:s-actor", "The user"),
+            None,
         )
         .await
         .expect_err("an identity that is not an agent is refused");
@@ -2246,6 +2267,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "a.txt", "content": "hello"}),
+            None,
             None,
             None,
             None,
@@ -2366,6 +2388,7 @@ mod tests {
             None,
             Some("run-1".into()),
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -2412,6 +2435,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("allowed");
@@ -2435,6 +2459,7 @@ mod tests {
             None,
             "edit".into(),
             json!({"path": "a.txt", "edits": [{"old_string": "before", "new_string": "after"}]}),
+            None,
             None,
             None,
             None,
@@ -2482,6 +2507,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("an escaping read must be refused");
@@ -2512,6 +2538,7 @@ mod tests {
                 None,
                 "write".into(),
                 json!({"path": path, "content": "x"}),
+                None,
                 None,
                 None,
                 None,
@@ -2561,6 +2588,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect("a scratch write is the session scratch and must succeed");
@@ -2578,6 +2606,7 @@ mod tests {
             None,
             "write".into(),
             json!({"path": "ok.txt", "content": "x"}),
+            None,
             None,
             None,
             None,
@@ -2627,6 +2656,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
 
@@ -2642,6 +2672,95 @@ mod tests {
                 "the model must be told why, got: {}",
                 out.content
             );
+        }
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// Windows, end to end: under "Edit this folder" the sandboxed shell writes
+    /// the authorized folder and its extra folders and not the one beside
+    /// them; under Review only it reads an attached folder and cannot write
+    /// it; once the grant is revoked the shell cannot write the folder again.
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn the_windows_shell_edits_only_authorized_folders() {
+        if jail::backend() != jail::Backend::AppContainer {
+            eprintln!("skipping: AppContainer is not available here");
+            return;
+        }
+        let sid: &str = &unique_thread("windows_edit_folder");
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let repo = repo_outside_tmp("ac-edit");
+        let extra = repo_outside_tmp("ac-extra");
+        let sibling = repo_outside_tmp("ac-sibling");
+        std::fs::write(sibling.join("notes.txt"), b"sibling notes").unwrap();
+        let fwd = |p: &Path| p.to_string_lossy().replace('\\', "/");
+        let bash = |command: String, project: Option<String>, grant: Option<String>| {
+            execute_tool(
+                df.clone(),
+                sid.into(),
+                None,
+                "bash".into(),
+                json!({ "command": command }),
+                None,
+                None,
+                project,
+                grant,
+                Some(WorkspaceScope::Session),
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+
+        let grant = direct_edit_authorize(
+            df.clone(),
+            sid.into(),
+            repo.to_string_lossy().into(),
+            Some(vec![extra.to_string_lossy().into()]),
+        )
+        .await
+        .expect("the folder is authorized");
+        for (dir, name) in [(&repo, "in-repo.txt"), (&extra, "in-extra.txt"), (&sibling, "in-sibling.txt")] {
+            let _ = bash(
+                format!("echo edited > \"{}/{name}\"", fwd(dir)),
+                Some(repo.to_string_lossy().into()),
+                Some(grant.clone()),
+            )
+            .await;
+        }
+        assert!(repo.join("in-repo.txt").exists(), "the authorized folder was not writable");
+        assert!(extra.join("in-extra.txt").exists(), "the extra folder was not writable");
+        assert!(!sibling.join("in-sibling.txt").exists(), "a folder beside them was written");
+
+        // Review only: the sibling attached, no grant.
+        direct_edit_revoke(grant);
+        let out = bash(
+            format!("cat \"{}/notes.txt\"", fwd(&sibling)),
+            Some(sibling.to_string_lossy().into()),
+            None,
+        )
+        .await
+        .expect("runs");
+        assert!(out.content.contains("sibling notes"), "the attached folder was not readable: {}", out.content);
+        let _ = bash(
+            format!("echo x > \"{}/review.txt\"", fwd(&sibling)),
+            Some(sibling.to_string_lossy().into()),
+            None,
+        )
+        .await;
+        assert!(!sibling.join("review.txt").exists(), "Review only wrote the attached folder");
+        let _ = bash(
+            format!("echo x > \"{}/after-revoke.txt\"", fwd(&repo)),
+            Some(repo.to_string_lossy().into()),
+            None,
+        )
+        .await;
+        assert!(!repo.join("after-revoke.txt").exists(), "the revoked folder stayed writable");
+
+        for dir in [&repo, &extra, &sibling] {
+            let _ = std::fs::remove_dir_all(dir);
         }
         let _ = std::fs::remove_dir_all(&data);
     }
@@ -2680,6 +2799,7 @@ mod tests {
             // AppContainer -- it is a parse error, so the test failed on
             // syntax rather than on whether the network was reachable.
             json!({ "command": command }),
+            None,
             None,
             None,
             None,
@@ -2751,6 +2871,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2773,6 +2894,7 @@ mod tests {
             None,
             "read".to_string(),
             json!({"path": "a.txt"}),
+            None,
             None,
             None,
             None,
@@ -2815,6 +2937,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../isolation-thread-one/secret.txt"}),
+            None,
             None,
             None,
             None,
@@ -2871,6 +2994,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         {
@@ -2916,6 +3040,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -2932,6 +3057,7 @@ mod tests {
             None,
             "memory_read".into(),
             json!({"name": "prefs"}),
+            None,
             None,
             None,
             None,
@@ -2967,6 +3093,7 @@ mod tests {
             None,
             "read".into(),
             json!({"path": "../../memory/prefs.md"}),
+            None,
             None,
             None,
             None,
@@ -3036,6 +3163,7 @@ mod tests {
                     None,
                     None,
                     None,
+                    None,
                 )
                 .await
                 .is_err(),
@@ -3066,6 +3194,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .expect_err("agent config must be hard-denied");
@@ -3088,6 +3217,7 @@ mod tests {
             None,
             "rm_rf".to_string(),
             json!({}),
+            None,
             None,
             None,
             None,
@@ -3177,6 +3307,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3190,6 +3321,7 @@ mod tests {
             None,
             "skill_read".into(),
             json!({"name": "deploy"}),
+            None,
             None,
             None,
             None,
@@ -3231,6 +3363,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -3251,6 +3384,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         let err = write.expect_err("a write into the attached folder must be refused");
@@ -3263,6 +3397,45 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&data);
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A session's extra attached folders are readable exactly like the
+    /// primary: without them a read there is refused, with them it succeeds.
+    #[tokio::test]
+    async fn an_extra_attached_folder_is_readable_like_the_primary() {
+        let thread: &str = &unique_thread("an_extra_attached_folder");
+        let data = unique_data_folder();
+        let df = data.to_string_lossy().to_string();
+        let primary = repo_outside_tmp("extra-primary");
+        let extra = repo_outside_tmp("extra-second");
+        std::fs::write(extra.join("notes.md"), b"second folder").unwrap();
+        let call = |extras: Option<Vec<String>>| {
+            execute_tool(
+                df.clone(),
+                thread.into(),
+                None,
+                "read".into(),
+                json!({"path": extra.join("notes.md").to_string_lossy()}),
+                None,
+                None,
+                Some(primary.to_string_lossy().to_string()),
+                None,
+                None,
+                None,
+                None,
+                None,
+                extras,
+            )
+        };
+
+        assert!(call(None).await.is_err(), "outside every attached folder");
+        let out = call(Some(vec![extra.to_string_lossy().to_string()]))
+            .await
+            .expect("the extra folder is attached");
+        assert!(out.content.contains("second folder"), "{}", out.content);
+
+        let _ = std::fs::remove_dir_all(&primary);
+        let _ = std::fs::remove_dir_all(&extra);
     }
 
     /// The whole `request_access` round trip at the tool boundary: a read
@@ -3283,6 +3456,7 @@ mod tests {
                 None,
                 name.into(),
                 args,
+                None,
                 None,
                 None,
                 None,
@@ -3347,6 +3521,7 @@ mod tests {
             "read".into(),
             read_args.clone(),
             None, None, None, None, None, None, None, None,
+            None,
         )
         .await;
         assert!(other.is_err(), "grant leaked to another session");
@@ -3407,6 +3582,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         )
         .await;
         assert!(out.is_err() || out.unwrap().is_error);
@@ -3437,6 +3613,7 @@ mod tests {
             None,
             None,
             Some(inside.to_string_lossy().to_string()),
+            None,
             None,
             None,
             None,
