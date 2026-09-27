@@ -56,38 +56,38 @@
 }
 
 /* ---- Timeline action (Style B) ----
-   On the timeline a tool call is a compact row: its dot on the rail already
+   Everywhere (timeline, condensed view; Chat, Cowork, Rooms) a tool call is a compact row: its dot on the rail already
    carries the kind colour, so the row drops the card chrome (border, bar,
    icon tile) and reads "Used read  path". Opening it shows the details in a
    thin box below. A request waiting for the user is the one expanded step:
    the action panel, with a single amber border and nothing nested in it. */
-[data-slot='step-row'] .tool-card:not(.tool-action-panel) {
+.tool-card:not(.tool-action-panel) {
   border-color: transparent;
   background: transparent;
   overflow: visible;
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel)::before {
+.tool-card:not(.tool-action-panel)::before {
   display: none;
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel):hover {
+.tool-card:not(.tool-action-panel):hover {
   box-shadow: none;
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-header'] {
+.tool-card:not(.tool-action-panel) > [data-slot='tool-header'] {
   min-height: 26px;
   padding-block: 2px;
   padding-inline: 4px;
   border-radius: 6px;
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel) [data-slot='tool-icon'] {
+.tool-card:not(.tool-action-panel) [data-slot='tool-icon'] {
   display: none;
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-content'] {
+.tool-card:not(.tool-action-panel) > .tool-expanded {
   margin-top: 4px;
   border: 0.8px solid var(--border);
   border-radius: 8px;
   background: var(--card);
 }
-[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-content'] > div > :first-child {
+.tool-card:not(.tool-action-panel) > .tool-expanded > div > :first-child {
   border-top: 0;
 }
 .tool-action-panel {

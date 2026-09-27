@@ -21,8 +21,9 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
     ).length,
 }))
 
+const originOf = vi.hoisted(() => ({ current: { kind: 'agent' } as unknown }))
 vi.mock('@/hooks/useToolOrigin', () => ({
-  useToolOrigin: () => ({ kind: 'agent' }),
+  useToolOrigin: () => originOf.current,
 }))
 
 import { ToolCallCard } from '../ToolCallCard'
@@ -47,6 +48,7 @@ const onTimeline = (part: MessagePartLike) =>
   )
 
 beforeEach(() => {
+  originOf.current = { kind: 'agent' }
   approvalState.pending = {}
   resolveApproval.mockClear()
 })
@@ -148,5 +150,35 @@ describe('ToolCallCard on the timeline (Style B)', () => {
     )
     expect(screen.getByText('tools:toolCall.failed:bash')).toBeInTheDocument()
     expect(screen.queryByText('permissions:scope.deny')).toBeNull()
+  })
+  // Every renderer opens into the same thin outline, never a nested card.
+  it.each([
+    ['read', { kind: 'agent' }, { path: 'a.go' }, 'package a'],
+    ['edit', { kind: 'agent' }, { path: 'a.go', old: 'x', new: 'y' }, 'ok'],
+    ['write', { kind: 'agent' }, { path: 'b.go', content: 'x' }, 'ok'],
+    ['grep', { kind: 'agent' }, { pattern: 'retry' }, 'a.go:1: retry'],
+    ['ls', { kind: 'agent' }, { path: '.' }, 'a.go'],
+    ['bash', { kind: 'agent' }, { command: 'ls' }, 'a.go\n[exit 0]'],
+    ['todo_write', { kind: 'agent' }, { todos: [] }, 'ok'],
+    ['web_search', { kind: 'web-search', detail: 'Exa' }, { query: 'q' }, 'r'],
+    ['web_fetch', { kind: 'web-fetch' }, { url: 'https://example.com' }, 'r'],
+    ['create_issue', { kind: 'mcp', detail: 'github' }, { title: 'Bug' }, 'done'],
+    ['task', undefined, { prompt: 'sub' }, 'done'],
+  ])('%s expands into the shared thin outline', (name, origin, input, output) => {
+    originOf.current = origin
+    const { container } = onTimeline({
+      type: `tool-${name}`,
+      toolCallId: `tc-${name}`,
+      state: 'output-available',
+      input,
+      output,
+    } as MessagePartLike)
+    const header = container.querySelector('[data-slot="tool-header"]')!
+    if (header.getAttribute('aria-expanded') !== 'true') fireEvent.click(header)
+    const cards = container.querySelectorAll('[data-slot="tool-card"]')
+    expect(cards).toHaveLength(1)
+    const content = cards[0].querySelector(':scope > [data-slot="tool-content"]')!
+    expect(content).toHaveClass('tool-expanded')
+    expect(content).toHaveAttribute('data-expanded-style', 'thin')
   })
 })
