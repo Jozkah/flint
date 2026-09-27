@@ -18,6 +18,8 @@ jobs:
           ISSUE_TITLE=$(gh issue view ${{ github.event.number }} --json title -q ".title")
           LABEL=$(bash .github/scripts/pr-type-label.sh "$ISSUE_TITLE")
           if [ -n "$LABEL" ]; then
+            # The repo may not have the label yet; create it rather than fail.
+            gh label create "$LABEL" 2>/dev/null || true
             gh issue edit ${{ github.event.number }} --add-label "$LABEL"
           fi
         env:
