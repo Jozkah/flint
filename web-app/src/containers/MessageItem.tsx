@@ -103,6 +103,12 @@ export type MessageItemProps = {
    * model round of the same reply), so it carries no header of its own.
    */
   continuation?: boolean
+  /**
+   * Cowork only: more of the same reply follows this row (a later model
+   * round). The row is not the end of the run, so it gets no empty-run
+   * fallback and no token-speed line of its own.
+   */
+  midReply?: boolean
 }
 
 export const MessageItem = memo(
@@ -114,6 +120,7 @@ export const MessageItem = memo(
     isAnimating,
     hideActions,
     continuation,
+    midReply,
     keepToolActivity,
     subagents,
     reasoningContainerRef,
@@ -241,6 +248,16 @@ export const MessageItem = memo(
         (status === CHAT_STATUS.STREAMING ||
           status === CHAT_STATUS.SUBMITTED)) ||
       hasPendingToolCall
+
+    // Continue is offered on a stopped reply, and on one whose run ended
+    // without an answer (a tool failed and the model gave up), so the user
+    // can resume the work instead of starting over.
+    const canContinue =
+      isStopped ||
+      (message.role === 'assistant' &&
+        !isStreaming &&
+        !midReply &&
+        emptyRunFallback(message.parts as MessagePartLike[]) !== null)
 
     // Aggregate RAG citations in part order and record each rag tool part's
     // base offset, so its card numbers/anchors continue the same global
@@ -585,7 +602,12 @@ export const MessageItem = memo(
       flushCot(false)
       // A run that ended after tool calls with no reply: say so, and name
       // the last tool failure, rather than leaving only the tool trace.
-      if (message.role === 'assistant' && !isStreaming && !awaitingApproval) {
+      if (
+        message.role === 'assistant' &&
+        !isStreaming &&
+        !awaitingApproval &&
+        !midReply
+      ) {
         const fallback = emptyRunFallback(parts)
         if (fallback) {
           elements.push(
@@ -608,6 +630,7 @@ export const MessageItem = memo(
       grounding,
       awaitingApproval,
       citationOffsets,
+      midReply,
     ])
 
     const versionNav =
@@ -836,7 +859,7 @@ export const MessageItem = memo(
                   onContinue &&
                   !isStreaming &&
                   isLastMessage &&
-                  isStopped && (
+                  canContinue && (
                     <Button
                       variant="ghost"
                       size="icon-xs"
@@ -861,7 +884,9 @@ export const MessageItem = memo(
                 )}
             </div>
 
-            <TokenSpeedIndicator streaming={isStreaming} metadata={metadata} />
+            {!midReply && (
+              <TokenSpeedIndicator streaming={isStreaming} metadata={metadata} />
+            )}
           </div>
         )}
 
@@ -888,7 +913,7 @@ export const MessageItem = memo(
             {selectedModel &&
               onContinue &&
               isLastMessage &&
-              isStopped &&
+              canContinue &&
               !isStreaming && (
                 <DropdownMenuItem onClick={handleContinue}>
                   <Play className="mr-2 size-4" />
@@ -945,6 +970,7 @@ export const MessageItem = memo(
       prevProps.status === nextProps.status &&
       prevProps.hideActions === nextProps.hideActions &&
       prevProps.continuation === nextProps.continuation &&
+      prevProps.midReply === nextProps.midReply &&
       prevProps.keepToolActivity === nextProps.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&
       prevProps.versionInfo?.count === nextProps.versionInfo?.count
