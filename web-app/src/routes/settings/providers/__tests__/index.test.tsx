@@ -17,6 +17,7 @@ const h = vi.hoisted(() => {
         capabilities: ['tools'],
         settings: { ctx_len: { controller_props: { value: 32768 } } },
       },
+      { id: 'gemma-3-4b-it:Q4_K_M', name: 'Gemma 3 4B', capabilities: [], settings: {} },
     ],
   }
   const openai: any = {
@@ -154,8 +155,8 @@ describe('Models page (/settings/providers)', () => {
   it('shows KPI tiles from the providers, the loaded list and the files on disk', async () => {
     await renderPage()
     const installed = screen.getByText('engine:kpi.installed').closest('section')!
-    // Only enabled providers count: one local model, three remote.
-    expect(within(installed).getByText('4')).toBeInTheDocument()
+    // Only enabled providers count: two local models, three remote.
+    expect(within(installed).getByText('5')).toBeInTheDocument()
     const loaded = screen.getByText('engine:kpi.loaded').closest('section')!
     expect(within(loaded).getByText('1')).toBeInTheDocument()
     const disk = screen.getByText('engine:kpi.disk').closest('section')!
@@ -202,6 +203,15 @@ describe('Models page (/settings/providers)', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'engine:filter.remote' }))
     expect(screen.queryByTestId('models-row-qwen3-14b')).not.toBeInTheDocument()
     expect(screen.getByTestId('models-row-gpt-5')).toBeInTheDocument()
+  })
+
+  it('names the provider, not the quantization, in the Provider column', async () => {
+    await renderPage()
+    const cell = within(
+      screen.getByTestId('models-row-gemma-3-4b-it:Q4_K_M')
+    ).getByTestId('models-provider-cell')
+    expect(cell).not.toHaveTextContent('Q4_K_M')
+    expect(cell).toHaveTextContent(/llama/i)
   })
 
   it("opens a real menu from a model row's three dots", async () => {
