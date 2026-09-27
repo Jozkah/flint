@@ -137,9 +137,19 @@ mod desktop {
         let origin = app_origin(&app);
         let target = parse_preview_url(&url, origin.as_ref())?;
         if let Some(existing) = app.get_webview(&label) {
-            existing.navigate(target).map_err(|e| e.to_string())?;
-            existing.set_bounds(rect(bounds)).map_err(|e| e.to_string())?;
-            return existing.show().map_err(|e| e.to_string());
+            let reused = existing
+                .navigate(target.clone())
+                .and_then(|_| existing.set_bounds(rect(bounds)))
+                .and_then(|_| existing.show());
+            match reused {
+                Ok(()) => return Ok(()),
+                // A view left over from a preview that was closing: drop it
+                // and build a fresh one rather than failing the open.
+                Err(e) => {
+                    log::warn!("web preview: replacing stale view {label}: {e}");
+                    let _ = existing.close();
+                }
+            }
         }
         let window = app
             .get_window("main")

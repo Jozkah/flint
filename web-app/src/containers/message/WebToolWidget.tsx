@@ -11,6 +11,7 @@ import {
 } from '@/lib/toolPresentation'
 import { hostOf, siteInitial } from '@/lib/webUrl'
 import { ToolBar } from './ToolBar'
+import { SiteIcon } from '@/components/SiteIcon'
 
 /** Dark tiles for the site letters, one per host so results tell apart. */
 const FAVICON_TONES = ['#1f2937', '#24292f', '#334155', '#3f3f46', '#1e3a5f', '#3b2f4a']
@@ -22,8 +23,16 @@ const toneOf = (url: string) => {
   return FAVICON_TONES[Math.abs(h) % FAVICON_TONES.length]
 }
 
-/** The site's initial. Drawn here rather than fetched from a third party. */
+/** The site's favicon, from the site itself; its initial when it has none. */
 const Favicon = ({ url }: { url: string }) => (
+  <SiteIcon
+    url={url}
+    className="size-[18px] shrink-0 rounded-[5px] bg-white object-contain"
+    fallback={<LetterIcon url={url} />}
+  />
+)
+
+const LetterIcon = ({ url }: { url: string }) => (
   <span
     aria-hidden
     style={{ background: toneOf(url) }}

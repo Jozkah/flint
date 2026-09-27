@@ -3,6 +3,19 @@ import { useTheme } from '@/hooks/useTheme'
 import { isPlatformTauri } from '@/lib/platform/utils'
 import { listen } from '@tauri-apps/api/event'
 
+/**
+ * Any CSS colour (rgb, oklch, ...) as 0xRRGGBB, by painting it on a 1x1
+ * canvas; computed styles keep oklch as written. Null without a 2D context.
+ */
+export function rgbOf(css: string): number | null {
+  const ctx = document.createElement('canvas').getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = css
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return (r << 16) | (g << 8) | b
+}
+
 export function ThemeProvider() {
   const { isDark, setIsDark, activeTheme } = useTheme()
 
@@ -13,6 +26,20 @@ export function ThemeProvider() {
     // stylesheet's html background and .dark color-scheme take over.
     root.style.removeProperty('background')
     root.style.removeProperty('color-scheme')
+    if (IS_WINDOWS && isPlatformTauri()) {
+      // Paint the native title bar with the app's own background once the
+      // new theme's styles apply, so the caption blends into the window.
+      requestAnimationFrame(() => {
+        const bg = rgbOf(getComputedStyle(root).backgroundColor)
+        const fg = rgbOf(getComputedStyle(root).color)
+        if (bg === null || fg === null) return
+        import('@tauri-apps/api/core')
+          .then(({ invoke }) =>
+            invoke('set_titlebar_colors', { background: bg, text: fg })
+          )
+          .catch((err) => console.error('set_titlebar_colors failed:', err))
+      })
+    }
     if (IS_LINUX && isPlatformTauri()) {
       import('@tauri-apps/api/core')
         .then(({ invoke }) => invoke('set_gtk_prefer_dark', { dark: isDark }))

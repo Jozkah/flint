@@ -4,6 +4,7 @@ import { ChevronRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Citations, type WebCitation } from '@/components/Citations'
 import { hostOf, siteInitial } from '@/lib/webUrl'
+import { SiteIcon } from '@/components/SiteIcon'
 import { summarizeWebSources } from '@/lib/webSources'
 
 const NO_READS: string[] = []
@@ -48,13 +49,19 @@ export const WebSourcesRow = memo(
         >
           <span className="flex -space-x-1.5">
             {preview.map((c) => (
-              <span
+              <SiteIcon
                 key={c.url}
-                aria-hidden
-                className="size-4 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
-              >
-                {siteInitial(c.url)}
-              </span>
+                url={c.url}
+                className="size-4 rounded-full border border-border/60 bg-white object-contain"
+                fallback={
+                  <span
+                    aria-hidden
+                    className="size-4 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground"
+                  >
+                    {siteInitial(c.url)}
+                  </span>
+                }
+              />
             ))}
           </span>
           <span className="font-medium">

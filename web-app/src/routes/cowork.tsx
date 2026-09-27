@@ -471,6 +471,7 @@ import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
+import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -2356,8 +2357,12 @@ export function CoworkPage() {
       return
     }
     // Another session's message is not what this session is about.
-    if (text && !from && !hidden && current?.title === 'New session')
-      store.setTitle(sid, slashTitle(text).slice(0, 40))
+    if (text && !from && !hidden && current?.title === 'New session') {
+      // The prompt, cut short, until the model's own title arrives.
+      const placeholder = slashTitle(text).slice(0, 40)
+      store.setTitle(sid, placeholder)
+      autoTitleCoworkSession(sid, slashTitle(text), placeholder)
+    }
 
     /**
      * A managed worktree still being the thing this session recorded.

@@ -134,7 +134,7 @@ export function CoworkWorkspacePill({
           size={folderName ? 'xs' : 'icon-xs'}
           className={
             folderName
-              ? 'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
+              ? 'h-[30px] min-w-0 shrink gap-1.5 px-2.5 text-xs font-medium text-muted-foreground pointer-coarse:h-11'
               : 'size-[30px] shrink-0 text-muted-foreground pointer-coarse:size-11'
           }
           aria-label={
@@ -150,7 +150,7 @@ export function CoworkWorkspacePill({
               ) : (
                 <Folder className="size-3.5 shrink-0" aria-hidden />
               )}
-              <span className="max-w-[120px] truncate text-secondary-foreground">
+              <span className="min-w-0 max-w-[120px] truncate text-secondary-foreground">
                 {folderName}
               </span>
               {gitBranch ? (

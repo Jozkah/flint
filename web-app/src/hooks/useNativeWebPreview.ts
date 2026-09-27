@@ -52,6 +52,19 @@ export function useNativeWebPreview({
   const urlRef = useRef(url)
   urlRef.current = url
 
+  // A failed start falls back to the iframe for that page only. Closing the
+  // preview or going to another page tries the native view again, so one
+  // transient failure (the previous view still closing, say) does not leave
+  // every later page in an iframe that most sites refuse to be framed in.
+  const failedUrl = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isTauri() || mode !== 'iframe') return
+    if (!enabled || (failedUrl.current !== null && url !== failedUrl.current)) {
+      failedUrl.current = null
+      setMode('pending')
+    }
+  }, [enabled, url, mode])
+
   // Lifetime: one controller per open session; closed on disable/unmount.
   useEffect(() => {
     if (!enabled || mode === 'iframe') return
@@ -81,7 +94,10 @@ export function useNativeWebPreview({
       })
       .catch((err) => {
         console.warn('Native web preview unavailable, using iframe:', err)
-        if (!cancelled) setMode('iframe')
+        if (!cancelled) {
+          failedUrl.current = initialUrl
+          setMode('iframe')
+        }
       })
     return () => {
       cancelled = true
