@@ -143,6 +143,25 @@ describe('runModelProbe', () => {
     expect(r.checks[1].detail).toContain('kelvin')
   })
 
+  it('fails a model that asks for another city or unit than it was asked', async () => {
+    for (const input of [
+      { city: 'Paris', unit: 'fahrenheit' },
+      { city: 'Paris', unit: 'celsius' },
+      { city: 'Oslo', unit: 'fahrenheit' },
+    ]) {
+      const { d, calls } = deps([
+        reply({ finishReason: 'tool-calls', toolCalls: [{ toolCallId: 'c1', toolName: PROBE_TOOL, input }] }),
+        reply({ text: 'K7Q2ZP' }),
+      ])
+      const r = await runModelProbe(identity, d)
+      expect(r.outcome).toBe('failed')
+      expect(r.checks[1]).toMatchObject({ id: 'arguments', ok: false })
+      expect(r.checks[1].detail).toContain('asked for')
+      // No Oslo result is ever handed to a model that asked for something else.
+      expect(calls).toHaveLength(1)
+    }
+  })
+
   it('reports arguments that were not JSON at all', async () => {
     const { d } = deps([
       reply({
@@ -274,6 +293,8 @@ describe('fingerprint and invalidation', () => {
 describe('helpers', () => {
   it('validates arguments strictly', () => {
     expect(validateProbeArgs({ city: 'Oslo', unit: 'celsius' })).toBeNull()
+    expect(validateProbeArgs({ city: ' oslo ', unit: 'celsius' })).toBeNull()
+    expect(validateProbeArgs({ city: 'Paris', unit: 'celsius' })).toContain('Oslo')
     expect(validateProbeArgs({ city: '', unit: 'celsius' })).toContain('city')
     expect(validateProbeArgs({ city: 'Oslo', unit: 'celsius', path: '/etc' })).toContain('path')
     expect(validateProbeArgs('Oslo')).toContain('not a JSON object')

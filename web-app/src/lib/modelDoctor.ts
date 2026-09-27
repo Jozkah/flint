@@ -129,6 +129,9 @@ export function settingsSummary(provider: ProviderObject, model: Model): string 
 // --- probe -------------------------------------------------------------------
 
 export const PROBE_TOOL = 'lookup_fixture'
+/** What the probe asks for, and what its written result answers. */
+export const PROBE_CITY = 'Oslo'
+export const PROBE_UNIT = 'celsius'
 
 const PROBE_SYSTEM =
   'You are being tested for tool use. Use the provided tool when the user asks for data only it has. Do not invent tool results.'
@@ -168,6 +171,15 @@ export function validateProbeArgs(input: unknown): string | null {
     return `"unit" must be "celsius" or "fahrenheit", got ${JSON.stringify(o.unit)}`
   }
   if (extra.length) return `unexpected argument(s): ${extra.join(', ')}`
+  // Valid is not enough: the request named Oslo in celsius, and the result
+  // the probe writes back is for exactly that. A model asking for another
+  // city or unit did not follow the request.
+  if (o.city.trim().toLowerCase() !== PROBE_CITY.toLowerCase()) {
+    return `asked for "${PROBE_CITY}", the model requested ${JSON.stringify(o.city).slice(0, 60)}`
+  }
+  if (o.unit !== PROBE_UNIT) {
+    return `asked for "${PROBE_UNIT}", the model requested ${JSON.stringify(o.unit)}`
+  }
   return null
 }
 
