@@ -330,6 +330,8 @@ windows-core = "0.61"
 windows-sys = { version = "0.60.2", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
+  # Title bar colours (core::setup::set_titlebar_colors).
+  "Win32_Graphics_Dwm",
   "Win32_Storage_FileSystem",
   "Win32_System_Threading",
   # Turn on VT sequences for the headless CLI's colored stderr (core::cli::color).

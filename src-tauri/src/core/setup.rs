@@ -516,6 +516,51 @@ fn read_gnome_button_layout() -> Option<TitlebarLayout> {
 }
 
 /// Flip GTK's `gtk-application-prefer-dark-theme` so the native Wayland
+/// Paint the Windows title bar in the app's own colours, so the caption reads
+/// as part of the window rather than a separate strip. `background` and
+/// `text` are 0xRRGGBB. Windows 11 only (older builds ignore the attributes);
+/// a no-op elsewhere.
+#[tauri::command]
+pub fn set_titlebar_colors<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    background: u32,
+    text: u32,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_CAPTION_COLOR, DWMWA_TEXT_COLOR,
+        };
+        // COLORREF is 0x00BBGGRR.
+        let colorref = |rgb: u32| -> u32 {
+            ((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF)
+        };
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as HWND;
+        for (attr, rgb) in [
+            (DWMWA_CAPTION_COLOR, background),
+            (DWMWA_BORDER_COLOR, background),
+            (DWMWA_TEXT_COLOR, text),
+        ] {
+            let value = colorref(rgb);
+            // SAFETY: a live window handle and a 4-byte COLORREF.
+            unsafe {
+                DwmSetWindowAttribute(
+                    hwnd,
+                    attr as u32,
+                    &value as *const u32 as *const core::ffi::c_void,
+                    std::mem::size_of::<u32>() as u32,
+                );
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (window, background, text);
+    }
+    Ok(())
+}
+
 /// HeaderBar follows the app's effective theme (user override or system).
 /// No-op on non-Linux.
 #[tauri::command]

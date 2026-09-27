@@ -285,6 +285,7 @@ macro_rules! invoke_commands_with_extras {
         // Theme
         core::setup::get_system_theme,
         core::setup::set_gtk_prefer_dark,
+        core::setup::set_titlebar_colors,
         core::setup::get_titlebar_layout,
         $(
             $extra,
