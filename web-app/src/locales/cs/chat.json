@@ -41,5 +41,12 @@
     "newChatFailed": "Nový chat se nepodařilo zahájit",
     "room": "Místnost",
     "recentRooms": "Místnosti"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} krok",
+    "steps_few": "{{count}} kroky",
+    "steps_many": "{{count}} kroku",
+    "steps_other": "{{count}} kroků",
+    "working": "Pracuji"
   }
 }

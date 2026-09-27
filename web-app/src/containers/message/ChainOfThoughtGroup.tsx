@@ -1,6 +1,6 @@
-import { memo, useState } from 'react'
+import { memo, useId, useState } from 'react'
 import { twMerge } from 'tailwind-merge'
-import { ArrowDown, Check } from 'lucide-react'
+import { ArrowDown, Check, ChevronRight } from 'lucide-react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -18,6 +18,9 @@ import {
   useToolCallRuntime,
 } from '@/hooks/useToolCallRuntime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
+import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
 import { CONTENT_TYPE, isToolPart, type PartEntry } from './types'
@@ -55,10 +58,110 @@ export type ChainOfThoughtGroupProps = {
   isReasoningAtBottom?: boolean
   onReasoningScroll?: () => void
   onReasoningScrollToBottom?: () => void
+  /**
+   * Overrides the Transcript view setting. `trace` renders the trace as it
+   * always has; the compact modes use it for the reasoning they keep.
+   */
+  transcriptView?: TranscriptView | 'trace'
+}
+
+/**
+ * Normal and Thinking views: reasoning only in Thinking, calls awaiting
+ * approval (and in Thinking failed calls, closed) in place, every other call behind one "N steps"
+ * disclosure.
+ */
+const CompactTrace = ({
+  mode,
+  groupIsStreaming,
+  props,
+}: {
+  mode: 'normal' | 'thinking'
+  groupIsStreaming: boolean
+  props: ChainOfThoughtGroupProps
+}) => {
+  const { t } = useTranslation()
+  const pending = useToolApprovalRequests((s) => s.pending)
+  const [open, setOpen] = useState(false)
+  const listId = useId()
+  const { entries, messageId, citationOffsets } = props
+  const { reasoning, pinned, steps } = partitionTrace(mode, entries, (id) =>
+    Boolean(pending[id])
+  )
+  const card = ({ part, index }: PartEntry, expanded?: boolean) => (
+    <ToolCallCard
+      key={`${messageId}-t-${index}`}
+      part={part}
+      messageId={messageId}
+      citationOffset={citationOffsets.get(index) ?? 0}
+      expanded={expanded}
+      className="mb-1"
+    />
+  )
+  const working = groupIsStreaming && pinned.length === 0
+  return (
+    <div data-transcript-view={mode} className="mb-2.5 w-full text-muted-foreground">
+      {reasoning.length > 0 && (
+        <ChainOfThoughtGroup
+          {...props}
+          entries={reasoning}
+          awaitingApproval={false}
+          transcriptView="trace"
+        />
+      )}
+      {pinned.map((e) =>
+        card(e, e.part.state === 'output-error' ? false : undefined)
+      )}
+      {steps.length > 0 ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={open ? listId : undefined}
+            onClick={() => setOpen((v) => !v)}
+            data-testid="transcript-steps-toggle"
+            className="inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-md text-xs transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:min-h-11"
+          >
+            <ChevronRight
+              aria-hidden
+              className={cn(
+                'size-3 shrink-0 transition-transform duration-200',
+                open && 'rotate-90'
+              )}
+            />
+            {t('chat:transcriptView.steps', { count: steps.length })}
+            {working && (
+              <span className="motion-safe:animate-pulse">
+                {' · '}
+                {t('chat:transcriptView.working')}
+              </span>
+            )}
+          </button>
+          {open && (
+            <ol id={listId} className={cn(TIMELINE_RAIL, 'mt-1')}>
+              {steps.map((e, i) => (
+                <StepRow key={`${messageId}-s-${e.index}`} index={i}>
+                  {card(e, true)}
+                </StepRow>
+              ))}
+            </ol>
+          )}
+        </>
+      ) : (
+        working &&
+        mode === 'normal' &&
+        reasoning.length === 0 && (
+          <span className="text-xs motion-safe:animate-pulse">
+            {t('chat:reasoning.thinking')}
+          </span>
+        )
+      )}
+    </div>
+  )
 }
 
 export const ChainOfThoughtGroup = memo(
-  ({
+  (props: ChainOfThoughtGroupProps) => {
+    const {
     entries,
     messageId,
     totalParts,
@@ -71,8 +174,12 @@ export const ChainOfThoughtGroup = memo(
     isReasoningAtBottom,
     onReasoningScroll,
     onReasoningScrollToBottom,
-  }: ChainOfThoughtGroupProps) => {
+    transcriptView,
+  } = props
     const { t } = useTranslation()
+    const storedView = useInterfaceSettings((s) => s.transcriptView)
+    const mode = transcriptView ?? storedView
+    const verbose = mode === 'verbose'
     const pendingApprovals = useToolApprovalRequests((s) => s.pending)
     const runningToolCallId = useToolCallRuntime((s) => findRunningToolCallId(s.timings))
     // How long the trace's tools took end to end, from their recorded timings:
@@ -89,7 +196,9 @@ export const ChainOfThoughtGroup = memo(
       }
       return last > first ? Math.max(1, Math.round((last - first) / 1000)) : undefined
     })
-    const [view, setView] = useState<'condensed' | 'extended'>('condensed')
+    const [view, setView] = useState<'condensed' | 'extended'>(
+      verbose ? 'extended' : 'condensed'
+    )
 
     if (entries.length === 0) return null
 
@@ -97,6 +206,12 @@ export const ChainOfThoughtGroup = memo(
 
     const lastEntryIndex = entries[entries.length - 1].index
     const groupIsStreaming = isStreaming && lastEntryIndex === totalParts - 1
+
+    if (mode === 'normal' || mode === 'thinking') {
+      return (
+        <CompactTrace mode={mode} groupIsStreaming={groupIsStreaming} props={props} />
+      )
+    }
     // The extended timeline only exists while streaming; once the turn ends the
     // full rail is what renders anyway.
     const isExtended = groupIsStreaming && view === 'extended'
@@ -163,8 +278,9 @@ export const ChainOfThoughtGroup = memo(
     // started. The extended view always has the live step to show, so it must
     // not be collapsed out from under the reader who just opened it.
     const carriesTools = entries.some((e) => isToolPart(e.part))
-    const shouldCollapse =
-      keepToolActivity && carriesTools
+    const shouldCollapse = verbose
+      ? false
+      : keepToolActivity && carriesTools
         ? false
         : hasFollowingContent || !(hasDisplayableContent || isExtended)
 
@@ -206,6 +322,7 @@ export const ChainOfThoughtGroup = memo(
                 part={part}
                 messageId={messageId}
                 citationOffset={citationOffsets.get(partIndex) ?? 0}
+                expanded={verbose || undefined}
               />
             </StepRow>
           )
@@ -286,7 +403,7 @@ export const ChainOfThoughtGroup = memo(
         isStreaming={groupIsStreaming}
         shouldCollapse={shouldCollapse}
         forceOpen={awaitingApproval}
-        defaultOpen={hasDisplayableContent && !hasFollowingContent}
+        defaultOpen={verbose || (hasDisplayableContent && !hasFollowingContent)}
         fallbackDuration={toolSpanSeconds}
       >
         <ChainOfThoughtHeader

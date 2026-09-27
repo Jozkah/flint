@@ -661,15 +661,11 @@ function ModelProviders() {
                         </FadeText>
                       </div>
                       <span className="min-w-0">
-                        {local && quantOf(model.id) ? (
-                          <Chip mono className="max-w-full" title={getProviderTitle(provider.provider)}>
-                            <span className="truncate">{quantOf(model.id)}</span>
-                          </Chip>
-                        ) : (
-                          <Chip className="max-w-full">
-                            <span className="truncate">{getProviderTitle(provider.provider)}</span>
-                          </Chip>
-                        )}
+                        {/* The provider, never the quantization: a local id's
+                            `:Q4_K_M` tag is already in the id under the name. */}
+                        <Chip className="max-w-full" data-testid="models-provider-cell">
+                          <span className="truncate">{getProviderTitle(provider.provider)}</span>
+                        </Chip>
                       </span>
                       {/* Always a cell, even with no capabilities, so the
                           columns after it stay in place. */}

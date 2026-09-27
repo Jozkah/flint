@@ -41,5 +41,12 @@
     "newChatFailed": "Не удалось начать новый чат",
     "room": "Комната",
     "recentRooms": "Комнаты"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} шаг",
+    "steps_few": "{{count}} шага",
+    "steps_many": "{{count}} шагов",
+    "steps_other": "{{count}} шага",
+    "working": "Работаю"
   }
 }

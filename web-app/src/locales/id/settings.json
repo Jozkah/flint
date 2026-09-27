@@ -117,7 +117,15 @@
     "resetCodeBlockStyle": "Setel Ulang Gaya Blok Kode",
     "resetCodeBlockStyleDesc": "Setel ulang gaya blok kode ke default.",
     "resetCodeBlockSuccess": "Gaya blok kode berhasil diatur ulang",
-    "resetCodeBlockSuccessDesc": "Gaya blok kode telah dikembalikan ke default."
+    "resetCodeBlockSuccessDesc": "Gaya blok kode telah dikembalikan ke default.",
+    "transcriptView": "Tampilan transkrip",
+    "transcriptViewDesc": "Seberapa banyak tiap giliran yang ditampilkan Chat, Cowork, dan Rooms. Persetujuan, pertanyaan, dan galat selalu tampil.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "Jawaban dan hal yang memerlukan Anda. Panggilan alat dilipat menjadi satu baris langkah.",
+    "transcriptViewThinking": "Penalaran",
+    "transcriptViewThinkingDesc": "Menambahkan penalaran model. Panggilan alat tetap terlipat.",
+    "transcriptViewVerbose": "Lengkap",
+    "transcriptViewVerboseDesc": "Semuanya: penalaran penuh dan setiap panggilan alat terbuka dengan parameter dan keluarannya."
   },
   "hardware": {
     "os": "Sistem Operasi",

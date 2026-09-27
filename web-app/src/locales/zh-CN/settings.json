@@ -143,7 +143,15 @@
     "threadScrollFlowTitle": "流动滚动",
     "threadScrollFlowHint": "使视口锚定在你发送的最新消息上。",
     "threadScrollStickyTitle": "粘性滚动",
-    "threadScrollStickyHint": "回复实时流式输出时自动跟随滚动。"
+    "threadScrollStickyHint": "回复实时流式输出时自动跟随滚动。",
+    "transcriptView": "对话记录视图",
+    "transcriptViewDesc": "聊天、Cowork 和房间中每轮显示多少内容。审批、提问和错误始终显示。",
+    "transcriptViewNormal": "标准",
+    "transcriptViewNormalDesc": "只显示回答和需要你处理的内容。工具调用折叠为一行步骤。",
+    "transcriptViewThinking": "思考",
+    "transcriptViewThinkingDesc": "额外显示模型的推理。工具调用保持折叠。",
+    "transcriptViewVerbose": "详细",
+    "transcriptViewVerboseDesc": "全部显示：完整推理，以及展开参数和输出的每个工具调用。"
   },
   "hardware": {
     "os": "操作系统",

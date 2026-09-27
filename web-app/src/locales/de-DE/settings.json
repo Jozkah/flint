@@ -117,7 +117,15 @@
     "resetCodeBlockStyle": "Codeblockstil zurücksetzen",
     "resetCodeBlockStyleDesc": "Codeblockstil auf Standard zurücksetzen.",
     "resetCodeBlockSuccess": "Codeblockstil erfolgreich zurückgesetzt",
-    "resetCodeBlockSuccessDesc": "Der Codeblockstil wurde auf die Standardeinstellung zurückgesetzt."
+    "resetCodeBlockSuccessDesc": "Der Codeblockstil wurde auf die Standardeinstellung zurückgesetzt.",
+    "transcriptView": "Verlaufsansicht",
+    "transcriptViewDesc": "Wie viel von jedem Zug Chat, Cowork und Räume zeigen. Freigaben, Fragen und Fehler werden immer angezeigt.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "Die Antwort und alles, was dich braucht. Tool-Aufrufe werden in eine Schrittzeile eingeklappt.",
+    "transcriptViewThinking": "Denken",
+    "transcriptViewThinkingDesc": "Zeigt zusätzlich die Überlegungen des Modells. Tool-Aufrufe bleiben eingeklappt.",
+    "transcriptViewVerbose": "Ausführlich",
+    "transcriptViewVerboseDesc": "Alles: vollständige Überlegungen und jeder Tool-Aufruf geöffnet mit Parametern und Ausgabe."
   },
   "hardware": {
     "os": "Betriebssystem",

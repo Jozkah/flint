@@ -276,6 +276,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:interface.showTokenSpeedDesc',
     keywords: ['tokens per second', 'performance'],
   }),
+  item('appearance', 'transcript-view', 'settings:interface.transcriptView', {
+    descriptionKey: 'settings:interface.transcriptViewDesc',
+    keywords: ['thinking', 'reasoning', 'verbose', 'tool calls', 'steps'],
+  }),
   item(
     'appearance',
     'html-artifacts',

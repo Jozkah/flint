@@ -41,5 +41,9 @@
     "newChatFailed": "Không thể bắt đầu cuộc trò chuyện mới",
     "room": "Phòng",
     "recentRooms": "Phòng"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}} bước",
+    "working": "Đang làm"
   }
 }

@@ -135,7 +135,15 @@
     "resetCodeBlockStyle": "Ripristina stile blocco di codice",
     "resetCodeBlockStyleDesc": "Ripristina lo stile del blocco di codice a quello predefinito.",
     "resetCodeBlockSuccess": "Stile del blocco di codice ripristinato con successo",
-    "resetCodeBlockSuccessDesc": "Lo stile del blocco di codice è stato ripristinato a quello predefinito."
+    "resetCodeBlockSuccessDesc": "Lo stile del blocco di codice è stato ripristinato a quello predefinito.",
+    "transcriptView": "Vista della trascrizione",
+    "transcriptViewDesc": "Quanto di ogni turno mostrano Chat, Cowork e Stanze. Approvazioni, domande ed errori sono sempre visibili.",
+    "transcriptViewNormal": "Normale",
+    "transcriptViewNormalDesc": "La risposta e ciò che richiede il tuo intervento. Le chiamate agli strumenti si raccolgono in una riga di passaggi.",
+    "transcriptViewThinking": "Ragionamento",
+    "transcriptViewThinkingDesc": "Aggiunge il ragionamento del modello. Le chiamate agli strumenti restano raccolte.",
+    "transcriptViewVerbose": "Dettagliata",
+    "transcriptViewVerboseDesc": "Tutto: il ragionamento completo e ogni chiamata a strumento aperta con parametri e output."
   },
   "hardware": {
     "os": "Sistema operativo",

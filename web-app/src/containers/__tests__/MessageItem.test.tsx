@@ -127,6 +127,7 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
 
 // Import after mocks
 import { MessageItem } from '../MessageItem'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 const makeMsg = (overrides: any = {}) => ({
   id: 'msg-1',
@@ -138,6 +139,8 @@ const makeMsg = (overrides: any = {}) => ({
 
 describe('MessageItem', () => {
   beforeEach(() => {
+    // These cases cover the full trace; the compact views have their own tests.
+    useInterfaceSettings.setState({ transcriptView: 'verbose' })
     vi.clearAllMocks()
     selectedModelRef.current = { id: 'm1' }
     pendingApprovalsRef.current = {}
@@ -679,8 +682,8 @@ describe('MessageItem', () => {
     expect(headers).toContain('beta')
   })
 
-  it('still truncates a non-pending earlier tool step while streaming', () => {
-    // No pending approval: streaming truncation keeps only the latest step.
+  it('streams the full timeline in the verbose view', () => {
+    // Condensed truncation is covered in ChainOfThoughtGroup's own tests.
     pendingApprovalsRef.current = {}
     render(
       <MessageItem
@@ -698,7 +701,7 @@ describe('MessageItem', () => {
       />
     )
     const headers = screen.getAllByTestId('tool-header').map((h) => h.textContent)
-    expect(headers).not.toContain('alpha')
+    expect(headers).toContain('alpha')
     expect(headers).toContain('beta')
   })
 

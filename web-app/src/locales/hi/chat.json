@@ -41,5 +41,10 @@
     "newChatFailed": "नई चैट शुरू नहीं हो सकी",
     "room": "रूम",
     "recentRooms": "रूम"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} चरण",
+    "steps_other": "{{count}} चरण",
+    "working": "काम जारी"
   }
 }

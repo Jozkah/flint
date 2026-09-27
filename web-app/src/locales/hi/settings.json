@@ -127,7 +127,15 @@
     "resetCodeBlockStyle": "कोड ब्लॉक शैली रीसेट करें",
     "resetCodeBlockStyleDesc": "कोड ब्लॉक शैली को डिफ़ॉल्ट पर रीसेट करें।",
     "resetCodeBlockSuccess": "कोड ब्लॉक शैली सफलतापूर्वक रीसेट हुई",
-    "resetCodeBlockSuccessDesc": "कोड ब्लॉक शैली को डिफ़ॉल्ट पर पुनर्स्थापित किया गया।"
+    "resetCodeBlockSuccessDesc": "कोड ब्लॉक शैली को डिफ़ॉल्ट पर पुनर्स्थापित किया गया।",
+    "transcriptView": "ट्रांसक्रिप्ट दृश्य",
+    "transcriptViewDesc": "Chat, Cowork और Rooms हर टर्न का कितना हिस्सा दिखाते हैं। अनुमोदन, प्रश्न और त्रुटियाँ हमेशा दिखती हैं।",
+    "transcriptViewNormal": "सामान्य",
+    "transcriptViewNormalDesc": "उत्तर और जिस पर आपकी ज़रूरत है। टूल कॉल एक चरण पंक्ति में समेटे जाते हैं।",
+    "transcriptViewThinking": "चिंतन",
+    "transcriptViewThinkingDesc": "मॉडल का तर्क भी दिखाता है। टूल कॉल समेटे रहते हैं।",
+    "transcriptViewVerbose": "विस्तृत",
+    "transcriptViewVerboseDesc": "सब कुछ: पूरा तर्क और हर टूल कॉल पैरामीटर और आउटपुट के साथ खुला।"
   },
   "hardware": {
     "os": "ऑपरेटिंग सिस्टम",

@@ -95,5 +95,10 @@
     "newChatFailed": "Couldn't start a new chat",
     "room": "Room",
     "recentRooms": "Rooms"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "working": "Working"
   }
 }

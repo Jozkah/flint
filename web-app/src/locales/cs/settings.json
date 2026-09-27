@@ -123,7 +123,15 @@
     "resetCodeBlockStyle": "Obnovit styl bloku kódu",
     "resetCodeBlockStyleDesc": "Obnovit styl bloku kódu na výchozí.",
     "resetCodeBlockSuccess": "Styl bloku kódu úspěšně obnoven",
-    "resetCodeBlockSuccessDesc": "Styl bloku kódu byl obnoven na výchozí."
+    "resetCodeBlockSuccessDesc": "Styl bloku kódu byl obnoven na výchozí.",
+    "transcriptView": "Zobrazení přepisu",
+    "transcriptViewDesc": "Kolik z každého tahu ukazují Chat, Cowork a Místnosti. Schválení, dotazy a chyby se zobrazují vždy.",
+    "transcriptViewNormal": "Normální",
+    "transcriptViewNormalDesc": "Odpověď a vše, co vyžaduje vás. Volání nástrojů se sbalí do jednoho řádku kroků.",
+    "transcriptViewThinking": "Uvažování",
+    "transcriptViewThinkingDesc": "Přidá uvažování modelu. Volání nástrojů zůstanou sbalená.",
+    "transcriptViewVerbose": "Podrobné",
+    "transcriptViewVerboseDesc": "Vše: celé uvažování a každé volání nástroje otevřené s parametry a výstupem."
   },
   "hardware": {
     "os": "Operační systém",

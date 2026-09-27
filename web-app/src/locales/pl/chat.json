@@ -41,5 +41,12 @@
     "newChatFailed": "Nie udało się rozpocząć nowego czatu",
     "room": "Pokój",
     "recentRooms": "Pokoje"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} krok",
+    "steps_few": "{{count}} kroki",
+    "steps_many": "{{count}} kroków",
+    "steps_other": "{{count}} kroku",
+    "working": "Pracuję"
   }
 }

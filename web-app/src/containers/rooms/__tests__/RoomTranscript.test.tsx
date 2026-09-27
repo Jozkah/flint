@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { asJournal, makeMessage, makeRoom } from './roomsTestUtils'
 import { RoomTranscript } from '../RoomTranscript'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
@@ -207,12 +208,14 @@ describe('RoomTranscript', () => {
     render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
 
     const tools = screen.getByTestId('message-tools')
-    // Simple view: a chip per call, details collapsed.
-    expect(within(tools).getByText('read')).toBeInTheDocument()
-    expect(within(tools).getByText('grep')).toBeInTheDocument()
+    // Normal view: every chip, failed included, behind the toggle.
+    expect(within(tools).queryByText('read')).not.toBeInTheDocument()
+    expect(within(tools).queryByText('grep')).not.toBeInTheDocument()
     expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('tool-trace-toggle'))
+
+    expect(within(tools).getAllByText('read').length).toBeGreaterThan(0)
 
     const details = screen.getByTestId('tool-trace-details')
     // Args render as a label/value table: the key and its value each appear.
@@ -220,5 +223,16 @@ describe('RoomTranscript', () => {
     expect(within(details).getByText('notes.md')).toBeInTheDocument()
     expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
     expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
+  })
+
+  it('opens every call in the verbose transcript view', () => {
+    useInterfaceSettings.setState({ transcriptView: 'verbose' })
+    const msg = makeMessage({
+      text: 'Looked it up.',
+      toolCalls: [{ name: 'read', ok: true, args: { path: 'notes.md' }, output: 'FILE BODY' }],
+    })
+    render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
+    expect(screen.getByTestId('tool-trace-details')).toBeInTheDocument()
+    useInterfaceSettings.setState({ transcriptView: 'normal' })
   })
 })
