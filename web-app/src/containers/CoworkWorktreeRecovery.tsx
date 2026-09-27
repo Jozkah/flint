@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { GitBranch } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { describePending } from '@/lib/coworkWorktrees'
+import { describePending, shortPath } from '@/lib/coworkWorktrees'
 import type { WorktreeRecord } from '@/hooks/useCoworkWorktrees'
 
 /**
@@ -41,6 +41,8 @@ export type WorktreeRecoveryProps = {
    * worktree before a restart. Shown above the list.
    */
   downgradeNote?: string
+  /** Stop offering earlier worktrees for this folder. */
+  onHide?: () => void
 }
 
 export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
@@ -50,6 +52,8 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
     pending: string[]
   } | null>(null)
   const [busy, setBusy] = useState(false)
+  // A one-line hint until asked: most sessions have nothing to recover.
+  const [open, setOpen] = useState(false)
 
   if (props.orphans.length === 0) return null
 
@@ -79,17 +83,50 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
     <section
       data-testid="cowork-worktree-recovery"
       aria-label={t('common:worktreeRecovery.title')}
-      className="rounded-[10px] bg-muted px-3 py-2.5 text-xs shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
+      className={
+        open
+          ? 'rounded-[10px] bg-muted px-3 py-2.5 text-xs shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in'
+          : 'text-xs text-muted-foreground'
+      }
     >
       {props.downgradeNote && (
         <p className="mb-1 text-fg-2" data-testid="cowork-worktree-downgrade">
           {props.downgradeNote}
         </p>
       )}
-      <p className="mb-1 flex items-center gap-1.5 text-fg-2">
+      <p
+        className={`flex items-center gap-1.5 ${open ? 'mb-1 text-fg-2' : ''}`}
+      >
         <GitBranch aria-hidden className="size-3.5 shrink-0" />
-        {t('common:worktreeRecovery.found', { count: props.orphans.length })}
+        <span>
+          {t('common:worktreeRecovery.hint', { count: props.orphans.length })}
+        </span>
+        <span aria-hidden>·</span>
+        <button
+          type="button"
+          className="underline-offset-2 hover:underline"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open
+            ? t('common:worktreeRecovery.collapse')
+            : t('common:worktreeRecovery.review')}
+        </button>
+        {props.onHide ? (
+          <>
+            <span aria-hidden>·</span>
+            <button
+              type="button"
+              className="underline-offset-2 hover:underline"
+              onClick={props.onHide}
+            >
+              {t('common:worktreeRecovery.dontShow')}
+            </button>
+          </>
+        ) : null}
       </p>
+      {open ? (
+      <>
       <ul className="grid gap-1">
         {props.orphans.map((record) => (
           <li key={record.path} className="flex min-w-0 items-center gap-2">
@@ -101,7 +138,10 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
                   {t('common:worktreeRecovery.thisSession')}
                 </span>
               )}
-              <span className="text-muted-foreground"> — {record.path}</span>
+              <span className="text-muted-foreground">
+                {' — '}
+                {shortPath(record.path)}
+              </span>
             </span>
             <Button
               variant="outline"
@@ -129,6 +169,8 @@ export function CoworkWorktreeRecovery(props: WorktreeRecoveryProps) {
       <p className="mt-1 text-muted-foreground">
         {t('common:worktreeRecovery.noAuthority')}
       </p>
+      </>
+      ) : null}
 
       {confirming ? (
         <div

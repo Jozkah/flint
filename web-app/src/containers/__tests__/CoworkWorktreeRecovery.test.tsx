@@ -31,7 +31,34 @@ const props = (
   ...over,
 })
 
+const expand = () =>
+  userEvent.click(screen.getByText('common:worktreeRecovery.review'))
+
 describe('recovering work a crashed run left behind', () => {
+  it('is one muted line until asked, with a short path once open', async () => {
+    const p = props({ orphans: [record('/very/long/data/worktrees/ab12/cd34')] })
+    render(<CoworkWorktreeRecovery {...p} />)
+    expect(screen.queryByText('common:worktreeRecovery.use')).toBeNull()
+    expect(
+      screen.getByText('common:worktreeRecovery.hint#1')
+    ).toBeInTheDocument()
+    await expand()
+    expect(screen.getByText('common:worktreeRecovery.use')).toBeInTheDocument()
+    expect(screen.getByTestId('cowork-worktree-recovery')).toHaveTextContent(
+      '…/ab12/cd34'
+    )
+    expect(
+      screen.getByTestId('cowork-worktree-recovery')
+    ).not.toHaveTextContent('/very/long')
+  })
+
+  it('offers not to show it again for the folder', async () => {
+    const onHide = vi.fn()
+    render(<CoworkWorktreeRecovery {...props({ onHide })} />)
+    await userEvent.click(screen.getByText('common:worktreeRecovery.dontShow'))
+    expect(onHide).toHaveBeenCalled()
+  })
+
   it('says nothing when there is nothing left over', () => {
     render(<CoworkWorktreeRecovery {...props({ orphans: [] })} />)
     expect(screen.queryByTestId('cowork-worktree-recovery')).toBeNull()
@@ -40,6 +67,7 @@ describe('recovering work a crashed run left behind', () => {
   it('adopts a worktree without making it writable', async () => {
     const p = props()
     render(<CoworkWorktreeRecovery {...p} />)
+    await expand()
 
     await userEvent.click(screen.getByText('common:worktreeRecovery.use'))
 
@@ -54,6 +82,7 @@ describe('recovering work a crashed run left behind', () => {
   it('names the files a removal would destroy before removing anything', async () => {
     const p = props({ onPending: vi.fn(async () => ['a.ts', 'b.ts']) })
     render(<CoworkWorktreeRecovery {...p} />)
+    await expand()
 
     await userEvent.click(screen.getByText('common:worktreeRecovery.remove'))
 
@@ -71,6 +100,7 @@ describe('recovering work a crashed run left behind', () => {
   it('does not claim uncommitted work when there is none', async () => {
     const p = props()
     render(<CoworkWorktreeRecovery {...p} />)
+    await expand()
 
     await userEvent.click(screen.getByText('common:worktreeRecovery.remove'))
     expect(await screen.findByRole('alertdialog')).toHaveTextContent(
@@ -86,6 +116,7 @@ describe('recovering work a crashed run left behind', () => {
   it('leaves the worktree alone when the confirmation is dismissed', async () => {
     const p = props()
     render(<CoworkWorktreeRecovery {...p} />)
+    await expand()
 
     await userEvent.click(screen.getByText('common:worktreeRecovery.remove'))
     await userEvent.click(screen.getByText('common:worktreeRecovery.cancel'))

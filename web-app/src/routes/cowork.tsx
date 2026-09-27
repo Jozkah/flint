@@ -319,8 +319,11 @@ import {
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { checkpoint as inFlightCheckpoint, checkpointDue } from '@/lib/coworkInflight'
 import { CoworkWorktreeRecovery } from '@/containers/CoworkWorktreeRecovery'
+import { useShallow } from 'zustand/react/shallow'
 import {
-  orphans as orphanWorktrees,
+  hideRecovery,
+  recoverableWorktrees,
+  recoveryHidden,
   sessionWorktreeBranch,
 } from '@/lib/coworkWorktrees'
 import { CoworkCompatSection } from '@/containers/CoworkCompatSection'
@@ -721,6 +724,22 @@ export function CoworkPage() {
    * nothing here becomes writable.
    */
   const [foundWorktrees, setFoundWorktrees] = useState<WorktreeRecord[]>([])
+  const [recoveryHiddenHere, setRecoveryHiddenHere] = useState(false)
+  useEffect(() => {
+    setRecoveryHiddenHere(folder ? recoveryHidden(folder) : false)
+  }, [folder])
+  // Worktrees other sessions hold, and the sessions that still exist: another
+  // live session's worktree is never offered here.
+  const coworkSessionIds = useCoworkSessions(
+    useShallow((s) => s.sessions.map((one) => one.id))
+  )
+  const heldWorktreePaths = useCoworkWorktrees(
+    useShallow((s) =>
+      Object.entries(s.bySession)
+        .filter(([id]) => id !== session?.id)
+        .map(([, record]) => record.path)
+    )
+  )
   /**
    * What the last run actually sent, by category.
    *
@@ -5445,12 +5464,25 @@ export function CoworkPage() {
                   folders, context accounting -- moved behind the session
                   details control in the header, so the composer sits directly
                   beneath the conversation. */}
+              {/* Not beside the session's own worktree bar: a session that
+                  already has a worktree is not about to adopt another. */}
               {folder &&
-                ((session?.turns.length ?? 0) === 0 ||
+                !recoveryHiddenHere &&
+                ((!worktree && (session?.turns.length ?? 0) === 0) ||
                   effective.downgradedFrom === 'managed-worktree') && (
                 <div className="px-1 pb-2">
                   <CoworkWorktreeRecovery
-                    orphans={orphanWorktrees(foundWorktrees, worktree)}
+                    orphans={recoverableWorktrees(
+                      foundWorktrees,
+                      worktree,
+                      session?.id,
+                      coworkSessionIds,
+                      heldWorktreePaths
+                    )}
+                    onHide={() => {
+                      hideRecovery(folder)
+                      setRecoveryHiddenHere(true)
+                    }}
                     ownBranch={
                       session?.id ? sessionWorktreeBranch(session.id) : undefined
                     }

@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
-import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Copy, FolderOpen, GitBranch, GitMerge, GitPullRequest, Trash2, X } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { useTextOverflow } from '@/hooks/useTextOverflow'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -24,7 +26,68 @@ import {
   type CopyChange,
   type FilePair,
 } from '@/lib/coworkParallel'
-import { describePending } from '@/lib/coworkWorktrees'
+import {
+  describePending,
+  dismissNotCarried,
+  notCarriedDismissed,
+} from '@/lib/coworkWorktrees'
+
+const NOT_CARRIED_SHOWN = 20
+
+/**
+ * What the worktree did not bring from the checkout, as one line: a count, the
+ * paths behind "Details", and a dismiss that sticks for the session.
+ */
+function NotCarried(props: { paths: readonly string[]; onDismiss: () => void }) {
+  const { t } = useTranslation()
+  const rest = props.paths.length - NOT_CARRIED_SHOWN
+  return (
+    <div
+      data-testid="worktree-not-carried"
+      className="flex basis-full items-center gap-1.5 text-muted-foreground"
+    >
+      <span className="min-w-0 truncate">
+        {t('common:coworkParallel.notCarriedCount', {
+          count: props.paths.length,
+          formattedCount: props.paths.length.toLocaleString(),
+        })}
+      </span>
+      <span aria-hidden>·</span>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button type="button" className="underline-offset-2 hover:underline">
+            {t('common:coworkParallel.notCarriedDetails')}
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-80 p-3 text-xs">
+          <ul className="grid gap-0.5 font-mono" data-testid="worktree-not-carried-list">
+            {props.paths.slice(0, NOT_CARRIED_SHOWN).map((path) => (
+              <li key={path} className="truncate" title={path}>
+                {path}
+              </li>
+            ))}
+          </ul>
+          {rest > 0 ? (
+            <p className="mt-1 text-muted-foreground">
+              {t('common:coworkParallel.notCarriedMore', {
+                count: rest,
+                formattedCount: rest.toLocaleString(),
+              })}
+            </p>
+          ) : null}
+        </PopoverContent>
+      </Popover>
+      <button
+        type="button"
+        className="ms-auto rounded p-0.5 hover:bg-hover-row"
+        aria-label={t('common:coworkParallel.notCarriedDismiss')}
+        onClick={props.onDismiss}
+      >
+        <X className="size-3" />
+      </button>
+    </div>
+  )
+}
 
 /**
  * The session's own worktree (or copy), and what can be done with it.
@@ -62,6 +125,14 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
   const [confirm, setConfirm] = useState<Confirm | null>(null)
   const [busy, setBusy] = useState(false)
   const [applyOpen, setApplyOpen] = useState(false)
+  const [notCarriedHidden, setNotCarriedHidden] = useState(() =>
+    notCarriedDismissed(props.sessionId)
+  )
+  useEffect(() => {
+    setNotCarriedHidden(notCarriedDismissed(props.sessionId))
+  }, [props.sessionId])
+  const branchRef = useRef<HTMLSpanElement>(null)
+  useTextOverflow(branchRef)
   const record = props.record
 
   if (!record) {
@@ -185,7 +256,9 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
           <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
         )}
         <span
-          className="min-w-0 flex-1 truncate font-mono"
+          ref={branchRef}
+          data-testid="session-worktree-branch"
+          className="text-fade min-w-0 flex-1 font-mono"
           title={
             isCopy
               ? t('common:coworkParallel.copyTitle', { folder: props.folder })
@@ -246,20 +319,19 @@ export function CoworkSessionWorktreeBar(props: SessionWorktreeBarProps) {
           <Trash2 className="size-3.5" />
           {t('common:coworkParallel.discard')}
         </Button>
-        {(record.notes?.length ?? 0) > 0 ||
-        record.uncommittedAtCreation.length > 0 ? (
+        {(record.notes?.length ?? 0) > 0 ? (
           <div className="basis-full text-muted-foreground">
-            {[
-              ...(record.notes ?? []),
-              ...(record.uncommittedAtCreation.length > 0
-                ? [
-                    t('common:coworkParallel.notCarried', {
-                      files: describePending(record.uncommittedAtCreation),
-                    }),
-                  ]
-                : []),
-            ].join(' ')}
+            {record.notes!.join(' ')}
           </div>
+        ) : null}
+        {record.uncommittedAtCreation.length > 0 && !notCarriedHidden ? (
+          <NotCarried
+            paths={record.uncommittedAtCreation}
+            onDismiss={() => {
+              dismissNotCarried(props.sessionId)
+              setNotCarriedHidden(true)
+            }}
+          />
         ) : null}
       </div>
 

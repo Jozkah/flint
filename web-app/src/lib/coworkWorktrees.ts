@@ -79,3 +79,108 @@ export function describePending(paths: readonly string[]): string {
   const shown = paths.slice(0, 5).join(', ')
   return paths.length > 5 ? `${shown}, and ${paths.length - 5} more` : shown
 }
+
+/**
+ * The ten hex characters a session's worktree directory is named with.
+ * Mirrors `short_id` in the Rust worktree module.
+ */
+export function sessionShortId(sessionId: string): string {
+  let hash = 0xcbf29ce484222325n
+  for (const byte of new TextEncoder().encode(sessionId)) {
+    hash ^= BigInt(byte)
+    hash = (hash * 0x100000001b3n) & 0xffffffffffffffffn
+  }
+  return hash.toString(16).padStart(16, '0').slice(0, 10)
+}
+
+/**
+ * Which of `sessionIds` a worktree on disk was made for, from its directory
+ * name, its titled branch's short-id suffix, or its legacy branch. Undefined
+ * when none of them.
+ */
+export function worktreeOwner(
+  record: WorktreeRecord,
+  sessionIds: Iterable<string>
+): string | undefined {
+  const leaf = record.path.split(/[\\/]/).filter(Boolean).pop() ?? ''
+  for (const id of sessionIds) {
+    const short = sessionShortId(id)
+    if (
+      leaf === short ||
+      record.branch.endsWith(`-${short}`) ||
+      record.branch === sessionWorktreeBranch(id)
+    )
+      return id
+  }
+  return undefined
+}
+
+/**
+ * The left-over worktrees worth offering to this session: its own, and ones
+ * whose session no longer exists. Another live session's worktree is that
+ * session's business, not this one's.
+ */
+export function recoverableWorktrees(
+  found: readonly WorktreeRecord[],
+  mine: WorktreeRecord | null | undefined,
+  sessionId: string | null | undefined,
+  liveSessionIds: readonly string[],
+  heldPaths: readonly string[] = []
+): WorktreeRecord[] {
+  const held = new Set(heldPaths)
+  return orphans(found, mine).filter((record) => {
+    if (held.has(record.path)) return false
+    const owner = worktreeOwner(record, liveSessionIds)
+    return owner === undefined || owner === sessionId
+  })
+}
+
+/** The last two segments of a long path, for a label; the full one goes in a tooltip. */
+export function shortPath(path: string): string {
+  const parts = path.split(/[\\/]/).filter(Boolean)
+  return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`
+}
+
+const HINTS_KEY = 'flint.cowork.worktreeHints'
+
+type Hints = { folders: string[]; notCarried: string[] }
+
+function readHints(): Hints {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HINTS_KEY) ?? '{}')
+    return {
+      folders: Array.isArray(raw.folders) ? raw.folders : [],
+      notCarried: Array.isArray(raw.notCarried) ? raw.notCarried : [],
+    }
+  } catch {
+    return { folders: [], notCarried: [] }
+  }
+}
+
+function writeHints(next: Hints): void {
+  try {
+    localStorage.setItem(HINTS_KEY, JSON.stringify(next))
+  } catch {
+    // A hint that comes back is not worth failing over.
+  }
+}
+
+/** The user said not to offer earlier worktrees for this folder again. */
+export const recoveryHidden = (folder: string): boolean =>
+  readHints().folders.includes(folder)
+
+export function hideRecovery(folder: string): void {
+  const hints = readHints()
+  if (!hints.folders.includes(folder))
+    writeHints({ ...hints, folders: [...hints.folders, folder] })
+}
+
+/** The "not carried over" line was dismissed for this session. */
+export const notCarriedDismissed = (sessionId: string): boolean =>
+  readHints().notCarried.includes(sessionId)
+
+export function dismissNotCarried(sessionId: string): void {
+  const hints = readHints()
+  if (!hints.notCarried.includes(sessionId))
+    writeHints({ ...hints, notCarried: [...hints.notCarried, sessionId] })
+}

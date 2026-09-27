@@ -1120,7 +1120,8 @@ describe('what the route says about the run', () => {
     await renderRoute()
 
     const panel = await screen.findByTestId('cowork-worktree-recovery')
-    expect(panel).toHaveTextContent('/data/worktrees/abcd/orphan')
+    await userEvent.click(screen.getByText('common:worktreeRecovery.review'))
+    expect(panel).toHaveTextContent('…/abcd/orphan')
 
     await userEvent.click(screen.getByText('common:worktreeRecovery.use'))
 
