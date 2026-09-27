@@ -1624,6 +1624,7 @@ mod review_tests {
     #[test]
     fn untracked_symlink_is_not_dereferenced() {
         use std::os::unix::fs::symlink;
+        use std::sync::atomic::Ordering;
         let dir = std::env::temp_dir().join(format!(
             "jan_symlink_review_{}_{}",
             std::process::id(),
