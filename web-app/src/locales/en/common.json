@@ -1375,6 +1375,7 @@
     "toolsSupported": "supports tools",
     "toolsUnsupported": "cannot call tools",
     "toolsUnknown": "tool support unknown",
+    "toolTest": "Tool test",
     "tools": "Tools",
     "builtins": "{{count}} built-in",
     "noMcp": "no MCP servers",
@@ -1861,6 +1862,23 @@
   },
   "open": "Open",
   "skillsScopeGlobal": "These skills apply to every chat.",
+  "modelDoctor": {
+    "test": "Test this model",
+    "retest": "Test again",
+    "running": "Testing tool calls through this model's transport…",
+    "cancel": "Cancel",
+    "passed": "Tool calls worked in a test on {{date}}",
+    "failed": "Tool calls failed a test on {{date}}",
+    "stale": "Settings changed since the last test",
+    "fingerprint": "Settings fingerprint {{fingerprint}} · took {{ms}} ms",
+    "limits": "One probe with a synthetic tool and no project files. A pass shows this model can call a tool and continue from its result with these settings; it does not guarantee every task will work.",
+    "check": {
+      "tool_call": "Tool call",
+      "arguments": "Arguments",
+      "continuation": "Continuation",
+      "timeout": "Response time"
+    }
+  },
   "pr": {
     "statusUnavailable": "Status unavailable",
     "merged": "Merged",

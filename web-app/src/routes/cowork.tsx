@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrBar } from '@/containers/PrBar'
+import { ModelDoctor } from '@/containers/ModelDoctor'
+import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
@@ -905,6 +907,7 @@ export function CoworkPage() {
   const settingsMcpServers = useMCPServers(
     (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
   )
+  const doctorResults = useModelDoctor((s) => s.results)
   // Model, context, MCP and local runtime are facts only this page holds; the
   // backend leaves them "checking" until they are reported.
   const rendererReports = useMemo(
@@ -917,12 +920,20 @@ export function CoworkPage() {
               supportsTools: selectedModel.capabilities
                 ? selectedModel.capabilities.includes('tools')
                 : null,
+              observedTools: observedToolsFact(
+                currentDoctorResult(
+                  doctorResults,
+                  selectedProvider ? getProviderByName(selectedProvider) : undefined,
+                  selectedModel ?? undefined
+                )
+              ),
             }
           : null,
         contextTokens: configuredContextTokens(modelCapabilities),
         settingsMcpServers,
       }),
-    [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedModel, selectedProvider, modelCapabilities, settingsMcpServers, doctorResults]
   )
   const workspacePath = useSessionWorkspacePath(session?.id)
   const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
@@ -4827,6 +4838,12 @@ export function CoworkPage() {
       <CoworkReadinessCard
         manifest={readiness}
         settingsMcpServers={settingsMcpServers}
+        modelTest={
+          <ModelDoctor
+            provider={selectedProvider ? getProviderByName(selectedProvider) : undefined}
+            model={selectedModel ?? undefined}
+          />
+        }
       />
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport

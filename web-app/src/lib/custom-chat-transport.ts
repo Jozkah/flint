@@ -220,7 +220,7 @@ const UPSTREAM_SAMPLING_DEFAULTS: Record<string, number> = {
   repeat_penalty: 1.0,
 }
 
-function extractModelSamplingDefaults(
+export function extractModelSamplingDefaults(
   model: Model | null | undefined
 ): Record<string, unknown> {
   if (!model?.settings) return {}

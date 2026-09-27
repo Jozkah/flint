@@ -43,6 +43,8 @@ export const localStorageKey = {
   projectInitDrafts: 'project-init-drafts',
   /** Measured model test results, preferred default model, dismissed hints. */
   modelEvidence: 'model-evidence',
+  /** Model Doctor: observed tool-calling probe results, by model and settings. */
+  modelDoctor: 'model-doctor',
   /** First-run guide progress: chosen intention, current step, skipped/done. */
   onboardingGuide: 'onboarding-guide',
   /** Split conversations: open or closed, the second pane's thread, width share. */

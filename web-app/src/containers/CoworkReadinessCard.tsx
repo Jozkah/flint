@@ -91,8 +91,14 @@ function estimateMethod(accounting: ContextAccounting): string {
 export function CoworkReadinessCard({
   manifest,
   settingsMcpServers = 0,
+  modelTest,
 }: {
   manifest: ReadinessManifest
+  /**
+   * Model Doctor: what a tool-calling probe observed for this model, and the
+   * action to run one. The declared flag above it is left as it is.
+   */
+  modelTest?: React.ReactNode
   /**
    * MCP servers switched on in Settings. Cowork does not offer them, and
    * someone who enabled one would otherwise expect it here.
@@ -213,6 +219,12 @@ export function CoworkReadinessCard({
               ? t('common:readiness.toolsSupported')
               : t('common:readiness.toolsUnsupported')}
         </Row>
+        {modelTest && manifest.model.id ? (
+          <div className="contents">
+            <dt className="text-muted-foreground">{t('common:readiness.toolTest')}</dt>
+            <dd className="min-w-0">{modelTest}</dd>
+          </div>
+        ) : null}
         <Row label={t('common:readiness.tools')}>
           {manifest.tools.builtins == null
             ? t('common:readiness.builtinsUnknown')

@@ -58,6 +58,11 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     'coworkEmpty.folder.first',
     'coworkEmpty.folder.second',
     'coworkEmpty.folder.third',
+    // ModelDoctor names each probe check by its id.
+    'modelDoctor.check.tool_call',
+    'modelDoctor.check.arguments',
+    'modelDoctor.check.continuation',
+    'modelDoctor.check.timeout',
   ],
   'model-errors': [
     'engine.unknown',

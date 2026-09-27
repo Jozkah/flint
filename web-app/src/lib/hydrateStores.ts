@@ -33,6 +33,7 @@ import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { useModelDoctor } from '@/hooks/useModelDoctor'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
@@ -82,6 +83,7 @@ const secondaryStores = [
   useReferenceAliases,
   useProjectInitDrafts,
   useModelEvidence,
+  useModelDoctor,
   useOnboardingGuide,
   useSessionMessaging,
   useSplitConversation,
