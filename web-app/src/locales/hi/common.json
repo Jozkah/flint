@@ -706,5 +706,9 @@
     "pullRequest": "पुल रिक्वेस्ट #{{number}}",
     "changeAt": "पंक्ति {{line}} पर बदलाव",
     "revertChange": "वापस लें"
+  },
+  "progressPin": {
+    "pin": "प्रगति को बातचीत के ऊपर पिन करें",
+    "unpin": "प्रगति अनपिन करें"
   }
 }

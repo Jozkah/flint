@@ -917,5 +917,9 @@
     "pullRequest": "Pull request #{{number}}",
     "changeAt": "{{line}}. satırdaki değişiklik",
     "revertChange": "Geri al"
+  },
+  "progressPin": {
+    "pin": "İlerlemeyi sohbetin üstüne sabitle",
+    "unpin": "İlerlemenin sabitlemesini kaldır"
   }
 }

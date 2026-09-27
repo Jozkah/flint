@@ -74,6 +74,24 @@ export type CoworkMessage = {
   content: string
 }
 
+/** The plan at one run, placed in the transcript after `anchorId`. */
+export type TodoSnapshot = { anchorId: string; list: TodoList }
+
+export type ProgressUi = { expanded?: boolean; unpinned?: boolean }
+
+/**
+ * Keeps one snapshot per run: a later write from the same run replaces its
+ * snapshot, a run that writes a list for the first time adds one.
+ */
+export function recordTodoSnapshot(
+  snapshots: TodoSnapshot[] | undefined,
+  anchorId: string,
+  list: TodoList
+): TodoSnapshot[] {
+  const rest = (snapshots ?? []).filter((s) => s.anchorId !== anchorId)
+  return [...rest, { anchorId, list }]
+}
+
 export type CoworkSession = {
   id: string
   title: string
@@ -101,6 +119,13 @@ export type CoworkSession = {
   goal?: CoworkGoal
   /** Canonical session todo list, updated by the `todo_write` tool. */
   todos?: TodoList
+  /**
+   * The plan as it stood at each run that wrote one, anchored at that run's
+   * prompt message: one per run, the latest write of the run kept.
+   */
+  todoSnapshots?: TodoSnapshot[]
+  /** The pinned plan strip's state: open or folded, and whether unpinned. */
+  progressUi?: ProgressUi
   /**
    * @deprecated Superseded by `mode`. Kept so sessions saved before modes
    * existed keep their meaning; read through `modeOf`, never directly.
@@ -291,7 +316,8 @@ type CoworkSessionsState = {
   setTitle: (id: string, title: string) => void
   setMessages: (id: string, messages: UIMessage[]) => void
   setGoal: (id: string, goal: CoworkGoal | null) => void
-  setTodos: (id: string, todos: TodoList) => void
+  setTodos: (id: string, todos: TodoList, anchorId?: string) => void
+  setProgressUi: (id: string, patch: ProgressUi) => void
   /**
    * @deprecated Bridge for the pre-AI-SDK Cowork route, which has no
    * `UIMessage[]` to commit. Removed together with that route.
@@ -653,9 +679,26 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ),
         })),
 
-      setTodos: (id, todos) =>
+      setTodos: (id, todos, anchorId) =>
         set((s) => ({
-          sessions: s.sessions.map((x) => (x.id === id ? { ...x, todos } : x)),
+          sessions: s.sessions.map((x) =>
+            x.id === id
+              ? {
+                  ...x,
+                  todos,
+                  todoSnapshots: anchorId
+                    ? recordTodoSnapshot(x.todoSnapshots, anchorId, todos)
+                    : x.todoSnapshots,
+                }
+              : x
+          ),
+        })),
+
+      setProgressUi: (id, patch) =>
+        set((s) => ({
+          sessions: s.sessions.map((x) =>
+            x.id === id ? { ...x, progressUi: { ...x.progressUi, ...patch } } : x
+          ),
         })),
 
       setAccess: (id, access) =>

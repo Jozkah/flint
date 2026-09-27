@@ -648,5 +648,9 @@
     "pullRequest": "Pull request № {{number}}",
     "changeAt": "Изменение в строке {{line}}",
     "revertChange": "Откатить"
+  },
+  "progressPin": {
+    "pin": "Закрепить прогресс над беседой",
+    "unpin": "Открепить прогресс"
   }
 }

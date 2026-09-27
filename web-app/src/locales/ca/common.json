@@ -638,5 +638,9 @@
     "pullRequest": "Pull request núm. {{number}}",
     "changeAt": "Canvi a la línia {{line}}",
     "revertChange": "Reverteix"
+  },
+  "progressPin": {
+    "pin": "Fixa el progrés sobre la conversa",
+    "unpin": "Deixa de fixar el progrés"
   }
 }

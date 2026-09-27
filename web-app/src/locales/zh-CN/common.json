@@ -919,5 +919,9 @@
     "pullRequest": "拉取请求 #{{number}}",
     "changeAt": "第 {{line}} 行的更改",
     "revertChange": "还原"
+  },
+  "progressPin": {
+    "pin": "将进度固定在对话上方",
+    "unpin": "取消固定进度"
   }
 }

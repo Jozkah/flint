@@ -1888,5 +1888,9 @@
     "noMatches": "No parameters match",
     "noneForProvider": "No tunable parameters for this provider.",
     "maybeUnsupported": "May not be supported by {{providers}}"
+  },
+  "progressPin": {
+    "pin": "Pin progress over the conversation",
+    "unpin": "Unpin progress"
   }
 }

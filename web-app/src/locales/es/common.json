@@ -706,5 +706,9 @@
     "pullRequest": "Pull request n.º {{number}}",
     "changeAt": "Cambio en la línea {{line}}",
     "revertChange": "Revertir"
+  },
+  "progressPin": {
+    "pin": "Fijar el progreso sobre la conversación",
+    "unpin": "Desfijar el progreso"
   }
 }

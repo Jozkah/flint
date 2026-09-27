@@ -727,5 +727,9 @@
     "pullRequest": "Pull request n. {{number}}",
     "changeAt": "Modifica alla riga {{line}}",
     "revertChange": "Ripristina"
+  },
+  "progressPin": {
+    "pin": "Fissa l’avanzamento sopra la conversazione",
+    "unpin": "Sblocca l’avanzamento"
   }
 }
