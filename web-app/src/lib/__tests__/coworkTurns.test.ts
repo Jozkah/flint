@@ -463,7 +463,39 @@ describe('live transcript order', () => {
     const segments = segmentAssistantMessage(reply)
     expect(workflowSegmentIndex(segments, ['bash-1', 'bash-2'])).toBe(0)
     expect(workflowSegmentIndex(segments, ['bash-2'])).toBe(1)
-    expect(workflowSegmentIndex(segments, ['elsewhere'])).toBe(1)
+    // Unknown dispatch: right under the prompt, never the bottom.
+    expect(workflowSegmentIndex(segments, ['elsewhere'])).toBe(0)
+  })
+
+  it('keeps a bash-first card at its round when later rounds and hidden tools follow', () => {
+    const turns: CoworkTurn[] = [
+      { role: 'user', content: 'look at bodycam.as' },
+      {
+        role: 'assistant',
+        content: 'Reading it.',
+        promptSnapshot: { id: 's1', hash: 'h1', redactions: 0 },
+      },
+      { role: 'tool', content: '', callId: 'sh-1', name: 'bash', status: 'done' },
+      {
+        role: 'assistant',
+        content: 'That failed; trying another way.',
+        promptSnapshot: { id: 's2', hash: 'h2', redactions: 0 },
+      },
+      { role: 'tool', content: '', callId: 'rd-1', name: 'read', status: 'done' },
+      {
+        role: 'assistant',
+        content: 'Here is what it does.',
+        promptSnapshot: { id: 's3', hash: 'h3', redactions: 0 },
+      },
+    ]
+    for (const hideCompletedTools of [false, true]) {
+      const [, answer] = coworkTurnsToUIMessages(turns, 'b', {
+        hideCompletedTools,
+      })
+      const segments = segmentAssistantMessage(answer)
+      expect(segments).toHaveLength(3)
+      expect(workflowSegmentIndex(segments, ['sh-1'])).toBe(0)
+    }
   })
 
   it('leaves a single-round reply and user rows untouched', () => {

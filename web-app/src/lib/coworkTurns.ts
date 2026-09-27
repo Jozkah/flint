@@ -209,8 +209,17 @@ export function coworkTurnsToUIMessages(
       const existing = asst.parts.find(
         (p: any) => p.type === 'data-hidden-tools'
       )
-      if (existing) existing.data.count += 1
-      else asst.parts.push({ type: 'data-hidden-tools', data: { count: 1 } })
+      // The call ids stay on the row, so a workflow card can still find the
+      // round its hidden command ran in.
+      const callIds = turn.callId ? [turn.callId] : []
+      if (existing) {
+        existing.data.count += 1
+        existing.data.callIds = [...(existing.data.callIds ?? []), ...callIds]
+      } else
+        asst.parts.push({
+          type: 'data-hidden-tools',
+          data: { count: 1, callIds },
+        })
       return
     }
 
@@ -319,7 +328,10 @@ export function segmentAssistantMessage(message: UIMessage): UIMessage[] {
 /**
  * The segment a workflow card follows: the round that made its first
  * dispatch, so the card sits where the work started and everything the run
- * did afterwards is below it. The last segment when no dispatch is found.
+ * did afterwards is below it. A call hidden by the display option is still
+ * found through the ids its hidden-tools row keeps. The first segment, right
+ * under the prompt that started the run, when no dispatch is found: never the
+ * last, where the card would ride the bottom of a live transcript.
  */
 export function workflowSegmentIndex(
   segments: UIMessage[],
@@ -328,11 +340,22 @@ export function workflowSegmentIndex(
   const ids = new Set(callIds)
   const at = segments.findIndex((segment) =>
     segment.parts.some((part) => {
-      const id = (part as { toolCallId?: string }).toolCallId
-      return typeof id === 'string' && ids.has(id)
+      const record = part as {
+        toolCallId?: string
+        type?: string
+        data?: { callIds?: unknown }
+      }
+      if (typeof record.toolCallId === 'string' && ids.has(record.toolCallId))
+        return true
+      const hidden =
+        record.type === 'data-hidden-tools' ? record.data?.callIds : null
+      return (
+        Array.isArray(hidden) &&
+        hidden.some((id) => typeof id === 'string' && ids.has(id))
+      )
     })
   )
-  return at >= 0 ? at : segments.length - 1
+  return at >= 0 ? at : 0
 }
 
 /**
