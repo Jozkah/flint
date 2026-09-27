@@ -690,5 +690,8 @@
   "progressPin": {
     "pin": "Закрепить прогресс над беседой",
     "unpin": "Открепить прогресс"
-  }
+  },
+  "decisionScopeShowFull": "Показать полностью",
+  "decisionScopeHide": "Скрыть",
+  "decisionScopeCopy": "Копировать"
 }

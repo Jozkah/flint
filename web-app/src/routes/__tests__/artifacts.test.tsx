@@ -213,6 +213,60 @@ describe('Library route (/artifacts)', () => {
     expect(screen.getByTestId('artifact-card')).toBeInTheDocument()
   })
 
+  it('marks the card selected in the same tick as the click', async () => {
+    await renderPage()
+    const card = screen.getByTestId('artifact-card').firstElementChild!
+    expect(card).not.toHaveAttribute('data-selected')
+    // No act() flush: the highlight must not wait on the details panel.
+    fireEvent.click(screen.getByTestId('artifact-row'))
+    expect(card).toHaveAttribute('data-selected', 'true')
+    expect(card.className).toContain('var(--primary)')
+    await act(async () => {})
+    expect(screen.getByTestId('artifact-inspector')).toBeInTheDocument()
+  })
+
+  it('outlines a card on hover and on keyboard focus', async () => {
+    await renderPage()
+    const card = screen.getByTestId('artifact-card').firstElementChild!
+    expect(card.className).toContain(
+      'hover:[&>[data-slot=frame-body]]:shadow-[0_0_0_1px_var(--ring),var(--lift)]'
+    )
+    expect(card.className).toContain(
+      'has-[[data-testid=artifact-row]:focus-visible]'
+    )
+  })
+
+  it('previews the first lines of a Markdown artifact on its card', async () => {
+    const { clearPreviewCache } = await import('@/lib/artifactCardPreview')
+    clearPreviewCache()
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response('# Release notes\n\n- Added **gusts**\n- Fixed [cache](x)')
+      )
+    h.sessions = [
+      {
+        ...session,
+        turns: [
+          {
+            role: 'tool',
+            name: 'write',
+            content: '',
+            args: { path: 'notes.md' },
+            result: 'Created notes.md (60 bytes)',
+          },
+        ],
+      },
+    ]
+    await renderPage()
+    const thumb = await screen.findByTestId('artifact-thumb-text')
+    expect(thumb).toHaveTextContent('Release notes')
+    expect(thumb).toHaveTextContent('• Added gusts')
+    expect(thumb).toHaveTextContent('• Fixed cache')
+    expect(fetchMock).toHaveBeenCalledWith('/data/ws/s1/notes.md')
+    fetchMock.mockRestore()
+  })
+
   it('shows a headline and a next step when nothing has been made', async () => {
     h.sessions = []
     await renderPage()

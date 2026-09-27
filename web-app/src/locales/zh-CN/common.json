@@ -961,5 +961,8 @@
   "progressPin": {
     "pin": "将进度固定在对话上方",
     "unpin": "取消固定进度"
-  }
+  },
+  "decisionScopeShowFull": "显示全部",
+  "decisionScopeHide": "收起",
+  "decisionScopeCopy": "复制"
 }

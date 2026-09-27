@@ -679,5 +679,8 @@
   "progressPin": {
     "pin": "Fixar o progresso acima da conversa",
     "unpin": "Desafixar o progresso"
-  }
+  },
+  "decisionScopeShowFull": "Mostrar completo",
+  "decisionScopeHide": "Ocultar",
+  "decisionScopeCopy": "Copiar"
 }

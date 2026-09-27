@@ -678,5 +678,8 @@
   "progressPin": {
     "pin": "Fortschritt über dem Gespräch anheften",
     "unpin": "Fortschritt lösen"
-  }
+  },
+  "decisionScopeShowFull": "Vollständig anzeigen",
+  "decisionScopeHide": "Ausblenden",
+  "decisionScopeCopy": "Kopieren"
 }

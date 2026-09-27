@@ -959,5 +959,8 @@
   "progressPin": {
     "pin": "İlerlemeyi sohbetin üstüne sabitle",
     "unpin": "İlerlemenin sabitlemesini kaldır"
-  }
+  },
+  "decisionScopeShowFull": "Tamamını göster",
+  "decisionScopeHide": "Gizle",
+  "decisionScopeCopy": "Kopyala"
 }

@@ -680,5 +680,8 @@
   "progressPin": {
     "pin": "Fixa el progrés sobre la conversa",
     "unpin": "Deixa de fixar el progrés"
-  }
+  },
+  "decisionScopeShowFull": "Mostra-ho tot",
+  "decisionScopeHide": "Amaga",
+  "decisionScopeCopy": "Copia"
 }

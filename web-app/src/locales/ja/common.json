@@ -792,5 +792,8 @@
   "progressPin": {
     "pin": "進捗を会話の上に固定",
     "unpin": "進捗の固定を解除"
-  }
+  },
+  "decisionScopeShowFull": "すべて表示",
+  "decisionScopeHide": "隠す",
+  "decisionScopeCopy": "コピー"
 }

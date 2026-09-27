@@ -748,5 +748,8 @@
   "progressPin": {
     "pin": "Fijar el progreso sobre la conversación",
     "unpin": "Desfijar el progreso"
-  }
+  },
+  "decisionScopeShowFull": "Mostrar completo",
+  "decisionScopeHide": "Ocultar",
+  "decisionScopeCopy": "Copiar"
 }
