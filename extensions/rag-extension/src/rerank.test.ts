@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   applyOrder,
   retrieveWithRerank,
-  shortlistSize,
+  searchSize,
+  MAX_SHORTLIST,
   type Citation,
   type JevBridge,
 } from './rerank'
@@ -75,11 +76,45 @@ describe('retrieveWithRerank', () => {
   })
 })
 
+describe('a top_k larger than what Jev is shown', () => {
+  const many: Citation[] = Array.from({ length: 60 }, (_, i) => ({
+    id: `c${i}`,
+    text: `passage ${i}`,
+    score: 1 - i / 100,
+    file_id: `f${i % 4}`,
+  }))
+  const searchMany = vi.fn((limit: number) => Promise.resolve(many.slice(0, limit)))
+
+  it('returns every requested result, reranking only the first MAX_SHORTLIST', async () => {
+    const reversed = many.slice(0, MAX_SHORTLIST).map((c) => String(c.id)).reverse()
+    const b = bridge('on', reversed)
+    const r = await retrieveWithRerank('q', 50, searchMany, b)
+    expect(searchMany).toHaveBeenLastCalledWith(50)
+    expect(r.reranked).toBe(true)
+    expect(r.citations).toHaveLength(50)
+    // Only 20 passages were sent to Jev.
+    expect(b.rerank.mock.calls[0][0].candidates).toHaveLength(MAX_SHORTLIST)
+    // The first 20 in Jev's order, then 20..49 in search order, same objects.
+    expect(r.citations.slice(0, MAX_SHORTLIST).map((c) => c.id)).toEqual(reversed)
+    expect(r.citations.slice(MAX_SHORTLIST)).toEqual(many.slice(MAX_SHORTLIST, 50))
+    expect(r.citations[0]).toBe(many[MAX_SHORTLIST - 1])
+  })
+
+  it('shadow and fallback also keep all 50', async () => {
+    expect((await retrieveWithRerank('q', 50, searchMany, bridge('shadow', null))).citations).toEqual(many.slice(0, 50))
+    expect((await retrieveWithRerank('q', 50, searchMany, bridge('on', new Error('timeout')))).citations).toEqual(
+      many.slice(0, 50)
+    )
+    expect((await retrieveWithRerank('q', 50, searchMany, bridge('off', null))).citations).toHaveLength(50)
+  })
+})
+
 describe('helpers', () => {
-  it('bounds the shortlist', () => {
-    expect(shortlistSize(1)).toBe(6)
-    expect(shortlistSize(3)).toBe(9)
-    expect(shortlistSize(20)).toBe(20)
+  it('never fetches fewer than asked for', () => {
+    expect(searchSize(1)).toBe(6)
+    expect(searchSize(3)).toBe(9)
+    expect(searchSize(20)).toBe(20)
+    expect(searchSize(50)).toBe(50)
   })
 
   it('applies only an exact permutation', () => {

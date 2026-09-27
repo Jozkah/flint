@@ -52,6 +52,11 @@ recorded from Flint — record them before treating the retrieval numbers as a
 gate. Turn a feature on by default only if Jev beats Flint on holdout without
 more wrong suggestions where none applies.
 
+**Release blocker:** the retrieval comparison below uses a TF-IDF order, not
+Flint's. Before release, record the order Flint's own embedding search
+returns for each labeled query and rerun with `--baseline-order`, with
+`TYPESAFE_API_KEY` set and `api.typesafe.ai` reachable.
+
 ### Measured so far
 
 #### Jev evaluation (holdout split, jev-1.13.0)

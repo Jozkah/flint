@@ -32,9 +32,13 @@ export type JevBridge = {
 /** The most candidates Jev is shown, matching the backend's cap. */
 export const MAX_SHORTLIST = 20
 
-/** How many candidates to fetch for Jev to choose `topK` from. */
-export function shortlistSize(topK: number): number {
-  return Math.min(MAX_SHORTLIST, Math.max(topK * 3, topK + 5))
+/**
+ * How many results to fetch: never fewer than `topK` (the caller's request
+ * stands), plus some headroom for Jev to choose from when `topK` is small.
+ * Only the first `MAX_SHORTLIST` of them are ever sent to Jev.
+ */
+export function searchSize(topK: number): number {
+  return Math.max(topK, Math.min(MAX_SHORTLIST, Math.max(topK * 3, topK + 5)))
 }
 
 /**
@@ -84,19 +88,23 @@ export async function retrieveWithRerank(
   if (mode !== 'shadow' && mode !== 'on') {
     return { citations: await search(topK), reranked: false, mode: 'off' }
   }
-  const shortlist = await search(shortlistSize(topK))
-  const baseline = shortlist.slice(0, topK)
-  if (shortlist.length < 2) return { citations: baseline, reranked: false, mode }
+  const results = await search(searchSize(topK))
+  const baseline = results.slice(0, topK)
+  // Jev sees at most MAX_SHORTLIST passages; the rest keep their places after
+  // them, so a large `top_k` still gets every result it asked for.
+  const sent = results.slice(0, MAX_SHORTLIST)
+  const rest = results.slice(MAX_SHORTLIST)
+  if (sent.length < 2) return { citations: baseline, reranked: false, mode }
   try {
     const decision = await bridge!.rerank({
       query,
-      candidates: shortlist.map((c) => ({ id: String(c.id), text: c.text ?? '' })),
-      k: topK,
+      candidates: sent.map((c) => ({ id: String(c.id), text: c.text ?? '' })),
+      k: Math.min(topK, sent.length),
     })
     if (mode !== 'on' || !decision.order) return { citations: baseline, reranked: false, mode }
-    const ordered = applyOrder(shortlist, decision.order, topK)
+    const ordered = applyOrder(sent, decision.order, sent.length)
     return ordered
-      ? { citations: ordered, reranked: true, mode }
+      ? { citations: [...ordered, ...rest].slice(0, topK), reranked: true, mode }
       : { citations: baseline, reranked: false, mode }
   } catch {
     return { citations: baseline, reranked: false, mode }
