@@ -198,7 +198,10 @@ import {
   CoworkProgressButton,
 } from '@/containers/CoworkPinnedProgress'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
-import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import {
+  useCoworkDisplay,
+  useShowPromptSnapshot,
+} from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
 import { CoworkSessionDetails } from '@/containers/CoworkSessionDetails'
 import { CoworkEnvironmentReadiness } from '@/containers/CoworkEnvironmentReadiness'
@@ -1845,7 +1848,8 @@ export function CoworkPage() {
   // change the tree, and a list loaded before them contradicts its own diffs.
   const git = useCoworkGitStatus(treeRoot, running)
   // "Show 'What the model received'": the per-turn row and its token count.
-  const showPromptSnapshot = useCoworkDisplay((s) => s.showPromptSnapshot)
+  // Forced on by the Verbose transcript view.
+  const showPromptSnapshot = useShowPromptSnapshot()
 
   // Review only output into the attached folder: per file, and "Apply all".
   const applySessionId = session?.id

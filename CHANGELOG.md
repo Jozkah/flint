@@ -73,6 +73,10 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - docs(readme): build the bundled extensions before yarn dev
 - fix(server): say the Local API port is taken when another app holds it
 - fix(chat): a new chat gets its own transport; servers named in a message are routed
+- feat(cowork): pin the plan's progress list over the transcript, with a snapshot of the plan kept for each run
+- feat(cowork): Apply all sandbox output to the attached folder; a Review only finish setting (keep in the sandbox, ask, or apply automatically); hide the files-ready bar; hide "What the model received" (off by default, forced on by the Verbose transcript view); clickable files in the change list; short tool paths; and change markers that peek at a sandbox change and apply it on its own
+- feat(chat): Transcript view setting with Normal, Thinking and Verbose modes, showing failed tool calls per view
+- feat(chat): timeline action layout for tool calls and approvals
 
 ### Local-first and privacy
 - fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing "Expected 'function.name' to be a string" generation failures

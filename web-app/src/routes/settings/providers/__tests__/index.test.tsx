@@ -214,6 +214,16 @@ describe('Models page (/settings/providers)', () => {
     expect(cell).toHaveTextContent(/llama/i)
   })
 
+  it('names the provider, not the quantization, on a loaded model card', async () => {
+    h.appState.activeModels = ['gemma-3-4b-it:Q4_K_M']
+    await renderPage().finally(() => {
+      h.appState.activeModels = []
+    })
+    const row = await screen.findByTestId('loaded-row-gemma-3-4b-it:Q4_K_M')
+    expect(row).not.toHaveTextContent('Q4_K_M')
+    expect(row).toHaveTextContent(/llama/i)
+  })
+
   it("opens a real menu from a model row's three dots", async () => {
     const user = userEvent.setup()
     await renderPage()

@@ -387,6 +387,7 @@ function ModelProviders() {
                   return (
                     <div
                       key={`${provider.provider}:${model.id}`}
+                      data-testid={`loaded-row-${model.id}`}
                       className="flex items-center gap-3 border-b border-dashed border-border py-3 last:border-b-0"
                     >
                       <BrandMark
@@ -400,7 +401,7 @@ function ModelProviders() {
                         </b>
                         <small className="truncate text-xs text-muted-foreground">
                           {[
-                            quantOf(model.id) ?? getProviderTitle(provider.provider),
+                            getProviderTitle(provider.provider),
                             fileSizes[model.id]
                               ? formatBytes(fileSizes[model.id])
                               : null,

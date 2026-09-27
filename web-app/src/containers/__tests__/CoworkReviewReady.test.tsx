@@ -19,7 +19,10 @@ const toast = vi.hoisted(() => ({ success: vi.fn(), warning: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 
 import { CoworkReviewReady } from '../CoworkReviewReady'
-import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import {
+  shouldShowPromptSnapshot,
+  useCoworkDisplay,
+} from '@/hooks/useCoworkDisplay'
 import type { SandboxApplyActions } from '../CoworkApplyAllDialog'
 
 const plan = (path: string) => ({
@@ -76,6 +79,13 @@ describe('files-ready bar', () => {
     expect(initial.showPromptSnapshot).toBe(false)
     act(() => useCoworkDisplay.getState().setShowPromptSnapshot(true))
     expect(useCoworkDisplay.getState().showPromptSnapshot).toBe(true)
+  })
+
+  it('the Verbose transcript view forces the model-received row on', () => {
+    expect(shouldShowPromptSnapshot(false, 'normal')).toBe(false)
+    expect(shouldShowPromptSnapshot(false, 'thinking')).toBe(false)
+    expect(shouldShowPromptSnapshot(false, 'verbose')).toBe(true)
+    expect(shouldShowPromptSnapshot(true, 'normal')).toBe(true)
   })
 })
 

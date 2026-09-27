@@ -2,6 +2,8 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import type { TranscriptView } from '@/lib/transcriptView'
 
 /**
  * How much of a Cowork session's activity the timeline shows.
@@ -85,3 +87,19 @@ export const useCoworkDisplay = create<CoworkDisplayState>()(
     }
   )
 )
+
+/**
+ * Whether the per-turn "What the model received" row shows. The Verbose
+ * transcript view shows everything, so it forces the row on whatever the
+ * Cowork setting says.
+ */
+export const shouldShowPromptSnapshot = (
+  showPromptSnapshot: boolean,
+  transcriptView: TranscriptView
+) => showPromptSnapshot || transcriptView === 'verbose'
+
+export const useShowPromptSnapshot = () => {
+  const stored = useCoworkDisplay((s) => s.showPromptSnapshot)
+  const view = useInterfaceSettings((s) => s.transcriptView)
+  return shouldShowPromptSnapshot(stored, view)
+}
