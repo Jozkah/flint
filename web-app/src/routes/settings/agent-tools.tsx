@@ -23,7 +23,6 @@ import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
-import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { getSandboxStatus } from '@/lib/agentTools'
 import type { SandboxStatus } from '@janhq/tauri-plugin-agent-tools-api'
 import {
@@ -76,10 +75,6 @@ function AgentToolsContent() {
   const { t } = useTranslation()
   const hideCompletedTools = useCoworkDisplay((x) => x.hideCompletedTools)
   const showPromptSnapshot = useCoworkDisplay((x) => x.showPromptSnapshot)
-  // The Verbose transcript view shows the row regardless of this switch.
-  const verboseTranscript = useInterfaceSettings(
-    (x) => x.transcriptView === 'verbose'
-  )
   const setShowPromptSnapshot = useCoworkDisplay(
     (x) => x.setShowPromptSnapshot
   )
@@ -306,8 +301,7 @@ function AgentToolsContent() {
             actions={
               <Switch
                 data-testid="show-model-received"
-                checked={showPromptSnapshot || verboseTranscript}
-                disabled={verboseTranscript}
+                checked={showPromptSnapshot}
                 onCheckedChange={setShowPromptSnapshot}
               />
             }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, renderHook, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('@/lib/backendStorage', () => ({
@@ -20,9 +20,10 @@ vi.mock('sonner', () => ({ toast }))
 
 import { CoworkReviewReady } from '../CoworkReviewReady'
 import {
-  shouldShowPromptSnapshot,
   useCoworkDisplay,
+  useShowPromptSnapshot,
 } from '@/hooks/useCoworkDisplay'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import type { SandboxApplyActions } from '../CoworkApplyAllDialog'
 
 const plan = (path: string) => ({
@@ -81,11 +82,16 @@ describe('files-ready bar', () => {
     expect(useCoworkDisplay.getState().showPromptSnapshot).toBe(true)
   })
 
-  it('the Verbose transcript view forces the model-received row on', () => {
-    expect(shouldShowPromptSnapshot(false, 'normal')).toBe(false)
-    expect(shouldShowPromptSnapshot(false, 'thinking')).toBe(false)
-    expect(shouldShowPromptSnapshot(false, 'verbose')).toBe(true)
-    expect(shouldShowPromptSnapshot(true, 'normal')).toBe(true)
+  it('the model-received row follows its own setting, not the transcript view', () => {
+    act(() => {
+      useCoworkDisplay.getState().setShowPromptSnapshot(false)
+      useInterfaceSettings.setState({ transcriptView: 'verbose' })
+    })
+    const { result, rerender } = renderHook(() => useShowPromptSnapshot())
+    expect(result.current).toBe(false)
+    act(() => useCoworkDisplay.getState().setShowPromptSnapshot(true))
+    rerender()
+    expect(result.current).toBe(true)
   })
 })
 
