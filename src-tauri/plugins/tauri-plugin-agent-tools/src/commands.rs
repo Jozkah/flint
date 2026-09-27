@@ -2045,12 +2045,7 @@ pub async fn project_list_dir(
     root: String,
     rel: String,
 ) -> Result<crate::project_browse::ProjectListing, AgentToolsError> {
-    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
-    let canonical = workspace::validate_read_root(
-        Path::new(&root),
-        &workspace_root,
-        Some(Path::new(&data_folder)),
-    )?;
+    let canonical = workspace::validate_browse_root(Path::new(&root), Path::new(&data_folder))?;
     tokio::task::spawn_blocking(move || {
         crate::project_browse::list_dir(&canonical.to_string_lossy(), &rel)
     })
@@ -2069,12 +2064,7 @@ pub async fn project_read_file(
     rel: String,
     allow_sensitive: Option<bool>,
 ) -> Result<crate::project_browse::ProjectFile, AgentToolsError> {
-    let workspace_root = workspace::permanent_store(Path::new(&data_folder));
-    let canonical = workspace::validate_read_root(
-        Path::new(&root),
-        &workspace_root,
-        Some(Path::new(&data_folder)),
-    )?;
+    let canonical = workspace::validate_browse_root(Path::new(&root), Path::new(&data_folder))?;
     tokio::task::spawn_blocking(move || {
         crate::project_browse::read_file(
             &canonical.to_string_lossy(),

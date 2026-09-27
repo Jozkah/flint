@@ -162,6 +162,29 @@ pub fn validate_read_root(
     Ok(canonical)
 }
 
+/// Validate a folder the Code panel asked to browse, returning its canonical
+/// form.
+///
+/// A session's git worktree lives under `<permanent_store>/worktrees`, inside
+/// the agent workspace, so [`validate_read_root`] refuses it as overlapping
+/// the workspace. That refusal is about mounting a folder into the sandbox;
+/// browsing only reads files for display, and a worktree Jan created is the
+/// session's own project. So a folder strictly inside the worktrees directory
+/// is accepted here; anything else goes through [`validate_read_root`].
+pub fn validate_browse_root(root: &Path, jan_data_folder: &Path) -> Result<PathBuf, String> {
+    let worktrees = worktrees_dir(jan_data_folder);
+    if let (Ok(canonical), Ok(worktrees)) = (root.canonicalize(), worktrees.canonicalize()) {
+        if canonical.is_dir() && canonical != worktrees && is_within(&canonical, &worktrees) {
+            return Ok(canonical);
+        }
+    }
+    validate_read_root(
+        root,
+        &permanent_store(jan_data_folder),
+        Some(jan_data_folder),
+    )
+}
+
 /// The session-scoped scratch directory: a subdirectory of the host temp dir
 /// (e.g. `/tmp/jan-agent-<session>` on Linux), where `bash` scratch files
 /// persist across calls for one session and the filesystem tools may write.
@@ -523,7 +546,10 @@ pub fn thread_segment(thread_id: &str) -> Result<String, String> {
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     let temp = path.with_file_name(format!(
         ".{name}.tmp-{}-{}",
         std::process::id(),
@@ -550,7 +576,10 @@ pub fn workspace_filename(name: &str) -> Result<String, String> {
         || stem.contains("..")
         || stem.chars().all(|c| c == '.')
         || !matches!(
-            std::path::Path::new(stem).components().collect::<Vec<_>>().as_slice(),
+            std::path::Path::new(stem)
+                .components()
+                .collect::<Vec<_>>()
+                .as_slice(),
             [std::path::Component::Normal(_)]
         )
     {
@@ -886,6 +915,21 @@ mod tests {
         let root = if cfg!(windows) { "C:\\\\" } else { "/" };
         assert!(validate_read_root(Path::new(root), &ws, None).is_err());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn browse_root_accepts_an_owned_worktree_only() {
+        let base = tmp_root("browse_worktree");
+        let data = base.join("data");
+        let wt = worktrees_dir(&data).join("c0f3").join("8531");
+        std::fs::create_dir_all(&wt).unwrap();
+        assert!(validate_browse_root(&wt, &data).is_ok());
+        // The worktrees directory itself and the workspace stay refused.
+        assert!(validate_browse_root(&worktrees_dir(&data), &data).is_err());
+        assert!(validate_browse_root(&permanent_store(&data), &data).is_err());
+        let project = base.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        assert!(validate_browse_root(&project, &data).is_ok());
     }
     // ---- session sandboxes -------------------------------------------------
 

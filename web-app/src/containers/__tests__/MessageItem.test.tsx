@@ -202,6 +202,25 @@ describe('MessageItem', () => {
     expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
   })
 
+  it('shows no fallback on a segment the same reply continues below', () => {
+    render(
+      <MessageItem
+        message={
+          makeMsg({
+            parts: [
+              { type: 'tool-bash', toolCallId: 'c1', state: 'output-available', input: {}, output: 'ok' },
+            ],
+          }) as any
+        }
+        isFirstMessage
+        isLastMessage={false}
+        midReply
+        status={'ready' as any}
+      />
+    )
+    expect(screen.queryByTestId('empty-run-fallback')).toBeNull()
+  })
+
   it('renders user message in a bubble (no markdown renderer)', () => {
     render(
       <MessageItem
