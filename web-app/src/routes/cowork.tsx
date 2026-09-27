@@ -4986,12 +4986,18 @@ export function CoworkPage() {
           {progressButton}
           {reviewButton}
           {headerStop}
+          {/* No context bar in a pane: each pane picks its own session's
+              model here, never the global one. */}
+          <div
+            className="flex min-w-20 max-w-48 shrink"
+            data-testid={`cowork-pane-model-${paneChrome.paneId}`}
+          >
+            {modelSelector}
+          </div>
           {phone ? (
             viewSwitch(compactViews)
           ) : (
             <CoworkSessionDetails summary={sessionDetailsSummary}>
-              {/* No context bar in a pane: the model is chosen here. */}
-              {modelSelector}
               {detailsBody}
             </CoworkSessionDetails>
           )}

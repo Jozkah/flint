@@ -10,6 +10,7 @@ import '@testing-library/jest-dom'
 import DropdownModelProvider from '../DropdownModelProvider'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { localStorageKey } from '@/constants/localStorage'
+import { ConversationPaneContext } from '@/hooks/useConversationPane'
 
 // Stable across renders, as the real store's actions are.
 const threadsApi = {
@@ -149,5 +150,55 @@ describe('a picker that owns its selection', () => {
     await flush()
 
     expect(useModelProvider.getState().selectedModel?.id).toBe('cowork-model')
+  })
+})
+
+describe('pickers in split view panes', () => {
+  it('each pane records its own model and never moves the global one', async () => {
+    seed()
+    threadsApi.updateThreadModel.mockClear()
+    threadsApi.updateCurrentThreadModel.mockClear()
+    const paneOf = (paneId: string, threadId: string, isActive: boolean) => (
+      <ConversationPaneContext.Provider
+        value={{ paneId, threadId, isSplit: true, isActive }}
+      >
+        <div data-testid={`pane-${paneId}`}>
+          <DropdownModelProvider model={CHAT_REF} />
+        </div>
+      </ConversationPaneContext.Provider>
+    )
+    render(
+      <>
+        {paneOf('primary', 'thread-a', true)}
+        {paneOf('secondary', 'thread-b', false)}
+      </>
+    )
+    await flush()
+
+    const pick = (paneId: string, id: string) => {
+      const rows = screen
+        .getByTestId(`pane-${paneId}`)
+        .querySelectorAll('*')
+      const matches = [...rows].filter(
+        (el) => el.children.length === 0 && el.textContent === id
+      )
+      fireEvent.click(matches[matches.length - 1])
+    }
+    pick('primary', 'cowork-model')
+    await flush()
+    pick('secondary', 'chat-model')
+    await flush()
+
+    expect(threadsApi.updateThreadModel).toHaveBeenCalledWith('thread-a', {
+      provider: 'local-server',
+      id: 'cowork-model',
+    })
+    expect(threadsApi.updateThreadModel).toHaveBeenCalledWith('thread-b', {
+      provider: 'local-server',
+      id: 'chat-model',
+    })
+    expect(threadsApi.updateCurrentThreadModel).not.toHaveBeenCalled()
+    // The active pane's pick did not become the global selection.
+    expect(useModelProvider.getState().selectedModel?.id).toBe('chat-model')
   })
 })

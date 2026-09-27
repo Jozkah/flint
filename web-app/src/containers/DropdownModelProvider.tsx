@@ -173,8 +173,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const [displayModel, setDisplayModel] = useState<string>('')
   const { updateCurrentThreadModel, updateThreadModel, threads } = useThreads()
   // In a split conversation each pane shows, and changes, its own thread's
-  // model. Only the pane the user is working in moves the global picker, which
-  // the rest of the app -- and a conversation shown on its own -- reads.
+  // model only. No pane moves the global picker, which new chats and a
+  // conversation shown on its own read.
   const pane = useConversationPane()
   const inSplitPane = Boolean(pane?.isSplit)
   // A caller that passes `onModelChange` keeps the choice itself (Cowork
@@ -183,7 +183,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   // the model every ordinary chat uses, and the store is persisted.
   const ownsSelection = Boolean(onModelChange)
   const drivesGlobalSelection =
-    !ownsSelection && (!pane?.isSplit || pane.isActive)
+    !ownsSelection && !pane?.isSplit
   const paneThreadModel = pane?.isSplit
     ? threads?.[pane.threadId]?.model
     : undefined

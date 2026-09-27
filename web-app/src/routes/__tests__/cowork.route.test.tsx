@@ -332,6 +332,7 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useClaudeCompat } from '@/hooks/useClaudeCompat'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { CoworkPaneContext, PaneChromeContext } from '@/hooks/useCoworkPane'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
@@ -1374,6 +1375,42 @@ describe('two sessions side by side in split view', () => {
     expect(session(SESSION).turns).toEqual([])
     // The pane does not take over the sidebar's selection.
     expect(useCoworkSessions.getState().currentId).toBe(SESSION)
+  })
+
+  it('sends each pane with its own session model, from its own header picker', async () => {
+    const mp = useModelProvider.getState() as any
+    const other = { ...mp.selectedModel, id: 'local/other' }
+    mp.providers[0].models.push(other)
+    try {
+      await renderSplit()
+      act(() => {
+        useCoworkSessions
+          .getState()
+          .setModel(SESSION, { provider: 'llamacpp', id: 'local/qwen' })
+        useCoworkSessions
+          .getState()
+          .setModel(OTHER, { provider: 'llamacpp', id: 'local/other' })
+      })
+      // The pane's header carries its own model picker.
+      expect(inPane('right', 'cowork-pane-model-right')).not.toBeNull()
+
+      h.text = 'right words'
+      await userEvent.click(inPane('right', 'submit'))
+      await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(1))
+      expect(h.transports.at(-1)?.sessionId).toBe(OTHER)
+      expect(h.transports.at(-1)?.config.model.id).toBe('local/other')
+
+      useCoworkRun.setState({ runs: {} } as any)
+      h.text = 'left words'
+      await userEvent.click(inPane('left', 'submit'))
+      await waitFor(() => expect(h.runTurn).toHaveBeenCalledTimes(2))
+      expect(h.transports.at(-1)?.sessionId).toBe(SESSION)
+      expect(h.transports.at(-1)?.config.model.id).toBe('local/qwen')
+      // Neither pane moved the global selection.
+      expect(mp.selectedModel.id).toBe('local/qwen')
+    } finally {
+      mp.providers[0].models.pop()
+    }
   })
 
   it("still sends the left pane's message to the left session", async () => {
