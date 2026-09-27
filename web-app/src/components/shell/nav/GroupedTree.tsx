@@ -140,6 +140,9 @@ export function GroupedTree({
   const [name, setName] = useState('')
   const [deleting, setDeleting] = useState<ConversationGroup | null>(null)
   const [foldersOf, setFoldersOf] = useState<string | null>(null)
+  // While a row is dragged, Ungrouped stays on screen as a drop target even
+  // when nothing is in it.
+  const [dragging, setDragging] = useState(false)
   const move = useMoveToGroup(surface, adapter)
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -206,7 +209,15 @@ export function GroupedTree({
           </NavButton>
         </NavItem>
       )}
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={() => setDragging(true)}
+        onDragCancel={() => setDragging(false)}
+        onDragEnd={(e) => {
+          setDragging(false)
+          onDragEnd(e)
+        }}
+      >
         {layout.groups.map(({ group, children }) => {
           const open = !group.collapsed
           const visible = open ? children : children.filter(keepVisible)
@@ -218,7 +229,7 @@ export function GroupedTree({
               data-group-id={group.id}
             >
               <DropZone id={group.id}>
-                <div className="flex h-7 items-center gap-0.5">
+                <div className="flex h-7 items-center gap-0.5 pl-2">
                   <button
                     type="button"
                     aria-expanded={open}
@@ -286,12 +297,12 @@ export function GroupedTree({
                 </div>
               </DropZone>
               <NavCollapse open={visible.length > 0}>
-                <ul className="flex flex-col">{visible.map(row)}</ul>
+                <ul className="flex flex-col pl-2">{visible.map(row)}</ul>
               </NavCollapse>
             </li>
           )
         })}
-        {hasGroups ? (
+        {hasGroups && (layout.recents.length > 0 || dragging) ? (
           <li className="flex list-none flex-col" data-testid="nav-ungrouped">
             <DropZone id={UNGROUPED}>
               <div className="flex h-7 items-center px-1 text-xs font-medium text-muted-foreground">
