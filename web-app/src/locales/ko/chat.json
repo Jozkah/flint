@@ -41,5 +41,9 @@
     "newChatFailed": "새 채팅을 시작할 수 없습니다",
     "room": "룸",
     "recentRooms": "룸"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}}단계",
+    "working": "작업 중"
   }
 }

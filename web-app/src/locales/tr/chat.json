@@ -60,5 +60,10 @@
     "newChatFailed": "Yeni sohbet başlatılamadı",
     "room": "Oda",
     "recentRooms": "Odalar"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} adım",
+    "steps_other": "{{count}} adım",
+    "working": "Çalışıyor"
   }
 }

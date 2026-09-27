@@ -144,7 +144,15 @@
     "resetCodeBlockStyle": "Reset Code Block Style",
     "resetCodeBlockStyleDesc": "Reset code block style to default.",
     "resetCodeBlockSuccess": "Code block style reset successfully",
-    "resetCodeBlockSuccessDesc": "Code block style has been restored to default."
+    "resetCodeBlockSuccessDesc": "Code block style has been restored to default.",
+    "transcriptView": "Transcript view",
+    "transcriptViewDesc": "How much of each turn Chat, Cowork and Rooms show. Approvals, questions and errors always show.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "The answer and anything that needs you. Tool calls fold into one steps row.",
+    "transcriptViewThinking": "Thinking",
+    "transcriptViewThinkingDesc": "Adds the model's reasoning. Tool calls stay folded.",
+    "transcriptViewVerbose": "Verbose",
+    "transcriptViewVerboseDesc": "Everything: full reasoning and every tool call open with its parameters and output."
   },
   "hardware": {
     "os": "Operating System",

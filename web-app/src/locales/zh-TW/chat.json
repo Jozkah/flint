@@ -41,5 +41,9 @@
     "newChatFailed": "無法開始新聊天",
     "room": "房間",
     "recentRooms": "房間"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}} 個步驟",
+    "working": "處理中"
   }
 }

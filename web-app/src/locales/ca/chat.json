@@ -41,5 +41,10 @@
     "newChatFailed": "No s'ha pogut començar un xat nou",
     "room": "Sala",
     "recentRooms": "Sales"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} pas",
+    "steps_other": "{{count}} passos",
+    "working": "Treballant"
   }
 }

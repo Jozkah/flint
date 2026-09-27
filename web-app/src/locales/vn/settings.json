@@ -117,7 +117,15 @@
     "resetCodeBlockStyle": "Đặt lại kiểu khối mã",
     "resetCodeBlockStyleDesc": "Đặt lại kiểu khối mã về mặc định.",
     "resetCodeBlockSuccess": "Kiểu khối mã đã được đặt lại thành công",
-    "resetCodeBlockSuccessDesc": "Kiểu khối mã đã được khôi phục về mặc định."
+    "resetCodeBlockSuccessDesc": "Kiểu khối mã đã được khôi phục về mặc định.",
+    "transcriptView": "Chế độ xem bản ghi",
+    "transcriptViewDesc": "Trò chuyện, Cowork và Phòng hiển thị bao nhiêu của mỗi lượt. Phê duyệt, câu hỏi và lỗi luôn hiển thị.",
+    "transcriptViewNormal": "Bình thường",
+    "transcriptViewNormalDesc": "Câu trả lời và những gì cần bạn xử lý. Các lệnh gọi công cụ được gộp vào một hàng bước.",
+    "transcriptViewThinking": "Suy luận",
+    "transcriptViewThinkingDesc": "Thêm phần suy luận của mô hình. Lệnh gọi công cụ vẫn được gộp.",
+    "transcriptViewVerbose": "Chi tiết",
+    "transcriptViewVerboseDesc": "Mọi thứ: toàn bộ suy luận và mỗi lệnh gọi công cụ mở kèm tham số và kết quả."
   },
   "hardware": {
     "os": "Hệ điều hành",

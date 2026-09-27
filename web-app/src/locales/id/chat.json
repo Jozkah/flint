@@ -41,5 +41,9 @@
     "newChatFailed": "Tidak dapat memulai obrolan baru",
     "room": "Ruang",
     "recentRooms": "Ruang"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}} langkah",
+    "working": "Bekerja"
   }
 }

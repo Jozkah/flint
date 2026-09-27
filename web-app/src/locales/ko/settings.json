@@ -127,7 +127,15 @@
     "resetCodeBlockStyle": "코드 블록 스타일 재설정",
     "resetCodeBlockStyleDesc": "코드 블록 스타일을 기본값으로 재설정합니다.",
     "resetCodeBlockSuccess": "코드 블록 스타일 재설정 성공",
-    "resetCodeBlockSuccessDesc": "코드 블록 스타일이 기본값으로 복원되었습니다."
+    "resetCodeBlockSuccessDesc": "코드 블록 스타일이 기본값으로 복원되었습니다.",
+    "transcriptView": "대화 기록 보기",
+    "transcriptViewDesc": "채팅, Cowork, 룸에서 각 턴을 얼마나 보여줄지 정합니다. 승인, 질문, 오류는 항상 표시됩니다.",
+    "transcriptViewNormal": "기본",
+    "transcriptViewNormalDesc": "답변과 조치가 필요한 항목만. 도구 호출은 한 줄의 단계로 접힙니다.",
+    "transcriptViewThinking": "사고",
+    "transcriptViewThinkingDesc": "모델의 추론을 함께 표시합니다. 도구 호출은 접힌 상태로 유지됩니다.",
+    "transcriptViewVerbose": "자세히",
+    "transcriptViewVerboseDesc": "모두 표시: 전체 추론과 매개변수 및 출력이 펼쳐진 모든 도구 호출."
   },
   "hardware": {
     "os": "운영 체제",

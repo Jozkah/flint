@@ -12,6 +12,7 @@ import type {
 } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import {
   addressLabel,
   findParticipant,
@@ -158,13 +159,17 @@ function argRows(args: unknown): Array<[string, string]> {
  * call into a tidy Input table and a Result/Error block.
  */
 function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
-  const [expanded, setExpanded] = useState(false)
+  // Transcript view: Verbose opens every call; Normal and Thinking keep only
+  // failed calls on screen and fold the rest behind the details toggle.
+  const verbose = useInterfaceSettings((s) => s.transcriptView === 'verbose')
+  const [expanded, setExpanded] = useState(verbose)
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
 
   return (
     <div data-testid="message-tools">
       <div className="flex flex-wrap items-center gap-1.5">
         {calls.map((c, i) => {
+          if (c.ok && !verbose && !expanded) return null
           const tone = TONE_CLASSES[toneFor(c)]
           const Icon = toolIcon(c.name)
           // Match Cowork: a neutral chip whose icon carries the tool's kind
@@ -185,7 +190,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
             </span>
           )
         })}
-        {hasDetails && (
+        {(hasDetails || !verbose) && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -200,7 +205,11 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
               )}
               aria-hidden
             />
-            {expanded ? t('rooms:transcript.toolHide') : t('rooms:transcript.toolDetails')}
+            {expanded
+              ? t('rooms:transcript.toolHide')
+              : verbose
+                ? t('rooms:transcript.toolDetails')
+                : t('chat:transcriptView.steps', { count: calls.length })}
           </button>
         )}
       </div>

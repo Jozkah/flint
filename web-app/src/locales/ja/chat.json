@@ -45,5 +45,9 @@
     "newChatFailed": "新しいチャットを開始できませんでした",
     "room": "ルーム",
     "recentRooms": "ルーム"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}} ステップ",
+    "working": "作業中"
   }
 }

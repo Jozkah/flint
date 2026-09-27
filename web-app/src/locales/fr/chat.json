@@ -41,5 +41,11 @@
     "newChatFailed": "Impossible de commencer une nouvelle discussion",
     "room": "Salon",
     "recentRooms": "Salons"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} étape",
+    "steps_many": "{{count}} étapes",
+    "steps_other": "{{count}} étapes",
+    "working": "En cours"
   }
 }

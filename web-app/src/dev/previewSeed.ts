@@ -388,7 +388,7 @@ function escapeSession() {
     },
     {
       role: 'assistant',
-      content: 'I’ll read the radar client, reproduce the timeout in a test, then add a bounded retry with a cached fallback.',
+      content: '<think>A blank map means the client gives up on the first timeout. A bounded retry covers the flaky feed, and the last cached frame covers a longer outage.</think>I’ll read the radar client, reproduce the timeout in a test, then add a bounded retry with a cached fallback.',
       startedAt: at(8),
     },
     {

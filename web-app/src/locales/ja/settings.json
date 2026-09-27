@@ -141,7 +141,15 @@
     "resetCodeBlockStyle": "コードブロックスタイルをリセット",
     "resetCodeBlockStyleDesc": "コードブロックスタイルをデフォルトにリセットします。",
     "resetCodeBlockSuccess": "コードブロックスタイルが正常にリセットされました",
-    "resetCodeBlockSuccessDesc": "コードブロックスタイルがデフォルトに復元されました。"
+    "resetCodeBlockSuccessDesc": "コードブロックスタイルがデフォルトに復元されました。",
+    "transcriptView": "トランスクリプトの表示",
+    "transcriptViewDesc": "チャット、Cowork、ルームで各ターンをどこまで表示するか。承認、質問、エラーは常に表示されます。",
+    "transcriptViewNormal": "標準",
+    "transcriptViewNormalDesc": "回答と対応が必要なものだけ。ツール呼び出しは 1 行のステップにまとめます。",
+    "transcriptViewThinking": "思考",
+    "transcriptViewThinkingDesc": "モデルの推論も表示します。ツール呼び出しはまとめたままです。",
+    "transcriptViewVerbose": "詳細",
+    "transcriptViewVerboseDesc": "すべて：推論全体と、パラメーターと出力を開いた各ツール呼び出し。"
   },
   "hardware": {
     "os": "オペレーティングシステム",

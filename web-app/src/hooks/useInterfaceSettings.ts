@@ -1,5 +1,10 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
+import {
+  DEFAULT_TRANSCRIPT_VIEW,
+  isTranscriptView,
+  type TranscriptView,
+} from '@/lib/transcriptView'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import { useTheme } from './useTheme'
@@ -56,6 +61,8 @@ interface InterfaceSettingsState {
   coloredUserBubble: boolean
   renderHtmlArtifacts: boolean
   autoGenerateTitle: boolean
+  /** How much of each turn the Chat, Cowork and Rooms transcripts show. */
+  transcriptView: TranscriptView
   setFontSize: (size: FontSize) => void
   zoomInMessages: () => void
   zoomOutMessages: () => void
@@ -72,6 +79,7 @@ interface InterfaceSettingsState {
   setColoredUserBubble: (colored: boolean) => void
   setRenderHtmlArtifacts: (render: boolean) => void
   setAutoGenerateTitle: (auto: boolean) => void
+  setTranscriptView: (view: TranscriptView) => void
   resetInterface: () => void
 }
 
@@ -86,6 +94,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'coloredUserBubble'
   | 'renderHtmlArtifacts'
   | 'autoGenerateTitle'
+  | 'transcriptView'
 >
 
 export const fontSizeOptions = [
@@ -109,6 +118,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     coloredUserBubble: false,
     renderHtmlArtifacts: false,
     autoGenerateTitle: true,
+    transcriptView: DEFAULT_TRANSCRIPT_VIEW,
   }
 }
 
@@ -162,6 +172,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             coloredUserBubble: false,
             renderHtmlArtifacts: false,
             autoGenerateTitle: true,
+            transcriptView: DEFAULT_TRANSCRIPT_VIEW,
           })
         },
 
@@ -225,6 +236,11 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         setAutoGenerateTitle: (auto) => {
           set({ autoGenerateTitle: auto })
         },
+
+        setTranscriptView: (view) => {
+          if (!isTranscriptView(view)) return
+          set({ transcriptView: view })
+        },
       }
     },
     {
@@ -261,6 +277,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         coloredUserBubble: state.coloredUserBubble,
         renderHtmlArtifacts: state.renderHtmlArtifacts,
         autoGenerateTitle: state.autoGenerateTitle,
+        transcriptView: state.transcriptView,
       }),
       // Apply settings when hydrating from storage
       onRehydrateStorage: () => (state) => {
@@ -309,6 +326,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.autoGenerateTitle !== 'boolean') {
             state.autoGenerateTitle = true
+          }
+
+          if (!isTranscriptView(state.transcriptView)) {
+            state.transcriptView = DEFAULT_TRANSCRIPT_VIEW
           }
         }
 

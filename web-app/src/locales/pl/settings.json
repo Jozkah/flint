@@ -117,7 +117,15 @@
     "resetCodeBlockSuccess": "Pomyślnie Przywrócono Styl Bloku Kodu",
     "resetCodeBlockSuccessDesc": "Styl bloku kodu został przywrócony do ustawień domyślnych.",
     "tokenCounterCompact": "Kompaktowy Licznik Tokenów",
-    "tokenCounterCompactDesc": "Pokaż licznik tokenów wewnątrz pola wprowadzania czatu. Po wyłączeniu, licznik tokenów pojawia się poniżej pola wprowadzania."
+    "tokenCounterCompactDesc": "Pokaż licznik tokenów wewnątrz pola wprowadzania czatu. Po wyłączeniu, licznik tokenów pojawia się poniżej pola wprowadzania.",
+    "transcriptView": "Widok transkrypcji",
+    "transcriptViewDesc": "Ile z każdej tury pokazują Czat, Cowork i Pokoje. Zatwierdzenia, pytania i błędy są zawsze widoczne.",
+    "transcriptViewNormal": "Normalny",
+    "transcriptViewNormalDesc": "Odpowiedź i to, co wymaga Twojej reakcji. Wywołania narzędzi zwijają się w jeden wiersz kroków.",
+    "transcriptViewThinking": "Rozumowanie",
+    "transcriptViewThinkingDesc": "Dodaje rozumowanie modelu. Wywołania narzędzi pozostają zwinięte.",
+    "transcriptViewVerbose": "Szczegółowy",
+    "transcriptViewVerboseDesc": "Wszystko: pełne rozumowanie i każde wywołanie narzędzia rozwinięte z parametrami i wynikiem."
   },
   "hardware": {
     "os": "System Operacyjny",

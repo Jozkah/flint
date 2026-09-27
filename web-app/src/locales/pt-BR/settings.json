@@ -311,5 +311,15 @@
     }
   },
   "backendInstallSuccess": "Backend instalado com sucesso",
-  "backendInstallError": "Falha ao instalar backend"
+  "backendInstallError": "Falha ao instalar backend",
+  "interface": {
+    "transcriptView": "Visualização da transcrição",
+    "transcriptViewDesc": "Quanto de cada turno Chat, Cowork e Salas mostram. Aprovações, perguntas e erros sempre aparecem.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "A resposta e o que precisa de você. Chamadas de ferramentas ficam recolhidas em uma linha de etapas.",
+    "transcriptViewThinking": "Raciocínio",
+    "transcriptViewThinkingDesc": "Adiciona o raciocínio do modelo. Chamadas de ferramentas continuam recolhidas.",
+    "transcriptViewVerbose": "Detalhada",
+    "transcriptViewVerboseDesc": "Tudo: raciocínio completo e cada chamada de ferramenta aberta com parâmetros e saída."
+  }
 }

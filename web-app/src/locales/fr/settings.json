@@ -123,7 +123,15 @@
     "resetCodeBlockStyle": "Réinitialiser le style du bloc de code",
     "resetCodeBlockStyleDesc": "Réinitialisez le style du bloc de code par défaut.",
     "resetCodeBlockSuccess": "Style du bloc de code réinitialisé avec succès",
-    "resetCodeBlockSuccessDesc": "Le style du bloc de code a été restauré par défaut."
+    "resetCodeBlockSuccessDesc": "Le style du bloc de code a été restauré par défaut.",
+    "transcriptView": "Affichage de la transcription",
+    "transcriptViewDesc": "Ce que Chat, Cowork et Salons montrent de chaque tour. Les approbations, questions et erreurs restent toujours visibles.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "La réponse et ce qui demande votre action. Les appels d'outils sont regroupés en une ligne d'étapes.",
+    "transcriptViewThinking": "Réflexion",
+    "transcriptViewThinkingDesc": "Ajoute le raisonnement du modèle. Les appels d'outils restent regroupés.",
+    "transcriptViewVerbose": "Détaillé",
+    "transcriptViewVerboseDesc": "Tout : le raisonnement complet et chaque appel d'outil ouvert avec ses paramètres et sa sortie."
   },
   "hardware": {
     "os": "Système d'exploitation",

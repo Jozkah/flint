@@ -143,7 +143,15 @@
     "resetCodeBlockStyle": "Kod Bloğu Stilini Sıfırla",
     "resetCodeBlockStyleDesc": "Kod bloğu stilini varsayılanına sıfırlayın.",
     "resetCodeBlockSuccess": "Kod bloğu stili başarıyla sıfırlandı",
-    "resetCodeBlockSuccessDesc": "Kod bloğu stili varsayılanına geri yüklendi."
+    "resetCodeBlockSuccessDesc": "Kod bloğu stili varsayılanına geri yüklendi.",
+    "transcriptView": "Döküm görünümü",
+    "transcriptViewDesc": "Sohbet, Cowork ve Odalar her turun ne kadarını gösterir. Onaylar, sorular ve hatalar her zaman görünür.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "Yanıt ve sizi bekleyen her şey. Araç çağrıları tek bir adım satırına katlanır.",
+    "transcriptViewThinking": "Düşünme",
+    "transcriptViewThinkingDesc": "Modelin akıl yürütmesini ekler. Araç çağrıları katlı kalır.",
+    "transcriptViewVerbose": "Ayrıntılı",
+    "transcriptViewVerboseDesc": "Her şey: tam akıl yürütme ve parametreleri ile çıktısı açık her araç çağrısı."
   },
   "hardware": {
     "os": "İşletim Sistemi",

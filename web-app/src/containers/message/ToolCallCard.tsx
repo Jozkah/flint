@@ -41,6 +41,8 @@ export type ToolCallCardProps = {
   /** Citation count from earlier tool calls in this turn, for continuous numbering. */
   citationOffset?: number
   className?: string
+  /** Verbose transcript view: open with parameters and output in view. */
+  expanded?: boolean
 }
 
 /** The one argument a native call is about, for the card's header. */
@@ -115,7 +117,13 @@ const DiffBlocks = ({ add, del }: { add: number; del: number }) => {
 }
 
 export const ToolCallCard = memo(
-  ({ part, messageId, citationOffset = 0, className }: ToolCallCardProps) => {
+  ({
+    part,
+    messageId,
+    citationOffset = 0,
+    className,
+    expanded,
+  }: ToolCallCardProps) => {
     const { t } = useTranslation()
     const toolName = part.type.split('-').slice(1).join('-')
     const origin = useToolOrigin(toolName)
@@ -333,7 +341,7 @@ export const ToolCallCard = memo(
         checkFailed={checkFailed}
         // Open while it runs, so the live result is in view, and for what is
         // worth reading afterwards: a failure or a change.
-        autoOpen={running || failed || showDiff}
+        autoOpen={expanded || running || failed || showDiff}
         className={className}
       >
         <ToolHeader

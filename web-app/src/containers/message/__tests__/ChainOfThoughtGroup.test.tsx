@@ -54,6 +54,7 @@ const renderGroup = (
       hasFollowingContent={false}
       awaitingApproval={false}
       citationOffsets={new Map()}
+      transcriptView="trace"
       {...overrides}
     />
   )

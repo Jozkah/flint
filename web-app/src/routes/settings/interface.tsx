@@ -14,6 +14,8 @@ import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { TRANSCRIPT_VIEWS } from '@/lib/transcriptView'
 import { toast } from 'sonner'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -152,6 +154,17 @@ function InterfaceSettings() {
     </Card>
   )
 
+  const transcript = (
+    <Card title={t('settings:interface.transcriptView')}>
+      <CardItem
+        anchor="settings-appearance-transcript-view"
+        title={t('settings:interface.transcriptView')}
+        description={t('settings:interface.transcriptViewDesc')}
+      />
+      <TranscriptViewPicker />
+    </Card>
+  )
+
   const chatDisplay = (
     <Card title={t('settings:appearance.behaviourGroup')}>
       <CardItem
@@ -222,15 +235,68 @@ function InterfaceSettings() {
       <SettingsPageBody
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
-        layout={[0, 1, 0, 1, 0, 0]}
+        layout={[0, 1, 0, 1, 1, 0, 0]}
       >
         {theme}
         <AccentSettings />
         {reading}
+        {transcript}
         {chatDisplay}
         {reset}
         {motion}
       </SettingsPageBody>
     </div>
+  )
+}
+
+/** The Transcript view setting: one radio per mode, each with its summary. */
+function TranscriptViewPicker() {
+  const { t } = useTranslation()
+  const value = useInterfaceSettings((s) => s.transcriptView)
+  const setValue = useInterfaceSettings((s) => s.setTranscriptView)
+  const label = {
+    normal: t('settings:interface.transcriptViewNormal'),
+    thinking: t('settings:interface.transcriptViewThinking'),
+    verbose: t('settings:interface.transcriptViewVerbose'),
+  }
+  const desc = {
+    normal: t('settings:interface.transcriptViewNormalDesc'),
+    thinking: t('settings:interface.transcriptViewThinkingDesc'),
+    verbose: t('settings:interface.transcriptViewVerboseDesc'),
+  }
+  return (
+    <RadioGroup
+      value={value}
+      onValueChange={(v) => setValue(v as typeof value)}
+      aria-label={t('settings:interface.transcriptView')}
+      data-testid="transcript-view-picker"
+      className="gap-2 pb-2"
+    >
+      {TRANSCRIPT_VIEWS.map((mode) => {
+        const id = `transcript-view-${mode}`
+        return (
+          <label
+            key={mode}
+            htmlFor={id}
+            className="flex cursor-pointer items-start gap-2.5 rounded-md px-1 py-1.5"
+          >
+            <RadioGroupItem
+              id={id}
+              value={mode}
+              aria-describedby={`${id}-desc`}
+              className="mt-0.5"
+            />
+            <span className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-medium text-foreground">
+                {label[mode]}
+              </span>
+              <span id={`${id}-desc`} className="text-xs text-muted-foreground">
+                {desc[mode]}
+              </span>
+            </span>
+          </label>
+        )
+      })}
+    </RadioGroup>
   )
 }

@@ -125,7 +125,15 @@
     "resetCodeBlockStyle": "Restableix l’estil del bloc de codi",
     "resetCodeBlockStyleDesc": "Restableix l’estil del bloc de codi als valors per defecte.",
     "resetCodeBlockSuccess": "S’ha restablert l’estil del bloc de codi",
-    "resetCodeBlockSuccessDesc": "L’estil del bloc de codi s’ha restaurat al valor per defecte."
+    "resetCodeBlockSuccessDesc": "L’estil del bloc de codi s’ha restaurat al valor per defecte.",
+    "transcriptView": "Vista de la transcripció",
+    "transcriptViewDesc": "Quant de cada torn mostren Xat, Cowork i Sales. Les aprovacions, preguntes i errors sempre es mostren.",
+    "transcriptViewNormal": "Normal",
+    "transcriptViewNormalDesc": "La resposta i el que necessita la teva acció. Les crides d'eines es plegan en una fila de passos.",
+    "transcriptViewThinking": "Raonament",
+    "transcriptViewThinkingDesc": "Afegeix el raonament del model. Les crides d'eines continuen plegades.",
+    "transcriptViewVerbose": "Detallada",
+    "transcriptViewVerboseDesc": "Tot: el raonament complet i cada crida d'eina oberta amb paràmetres i resultat."
   },
   "hardware": {
     "os": "Sistema operatiu",

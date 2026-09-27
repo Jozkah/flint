@@ -60,5 +60,9 @@
     "newChatFailed": "无法开始新聊天",
     "room": "房间",
     "recentRooms": "房间"
+  },
+  "transcriptView": {
+    "steps_other": "{{count}} 个步骤",
+    "working": "处理中"
   }
 }

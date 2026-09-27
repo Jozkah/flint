@@ -41,5 +41,11 @@
     "newChatFailed": "Impossibile iniziare una nuova chat",
     "room": "Stanza",
     "recentRooms": "Stanze"
+  },
+  "transcriptView": {
+    "steps_one": "{{count}} passaggio",
+    "steps_many": "{{count}} passaggi",
+    "steps_other": "{{count}} passaggi",
+    "working": "In corso"
   }
 }
