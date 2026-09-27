@@ -34,19 +34,33 @@ export function OpenablePath({
 }) {
   const { t } = useTranslation()
   const open = useCodeOpen()
-  const { check, openDiff } = useCodeOpenTools()
-  const label = children ?? path
+  const { check, openDiff, displayPath } = useCodeOpenTools()
+  const short = displayPath?.(path) ?? path
+  const label = children ?? short
+  // A shortened label still copies as the full path.
+  const onCopy =
+    children === undefined && short !== path
+      ? (e: React.ClipboardEvent) => {
+          e.preventDefault()
+          e.clipboardData.setData('text/plain', path)
+        }
+      : undefined
 
   if (!open || !path.trim()) {
-    return <span className={className}>{label}</span>
+    return (
+      <span className={className} title={path} onCopy={onCopy}>
+        {label}
+      </span>
+    )
   }
   const verdict = check ? check(path) : { ok: true as const }
   if (!verdict.ok) {
     return (
       <span
         className={cn('cursor-help', className)}
-        title={verdict.reason}
+        title={short !== path ? `${path}\n${verdict.reason}` : verdict.reason}
         data-testid="openable-path-unresolved"
+        onCopy={onCopy}
       >
         {label}
       </span>
@@ -60,6 +74,8 @@ export function OpenablePath({
         role="link"
         tabIndex={0}
         data-testid="openable-path"
+        data-full-path={path}
+        onCopy={onCopy}
         title={t('common:codePanel.openPathHint', { path: where })}
         aria-label={t('common:codePanel.openPath', { path: where })}
         className={cn(

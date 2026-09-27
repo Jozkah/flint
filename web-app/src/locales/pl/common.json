@@ -126,7 +126,19 @@
     "scopeLabel": "Które zmiany projektu wyświetlić",
     "applyHint": "Skopiuj ten plik z piaskownicy sesji do {{folder}} jako {{path}}",
     "applyWhere": "Skopiować do {{path}} w {{folder}}? Kopia w piaskownicy to {{source}}.",
-    "applyConfirm": "Skopiuj tam"
+    "applyConfirm": "Skopiuj tam",
+    "applyAll": "Zastosuj wszystko w folderze",
+    "applyAllTitle": "Zastosuj wszystko w folderze",
+    "applyAllDescription": "Kopiuje do dołączonego folderu pliki, które ta sesja zapisała w swojej piaskownicy. Pliki, które zastąpiłyby inny plik, pozostają odznaczone.",
+    "applyAllChecking": "Sprawdzanie każdego pliku…",
+    "applyAllSkipped": "Pominięto: {{reason}}",
+    "applyAllSkipOutside": "poza piaskownicą sesji",
+    "applyAllSkipSame": "folder ma już dokładnie ten plik",
+    "applyAllOverwrites": "Zastępuje plik",
+    "applyAllConfirm_one": "Zastosuj {{count}} plik",
+    "applyAllConfirm_other": "Zastosuj {{count}} plików",
+    "applyAllSummary": "Zastosowano {{applied}} · nie zastosowano {{failed}}",
+    "openExternally": "Otwórz zewnętrznie"
   },
   "compactWidth": "Zwarta Szerokość",
   "fullWidth": "Pełna Szerokość",
@@ -637,7 +649,33 @@
     "notCommitted": "Jeszcze niezatwierdzone",
     "pullRequest": "Pull request nr {{number}}",
     "changeAt": "Zmiana w wierszu {{line}}",
-    "revertChange": "Przywróć"
+    "revertChange": "Przywróć",
+    "sandboxChange": "Zmiana w piaskownicy w wierszu {{line}}",
+    "openSandboxCopy": "Otwórz kopię z piaskownicy",
+    "sandboxChangesHint": "Piaskownica tej sesji ma własną wersję tego pliku. Jej zmiany są zaznaczone na marginesie; kliknij, aby je zobaczyć.",
+    "applyHunk": "Zastosuj tę zmianę",
+    "applyWholeFile": "Zastosuj cały plik…",
+    "applyWholeConfirm": "Zastąpić {{path}} w folderze całą kopią z piaskownicy?",
+    "hunkConflict": "Te wiersze zmieniły się w folderze od czasu przebiegu, więc nic nie zapisano. Sprawdź plik ponownie.",
+    "hunkDirty": "Najpierw zapisz lub odrzuć swoje zmiany w tym pliku.",
+    "moreActions": "Więcej działań"
+  },
+  "coworkReview": {
+    "hide": "Ukryj",
+    "hideHint": "Ukryj do czasu nowych zmian. Zmiany w panelu i licznik ± nadal je pokazują.",
+    "finishTitle": "Gdy kończy się przebieg Tylko przegląd",
+    "finishDescription": "Co zrobić z plikami pozostawionymi w piaskownicy sesji. Automatycznie kopiowane są tylko pliki nowe dla folderu; o wszystko, co zastąpiłoby plik, zawsze jest pytanie.",
+    "finish": {
+      "keep": "Zostaw w piaskownicy",
+      "ask": "Pytaj o zastosowanie wszystkiego",
+      "auto": "Zastosuj wszystko automatycznie"
+    },
+    "showBarTitle": "Pokazuj pasek gotowych plików",
+    "showBarDescription": "Pasek „pliki gotowe do przeglądu” nad polem wpisywania. Te same zmiany zostają w panelu Zmiany i liczniku ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Pokazuj „Co otrzymał model”",
+    "showModelReceivedDescription": "Zapis żądania i liczba tokenów przy każdej turze. Jest zapisywany zawsze i dostępny w szczegółach sesji oraz na osi czasu."
   },
   "progressPin": {
     "pin": "Przypnij postęp nad rozmową",

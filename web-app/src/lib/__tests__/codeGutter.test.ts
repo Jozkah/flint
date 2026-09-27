@@ -4,8 +4,11 @@ import {
   computeHunks,
   markersByLine,
   parseBlamePorcelain,
+  applySandboxHunk,
+  peekLineOf,
   relativeTime,
   revertHunk,
+  sandboxHunks,
 } from '../codeGutter'
 
 describe('change hunks', () => {
@@ -99,5 +102,47 @@ describe('blame', () => {
     const now = 1_000_000_000
     expect(relativeTime(now - 14 * 86400, now)).toEqual({ value: -2, unit: 'week' })
     expect(relativeTime(now - 30, now)).toEqual({ value: 0, unit: 'second' })
+  })
+})
+
+describe('sandbox hunks on the real file', () => {
+  const real = 'a\nb\nc\nd\n'
+
+  it('reads each difference as the sandbox’s change, on real lines', () => {
+    const hunks = sandboxHunks(real, 'a\nB\nc\nd\nnew\n')
+    expect(hunks).toEqual([
+      { kind: 'modified', start: 2, end: 2, oldLines: ['b'], newLines: ['B'], at: 2 },
+      { kind: 'added', start: 4, end: 4, oldLines: [], newLines: ['new'], at: 5 },
+    ])
+  })
+
+  it('marks lines the sandbox dropped with a deletion on the first of them', () => {
+    const [hunk] = sandboxHunks(real, 'a\nd\n')
+    expect(hunk).toMatchObject({ kind: 'deleted', oldLines: ['b', 'c'], newLines: [] })
+    expect(markersByLine([hunk]).has(2)).toBe(true)
+  })
+
+  it('finds nothing when the copies match', () => {
+    expect(sandboxHunks(real, real)).toEqual([])
+  })
+
+  it('opens a peek under a change’s last line', () => {
+    expect(peekLineOf({ kind: 'modified', start: 3, end: 5, oldLines: [], newLines: [] })).toBe(5)
+    expect(peekLineOf({ kind: 'deleted', start: 4, end: 3, oldLines: ['x'], newLines: [] })).toBe(3)
+  })
+})
+
+describe('applying one sandbox hunk', () => {
+  const real = 'a\nb\nc\nd\n'
+  it('applies each kind of change on its own', () => {
+    const hunks = sandboxHunks(real, 'a\nB\nc\nnew\nd\n')
+    expect(applySandboxHunk(real, hunks[0])).toBe('a\nB\nc\nd\n')
+    expect(applySandboxHunk(real, hunks[1])).toBe('a\nb\nc\nnew\nd\n')
+    const [dropped] = sandboxHunks(real, 'a\nd\n')
+    expect(applySandboxHunk(real, dropped)).toBe('a\nd\n')
+  })
+  it('refuses when the lines it replaces are not there any more', () => {
+    const [hunk] = sandboxHunks(real, 'a\nB\nc\nd\n')
+    expect(applySandboxHunk('a\nbee\nc\nd\n', hunk)).toBeNull()
   })
 })

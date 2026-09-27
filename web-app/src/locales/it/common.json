@@ -138,7 +138,19 @@
     "scopeLabel": "Quali modifiche del progetto elencare",
     "applyHint": "Copia questo file dalla sandbox della sessione in {{folder}} come {{path}}",
     "applyWhere": "Copiare in {{path}} in {{folder}}? La copia nella sandbox è {{source}}.",
-    "applyConfirm": "Copia lì"
+    "applyConfirm": "Copia lì",
+    "applyAll": "Applica tutto alla cartella",
+    "applyAllTitle": "Applica tutto alla cartella",
+    "applyAllDescription": "Copia nella cartella collegata i file che questa sessione ha scritto nella sua sandbox. Quelli che sostituirebbero un file diverso restano deselezionati.",
+    "applyAllChecking": "Controllo di ogni file…",
+    "applyAllSkipped": "Saltato: {{reason}}",
+    "applyAllSkipOutside": "non è nella sandbox della sessione",
+    "applyAllSkipSame": "la cartella ha già esattamente questo file",
+    "applyAllOverwrites": "Sostituisce un file",
+    "applyAllConfirm_one": "Applica {{count}} file",
+    "applyAllConfirm_other": "Applica {{count}} file",
+    "applyAllSummary": "{{applied}} applicati · {{failed}} non applicati",
+    "openExternally": "Apri esternamente"
   },
   "compactWidth": "Larghezza compatta",
   "fullWidth": "Larghezza intera",
@@ -726,7 +738,33 @@
     "notCommitted": "Non ancora in un commit",
     "pullRequest": "Pull request n. {{number}}",
     "changeAt": "Modifica alla riga {{line}}",
-    "revertChange": "Ripristina"
+    "revertChange": "Ripristina",
+    "sandboxChange": "Modifica della sandbox alla riga {{line}}",
+    "openSandboxCopy": "Apri la copia nella sandbox",
+    "sandboxChangesHint": "La sandbox di questa sessione ha una propria versione di questo file. Le sue modifiche sono segnate a margine; fai clic per vederle.",
+    "applyHunk": "Applica questa modifica",
+    "applyWholeFile": "Applica l’intero file…",
+    "applyWholeConfirm": "Sostituire {{path}} nella cartella con l’intera copia della sandbox?",
+    "hunkConflict": "Queste righe sono cambiate nella cartella dopo l’esecuzione, quindi non è stato scritto nulla. Riguarda il file.",
+    "hunkDirty": "Prima salva o scarta le tue modifiche a questo file.",
+    "moreActions": "Altre azioni"
+  },
+  "coworkReview": {
+    "hide": "Nascondi",
+    "hideHint": "Nascondi fino a nuove modifiche. Le Modifiche nella barra e il contatore ± le mostrano ancora.",
+    "finishTitle": "Quando termina un’esecuzione Solo revisione",
+    "finishDescription": "Cosa fare dei file lasciati nella sandbox. L’applicazione automatica copia solo i file nuovi per la cartella; tutto ciò che sostituirebbe un file viene sempre chiesto.",
+    "finish": {
+      "keep": "Lascia nella sandbox",
+      "ask": "Chiedi di applicare tutto",
+      "auto": "Applica tutto automaticamente"
+    },
+    "showBarTitle": "Mostra la barra dei file pronti",
+    "showBarDescription": "La barra «file pronti da rivedere» sopra l’editor. Le stesse modifiche restano nella barra Modifiche e nel contatore ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Mostra «Cosa ha ricevuto il modello»",
+    "showModelReceivedDescription": "Il registro per turno della richiesta e il conteggio dei token. Viene registrato comunque e resta nei dettagli della sessione e nella cronologia."
   },
   "progressPin": {
     "pin": "Fissa l’avanzamento sopra la conversazione",

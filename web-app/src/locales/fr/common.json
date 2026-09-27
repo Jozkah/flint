@@ -126,7 +126,19 @@
     "scopeLabel": "Modifications du projet à afficher",
     "applyHint": "Copier ce fichier du bac à sable de la session vers {{folder}} sous {{path}}",
     "applyWhere": "Copier vers {{path}} dans {{folder}} ? La copie du bac à sable est {{source}}.",
-    "applyConfirm": "Copier ici"
+    "applyConfirm": "Copier ici",
+    "applyAll": "Tout appliquer au dossier",
+    "applyAllTitle": "Tout appliquer au dossier",
+    "applyAllDescription": "Copie dans le dossier joint les fichiers que cette session a écrits dans son bac à sable. Ceux qui remplaceraient un fichier différent restent décochés.",
+    "applyAllChecking": "Vérification de chaque fichier…",
+    "applyAllSkipped": "Ignoré : {{reason}}",
+    "applyAllSkipOutside": "hors du bac à sable de la session",
+    "applyAllSkipSame": "le dossier contient déjà exactement ce fichier",
+    "applyAllOverwrites": "Remplace un fichier",
+    "applyAllConfirm_one": "Appliquer {{count}} fichier",
+    "applyAllConfirm_other": "Appliquer {{count}} fichiers",
+    "applyAllSummary": "{{applied}} appliqués · {{failed}} non appliqués",
+    "openExternally": "Ouvrir en externe"
   },
   "compactWidth": "Largeur compacte",
   "fullWidth": "Pleine largeur",
@@ -638,7 +650,33 @@
     "notCommitted": "Pas encore commité",
     "pullRequest": "Pull request n° {{number}}",
     "changeAt": "Modification à la ligne {{line}}",
-    "revertChange": "Rétablir"
+    "revertChange": "Rétablir",
+    "sandboxChange": "Modification du bac à sable à la ligne {{line}}",
+    "openSandboxCopy": "Ouvrir la copie du bac à sable",
+    "sandboxChangesHint": "Le bac à sable de cette session a sa propre version de ce fichier. Ses modifications sont marquées dans la marge ; cliquez pour les voir.",
+    "applyHunk": "Appliquer cette modification",
+    "applyWholeFile": "Appliquer le fichier entier…",
+    "applyWholeConfirm": "Remplacer {{path}} dans le dossier par toute la copie du bac à sable ?",
+    "hunkConflict": "Ces lignes ont changé dans le dossier depuis l’exécution ; rien n’a été écrit. Regardez à nouveau le fichier.",
+    "hunkDirty": "Enregistrez ou annulez d’abord vos modifications de ce fichier.",
+    "moreActions": "Plus d’actions"
+  },
+  "coworkReview": {
+    "hide": "Masquer",
+    "hideHint": "Masquer jusqu’à de nouvelles modifications. Les Modifications du rail et le compteur ± les affichent toujours.",
+    "finishTitle": "À la fin d’une exécution Revue seule",
+    "finishDescription": "Que faire des fichiers laissés dans le bac à sable. L’application automatique ne copie que les fichiers nouveaux pour le dossier ; tout ce qui remplacerait un fichier est toujours demandé.",
+    "finish": {
+      "keep": "Garder dans le bac à sable",
+      "ask": "Demander pour tout appliquer",
+      "auto": "Tout appliquer automatiquement"
+    },
+    "showBarTitle": "Afficher la barre des fichiers prêts",
+    "showBarDescription": "La barre « fichiers prêts à revoir » au-dessus de la zone de saisie. Les mêmes modifications restent dans le rail Modifications et le compteur ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Afficher « Ce que le modèle a reçu »",
+    "showModelReceivedDescription": "L’enregistrement de la requête et son nombre de jetons à chaque tour. Il est enregistré dans tous les cas et reste dans les détails de la session et la chronologie."
   },
   "progressPin": {
     "pin": "Épingler la progression au-dessus de la conversation",

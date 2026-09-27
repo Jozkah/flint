@@ -21,6 +21,7 @@ import {
 } from '@codemirror/view'
 import {
   markersByLine,
+  peekLineOf,
   type BlameCommit,
   type ChangeHunk,
 } from '@/lib/codeGutter'
@@ -30,6 +31,60 @@ export const setBlame = StateEffect.define<{
   lines: (BlameCommit | undefined)[]
   label: (commit: BlameCommit) => string
 } | null>()
+
+/**
+ * The clicked marker's change, shown inline under its last line (a "peek"),
+ * in an element the panel renders into. Null closes it.
+ */
+export const setPeek = StateEffect.define<{
+  hunk: ChangeHunk
+  dom: HTMLElement
+} | null>()
+
+class PeekWidget extends WidgetType {
+  constructor(readonly dom: HTMLElement) {
+    super()
+  }
+  eq(other: PeekWidget) {
+    return other.dom === this.dom
+  }
+  toDOM() {
+    return this.dom
+  }
+  ignoreEvent() {
+    return true
+  }
+  destroy() {}
+}
+
+const peekField = StateField.define<{
+  open: { hunk: ChangeHunk; dom: HTMLElement } | null
+  decorations: DecorationSet
+}>({
+  create: () => ({ open: null, decorations: Decoration.none }),
+  update(value, tr) {
+    let open = value.open
+    for (const e of tr.effects) if (e.is(setPeek)) open = e.value
+    if (open === value.open && !tr.docChanged) return value
+    if (!open) return { open, decorations: Decoration.none }
+    const lineNo = Math.min(peekLineOf(open.hunk), tr.state.doc.lines)
+    const line = tr.state.doc.line(Math.max(1, lineNo))
+    return {
+      open,
+      decorations: Decoration.set([
+        Decoration.widget({
+          widget: new PeekWidget(open.dom),
+          block: true,
+          side: 1,
+        }).range(line.to),
+      ]),
+    }
+  },
+  provide: (f) => EditorView.decorations.from(f, (v) => v.decorations),
+})
+
+/** Whether a change is peeked open, for Escape to close it. */
+export const peekOpen = (view: EditorView) => view.state.field(peekField).open !== null
 
 const hunksField = StateField.define<Map<number, ChangeHunk>>({
   create: () => new Map(),
@@ -144,6 +199,7 @@ export function gitOverlays(handlers: {
   return [
     hunksField,
     blameField,
+    peekField,
     gutter({
       class: 'cm-change-gutter',
       markers: (view) => {

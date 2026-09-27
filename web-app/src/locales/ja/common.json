@@ -142,7 +142,19 @@
     "scopeLabel": "表示するプロジェクトの変更",
     "applyHint": "このファイルをセッションのサンドボックスから {{folder}} に {{path}} としてコピー",
     "applyWhere": "{{folder}} の {{path}} にコピーしますか？サンドボックスのコピーは {{source}} です。",
-    "applyConfirm": "そこにコピー"
+    "applyConfirm": "そこにコピー",
+    "applyAll": "すべてフォルダーに適用",
+    "applyAllTitle": "すべてフォルダーに適用",
+    "applyAllDescription": "このセッションがサンドボックスに書き込んだファイルを、接続したフォルダーにコピーします。別のファイルを置き換えるものはチェックされません。",
+    "applyAllChecking": "各ファイルを確認中…",
+    "applyAllSkipped": "スキップ: {{reason}}",
+    "applyAllSkipOutside": "セッションのサンドボックス外",
+    "applyAllSkipSame": "フォルダーにまったく同じファイルがあります",
+    "applyAllOverwrites": "ファイルを置き換え",
+    "applyAllConfirm_one": "{{count}} 件を適用",
+    "applyAllConfirm_other": "{{count}} 件を適用",
+    "applyAllSummary": "{{applied}} 件適用 · {{failed}} 件未適用",
+    "openExternally": "外部で開く"
   },
   "compactWidth": "コンパクト幅",
   "fullWidth": "全幅",
@@ -749,7 +761,33 @@
     "notCommitted": "未コミット",
     "pullRequest": "プルリクエスト #{{number}}",
     "changeAt": "{{line}} 行目の変更",
-    "revertChange": "元に戻す"
+    "revertChange": "元に戻す",
+    "sandboxChange": "{{line}} 行目のサンドボックスの変更",
+    "openSandboxCopy": "サンドボックスのコピーを開く",
+    "sandboxChangesHint": "このセッションのサンドボックスにはこのファイルの独自の版があります。変更は余白に表示され、クリックすると確認できます。",
+    "applyHunk": "この変更を適用",
+    "applyWholeFile": "ファイル全体を適用…",
+    "applyWholeConfirm": "フォルダー内の {{path}} をサンドボックスのコピー全体で置き換えますか？",
+    "hunkConflict": "実行後にフォルダー内のこの行が変更されたため、何も書き込んでいません。ファイルを確認し直してください。",
+    "hunkDirty": "先にこのファイルの編集を保存または破棄してください。",
+    "moreActions": "その他の操作"
+  },
+  "coworkReview": {
+    "hide": "非表示",
+    "hideHint": "新しい変更まで非表示にします。レールの変更と ± カウンターには引き続き表示されます。",
+    "finishTitle": "レビューのみの実行が終わったとき",
+    "finishDescription": "セッションのサンドボックスに残ったファイルの扱い。自動適用はフォルダーにない新しいファイルだけをコピーし、置き換えが必要なものは必ず確認します。",
+    "finish": {
+      "keep": "サンドボックスに残す",
+      "ask": "すべて適用するか確認",
+      "auto": "すべて自動で適用"
+    },
+    "showBarTitle": "ファイル準備完了バーを表示",
+    "showBarDescription": "入力欄の上の「レビュー準備完了のファイル」バー。同じ変更は変更レールと ± カウンターに残ります。"
+  },
+  "coworkDisplay": {
+    "showModelReceived": "「モデルが受け取った内容」を表示",
+    "showModelReceivedDescription": "ターンごとのリクエスト記録とトークン数。記録は常に行われ、セッション詳細とタイムラインに残ります。"
   },
   "progressPin": {
     "pin": "進捗を会話の上に固定",

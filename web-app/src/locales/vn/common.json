@@ -126,7 +126,19 @@
     "scopeLabel": "Những thay đổi dự án nào cần liệt kê",
     "applyHint": "Sao chép tệp này từ sandbox của phiên vào {{folder}} dưới dạng {{path}}",
     "applyWhere": "Sao chép tới {{path}} trong {{folder}}? Bản sao trong sandbox là {{source}}.",
-    "applyConfirm": "Sao chép tới đó"
+    "applyConfirm": "Sao chép tới đó",
+    "applyAll": "Áp dụng tất cả vào thư mục",
+    "applyAllTitle": "Áp dụng tất cả vào thư mục",
+    "applyAllDescription": "Sao chép các tệp phiên này đã ghi vào sandbox sang thư mục đính kèm. Tệp nào sẽ thay thế một tệp khác thì không được chọn.",
+    "applyAllChecking": "Đang kiểm tra từng tệp…",
+    "applyAllSkipped": "Đã bỏ qua: {{reason}}",
+    "applyAllSkipOutside": "không nằm trong sandbox của phiên",
+    "applyAllSkipSame": "thư mục đã có đúng tệp này",
+    "applyAllOverwrites": "Thay thế một tệp",
+    "applyAllConfirm_one": "Áp dụng {{count}} tệp",
+    "applyAllConfirm_other": "Áp dụng {{count}} tệp",
+    "applyAllSummary": "Đã áp dụng {{applied}} · chưa áp dụng {{failed}}",
+    "openExternally": "Mở bằng ứng dụng khác"
   },
   "compactWidth": "Chiều rộng nhỏ gọn",
   "fullWidth": "Chiều rộng đầy đủ",
@@ -635,7 +647,33 @@
     "notCommitted": "Chưa commit",
     "pullRequest": "Pull request #{{number}}",
     "changeAt": "Thay đổi tại dòng {{line}}",
-    "revertChange": "Hoàn tác"
+    "revertChange": "Hoàn tác",
+    "sandboxChange": "Thay đổi sandbox ở dòng {{line}}",
+    "openSandboxCopy": "Mở bản sao sandbox",
+    "sandboxChangesHint": "Sandbox của phiên này có phiên bản riêng của tệp này. Các thay đổi được đánh dấu ở lề; bấm để xem.",
+    "applyHunk": "Áp dụng thay đổi này",
+    "applyWholeFile": "Áp dụng toàn bộ tệp…",
+    "applyWholeConfirm": "Thay {{path}} trong thư mục bằng toàn bộ bản sao sandbox?",
+    "hunkConflict": "Các dòng này đã thay đổi trong thư mục sau lần chạy nên chưa ghi gì. Hãy xem lại tệp.",
+    "hunkDirty": "Hãy lưu hoặc bỏ các chỉnh sửa của bạn với tệp này trước.",
+    "moreActions": "Thao tác khác"
+  },
+  "coworkReview": {
+    "hide": "Ẩn",
+    "hideHint": "Ẩn cho đến khi có thay đổi mới. Thay đổi trên thanh bên và bộ đếm ± vẫn hiển thị chúng.",
+    "finishTitle": "Khi một lần chạy Chỉ xem xét kết thúc",
+    "finishDescription": "Xử lý các tệp còn lại trong sandbox của phiên. Tự động áp dụng chỉ sao chép tệp mới với thư mục; mọi thứ sẽ thay thế một tệp luôn được hỏi.",
+    "finish": {
+      "keep": "Giữ trong sandbox",
+      "ask": "Hỏi để áp dụng tất cả",
+      "auto": "Tự động áp dụng tất cả"
+    },
+    "showBarTitle": "Hiện thanh tệp sẵn sàng",
+    "showBarDescription": "Thanh \"tệp sẵn sàng để xem xét\" phía trên ô soạn. Các thay đổi đó vẫn có trong thanh Thay đổi và bộ đếm ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Hiện \"Mô hình đã nhận gì\"",
+    "showModelReceivedDescription": "Bản ghi yêu cầu và số token theo từng lượt. Vẫn được ghi lại và có trong chi tiết phiên cùng dòng thời gian."
   },
   "progressPin": {
     "pin": "Ghim tiến độ phía trên cuộc trò chuyện",

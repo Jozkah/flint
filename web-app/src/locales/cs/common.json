@@ -126,7 +126,19 @@
     "scopeLabel": "Které změny projektu zobrazit",
     "applyHint": "Zkopírovat tento soubor ze sandboxu relace do {{folder}} jako {{path}}",
     "applyWhere": "Zkopírovat do {{path}} v {{folder}}? Kopie v sandboxu je {{source}}.",
-    "applyConfirm": "Zkopírovat sem"
+    "applyConfirm": "Zkopírovat sem",
+    "applyAll": "Použít vše ve složce",
+    "applyAllTitle": "Použít vše ve složce",
+    "applyAllDescription": "Zkopíruje soubory, které tato relace zapsala do svého sandboxu, do připojené složky. Soubory, které by nahradily jiný soubor, zůstanou nezaškrtnuté.",
+    "applyAllChecking": "Kontroluji jednotlivé soubory…",
+    "applyAllSkipped": "Přeskočeno: {{reason}}",
+    "applyAllSkipOutside": "není v sandboxu relace",
+    "applyAllSkipSame": "složka už obsahuje přesně tento soubor",
+    "applyAllOverwrites": "Nahradí soubor",
+    "applyAllConfirm_one": "Použít {{count}} soubor",
+    "applyAllConfirm_other": "Použít {{count}} souborů",
+    "applyAllSummary": "Použito {{applied}} · nepoužito {{failed}}",
+    "openExternally": "Otevřít externě"
   },
   "compactWidth": "Kompaktní šířka",
   "fullWidth": "Plná šířka",
@@ -637,7 +649,33 @@
     "notCommitted": "Zatím necommitováno",
     "pullRequest": "Pull request č. {{number}}",
     "changeAt": "Změna na řádku {{line}}",
-    "revertChange": "Vrátit"
+    "revertChange": "Vrátit",
+    "sandboxChange": "Změna v sandboxu na řádku {{line}}",
+    "openSandboxCopy": "Otevřít kopii ze sandboxu",
+    "sandboxChangesHint": "Sandbox této relace má vlastní verzi tohoto souboru. Její změny jsou označeny v okraji; kliknutím je zobrazíte.",
+    "applyHunk": "Použít tuto změnu",
+    "applyWholeFile": "Použít celý soubor…",
+    "applyWholeConfirm": "Nahradit {{path}} ve složce celou kopií ze sandboxu?",
+    "hunkConflict": "Tyto řádky se od běhu ve složce změnily, nic nebylo zapsáno. Podívejte se na soubor znovu.",
+    "hunkDirty": "Nejprve uložte nebo zahoďte své úpravy tohoto souboru.",
+    "moreActions": "Další akce"
+  },
+  "coworkReview": {
+    "hide": "Skrýt",
+    "hideHint": "Skrýt, dokud nepřijdou nové změny. Změny v panelu a počítadlo ± je stále ukazují.",
+    "finishTitle": "Když skončí běh Jen kontrola",
+    "finishDescription": "Co udělat se soubory, které zanechal v sandboxu relace. Automatické použití kopíruje jen soubory nové pro složku; na vše, co by nahradilo soubor, se vždy zeptá.",
+    "finish": {
+      "keep": "Ponechat v sandboxu",
+      "ask": "Zeptat se na použití všeho",
+      "auto": "Použít vše automaticky"
+    },
+    "showBarTitle": "Zobrazit lištu připravených souborů",
+    "showBarDescription": "Lišta „soubory připravené ke kontrole“ nad polem pro psaní. Stejné změny zůstávají v panelu Změny a v počítadle ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Zobrazit „Co model obdržel“",
+    "showModelReceivedDescription": "Záznam požadavku a počtu tokenů u každého tahu. Zaznamenává se vždy a zůstává v podrobnostech relace a na časové ose."
   },
   "progressPin": {
     "pin": "Připnout průběh nad konverzaci",

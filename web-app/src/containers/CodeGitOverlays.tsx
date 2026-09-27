@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Settings2, Undo2, X } from 'lucide-react'
+import { MoreHorizontal, Settings2, Undo2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -127,42 +128,121 @@ export function BlameCard({
   )
 }
 
-/** The inline diff of one clicked change marker, with Revert. */
+export type PeekAction = {
+  /** Tooltip and accessible name; the button itself is an icon. */
+  label: string
+  icon: React.ReactNode
+  onSelect: () => void
+  testId: string
+}
+
+/**
+ * The diff of one clicked change marker, opened inline under its lines (a
+ * "peek"). Only the change itself is shown: its actions are small icon
+ * buttons in the corner (behind a ⋯ menu when the panel is under 420px), a
+ * change against HEAD offering Revert. Escape or the marker again closes it.
+ */
 export function HunkPopover({
   hunk,
   onRevert,
   onClose,
+  title,
+  actions,
+  note,
 }: {
   hunk: ChangeHunk
-  onRevert: () => void
+  onRevert?: () => void
   onClose: () => void
+  /** The accessible name, when not a change against HEAD. Not shown. */
+  title?: string
+  /** Replaces Revert. */
+  actions?: PeekAction[]
+  /** A line above the diff: a confirmation, a conflict, a result. */
+  note?: React.ReactNode
 }) {
   const { t } = useTranslation()
+  const label = title ?? t('common:codePanel.changeAt', { line: hunk.start })
+  const all: PeekAction[] = actions ?? (onRevert
+    ? [{
+        label: t('common:codePanel.revertChange'),
+        icon: <Undo2 className="size-3" />,
+        onSelect: onRevert,
+        testId: 'peek-revert',
+      }]
+    : [])
+  const icon = (a: PeekAction) => (
+    <Button
+      key={a.testId}
+      size="icon-xs"
+      variant="ghost"
+      title={a.label}
+      aria-label={a.label}
+      onClick={a.onSelect}
+      data-testid={a.testId}
+    >
+      {a.icon}
+    </Button>
+  )
   return (
     <div
       role="dialog"
-      aria-label={t('common:codePanel.changeAt', { line: hunk.start })}
+      aria-label={label}
       data-testid="hunk-popover"
-      className="absolute inset-x-3 top-2 z-20 max-h-[45%] overflow-auto rounded-lg border-[0.8px] border-border bg-popover font-mono text-xs shadow-pop"
+      style={{ width: 'calc(var(--cm-peek-width, 100%) - 1rem)' }}
+      className="@container sticky left-2 mx-2 my-1 max-h-72 overflow-auto rounded-lg border-[0.8px] border-border bg-popover font-mono text-xs shadow-lift"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
-      <div className="flex items-center gap-1 border-b border-dashed border-border px-2 py-1 font-sans">
-        <span className="flex-1 text-muted-foreground">
-          {t('common:codePanel.changeAt', { line: hunk.start })}
+      <div className="sticky top-0 z-[1] float-right flex items-center gap-0.5 rounded-bl-md bg-popover/90 p-0.5 font-sans">
+        <span className="hidden items-center gap-0.5 @[420px]:flex">
+          {all.map(icon)}
         </span>
-        <Button size="xs" variant="ghost" onClick={onRevert} autoFocus>
-          <Undo2 className="size-3" />
-          {t('common:codePanel.revertChange')}
-        </Button>
+        {all.length > 0 ? (
+          <span className="@[420px]:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon-xs"
+                  variant="ghost"
+                  title={t('common:codePanel.moreActions')}
+                  aria-label={t('common:codePanel.moreActions')}
+                  data-testid="peek-more"
+                >
+                  <MoreHorizontal className="size-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {all.map((a) => (
+                  <DropdownMenuItem
+                    key={a.testId}
+                    onSelect={a.onSelect}
+                    data-testid={`${a.testId}-item`}
+                  >
+                    {a.icon}
+                    {a.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </span>
+        ) : null}
         <Button
           size="icon-xs"
           variant="ghost"
+          title={t('common:close')}
           aria-label={t('common:close')}
           onClick={onClose}
         >
           <X className="size-3" />
         </Button>
       </div>
+      {note ? (
+        <div
+          role="status"
+          className="border-b border-dashed border-border px-2 py-1 font-sans text-muted-foreground"
+        >
+          {note}
+        </div>
+      ) : null}
       <div className="py-1">
         {hunk.oldLines.map((line, i) => (
           <div key={`o${i}`} className="bg-diff-del-bg px-2 whitespace-pre text-diff-del">

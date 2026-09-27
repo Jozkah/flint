@@ -18,6 +18,11 @@ export type ChangeHunk = {
   oldLines: string[]
   /** The new lines (empty for `deleted`). */
   newLines: string[]
+  /**
+   * Sandbox hunks only: the 1-based real line `oldLines` start at, which the
+   * marker lines may not (see `sandboxHunks`). Where the change is applied.
+   */
+  at?: number
 }
 
 const splitLines = (text: string): string[] => {
@@ -118,6 +123,60 @@ export function revertHunk(text: string, hunk: ChangeHunk): string {
   const endsWithNewline = /\n$/.test(text)
   const lines = splitLines(text)
   lines.splice(hunk.start - 1, hunk.newLines.length, ...hunk.oldLines)
+  const joined = lines.join(crlf ? '\r\n' : '\n')
+  return joined && (endsWithNewline || lines.length === 0)
+    ? joined + (crlf ? '\r\n' : '\n')
+    : joined
+}
+
+/** The line a change's inline peek opens under: its last line, or the
+ * marker line of a deletion. */
+export function peekLineOf(hunk: ChangeHunk): number {
+  return hunk.kind === 'deleted' ? Math.max(1, hunk.start - 1) : hunk.end
+}
+
+/**
+ * Markers for the real file saying how the session sandbox's copy differs
+ * from it: the hunks from the sandbox copy to the real text, turned around so
+ * each one reads as the sandbox's change (`oldLines` the real file's,
+ * `newLines` the sandbox's). Lines only the sandbox has sit on the real line
+ * they would follow; lines the sandbox dropped get the deletion triangle on
+ * the first of them.
+ */
+export function sandboxHunks(real: string, sandbox: string): ChangeHunk[] {
+  return computeHunks(sandbox, real).map((h): ChangeHunk => {
+    const flipped = { oldLines: h.newLines, newLines: h.oldLines, at: h.start }
+    if (h.kind === 'added') {
+      return { kind: 'deleted', start: h.start + 1, end: h.start, ...flipped }
+    }
+    if (h.kind === 'deleted') {
+      const at = Math.max(1, h.start - 1)
+      return { kind: 'added', start: at, end: at, ...flipped }
+    }
+    return { ...h, ...flipped }
+  })
+}
+
+/**
+ * `real` with one sandbox hunk applied, or null when the lines it replaces
+ * are no longer there as they were (the file changed since).
+ */
+export function applySandboxHunk(real: string, hunk: ChangeHunk): string | null {
+  if (hunk.at === undefined) return null
+  const crlf = real.includes('\r\n')
+  const endsWithNewline = /\r?\n$/.test(real)
+  const lines = real === '' ? [] : real.replace(/\r\n/g, '\n').split('\n')
+  if (endsWithNewline) lines.pop()
+  const from = hunk.at - 1
+  const current = lines.slice(from, from + hunk.oldLines.length)
+  if (
+    from > lines.length ||
+    current.length !== hunk.oldLines.length ||
+    current.some((line, i) => line !== hunk.oldLines[i])
+  ) {
+    return null
+  }
+  lines.splice(from, hunk.oldLines.length, ...hunk.newLines)
   const joined = lines.join(crlf ? '\r\n' : '\n')
   return joined && (endsWithNewline || lines.length === 0)
     ? joined + (crlf ? '\r\n' : '\n')

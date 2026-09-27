@@ -126,7 +126,19 @@
     "scopeLabel": "Welche Projektänderungen aufgelistet werden",
     "applyHint": "Diese Datei aus der Sitzungs-Sandbox nach {{folder}} als {{path}} kopieren",
     "applyWhere": "Nach {{path}} in {{folder}} kopieren? Die Sandbox-Kopie ist {{source}}.",
-    "applyConfirm": "Dorthin kopieren"
+    "applyConfirm": "Dorthin kopieren",
+    "applyAll": "Alle in Ordner übernehmen",
+    "applyAllTitle": "Alle in Ordner übernehmen",
+    "applyAllDescription": "Kopiert die Dateien, die diese Sitzung in ihre Sandbox geschrieben hat, in den verbundenen Ordner. Dateien, die eine andere Datei ersetzen würden, bleiben abgewählt.",
+    "applyAllChecking": "Jede Datei wird geprüft…",
+    "applyAllSkipped": "Übersprungen: {{reason}}",
+    "applyAllSkipOutside": "nicht in der Sitzungs-Sandbox",
+    "applyAllSkipSame": "der Ordner enthält bereits genau diese Datei",
+    "applyAllOverwrites": "Ersetzt eine Datei",
+    "applyAllConfirm_one": "{{count}} Datei übernehmen",
+    "applyAllConfirm_other": "{{count}} Dateien übernehmen",
+    "applyAllSummary": "{{applied}} übernommen · {{failed}} nicht übernommen",
+    "openExternally": "Extern öffnen"
   },
   "compactWidth": "Kompakte Breite",
   "fullWidth": "Volle Breite",
@@ -635,7 +647,33 @@
     "notCommitted": "Noch nicht committet",
     "pullRequest": "Pull-Request #{{number}}",
     "changeAt": "Änderung in Zeile {{line}}",
-    "revertChange": "Zurücksetzen"
+    "revertChange": "Zurücksetzen",
+    "sandboxChange": "Sandbox-Änderung in Zeile {{line}}",
+    "openSandboxCopy": "Sandbox-Kopie öffnen",
+    "sandboxChangesHint": "Die Sandbox dieser Sitzung hat eine eigene Version dieser Datei. Ihre Änderungen sind am Rand markiert; ein Klick zeigt sie.",
+    "applyHunk": "Diese Änderung übernehmen",
+    "applyWholeFile": "Ganze Datei übernehmen…",
+    "applyWholeConfirm": "{{path}} im Ordner durch die ganze Sandbox-Kopie ersetzen?",
+    "hunkConflict": "Diese Zeilen haben sich seit dem Lauf im Ordner geändert, es wurde nichts geschrieben. Sieh dir die Datei erneut an.",
+    "hunkDirty": "Speichere oder verwirf zuerst deine Änderungen an dieser Datei.",
+    "moreActions": "Weitere Aktionen"
+  },
+  "coworkReview": {
+    "hide": "Ausblenden",
+    "hideHint": "Bis zu neuen Änderungen ausblenden. Änderungen in der Leiste und der ±-Zähler zeigen sie weiterhin.",
+    "finishTitle": "Wenn ein Nur-Prüfen-Lauf endet",
+    "finishDescription": "Was mit den Dateien in der Sitzungs-Sandbox geschieht. Automatisch werden nur Dateien kopiert, die im Ordner neu sind; alles, was eine Datei ersetzen würde, wird immer nachgefragt.",
+    "finish": {
+      "keep": "In der Sandbox lassen",
+      "ask": "Fragen, ob alle übernommen werden",
+      "auto": "Alle automatisch übernehmen"
+    },
+    "showBarTitle": "Leiste „Dateien bereit“ anzeigen",
+    "showBarDescription": "Die Leiste „Dateien bereit zur Prüfung“ über dem Eingabefeld. Dieselben Änderungen bleiben in der Änderungen-Leiste und im ±-Zähler."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "„Was das Modell erhalten hat“ anzeigen",
+    "showModelReceivedDescription": "Die Aufzeichnung der Anfrage und ihre Tokenzahl pro Runde. Sie wird trotzdem erfasst und bleibt in den Sitzungsdetails und der Zeitleiste."
   },
   "progressPin": {
     "pin": "Fortschritt über dem Gespräch anheften",

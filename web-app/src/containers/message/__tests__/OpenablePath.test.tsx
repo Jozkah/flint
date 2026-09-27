@@ -75,4 +75,20 @@ describe('OpenablePath', () => {
     expect(screen.queryByTestId('openable-path')).toBeNull()
     expect(screen.getByText('src/a.ts')).toBeInTheDocument()
   })
+
+  it('shows the short form, keeps the full path in the tooltip and on copy', () => {
+    const full =
+      'C:/Users/me/AppData/Roaming/Flint/data/agent-workspace/sessions/s1/src/a.ts'
+    render(
+      <CodeOpenProvider open={vi.fn()} displayPath={() => 'src/a.ts'}>
+        <OpenablePath path={full} />
+      </CodeOpenProvider>
+    )
+    const link = screen.getByTestId('openable-path')
+    expect(link).toHaveTextContent(/^src\/a\.ts$/)
+    expect(link.getAttribute('title')).toContain(full)
+    const setData = vi.fn()
+    fireEvent.copy(link, { clipboardData: { setData } })
+    expect(setData).toHaveBeenCalledWith('text/plain', full)
+  })
 })

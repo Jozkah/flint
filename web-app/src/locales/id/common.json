@@ -126,7 +126,19 @@
     "scopeLabel": "Perubahan proyek mana yang ditampilkan",
     "applyHint": "Salin file ini dari sandbox sesi ke {{folder}} sebagai {{path}}",
     "applyWhere": "Salin ke {{path}} di {{folder}}? Salinan sandbox adalah {{source}}.",
-    "applyConfirm": "Salin ke sana"
+    "applyConfirm": "Salin ke sana",
+    "applyAll": "Terapkan semua ke folder",
+    "applyAllTitle": "Terapkan semua ke folder",
+    "applyAllDescription": "Salin file yang ditulis sesi ini ke sandbox-nya ke folder yang terlampir. File yang akan menggantikan file berbeda dibiarkan tidak dicentang.",
+    "applyAllChecking": "Memeriksa setiap file…",
+    "applyAllSkipped": "Dilewati: {{reason}}",
+    "applyAllSkipOutside": "tidak ada di sandbox sesi",
+    "applyAllSkipSame": "folder sudah berisi file yang sama persis",
+    "applyAllOverwrites": "Menggantikan file",
+    "applyAllConfirm_one": "Terapkan {{count}} file",
+    "applyAllConfirm_other": "Terapkan {{count}} file",
+    "applyAllSummary": "{{applied}} diterapkan · {{failed}} tidak diterapkan",
+    "openExternally": "Buka di luar"
   },
   "compactWidth": "Lebar Ringkas",
   "fullWidth": "Lebar Penuh",
@@ -635,7 +647,33 @@
     "notCommitted": "Belum di-commit",
     "pullRequest": "Pull request #{{number}}",
     "changeAt": "Perubahan di baris {{line}}",
-    "revertChange": "Kembalikan"
+    "revertChange": "Kembalikan",
+    "sandboxChange": "Perubahan sandbox di baris {{line}}",
+    "openSandboxCopy": "Buka salinan sandbox",
+    "sandboxChangesHint": "Sandbox sesi ini punya versi sendiri dari file ini. Perubahannya ditandai di margin; klik untuk melihatnya.",
+    "applyHunk": "Terapkan perubahan ini",
+    "applyWholeFile": "Terapkan seluruh file…",
+    "applyWholeConfirm": "Ganti {{path}} di folder dengan seluruh salinan sandbox?",
+    "hunkConflict": "Baris ini berubah di folder sejak proses berjalan, jadi tidak ada yang ditulis. Lihat file lagi.",
+    "hunkDirty": "Simpan atau buang dulu suntingan Anda pada file ini.",
+    "moreActions": "Tindakan lain"
+  },
+  "coworkReview": {
+    "hide": "Sembunyikan",
+    "hideHint": "Sembunyikan sampai ada perubahan baru. Perubahan di rel dan penghitung ± tetap menampilkannya.",
+    "finishTitle": "Saat proses Hanya tinjau selesai",
+    "finishDescription": "Apa yang dilakukan pada file yang ditinggalkan di sandbox sesi. Terapkan otomatis hanya menyalin file yang baru bagi folder; apa pun yang akan menggantikan file selalu ditanyakan.",
+    "finish": {
+      "keep": "Simpan di sandbox",
+      "ask": "Tanya untuk terapkan semua",
+      "auto": "Terapkan semua otomatis"
+    },
+    "showBarTitle": "Tampilkan bilah file siap",
+    "showBarDescription": "Bilah \"file siap ditinjau\" di atas kolom tulis. Perubahan yang sama tetap ada di rel Perubahan dan penghitung ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Tampilkan \"Yang diterima model\"",
+    "showModelReceivedDescription": "Catatan permintaan dan jumlah token per giliran. Tetap dicatat dan tersedia di detail sesi serta linimasa."
   },
   "progressPin": {
     "pin": "Sematkan progres di atas percakapan",

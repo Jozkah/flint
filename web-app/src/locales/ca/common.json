@@ -119,7 +119,19 @@
     "scopeLabel": "Quins canvis del projecte llistar",
     "applyHint": "Copia aquest fitxer del sandbox de la sessió a {{folder}} com a {{path}}",
     "applyWhere": "Vols copiar a {{path}} a {{folder}}? La còpia del sandbox és {{source}}.",
-    "applyConfirm": "Copia-hi"
+    "applyConfirm": "Copia-hi",
+    "applyAll": "Aplica-ho tot a la carpeta",
+    "applyAllTitle": "Aplica-ho tot a la carpeta",
+    "applyAllDescription": "Copia a la carpeta adjunta els fitxers que aquesta sessió ha escrit al seu entorn aïllat. Els que substituirien un fitxer diferent queden desmarcats.",
+    "applyAllChecking": "S’està comprovant cada fitxer…",
+    "applyAllSkipped": "Omès: {{reason}}",
+    "applyAllSkipOutside": "no és a l’entorn aïllat de la sessió",
+    "applyAllSkipSame": "la carpeta ja té aquest mateix fitxer",
+    "applyAllOverwrites": "Substitueix un fitxer",
+    "applyAllConfirm_one": "Aplica {{count}} fitxer",
+    "applyAllConfirm_other": "Aplica {{count}} fitxers",
+    "applyAllSummary": "{{applied}} aplicats · {{failed}} no aplicats",
+    "openExternally": "Obre externament"
   },
   "compactWidth": "Amplada compacta",
   "fullWidth": "Amplada completa",
@@ -637,7 +649,33 @@
     "notCommitted": "Encara sense confirmar",
     "pullRequest": "Pull request núm. {{number}}",
     "changeAt": "Canvi a la línia {{line}}",
-    "revertChange": "Reverteix"
+    "revertChange": "Reverteix",
+    "sandboxChange": "Canvi de l’entorn aïllat a la línia {{line}}",
+    "openSandboxCopy": "Obre la còpia aïllada",
+    "sandboxChangesHint": "L’entorn aïllat d’aquesta sessió té la seva pròpia versió d’aquest fitxer. Els seus canvis es marquen al marge; fes-hi clic per veure’ls.",
+    "applyHunk": "Aplica aquest canvi",
+    "applyWholeFile": "Aplica el fitxer sencer…",
+    "applyWholeConfirm": "Vols substituir {{path}} a la carpeta per tota la còpia aïllada?",
+    "hunkConflict": "Aquestes línies han canviat a la carpeta des de l’execució; no s’ha escrit res. Torna a mirar el fitxer.",
+    "hunkDirty": "Primer desa o descarta les teves edicions d’aquest fitxer.",
+    "moreActions": "Més accions"
+  },
+  "coworkReview": {
+    "hide": "Amaga",
+    "hideHint": "Amaga fins que hi hagi canvis nous. Els Canvis del carril i el comptador ± encara els mostren.",
+    "finishTitle": "Quan acaba una execució Només revisió",
+    "finishDescription": "Què fer amb els fitxers que ha deixat a l’entorn aïllat. L’aplicació automàtica només copia fitxers nous a la carpeta; tot el que substituiria un fitxer sempre es pregunta.",
+    "finish": {
+      "keep": "Mantén a l’entorn aïllat",
+      "ask": "Pregunta per aplicar-ho tot",
+      "auto": "Aplica-ho tot automàticament"
+    },
+    "showBarTitle": "Mostra la barra de fitxers a punt",
+    "showBarDescription": "La barra «fitxers a punt per revisar» sobre el compositor. Els mateixos canvis continuen al carril de Canvis i al comptador ±."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "Mostra «Què ha rebut el model»",
+    "showModelReceivedDescription": "El registre per torn de la sol·licitud i el seu recompte de tokens. Es registra igualment i es manté als detalls de la sessió i a la cronologia."
   },
   "progressPin": {
     "pin": "Fixa el progrés sobre la conversa",

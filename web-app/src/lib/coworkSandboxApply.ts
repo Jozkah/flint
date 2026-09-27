@@ -62,6 +62,7 @@ export function planSandboxApply(
 ): SandboxApplyPlan | null {
   const source = sandboxRelativePath(sandboxRoot, path)
   if (!source || folders.length === 0) return null
+  if (isFlintInternalPath(sandboxRoot, path)) return null
   const [first, ...rest] = source.split('/')
   if (rest.length > 0) {
     const named = folders.find(
@@ -72,6 +73,80 @@ export function planSandboxApply(
     }
   }
   return { source, folder: folders[0], destination: source, remapped: false }
+}
+
+/** Folders in a sandbox that hold Flint's own settings, never run output. */
+const INTERNAL_SANDBOX_DIRS = new Set(['.jan', '.flint'])
+
+/**
+ * Whether a written path is Flint's own bookkeeping rather than something the
+ * run produced: the sandbox's `.jan/` (agent settings, hooks, memory), or any
+ * other place in Flint's data folder -- memory, logs, other sessions. Every
+ * successful write or edit is recorded as a change wherever it landed, so
+ * without this those files were listed as session output with "Apply to
+ * folder" beside them.
+ *
+ * The data folder is found from the sandbox itself
+ * (`<data>/agent-workspace/sessions/<id>`). Flint-owned worktrees
+ * (`<data>/agent-workspace/worktrees/...`) hold real work and stay listed.
+ */
+export function isFlintInternalPath(
+  sandboxRoot: string | null,
+  path: string
+): boolean {
+  if (!sandboxRoot) return false
+  const inSandbox = sandboxRelativePath(sandboxRoot, path)
+  if (inSandbox !== null) {
+    return INTERNAL_SANDBOX_DIRS.has(inSandbox.split('/')[0].toLowerCase())
+  }
+  const segments = sandboxRoot.replace(/\\/g, '/').replace(/\/+$/, '').split('/')
+  if (segments.length < 4 || segments[segments.length - 2] !== 'sessions') {
+    return false
+  }
+  const store = segments.slice(0, -2).join('/')
+  const dataFolder = segments.slice(0, -3).join('/')
+  const inside = (root: string) => relativeToRoot(root, path) !== path
+  return inside(dataFolder) && !inside(`${store}/worktrees`)
+}
+
+/**
+ * The sandbox file a Review only run wrote for `projectPath` (relative to
+ * `folder`), found the way Apply to folder maps sandbox files to the folder,
+ * so the two always agree on which file is whose copy.
+ */
+export function sandboxCopyOfProjectFile(
+  paths: readonly string[],
+  planFor: (path: string) => SandboxApplyPlan | null,
+  folder: string | null,
+  projectPath: string
+): { path: string; plan: SandboxApplyPlan } | null {
+  if (!folder) return null
+  const norm = (p: string) =>
+    p.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '').toLowerCase()
+  const want = norm(projectPath)
+  for (const path of paths) {
+    const plan = planFor(path)
+    if (plan && norm(plan.folder) === norm(folder) && norm(plan.destination) === want) {
+      return { path, plan }
+    }
+  }
+  return null
+}
+
+/**
+ * Write the real file with one sandbox change applied, only while it still
+ * holds `expected` (backend: `agent_sandbox_apply_hunk`, same confinement as
+ * a whole-file apply). `changed`: the file moved on; nothing was written.
+ */
+export async function applySandboxHunk(input: {
+  session: string
+  path: string
+  project: string
+  destination: string
+  expected: string
+  content: string
+}): Promise<'applied' | 'changed'> {
+  return await invoke<'applied' | 'changed'>('agent_sandbox_apply_hunk', input)
 }
 
 export async function applySandboxFile(input: {

@@ -27,7 +27,12 @@ import { cn } from '@/lib/utils'
 import { archivedFirstAttempt } from '@/lib/firstAttemptArchive'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { Caret, ToolBar } from './ToolBar'
-import { joinToolPath, useCodeOpen, toolTargetIsPath } from '@/lib/codeOpen'
+import {
+  joinToolPath,
+  useCodeOpen,
+  useCodeOpenTools,
+  toolTargetIsPath,
+} from '@/lib/codeOpen'
 import { OpenablePath } from './OpenablePath'
 import { ChangeDiff } from '@/components/ChangeDiff'
 import { TermOutput } from '@/components/TermOutput'
@@ -473,8 +478,11 @@ export const AgentToolWidget = memo(
     )
     // `ls` with no path lists the workspace root; show that rather than a bar
     // that reads as though an argument failed to stream.
+    const { displayPath } = useCodeOpenTools()
     const value =
-      bar.target ||
+      (bar.target && toolTargetIsPath(bar.tool) && displayPath
+        ? displayPath(bar.target)
+        : bar.target) ||
       (LISTING_TOOLS.has(bar.tool) ? t('tools:toolCall.workspaceRoot') : '')
     // The path the tool was called with is structured data, so opening it in
     // the code panel needs no parsing of the model's prose. Only once the call

@@ -126,7 +126,19 @@
     "scopeLabel": "要列出哪些專案變更",
     "applyHint": "將此檔案從工作階段沙盒複製到 {{folder}}，儲存為 {{path}}",
     "applyWhere": "複製到 {{folder}} 中的 {{path}}？沙盒副本為 {{source}}。",
-    "applyConfirm": "複製到此處"
+    "applyConfirm": "複製到此處",
+    "applyAll": "全部套用到資料夾",
+    "applyAllTitle": "全部套用到資料夾",
+    "applyAllDescription": "將此工作階段寫入沙箱的檔案複製到附加的資料夾。會取代其他不同檔案的項目預設不勾選。",
+    "applyAllChecking": "正在檢查每個檔案…",
+    "applyAllSkipped": "已略過：{{reason}}",
+    "applyAllSkipOutside": "不在工作階段沙箱中",
+    "applyAllSkipSame": "資料夾中已有完全相同的檔案",
+    "applyAllOverwrites": "將取代檔案",
+    "applyAllConfirm_one": "套用 {{count}} 個檔案",
+    "applyAllConfirm_other": "套用 {{count}} 個檔案",
+    "applyAllSummary": "已套用 {{applied}} · 未套用 {{failed}}",
+    "openExternally": "在外部開啟"
   },
   "compactWidth": "緊湊寬度",
   "fullWidth": "全寬",
@@ -635,7 +647,33 @@
     "notCommitted": "尚未提交",
     "pullRequest": "提取要求 #{{number}}",
     "changeAt": "第 {{line}} 行的變更",
-    "revertChange": "還原"
+    "revertChange": "還原",
+    "sandboxChange": "第 {{line}} 行的沙箱變更",
+    "openSandboxCopy": "開啟沙箱副本",
+    "sandboxChangesHint": "此工作階段的沙箱有這個檔案的獨立版本。其變更標示在邊欄中；按一下即可查看。",
+    "applyHunk": "套用此變更",
+    "applyWholeFile": "套用整個檔案…",
+    "applyWholeConfirm": "以完整的沙箱副本取代資料夾中的 {{path}}？",
+    "hunkConflict": "執行後資料夾中的這些行已變更，因此未寫入任何內容。請重新查看檔案。",
+    "hunkDirty": "請先儲存或捨棄你對此檔案的編輯。",
+    "moreActions": "更多動作"
+  },
+  "coworkReview": {
+    "hide": "隱藏",
+    "hideHint": "在出現新變更前隱藏。側欄的變更和 ± 計數仍會顯示它們。",
+    "finishTitle": "「僅審查」執行結束時",
+    "finishDescription": "如何處理留在工作階段沙箱中的檔案。自動套用只會複製資料夾中沒有的新檔案；任何會取代檔案的內容都會先詢問。",
+    "finish": {
+      "keep": "保留在沙箱中",
+      "ask": "詢問是否全部套用",
+      "auto": "自動全部套用"
+    },
+    "showBarTitle": "顯示檔案就緒列",
+    "showBarDescription": "輸入框上方的「檔案可供審查」列。相同的變更仍在變更側欄和 ± 計數中。"
+  },
+  "coworkDisplay": {
+    "showModelReceived": "顯示「模型收到的內容」",
+    "showModelReceivedDescription": "每輪請求的記錄及其權杖數。無論是否顯示都會記錄，並保留在工作階段詳細資訊和時間軸中。"
   },
   "progressPin": {
     "pin": "將進度固定在對話上方",

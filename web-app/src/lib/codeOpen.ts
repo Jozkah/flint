@@ -35,6 +35,12 @@ export type CodeOpenTools = {
   check?: (path: string) => CodePathCheck
   /** Show this file in Changes. */
   openDiff?: (path: string) => void
+  /**
+   * The short form a path is shown as: relative to the session sandbox or
+   * an attached folder, else the file name. The full path stays in the
+   * tooltip and is what a copy of the label puts on the clipboard.
+   */
+  displayPath?: (path: string) => string
 }
 
 export const CodeOpenToolsContext = createContext<CodeOpenTools>({})

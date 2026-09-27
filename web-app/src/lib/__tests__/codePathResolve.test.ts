@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { resolveCodePath } from '../codePathResolve'
+import {
+  absoluteChangePath,
+  resolveCodePath,
+  shortToolPath,
+} from '../codePathResolve'
 import {
   joinToolPath,
   lineOfToolInput,
@@ -88,5 +92,41 @@ describe('opening helpers', () => {
     const queued = openTabAt(first, b, { background: true })
     expect(queued.tabs).toHaveLength(2)
     expect(queued.activeTabId).toBe(tabId(a))
+  })
+})
+
+describe('shortToolPath', () => {
+  it('shows a sandbox or project path relative to its root', () => {
+    const inSandbox = 'C:/data/sessions/s1/kewscrape/integrations/ingestion.go'
+    expect(shortToolPath(resolveCodePath(inSandbox, ctx), inSandbox)).toBe(
+      'kewscrape/integrations/ingestion.go'
+    )
+    const inProject = 'C:/work/repo/src/app.ts'
+    expect(shortToolPath(resolveCodePath(inProject, ctx), inProject)).toBe('src/app.ts')
+  })
+
+  it('shows an extra folder’s file relative to it, and anything else by name', () => {
+    const extra = 'D:/docs/specs/a.md'
+    expect(
+      shortToolPath({ kind: 'unresolved', reason: 'extra-folder' }, extra, ['D:/docs'])
+    ).toBe('specs/a.md')
+    expect(
+      shortToolPath({ kind: 'unresolved', reason: 'outside' }, 'E:\\far\\away\\b.txt')
+    ).toBe('b.txt')
+  })
+})
+
+describe('absoluteChangePath', () => {
+  const roots = { treeRoot: 'C:/work/repo', workspacePath: 'C:/data/sessions/s1' }
+  it('joins a Git row to the tree and a sandbox row to the sandbox', () => {
+    expect(
+      absoluteChangePath('src/a.ts', 'git', { ...roots, resolved: { kind: 'project', rel: 'src/a.ts' } })
+    ).toBe('C:/work/repo/src/a.ts')
+    expect(
+      absoluteChangePath('out.md', 'session', { ...roots, resolved: { kind: 'sandbox', rel: 'out.md' } })
+    ).toBe('C:/data/sessions/s1/out.md')
+    expect(
+      absoluteChangePath('C:/x/y.md', 'session', { ...roots, resolved: { kind: 'unresolved', reason: 'outside' } })
+    ).toBe('C:/x/y.md')
   })
 })

@@ -36,7 +36,13 @@ import {
 import { tags } from '@lezer/highlight'
 import { loadEditorLanguage } from '@/lib/codeEditorLanguages'
 import type { BlameCommit, ChangeHunk } from '@/lib/codeGutter'
-import { gitOverlays, setBlame, setHunks } from './codeEditorGit'
+import {
+  gitOverlays,
+  peekOpen,
+  setBlame,
+  setHunks,
+  setPeek,
+} from './codeEditorGit'
 
 /**
  * The Code panel's editor: CodeMirror 6 with undo/redo, find (Ctrl+F),
@@ -77,6 +83,12 @@ export type CodeEditorProps = {
   } | null
   onHunk?: (hunk: ChangeHunk) => void
   onBlameHover?: (commit: BlameCommit, el: HTMLElement | null) => void
+  /**
+   * A clicked marker's change, opened inline under its lines; `dom` is the
+   * element the caller renders the change into. Escape calls `onPeekClose`.
+   */
+  peek?: { hunk: ChangeHunk; dom: HTMLElement } | null
+  onPeekClose?: () => void
 }
 
 /** One Dark Pro / One Light, the palettes behind the viewer's Shiki themes. */
@@ -186,6 +198,8 @@ export function CodeEditor({
   blame,
   onHunk,
   onBlameHover,
+  peek,
+  onPeekClose,
 }: CodeEditorProps) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
@@ -193,8 +207,22 @@ export function CodeEditor({
   const theme = useRef(new Compartment())
   const wrap = useRef(new Compartment())
   // Latest callbacks, read by extensions built once per document.
-  const handlers = useRef({ onChange, onSave, onSelection, onHunk, onBlameHover })
-  handlers.current = { onChange, onSave, onSelection, onHunk, onBlameHover }
+  const handlers = useRef({
+    onChange,
+    onSave,
+    onSelection,
+    onHunk,
+    onBlameHover,
+    onPeekClose,
+  })
+  handlers.current = {
+    onChange,
+    onSave,
+    onSelection,
+    onHunk,
+    onBlameHover,
+    onPeekClose,
+  }
 
   const buildState = (doc: string) =>
     EditorState.create({
@@ -222,6 +250,14 @@ export function CodeEditor({
               preventDefault: true,
               run: () => {
                 handlers.current.onSave()
+                return true
+              },
+            },
+            {
+              key: 'Escape',
+              run: (v) => {
+                if (!peekOpen(v)) return false
+                handlers.current.onPeekClose?.()
                 return true
               },
             },
@@ -272,7 +308,20 @@ export function CodeEditor({
     if (!host.current) return
     const created = new EditorView({ state: buildState(value), parent: host.current })
     view.current = created
+    // A peek sits in the document, which can be wider than the view; it is
+    // sized to what is visible so its corner actions stay on screen.
+    const hostEl = host.current
+    const measure = () => {
+      const gutters = created.dom.querySelector<HTMLElement>('.cm-gutters')
+      const width = created.scrollDOM.clientWidth - (gutters?.offsetWidth ?? 0)
+      hostEl.style.setProperty('--cm-peek-width', `${Math.max(0, width)}px`)
+    }
+    measure()
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(created.scrollDOM)
     return () => {
+      observer?.disconnect()
       created.destroy()
       view.current = null
     }
@@ -305,6 +354,10 @@ export function CodeEditor({
   useEffect(() => {
     view.current?.dispatch({ effects: setBlame.of(blame ?? null) })
   }, [blame, docKey])
+
+  useEffect(() => {
+    view.current?.dispatch({ effects: setPeek.of(peek ?? null) })
+  }, [peek, docKey])
 
   useEffect(() => {
     let alive = true
