@@ -678,5 +678,8 @@
   "progressPin": {
     "pin": "Sematkan progres di atas percakapan",
     "unpin": "Lepas sematan progres"
-  }
+  },
+  "decisionScopeShowFull": "Tampilkan lengkap",
+  "decisionScopeHide": "Sembunyikan",
+  "decisionScopeCopy": "Salin"
 }

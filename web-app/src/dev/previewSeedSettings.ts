@@ -219,7 +219,14 @@ function answers() {
       ['write_file', 'Conversation', 'granted', 13],
       ['git push', 'Once', 'deny', 46],
       ['web_fetch', 'Everywhere', 'granted', 92],
-    ].map(([tool, reason, decision, ago]) => ({
+      [
+        'bash',
+        'Once',
+        'allow',
+        120,
+        'gh pr create --title "fix(forecast): key the cache by UTC date" --body "Cached forecasts were keyed by local date, so a request just after midnight UTC returned yesterday\'s data. This keys them by UTC date and adds a regression test.\\n\\nTested: go test ./internal/cache/..."',
+      ],
+    ].map(([tool, reason, decision, ago, resource]) => ({
       v: 1,
       at: new Date(now - Number(ago) * MIN).toISOString(),
       session: 'release',
@@ -230,7 +237,7 @@ function answers() {
       tool,
       capability: tool,
       kind: 'tool',
-      resource: '',
+      resource: resource ?? '',
       decision,
       reason,
       rule: '',

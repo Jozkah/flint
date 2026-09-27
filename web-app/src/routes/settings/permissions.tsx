@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { OctagonAlert } from 'lucide-react'
+import { DecisionScope } from '@/containers/DecisionScope'
 import { route } from '@/constants/routes'
 import { Card, CardItem } from '@/containers/Card'
 import { Input } from '@/components/ui/input'
@@ -649,10 +650,10 @@ function PermissionsSettings() {
             >
               <table className="w-full min-w-[28rem] table-fixed border-collapse text-left text-[12.5px] tabular-nums">
                 <colgroup>
-                  <col className="w-[110px]" />
+                  <col className="w-[84px]" />
+                  <col className="w-[96px]" />
                   <col />
-                  <col className="w-[130px]" />
-                  <col className="w-[110px]" />
+                  <col className="w-[96px]" />
                 </colgroup>
                 <thead>
                   <tr className="border-b border-dashed border-border text-xs text-muted-foreground">
@@ -682,27 +683,18 @@ function PermissionsSettings() {
                         </time>
                       </td>
                       <td className="px-0.5 py-2 align-middle">
-                        <span className="break-all font-mono text-xs text-foreground">
+                        <span
+                          className="block truncate font-mono text-xs text-foreground"
+                          title={record.tool}
+                        >
                           {record.tool}
                         </span>
                       </td>
-                      <td className="px-0.5 py-2 align-middle">
-                        {record.resource && (
-                          <span className="block break-all font-mono text-xs text-fg-2">
-                            {record.resource}
-                          </span>
-                        )}
-                        {record.reason && (
-                          <span
-                            className={
-                              record.resource
-                                ? 'block text-xs text-muted-foreground'
-                                : 'block text-[12.5px] text-foreground'
-                            }
-                          >
-                            {record.reason}
-                          </span>
-                        )}
+                      <td className="min-w-0 px-0.5 py-2 align-middle">
+                        <DecisionScope
+                          resource={record.resource}
+                          reason={record.reason}
+                        />
                       </td>
                       <td className="px-0.5 py-2 align-middle">
                         <StatusChip tone={decisionTone(record.decision)}>

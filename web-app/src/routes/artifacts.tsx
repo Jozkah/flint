@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { Eye, Info, X } from 'lucide-react'
 import { fs } from '@janhq/core'
 import { Button } from '@/components/ui/button'
@@ -20,7 +28,15 @@ import { ensureCoworkEnabled } from '@/lib/coworkGate'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useElementWidth } from '@/hooks/useElementWidth'
+import {
+  formatDuration,
+  htmlLines,
+  loadPreviewText,
+  markdownLines,
+  textLines,
+  type PreviewLine,
+} from '@/lib/artifactCardPreview'
 import { getServiceHub, useServiceHub } from '@/hooks/useServiceHub'
 import { sessionWorkspacePath } from '@janhq/tauri-plugin-agent-tools-api'
 import { artifactsFromTurns, type CoworkArtifact } from '@/lib/coworkArtifacts'
@@ -223,6 +239,8 @@ function useFileExists(abs: string | null) {
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+/** Page width that fits two card columns plus the details column. */
+const SIDE_COLUMN_MIN = 860
 
 function ArtifactsPage() {
   const { t } = useTranslation()
@@ -232,9 +250,11 @@ function ArtifactsPage() {
   const [query, setQuery] = useState('')
   const [kind, setKind] = useState<Kind | null>(null)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  // On a wide window the details sit beside the grid, so one item is always
-  // shown there; on a phone they replace the grid until closed.
-  const wide = useMediaQuery('(min-width: 1024px)')
+  // The details sit beside the grid when the page itself (not the window:
+  // the app sidebar takes its share) has room for both; otherwise they open
+  // as a drawer over the grid.
+  const layoutRef = useRef<HTMLDivElement | null>(null)
+  const sideColumn = useElementWidth(layoutRef) >= SIDE_COLUMN_MIN
   // ponytail: a render cap with "show more" rather than paging or a virtual
   // list. Search and the kind filter already narrow the set, and DOM size was
   // the only real cost. Swap for virtualization if this hits thousands.
@@ -281,35 +301,44 @@ function ArtifactsPage() {
   // Narrowing the set should start from the top again.
   useEffect(() => setLimit(PAGE), [query, kind])
 
+  // The highlight follows the click at once; the details panel renders from
+  // a deferred copy, so building it never holds the selection back.
   const selected = useMemo(
-    () =>
-      rows.find((r) => rowKey(r) === selectedKey) ??
-      (wide ? (shown[0] ?? null) : null),
-    [rows, selectedKey, shown, wide]
+    () => rows.find((r) => rowKey(r) === selectedKey) ?? null,
+    [rows, selectedKey]
   )
-  const selectedRowKey = selected ? rowKey(selected) : null
+  const inspected = useDeferredValue(selected)
   const kindsPresent = KINDS.filter(
     (k) => k !== 'video' || rows.some((r) => r.kind === k)
   )
 
-  const open = (row: Row) => {
-    useCoworkSessions.getState().selectSession(row.sessionId)
-    useCoworkRun.getState().requestPreview(row.sessionId, row.path)
-    navigate({ to: route.cowork })
-  }
+  const open = useCallback(
+    (row: Row) => {
+      useCoworkSessions.getState().selectSession(row.sessionId)
+      useCoworkRun.getState().requestPreview(row.sessionId, row.path)
+      navigate({ to: route.cowork })
+    },
+    [navigate]
+  )
 
   /** The session that made the artifact, without opening a preview. */
-  const goToSession = (row: Row) => {
-    useCoworkSessions.getState().selectSession(row.sessionId)
-    navigate({ to: route.cowork })
-  }
+  const goToSession = useCallback(
+    (row: Row) => {
+      useCoworkSessions.getState().selectSession(row.sessionId)
+      navigate({ to: route.cowork })
+    },
+    [navigate]
+  )
 
   const sessionCount = new Set(rows.map((r) => r.sessionId)).size
   const now = Date.now()
   const thisWeek = rows.filter((r) => r.updated && now - r.updated < WEEK_MS)
   const sized = rows.filter((r) => r.bytes)
   const diskBytes = sized.reduce((sum, r) => sum + (r.bytes ?? 0), 0)
-  const convertFileSrc = (p: string) => serviceHub.core().convertFileSrc(p)
+  const convertFileSrc = useCallback(
+    (p: string) => serviceHub.core().convertFileSrc(p),
+    [serviceHub]
+  )
   const htmlPage = t('engine:library.htmlPage')
 
   return (
@@ -402,12 +431,17 @@ function ArtifactsPage() {
             </div>
 
             <div
+              ref={layoutRef}
+              data-testid="library-layout"
+              data-side-column={sideColumn || undefined}
               className={cn(
-                'grid items-start gap-4',
-                selected && 'lg:grid-cols-[minmax(0,1fr)_330px]'
+                'grid min-w-0 items-start gap-4',
+                selected &&
+                  sideColumn &&
+                  'grid-cols-[minmax(0,1fr)_minmax(280px,330px)]'
               )}
             >
-              <div className={cn('min-w-0', selected && 'max-lg:hidden')}>
+              <div className="min-w-0">
                 {shown.length === 0 ? (
                   <EmptyState
                     icon={
@@ -428,10 +462,10 @@ function ArtifactsPage() {
                         key={rowKey(row)}
                         row={row}
                         index={i}
-                        selected={rowKey(row) === selectedRowKey}
-                        onSelect={() => setSelectedKey(rowKey(row))}
-                        onOpen={() => open(row)}
-                        onGoToSession={() => goToSession(row)}
+                        selected={rowKey(row) === selectedKey}
+                        onSelect={setSelectedKey}
+                        onOpen={open}
+                        onGoToSession={goToSession}
                         convertFileSrc={convertFileSrc}
                         typeText={typeLabel(row, htmlPage)}
                       />
@@ -454,21 +488,30 @@ function ArtifactsPage() {
                 )}
               </div>
 
-              {selected && (
-                <ArtifactInspector
-                  key={rowKey(selected)}
-                  row={selected}
-                  typeText={typeLabel(selected, htmlPage)}
-                  closable={!wide}
-                  onClose={() => setSelectedKey(null)}
-                  onOpen={() => open(selected)}
-                  onGoToSession={() => goToSession(selected)}
-                  convertFileSrc={convertFileSrc}
-                  openPath={(p) => void serviceHub.opener().openPath(p)}
-                  revealItemInDir={(p) =>
-                    void serviceHub.opener().revealItemInDir(p)
-                  }
-                />
+              {selected && inspected && (
+                <div
+                  data-testid="artifact-inspector-slot"
+                  className={cn(
+                    'min-w-0',
+                    sideColumn
+                      ? 'sticky top-0'
+                      : 'fixed inset-y-0 right-0 z-40 w-[min(360px,100%)] overflow-y-auto bg-background p-3 shadow-lift'
+                  )}
+                >
+                  <ArtifactInspector
+                    key={rowKey(inspected)}
+                    row={inspected}
+                    typeText={typeLabel(inspected, htmlPage)}
+                    onClose={() => setSelectedKey(null)}
+                    onOpen={() => open(inspected)}
+                    onGoToSession={() => goToSession(inspected)}
+                    convertFileSrc={convertFileSrc}
+                    openPath={(p) => void serviceHub.opener().openPath(p)}
+                    revealItemInDir={(p) =>
+                      void serviceHub.opener().revealItemInDir(p)
+                    }
+                  />
+                </div>
               )}
             </div>
           </>
@@ -487,18 +530,156 @@ const THUMB =
  * a document, a chart for pages, a waveform for audio. A real image is shown
  * when the file is one the browser renders on its own.
  */
-function ArtifactThumb({
-  row,
-  src,
-  big = false,
-}: {
+/** True once the element has come near the viewport (and stays true). */
+function useSeen<T extends Element>(enabled: boolean) {
+  const ref = useRef<T | null>(null)
+  const [seen, setSeen] = useState(
+    () => !enabled || typeof IntersectionObserver === 'undefined'
+  )
+  useEffect(() => {
+    if (seen || !ref.current) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setSeen(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' }
+    )
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [seen])
+  return [ref, seen] as const
+}
+
+/**
+ * The first lines of a text, Markdown, code or HTML file, read (a few KB at
+ * most, cached) once the card is on screen.
+ */
+function usePreviewLines(
+  url: string | null | undefined,
+  path: string,
+  active: boolean
+) {
+  const [lines, setLines] = useState<PreviewLine[] | null>(null)
+  const kind = previewKindFor(path)
+  useEffect(() => {
+    if (!url || !active) return
+    if (kind !== 'markdown' && kind !== 'text' && kind !== 'html') return
+    let alive = true
+    void loadPreviewText(url).then((text) => {
+      if (!alive || text == null) return
+      setLines(
+        kind === 'markdown'
+          ? markdownLines(text)
+          : kind === 'html'
+            ? htmlLines(text)
+            : textLines(text)
+      )
+    })
+    return () => {
+      alive = false
+    }
+  }, [url, active, kind])
+  return lines
+}
+
+/** An audio or video file's length, read from its metadata once on screen. */
+function useMediaDuration(url: string | null | undefined, active: boolean) {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    if (!url || !active || typeof Audio === 'undefined') return
+    const media = new Audio()
+    media.preload = 'metadata'
+    const done = () => setSeconds(media.duration)
+    media.addEventListener('loadedmetadata', done)
+    media.src = url
+    return () => {
+      media.removeEventListener('loadedmetadata', done)
+      media.src = ''
+    }
+  }, [url, active])
+  return seconds
+}
+
+function ArtifactThumb(props: {
   row: Row
   src?: string | null
+  url?: string | null
+  lazy?: boolean
+  big?: boolean
+}) {
+  const [ref, seen] = useSeen<HTMLDivElement>(Boolean(props.lazy))
+  return (
+    <div ref={ref}>
+      <ThumbBody {...props} seen={seen} />
+    </div>
+  )
+}
+
+function ThumbBody({
+  row,
+  src,
+  url,
+  seen,
+  big = false,
+}: {
+  seen: boolean
+  row: Row
+  src?: string | null
+  /** The file itself, for reading a text preview or media length. */
+  url?: string | null
+  /** Wait until the card is on screen before reading anything. */
+  lazy?: boolean
   big?: boolean
 }) {
   const [broken, setBroken] = useState(false)
+  const lines = usePreviewLines(url, row.path, seen && !src)
+  const media = row.kind === 'audio' || row.kind === 'video'
+  const duration = useMediaDuration(media ? url : null, seen)
   const base = cn(THUMB, big ? 'h-[170px]' : 'h-[118px]')
   const line = 'block h-1.5 shrink-0 rounded-[9px]'
+  if (lines && lines.length > 0 && !(src && !broken)) {
+    const mono = row.kind === 'code'
+    return (
+      <div
+        data-testid="artifact-thumb-text"
+        className={cn(
+          base,
+          'gap-0.5 [mask-image:linear-gradient(to_bottom,#000_65%,transparent)] motion-safe:after:hidden'
+        )}
+      >
+        {lines.map((l, i) => (
+          <p
+            key={i}
+            className={cn(
+              'shrink-0 truncate text-[10.5px] leading-[15px] text-fg-2',
+              mono && 'font-mono text-[10px]',
+              l.heading && 'text-[11.5px] font-semibold text-foreground'
+            )}
+          >
+            {l.text}
+          </p>
+        ))}
+      </div>
+    )
+  }
+  if (media && url) {
+    return (
+      <div
+        data-testid="artifact-thumb-media"
+        className={cn(base, 'items-center justify-center gap-2')}
+      >
+        <span className="flex size-9 items-center justify-center rounded-full bg-muted text-foreground">
+          <Icon name="x-play" size={16} />
+        </span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {formatDuration(duration) || ' '}
+        </span>
+      </div>
+    )
+  }
   if (src && !broken) {
     return (
       <div className={cn(base, 'bg-muted p-0')}>
@@ -626,7 +807,20 @@ function thumbSrc(
  * grid); the eye opens the preview and the session line goes back to the
  * run, straight from the grid. Double-click opens the preview too.
  */
-function LibraryCard({
+/**
+ * The card's outline states, on the frame body: a hairline ring on hover and
+ * on keyboard focus of the card's select button, a primary ring when selected.
+ * Transitions are colour/shadow only, so a click paints on the next frame.
+ */
+const CARD_RING = [
+  '[&>[data-slot=frame-body]]:transition-shadow [&>[data-slot=frame-body]]:duration-150',
+  'hover:[&>[data-slot=frame-body]]:shadow-[0_0_0_1px_var(--ring),var(--lift)]',
+  'has-[[data-testid=artifact-row]:focus-visible]:[&>[data-slot=frame-body]]:shadow-[0_0_0_2px_var(--ring)]',
+].join(' ')
+const CARD_SELECTED =
+  '[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),var(--lift)] hover:[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),var(--lift)]'
+
+const LibraryCard = memo(function LibraryCard({
   row,
   index,
   selected,
@@ -639,9 +833,9 @@ function LibraryCard({
   row: Row
   index: number
   selected: boolean
-  onSelect: () => void
-  onOpen: () => void
-  onGoToSession: () => void
+  onSelect: (key: string) => void
+  onOpen: (row: Row) => void
+  onGoToSession: (row: Row) => void
   convertFileSrc: (path: string) => string
   typeText: string
 }) {
@@ -649,16 +843,21 @@ function LibraryCard({
   // #183: a row whose path never resolved inside its session root has nothing
   // to preview; the double-click and Open button are gated the same way as
   // the inspector's Open Preview.
-  const canOpen = Boolean(row.root && resolveInRoot(row.root, row.path))
+  const abs = row.root ? resolveInRoot(row.root, row.path) : null
+  const canOpen = Boolean(abs)
+  const url = useMemo(
+    () => (abs ? convertFileSrc(abs) : null),
+    [abs, convertFileSrc]
+  )
   return (
     <li data-testid="artifact-card" className="min-w-0">
       <Frame
         style={{ animationDelay: `${40 + index * 35}ms` }}
+        data-selected={selected || undefined}
         className={cn(
-          'group h-full cursor-pointer motion-safe:animate-rise-in motion-safe:hover:-translate-y-0.5',
-          '[&>[data-slot=frame-body]]:transition-[transform,box-shadow] [&>[data-slot=frame-body]]:duration-300 [&>[data-slot=frame-body]]:ease-expo hover:[&>[data-slot=frame-body]]:shadow-lift',
-          selected &&
-            '[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),0_4px_14px_rgba(0,0,0,.08)] hover:[&>[data-slot=frame-body]]:shadow-[0_0_0_1.5px_var(--primary),0_4px_14px_rgba(0,0,0,.08)]'
+          'group h-full cursor-pointer motion-safe:animate-rise-in',
+          CARD_RING,
+          selected && CARD_SELECTED
         )}
       >
         <FrameHeader
@@ -669,7 +868,7 @@ function LibraryCard({
               variant="ghost"
               size="icon-sm"
               className="relative z-10 pointer-coarse:size-11"
-              onClick={onOpen}
+              onClick={() => onOpen(row)}
               disabled={!canOpen}
               title={t('common:artifactOpenPreview')}
               aria-label={`${t('common:artifactOpenPreview')}: ${row.title}`}
@@ -682,15 +881,20 @@ function LibraryCard({
         <FrameBody className="gap-3 p-3.5">
           <button
             type="button"
-            onClick={onSelect}
-            onDoubleClick={canOpen ? onOpen : undefined}
+            onClick={() => onSelect(rowKey(row))}
+            onDoubleClick={canOpen ? () => onOpen(row) : undefined}
             aria-current={selected || undefined}
             aria-label={t('common:artifactShowDetails', { name: row.title })}
             data-testid="artifact-row"
-            className="absolute inset-0 z-0 cursor-pointer rounded-xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
+            className="absolute inset-0 z-0 cursor-pointer rounded-xl outline-none"
           />
           <div className="pointer-events-none">
-            <ArtifactThumb row={row} src={thumbSrc(row, convertFileSrc)} />
+            <ArtifactThumb
+              row={row}
+              src={thumbSrc(row, convertFileSrc)}
+              url={url}
+              lazy
+            />
           </div>
           <div className="pointer-events-none flex items-center justify-between gap-2 text-xs text-subtle-foreground">
             <span className="truncate">{typeText}</span>
@@ -701,7 +905,7 @@ function LibraryCard({
           <div className="flex min-w-0 items-center text-xs text-subtle-foreground">
             <button
               type="button"
-              onClick={onGoToSession}
+              onClick={() => onGoToSession(row)}
               title={t('common:artifactGoToSession')}
               aria-label={`${t('common:artifactGoToSession')}: ${row.sessionTitle}`}
               data-testid="artifact-go-to-session"
@@ -715,12 +919,11 @@ function LibraryCard({
       </Frame>
     </li>
   )
-}
+})
 
 function ArtifactInspector({
   row,
   typeText,
-  closable,
   onClose,
   onOpen,
   onGoToSession,
@@ -730,8 +933,6 @@ function ArtifactInspector({
 }: {
   row: Row
   typeText: string
-  /** A close button, for the phone layout where the details cover the grid. */
-  closable: boolean
   onClose: () => void
   onOpen: () => void
   onGoToSession: () => void
@@ -758,27 +959,29 @@ function ArtifactInspector({
     <Frame
       aria-label={t('common:artifactDetails')}
       data-testid="artifact-inspector"
-      className="motion-safe:animate-rise-in [animation-delay:80ms] lg:sticky lg:top-0"
     >
       <FrameHeader
         icon={<Icon name={KIND_ICON[row.kind]} />}
         title={<span title={row.title}>{row.title}</span>}
         actions={
-          closable ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="pointer-coarse:size-11"
-              onClick={onClose}
-              aria-label={t('common:artifactClose')}
-            >
-              <X />
-            </Button>
-          ) : undefined
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="pointer-coarse:size-11"
+            onClick={onClose}
+            aria-label={t('common:artifactClose')}
+          >
+            <X />
+          </Button>
         }
       />
       <FrameBody className="gap-3 p-3.5">
-        <ArtifactThumb row={row} src={thumb} big />
+        <ArtifactThumb
+          row={row}
+          src={thumb}
+          url={abs && !missing ? convertFileSrc(abs) : null}
+          big
+        />
         {missing && (
           <div
             role="status"

@@ -1012,6 +1012,37 @@ function seedCowork() {
  * on every pass in case the hub was replaced.
  */
 let subscribed = false
+/** Invented contents of the Library's seeded artifacts (previewSeedEngine). */
+const LIBRARY_FILES: Record<string, string> = {
+  'CHANGELOG.md': [
+    '# Changelog',
+    '',
+    '## 1.4.0',
+    '',
+    '### Added',
+    '- **Wind gusts** on the hourly chart',
+    '- Units follow the device locale',
+    '',
+    '### Fixed',
+    '- Forecast cache keyed by UTC date, not local date',
+    '- Tooltip no longer clips at the chart edge',
+  ].join('\n'),
+  'docs/api-guide.md': [
+    '# acme-weather API guide',
+    '',
+    'Every endpoint returns JSON and takes an `apiKey` query parameter.',
+    '',
+    '## GET /forecast',
+    '',
+    'Returns the next 7 days for a city. Temperatures are in the unit the',
+    'caller asked for, `metric` by default.',
+  ].join('\n'),
+  'out/retry_report.html':
+    '<!doctype html><html><head><title>Retry report</title><style>body{font:14px sans-serif}</style></head><body><h1>Retry report</h1><p>312 requests retried in the last 24 hours.</p><p>Most retries came from the radar tile service between 02:00 and 03:00 UTC.</p><ul><li>radar: 241</li><li>forecast: 58</li><li>alerts: 13</li></ul></body></html>',
+  'out/palette-preview.html':
+    '<!doctype html><html><head><title>Dashboard palette</title></head><body><h2>Dashboard color palette</h2><p>Six categorical hues, checked for contrast in light and dark.</p><p>Primary: indigo 500. Accent: emerald 500.</p></body></html>',
+}
+
 function patchServices() {
   const hub = useServiceStore.getState().serviceHub as unknown as Record<string, Record<string, unknown>> | null
   if (!subscribed) {
@@ -1033,10 +1064,16 @@ function patchServices() {
   if (core && !core.previewPatched) {
     const original = core.convertFileSrc as (p: string) => string
     core.previewPatched = true
-    core.convertFileSrc = (path: string) =>
-      path.replace(/\\/g, '/').endsWith('sessions/review/acme-weather/web/src/charts/tooltip.ts')
-        ? `data:text/plain;charset=utf-8,${encodeURIComponent(reviewTooltip())}`
+    core.convertFileSrc = (path: string) => {
+      const p = path.replace(/\\/g, '/')
+      if (p.endsWith('sessions/review/acme-weather/web/src/charts/tooltip.ts'))
+        return `data:text/plain;charset=utf-8,${encodeURIComponent(reviewTooltip())}`
+      // Library card previews: invented file contents for the seeded artifacts.
+      const file = Object.keys(LIBRARY_FILES).find((f) => p.endsWith(`/${f}`))
+      return file
+        ? `data:text/plain;charset=utf-8,${encodeURIComponent(LIBRARY_FILES[file])}`
         : original.call(core, path)
+    }
   }
   patchSettingsServices(hub)
 }

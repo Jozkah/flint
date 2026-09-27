@@ -748,5 +748,8 @@
   "progressPin": {
     "pin": "प्रगति को बातचीत के ऊपर पिन करें",
     "unpin": "प्रगति अनपिन करें"
-  }
+  },
+  "decisionScopeShowFull": "पूरा दिखाएँ",
+  "decisionScopeHide": "छिपाएँ",
+  "decisionScopeCopy": "कॉपी करें"
 }

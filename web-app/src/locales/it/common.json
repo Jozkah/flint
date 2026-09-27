@@ -769,5 +769,8 @@
   "progressPin": {
     "pin": "Fissa l’avanzamento sopra la conversazione",
     "unpin": "Sblocca l’avanzamento"
-  }
+  },
+  "decisionScopeShowFull": "Mostra tutto",
+  "decisionScopeHide": "Nascondi",
+  "decisionScopeCopy": "Copia"
 }

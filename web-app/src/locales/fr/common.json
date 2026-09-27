@@ -681,5 +681,8 @@
   "progressPin": {
     "pin": "Épingler la progression au-dessus de la conversation",
     "unpin": "Détacher la progression"
-  }
+  },
+  "decisionScopeShowFull": "Tout afficher",
+  "decisionScopeHide": "Masquer",
+  "decisionScopeCopy": "Copier"
 }

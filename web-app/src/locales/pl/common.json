@@ -680,5 +680,8 @@
   "progressPin": {
     "pin": "Przypnij postęp nad rozmową",
     "unpin": "Odepnij postęp"
-  }
+  },
+  "decisionScopeShowFull": "Pokaż całość",
+  "decisionScopeHide": "Ukryj",
+  "decisionScopeCopy": "Kopiuj"
 }

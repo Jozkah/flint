@@ -1927,5 +1927,8 @@
   "progressPin": {
     "pin": "Pin progress over the conversation",
     "unpin": "Unpin progress"
-  }
+  },
+  "decisionScopeShowFull": "Show full",
+  "decisionScopeHide": "Hide full",
+  "decisionScopeCopy": "Copy"
 }

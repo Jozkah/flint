@@ -678,5 +678,8 @@
   "progressPin": {
     "pin": "Ghim tiến độ phía trên cuộc trò chuyện",
     "unpin": "Bỏ ghim tiến độ"
-  }
+  },
+  "decisionScopeShowFull": "Hiện đầy đủ",
+  "decisionScopeHide": "Ẩn",
+  "decisionScopeCopy": "Sao chép"
 }

@@ -680,5 +680,8 @@
   "progressPin": {
     "pin": "Připnout průběh nad konverzaci",
     "unpin": "Odepnout průběh"
-  }
+  },
+  "decisionScopeShowFull": "Zobrazit celé",
+  "decisionScopeHide": "Skrýt",
+  "decisionScopeCopy": "Kopírovat"
 }

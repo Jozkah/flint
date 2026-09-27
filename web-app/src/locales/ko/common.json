@@ -747,5 +747,8 @@
   "progressPin": {
     "pin": "대화 위에 진행 상황 고정",
     "unpin": "진행 상황 고정 해제"
-  }
+  },
+  "decisionScopeShowFull": "전체 보기",
+  "decisionScopeHide": "숨기기",
+  "decisionScopeCopy": "복사"
 }
