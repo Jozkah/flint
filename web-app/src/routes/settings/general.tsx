@@ -476,11 +476,12 @@ function General() {
             description={t('settings:general.huggingfaceTokenDesc', {
               ns: 'settings',
             })}
+            column
             actions={
-              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <div className="flex w-full min-w-0 items-center gap-2">
                 <Input
                   id="hf-token"
-                  className="font-mono sm:w-56"
+                  className="min-w-0 flex-1 font-mono"
                   value={huggingfaceToken || ''}
                   onChange={(e) => setHuggingfaceToken(e.target.value)}
                   placeholder={'hf_xxx_xxx'}
