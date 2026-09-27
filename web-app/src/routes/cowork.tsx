@@ -193,6 +193,10 @@ import { isReadOnly, modeOf } from '@/lib/coworkMode'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { CoworkEmptyState } from '@/containers/CoworkEmptyState'
 import { CoworkPlanStrip } from '@/containers/CoworkPlanStrip'
+import {
+  CoworkPinnedProgress,
+  CoworkProgressButton,
+} from '@/containers/CoworkPinnedProgress'
 import { CoworkHiddenTools } from '@/containers/CoworkHiddenTools'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import type { AskRecord } from '@/types/coworkSession'
@@ -1743,6 +1747,15 @@ export function CoworkPage() {
     [committedMessages, liveMessages]
   )
 
+  // The plan each run left, by the prompt it follows.
+  const snapshotByAnchor = useMemo(
+    () =>
+      new Map(
+        (session?.todoSnapshots ?? []).map((s) => [s.anchorId, s.list] as const)
+      ),
+    [session?.todoSnapshots]
+  )
+
   // Every dispatch this session made, in order. The Nth belongs to the Nth
   // assistant message, which is how a snapshot stays with its own invocation
   // rather than being shown as a "latest" beside an older reply.
@@ -2346,6 +2359,17 @@ export function CoworkPage() {
           },
         ]
       : []
+    // The transcript row of this run's prompt (the id coworkTurnsToUIMessages
+    // gives it), where a plan the run writes is recorded. A run without a
+    // prompt of its own records it at the last one.
+    const planAnchor = (() => {
+      const base = current?.turns ?? []
+      if (text) return `${sid}-user-${base.length}`
+      for (let i = base.length - 1; i >= 0; i--) {
+        if (base[i].role === 'user') return `${sid}-user-${i}`
+      }
+      return undefined
+    })()
     // AH-026: the live lane is also kept with the session while the run goes,
     // so a run the app is killed under comes back as an interrupted turn.
     const runStartedAt = Date.now()
@@ -3473,7 +3497,11 @@ export function CoworkPage() {
                   if (result.error) {
                     return { output: `ERROR: ${result.error}`, isError: true }
                   }
-                  useCoworkSessions.getState().setTodos(sid, result.list)
+                  // Snapshot anchored at this run's prompt, so the transcript
+                  // keeps one record of the plan per run.
+                  useCoworkSessions
+                    .getState()
+                    .setTodos(sid, result.list, planAnchor)
                   return { output: renderTodoResult(result.list) }
                 },
                 onAsk: (callId, input) =>
@@ -4804,6 +4832,20 @@ export function CoworkPage() {
       </Button>
     ) : null
 
+  // An unpinned plan stays one click away in the header.
+  const progressButton =
+    session?.progressUi?.unpinned ? (
+      <CoworkProgressButton
+        todos={session.todos}
+        compact={Boolean(paneChrome)}
+        onPin={() =>
+          useCoworkSessions
+            .getState()
+            .setProgressUi(session.id, { unpinned: false })
+        }
+      />
+    ) : null
+
   // One view at a time on a phone (or a phone-width pane), chosen here rather
   // than by swiping, so every view is reachable from the keyboard too. In a
   // pane it is a compact segmented control in the pane's header, icons only
@@ -4882,6 +4924,7 @@ export function CoworkPage() {
           controls={paneChrome.controls}
         >
           {runningChip}
+          {progressButton}
           {reviewButton}
           {headerStop}
           {phone ? (
@@ -4975,12 +5018,31 @@ export function CoworkPage() {
             actions={
               <>
                 {runningChip}
+                {progressButton}
                 {reviewButton}
               </>
             }
           />
           )}
           <FrameBody className="min-h-0 overflow-hidden">
+          {/* The live plan, pinned over the transcript so it never scrolls
+              away. */}
+          {session && !session.progressUi?.unpinned ? (
+            <CoworkPinnedProgress
+              todos={session.todos}
+              expanded={Boolean(session.progressUi?.expanded)}
+              onToggle={() =>
+                useCoworkSessions.getState().setProgressUi(session.id, {
+                  expanded: !session.progressUi?.expanded,
+                })
+              }
+              onUnpin={() =>
+                useCoworkSessions
+                  .getState()
+                  .setProgressUi(session.id, { unpinned: true })
+              }
+            />
+          ) : null}
           <div ref={transcriptRef} className="relative flex-1">
             {displayedTurns.length === 0 ? (
               <CoworkEmptyState
@@ -4990,8 +5052,6 @@ export function CoworkPage() {
             ) : (
               <Conversation className="absolute inset-0 text-start">
                 <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
-                  {/* The plan heads the transcript, in its reading column. */}
-                  <CoworkPlanStrip todos={session?.todos} />
                   <CodeOpenProvider
             open={openToolPath}
             check={checkToolPath}
@@ -5036,6 +5096,15 @@ export function CoworkPage() {
                           // unless the display option hides the finished ones.
                           keepToolActivity
                         />
+                        {/* The plan as this run left it, after its prompt. */}
+                        {k === segments.length - 1 &&
+                        snapshotByAnchor.has(whole.id) ? (
+                          <CoworkPlanStrip
+                            todos={snapshotByAnchor.get(whole.id)}
+                            defaultOpen={false}
+                            snapshot
+                          />
+                        ) : null}
                         {/* One card per workflow, at the message its first
                         dispatch landed under. Same store as the panel, so it
                         is live without a copy of anything. */}

@@ -705,5 +705,9 @@
     "pullRequest": "풀 리퀘스트 #{{number}}",
     "changeAt": "{{line}}번째 줄 변경",
     "revertChange": "되돌리기"
+  },
+  "progressPin": {
+    "pin": "대화 위에 진행 상황 고정",
+    "unpin": "진행 상황 고정 해제"
   }
 }

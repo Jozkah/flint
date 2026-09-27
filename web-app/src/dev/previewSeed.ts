@@ -469,6 +469,19 @@ function escapeSession() {
       startedAt: at(0.3),
     },
   ]
+  const plan = {
+    phases: [
+      {
+        name: 'Fix',
+        tasks: [
+          { content: 'Read the radar client', status: 'completed' as const },
+          { content: 'Reproduce the timeout with a failing test', status: 'completed' as const },
+          { content: 'Add retry with backoff and a cached fallback', status: 'completed' as const },
+          { content: 'Open a pull request', status: 'in_progress' as const },
+        ],
+      },
+    ],
+  }
   return {
     id: 'escape',
     title: 'Retry the radar feed',
@@ -477,19 +490,9 @@ function escapeSession() {
     access: 'managed-worktree',
     turns,
     subagents: [],
-    todos: {
-      phases: [
-        {
-          name: 'Fix',
-          tasks: [
-            { content: 'Read the radar client', status: 'completed' },
-            { content: 'Reproduce the timeout with a failing test', status: 'completed' },
-            { content: 'Add retry with backoff and a cached fallback', status: 'completed' },
-            { content: 'Open a pull request', status: 'in_progress' },
-          ],
-        },
-      ],
-    },
+    todos: plan,
+    // The plan as this run left it, recorded under its prompt.
+    todoSnapshots: [{ anchorId: 'escape-user-0', list: plan }],
     messages: [],
     updated: at(0.3),
     model: { provider: 'llamacpp', id: 'qwen3-8b-instruct' },

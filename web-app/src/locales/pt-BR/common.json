@@ -637,5 +637,9 @@
     "pullRequest": "Pull request nº {{number}}",
     "changeAt": "Alteração na linha {{line}}",
     "revertChange": "Reverter"
+  },
+  "progressPin": {
+    "pin": "Fixar o progresso acima da conversa",
+    "unpin": "Desafixar o progresso"
   }
 }

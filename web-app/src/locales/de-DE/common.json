@@ -636,5 +636,9 @@
     "pullRequest": "Pull-Request #{{number}}",
     "changeAt": "Änderung in Zeile {{line}}",
     "revertChange": "Zurücksetzen"
+  },
+  "progressPin": {
+    "pin": "Fortschritt über dem Gespräch anheften",
+    "unpin": "Fortschritt lösen"
   }
 }

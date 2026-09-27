@@ -638,5 +638,9 @@
     "pullRequest": "Pull request č. {{number}}",
     "changeAt": "Změna na řádku {{line}}",
     "revertChange": "Vrátit"
+  },
+  "progressPin": {
+    "pin": "Připnout průběh nad konverzaci",
+    "unpin": "Odepnout průběh"
   }
 }

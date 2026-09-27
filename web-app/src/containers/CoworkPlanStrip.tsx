@@ -2,33 +2,41 @@ import { useState } from 'react'
 import { Check, ChevronDown, Minus } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { cleanTaskLabel } from '@/lib/todoLabels'
-import type { TodoList, TodoStatus } from '@/types/coworkSession'
+import { cleanTaskLabel, isResolved, planTasks } from '@/lib/todoLabels'
+import type { TodoItem, TodoList, TodoStatus } from '@/types/coworkSession'
 
 /**
- * The session's plan, as a compact card heading the conversation.
+ * The plan as it stood at one turn of the conversation: a compact, read-only
+ * card in the transcript, so history shows what the plan was. The live plan
+ * is the pinned strip over the transcript.
  *
- * A projection of the model's `todo` list, read-only. Done steps carry a check
- * in the success colour, open ones a ring, and the current step is marked by a
- * 2px warm edge: it says "this is the one in focus", not "busy", so nothing in
- * the strip spins or pulses.
+ * Done steps carry a check in the success colour, open ones a ring, and the
+ * current step is marked by a 2px warm edge: it says "this is the one in
+ * focus", not "busy", so nothing in the strip spins or pulses.
  */
-export function CoworkPlanStrip({ todos }: { todos: TodoList | undefined }) {
+export function CoworkPlanStrip({
+  todos,
+  defaultOpen = true,
+  snapshot = false,
+}: {
+  todos: TodoList | undefined
+  defaultOpen?: boolean
+  /** A record of the plan at this turn, rather than the live one. */
+  snapshot?: boolean
+}) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(true)
-  const tasks = (todos?.phases ?? []).flatMap((phase) => phase.tasks)
+  const [open, setOpen] = useState(defaultOpen)
+  const tasks = planTasks(todos)
   if (tasks.length === 0) return null
 
-  const done = tasks.filter(
-    (task) => task.status === 'completed' || task.status === 'abandoned'
-  ).length
+  const done = tasks.filter(isResolved).length
   const pct = Math.round((done / tasks.length) * 100)
 
   return (
     <section
       aria-label={t('common:todoPanelTitle')}
-      data-testid="cowork-plan-strip"
-      className="shrink-0 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in"
+      data-testid={snapshot ? 'cowork-plan-snapshot' : 'cowork-plan-strip'}
+      className="my-2 shrink-0 rounded-[10px] shadow-[inset_0_0_0_0.8px_var(--border)]"
     >
       <button
         type="button"
@@ -45,15 +53,7 @@ export function CoworkPlanStrip({ todos }: { todos: TodoList | undefined }) {
         >
           {t('results:plan.progress', { done, total: tasks.length })}
         </span>
-        <span
-          aria-hidden
-          className="h-1.5 w-[120px] shrink-0 overflow-hidden rounded-full bg-track"
-        >
-          <span
-            className="block h-full rounded-full bg-grad motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo"
-            style={{ width: `${pct}%` }}
-          />
-        </span>
+        <ProgressBar pct={pct} className="w-[120px]" />
         <ChevronDown
           aria-hidden
           className={cn(
@@ -62,31 +62,55 @@ export function CoworkPlanStrip({ todos }: { todos: TodoList | undefined }) {
           )}
         />
       </button>
-      {open ? (
-        <ol className="max-h-40 overflow-y-auto px-3 pb-2">
-          {tasks.map((task, index) => (
-            <li
-              key={`${index}-${task.content}`}
-              data-status={task.status}
-              aria-current={task.status === 'in_progress' ? 'step' : undefined}
-              className={cn(
-                'flex min-h-7 items-center gap-2.5 text-[12.5px]',
-                task.status === 'in_progress' &&
-                  '-ml-3 pl-3 font-semibold text-foreground shadow-[inset_2px_0_0_#fb923c]',
-                task.status === 'pending' && 'text-fg-2',
-                (task.status === 'completed' || task.status === 'abandoned') &&
-                  'text-subtle-foreground'
-              )}
-            >
-              <StepMark status={task.status} />
-              <span className="min-w-0 flex-1 truncate">
-                {cleanTaskLabel(task.content)}
-              </span>
-            </li>
-          ))}
-        </ol>
-      ) : null}
+      {open ? <PlanSteps tasks={tasks} className="max-h-40 px-3 pb-2" /> : null}
     </section>
+  )
+}
+
+export function ProgressBar({ pct, className }: { pct: number; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn('h-1.5 shrink-0 overflow-hidden rounded-full bg-track', className)}
+    >
+      <span
+        className="block h-full rounded-full bg-grad motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo"
+        style={{ width: `${pct}%` }}
+      />
+    </span>
+  )
+}
+
+/** The steps of a plan, one row each. */
+export function PlanSteps({
+  tasks,
+  className,
+}: {
+  tasks: TodoItem[]
+  className?: string
+}) {
+  return (
+    <ol className={cn('overflow-y-auto', className)}>
+      {tasks.map((task, index) => (
+        <li
+          key={`${index}-${task.content}`}
+          data-status={task.status}
+          aria-current={task.status === 'in_progress' ? 'step' : undefined}
+          className={cn(
+            'flex min-h-7 items-center gap-2.5 text-[12.5px]',
+            task.status === 'in_progress' &&
+              '-ml-3 pl-3 font-semibold text-foreground shadow-[inset_2px_0_0_#fb923c]',
+            task.status === 'pending' && 'text-fg-2',
+            isResolved(task) && 'text-subtle-foreground'
+          )}
+        >
+          <StepMark status={task.status} />
+          <span className="min-w-0 flex-1 truncate">
+            {cleanTaskLabel(task.content)}
+          </span>
+        </li>
+      ))}
+    </ol>
   )
 }
 

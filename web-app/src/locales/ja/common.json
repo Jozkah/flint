@@ -750,5 +750,9 @@
     "pullRequest": "プルリクエスト #{{number}}",
     "changeAt": "{{line}} 行目の変更",
     "revertChange": "元に戻す"
+  },
+  "progressPin": {
+    "pin": "進捗を会話の上に固定",
+    "unpin": "進捗の固定を解除"
   }
 }

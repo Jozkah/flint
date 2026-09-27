@@ -636,5 +636,9 @@
     "pullRequest": "提取要求 #{{number}}",
     "changeAt": "第 {{line}} 行的變更",
     "revertChange": "還原"
+  },
+  "progressPin": {
+    "pin": "將進度固定在對話上方",
+    "unpin": "取消固定進度"
   }
 }

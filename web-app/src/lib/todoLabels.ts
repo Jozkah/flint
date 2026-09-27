@@ -1,3 +1,5 @@
+import type { TodoItem, TodoList } from '@/types/coworkSession'
+
 // Models often prefix a task label with their own status marker ("✅ Ship it",
 // "[x] Ship it", "- Ship it"). The todo panel already renders status as an
 // icon, so showing the marker too gives every task two competing indicators.
@@ -14,4 +16,14 @@ const LEADING_MARKER = /^\s*(?:[✅✓✔☑❌✗☐🔲🔳⬜◻]️?|\[[ xX~
  */
 export function cleanTaskLabel(content: string): string {
   return content.replace(LEADING_MARKER, '').trim() || content.trim()
+}
+
+/** Every step of a plan, phases flattened. */
+export function planTasks(todos: TodoList | undefined): TodoItem[] {
+  return (todos?.phases ?? []).flatMap((phase) => phase.tasks)
+}
+
+/** A step that needs nothing more: done, or given up. */
+export function isResolved(task: TodoItem): boolean {
+  return task.status === 'completed' || task.status === 'abandoned'
 }
