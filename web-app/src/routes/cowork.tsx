@@ -472,6 +472,7 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
+import { runStatus } from '@/lib/runStatus'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -2274,6 +2275,11 @@ export function CoworkPage() {
 
   const awaitingModel = useMemo(
     () => awaitsModel(running, displayedTurns),
+    [running, displayedTurns]
+  )
+  // The status line's phase: shown for the whole run, not only the gaps.
+  const runStatusNow = useMemo(
+    () => runStatus(running, displayedTurns),
     [running, displayedTurns]
   )
 
@@ -5390,6 +5396,7 @@ export function CoworkPage() {
                       <PromptProgress
                         hideIdle={!awaitingModel}
                         stateKey={session?.id}
+                        status={runStatusNow}
                       />
                     </div>
                   )}

@@ -501,10 +501,12 @@ describe('RenderMarkdown', () => {
         'a[href="https://en.wikipedia.org/wiki/Paris"]'
       )
       expect(link).toBeTruthy()
-      // The badge is drawn locally from the hostname. Rendering an <img> here
-      // would fetch a favicon from a third party and disclose to it which
-      // sources the user is reading, so there must be no image at all.
-      expect(link?.querySelector('img')).toBeNull()
+      // The only image allowed is the cited site's own favicon: a favicon
+      // service would learn which sources the user is reading. The letter
+      // shows until that icon loads.
+      expect(link?.querySelector('img')?.getAttribute('src')).toBe(
+        'https://en.wikipedia.org/favicon.ico'
+      )
       expect(link?.textContent?.trim()).toBe('W')
       // The raw marker text must not leak into the rendered output.
       expect(container.textContent).not.toContain('[[cite:')
@@ -521,7 +523,9 @@ describe('RenderMarkdown', () => {
         'a[href="https://example.com/article/foo-bar"]'
       )
       expect(link).toBeTruthy()
-      expect(link?.querySelector('img')).toBeNull()
+      expect(link?.querySelector('img')?.getAttribute('src')).toBe(
+        'https://example.com/favicon.ico'
+      )
       expect(link?.textContent?.trim()).toBe('E')
       expect(container.textContent).not.toContain('[[cite:')
     })

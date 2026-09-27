@@ -4,12 +4,36 @@ import { Loader } from 'lucide-react'
 import { useParams } from '@tanstack/react-router'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import { useEffect, useRef, useState } from 'react'
+import { formatElapsed, type RunStatus } from '@/lib/runStatus'
+
+/**
+ * Milliseconds since `key` last changed, re-rendering once a second while
+ * `active`. Drives the status line's timer and its escalating wording.
+ */
+function usePhaseElapsed(key: string | undefined, active: boolean): number {
+  const since = useRef<{ key?: string; at: number }>({ at: Date.now() })
+  if (since.current.key !== key) since.current = { key, at: Date.now() }
+  const [, tick] = useState(0)
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => tick((n) => n + 1), 1000)
+    return () => clearInterval(id)
+  }, [active])
+  return Date.now() - since.current.at
+}
 
 export function PromptProgress({
   hideIdle = false,
   stateKey,
+  status,
 }: {
   hideIdle?: boolean
+  /**
+   * What the run is doing (thinking, running a tool, ...). Replaces the
+   * generic "Working…" with a named phase and how long it has lasted.
+   */
+  status?: RunStatus | null
   /**
    * Identifies a caller outside the `/threads/:threadId` route — Cowork, keyed
    * by its own session id — overriding the auto-detected route param, and
@@ -55,7 +79,8 @@ export function PromptProgress({
   // Nothing concrete to report (no model load, no prompt-reading progress).
   // Callers driving their own activity label (e.g. tool-call traces) pass
   // hideIdle to suppress the redundant generic "Working…" fallback.
-  if (hideIdle && !loadingModel && !showReading) {
+  const elapsed = usePhaseElapsed(status?.key, !!status)
+  if (hideIdle && !loadingModel && !showReading && !status) {
     return null
   }
 
@@ -77,7 +102,9 @@ export function PromptProgress({
       : 'Loading model…'
     : showReading
       ? `Reading: ${percentage}%`
-      : 'Working…'
+      : status
+        ? status.label(elapsed)
+        : 'Waiting for the model…'
 
   const detail =
     showReading && !loadingModel ? buildDetail(promptProgress) : undefined
@@ -97,6 +124,14 @@ export function PromptProgress({
       <div className="flex items-center gap-2 text-sm">
         <Loader className="animate-spin w-3.5 h-3.5 text-primary shrink-0" />
         <span className="font-medium text-foreground">{label}</span>
+        {status && !loadingModel && !showReading && (
+          <span
+            className="text-xs text-muted-foreground tabular-nums"
+            data-testid="run-status-elapsed"
+          >
+            {formatElapsed(elapsed)}
+          </span>
+        )}
       </div>
       {showReading && !loadingModel && (
         <Progress value={percentage} className="h-1 bg-secondary/60" />
