@@ -67,7 +67,7 @@ export type ChainOfThoughtGroupProps = {
 
 /**
  * Normal and Thinking views: reasoning only in Thinking, calls awaiting
- * approval in place, every other call behind one "N steps"
+ * approval (and in Thinking failed calls, closed) in place, every other call behind one "N steps"
  * disclosure.
  */
 const CompactTrace = ({
@@ -108,7 +108,9 @@ const CompactTrace = ({
           transcriptView="trace"
         />
       )}
-      {pinned.map((e) => card(e))}
+      {pinned.map((e) =>
+        card(e, e.part.state === 'output-error' ? false : undefined)
+      )}
       {steps.length > 0 ? (
         <>
           <button
@@ -320,7 +322,7 @@ export const ChainOfThoughtGroup = memo(
                 part={part}
                 messageId={messageId}
                 citationOffset={citationOffsets.get(partIndex) ?? 0}
-                expanded={verbose}
+                expanded={verbose || undefined}
               />
             </StepRow>
           )

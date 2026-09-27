@@ -83,7 +83,8 @@ describe('partitionTrace', () => {
   it('thinking keeps reasoning and folds the same tools', () => {
     const out = partitionTrace('thinking', entries, isPending)
     expect(out.reasoning).toHaveLength(1)
-    expect(out.steps).toHaveLength(3)
+    expect(out.pinned.map((e) => e.part.toolCallId)).toEqual(['c', 'd'])
+    expect(out.steps).toHaveLength(2)
   })
 })
 
@@ -105,7 +106,8 @@ describe('Transcript view', () => {
     renderAs('thinking')
     expect(screen.getByText('Plan the change carefully.')).toBeInTheDocument()
     expect(screen.getAllByTestId('approval-actions').length).toBeGreaterThan(0)
-    expect(headers()).toEqual([])
+    // The failed call is a row of its own.
+    expect(headers()).toEqual(['bash'])
     expect(screen.getByTestId('transcript-steps-toggle')).toBeInTheDocument()
   })
 

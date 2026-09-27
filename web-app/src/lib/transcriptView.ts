@@ -11,7 +11,8 @@
  *
  * In every mode a call awaiting approval stays on screen, as do asks, run
  * errors and result cards (those are not trace parts at all). A failed call
- * the agent carried on from is one of the steps.
+ * is one of the steps in `normal`, a collapsed row of its own in `thinking`
+ * and an open row in `verbose`.
  */
 export const TRANSCRIPT_VIEWS = ['normal', 'thinking', 'verbose'] as const
 export type TranscriptView = (typeof TRANSCRIPT_VIEWS)[number]
@@ -27,7 +28,8 @@ type TraceEntry = { part: TracePart; index: number }
 export type TracePartition<E> = {
   /** Reasoning shown in the trace (only in `thinking`). */
   reasoning: E[]
-  /** Tool calls that stay visible: those awaiting the user's approval. */
+  /** Tool calls that stay visible: awaiting approval, and in `thinking`
+   * failed calls too. */
   pinned: E[]
   /** Tool calls folded into the "N steps" disclosure. */
   steps: E[]
@@ -49,7 +51,8 @@ export function partitionTrace<E extends TraceEntry>(
       const pending = Boolean(
         part.toolCallId && isAwaitingApproval(part.toolCallId)
       )
-      if (pending) out.pinned.push(entry)
+      if (pending || (view === 'thinking' && part.state === 'output-error'))
+        out.pinned.push(entry)
       else out.steps.push(entry)
     } else if (view === 'thinking') {
       out.reasoning.push(entry)

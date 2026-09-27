@@ -159,9 +159,10 @@ function argRows(args: unknown): Array<[string, string]> {
  * call into a tidy Input table and a Result/Error block.
  */
 function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
-  // Transcript view: Verbose opens every call; Normal and Thinking keep only
-  // failed calls on screen and fold the rest behind the details toggle.
-  const verbose = useInterfaceSettings((s) => s.transcriptView === 'verbose')
+  // Transcript view: Verbose opens every call; Thinking keeps failed calls on
+  // screen, Normal none, and fold the rest behind the details toggle.
+  const view = useInterfaceSettings((s) => s.transcriptView)
+  const verbose = view === 'verbose'
   const [expanded, setExpanded] = useState(verbose)
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
 
@@ -169,7 +170,7 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
     <div data-testid="message-tools">
       <div className="flex flex-wrap items-center gap-1.5">
         {calls.map((c, i) => {
-          if (c.ok && !verbose && !expanded) return null
+          if (!verbose && !expanded && (c.ok || view === 'normal')) return null
           const tone = TONE_CLASSES[toneFor(c)]
           const Icon = toolIcon(c.name)
           // Match Cowork: a neutral chip whose icon carries the tool's kind

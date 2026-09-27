@@ -208,9 +208,9 @@ describe('RoomTranscript', () => {
     render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
 
     const tools = screen.getByTestId('message-tools')
-    // Normal view: only the failed call's chip, the rest behind the toggle.
+    // Normal view: every chip, failed included, behind the toggle.
     expect(within(tools).queryByText('read')).not.toBeInTheDocument()
-    expect(within(tools).getByText('grep')).toBeInTheDocument()
+    expect(within(tools).queryByText('grep')).not.toBeInTheDocument()
     expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByTestId('tool-trace-toggle'))
