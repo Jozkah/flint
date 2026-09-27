@@ -13,8 +13,11 @@
 //!   (auto-attached) -- is paused through the DevTools `Fetch` domain and
 //!   failed unless its origin is allowed; a blocked main-frame navigation
 //!   (including a redirect off the origin) stops the run;
-//! - underneath that, non-loopback traffic goes to a dead proxy, so a request
-//!   the interception could not see still goes nowhere.
+//! - underneath that, every connection -- including WebSockets, popups and
+//!   service workers, which the interception does not see -- goes to a dead
+//!   proxy, except to the exact `host:port` of an allowed origin. Chromium
+//!   normally sends loopback traffic around a proxy; that implicit bypass is
+//!   removed (`<-loopback>`), so another port on this machine is refused too.
 //!
 //! No browser is ever downloaded: an installed Chrome, Edge or Chromium is
 //! used, or the caller gets a setup message saying none was found.
@@ -388,8 +391,17 @@ fn running_as_root() -> bool {
     }
 }
 
-/// Arguments for a throwaway, confined, headless browser.
-pub fn browser_args(profile: &Path, as_root: bool) -> Vec<String> {
+/// The proxy bypass list: no implicit loopback bypass, then exactly the
+/// allowed origins' `host:port` (any scheme, so the app's own `ws://` works).
+pub fn proxy_bypass_list(allowed: &[Origin]) -> String {
+    let mut rules = vec!["<-loopback>".to_string()];
+    rules.extend(allowed.iter().map(|o| format!("{}:{}", o.host, o.port)));
+    rules.join(";")
+}
+
+/// Arguments for a throwaway, confined, headless browser that may connect
+/// only to `allowed`.
+pub fn browser_args(profile: &Path, as_root: bool, allowed: &[Origin]) -> Vec<String> {
     let mut args: Vec<String> = [
         "--headless=new",
         "--remote-debugging-port=0",
@@ -409,13 +421,15 @@ pub fn browser_args(profile: &Path, as_root: bool) -> Vec<String> {
         "--use-mock-keychain",
         "--mute-audio",
         "--window-size=1280,800",
-        // Anything not on loopback goes to a port nothing listens on. The
-        // DevTools interception is the policy; this is the floor under it.
+        // Every connection goes to a port nothing listens on, except those
+        // the bypass list below names. The DevTools interception records and
+        // stops what it sees; this is the floor under what it cannot see.
         "--proxy-server=http://127.0.0.1:9",
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
+    args.push(format!("--proxy-bypass-list={}", proxy_bypass_list(allowed)));
     args.push(format!("--user-data-dir={}", profile.display()));
     if as_root {
         args.push("--no-sandbox".to_string());
@@ -544,12 +558,16 @@ mod tests {
 
     #[test]
     fn a_fresh_profile_and_a_dead_proxy_every_time() {
-        let args = browser_args(Path::new("/tmp/flint-verify-x"), false);
+        let (_, o) = local_origin("http://localhost:5173/").unwrap();
+        let (_, v6) = local_origin("http://[::1]:8080/").unwrap();
+        let args = browser_args(Path::new("/tmp/flint-verify-x"), false, &[o.clone(), v6]);
         assert!(args.contains(&"--user-data-dir=/tmp/flint-verify-x".to_string()));
         assert!(args.contains(&"--proxy-server=http://127.0.0.1:9".to_string()));
+        // No implicit loopback bypass: only the exact allowed host:port.
+        assert!(args.contains(&"--proxy-bypass-list=<-loopback>;localhost:5173;[::1]:8080".to_string()));
         assert!(args.contains(&"--disable-extensions".to_string()));
         assert!(!args.contains(&"--no-sandbox".to_string()));
-        assert!(browser_args(Path::new("/p"), true).contains(&"--no-sandbox".to_string()));
+        assert!(browser_args(Path::new("/p"), true, &[o]).contains(&"--no-sandbox".to_string()));
     }
 
     #[test]

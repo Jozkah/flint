@@ -575,7 +575,7 @@ pub async fn run(
     };
     let profile_path = profile.path().to_path_buf();
     let mut cmd = tokio::process::Command::new(&browser_path);
-    cmd.args(browser_args(&profile_path, running_as_root()))
+    cmd.args(browser_args(&profile_path, running_as_root(), policy.allowed()))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
@@ -819,6 +819,8 @@ mod tests {
     struct Server {
         port: u16,
         stop: Arc<AtomicBool>,
+        /// Every request line and its headers, as received.
+        requests: Arc<Mutex<Vec<String>>>,
     }
 
     impl Drop for Server {
@@ -836,6 +838,8 @@ mod tests {
         listener.set_nonblocking(true).unwrap();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
+        let requests = Arc::new(Mutex::new(Vec::new()));
+        let log = requests.clone();
         std::thread::spawn(move || {
             while !flag.load(Ordering::SeqCst) {
                 let Ok((mut s, _)) = listener.accept() else {
@@ -846,6 +850,7 @@ mod tests {
                 let mut buf = [0u8; 4096];
                 let n = s.read(&mut buf).unwrap_or(0);
                 let req = String::from_utf8_lossy(&buf[..n]);
+                log.lock().unwrap().push(req.to_string());
                 let path = req.split_whitespace().nth(1).unwrap_or("/").to_string();
                 let (status, extra, body) = match path.as_str() {
                     "/" => ("200 OK", String::new(), format!(
@@ -857,6 +862,13 @@ mod tests {
                     "/redir" => ("302 Found", format!("Location: http://127.0.0.1:{other_port}/\r\n"), String::new()),
                     "/err" => ("200 OK", String::new(), "<html><body>x<script>console.error('boom')</script></body></html>".into()),
                     "/slow" => ("200 OK", String::new(), "<html><body>slow</body></html>".into()),
+                    // One socket to this origin (the control), one to another
+                    // loopback port, which must never be reached.
+                    "/ws" => ("200 OK", String::new(), format!(
+                        "<html><body>ws<script>\
+                         try {{ new WebSocket('ws://127.0.0.1:' + location.port + '/same-origin-socket') }} catch (e) {{}}\
+                         try {{ new WebSocket('ws://127.0.0.1:{other_port}/off-origin-socket') }} catch (e) {{}}\
+                         </script></body></html>")),
                     _ => ("404 Not Found", String::new(), "nope".into()),
                 };
                 let _ = write!(
@@ -866,7 +878,7 @@ mod tests {
                 );
             }
         });
-        Server { port, stop }
+        Server { port, stop, requests }
     }
 
     fn browser_or_skip() -> Option<BrowserInfo> {
@@ -927,6 +939,43 @@ mod tests {
         assert!(report.blocked_requests.iter().all(|b| !b.navigation));
         // Progress was reported as the steps ran.
         assert!(seen_steps.lock().unwrap().contains(&(2, StepStatus::Passed)));
+    }
+
+    /// Exact-origin confinement at the network layer. DevTools interception
+    /// does not see WebSocket handshakes, and Chromium sends loopback
+    /// traffic around a configured proxy by default, so neither of those
+    /// alone keeps a page on 127.0.0.1:A from reaching 127.0.0.1:B.
+    #[tokio::test]
+    async fn an_off_origin_loopback_websocket_never_connects() {
+        let Some(browser) = browser_or_skip() else { return };
+        let other = TcpListener::bind("127.0.0.1:0").unwrap();
+        let other_port = other.local_addr().unwrap().port();
+        other.set_nonblocking(true).unwrap();
+        let reached = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (count, stop) = (reached.clone(), Arc::new(AtomicBool::new(false)));
+        let done = stop.clone();
+        std::thread::spawn(move || {
+            while !done.load(Ordering::SeqCst) {
+                if other.accept().is_ok() {
+                    count.fetch_add(1, Ordering::SeqCst);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        let app = serve(other_port);
+        let report = run(request(app.port, "/ws", vec![Step::Wait { ms: 2_000 }]), browser, never(), |_| {}).await;
+        stop.store(true, Ordering::SeqCst);
+        // The control: the page did open a socket, to its own origin.
+        let seen = app.requests.lock().unwrap().join("\n").to_ascii_lowercase();
+        assert!(
+            seen.contains("get /same-origin-socket") && seen.contains("upgrade: websocket"),
+            "the page never tried a WebSocket, so the test proves nothing: {seen}"
+        );
+        assert_eq!(
+            reached.load(Ordering::SeqCst),
+            0,
+            "a WebSocket reached another loopback port: {report:#?}"
+        );
     }
 
     #[tokio::test]
