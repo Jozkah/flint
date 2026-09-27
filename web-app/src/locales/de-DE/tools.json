@@ -5,7 +5,10 @@
     "allowOnce": "Einmal erlauben",
     "title": "Werkzeugaufruf angefordert",
     "description": "Der Assistent möchte folgendes Werkzeug verwenden:",
-    "securityNotice": "Sicherheitshinweis: Schädliche Werkzeuge oder Konversationsinhalte könnten den Assistenten möglicherweise zu schädlichen Aktionen verleiten. Überprüfe jeden Werkzeug-Aufruf sorgfältig, bevor Du ihn genehmigst."
+    "securityNotice": "Sicherheitshinweis: Schädliche Werkzeuge oder Konversationsinhalte könnten den Assistenten möglicherweise zu schädlichen Aktionen verleiten. Überprüfe jeden Werkzeug-Aufruf sorgfältig, bevor Du ihn genehmigst.",
+    "approvalNeeded": "Freigabe erforderlich",
+    "permissionDetails": "Details zur Berechtigung",
+    "moreOptions": "Weitere Optionen"
   },
   "toolCall": {
     "ranUnsandboxed": "außerhalb der Sandbox ausgeführt",

@@ -18,7 +18,10 @@
     "description": "The assistant wants to use the tool:",
     "securityNotice": "Security Notice: Malicious tools or conversation content could potentially trick the assistant into attempting harmful actions. Review each tool call carefully before approving.",
     "permissionScope": "You can allow it just this once, or every time.",
-    "alwaysAllow": "Always allow"
+    "alwaysAllow": "Always allow",
+    "approvalNeeded": "Approval needed",
+    "permissionDetails": "Permission details",
+    "moreOptions": "More options"
   },
   "toolCall": {
     "awaitingApproval": "Awaiting approval: {{tool}}",

@@ -5,7 +5,10 @@
     "allowOnce": "Povolit jednou",
     "title": "Žádost o volání nástroje",
     "description": "Asistent chce použít nástroj:",
-    "securityNotice": "Bezpečnostní upozornění: Škodlivé nástroje nebo obsah konverzace by mohly potenciálně oklamat asistenta k pokusu o škodlivé akce. Před schválením pečlivě zkontrolujte každé volání nástroje."
+    "securityNotice": "Bezpečnostní upozornění: Škodlivé nástroje nebo obsah konverzace by mohly potenciálně oklamat asistenta k pokusu o škodlivé akce. Před schválením pečlivě zkontrolujte každé volání nástroje.",
+    "approvalNeeded": "Vyžaduje schválení",
+    "permissionDetails": "Podrobnosti oprávnění",
+    "moreOptions": "Další možnosti"
   },
   "toolCall": {
     "ranUnsandboxed": "spuštěno mimo sandbox",

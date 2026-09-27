@@ -114,6 +114,7 @@ describe('ToolApprovalActions', () => {
         threadId: 't1',
       },
     })
+    fireEvent.click(screen.getByTestId('approval-more-options'))
     expect(
       screen.getByText('permissions:scope.allowAlwaysServer:github')
     ).toBeInTheDocument()
@@ -139,10 +140,10 @@ describe('ToolApprovalActions', () => {
     )
   })
 
-  // A bash command the user already allowed once here comes back: the card
-  // says so and fills and focuses "Allow in this conversation". It does not
-  // answer the request itself.
-  it('marks a repeated command and prefers allowing it for the conversation', () => {
+  // A bash command the user already allowed once here comes back: the panel
+  // says so, opens the broader options and marks "Allow in this
+  // conversation". "Allow once" stays the filled answer and nothing is chosen.
+  it('marks a repeated command and suggests allowing it for the conversation', () => {
     approvalState.allowedOnceCommands = { t1: ['bash\u0000ls -la'] }
     renderApproval({
       tc1: {
@@ -160,9 +161,10 @@ describe('ToolApprovalActions', () => {
       .getByText('permissions:scope.allowThread')
       .closest('button')!
     const once = screen.getByText('permissions:scope.allowOnce').closest('button')!
-    expect(thread).toHaveAttribute('data-primary', 'true')
-    expect(once).not.toHaveAttribute('data-primary')
-    expect(thread).toHaveFocus()
+    expect(thread).toHaveAttribute('data-suggested', 'true')
+    expect(thread).not.toHaveAttribute('data-primary')
+    expect(once).toHaveAttribute('data-primary', 'true')
+    expect(screen.getByText('permissions:scope.deny').closest('button')).toHaveFocus()
     expect(resolveApproval).not.toHaveBeenCalled()
   })
 
@@ -178,6 +180,7 @@ describe('ToolApprovalActions', () => {
       },
     })
     expect(screen.queryByTestId('approval-repeat-notice')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('approval-scope-menu')).not.toBeInTheDocument()
     expect(
       screen.getByText('permissions:scope.allowOnce').closest('button')
     ).toHaveAttribute('data-primary', 'true')
@@ -193,6 +196,7 @@ describe('ToolApprovalActions', () => {
     renderApproval({
       tc1: { toolCallId: 'tc1', toolName: 'do_thing', threadId: 't1' },
     })
+    fireEvent.click(screen.getByTestId('approval-more-options'))
     expect(
       screen.getByText('permissions:scope.allowAlwaysTool:do_thing')
     ).toBeInTheDocument()
@@ -208,6 +212,7 @@ describe('ToolApprovalActions', () => {
       },
     })
     fireEvent.click(screen.getByText('permissions:scope.allowOnce'))
+    fireEvent.click(screen.getByTestId('approval-more-options'))
     fireEvent.click(screen.getByText('permissions:scope.allowThread'))
     fireEvent.click(
       screen.getByText('permissions:scope.allowAlwaysServer:github')
@@ -239,8 +244,84 @@ describe('ToolApprovalActions', () => {
       },
     })
     expect(screen.getByText('permissions:action.runCommand')).toBeInTheDocument()
-    expect(screen.getByText('npm test')).toBeInTheDocument()
+    expect(screen.getByTestId('approval-subject')).toHaveTextContent('npm test')
+    fireEvent.click(screen.getByTestId('approval-more-options'))
     expect(screen.getByText('permissions:scope.broader')).toBeInTheDocument()
+  })
+
+  // Style B: one panel naming the tool, the full command and the decision.
+  it('renders the pending request as one action panel', () => {
+    const long = 'git push -u origin feature/x && gh pr create --fill --title "a very long title"'
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        workspaceLabel: '/work/acme-weather',
+        input: { command: long },
+      },
+    })
+    const panel = screen.getByTestId('inline-approval-card')
+    expect(panel).toHaveAttribute('data-approval-request', 'r1')
+    expect(panel).toHaveAccessibleName('permissions:action.runCommandIn')
+    expect(screen.getByText('tools:toolApproval.approvalNeeded')).toBeInTheDocument()
+    expect(screen.getByTestId('approval-tool')).toHaveTextContent('bash')
+    // The command in full, never the truncated resource.
+    expect(screen.getByTestId('approval-subject').textContent).toBe(long)
+    expect(screen.getByText('permissions:request.consequences')).toBeInTheDocument()
+    // Nothing nested: no inner tool card or approval card border.
+    expect(panel.querySelector('[data-slot="tool-card"]')).toBeNull()
+  })
+
+  it('keeps Allow once primary and lists broader scopes, explained and unchosen', () => {
+    renderApproval({
+      tc1: { requestId: 'r1', toolCallId: 'tc1', toolName: 'bash', threadId: 't1' },
+    })
+    const once = screen.getByText('permissions:scope.allowOnce').closest('button')!
+    expect(once).toHaveAttribute('data-primary', 'true')
+    expect(screen.queryByTestId('approval-scope-menu')).not.toBeInTheDocument()
+    const more = screen.getByTestId('approval-more-options')
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(more)
+    expect(more).toHaveAttribute('aria-expanded', 'true')
+    const menu = screen.getByTestId('approval-scope-menu')
+    const scopes = Array.from(menu.querySelectorAll('button')).map((b) =>
+      b.getAttribute('data-scope')
+    )
+    expect(scopes).toEqual(['allow-thread', 'allow-always'])
+    for (const button of Array.from(menu.querySelectorAll('button'))) {
+      expect(button).not.toHaveAttribute('data-primary')
+      expect(button).not.toHaveAttribute('data-suggested')
+      const describedBy = button.getAttribute('aria-describedby')!
+      expect(document.getElementById(describedBy)?.textContent).toMatch(
+        /permissions:scope\.(thread|alwaysTool)Explanation/
+      )
+    }
+    expect(resolveApproval).not.toHaveBeenCalled()
+  })
+
+  it('shows the permission details on request', () => {
+    renderApproval({
+      tc1: {
+        toolCallId: 'tc1',
+        toolName: 'bash',
+        threadId: 't1',
+        input: { command: 'ls' },
+      },
+    })
+    expect(screen.queryByText('permissions:request.technicalDetails')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId('approval-details-toggle'))
+    expect(screen.getByText('permissions:request.technicalDetails')).toBeInTheDocument()
+  })
+
+  it('offers no broader options when only this request can be allowed', () => {
+    renderApproval({
+      tc1: { toolCallId: 'tc1', toolName: 'bash', threadId: 't1', alwaysAsk: true },
+    })
+    expect(screen.queryByTestId('approval-more-options')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('permissions:scope.allowOnce'))
+    expect(resolveApproval).toHaveBeenCalledWith('tc1', 'allow-once', undefined)
   })
 
   it('announces how many requests wait in the thread, once', () => {

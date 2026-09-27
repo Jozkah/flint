@@ -10,7 +10,10 @@
     "allowServerAlways": "始终允许 {{server}}",
     "allowToolAlways": "始终允许 {{tool}}",
     "permissionScope": "您可以仅允许一次，或每次都允许。",
-    "alwaysAllow": "始终允许"
+    "alwaysAllow": "始终允许",
+    "approvalNeeded": "需要批准",
+    "permissionDetails": "权限详情",
+    "moreOptions": "更多选项"
   },
   "toolCall": {
     "awaitingApproval": "等待批准：{{tool}}",

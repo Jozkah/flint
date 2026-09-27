@@ -26,6 +26,7 @@ import {
   memo,
   useContext,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -49,8 +50,8 @@ import { describePermissionRequest } from '@/lib/permissionRequest'
 import { classifyPermissionOutcome } from '@/lib/permissionOutcome'
 import {
   PermissionRequestDetails,
-  PermissionScopeChoices,
   formatPermissionMessage,
+  type PermissionDecision,
 } from '@/containers/PermissionRequestDetails'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
@@ -423,6 +424,7 @@ export type ToolContentProps = ComponentProps<typeof CollapsibleContent>
 export const ToolContent = memo(
   ({ className, children, ...props }: ToolContentProps) => (
     <CollapsibleContent
+      data-slot="tool-content"
       className={cn(
         'relative overflow-hidden text-sm',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 text-fg-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
@@ -524,6 +526,27 @@ export const ToolInput = memo(
   }
 )
 
+/** The full text a request acts on: a command in full, else what it touches. */
+const requestSubject = (
+  input: unknown,
+  resources: string[]
+): string | undefined => {
+  const parsed = parseToolInput(input)
+  if (isPlainObject(parsed)) {
+    for (const key of ['command', 'cmd', 'url', 'query']) {
+      const value = parsed[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  }
+  return resources.length > 0 ? resources.join('\n') : undefined
+}
+
+/**
+ * A pending request, as the one expanded step of the timeline: what is asked
+ * (tool, workspace, the full command), why, what allowing it means, then the
+ * decision. "Allow once" is the one filled answer; broader grants sit behind
+ * "More options", each with its explanation, and none is chosen for the user.
+ */
 export const ToolApprovalActions = memo(() => {
   const { t } = useTranslation()
   const { toolCallId } = useTool()
@@ -536,16 +559,17 @@ export const ToolApprovalActions = memo(() => {
   // repeated key cannot answer a request that was never read.
   const armed = useArmedAfterChange(pending?.requestId)
   const threadPendingCount = usePendingApprovalCount(pending?.threadId)
-  // One announcement per thread, from its oldest waiting card, so several
-  // pending cards do not all speak at once.
+  // One announcement per thread, from its oldest waiting request, so several
+  // pending requests do not all speak at once.
   const isFirstInThread = useToolApprovalRequests((s) =>
     pending
       ? Object.values(s.pending).find((e) => e.threadId === pending.threadId)
           ?.toolCallId === toolCallId
       : false
   )
-  // The user already allowed this exact command once here: say so, and put
-  // "Allow in this conversation" first. It is still their click.
+  // The user already allowed this exact command once here: say so, open the
+  // broader options and mark "Allow in this conversation". It is still their
+  // click, and "Allow once" stays the filled answer.
   const repeatedCommand = useToolApprovalRequests((s) =>
     pending && !pending.origin
       ? wasCommandAllowedOnce(
@@ -572,6 +596,23 @@ export const ToolApprovalActions = memo(() => {
         : undefined,
     [pending]
   )
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const denyRef = useRef<HTMLButtonElement>(null)
+  const titleId = useId()
+  const moreId = useId()
+  const requestId = pending?.requestId
+
+  // Each new request starts with its details closed (the broader options open
+  // only for a repeated command) and focus on Deny, so a reflexive Enter never
+  // grants anything.
+  useEffect(() => {
+    setMoreOpen(Boolean(repeatedCommand))
+    setDetailsOpen(false)
+  }, [requestId, repeatedCommand])
+  useEffect(() => {
+    if (requestId !== undefined || toolCallId) denyRef.current?.focus()
+  }, [requestId, toolCallId, armed])
 
   // A subagent's request is not this card's: its call id is only unique inside
   // the child's own conversation, so it can coincide with a card here and would
@@ -579,34 +620,61 @@ export const ToolApprovalActions = memo(() => {
   // `CoworkChildApprovals`).
   if (!pending || !toolCallId || pending.origin || !request) return null
 
+  const decide = (decision: PermissionDecision) =>
+    resolveApproval(toolCallId, decision, pending.requestId)
+  const broader = request.scopesOffered.filter(
+    (scope) => scope !== 'allow-once' && request.scopeExplanations[scope]
+  )
+  const once = request.scopeExplanations['allow-once']
+  const subject = requestSubject(pending.input, request.resources)
+  const pendingText =
+    threadPendingCount === 1
+      ? t('permissions:pending.one')
+      : t('permissions:pending.many', { count: threadPendingCount })
+
   return (
-    // A separate object that needs an answer: a warm band inside the card, the
-    // action in plain words first, then what it touches, then the answers
-    // with Deny focused first.
-    <div
+    <section
       data-testid="inline-approval-card"
+      data-slot="approval-panel"
       data-approval-request={pending.requestId}
-      className="relative m-2 flex min-w-0 flex-col gap-2.5 rounded-lg border border-warning/50 border-l-4 border-l-warning bg-[color-mix(in_oklab,var(--warning)_12%,var(--card))] p-3 text-foreground shadow-lg shadow-warning/10 ring-1 ring-warning/20"
+      aria-labelledby={titleId}
+      className="flex min-w-0 flex-col gap-2.5 p-3 text-foreground sm:p-3.5"
     >
-      <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <ShieldAlertIcon className="size-4 shrink-0 text-warning" aria-hidden />
-        <b className="min-w-0 font-medium text-foreground wrap-break-word">
-          {formatPermissionMessage(t, request.action)}
-        </b>
-        {isFirstInThread && threadPendingCount > 0 && (
-          <Chip tone="warn" className="tabular-nums" aria-hidden>
-            {threadPendingCount === 1
-              ? t('permissions:pending.one')
-              : t('permissions:pending.many', { count: threadPendingCount })}
-          </Chip>
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-[13px]">
+        <span className="font-medium text-(--tk)">
+          {t('tools:toolApproval.approvalNeeded')}
+        </span>
+        <Chip tone="warn" data-testid="approval-tool">
+          {pending.toolName}
+        </Chip>
+        {isFirstInThread && threadPendingCount > 1 && (
+          <span
+            className="ml-auto text-xs text-muted-foreground tabular-nums"
+            aria-hidden
+          >
+            {pendingText}
+          </span>
         )}
       </div>
       {isFirstInThread && (
         <p role="status" aria-live="polite" className="sr-only">
-          {threadPendingCount === 1
-            ? t('permissions:pending.one')
-            : t('permissions:pending.many', { count: threadPendingCount })}
+          {pendingText}
         </p>
+      )}
+      <h3
+        id={titleId}
+        className="min-w-0 text-[15px] leading-snug font-semibold wrap-break-word text-foreground"
+      >
+        {formatPermissionMessage(t, request.action)}
+      </h3>
+      {subject && (
+        <pre
+          data-testid="approval-subject"
+          tabIndex={0}
+          className="max-h-48 min-w-0 overflow-auto rounded-lg bg-code-bg px-3 py-2 font-mono text-[12.5px] leading-[1.55] whitespace-pre-wrap break-all text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]"
+        >
+          {subject}
+        </pre>
       )}
       {/* What will land, before it is allowed (AH-146). */}
       {pending.preview && (
@@ -616,9 +684,9 @@ export const ToolApprovalActions = memo(() => {
           testId="approval-preview"
         />
       )}
-      {/* The parameters are already shown above this card. */}
+      {/* The code block already shows what it touches in full. */}
       <PermissionRequestDetails
-        request={request}
+        request={subject ? { ...request, resources: [] } : request}
         showAction={false}
         showTechnicalDetails={false}
         layout="rows"
@@ -632,16 +700,122 @@ export const ToolApprovalActions = memo(() => {
         </p>
       )}
       {/* Answers name this request, so a click cannot land on the next one. */}
-      <PermissionScopeChoices
-        request={request}
-        autoFocusDeny
-        preferredScope={repeatedCommand ? 'allow-thread' : undefined}
-        disabled={!armed}
-        onDecision={(decision) =>
-          resolveApproval(toolCallId, decision, pending.requestId)
-        }
-      />
-    </div>
+      <div
+        role="group"
+        aria-label={t('permissions:request.chooseScope')}
+        className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2"
+      >
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <button
+            type="button"
+            aria-expanded={detailsOpen}
+            data-testid="approval-details-toggle"
+            className="rounded-sm text-acc-text underline-offset-4 outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            {t('tools:toolApproval.permissionDetails')}
+          </button>
+          {broader.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={moreOpen}
+              aria-controls={moreId}
+              data-testid="approval-more-options"
+              className="inline-flex items-center gap-1 rounded-sm text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              {t('tools:toolApproval.moreOptions')}
+              <ChevronDownIcon
+                aria-hidden
+                className={cn(
+                  'size-3 motion-safe:transition-transform',
+                  moreOpen && 'rotate-180'
+                )}
+              />
+            </button>
+          )}
+        </div>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            ref={denyRef}
+            size="sm"
+            variant="destructive"
+            type="button"
+            disabled={!armed}
+            data-scope="deny"
+            className="min-w-20 border-destructive/40 pointer-coarse:h-11"
+            onClick={() => decide('deny')}
+          >
+            {t('permissions:scope.deny')}
+          </Button>
+          <Button
+            size="sm"
+            type="button"
+            disabled={!armed}
+            data-scope="allow-once"
+            data-primary="true"
+            aria-describedby={once ? `${moreId}-once` : undefined}
+            className="min-w-24 pointer-coarse:h-11"
+            onClick={() => decide('allow-once')}
+          >
+            {t('permissions:scope.allowOnce')}
+          </Button>
+          {once && (
+            <span id={`${moreId}-once`} className="sr-only">
+              {formatPermissionMessage(t, once.explanation)}
+            </span>
+          )}
+        </div>
+        {moreOpen && broader.length > 0 && (
+          <ul
+            id={moreId}
+            data-testid="approval-scope-menu"
+            className="flex w-full min-w-0 flex-col divide-y divide-border overflow-hidden rounded-md border border-border"
+          >
+            {broader.map((scope) => {
+              const info = request.scopeExplanations[scope]!
+              const explanationId = `${moreId}-${scope}`
+              return (
+                <li key={scope} className="flex">
+                  <button
+                    type="button"
+                    aria-label={formatPermissionMessage(t, info.label)}
+                    aria-describedby={explanationId}
+                    data-scope={scope}
+                    data-suggested={
+                      (repeatedCommand && scope === 'allow-thread') || undefined
+                    }
+                    disabled={!armed}
+                    className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 data-suggested:border-l-2 data-suggested:border-l-warning pointer-coarse:min-h-11"
+                    onClick={() => decide(scope)}
+                  >
+                    <b className="text-[13px] font-medium text-foreground">
+                      {formatPermissionMessage(t, info.label)}
+                    </b>
+                    {info.broader && (
+                      <Chip tone="warn">{t('permissions:scope.broader')}</Chip>
+                    )}
+                    <span
+                      id={explanationId}
+                      className="w-full text-xs leading-snug text-muted-foreground"
+                    >
+                      {formatPermissionMessage(t, info.explanation)}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+      {detailsOpen && (
+        <PermissionRequestDetails
+          request={request}
+          showAction={false}
+          className="rounded-md bg-muted/40 p-2.5"
+        />
+      )}
+    </section>
   )
 })
 

@@ -38,14 +38,18 @@ vi.mock('@/components/ai-elements/chain-of-thought', () => ({
 
 // Stub Tool
 vi.mock('@/components/ai-elements/tool', () => ({
-  Tool: ({ children }: any) => <div data-testid="tool">{children}</div>,
+  Tool: ({ children, toolCallId }: any) => (
+    <div data-testid="tool" data-tool-call={toolCallId}>
+      {children}
+    </div>
+  ),
   ToolContent: ({ children }: any) => <div>{children}</div>,
   ToolHeader: ({ title }: any) => <div data-testid="tool-header">{title}</div>,
   ToolInput: ({ input }: any) => <div data-testid="tool-input">{String(input)}</div>,
   ToolOutput: ({ output, errorText }: any) => (
     <div data-testid="tool-output">{errorText ?? String(output ?? '')}</div>
   ),
-  ToolApprovalActions: () => null,
+  ToolApprovalActions: () => <div data-testid="approval-panel" />,
 }))
 
 // Stub dialogs
@@ -665,8 +669,13 @@ describe('MessageItem', () => {
         status={'streaming' as any}
       />
     )
+    // The pending call is its approval panel (no header); the other keeps its row.
+    const alpha = screen
+      .getAllByTestId('tool')
+      .find((el) => el.getAttribute('data-tool-call') === 'tc-alpha')
+    expect(alpha).toBeDefined()
+    expect(alpha!.querySelector('[data-testid="approval-panel"]')).not.toBeNull()
     const headers = screen.getAllByTestId('tool-header').map((h) => h.textContent)
-    expect(headers).toContain('alpha')
     expect(headers).toContain('beta')
   })
 

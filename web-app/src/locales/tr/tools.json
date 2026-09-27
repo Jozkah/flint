@@ -10,7 +10,10 @@
     "description": "Asistan şu aracı kullanmak istiyor:",
     "securityNotice": "Güvenlik Uyarısı: Kötü amaçlı araçlar veya konuşma içerikleri, asistanı zararlı eylemler denemeye yönlendirebilir. Onaylamadan önce her araç çağrısını dikkatle inceleyin.",
     "permissionScope": "Yalnızca bu kez veya her seferinde izin verebilirsiniz.",
-    "alwaysAllow": "Her Zaman İzin Ver"
+    "alwaysAllow": "Her Zaman İzin Ver",
+    "approvalNeeded": "Onay gerekiyor",
+    "permissionDetails": "İzin ayrıntıları",
+    "moreOptions": "Diğer seçenekler"
   },
   "toolCall": {
     "awaitingApproval": "Onay bekleniyor: {{tool}}",

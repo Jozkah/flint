@@ -5,7 +5,10 @@
     "allowOnce": "Consenti una volta",
     "title": "Richiesta chiamata strumento",
     "description": "L'assistente vuole utilizzare lo strumento:",
-    "securityNotice": "Avviso di sicurezza: strumenti dannosi o il contenuto della conversazione potrebbero ingannare l'assistente spingendolo a compiere azioni nocive. Verifica attentamente ogni chiamata prima di approvarla."
+    "securityNotice": "Avviso di sicurezza: strumenti dannosi o il contenuto della conversazione potrebbero ingannare l'assistente spingendolo a compiere azioni nocive. Verifica attentamente ogni chiamata prima di approvarla.",
+    "approvalNeeded": "Approvazione richiesta",
+    "permissionDetails": "Dettagli dell’autorizzazione",
+    "moreOptions": "Altre opzioni"
   },
   "toolCall": {
     "ranUnsandboxed": "eseguito fuori dalla sandbox",

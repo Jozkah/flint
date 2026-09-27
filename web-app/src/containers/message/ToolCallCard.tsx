@@ -127,6 +127,13 @@ export const ToolCallCard = memo(
     const awaitingApproval = useToolApprovalRequests((s) =>
       part.toolCallId ? Boolean(s.pending[part.toolCallId]) : false
     )
+    // A request of this card's own (not a subagent's that shares its id)
+    // turns the whole step into the action panel.
+    const ownApproval = useToolApprovalRequests((s) =>
+      part.toolCallId
+        ? Boolean(s.pending[part.toolCallId] && !s.pending[part.toolCallId].origin)
+        : false
+    )
 
     // Native families get a fixed label; MCP names its server.
     const originLabel =
@@ -294,6 +301,26 @@ export const ToolCallCard = memo(
         />
       </ResultSection>
     )
+
+    // Waiting for the user: one expanded action panel, with no tool card
+    // around it. It says what the call would do in full; the parameters table
+    // and the empty result would only repeat it.
+    if (ownApproval) {
+      return (
+        <Tool
+          state={part.state}
+          toolCallId={part.toolCallId}
+          messageId={messageId}
+          name={toolName}
+          origin={originLabel}
+          open
+          data-approval-panel=""
+          className={cn('tool-action-panel', className)}
+        >
+          <ToolApprovalActions />
+        </Tool>
+      )
+    }
 
     return (
       <Tool

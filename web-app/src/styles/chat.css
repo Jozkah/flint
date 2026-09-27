@@ -55,6 +55,59 @@
   background: color-mix(in oklab, var(--tk) 4%, transparent);
 }
 
+/* ---- Timeline action (Style B) ----
+   On the timeline a tool call is a compact row: its dot on the rail already
+   carries the kind colour, so the row drops the card chrome (border, bar,
+   icon tile) and reads "Used read  path". Opening it shows the details in a
+   thin box below. A request waiting for the user is the one expanded step:
+   the action panel, with a single amber border and nothing nested in it. */
+[data-slot='step-row'] .tool-card:not(.tool-action-panel) {
+  border-color: transparent;
+  background: transparent;
+  overflow: visible;
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel)::before {
+  display: none;
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel):hover {
+  box-shadow: none;
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-header'] {
+  min-height: 26px;
+  padding-block: 2px;
+  padding-inline: 4px;
+  border-radius: 6px;
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel) [data-slot='tool-icon'] {
+  display: none;
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-content'] {
+  margin-top: 4px;
+  border: 0.8px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+[data-slot='step-row'] .tool-card:not(.tool-action-panel) > [data-slot='tool-content'] > div > :first-child {
+  border-top: 0;
+}
+.tool-action-panel {
+  border-color: color-mix(in oklab, var(--tk) 55%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tk) 8%, transparent);
+}
+.tool-action-panel::before {
+  display: none;
+}
+.tool-action-panel:hover {
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--tk) 8%, transparent);
+}
+/* The amber dot sits level with the panel's "Approval needed" line. */
+[data-slot='step-row']:has(> div > .tool-action-panel) > [data-slot='step-dot'] {
+  top: 19px;
+}
+[data-slot='step-row']:has(> div > .tool-card:not(.tool-action-panel)) > [data-slot='step-dot'] {
+  top: 9px;
+}
+
 /* A timeline step holding a tool call takes its kind's colour. */
 [data-slot='step-row']:has([data-tool-kind='read']) { --cotc: #3b82f6; }
 [data-slot='step-row']:has([data-tool-kind='search']) { --cotc: #8b5cf6; }

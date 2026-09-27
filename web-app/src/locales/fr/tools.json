@@ -5,7 +5,10 @@
     "allowOnce": "Autoriser une fois",
     "title": "Demande d'appel d'outil",
     "description": "L'assistant souhaite utiliser l'outil :",
-    "securityNotice": "Avis de sécurité : Des outils malveillants ou du contenu de conversation pourraient potentiellement tromper l'assistant pour qu'il tente des actions nuisibles. Examinez attentivement chaque appel d'outil avant de l'approuver."
+    "securityNotice": "Avis de sécurité : Des outils malveillants ou du contenu de conversation pourraient potentiellement tromper l'assistant pour qu'il tente des actions nuisibles. Examinez attentivement chaque appel d'outil avant de l'approuver.",
+    "approvalNeeded": "Approbation requise",
+    "permissionDetails": "Détails de l’autorisation",
+    "moreOptions": "Plus d’options"
   },
   "toolCall": {
     "ranUnsandboxed": "exécuté hors du bac à sable",
