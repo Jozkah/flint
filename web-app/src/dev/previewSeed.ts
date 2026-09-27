@@ -34,7 +34,11 @@ import { projectKeyOf } from '@/lib/coworkCode'
 import { answer } from './previewTauri'
 import { seedRooms } from './previewRooms'
 import { seedEngine } from './previewSeedEngine'
-import { patchSettingsServices, seedSettingsPreview } from './previewSeedSettings'
+import {
+  PREVIEW_DATA_FOLDER,
+  patchSettingsServices,
+  seedSettingsPreview,
+} from './previewSeedSettings'
 
 const MIN = 60_000
 const now = Date.now()
@@ -588,6 +592,63 @@ function dashSession() {
   }
 }
 
+/**
+ * A finished Review only session: its writes are in the session sandbox,
+ * ready to apply. One mirrors the project's tooltip.ts with changes; one is a
+ * write into the sandbox's own `.jan/` settings, which Changes must not list.
+ */
+const REVIEW_WS = `${PREVIEW_DATA_FOLDER}\\agent-workspace\\sessions\\review`
+const reviewTooltip = () => TOOLTIP_NOW.replace(
+  '  const temp = formatTemp(p.tempK, units)',
+  '  const temp = formatTemp(p.tempK, units, { digits: 0 })\n  const feels = formatTemp(p.feelsK, units, { digits: 0 })'
+).replace('  return `${time}  ${temp}  ${wind}`', '  return `${time}  ${temp} (feels ${feels})  ${wind}`')
+
+function reviewSession() {
+  const at = (m: number) => now - m * MIN
+  const write = (callId: string, rel: string, diff: [number, string][], m: number) => ({
+    role: 'tool', name: rel.endsWith('.ts') && rel.includes('tooltip') ? 'edit' : 'write', callId,
+    args: { path: `${REVIEW_WS}\\${rel.replace(/\//g, '\\')}` },
+    result: `Wrote ${rel}`, diff: `@@ edit 1/1 @@\n${diffOf(diff)}`,
+    toolState: 'succeeded', status: 'done', startedAt: at(m), endedAt: at(m) + 120,
+  })
+  return {
+    id: 'review',
+    title: 'Feels-like temperature in the tooltip',
+    folder: JAN,
+    mode: 'ask',
+    turns: [
+      { role: 'user', content: 'Add the feels-like temperature to the hourly tooltip and document the unit rules.', startedAt: at(12) },
+      { role: 'assistant', content: 'Review only: I’ll work on copies in the session sandbox.', startedAt: at(12) },
+      write('r1', 'acme-weather/web/src/charts/tooltip.ts', [
+        [9, '-  const temp = formatTemp(p.tempK, units)'],
+        [9, '+  const temp = formatTemp(p.tempK, units, { digits: 0 })'],
+        [10, '+  const feels = formatTemp(p.feelsK, units, { digits: 0 })'],
+        [12, '-  return `${time}  ${temp}  ${wind}`'],
+        [12, '+  return `${time}  ${temp} (feels ${feels})  ${wind}`'],
+      ], 11),
+      write('r2', 'web/src/format/wind.ts', [
+        [1, "+export const compassPoints = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']"],
+        [2, '+export const compassPoint = (deg: number) => compassPoints[Math.round(deg / 45) % 8]'],
+      ], 10),
+      write('r3', 'docs/units.md', [
+        [1, '+# Units'],
+        [2, '+Temperatures are stored in Kelvin and shown in the user’s units, rounded to whole degrees.'],
+      ], 9),
+      write('r4', '.jan/agent/agent.toml', [[1, '+approval = "ask"']], 9),
+      { role: 'assistant', content: 'Done. Three files are ready in the sandbox; nothing in acme-weather was changed.', startedAt: at(8), endedAt: at(8) },
+    ],
+    messages: [],
+    updated: at(8),
+    model: { provider: 'llamacpp', id: 'qwen3-8b-instruct' },
+    codePanel: {
+      tabs: [{ path: 'web/src/charts/tooltip.ts', origin: { kind: 'project', projectKey: projectKeyOf(JAN) } }],
+      activeTabId: `project:${projectKeyOf(JAN)}:web/src/charts/tooltip.ts`,
+      expandedDirs: ['web', 'web/src', 'web/src/charts'],
+      wordWrap: false,
+    },
+  }
+}
+
 // Managed worktrees, named after the repository so the pull-request bar and
 // the sidebar read "acme-weather".
 const RADAR_TREE = 'C:\\Projects\\.worktrees\\radar-retry\\acme-weather'
@@ -836,6 +897,14 @@ function seedCodeAnswers() {
     binary: false,
     truncated: false,
   }))
+  // Review only output: the sandbox and what applying each file would do.
+  answer(`${at}session_workspace_path`, (a) =>
+    `${PREVIEW_DATA_FOLDER}\\agent-workspace\\sessions\\${String(a.sessionId)}`
+  )
+  answer('agent_sandbox_apply_probe', (a) =>
+    String(a.destination ?? a.path).endsWith('tooltip.ts') ? 'differs' : 'new'
+  )
+  answer('agent_sandbox_apply_file', () => 'created')
   answer('agent_pr_status', (a) => usePrStatusStore.getState().byFolder[String(a.project)]?.lookup ?? { kind: 'no_pull_request' })
 }
 
@@ -857,6 +926,7 @@ function seedCowork() {
   const sessions = [
     escapeSession(),
     dashSession(),
+    reviewSession(),
     session('changelog', 'Draft 1.4 changelog', 50, JAN),
     unitsSession(),
     session('sync', 'Write the API guide', 3000, null),
@@ -953,6 +1023,17 @@ function patchServices() {
   set('projectsService', 'getProjects', async () => FOLDERS)
   set('threadsService', 'fetchThreads', async () => threads())
   set('assistantsService', 'getAssistants', async () => assistants())
+  // The Review only session's sandbox copy, readable the way the Code panel
+  // reads sandbox files.
+  const core = hub.coreService as Record<string, unknown> | undefined
+  if (core && !core.previewPatched) {
+    const original = core.convertFileSrc as (p: string) => string
+    core.previewPatched = true
+    core.convertFileSrc = (path: string) =>
+      path.replace(/\\/g, '/').endsWith('sessions/review/acme-weather/web/src/charts/tooltip.ts')
+        ? `data:text/plain;charset=utf-8,${encodeURIComponent(reviewTooltip())}`
+        : original.call(core, path)
+  }
   patchSettingsServices(hub)
 }
 

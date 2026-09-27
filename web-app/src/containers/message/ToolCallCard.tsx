@@ -31,6 +31,7 @@ import {
   lineOfToolInput,
   toolChangesFile,
   toolTargetIsPath,
+  useCodeOpenTools,
 } from '@/lib/codeOpen'
 
 const identityResolver = (input: string) => Promise.resolve(input)
@@ -158,6 +159,13 @@ export const ToolCallCard = memo(
           : undefined,
       [bar?.variant, part.output]
     )
+
+    const { displayPath } = useCodeOpenTools()
+    /** The header's argument, a file path in its short form. */
+    const shownArg = (bar: ToolCallBar): string =>
+      bar.variant === 'workspace' && bar.target && toolTargetIsPath(bar.tool)
+        ? (displayPath?.(bar.target) ?? bar.target)
+        : headerArg(bar)
 
     if (!isToolPart(part)) return null
 
@@ -341,7 +349,7 @@ export const ToolCallCard = memo(
           type={`tool-${toolName}` as `tool-${string}`}
           state={part.state}
           origin={originLabel}
-          arg={bar ? headerArg(bar) : undefined}
+          arg={bar ? shownArg(bar) : undefined}
           argNode={
             // A finished call's path opens in the Code panel from the header,
             // at the line it read when it names one.
@@ -353,9 +361,7 @@ export const ToolCallCard = memo(
                 path={bar.target}
                 line={lineOfToolInput(part.input)}
                 diffable={toolChangesFile(bar.tool) && done}
-              >
-                {headerArg(bar)}
-              </OpenablePath>
+              />
             ) : undefined
           }
           input={bar ? undefined : part.input}

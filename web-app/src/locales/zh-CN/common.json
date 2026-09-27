@@ -640,7 +640,19 @@
     "scopeLabel": "要列出哪些项目更改",
     "applyHint": "将此文件从会话沙盒复制到 {{folder}}，保存为 {{path}}",
     "applyWhere": "复制到 {{folder}} 中的 {{path}}？沙盒副本为 {{source}}。",
-    "applyConfirm": "复制到此处"
+    "applyConfirm": "复制到此处",
+    "applyAll": "全部应用到文件夹",
+    "applyAllTitle": "全部应用到文件夹",
+    "applyAllDescription": "将此会话写入沙盒的文件复制到附加的文件夹。会替换其他不同文件的项默认不勾选。",
+    "applyAllChecking": "正在检查每个文件…",
+    "applyAllSkipped": "已跳过：{{reason}}",
+    "applyAllSkipOutside": "不在会话沙盒中",
+    "applyAllSkipSame": "文件夹中已有完全相同的文件",
+    "applyAllOverwrites": "将替换文件",
+    "applyAllConfirm_one": "应用 {{count}} 个文件",
+    "applyAllConfirm_other": "应用 {{count}} 个文件",
+    "applyAllSummary": "已应用 {{applied}} · 未应用 {{failed}}",
+    "openExternally": "在外部打开"
   },
   "multimodal": "多模态",
   "noAssistant": "无助手",
@@ -918,6 +930,26 @@
     "notCommitted": "尚未提交",
     "pullRequest": "拉取请求 #{{number}}",
     "changeAt": "第 {{line}} 行的更改",
-    "revertChange": "还原"
+    "revertChange": "还原",
+    "sandboxChange": "第 {{line}} 行的沙盒更改",
+    "openSandboxCopy": "打开沙盒副本",
+    "sandboxChangesHint": "此会话的沙盒有该文件的独立版本。其更改在边栏中标出；点击可查看。"
+  },
+  "coworkReview": {
+    "hide": "隐藏",
+    "hideHint": "在出现新更改前隐藏。侧栏的更改和 ± 计数仍会显示它们。",
+    "finishTitle": "“仅审查”运行结束时",
+    "finishDescription": "如何处理留在会话沙盒中的文件。自动应用只复制文件夹中没有的新文件；任何会替换文件的内容都会先询问。",
+    "finish": {
+      "keep": "保留在沙盒中",
+      "ask": "询问是否全部应用",
+      "auto": "自动全部应用"
+    },
+    "showBarTitle": "显示文件就绪栏",
+    "showBarDescription": "输入框上方的“文件已可审查”栏。相同的更改仍在更改侧栏和 ± 计数中。"
+  },
+  "coworkDisplay": {
+    "showModelReceived": "显示“模型收到的内容”",
+    "showModelReceivedDescription": "每轮请求的记录及其令牌数。无论是否显示都会记录，并保留在会话详情和时间线中。"
   }
 }

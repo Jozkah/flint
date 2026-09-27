@@ -201,7 +201,19 @@
     "scopeLabel": "Hangi proje değişikliklerinin listeleneceği",
     "applyHint": "Bu dosyayı oturum sandbox'ından {{folder}} klasörüne {{path}} olarak kopyala",
     "applyWhere": "{{folder}} içinde {{path}} konumuna kopyalansın mı? Sandbox kopyası: {{source}}.",
-    "applyConfirm": "Oraya kopyala"
+    "applyConfirm": "Oraya kopyala",
+    "applyAll": "Tümünü klasöre uygula",
+    "applyAllTitle": "Tümünü klasöre uygula",
+    "applyAllDescription": "Bu oturumun korumalı alanına yazdığı dosyaları bağlı klasöre kopyalar. Farklı bir dosyanın yerine geçecek olanlar işaretsiz kalır.",
+    "applyAllChecking": "Her dosya denetleniyor…",
+    "applyAllSkipped": "Atlandı: {{reason}}",
+    "applyAllSkipOutside": "oturumun korumalı alanında değil",
+    "applyAllSkipSame": "klasörde zaten bu dosyanın aynısı var",
+    "applyAllOverwrites": "Bir dosyanın yerine geçer",
+    "applyAllConfirm_one": "{{count}} dosyayı uygula",
+    "applyAllConfirm_other": "{{count}} dosyayı uygula",
+    "applyAllSummary": "{{applied}} uygulandı · {{failed}} uygulanmadı",
+    "openExternally": "Harici olarak aç"
   },
   "compactWidth": "Kompakt genişlik",
   "fullWidth": "Tam genişlik",
@@ -916,6 +928,26 @@
     "notCommitted": "Henüz commit edilmedi",
     "pullRequest": "Pull request #{{number}}",
     "changeAt": "{{line}}. satırdaki değişiklik",
-    "revertChange": "Geri al"
+    "revertChange": "Geri al",
+    "sandboxChange": "{{line}}. satırda korumalı alan değişikliği",
+    "openSandboxCopy": "Korumalı alan kopyasını aç",
+    "sandboxChangesHint": "Bu oturumun korumalı alanında bu dosyanın kendi sürümü var. Değişiklikleri kenar boşluğunda işaretli; görmek için tıklayın."
+  },
+  "coworkReview": {
+    "hide": "Gizle",
+    "hideHint": "Yeni değişiklik gelene kadar gizle. Raydaki Değişiklikler ve ± sayacı bunları göstermeye devam eder.",
+    "finishTitle": "Yalnızca inceleme çalıştırması bittiğinde",
+    "finishDescription": "Oturumun korumalı alanında kalan dosyalarla ne yapılacağı. Otomatik uygulama yalnızca klasör için yeni dosyaları kopyalar; bir dosyanın yerine geçecek her şey her zaman sorulur.",
+    "finish": {
+      "keep": "Korumalı alanda tut",
+      "ask": "Tümünü uygulamayı sor",
+      "auto": "Tümünü otomatik uygula"
+    },
+    "showBarTitle": "Dosyalar hazır çubuğunu göster",
+    "showBarDescription": "Yazma alanının üstündeki \"incelemeye hazır dosyalar\" çubuğu. Aynı değişiklikler Değişiklikler rayında ve ± sayacında kalır."
+  },
+  "coworkDisplay": {
+    "showModelReceived": "\"Modelin aldığı\" satırını göster",
+    "showModelReceivedDescription": "Her turdaki isteğin kaydı ve token sayısı. Her durumda kaydedilir ve oturum ayrıntılarında ve zaman çizelgesinde kalır."
   }
 }

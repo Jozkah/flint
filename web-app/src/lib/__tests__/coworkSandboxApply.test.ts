@@ -5,7 +5,9 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...
 
 import {
   applySandboxFile,
+  isFlintInternalPath,
   planSandboxApply,
+  sandboxCopyOfProjectFile,
   sandboxRelativePath,
 } from '../coworkSandboxApply'
 
@@ -61,5 +63,51 @@ describe('applySandboxFile', () => {
     const input = { session: 's1', path: 'a.md', project: '/p', overwrite: false }
     await expect(applySandboxFile(input)).resolves.toBe('created')
     expect(invoke).toHaveBeenCalledWith('agent_sandbox_apply_file', input)
+  })
+})
+
+describe('isFlintInternalPath', () => {
+  const sandbox = 'C:/Users/me/AppData/Roaming/Flint/data/agent-workspace/sessions/s1'
+  const data = 'C:/Users/me/AppData/Roaming/Flint/data'
+
+  it('leaves real session output alone', () => {
+    expect(isFlintInternalPath(sandbox, `${sandbox}/report.md`)).toBe(false)
+    expect(isFlintInternalPath(sandbox, 'src/app.go')).toBe(false)
+    expect(isFlintInternalPath(sandbox, 'C:/Users/me/proj/a.md')).toBe(false)
+  })
+
+  it('drops Flint’s own settings inside the sandbox', () => {
+    expect(isFlintInternalPath(sandbox, `${sandbox}/.jan/agent/agent.toml`)).toBe(true)
+    expect(isFlintInternalPath(sandbox, '.jan/agent/hooks.toml')).toBe(true)
+  })
+
+  it('drops the rest of the data folder: memory, logs, other sessions', () => {
+    expect(isFlintInternalPath(sandbox, `${data}/agent-workspace/memory/notes.md`)).toBe(true)
+    expect(isFlintInternalPath(sandbox, `${data}\\logs\\app.log`)).toBe(true)
+    expect(isFlintInternalPath(sandbox, `${data}/agent-workspace/sessions/s2/x.md`)).toBe(true)
+  })
+
+  it('keeps Flint-owned worktrees, which hold real work', () => {
+    expect(isFlintInternalPath(sandbox, `${data}/agent-workspace/worktrees/w1/main.go`)).toBe(false)
+  })
+
+  it('offers no Apply for an internal file', () => {
+    expect(planSandboxApply(sandbox, ['C:/proj'], `${sandbox}/.jan/agent/agent.toml`)).toBeNull()
+  })
+})
+
+describe('sandboxCopyOfProjectFile', () => {
+  const planFor = (path: string) =>
+    planSandboxApply('/data/sessions/s1', ['/work/proj'], path)
+
+  it('finds the sandbox copy mapped to a project file the way Apply maps it', () => {
+    const paths = ['/data/sessions/s1/proj/src/a.ts', 'notes.md']
+    expect(sandboxCopyOfProjectFile(paths, planFor, '/work/proj', 'src/a.ts')).toMatchObject({
+      path: '/data/sessions/s1/proj/src/a.ts',
+      plan: { source: 'proj/src/a.ts', destination: 'src/a.ts' },
+    })
+    expect(sandboxCopyOfProjectFile(paths, planFor, '/work/proj', 'notes.md')?.path).toBe('notes.md')
+    expect(sandboxCopyOfProjectFile(paths, planFor, '/work/proj', 'other.ts')).toBeNull()
+    expect(sandboxCopyOfProjectFile(paths, planFor, '/elsewhere', 'notes.md')).toBeNull()
   })
 })

@@ -57,6 +57,7 @@ import {
   tabId,
   projectKeyOf,
   projectTab,
+  sandboxTab,
   toggleDir,
   writeCountsByPath,
   type CodePanelState,
@@ -98,7 +99,12 @@ import {
   useBlameLabel,
   useCodeGitOverlays,
 } from '@/hooks/useCodeGitOverlays'
-import { revertHunk, type ChangeHunk } from '@/lib/codeGutter'
+import {
+  revertHunk,
+  sandboxHunks,
+  type ChangeHunk,
+} from '@/lib/codeGutter'
+import { createPortal } from 'react-dom'
 
 // The editor and its grammars load on first edit, not with the app.
 const CodeEditor = lazy(() => import('@/components/CodeEditor'))
@@ -162,6 +168,14 @@ type Props = {
   saveFile?: SaveUserEdit
   /** A save landed, so views of the tree (Changes) can re-read it. */
   onSaved?: () => void
+  /**
+   * The session sandbox copy a Review only run made of this project file
+   * (its path in the sandbox), mapped the way Apply to folder maps it. Its
+   * changes show as markers on the real file.
+   */
+  sandboxCopyFor?: (projectPath: string) => string | null
+  /** Copy that sandbox file over the project file. */
+  onApplySandboxCopy?: (projectPath: string) => void
 }
 
 type Conflict = {
@@ -197,6 +211,8 @@ export function CoworkCodePanel({
   extraFolders,
   saveFile = saveUserEdit,
   onSaved,
+  sandboxCopyFor,
+  onApplySandboxCopy,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -880,6 +896,38 @@ export function CoworkCodePanel({
     original: copyOfProject ? original : undefined,
     savedCount: userEdits.length,
   })
+  // A Review only run's own copy of this file: its changes as markers on the
+  // real one, a peek away, instead of changes against HEAD.
+  const agentCopy =
+    gitTab && !copyOfProject ? (sandboxCopyFor?.(gitTab.path) ?? null) : null
+  const [agentCopyText, setAgentCopyText] = useState<string | null>(null)
+  useEffect(() => {
+    setAgentCopyText(null)
+    if (!agentCopy || !workspacePath) return
+    const abs = resolveInRoot(workspacePath, agentCopy)
+    if (!abs) return
+    let alive = true
+    void fetch(getServiceHub().core().convertFileSrc(abs))
+      .then((res) => (res.ok ? res.text() : null))
+      .then((text) => alive && setAgentCopyText(text))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [agentCopy, workspacePath])
+  const agentHunks = useMemo(
+    () =>
+      agentCopyText !== null && activeBuffer?.text !== undefined
+        ? sandboxHunks(activeBuffer.text, agentCopyText)
+        : null,
+    [agentCopyText, activeBuffer?.text]
+  )
+  const editorHunks = agentHunks ?? overlays.hunks
+  const openAgentCopy = () => {
+    if (agentCopy && sessionKey) {
+      onStateChange(openTab(state, sandboxTab(agentCopy, sessionKey)))
+    }
+  }
   const blameLabel = useBlameLabel()
   const blameForEditor = useMemo(
     () =>
@@ -890,7 +938,24 @@ export function CoworkCodePanel({
   )
   const blameHover = useBlameHover()
   const [openHunk, setOpenHunk] = useState<ChangeHunk | null>(null)
-  useEffect(() => setOpenHunk(null), [activeId])
+  const showsAgentHunks = agentHunks !== null
+  useEffect(() => setOpenHunk(null), [activeId, showsAgentHunks])
+  // The element a peeked change renders into, inline in the editor.
+  const peekDom = useMemo(() => document.createElement('div'), [])
+  const peek = useMemo(
+    () => (openHunk ? { hunk: openHunk, dom: peekDom } : null),
+    [openHunk, peekDom]
+  )
+  // The same marker again closes its peek.
+  const toggleHunk = useCallback(
+    (hunk: ChangeHunk) =>
+      setOpenHunk((current) =>
+        current && current.start === hunk.start && current.kind === hunk.kind
+          ? null
+          : hunk
+      ),
+    []
+  )
   const revertOpenHunk = () => {
     if (!openHunk || !activeId) return
     const hunk = openHunk
@@ -1388,6 +1453,17 @@ export function CoworkCodePanel({
                         <WrapText className="size-3.5" />
                       </Button>
                       <CodeOverlayMenu />
+                      {agentCopy ? (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          onClick={openAgentCopy}
+                          title={t('common:codePanel.sandboxChangesHint')}
+                          data-testid="open-sandbox-copy"
+                        >
+                          {t('common:codePanel.openSandboxCopy')}
+                        </Button>
+                      ) : null}
                       <Button
                         size="xs"
                         variant="ghost"
@@ -1445,19 +1521,58 @@ export function CoworkCodePanel({
                               ? state.reveal
                               : null
                           }
-                          hunks={overlays.hunks}
+                          hunks={editorHunks}
                           blame={blameForEditor}
-                          onHunk={setOpenHunk}
+                          onHunk={toggleHunk}
                           onBlameHover={blameHover.onBlameHover}
+                          peek={peek}
+                          onPeekClose={() => setOpenHunk(null)}
                         />
                       </Suspense>
-                      {openHunk && (
-                        <HunkPopover
-                          hunk={openHunk}
-                          onRevert={revertOpenHunk}
-                          onClose={() => setOpenHunk(null)}
-                        />
-                      )}
+                      {openHunk &&
+                        createPortal(
+                          agentHunks ? (
+                            <HunkPopover
+                              hunk={openHunk}
+                              title={t('common:codePanel.sandboxChange', {
+                                line: openHunk.start,
+                              })}
+                              onClose={() => setOpenHunk(null)}
+                              actions={
+                                <>
+                                  <Button
+                                    size="xs"
+                                    variant="ghost"
+                                    onClick={openAgentCopy}
+                                    data-testid="peek-open-sandbox-copy"
+                                  >
+                                    {t('common:codePanel.openSandboxCopy')}
+                                  </Button>
+                                  {onApplySandboxCopy && active ? (
+                                    <Button
+                                      size="xs"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        onApplySandboxCopy(active.path)
+                                        setOpenHunk(null)
+                                      }}
+                                      data-testid="peek-apply-sandbox-copy"
+                                    >
+                                      {t('common:changes.applyToFolder')}
+                                    </Button>
+                                  ) : null}
+                                </>
+                              }
+                            />
+                          ) : (
+                            <HunkPopover
+                              hunk={openHunk}
+                              onRevert={revertOpenHunk}
+                              onClose={() => setOpenHunk(null)}
+                            />
+                          ),
+                          peekDom
+                        )}
                       {blameHover.hover && folder && (
                         <BlameCard
                           commit={blameHover.hover.commit}

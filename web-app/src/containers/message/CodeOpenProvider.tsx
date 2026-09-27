@@ -11,6 +11,7 @@ export const CodeOpenProvider = ({
   open,
   check,
   openDiff,
+  displayPath,
   children,
 }: {
   open: CodeOpen
@@ -18,9 +19,14 @@ export const CodeOpenProvider = ({
   check?: (path: string) => CodePathCheck
   /** Show a changed file in Changes. */
   openDiff?: (path: string) => void
+  /** The short form a path is shown as. */
+  displayPath?: (path: string) => string
   children: ReactNode
 }) => {
-  const tools = useMemo(() => ({ check, openDiff }), [check, openDiff])
+  const tools = useMemo(
+    () => ({ check, openDiff, displayPath }),
+    [check, openDiff, displayPath]
+  )
   return (
     <CodeOpenContext.Provider value={open}>
       <CodeOpenToolsContext.Provider value={tools}>

@@ -124,6 +124,34 @@ export function revertHunk(text: string, hunk: ChangeHunk): string {
     : joined
 }
 
+/** The line a change's inline peek opens under: its last line, or the
+ * marker line of a deletion. */
+export function peekLineOf(hunk: ChangeHunk): number {
+  return hunk.kind === 'deleted' ? Math.max(1, hunk.start - 1) : hunk.end
+}
+
+/**
+ * Markers for the real file saying how the session sandbox's copy differs
+ * from it: the hunks from the sandbox copy to the real text, turned around so
+ * each one reads as the sandbox's change (`oldLines` the real file's,
+ * `newLines` the sandbox's). Lines only the sandbox has sit on the real line
+ * they would follow; lines the sandbox dropped get the deletion triangle on
+ * the first of them.
+ */
+export function sandboxHunks(real: string, sandbox: string): ChangeHunk[] {
+  return computeHunks(sandbox, real).map((h) => {
+    const flipped = { oldLines: h.newLines, newLines: h.oldLines }
+    if (h.kind === 'added') {
+      return { kind: 'deleted', start: h.start + 1, end: h.start, ...flipped }
+    }
+    if (h.kind === 'deleted') {
+      const at = Math.max(1, h.start - 1)
+      return { kind: 'added', start: at, end: at, ...flipped }
+    }
+    return { ...h, ...flipped }
+  })
+}
+
 /** Line number to marker kind, for painting a gutter. */
 export function markersByLine(
   hunks: readonly ChangeHunk[]

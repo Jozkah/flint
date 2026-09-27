@@ -48,6 +48,10 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     'codePanel.unresolved.outside',
     'codePanel.unresolved.extra-folder',
     'codePanel.unresolved.no-session',
+    // Settings → Agent tools: "When a Review only run finishes" options.
+    'coworkReview.finish.keep',
+    'coworkReview.finish.ask',
+    'coworkReview.finish.auto',
     'coworkEmpty.sandbox.first',
     'coworkEmpty.sandbox.second',
     'coworkEmpty.sandbox.third',

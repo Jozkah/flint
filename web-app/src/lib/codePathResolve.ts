@@ -70,3 +70,46 @@ export function resolveCodePath(
   if (!ctx.hasSession) return { kind: 'unresolved', reason: 'no-session' }
   return { kind: 'sandbox', rel }
 }
+
+/**
+ * How a tool's path is shown: relative to the sandbox or folder it resolved
+ * into, else only the file name. Tool calls carry absolute paths deep in the
+ * data folder, which crowded out the part that says which file it is.
+ */
+export function shortToolPath(
+  resolved: ResolvedCodePath,
+  path: string,
+  /** Other attached folders, which the Code panel does not browse. */
+  folders: readonly string[] = []
+): string {
+  if (resolved.kind !== 'unresolved' && resolved.rel) return resolved.rel
+  for (const folder of folders) {
+    const rel = relativeToRoot(folder, path)
+    if (rel && rel !== path) return rel
+  }
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+/**
+ * The full path of a file listed in Changes, for opening it outside Flint.
+ * A Git row is relative to the tree the changes are in; a session row is the
+ * path the run wrote, absolute or relative to wherever it resolved.
+ */
+export function absoluteChangePath(
+  path: string,
+  source: 'git' | 'session',
+  roots: {
+    treeRoot: string | null
+    workspacePath: string | null
+    resolved: ResolvedCodePath
+  }
+): string | null {
+  if (isAbsolute(path)) return path
+  const join = (root: string | null, rel: string) =>
+    root ? `${root.replace(/[\\/]+$/, '')}/${rel.replace(/^\.\//, '')}` : null
+  if (source === 'git') return join(roots.treeRoot, path)
+  const { resolved } = roots
+  if (resolved.kind === 'sandbox') return join(roots.workspacePath, resolved.rel)
+  if (resolved.kind === 'project') return join(roots.treeRoot, resolved.rel)
+  return null
+}

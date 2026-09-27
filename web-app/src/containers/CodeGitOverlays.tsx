@@ -127,33 +127,45 @@ export function BlameCard({
   )
 }
 
-/** The inline diff of one clicked change marker, with Revert. */
+/**
+ * The diff of one clicked change marker, opened inline under its lines (a
+ * "peek"): Revert for a change against HEAD, or the actions a sandbox
+ * change offers. Escape or the marker again closes it.
+ */
 export function HunkPopover({
   hunk,
   onRevert,
   onClose,
+  title,
+  actions,
 }: {
   hunk: ChangeHunk
-  onRevert: () => void
+  onRevert?: () => void
   onClose: () => void
+  /** What the change is, when not a change against HEAD. */
+  title?: string
+  /** Replaces Revert. */
+  actions?: React.ReactNode
 }) {
   const { t } = useTranslation()
+  const label = title ?? t('common:codePanel.changeAt', { line: hunk.start })
   return (
     <div
       role="dialog"
-      aria-label={t('common:codePanel.changeAt', { line: hunk.start })}
+      aria-label={label}
       data-testid="hunk-popover"
-      className="absolute inset-x-3 top-2 z-20 max-h-[45%] overflow-auto rounded-lg border-[0.8px] border-border bg-popover font-mono text-xs shadow-pop"
+      className="mx-2 my-1 max-h-72 overflow-auto rounded-lg border-[0.8px] border-border bg-popover font-mono text-xs shadow-lift"
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
     >
       <div className="flex items-center gap-1 border-b border-dashed border-border px-2 py-1 font-sans">
-        <span className="flex-1 text-muted-foreground">
-          {t('common:codePanel.changeAt', { line: hunk.start })}
-        </span>
-        <Button size="xs" variant="ghost" onClick={onRevert} autoFocus>
-          <Undo2 className="size-3" />
-          {t('common:codePanel.revertChange')}
-        </Button>
+        <span className="flex-1 text-muted-foreground">{label}</span>
+        {actions}
+        {onRevert && !actions ? (
+          <Button size="xs" variant="ghost" onClick={onRevert} autoFocus>
+            <Undo2 className="size-3" />
+            {t('common:codePanel.revertChange')}
+          </Button>
+        ) : null}
         <Button
           size="icon-xs"
           variant="ghost"

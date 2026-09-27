@@ -25,7 +25,11 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getSandboxStatus } from '@/lib/agentTools'
 import type { SandboxStatus } from '@janhq/tauri-plugin-agent-tools-api'
-import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
+import {
+  useCoworkDisplay,
+  type ReviewOnlyFinish,
+} from '@/hooks/useCoworkDisplay'
+import { Segmented } from '@/components/ui/segmented'
 import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import {
   storePath,
@@ -70,6 +74,14 @@ const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 function AgentToolsContent() {
   const { t } = useTranslation()
   const hideCompletedTools = useCoworkDisplay((x) => x.hideCompletedTools)
+  const showPromptSnapshot = useCoworkDisplay((x) => x.showPromptSnapshot)
+  const setShowPromptSnapshot = useCoworkDisplay(
+    (x) => x.setShowPromptSnapshot
+  )
+  const reviewOnlyFinish = useCoworkDisplay((x) => x.reviewOnlyFinish)
+  const setReviewOnlyFinish = useCoworkDisplay((x) => x.setReviewOnlyFinish)
+  const showFilesReadyBar = useCoworkDisplay((x) => x.showFilesReadyBar)
+  const setShowFilesReadyBar = useCoworkDisplay((x) => x.setShowFilesReadyBar)
   const autoWorktree = useCoworkParallel((x) => x.autoWorktree)
   const setAutoWorktree = useCoworkParallel((x) => x.setAutoWorktree)
   const setHideCompletedTools = useCoworkDisplay(
@@ -276,6 +288,54 @@ function AgentToolsContent() {
                 data-testid="hide-completed-tools"
                 checked={hideCompletedTools}
                 onCheckedChange={setHideCompletedTools}
+              />
+            }
+          />
+          {/* The per-turn record of the request; still recorded when off,
+              and reachable from the session's details and timeline. */}
+          <CardItem
+            anchor="settings-agent-tools-model-received"
+            title={t('common:coworkDisplay.showModelReceived')}
+            description={t('common:coworkDisplay.showModelReceivedDescription')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="show-model-received"
+                checked={showPromptSnapshot}
+                onCheckedChange={setShowPromptSnapshot}
+              />
+            }
+          />
+          {/* What a finished Review only run does with its sandbox output.
+              Only new files are ever applied without asking. */}
+          <CardItem
+            anchor="settings-agent-tools-review-only-finish"
+            title={t('common:coworkReview.finishTitle')}
+            description={t('common:coworkReview.finishDescription')}
+            align="start"
+            actions={
+              <Segmented<ReviewOnlyFinish>
+                size="sm"
+                aria-label={t('common:coworkReview.finishTitle')}
+                value={reviewOnlyFinish}
+                onValueChange={setReviewOnlyFinish}
+                options={(['keep', 'ask', 'auto'] as const).map((value) => ({
+                  value,
+                  label: t(`common:coworkReview.finish.${value}`),
+                  testId: `review-only-finish-${value}`,
+                }))}
+              />
+            }
+          />
+          <CardItem
+            title={t('common:coworkReview.showBarTitle')}
+            description={t('common:coworkReview.showBarDescription')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="show-files-ready-bar"
+                checked={showFilesReadyBar}
+                onCheckedChange={setShowFilesReadyBar}
               />
             }
           />

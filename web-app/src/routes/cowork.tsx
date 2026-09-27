@@ -229,9 +229,14 @@ import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import {
   applySandboxFile,
+  isFlintInternalPath,
   planSandboxApply,
+  sandboxCopyOfProjectFile,
   sandboxRelativePath,
 } from '@/lib/coworkSandboxApply'
+import { probeSandboxFile } from '@/lib/coworkApplyAll'
+import { absoluteChangePath, shortToolPath } from '@/lib/codePathResolve'
+import type { SandboxApplyActions } from '@/containers/CoworkApplyAllDialog'
 import { CoworkRewind } from '@/containers/CoworkRewind'
 import { CoworkCodePanel } from '@/containers/CoworkCodePanel'
 import {
@@ -1214,6 +1219,20 @@ export function CoworkPage() {
     },
     [resolveToolPath, t]
   )
+  /**
+   * A tool path as shown: relative to the sandbox or the attached folder it
+   * is in, else just its name. The full path stays in the tooltip.
+   */
+  const displayToolPath = useCallback(
+    (path: string) =>
+      // Roots in order, for paths the Code panel cannot open (non-source).
+      shortToolPath(resolveToolPath(path), path, [
+        ...(workspacePath ? [workspacePath] : []),
+        ...(treeRoot ? [treeRoot] : []),
+        ...extraFolders,
+      ]),
+    [resolveToolPath, extraFolders, workspacePath, treeRoot]
+  )
   /** Show a changed file in Changes. */
   const openToolDiff = useCallback(
     (path: string) => setRail({ kind: 'diff', focusPath: path }),
@@ -1796,12 +1815,13 @@ export function CoworkPage() {
   )
   const fileDiffs = useMemo(
     () =>
+      // Writes into Flint's own data folder are bookkeeping, not output.
       collectCodeFileDiffs(
         displayedTurns,
         liveSubagents ?? session?.subagents ?? [],
         userEdits
-      ),
-    [displayedTurns, liveSubagents, session?.subagents, userEdits]
+      ).filter((f) => !isFlintInternalPath(workspacePath, f.path)),
+    [displayedTurns, liveSubagents, session?.subagents, userEdits, workspacePath]
   )
 
   // Read-only working-tree status for the attached repo, loaded lazily and kept
@@ -1810,6 +1830,40 @@ export function CoworkPage() {
   // Re-read when a run starts or settles: a run's edits, commits and undo
   // change the tree, and a list loaded before them contradicts its own diffs.
   const git = useCoworkGitStatus(treeRoot, running)
+  // "Show 'What the model received'": the per-turn row and its token count.
+  const showPromptSnapshot = useCoworkDisplay((s) => s.showPromptSnapshot)
+
+  // Review only output into the attached folder: per file, and "Apply all".
+  const applySessionId = session?.id
+  const refreshGit = git.refresh
+  const sandboxApply = useMemo<SandboxApplyActions | undefined>(() => {
+    if (!folder || !applySessionId) return undefined
+    const planFor = (path: string) =>
+      planSandboxApply(workspacePath, applyFolders, path)
+    return {
+      planFor,
+      probe: (_path, plan) =>
+        probeSandboxFile({
+          session: applySessionId,
+          path: plan.source,
+          project: plan.folder,
+          destination: plan.destination,
+        }),
+      apply: async (path, overwrite) => {
+        const plan = planFor(path)
+        if (!plan) throw new Error(`${path} is not in the session sandbox`)
+        const outcome = await applySandboxFile({
+          session: applySessionId,
+          path: plan.source,
+          project: plan.folder,
+          destination: plan.destination,
+          overwrite,
+        })
+        if (outcome !== 'exists') refreshGit()
+        return outcome
+      },
+    }
+  }, [folder, applySessionId, workspacePath, applyFolders, refreshGit])
 
   /**
    * Ask the backend to authorize this folder, then switch the session.
@@ -4996,6 +5050,7 @@ export function CoworkPage() {
             open={openToolPath}
             check={checkToolPath}
             openDiff={openToolDiff}
+            displayPath={displayToolPath}
           >
                     {uiMessages.map((whole, i) => {
                       // Each model round renders with its own rows beneath
@@ -5133,7 +5188,7 @@ export function CoworkPage() {
                           ).find((part) => part.type === 'data-prompt-snapshot')
                             ?.data as { id: string } | undefined
                           const ref = own ?? snapshotByMessageId.get(message.id)
-                          return ref ? (
+                          return ref && showPromptSnapshot ? (
                             <PromptSnapshotView
                               snapshotId={ref.id}
                               sessionId={session?.id}
@@ -5149,7 +5204,7 @@ export function CoworkPage() {
                             ?.data as
                             | { usage?: Usage; memory?: TurnMemory }
                             | undefined
-                          return data ? (
+                          return data && showPromptSnapshot ? (
                             <TurnUsageDetails
                               usage={fromCoworkUsage(data.usage)}
                               memory={data.memory}
@@ -5374,6 +5429,10 @@ export function CoworkPage() {
                 additions={changeCounts.additions}
                 deletions={changeCounts.deletions}
                 onReview={() => openRail({ kind: 'diff' })}
+                sessionId={session?.id}
+                running={running}
+                sandboxPaths={fileDiffs.map((f) => f.path)}
+                applyActions={sandboxApply}
               />
               {/* The pull request for the folder's branch, if it has one, with
                   the same mark the session carries in the sidebar. */}
@@ -5625,27 +5684,21 @@ export function CoworkPage() {
             applyPlanFor={(path) =>
               planSandboxApply(workspacePath, applyFolders, path)
             }
-            onApplyFile={
-              folder && session?.id
-                ? async (path, overwrite) => {
-                    const plan = planSandboxApply(
-                      workspacePath,
-                      applyFolders,
-                      path
-                    )
-                    if (!plan) throw new Error(`${path} is not in the session sandbox`)
-                    const outcome = await applySandboxFile({
-                      session: session.id,
-                      path: plan.source,
-                      project: plan.folder,
-                      destination: plan.destination,
-                      overwrite,
-                    })
-                    if (outcome !== 'exists') git.refresh()
-                    return outcome
-                  }
-                : undefined
-            }
+            onApplyFile={sandboxApply?.apply}
+            applyActions={sandboxApply}
+            displayPath={displayToolPath}
+            onOpenExternal={(path, source) => {
+              const absolute = absoluteChangePath(path, source, {
+                treeRoot,
+                workspacePath,
+                resolved: resolveToolPath(path),
+              })
+              if (!absolute) return
+              void serviceHub
+                .opener()
+                .openPath(absolute)
+                .catch((e) => toast.error(errorText(e)))
+            }}
             // The tree the changes are in, not the one the session is
             // attached to: a managed run's diff lives in its worktree.
             folder={treeRoot}
@@ -5701,6 +5754,37 @@ export function CoworkPage() {
             onAddToChat={addCodeToChat}
             onAttach={() => void attachFolder()}
             onClose={closeRail}
+            // A Review only run's copy of a project file shows as markers on
+            // the real one, found the way Apply to folder maps it.
+            sandboxCopyFor={(projectPath) =>
+              sandboxApply
+                ? (sandboxCopyOfProjectFile(
+                    fileDiffs.map((f) => f.path),
+                    sandboxApply.planFor,
+                    folder,
+                    projectPath
+                  )?.plan.source ?? null)
+                : null
+            }
+            onApplySandboxCopy={(projectPath) => {
+              if (!sandboxApply) return
+              const copy = sandboxCopyOfProjectFile(
+                fileDiffs.map((f) => f.path),
+                sandboxApply.planFor,
+                folder,
+                projectPath
+              )
+              if (!copy) return
+              // Asked from the change itself, with the difference in view.
+              void sandboxApply
+                .apply(copy.path, true)
+                .then(() => toast.success(t('common:changes.applyReplaced')))
+                .catch((e) =>
+                  toast.error(
+                    t('common:changes.applyFailed', { message: errorText(e) })
+                  )
+                )
+            }}
             // Hand edits save where the agent's writes would, under the same
             // grant; with no live grant a real-tree mode stays read-only.
             editAccess={{

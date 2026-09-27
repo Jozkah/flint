@@ -3,6 +3,7 @@ import { findFocusedRow } from '@/lib/coworkDiffs'
 import type { OriginEntry } from '@/lib/coworkOrigins'
 import {
   ChevronDown,
+  ExternalLink,
   GitBranch,
   Maximize2,
   Minimize2,
@@ -12,6 +13,10 @@ import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { DiffView } from '@/components/DiffView'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
+import {
+  CoworkApplyAllDialog,
+  type SandboxApplyActions,
+} from '@/containers/CoworkApplyAllDialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,7 +177,8 @@ function commonFolder(paths: readonly string[]): string[] {
 function groupSessionFiles(
   files: CoworkFileDiff[],
   isSandboxPath: ((path: string) => boolean) | undefined,
-  t: (key: string, vars?: Record<string, unknown>) => string
+  t: (key: string, vars?: Record<string, unknown>) => string,
+  displayPath?: (path: string) => string
 ): SessionGroup[] {
   const inSandbox = files.filter((f) => !isSandboxPath || isSandboxPath(f.path))
   const inPlace = files.filter((f) => isSandboxPath && !isSandboxPath(f.path))
@@ -194,7 +200,7 @@ function groupSessionFiles(
       key: 'sandbox',
       title: t('common:changes.sandboxOutput'),
       files: inSandbox,
-      show: (path) => path,
+      show: (path) => displayPath?.(path) ?? path,
     })
   }
   return groups
@@ -213,10 +219,13 @@ function FileRow({
   isExpanded,
   onToggle,
   onOpen,
+  onOpenExternal,
   after,
   children,
   rowId,
 }: {
+  /** Open this file in its default app. Absent where it cannot be. */
+  onOpenExternal?: () => void
   /** Identifies the row for `focusPath`. */
   rowId?: string
   path: string
@@ -269,7 +278,32 @@ function FileRow({
           </span>
         ) : null}
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="truncate font-mono text-xs text-fg-2">{path}</span>
+          {onOpen ? (
+            // The name opens the file in the Code panel, as a path in a tool
+            // card does; the rest of the row still expands the diff.
+            <span
+              role="link"
+              tabIndex={0}
+              data-testid="changes-open-path"
+              title={t('common:codePanel.openPathHint', { path })}
+              className="truncate font-mono text-xs text-fg-2 underline decoration-dotted underline-offset-2 hover:text-foreground"
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                onOpen()
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.stopPropagation()
+                e.preventDefault()
+                onOpen()
+              }}
+            >
+              {path}
+            </span>
+          ) : (
+            <span className="truncate font-mono text-xs text-fg-2">{path}</span>
+          )}
           {subtitle ? (
             <span className="truncate text-[11px] text-muted-foreground">
               {subtitle}
@@ -293,14 +327,30 @@ function FileRow({
           −{deletions}
         </span>
       </button>
-      {onOpen ? (
-        <button
-          type="button"
-          onClick={onOpen}
-          className="absolute top-1.5 right-2 rounded-md bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground opacity-0 shadow-lift transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/row:opacity-100"
-        >
-          {openLabel}
-        </button>
+      {onOpen || onOpenExternal ? (
+        <span className="absolute top-1.5 right-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100">
+          {onOpen ? (
+            <button
+              type="button"
+              onClick={onOpen}
+              className="rounded-md bg-card px-1.5 py-0.5 text-[10.5px] text-secondary-foreground shadow-lift hover:text-foreground"
+            >
+              {openLabel}
+            </button>
+          ) : null}
+          {onOpenExternal ? (
+            <button
+              type="button"
+              onClick={onOpenExternal}
+              data-testid="changes-open-external"
+              aria-label={t('common:changes.openExternally')}
+              title={t('common:changes.openExternally')}
+              className="grid place-items-center rounded-md bg-card px-1.5 py-0.5 text-secondary-foreground shadow-lift hover:text-foreground"
+            >
+              <ExternalLink size={11} />
+            </button>
+          ) : null}
+        </span>
       ) : null}
       {after}
       {isExpanded ? (
@@ -454,7 +504,22 @@ export function CoworkDiffPanel({
   branch,
   projectName,
   focusPath,
+  applyActions,
+  onOpenExternal,
+  displayPath,
 }: {
+  /** A session file's short form: relative to the sandbox, as tool cards show it. */
+  displayPath?: (path: string) => string
+  /**
+   * Open a changed file in its default app: `git` rows are relative to the
+   * project, `session` rows are the paths the run wrote.
+   */
+  onOpenExternal?: (path: string, source: 'git' | 'session') => void
+  /**
+   * Dry run and apply for "Apply all to folder". Absent: no Apply all (no
+   * folder, or no session to resolve the sandbox from).
+   */
+  applyActions?: SandboxApplyActions
   /**
    * A file to bring into view and expand, e.g. from a tool card's "Open
    * diff". Matched by path, whichever list it is in.
@@ -512,6 +577,7 @@ export function CoworkDiffPanel({
 }): React.ReactElement {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
+  const [applyAllOpen, setApplyAllOpen] = useState(false)
 
   const gitFiles = useMemo(() => git.status?.files ?? [], [git.status])
   const originByPath = useMemo(
@@ -523,8 +589,8 @@ export function CoworkDiffPanel({
   // Files Flint edited where they live are not sandbox output: listing them
   // under "Session sandbox" said the real project was untouched.
   const sessionGroups = useMemo(
-    () => groupSessionFiles(sandboxFiles, isSandboxPath, t),
-    [sandboxFiles, isSandboxPath, t]
+    () => groupSessionFiles(sandboxFiles, isSandboxPath, t, displayPath),
+    [sandboxFiles, isSandboxPath, t, displayPath]
   )
   const labelled = (showProject ? 1 : 0) + sessionGroups.length > 1
 
@@ -713,6 +779,11 @@ export function CoworkDiffPanel({
                         onOpen={
                           onOpenFile ? () => onOpenFile(file.path) : undefined
                         }
+                        onOpenExternal={
+                          onOpenExternal
+                            ? () => onOpenExternal(file.path, 'git')
+                            : undefined
+                        }
                         subtitle={
                           file.origPath
                             ? t('common:changes.renamedFrom', {
@@ -764,12 +835,31 @@ export function CoworkDiffPanel({
           ) : null}
 
           {/* Cowork output · Session sandbox */}
-          {sessionGroups.map((group) => (
+          {sessionGroups.map((group) => {
+            // Apply all sits in the sandbox section's header, offered only
+            // when at least one of its files can be applied.
+            const applyAll =
+              group.key === 'sandbox' &&
+              applyActions &&
+              group.files.some((f) => applyActions.planFor(f.path))
+            return (
             <section key={group.key}>
-              {labelled ? (
-                <h3 className="sticky top-0 z-[1] truncate bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
-                  {group.title}
-                </h3>
+              {labelled || applyAll ? (
+                <div className="sticky top-0 z-[1] flex items-center gap-2 bg-card px-3 pt-2 pb-1.5">
+                  <h3 className="min-w-0 flex-1 truncate text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase" title={group.title}>
+                    {labelled ? group.title : null}
+                  </h3>
+                  {applyAll ? (
+                    <button
+                      type="button"
+                      data-testid="apply-all"
+                      onClick={() => setApplyAllOpen(true)}
+                      className="shrink-0 rounded-md border-[0.8px] border-border bg-card px-2 py-0.5 text-[11px] font-medium text-secondary-foreground hover:text-foreground"
+                    >
+                      {t('common:changes.applyAll')}
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
               <div>
                 {group.files.map((file) => {
@@ -786,6 +876,11 @@ export function CoworkDiffPanel({
                       path={group.show(file.path)}
                       onOpen={
                         onOpenFile ? () => onOpenFile(file.path) : undefined
+                      }
+                      onOpenExternal={
+                        onOpenExternal
+                          ? () => onOpenExternal(file.path, 'session')
+                          : undefined
                       }
                       after={
                         onApplyFile && plan ? (
@@ -833,7 +928,18 @@ export function CoworkDiffPanel({
                 })}
               </div>
             </section>
-          ))}
+            )
+          })}
+          {applyActions ? (
+            <CoworkApplyAllDialog
+              open={applyAllOpen}
+              onOpenChange={setApplyAllOpen}
+              paths={sessionGroups
+                .filter((g) => g.key === 'sandbox')
+                .flatMap((g) => g.files.map((f) => f.path))}
+              actions={applyActions}
+            />
+          ) : null}
 
           {/* Nothing anywhere. */}
           {!showProject && !showSandbox ? (
