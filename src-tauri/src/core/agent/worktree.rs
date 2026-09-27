@@ -237,7 +237,11 @@ pub fn operation_in_progress(repo: &Path) -> Option<OperationInProgress> {
         run(repo, &["rev-parse", "--git-path", name])
             .map(|p| {
                 let p = PathBuf::from(p);
-                if p.is_absolute() { p } else { repo.join(p) }
+                if p.is_absolute() {
+                    p
+                } else {
+                    repo.join(p)
+                }
             })
             .is_ok_and(|p| p.exists())
     };
@@ -253,7 +257,12 @@ pub fn operation_in_progress(repo: &Path) -> Option<OperationInProgress> {
         return None;
     };
     let mut unresolved: Vec<String> = run(repo, &["diff", "--name-only", "--diff-filter=U"])
-        .map(|out| out.lines().map(str::to_string).filter(|l| !l.is_empty()).collect())
+        .map(|out| {
+            out.lines()
+                .map(str::to_string)
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
     unresolved.sort();
     unresolved.dedup();
@@ -324,28 +333,62 @@ pub fn short_id(session_id: &str) -> String {
     format!("{:016x}", fnv1a(session_id.as_bytes()))[..10].to_string()
 }
 
-/// A branch name made from a session's title, `flint/<words>-<short id>`.
+/// Words a request is phrased with that say nothing about the work, left out
+/// of branch names: "can you please edit x so that y" becomes `edit-x-y`.
+const BRANCH_FILLER: &[&str] = &[
+    "a", "an", "the", "and", "or", "but", "so", "that", "this", "these", "those", "to", "of", "in",
+    "on", "for", "with", "at", "by", "from", "into", "is", "are", "be", "it", "its", "can",
+    "could", "would", "will", "should", "you", "your", "i", "me", "my", "we", "our", "us",
+    "please", "pls", "want", "need", "like", "hey", "hi", "just", "also", "then", "some", "do",
+    "does", "make", "sure", "let", "lets", "help", "how", "what", "why", "if", "when", "there",
+    "all",
+];
+
+/// At most this many words of the title go into a branch name.
+const BRANCH_MAX_WORDS: usize = 5;
+/// And at most this many characters, cut on a word boundary.
+const BRANCH_MAX_CHARS: usize = 36;
+
+/// A branch name made from a session's title, `flint/<words>-<id>`.
 ///
-/// The title makes `git branch` readable; the short id keeps two sessions with
-/// the same title apart. Only ASCII letters and digits survive, so no title can
-/// spell a ref outside the namespace.
+/// The title makes `git branch` readable: its first few meaningful words, with
+/// filler ("can you", "so that", "please") dropped and never a word cut in
+/// half. A six-character id keeps two sessions with the same title apart. Only
+/// ASCII letters and digits survive, so no title can spell a ref outside the
+/// namespace.
 pub fn titled_branch_name(title: &str, session_id: &str) -> String {
+    let id = &short_id(session_id)[..6];
+    let lowered = title.to_ascii_lowercase();
+    let all: Vec<&str> = lowered
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    let meaningful: Vec<&str> = all
+        .iter()
+        .copied()
+        .filter(|w| !BRANCH_FILLER.contains(w))
+        .collect();
+    // A title made only of filler still reads better than `session`.
+    let source = if meaningful.is_empty() {
+        &all
+    } else {
+        &meaningful
+    };
     let mut words = String::new();
-    for c in title.chars() {
-        if c.is_ascii_alphanumeric() {
-            words.push(c.to_ascii_lowercase());
-        } else if !words.is_empty() && !words.ends_with('-') {
-            words.push('-');
-        }
-        if words.len() >= 32 {
+    for w in source.iter().take(BRANCH_MAX_WORDS) {
+        let w = &w[..w.len().min(BRANCH_MAX_CHARS)];
+        if !words.is_empty() && words.len() + 1 + w.len() > BRANCH_MAX_CHARS {
             break;
         }
+        if !words.is_empty() {
+            words.push('-');
+        }
+        words.push_str(w);
     }
-    let words = words.trim_matches('-');
     if words.is_empty() {
-        format!("{FLINT_BRANCH_PREFIX}session-{}", short_id(session_id))
+        format!("{FLINT_BRANCH_PREFIX}session-{id}")
     } else {
-        format!("{FLINT_BRANCH_PREFIX}{words}-{}", short_id(session_id))
+        format!("{FLINT_BRANCH_PREFIX}{words}-{id}")
     }
 }
 
@@ -1109,9 +1152,9 @@ pub fn list(repo: &Path, worktrees_root: &Path) -> Vec<WorktreeRecord> {
     let mut head: Option<String> = None;
     let mut branch: Option<String> = None;
     let flush = |path: &mut Option<String>,
-                     head: &mut Option<String>,
-                     branch: &mut Option<String>,
-                     found: &mut Vec<WorktreeRecord>| {
+                 head: &mut Option<String>,
+                 branch: &mut Option<String>,
+                 found: &mut Vec<WorktreeRecord>| {
         let (Some(p), Some(h), Some(b)) = (path.take(), head.take(), branch.take()) else {
             return;
         };
@@ -1203,11 +1246,15 @@ pub fn validate_repo_rel(p: &str) -> Result<(), String> {
         ));
     }
     if p.starts_with('/') {
-        return Err(format!("{p} is absolute; only paths inside the worktree are allowed"));
+        return Err(format!(
+            "{p} is absolute; only paths inside the worktree are allowed"
+        ));
     }
     let bytes = p.as_bytes();
     if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
-        return Err(format!("{p} names a drive; only paths inside the worktree are allowed"));
+        return Err(format!(
+            "{p} names a drive; only paths inside the worktree are allowed"
+        ));
     }
     for segment in p.split('/') {
         if segment == ".." {
@@ -1227,7 +1274,11 @@ pub fn validate_repo_rel(p: &str) -> Result<(), String> {
 #[cfg(unix)]
 fn link_dir(target: &Path, link: &Path) -> Result<(), String> {
     std::os::unix::fs::symlink(target, link).map_err(|e| {
-        format!("could not link {} -> {}: {e}", link.display(), target.display())
+        format!(
+            "could not link {} -> {}: {e}",
+            link.display(),
+            target.display()
+        )
     })
 }
 
@@ -1342,14 +1393,31 @@ mod tests {
         let marker = base.join("hook-ran.txt");
         std::fs::write(
             repo.join(".git/hooks/post-checkout"),
-            format!("#!/bin/sh\necho ran > '{}'\n", marker.to_string_lossy().replace('\\', "/")),
+            format!(
+                "#!/bin/sh\necho ran > '{}'\n",
+                marker.to_string_lossy().replace('\\', "/")
+            ),
         )
         .unwrap();
         let checkout = base.join("checkout");
-        run(&repo, &["worktree", "add", "-q", "-b", "isolated", &checkout.to_string_lossy()]).expect("worktree add");
+        run(
+            &repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                "-b",
+                "isolated",
+                &checkout.to_string_lossy(),
+            ],
+        )
+        .expect("worktree add");
         assert!(checkout.join("f.txt").exists());
         assert!(!marker.exists(), "the repository's post-checkout hook ran");
-        let _ = run(&repo, &["worktree", "remove", "--force", &checkout.to_string_lossy()]);
+        let _ = run(
+            &repo,
+            &["worktree", "remove", "--force", &checkout.to_string_lossy()],
+        );
         let _ = std::fs::remove_dir_all(&base);
     }
 
@@ -1366,7 +1434,8 @@ mod tests {
         headless_case(
             &name,
             || {
-                let base = std::env::temp_dir().join(format!("jan-wt-restore {}", std::process::id()));
+                let base =
+                    std::env::temp_dir().join(format!("jan-wt-restore {}", std::process::id()));
                 let _ = std::fs::remove_dir_all(&base);
                 let repo = base.join("repo with space");
                 std::fs::create_dir_all(&repo).unwrap();
@@ -1384,10 +1453,13 @@ mod tests {
                 // re-renders does, so a window with a lifetime of milliseconds
                 // has many chances to be caught.
                 for _ in 0..3 {
-                    let status = super::super::git::status(&repo, super::super::git::DiffScope::All).unwrap();
+                    let status =
+                        super::super::git::status(&repo, super::super::git::DiffScope::All)
+                            .unwrap();
                     assert_eq!(status.branch.as_deref(), Some("main"));
                     let _ = prune(&repo);
-                    let record = ensure(&repo, &roots, "059d197c-c025-57a1-90ec-b71420e584f0").unwrap();
+                    let record =
+                        ensure(&repo, &roots, "059d197c-c025-57a1-90ec-b71420e584f0").unwrap();
                     assert_eq!(state(&record), WorktreeState::Ready);
                     assert_eq!(list(&repo, &roots).len(), 1);
                     let made = super::super::checkpoint::capture(
@@ -1481,7 +1553,10 @@ mod tests {
     #[test]
     fn absolute_resolves_dots_without_touching_the_disk() {
         let cwd = std::env::current_dir().unwrap();
-        assert_eq!(absolute(Path::new("./a/./b/../c")).unwrap(), cwd.join("a").join("c"));
+        assert_eq!(
+            absolute(Path::new("./a/./b/../c")).unwrap(),
+            cwd.join("a").join("c")
+        );
         let abs = cwd.join("x");
         assert_eq!(absolute(&abs).unwrap(), abs);
     }
@@ -1628,7 +1703,10 @@ mod tests {
             .env("GIT_EDITOR", "true")
             .output()
             .expect("git");
-        assert!(!out.status.success(), "git {args:?} was expected to stop on a conflict");
+        assert!(
+            !out.status.success(),
+            "git {args:?} was expected to stop on a conflict"
+        );
     }
 
     /// `main` and `topic` both edit a.txt; returns the fixture on `main` with
@@ -1747,11 +1825,7 @@ mod tests {
         assert_eq!(paths.len(), sessions.len());
         assert_eq!(branches.len(), sessions.len());
         for r in &records {
-            assert!(
-                r.branch.starts_with("flint/fix-the-parser-"),
-                "{}",
-                r.branch
-            );
+            assert!(r.branch.starts_with("flint/fix-parser-"), "{}", r.branch);
             assert_eq!(r.base_branch.as_deref(), Some("main"));
         }
         // Each writes its own file without seeing the others'.
@@ -1769,10 +1843,27 @@ mod tests {
     #[test]
     fn a_titled_branch_is_readable_and_confined_to_its_namespace() {
         let b = titled_branch_name("Fix: the ../../main Parser!", "id-1");
-        assert!(b.starts_with("flint/fix-the-main-parser-"), "{b}");
+        assert!(b.starts_with("flint/fix-main-parser-"), "{b}");
         assert!(!b.contains(".."));
         assert!(titled_branch_name("***", "id-1").starts_with("flint/session-"));
         assert_ne!(titled_branch_name("x", "a"), titled_branch_name("x", "b"));
+    }
+
+    #[test]
+    fn a_titled_branch_drops_filler_and_keeps_whole_words() {
+        let b = titled_branch_name(
+            "can you edit bodycam.as so that the drone camera keeps its FOV",
+            "id-1",
+        );
+        let id = &short_id("id-1")[..6];
+        assert_eq!(b, format!("flint/edit-bodycam-as-drone-camera-{id}"));
+        let only_filler = titled_branch_name("can you do that", "id-1");
+        assert_eq!(only_filler, format!("flint/can-you-do-that-{id}"));
+        let long = titled_branch_name("refactorthewholeenormousrenderingpipelinenow", "id-1");
+        assert!(
+            long.len() <= "flint/".len() + BRANCH_MAX_CHARS + 7,
+            "{long}"
+        );
     }
 
     #[test]
@@ -2206,7 +2297,13 @@ mod tests {
         };
         assert!(discard_owned(&decoy, &f.worktrees, false).is_err());
         let still = std::process::Command::new("git")
-            .args(["-C", &decoy.source_root, "rev-parse", "--verify", "refs/heads/precious"])
+            .args([
+                "-C",
+                &decoy.source_root,
+                "rev-parse",
+                "--verify",
+                "refs/heads/precious",
+            ])
             .output()
             .expect("git");
         assert!(still.status.success(), "the unrelated branch was deleted");
@@ -2372,9 +2469,18 @@ mod tests {
         std::fs::write(f.repo.join("cache/c.txt"), "c").unwrap();
         apply_optimizations(&wt, &src, &["cache".to_string()], &["keep".to_string()])
             .expect("optimize");
-        assert!(wt.join("keep/k.txt").exists(), "kept path should be present");
-        assert!(!wt.join("drop/d.txt").exists(), "dropped path should be outside the cone");
+        assert!(
+            wt.join("keep/k.txt").exists(),
+            "kept path should be present"
+        );
+        assert!(
+            !wt.join("drop/d.txt").exists(),
+            "dropped path should be outside the cone"
+        );
         // The link was placed after the narrowing, and reaches the source.
-        assert_eq!(std::fs::read_to_string(wt.join("cache/c.txt")).unwrap(), "c");
+        assert_eq!(
+            std::fs::read_to_string(wt.join("cache/c.txt")).unwrap(),
+            "c"
+        );
     }
 }
