@@ -16,14 +16,17 @@ import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { shouldIntercept } from '@/lib/webPreview'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useNativeWebPreview } from '@/hooks/useNativeWebPreview'
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
 
 /**
  * App-wide in-app web preview. Mounted once at the root. Installs a
  * capture-phase click listener that opens qualifying external links in the
- * preview, and renders the current URL in a sandboxed iframe on the side rail
- * or as a floating PIP. Renders nothing while closed.
+ * preview, and renders the current URL on the side rail or as a floating PIP.
+ * On desktop the page is shown in a native child webview laid over the panel
+ * body (so sites that forbid framing still render); the sandboxed iframe is
+ * the fallback when that is unavailable. Renders nothing while closed.
  */
 export function WebPreviewHost() {
   const { t } = useTranslation()
@@ -36,6 +39,14 @@ export function WebPreviewHost() {
   const canGoForward = useWebPreview((s) => s.canGoForward())
   const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
   const [nonce, setNonce] = useState(0)
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
+  const currentUrl = useWebPreview.getState().url()
+  const mode = useNativeWebPreview({
+    enabled: open && !!currentUrl,
+    url: currentUrl,
+    reloadNonce: nonce,
+    container: viewport,
+  })
 
   useEffect(() => {
     if (!interceptLinks) return
@@ -157,25 +168,36 @@ export function WebPreviewHost() {
   const body = (
     <div className="flex h-full min-h-0 flex-col">
       {toolbar}
-      <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">
-          {t('common:webPreview.blockedBanner')}
-        </span>
-        <button
-          type="button"
-          className="shrink-0 underline"
-          onClick={() => void serviceHub.opener().openUrl(url)}
-        >
-          {t('common:webPreview.openExternal')}
-        </button>
-      </div>
-      <iframe
-        key={`${url}#${nonce}`}
-        title={url}
-        src={url}
-        sandbox={SANDBOX}
-        className="min-h-0 w-full flex-1 border-0 bg-card"
-      />
+      {mode === 'iframe' ? (
+        <>
+          <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate">
+              {t('common:webPreview.blockedBanner')}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 underline"
+              onClick={() => void serviceHub.opener().openUrl(url)}
+            >
+              {t('common:webPreview.openExternal')}
+            </button>
+          </div>
+          <iframe
+            key={`${url}#${nonce}`}
+            title={url}
+            src={url}
+            sandbox={SANDBOX}
+            className="min-h-0 w-full flex-1 border-0 bg-card"
+          />
+        </>
+      ) : (
+        // The native webview is positioned over this box.
+        <div
+          ref={setViewport}
+          data-testid="wp-native-viewport"
+          className="min-h-0 w-full flex-1 bg-card"
+        />
+      )}
     </div>
   )
 

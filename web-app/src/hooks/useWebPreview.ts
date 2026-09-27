@@ -13,6 +13,7 @@ type WebPreviewState = {
   canGoForward: () => boolean
   openUrl: (url: string) => void
   navigate: (url: string) => void
+  replaceUrl: (url: string) => void
   close: () => void
   setSurface: (s: PreviewSurface) => void
   back: () => void
@@ -47,6 +48,17 @@ export const useWebPreview = create<WebPreviewState>((set, get) => ({
     set((s) => {
       const history = [...s.history.slice(0, s.index + 1), url]
       return { history, index: history.length - 1 }
+    })
+  },
+  // Redirects inside the native view rewrite the current entry instead of
+  // growing the history.
+  replaceUrl: (url) => {
+    if (!isPreviewableUrl(url)) return
+    set((s) => {
+      if (s.index < 0) return {}
+      const history = [...s.history]
+      history[s.index] = url
+      return { history }
     })
   },
   close: () => set({ open: false }),

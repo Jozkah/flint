@@ -269,6 +269,16 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_delete,
         core::preview::preview_register,
         core::preview::preview_release,
+        // Native web preview (child webview)
+        core::web_preview::web_preview_create,
+        core::web_preview::web_preview_navigate,
+        core::web_preview::web_preview_back,
+        core::web_preview::web_preview_forward,
+        core::web_preview::web_preview_reload,
+        core::web_preview::web_preview_set_bounds,
+        core::web_preview::web_preview_show,
+        core::web_preview::web_preview_hide,
+        core::web_preview::web_preview_close,
         // App lifecycle
         confirm_exit,
         cancel_exit,

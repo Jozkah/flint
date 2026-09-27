@@ -311,7 +311,7 @@ png = { version = "0.17", optional = true }
 version = "2.8.5"
 optional = true
 default-features = false
-features = ["protocol-asset", "macos-private-api", "test"]
+features = ["protocol-asset", "macos-private-api", "test", "unstable"]
 
 [dev-dependencies]
 
