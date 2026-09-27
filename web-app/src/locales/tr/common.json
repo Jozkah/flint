@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Web araması kapalı, bu yüzden Flint bağlantı açamaz ve web'de arama yapamaz.",
+    "enable": "Aç ve gönder",
+    "sendAnyway": "Yine de gönder"
+  },
   "groups": {
     "newGroup": "Yeni grup",
     "groupName": "Grup adı",

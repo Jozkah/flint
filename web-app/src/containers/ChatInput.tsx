@@ -1,3 +1,4 @@
+import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -762,6 +763,8 @@ const ChatInput = memo(function ChatInput({
   const { maxTokens: liveMaxTokens, configuredCtxLen } =
     useTokensCount(threadMessages || [])
   const [message, setMessage] = useState('')
+  // A send held back because it needs the web and web search is off.
+  const [webOffPrompt, setWebOffPrompt] = useState<string | null>(null)
   const [dropdownToolsAvailable, setDropdownToolsAvailable] = useState(false)
   const [tooltipShown, setTooltipShown] = useState<
     'tools' | 'assistants' | false
@@ -879,8 +882,13 @@ const ChatInput = memo(function ChatInput({
 
   const handleSendMessage = async (
     typed: string,
-    { steer = false }: { steer?: boolean } = {}
+    { steer = false, allowNoWeb = false }: { steer?: boolean; allowNoWeb?: boolean } = {}
   ) => {
+    setWebOffPrompt(null)
+    if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
+      setWebOffPrompt(typed)
+      return
+    }
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
       setMessage(
         unavailableModel
@@ -3431,6 +3439,42 @@ const ChatInput = memo(function ChatInput({
           </div>
         </div>
       </div>
+
+      {webOffPrompt !== null && (
+        <div
+          role="status"
+          data-testid="web-search-off-prompt"
+          className="mt-1.5 mx-1 flex flex-wrap items-center gap-2 rounded-lg border-[0.8px] border-border bg-card px-3 py-1.5 text-xs"
+        >
+          <Globe className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            {t('common:webSearchOff.text')}
+          </span>
+          <Button
+            size="sm"
+            variant="default"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              const held = webOffPrompt
+              setWebSearchEnabled(true)
+              void handleSendMessage(held, { allowNoWeb: true })
+            }}
+          >
+            {t('common:webSearchOff.enable')}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs"
+            onClick={() => {
+              const held = webOffPrompt
+              void handleSendMessage(held, { allowNoWeb: true })
+            }}
+          >
+            {t('common:webSearchOff.sendAnyway')}
+          </Button>
+        </div>
+      )}
 
       {message && (
         <div

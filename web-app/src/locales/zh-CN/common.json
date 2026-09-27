@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "网页搜索已关闭，Flint 无法打开链接或搜索网页。",
+    "enable": "开启并发送",
+    "sendAnyway": "仍然发送"
+  },
   "groups": {
     "newGroup": "新建分组",
     "groupName": "分组名称",

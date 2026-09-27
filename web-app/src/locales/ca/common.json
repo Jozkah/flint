@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "La cerca web està desactivada, així que Flint no pot obrir enllaços ni cercar al web.",
+    "enable": "Activa i envia",
+    "sendAnyway": "Envia igualment"
+  },
   "groups": {
     "newGroup": "Grup nou",
     "groupName": "Nom del grup",

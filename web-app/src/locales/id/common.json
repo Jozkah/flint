@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Pencarian web nonaktif, jadi Flint tidak bisa membuka tautan atau mencari di web.",
+    "enable": "Aktifkan dan kirim",
+    "sendAnyway": "Tetap kirim"
+  },
   "groups": {
     "newGroup": "Grup baru",
     "groupName": "Nama grup",

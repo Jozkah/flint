@@ -1854,6 +1854,11 @@
     "serverLogs": "Local API server logs"
   },
   "more": "More",
+  "webSearchOff": {
+    "text": "Web search is off, so Flint can't open links or search the web.",
+    "enable": "Turn on and send",
+    "sendAnyway": "Send anyway"
+  },
   "open": "Open",
   "skillsScopeGlobal": "These skills apply to every chat.",
   "pr": {

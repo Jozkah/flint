@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Vyhledávání na webu je vypnuté, takže Flint nemůže otevírat odkazy ani hledat na webu.",
+    "enable": "Zapnout a odeslat",
+    "sendAnyway": "Přesto odeslat"
+  },
   "groups": {
     "newGroup": "Nová skupina",
     "groupName": "Název skupiny",

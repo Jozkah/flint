@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "ウェブ検索がオフのため、Flint はリンクを開いたりウェブを検索したりできません。",
+    "enable": "オンにして送信",
+    "sendAnyway": "このまま送信"
+  },
   "groups": {
     "newGroup": "新しいグループ",
     "groupName": "グループ名",
