@@ -609,6 +609,12 @@
       "absent": "없음"
     }
   },
+  "worktreeRecovery": {
+    "hint": "이전 워크트리 {{count}}개",
+    "review": "검토",
+    "collapse": "숨기기",
+    "dontShow": "이 폴더에서 다시 표시 안 함"
+  },
   "coworkParallel": {
     "settingTitle": "Git 폴더의 새 세션은 자체 worktree에서 작업",
     "settingDescription": "Git 저장소에 연결된 새 세션마다 자체 worktree와 브랜치(flint/<title>)가 생겨, 여러 세션이 서로나 내 체크아웃을 건드리지 않고 한 폴더에서 동시에 작업할 수 있습니다. 각 브랜치는 세션에서 검토, 병합 또는 폐기하세요.",
@@ -634,6 +640,10 @@
     "discardConfirm": "폐기",
     "discarded": "세션의 worktree를 제거했습니다",
     "notCarried": "worktree로 옮겨지지 않음: {{files}}의 커밋되지 않은 변경 사항.",
+    "notCarriedCount": "체크아웃의 커밋되지 않은 변경 {{formattedCount}}개가 옮겨지지 않았습니다",
+    "notCarriedDetails": "세부 정보",
+    "notCarriedMore": "외 {{formattedCount}}개",
+    "notCarriedDismiss": "닫기",
     "prPrompt": "남은 변경 사항을 커밋하고 {{branch}} 브랜치를 푸시한 뒤, 이 세션의 변경 사항을 요약한 {{base}} 대상 풀 리퀘스트를 여세요.",
     "copyOffer": "이 폴더는 Git 저장소가 아닙니다. 다른 세션과 내 편집을 건드리지 않도록 복사본에서 작업하고, 준비되면 변경 사항을 되돌려 적용하세요.",
     "workOnCopy": "복사본에서 작업",

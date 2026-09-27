@@ -824,6 +824,12 @@
       "absent": "不存在"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} 个早先的工作树",
+    "review": "查看",
+    "collapse": "隐藏",
+    "dontShow": "此文件夹不再显示"
+  },
   "coworkParallel": {
     "settingTitle": "Git 文件夹中的新会话在各自的 worktree 中工作",
     "settingDescription": "连接到 Git 仓库的每个新会话都会获得自己的 worktree 和分支（flint/<title>），这样多个会话可以同时在同一文件夹中工作，互不干扰，也不会触碰你的检出。可在会话中审查、合并或丢弃每个分支。",
@@ -849,6 +855,10 @@
     "discardConfirm": "丢弃",
     "discarded": "已删除会话的 worktree",
     "notCarried": "未带入 worktree：{{files}} 中未提交的更改。",
+    "notCarriedCount": "你的检出中有 {{formattedCount}} 处未提交的更改未被带入",
+    "notCarriedDetails": "详情",
+    "notCarriedMore": "以及另外 {{formattedCount}} 个",
+    "notCarriedDismiss": "关闭",
     "prPrompt": "提交剩余的更改，推送分支 {{branch}}，并向 {{base}} 发起一个总结本会话更改的拉取请求。",
     "copyOffer": "此文件夹不是 Git 仓库。在副本上工作，以免影响其他会话和你自己的编辑；准备好后再把更改应用回去。",
     "workOnCopy": "在副本上工作",

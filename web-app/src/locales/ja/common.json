@@ -654,6 +654,12 @@
       "absent": "なし"
     }
   },
+  "worktreeRecovery": {
+    "hint": "以前のワークツリー {{count}} 件",
+    "review": "確認",
+    "collapse": "隠す",
+    "dontShow": "このフォルダーでは今後表示しない"
+  },
   "coworkParallel": {
     "settingTitle": "Git フォルダーの新しいセッションは専用の worktree で作業する",
     "settingDescription": "Git リポジトリに接続した新しいセッションごとに専用の worktree とブランチ (flint/<title>) が作られるため、複数のセッションが同じフォルダーで互いにもあなたのチェックアウトにも触れずに同時に作業できます。各ブランチはセッションからレビュー、マージ、破棄できます。",
@@ -679,6 +685,10 @@
     "discardConfirm": "破棄",
     "discarded": "セッションの worktree を削除しました",
     "notCarried": "worktree に持ち込まれなかったもの: {{files}} の未コミットの変更。",
+    "notCarriedCount": "チェックアウトの未コミットの変更 {{formattedCount}} 件は引き継がれていません",
+    "notCarriedDetails": "詳細",
+    "notCarriedMore": "他 {{formattedCount}} 件",
+    "notCarriedDismiss": "閉じる",
     "prPrompt": "残りの変更をコミットし、ブランチ {{branch}} をプッシュして、このセッションの変更をまとめた {{base}} 向けのプルリクエストを作成してください。",
     "copyOffer": "このフォルダーは Git リポジトリではありません。他のセッションやあなた自身の編集に触れないようコピーで作業し、準備ができたら変更を反映してください。",
     "workOnCopy": "コピーで作業",

@@ -541,6 +541,12 @@
       "absent": "Ausente"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree(s) anterior(es)",
+    "review": "Revisar",
+    "collapse": "Ocultar",
+    "dontShow": "Não mostrar novamente para esta pasta"
+  },
   "coworkParallel": {
     "settingTitle": "Novas sessões em uma pasta Git trabalham em seu próprio worktree",
     "settingDescription": "Cada nova sessão em um repositório Git recebe seu próprio worktree e branch (flint/<title>), para que várias sessões trabalhem na mesma pasta sem interferir umas nas outras nem no seu checkout. Revise, mescle ou descarte cada branch pela sessão.",
@@ -566,6 +572,10 @@
     "discardConfirm": "Descartar",
     "discarded": "Worktree da sessão removido",
     "notCarried": "Não levado para o worktree: alterações não commitadas em {{files}}.",
+    "notCarriedCount": "{{formattedCount}} alteração(ões) não confirmada(s) do seu checkout não foram levadas",
+    "notCarriedDetails": "Detalhes",
+    "notCarriedMore": "e mais {{formattedCount}}",
+    "notCarriedDismiss": "Dispensar",
     "prPrompt": "Faça commit das alterações restantes, envie o branch {{branch}} e abra um pull request para {{base}} resumindo as alterações desta sessão.",
     "copyOffer": "Esta pasta não é um repositório Git. Trabalhe em uma cópia para não mexer em outras sessões nem nas suas próprias edições; aplique as alterações quando estiver pronto.",
     "workOnCopy": "Trabalhar em uma cópia",

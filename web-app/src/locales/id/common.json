@@ -540,6 +540,12 @@
       "absent": "Tidak ada"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree sebelumnya",
+    "review": "Tinjau",
+    "collapse": "Sembunyikan",
+    "dontShow": "Jangan tampilkan lagi untuk folder ini"
+  },
   "coworkParallel": {
     "settingTitle": "Sesi baru di folder Git bekerja di worktree sendiri",
     "settingDescription": "Setiap sesi baru di repositori Git mendapat worktree dan branch sendiri (flint/<title>), sehingga banyak sesi dapat bekerja di satu folder sekaligus tanpa saling mengganggu atau menyentuh checkout Anda. Tinjau, gabungkan, atau buang setiap branch dari sesi.",
@@ -565,6 +571,10 @@
     "discardConfirm": "Buang",
     "discarded": "Worktree sesi dihapus",
     "notCarried": "Tidak dibawa ke worktree: perubahan yang belum di-commit di {{files}}.",
+    "notCarriedCount": "{{formattedCount}} perubahan yang belum di-commit di checkout Anda tidak dibawa",
+    "notCarriedDetails": "Detail",
+    "notCarriedMore": "dan {{formattedCount}} lainnya",
+    "notCarriedDismiss": "Tutup",
     "prPrompt": "Commit perubahan yang tersisa, push branch {{branch}}, dan buka pull request ke {{base}} yang merangkum perubahan sesi ini.",
     "copyOffer": "Folder ini bukan repositori Git. Bekerjalah di salinan agar sesi lain dan suntingan Anda sendiri tidak tersentuh; terapkan perubahan kembali saat siap.",
     "workOnCopy": "Bekerja di salinan",

@@ -540,6 +540,12 @@
       "absent": "Không có"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree trước đó",
+    "review": "Xem lại",
+    "collapse": "Ẩn",
+    "dontShow": "Không hiển thị lại cho thư mục này"
+  },
   "coworkParallel": {
     "settingTitle": "Phiên mới trong thư mục Git làm việc trong worktree riêng",
     "settingDescription": "Mỗi phiên mới gắn với một kho Git có worktree và nhánh riêng (flint/<title>), để nhiều phiên có thể làm việc cùng lúc trong một thư mục mà không đụng vào nhau hay vào bản checkout của bạn. Xem lại, hợp nhất hoặc bỏ từng nhánh ngay trong phiên.",
@@ -565,6 +571,10 @@
     "discardConfirm": "Bỏ",
     "discarded": "Đã xóa worktree của phiên",
     "notCarried": "Không mang vào worktree: thay đổi chưa commit trong {{files}}.",
+    "notCarriedCount": "{{formattedCount}} thay đổi chưa commit trong checkout của bạn không được chuyển sang",
+    "notCarriedDetails": "Chi tiết",
+    "notCarriedMore": "và {{formattedCount}} mục khác",
+    "notCarriedDismiss": "Bỏ qua",
     "prPrompt": "Commit các thay đổi còn lại, push nhánh {{branch}} và mở pull request vào {{base}} tóm tắt các thay đổi của phiên này.",
     "copyOffer": "Thư mục này không phải kho Git. Hãy làm việc trên một bản sao để không đụng tới các phiên khác và chỉnh sửa của bạn; áp dụng thay đổi trở lại khi sẵn sàng.",
     "workOnCopy": "Làm việc trên bản sao",

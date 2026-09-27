@@ -542,6 +542,12 @@
       "absent": "Brak"
     }
   },
+  "worktreeRecovery": {
+    "hint": "Wcześniejsze worktree: {{count}}",
+    "review": "Przejrzyj",
+    "collapse": "Ukryj",
+    "dontShow": "Nie pokazuj więcej dla tego folderu"
+  },
   "coworkParallel": {
     "settingTitle": "Nowe sesje w folderze Git pracują we własnym worktree",
     "settingDescription": "Każda nowa sesja w repozytorium Git dostaje własny worktree i gałąź (flint/<title>), dzięki czemu wiele sesji może pracować w jednym folderze naraz, nie wchodząc sobie w drogę ani nie zmieniając twojego checkoutu. Przejrzyj, scal lub odrzuć każdą gałąź z poziomu sesji.",
@@ -567,6 +573,10 @@
     "discardConfirm": "Odrzuć",
     "discarded": "Usunięto worktree sesji",
     "notCarried": "Nie przeniesiono do worktree: niezatwierdzone zmiany w {{files}}.",
+    "notCarriedCount": "Niezatwierdzone zmiany z Twojego checkoutu nie zostały przeniesione: {{formattedCount}}",
+    "notCarriedDetails": "Szczegóły",
+    "notCarriedMore": "i {{formattedCount}} więcej",
+    "notCarriedDismiss": "Zamknij",
     "prPrompt": "Zatwierdź pozostałe zmiany, wypchnij gałąź {{branch}} i otwórz pull request do {{base}} podsumowujący zmiany z tej sesji.",
     "copyOffer": "Ten folder nie jest repozytorium Git. Pracuj na kopii, aby nie naruszać innych sesji ani własnych zmian; zastosuj zmiany, gdy będziesz gotowy.",
     "workOnCopy": "Pracuj na kopii",

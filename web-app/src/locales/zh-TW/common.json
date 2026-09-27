@@ -540,6 +540,12 @@
       "absent": "不存在"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} 個先前的工作樹",
+    "review": "檢視",
+    "collapse": "隱藏",
+    "dontShow": "此資料夾不再顯示"
+  },
   "coworkParallel": {
     "settingTitle": "Git 資料夾中的新工作階段在各自的 worktree 中工作",
     "settingDescription": "連接到 Git 儲存庫的每個新工作階段都會取得自己的 worktree 與分支（flint/<title>），讓多個工作階段能同時在同一資料夾中工作，互不干擾，也不會動到你的簽出。可在工作階段中審閱、合併或捨棄每個分支。",
@@ -565,6 +571,10 @@
     "discardConfirm": "捨棄",
     "discarded": "已移除工作階段的 worktree",
     "notCarried": "未帶入 worktree：{{files}} 中未提交的變更。",
+    "notCarriedCount": "你的檢出中有 {{formattedCount}} 處未提交的變更未被帶入",
+    "notCarriedDetails": "詳細資料",
+    "notCarriedMore": "以及另外 {{formattedCount}} 個",
+    "notCarriedDismiss": "關閉",
     "prPrompt": "提交剩餘的變更，推送分支 {{branch}}，並向 {{base}} 開啟一個總結本工作階段變更的提取要求。",
     "copyOffer": "此資料夾不是 Git 儲存庫。在副本上工作，以免影響其他工作階段與你自己的編輯；準備好後再把變更套用回去。",
     "workOnCopy": "在副本上工作",

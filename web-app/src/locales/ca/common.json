@@ -542,6 +542,12 @@
       "absent": "No present"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree(s) anterior(s)",
+    "review": "Revisa",
+    "collapse": "Amaga",
+    "dontShow": "No ho tornis a mostrar per a aquesta carpeta"
+  },
   "coworkParallel": {
     "settingTitle": "Les sessions noves en una carpeta Git treballen en el seu propi worktree",
     "settingDescription": "Cada sessió nova en un repositori Git obté el seu propi worktree i branca (flint/<title>), perquè moltes sessions treballin alhora a la mateixa carpeta sense tocar-se entre elles ni tocar la teva còpia de treball. Revisa, fusiona o descarta cada branca des de la sessió.",
@@ -567,6 +573,10 @@
     "discardConfirm": "Descarta",
     "discarded": "S'ha eliminat el worktree de la sessió",
     "notCarried": "No s'ha portat al worktree: canvis sense confirmar a {{files}}.",
+    "notCarriedCount": "{{formattedCount}} canvi(s) sense confirmar del teu checkout no s'han traslladat",
+    "notCarriedDetails": "Detalls",
+    "notCarriedMore": "i {{formattedCount}} més",
+    "notCarriedDismiss": "Descarta",
     "prPrompt": "Confirma els canvis restants, puja la branca {{branch}} i obre una pull request cap a {{base}} que resumeixi els canvis d'aquesta sessió.",
     "copyOffer": "Aquesta carpeta no és un repositori Git. Treballa en una còpia perquè no es toquin altres sessions ni els teus canvis; aplica els canvis quan estiguis a punt.",
     "workOnCopy": "Treballa en una còpia",

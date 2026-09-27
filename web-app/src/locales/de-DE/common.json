@@ -540,6 +540,12 @@
       "absent": "Nicht vorhanden"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} frühere(r) Worktree(s)",
+    "review": "Ansehen",
+    "collapse": "Ausblenden",
+    "dontShow": "Für diesen Ordner nicht mehr anzeigen"
+  },
   "coworkParallel": {
     "settingTitle": "Neue Sitzungen in einem Git-Ordner arbeiten in einem eigenen Worktree",
     "settingDescription": "Jede neue Sitzung in einem Git-Repository erhält einen eigenen Worktree und Branch (flint/<title>), damit viele Sitzungen gleichzeitig im selben Ordner arbeiten können, ohne sich gegenseitig oder deinen Checkout zu berühren. Prüfe, merge oder verwirf jeden Branch in der Sitzung.",
@@ -565,6 +571,10 @@
     "discardConfirm": "Verwerfen",
     "discarded": "Worktree der Sitzung entfernt",
     "notCarried": "Nicht in den Worktree übernommen: nicht committete Änderungen in {{files}}.",
+    "notCarriedCount": "{{formattedCount}} nicht committete Änderung(en) in deinem Checkout wurden nicht übernommen",
+    "notCarriedDetails": "Details",
+    "notCarriedMore": "und {{formattedCount}} weitere",
+    "notCarriedDismiss": "Schließen",
     "prPrompt": "Committe alle verbleibenden Änderungen, pushe den Branch {{branch}} und öffne einen Pull Request nach {{base}}, der die Änderungen dieser Sitzung zusammenfasst.",
     "copyOffer": "Dieser Ordner ist kein Git-Repository. Arbeite an einer Kopie, damit andere Sitzungen und deine eigenen Änderungen unberührt bleiben; übernimm die Änderungen, wenn du bereit bist.",
     "workOnCopy": "An einer Kopie arbeiten",

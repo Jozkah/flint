@@ -542,6 +542,12 @@
       "absent": "Chybí"
     }
   },
+  "worktreeRecovery": {
+    "hint": "Dřívější worktree: {{count}}",
+    "review": "Zkontrolovat",
+    "collapse": "Skrýt",
+    "dontShow": "Pro tuto složku už nezobrazovat"
+  },
   "coworkParallel": {
     "settingTitle": "Nové relace ve složce Git pracují ve vlastním worktree",
     "settingDescription": "Každá nová relace v repozitáři Git dostane vlastní worktree a větev (flint/<title>), takže více relací může pracovat v jedné složce najednou, aniž by se ovlivňovaly navzájem nebo tvůj checkout. Každou větev zkontroluj, slouč nebo zahoď přímo z relace.",
@@ -567,6 +573,10 @@
     "discardConfirm": "Zahodit",
     "discarded": "Worktree relace odstraněn",
     "notCarried": "Nepřeneseno do worktree: necommitnuté změny v {{files}}.",
+    "notCarriedCount": "Nepotvrzené změny z vašeho checkoutu nebyly přeneseny: {{formattedCount}}",
+    "notCarriedDetails": "Podrobnosti",
+    "notCarriedMore": "a dalších {{formattedCount}}",
+    "notCarriedDismiss": "Zavřít",
     "prPrompt": "Commitni zbývající změny, pushni větev {{branch}} a otevři pull request do {{base}}, který shrne změny této relace.",
     "copyOffer": "Tato složka není repozitář Git. Pracuj na kopii, aby se nedotkla jiných relací ani tvých vlastních úprav; změny aplikuj, až budeš připraven.",
     "workOnCopy": "Pracovat na kopii",

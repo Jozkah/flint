@@ -543,6 +543,12 @@
       "absent": "Absent"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree(s) précédent(s)",
+    "review": "Examiner",
+    "collapse": "Masquer",
+    "dontShow": "Ne plus afficher pour ce dossier"
+  },
   "coworkParallel": {
     "settingTitle": "Les nouvelles sessions dans un dossier Git travaillent dans leur propre worktree",
     "settingDescription": "Chaque nouvelle session rattachée à un dépôt Git reçoit son propre worktree et sa propre branche (flint/<title>), pour que plusieurs sessions puissent travailler dans le même dossier sans se gêner ni toucher à votre copie de travail. Relisez, fusionnez ou abandonnez chaque branche depuis la session.",
@@ -568,6 +574,10 @@
     "discardConfirm": "Abandonner",
     "discarded": "Worktree de la session supprimé",
     "notCarried": "Non repris dans le worktree : modifications non commitées dans {{files}}.",
+    "notCarriedCount": "{{formattedCount}} modification(s) non validée(s) de votre checkout n'ont pas été reprises",
+    "notCarriedDetails": "Détails",
+    "notCarriedMore": "et {{formattedCount}} de plus",
+    "notCarriedDismiss": "Ignorer",
     "prPrompt": "Commite les modifications restantes, pousse la branche {{branch}} et ouvre une pull request vers {{base}} qui résume les modifications de cette session.",
     "copyOffer": "Ce dossier n'est pas un dépôt Git. Travaillez sur une copie pour ne pas toucher aux autres sessions ni à vos propres modifications ; appliquez les changements quand vous êtes prêt.",
     "workOnCopy": "Travailler sur une copie",

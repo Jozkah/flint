@@ -822,6 +822,12 @@
       "absent": "Yok"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} önceki worktree",
+    "review": "İncele",
+    "collapse": "Gizle",
+    "dontShow": "Bu klasör için bir daha gösterme"
+  },
   "coworkParallel": {
     "settingTitle": "Git klasöründeki yeni oturumlar kendi worktree'lerinde çalışır",
     "settingDescription": "Bir Git deposuna bağlanan her yeni oturum kendi worktree'sini ve dalını (flint/<title>) alır; böylece birçok oturum aynı klasörde birbirine ve senin çalışma kopyana dokunmadan aynı anda çalışabilir. Her dalı oturumdan incele, birleştir veya at.",
@@ -847,6 +853,10 @@
     "discardConfirm": "At",
     "discarded": "Oturumun worktree'si kaldırıldı",
     "notCarried": "Worktree'ye taşınmadı: {{files}} içindeki commit edilmemiş değişiklikler.",
+    "notCarriedCount": "Checkout'unuzdaki {{formattedCount}} commit edilmemiş değişiklik aktarılmadı",
+    "notCarriedDetails": "Ayrıntılar",
+    "notCarriedMore": "ve {{formattedCount}} tane daha",
+    "notCarriedDismiss": "Kapat",
     "prPrompt": "Kalan değişiklikleri commit et, {{branch}} dalını push et ve bu oturumun değişikliklerini özetleyen, {{base}} dalına bir pull request aç.",
     "copyOffer": "Bu klasör bir Git deposu değil. Diğer oturumlara ve kendi düzenlemelerine dokunulmaması için bir kopya üzerinde çalış; hazır olduğunda değişiklikleri geri uygula.",
     "workOnCopy": "Kopya üzerinde çalış",

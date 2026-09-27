@@ -610,6 +610,12 @@
       "absent": "मौजूद नहीं"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} पुराने worktree",
+    "review": "देखें",
+    "collapse": "छिपाएँ",
+    "dontShow": "इस फ़ोल्डर के लिए फिर न दिखाएँ"
+  },
   "coworkParallel": {
     "settingTitle": "Git फ़ोल्डर में नए सत्र अपने अलग worktree में काम करते हैं",
     "settingDescription": "Git रिपॉज़िटरी से जुड़े हर नए सत्र को अपना worktree और ब्रांच (flint/<title>) मिलता है, ताकि कई सत्र एक ही फ़ोल्डर में एक साथ काम कर सकें और न एक-दूसरे को छुएँ, न आपके checkout को। हर ब्रांच की समीक्षा, merge या उसे त्यागना सत्र से ही करें।",
@@ -635,6 +641,10 @@
     "discardConfirm": "त्यागें",
     "discarded": "सत्र का worktree हटाया गया",
     "notCarried": "worktree में नहीं लाया गया: {{files}} में uncommitted बदलाव।",
+    "notCarriedCount": "आपके checkout के {{formattedCount}} अनकमिटेड बदलाव साथ नहीं लाए गए",
+    "notCarriedDetails": "विवरण",
+    "notCarriedMore": "और {{formattedCount}}",
+    "notCarriedDismiss": "हटाएँ",
     "prPrompt": "बचे हुए बदलाव commit करो, ब्रांच {{branch}} push करो और {{base}} में एक pull request खोलो जो इस सत्र के बदलावों का सारांश दे।",
     "copyOffer": "यह फ़ोल्डर Git रिपॉज़िटरी नहीं है। एक कॉपी पर काम करें ताकि दूसरे सत्र और आपके अपने बदलाव प्रभावित न हों; तैयार होने पर बदलाव वापस लागू करें।",
     "workOnCopy": "कॉपी पर काम करें",

@@ -631,6 +631,12 @@
       "absent": "Non presente"
     }
   },
+  "worktreeRecovery": {
+    "hint": "{{count}} worktree precedente/i",
+    "review": "Rivedi",
+    "collapse": "Nascondi",
+    "dontShow": "Non mostrare più per questa cartella"
+  },
   "coworkParallel": {
     "settingTitle": "Le nuove sessioni in una cartella Git lavorano nel proprio worktree",
     "settingDescription": "Ogni nuova sessione collegata a un repository Git riceve un proprio worktree e branch (flint/<title>), così più sessioni possono lavorare nella stessa cartella senza interferire tra loro o con il tuo checkout. Rivedi, unisci o scarta ogni branch dalla sessione.",
@@ -656,6 +662,10 @@
     "discardConfirm": "Scarta",
     "discarded": "Worktree della sessione rimosso",
     "notCarried": "Non portato nel worktree: modifiche non committate in {{files}}.",
+    "notCarriedCount": "{{formattedCount}} modifica/e non committata/e del tuo checkout non sono state riportate",
+    "notCarriedDetails": "Dettagli",
+    "notCarriedMore": "e altri {{formattedCount}}",
+    "notCarriedDismiss": "Ignora",
     "prPrompt": "Committa le modifiche rimanenti, esegui il push del branch {{branch}} e apri una pull request verso {{base}} che riassuma le modifiche di questa sessione.",
     "copyOffer": "Questa cartella non è un repository Git. Lavora su una copia per non toccare le altre sessioni né le tue modifiche; applica le modifiche quando sei pronto.",
     "workOnCopy": "Lavora su una copia",
