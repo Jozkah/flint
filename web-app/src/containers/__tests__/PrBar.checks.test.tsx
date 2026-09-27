@@ -108,6 +108,33 @@ describe('PrBar named checks', () => {
     expect(useMessageQueue.getState().getQueue('s1')).toHaveLength(0)
   })
 
+  it('queues nothing when the backend could not confirm the head', async () => {
+    seed('s1')
+    invoke.mockResolvedValue({
+      kind: 'unavailable',
+      reason: 'the GitHub CLI (gh) is not installed',
+      details_url: null,
+      head_verified: false,
+    })
+    render(<PrBar folder={FOLDER} sessionId="s1" />)
+    openMenu()
+    fireEvent.click(await screen.findByTestId('pr-check-fix'))
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent_pr_check_log', expect.anything()))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(useMessageQueue.getState().getQueue('s1')).toHaveLength(0)
+  })
+
+  it('queues nothing when the log call itself fails', async () => {
+    seed('s1')
+    invoke.mockRejectedValue(new Error('ipc down'))
+    render(<PrBar folder={FOLDER} sessionId="s1" />)
+    openMenu()
+    fireEvent.click(await screen.findByTestId('pr-check-fix'))
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('agent_pr_check_log', expect.anything()))
+    await new Promise((r) => setTimeout(r, 20))
+    expect(useMessageQueue.getState().getQueue('s1')).toHaveLength(0)
+  })
+
   it('shows nothing for a session that does not own the pull request', () => {
     seed('s2')
     render(<PrBar folder={FOLDER} sessionId="s1" />)

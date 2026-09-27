@@ -356,7 +356,13 @@ pub enum CheckLog {
     Stale { current_head_sha: String },
     /// No log to show: an external check, a log GitHub no longer keeps, or a
     /// `gh` failure. The check's own page is still linked.
-    Unavailable { reason: String, details_url: Option<String> },
+    ///
+    /// `head_verified` says whether GitHub confirmed the pull request's head
+    /// is still `head_sha` before the log could not be had. Only then may a
+    /// fix be requested without a log: "unavailable" also covers a head that
+    /// could not be checked at all (gh missing, signed out, API error), and a
+    /// check on a head nobody confirmed says nothing about the code now.
+    Unavailable { reason: String, details_url: Option<String>, head_verified: bool },
 }
 
 /// What one bounded `gh` call printed.
@@ -423,9 +429,17 @@ pub(crate) fn check_log_with(
     job_id: Option<u64>,
     details_url: Option<String>,
 ) -> CheckLog {
+    // Before the head is confirmed, nothing may be queued on this answer.
     let unavailable = |reason: &str, details_url: Option<String>| CheckLog::Unavailable {
         reason: reason.to_string(),
         details_url,
+        head_verified: false,
+    };
+    // After: the pull request still points at `head_sha`; only the log is missing.
+    let verified_unavailable = |reason: &str, details_url: Option<String>| CheckLog::Unavailable {
+        reason: reason.to_string(),
+        details_url,
+        head_verified: true,
     };
     let details_url = web_link(details_url.as_deref());
     if !is_pr_url(pr_url) {
@@ -463,7 +477,7 @@ pub(crate) fn check_log_with(
     // 2. Only a GitHub Actions job has a log `gh` can read.
     let Some(job_id) = job_id.or_else(|| details_url.as_deref().and_then(job_id_from_details_url))
     else {
-        return unavailable("this check runs outside GitHub Actions", details_url);
+        return verified_unavailable("this check runs outside GitHub Actions", details_url);
     };
 
     // 3. The job ran on this commit, not on an earlier push of the branch.
@@ -474,7 +488,7 @@ pub(crate) fn check_log_with(
         ".head_sha",
     ]));
     if !job.ok {
-        return unavailable(
+        return verified_unavailable(
             &format!("could not read the job: {}", job.stderr.trim()),
             details_url,
         );
@@ -496,14 +510,14 @@ pub(crate) fn check_log_with(
     ]));
     if !log.ok {
         let why = log.stderr.trim();
-        return unavailable(
+        return verified_unavailable(
             if why.is_empty() { "GitHub returned no log for this job" } else { why },
             details_url,
         );
     }
     let (excerpt, truncated) = excerpt_failed_log(&log.stdout, log.truncated);
     if excerpt.trim().is_empty() {
-        return unavailable("the job has no failed-step log", details_url);
+        return verified_unavailable("the job has no failed-step log", details_url);
     }
     CheckLog::Log { excerpt, truncated, head_sha: current }
 }
@@ -629,6 +643,7 @@ pub async fn agent_pr_check_log(
             return CheckLog::Unavailable {
                 reason: "the GitHub CLI (gh) is not installed".to_string(),
                 details_url: web_link(details_url.as_deref()),
+                head_verified: false,
             };
         };
         let cwd = std::path::PathBuf::from(project);
@@ -639,7 +654,11 @@ pub async fn agent_pr_check_log(
     });
     match task.await {
         Ok(result) => result,
-        Err(e) => CheckLog::Unavailable { reason: e.to_string(), details_url: None },
+        Err(e) => CheckLog::Unavailable {
+            reason: e.to_string(),
+            details_url: None,
+            head_verified: false,
+        },
     }
 }
 
@@ -793,6 +812,7 @@ mod tests {
             CheckLog::Unavailable {
                 reason: "this check runs outside GitHub Actions".into(),
                 details_url: Some("https://circleci.com/gh/o/r/9".into()),
+                head_verified: true,
             }
         );
         assert_eq!(n, 1);
@@ -881,5 +901,44 @@ mod tests {
         assert!(!out.ok);
         assert_eq!(out.stderr, "gh did not answer in time");
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn a_head_github_could_not_confirm_is_never_reported_as_verified() {
+        // gh fails on the head read itself (signed out, API down, rate limit).
+        let mut n = 0;
+        let mut run = |_: &[String]| {
+            n += 1;
+            GhOutput { ok: false, stderr: "HTTP 502".into(), ..GhOutput::default() }
+        };
+        let got = check_log_with(&mut run, URL, SHA, Some(222), None);
+        assert!(
+            matches!(got, CheckLog::Unavailable { head_verified: false, .. }),
+            "{got:?}"
+        );
+        assert_eq!(n, 1, "nothing past the head read is attempted");
+        // An unreadable answer is no confirmation either.
+        let mut run = |_: &[String]| ok("not json");
+        assert!(matches!(
+            check_log_with(&mut run, URL, SHA, Some(222), None),
+            CheckLog::Unavailable { head_verified: false, .. }
+        ));
+    }
+
+    #[test]
+    fn a_missing_log_after_a_confirmed_head_says_the_head_was_verified() {
+        let mut calls = 0;
+        let mut run = |_: &[String]| {
+            calls += 1;
+            match calls {
+                1 => ok(&format!(r#"{{"headRefOid":"{SHA}"}}"#)),
+                2 => ok(&format!("{SHA}\n")),
+                _ => GhOutput { ok: false, stderr: "log expired".into(), ..GhOutput::default() },
+            }
+        };
+        assert!(matches!(
+            check_log_with(&mut run, URL, SHA, Some(222), None),
+            CheckLog::Unavailable { head_verified: true, .. }
+        ));
     }
 }

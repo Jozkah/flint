@@ -122,6 +122,7 @@ describe('buildCheckRepairPrompt', () => {
       kind: 'unavailable',
       reason: 'this check runs outside GitHub Actions',
       details_url: external.details_url,
+      head_verified: true,
     })
     expect(text).toContain('Check details: https://circleci.com/gh/o/r/9')
     expect(text).toContain('No log could be fetched')
@@ -179,6 +180,26 @@ describe('requestCheckRepair', () => {
     expect(d.queues.s1).toBeUndefined()
   })
 
+  it('queues nothing when GitHub could not confirm the head, whatever the reason', async () => {
+    for (const reason of ['the GitHub CLI (gh) is not installed', 'could not read the pull request: HTTP 502']) {
+      const d = deps({ kind: 'unavailable', reason, details_url: failed.details_url, head_verified: false })
+      expect(await requestCheckRepair(input, d)).toEqual({ status: 'unverified', reason })
+      expect(d.queues.s1).toBeUndefined()
+      expect(d.refresh).not.toHaveBeenCalled()
+    }
+  })
+
+  it('queues without a log once the head is confirmed and only the log is missing', async () => {
+    const d = deps({
+      kind: 'unavailable',
+      reason: 'the job has no failed-step log',
+      details_url: failed.details_url,
+      head_verified: true,
+    })
+    expect(await requestCheckRepair(input, d)).toMatchObject({ status: 'queued', withLog: false })
+    expect(d.queues.s1[0].text).toContain('No log could be fetched')
+  })
+
   it('does not queue the same check on the same head twice', async () => {
     const d = deps({ kind: 'log', excerpt: 'x', truncated: false, head_sha: SHA })
     await requestCheckRepair(input, d)
@@ -191,6 +212,7 @@ describe('requestCheckRepair', () => {
       kind: 'unavailable',
       reason: 'this check runs outside GitHub Actions',
       details_url: external.details_url,
+      head_verified: true,
     })
     const out = await requestCheckRepair({ ...input, check: external }, d)
     expect(out).toMatchObject({ status: 'queued', withLog: false })

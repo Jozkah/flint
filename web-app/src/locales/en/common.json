@@ -1953,6 +1953,7 @@
     "fixQueued": "Asked this session to fix \"{{name}}\". Nothing is pushed without your approval.",
     "fixAlreadyQueued": "A fix for this check is already waiting in this session.",
     "fixStale": "The pull request has new commits since this check ran. Status refreshed.",
+    "fixUnverified": "Could not confirm the pull request is still on the commit this check ran on, so nothing was queued. ({{reason}})",
     "fixRefused": "This check can only be fixed from the session that opened the pull request."
   },
   "undo": "Undo",

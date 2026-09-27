@@ -21,7 +21,17 @@ import type { QueuedMessage } from '@/stores/message-queue-store'
 export type CheckLog =
   | { kind: 'log'; excerpt: string; truncated: boolean; head_sha: string }
   | { kind: 'stale'; current_head_sha: string }
-  | { kind: 'unavailable'; reason: string; details_url: string | null }
+  | {
+      kind: 'unavailable'
+      reason: string
+      details_url: string | null
+      /**
+       * GitHub confirmed the pull request's head is still the check's commit
+       * before the log turned out to be unavailable. False covers every case
+       * where the head itself could not be checked; nothing is queued then.
+       */
+      head_verified: boolean
+    }
 
 const HEAD_SHA = /^[0-9a-f]{7,64}$/i
 
@@ -108,6 +118,8 @@ export type RepairOutcome =
   | { status: 'queued'; id: string; withLog: boolean }
   | { status: 'duplicate' }
   | { status: 'stale'; currentHeadSha: string }
+  /** The head could not be confirmed, so nothing was queued. */
+  | { status: 'unverified'; reason: string }
   | { status: 'refused' }
 
 export type RepairDeps = {
@@ -158,6 +170,11 @@ export async function requestCheckRepair(
   if (log.kind === 'stale') {
     deps.refresh()
     return { status: 'stale', currentHeadSha: log.current_head_sha }
+  }
+  // A missing log is acceptable; an unconfirmed head is not. Only a log, or
+  // an unavailable log after GitHub confirmed the head, may be queued.
+  if (log.kind === 'unavailable' && log.head_verified !== true) {
+    return { status: 'unverified', reason: log.reason }
   }
   if (deps.stillOwns && !deps.stillOwns()) return { status: 'refused' }
   if (deps.queue(sessionId).some((m) => m.id === id)) return { status: 'duplicate' }

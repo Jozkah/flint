@@ -77,7 +77,13 @@ async function fixCheck(
           jobId: a.jobId,
           detailsUrl: a.detailsUrl,
         }).catch(
-          (e): CheckLog => ({ kind: 'unavailable', reason: String(e), details_url: a.detailsUrl })
+          (e): CheckLog => ({
+            kind: 'unavailable',
+            reason: String(e),
+            details_url: a.detailsUrl,
+            // The backend never answered, so the head was never confirmed.
+            head_verified: false,
+          })
         ),
       queue: (sid) => useMessageQueue.getState().getQueue(sid),
       enqueue: (sid, m) => useMessageQueue.getState().enqueue(sid, m),
@@ -98,6 +104,8 @@ async function fixCheck(
   if (outcome.status === 'queued') toast.success(t('common:pr.fixQueued', { name: check.name }))
   else if (outcome.status === 'duplicate') toast.info(t('common:pr.fixAlreadyQueued'))
   else if (outcome.status === 'stale') toast.warning(t('common:pr.fixStale'))
+  else if (outcome.status === 'unverified')
+    toast.error(t('common:pr.fixUnverified', { reason: outcome.reason }))
   else toast.error(t('common:pr.fixRefused'))
 }
 
