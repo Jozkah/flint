@@ -1910,6 +1910,29 @@
       "error": "Could not run"
     }
   },
+  "jev": {
+    "title": "Jev decision support (TypeSafe)",
+    "intro": "Optional help from TypeSafe's Jev model ({{model}}, pinned). Both features are off by default and separate. Jev only suggests or reorders: Flint's permission checks, skill catalog, retrieved sources and agent behaviour stay in charge, and Jev never approves a tool. If Jev is slow, fails or is unsure, Flint does exactly what it does without it.",
+    "key": "TypeSafe API key",
+    "keyConfigured": "A key is stored in the protected secret store. It is never shown again or sent anywhere but TypeSafe.",
+    "keyMissing": "No key stored. Nothing is sent to TypeSafe without one.",
+    "saveKey": "Save key",
+    "clearKey": "Remove key",
+    "skillTitle": "Skill suggestion",
+    "skillSends": "Sends to TypeSafe, after you pause typing in Cowork: your message (first 2,000 characters) and the names and descriptions of this surface's skills. Suggests at most one skill as a chip you can use or ignore. Not sent for a message that already starts with /.",
+    "rerankTitle": "Attachment reranking",
+    "rerankSends": "Sends to TypeSafe, when a retrieval runs: the query (first 1,000 characters) and the text of up to 20 shortlisted passages (1,200 characters each). File names, paths and ids are not sent. Only the order changes; every citation keeps its source.",
+    "modesExplained": "Off: no request is made. Shadow: requests are made and decisions recorded below, but Flint behaves as if Jev were off — use it to compare before turning a feature on. On: the decision is used.",
+    "mode": { "off": "Off", "shadow": "Shadow", "on": "On" },
+    "receipts": "Recent decisions",
+    "noReceipts": "No decisions recorded in this session.",
+    "budget": "Input tokens today: {{used}} of {{budget}}",
+    "fallback": "used Flint's own",
+    "refresh": "Refresh",
+    "suggestion": "Jev suggests the skill /{{skill}} for this",
+    "useSkill": "Use",
+    "dismiss": "Dismiss"
+  },
   "pr": {
     "statusUnavailable": "Status unavailable",
     "merged": "Merged",

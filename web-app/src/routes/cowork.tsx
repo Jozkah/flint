@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrBar } from '@/containers/PrBar'
 import { ModelDoctor } from '@/containers/ModelDoctor'
+import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -5626,6 +5627,12 @@ export function CoworkPage() {
                   )
                 }
                 onAccepted={() => setInstructionsVersion((v) => v + 1)}
+              />
+              {/* Jev: a suggested skill, only when its opt-in is on. */}
+              <JevSkillSuggestion
+                surface="cowork"
+                project={folder}
+                draftScope={coworkPane?.draftScope}
               />
               <ChatInput
                 showSpeedToken={false}

@@ -34,6 +34,7 @@ import { useReferenceAliases } from '@/lib/referenceAliases'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
+import { useJevSettings } from '@/hooks/useJevSettings'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
@@ -84,6 +85,7 @@ const secondaryStores = [
   useProjectInitDrafts,
   useModelEvidence,
   useModelDoctor,
+  useJevSettings,
   useOnboardingGuide,
   useSessionMessaging,
   useSplitConversation,

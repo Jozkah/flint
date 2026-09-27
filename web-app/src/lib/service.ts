@@ -25,6 +25,9 @@ export const AppRoutes = [
   'getConnectedServers',
   'readLogs',
   'changeAppDataFolder',
+  // Jev reranking for the RAG extension (`jev_status`, `jev_rerank`).
+  'jevStatus',
+  'jevRerank',
 ]
 // Define API routes based on different route types
 export const Routes = [...CoreRoutes, ...APIRoutes, ...AppRoutes].map((r) => ({

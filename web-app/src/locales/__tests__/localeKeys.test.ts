@@ -66,6 +66,8 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     // BrowserVerifyPanel names step statuses and outcomes by their value.
     ...['pending', 'running', 'passed', 'failed', 'skipped'].map((k) => `browserVerify.status.${k}`),
     ...['passed', 'failed', 'cancelled', 'error'].map((k) => `browserVerify.outcome.${k}`),
+    // JevSettingsCard names each mode by its value.
+    ...['off', 'shadow', 'on'].map((k) => `jev.mode.${k}`),
   ],
   'model-errors': [
     'engine.unknown',
