@@ -11,7 +11,8 @@ vi.mock('ai', async (orig) => ({
   generateText: (...a: unknown[]) => generateText(...a),
 }))
 
-import { ModelDoctor, probeModelParams } from '../ModelDoctor'
+import { ModelDoctor } from '../ModelDoctor'
+import { probeModelParams } from '@/lib/modelDoctorParams'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
 import { PROBE_TOOL } from '@/lib/modelDoctor'

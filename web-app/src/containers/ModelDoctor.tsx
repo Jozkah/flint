@@ -4,28 +4,9 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { currentDoctorResult, doctorKey, useModelDoctor } from '@/hooks/useModelDoctor'
 import { ModelFactory } from '@/lib/model-factory'
-import { extractModelSamplingDefaults } from '@/lib/custom-chat-transport'
-import { buildReasoningBodyParams } from '@/lib/reasoningProviderOptions'
-import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
-import { paramsSettings } from '@/lib/predefinedParams'
-import { BACKGROUND_SLOT_ID } from '@/constants/models'
+import { probeModelParams } from '@/lib/modelDoctorParams'
+import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import type { ProbeCheck } from '@/lib/modelDoctor'
-
-/**
- * The request parameters a Cowork run would build for this model (sampling
- * defaults, reasoning effort), so the probe goes through the same provider
- * connection with the same body. On llama.cpp it uses the background slot,
- * like other utility calls, so a chat's cached prompt is not evicted.
- */
-export function probeModelParams(provider: ProviderObject, model: Model): Record<string, unknown> {
-  const params: Record<string, unknown> = { ...extractModelSamplingDefaults(model) }
-  if (isPredefinedRemoteProvider(provider.provider)) {
-    for (const key of Object.keys(paramsSettings)) delete params[key]
-  }
-  Object.assign(params, buildReasoningBodyParams(provider.provider, model) ?? {})
-  if (provider.provider === 'llamacpp') params.id_slot = BACKGROUND_SLOT_ID
-  return params
-}
 
 const CHECK_TONE = (ok: boolean | null) =>
   ok === true ? 'text-success' : ok === false ? 'text-destructive' : 'text-muted-foreground'
@@ -62,7 +43,13 @@ export function ModelDoctor({
     setOpen(true)
     void useModelDoctor
       .getState()
-      .test(provider, model, () => createModel(provider, model))
+      .test(provider, model, () => createModel(provider, model), {
+        // A load given up on is not left running in the background.
+        abandonLoad:
+          provider.provider === 'llamacpp'
+            ? () => void unloadLlamaModel(model.id).catch(() => undefined)
+            : undefined,
+      })
       .catch(() => undefined)
   }
 

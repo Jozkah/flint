@@ -29,6 +29,8 @@ import { generateText, jsonSchema, type LanguageModel, type ModelMessage } from 
 export const PROBE_VERSION = 1
 /** Per step; a local model may be loading its weights on the first one. */
 export const DEFAULT_STEP_TIMEOUT_MS = 90_000
+/** Loading a large local model can take minutes; a hang cannot take longer. */
+export const DEFAULT_LOAD_TIMEOUT_MS = 300_000
 const MAX_OUTPUT_TOKENS = 512
 
 export type ProbeCheckId = 'tool_call' | 'arguments' | 'continuation' | 'timeout'
@@ -197,6 +199,10 @@ type Generate = (args: Parameters<typeof generateText>[0]) => Promise<{
 
 export type ProbeDeps = {
   createModel: () => Promise<LanguageModel>
+  /** Longest wait for `createModel` (a local model loading its weights). */
+  loadTimeoutMs?: number
+  /** Called when a load is given up on (cancel or load timeout). */
+  abandonLoad?: () => void
   generate?: Generate
   now?: () => number
   nonce?: () => string
@@ -204,6 +210,7 @@ export type ProbeDeps = {
 }
 
 class StepTimeout extends Error {}
+class LoadTimeout extends Error {}
 
 function stepSignal(outer: AbortSignal | undefined, ms: number) {
   const ctrl = new AbortController()
@@ -269,13 +276,40 @@ export async function runModelProbe(
     }
   }
 
+  // Starting a local model can take minutes, or hang. The wait for it is
+  // raced against Cancel and a load limit, and a load given up on is handed
+  // to `abandonLoad` (llama.cpp: unload the half-loaded model).
   let model: LanguageModel
+  const loadMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS
+  let loadTimer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   try {
-    model = await deps.createModel()
+    model = await Promise.race([
+      deps.createModel(),
+      new Promise<never>((_, reject) => {
+        loadTimer = setTimeout(() => reject(new LoadTimeout()), loadMs)
+        onAbort = () => reject(new Error('cancelled'))
+        if (signal?.aborted) onAbort()
+        else signal?.addEventListener('abort', onAbort, { once: true })
+      }),
+    ])
   } catch (e) {
+    const gaveUp = signal?.aborted || e instanceof LoadTimeout
+    if (gaveUp) deps.abandonLoad?.()
     if (signal?.aborted) return finish('cancelled')
+    if (e instanceof LoadTimeout) {
+      checks.timeout = {
+        id: 'timeout',
+        ok: false,
+        detail: `the model did not finish loading within ${Math.round(loadMs / 1000)} s`,
+      }
+      return finish()
+    }
     checks.tool_call = { id: 'tool_call', ok: false, detail: `the model could not be started: ${describeProbeError(e)}` }
     return finish()
+  } finally {
+    clearTimeout(loadTimer)
+    if (onAbort) signal?.removeEventListener('abort', onAbort)
   }
 
   const tools = probeTools()

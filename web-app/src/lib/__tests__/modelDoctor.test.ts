@@ -220,6 +220,37 @@ describe('runModelProbe', () => {
     expect(r.checks[0].detail).not.toContain('sk-abcdefghijklmnopqrstuv')
   })
 
+  it('can be cancelled while the model is still loading, and gives the load up', async () => {
+    const ctrl = new AbortController()
+    const abandonLoad = vi.fn()
+    const { d, generate } = deps([], {
+      createModel: () => new Promise(() => {}),
+      abandonLoad,
+    })
+    const pending = runModelProbe(identity, d, ctrl.signal)
+    await new Promise((r) => setTimeout(r, 10))
+    ctrl.abort()
+    const r = await pending
+    expect(r.outcome).toBe('cancelled')
+    expect(abandonLoad).toHaveBeenCalledTimes(1)
+    expect(generate).not.toHaveBeenCalled()
+  })
+
+  it('reports a load that never finishes as a timeout', async () => {
+    const abandonLoad = vi.fn()
+    const { d, generate } = deps([], {
+      createModel: () => new Promise(() => {}),
+      loadTimeoutMs: 20,
+      abandonLoad,
+    })
+    const r = await runModelProbe(identity, d)
+    expect(r.outcome).toBe('failed')
+    expect(r.checks.find((c) => c.id === 'timeout')).toMatchObject({ ok: false })
+    expect(r.checks.find((c) => c.id === 'timeout')!.detail).toContain('did not finish loading')
+    expect(abandonLoad).toHaveBeenCalledTimes(1)
+    expect(generate).not.toHaveBeenCalled()
+  })
+
   it('reports a model that could not be started', async () => {
     const { d } = deps([], { createModel: async () => Promise.reject(new Error('out of memory')) })
     const r = await runModelProbe(identity, d)
