@@ -20,7 +20,7 @@ jobs:
             const { owner, repo } = context.repo;
             const { number, merged } = context.payload.pull_request;
             if (merged) {
-              const { data: milestones } = await github.issues.listMilestones({
+              const { data: milestones } = await github.rest.issues.listMilestones({
                 owner,
                 repo,
                 state: 'open',
@@ -35,7 +35,7 @@ jobs:
               });
 
               if (currentMilestone) {
-                await github.issues.update({
+                await github.rest.issues.update({
                   owner,
                   repo,
                   issue_number: number,
