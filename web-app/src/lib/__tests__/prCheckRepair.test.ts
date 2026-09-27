@@ -220,6 +220,28 @@ describe('requestCheckRepair', () => {
   })
 })
 
+describe('two checks with the same name on one commit', () => {
+  const buildA: CheckRun = { ...failed, name: 'build', workflow: 'CI', job_id: 31, details_url: 'https://github.com/o/r/actions/runs/1/job/31' }
+  const buildB: CheckRun = { ...failed, name: 'build', workflow: 'Release', job_id: 47, details_url: 'https://github.com/o/r/actions/runs/2/job/47' }
+  const input = { folder: '/wt/s1', sessionId: 's1', pr, relation: 'mine' as const }
+
+  it('get different repair ids', () => {
+    expect(checkRepairId(pr, buildA)).not.toBe(checkRepairId(pr, buildB))
+    // Same name and workflow, different job: still different.
+    expect(checkRepairId(pr, buildA)).not.toBe(checkRepairId(pr, { ...buildA, job_id: 99 }))
+    // Same check, same commit: same id.
+    expect(checkRepairId(pr, buildA)).toBe(checkRepairId(pr, { ...buildA }))
+  })
+
+  it('are both queued, not the second reported as a duplicate', async () => {
+    const d = deps({ kind: 'log', excerpt: 'error', truncated: false, head_sha: SHA })
+    expect(await requestCheckRepair({ ...input, check: buildA }, d)).toMatchObject({ status: 'queued' })
+    expect(await requestCheckRepair({ ...input, check: buildB }, d)).toMatchObject({ status: 'queued' })
+    expect(d.queues.s1).toHaveLength(2)
+    expect(await requestCheckRepair({ ...input, check: buildA }, d)).toEqual({ status: 'duplicate' })
+  })
+})
+
 describe('orderedChecks', () => {
   it('lists failed checks first', () => {
     const passed: CheckRun = { ...failed, name: 'ok', verdict: 'passed' }

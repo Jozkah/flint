@@ -60,19 +60,32 @@ export function sanitizeCheckName(name: string): string {
   return name.replace(/[\r\n"[\]<>`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200)
 }
 
-/** A fence token the excerpt cannot contain (it is neutralised if it does). */
-function fenceFor(sha: string, name: string): string {
-  let h = 2166136261
-  for (const c of `${sha}\n${name}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
-  return `CHECKLOG-${h.toString(36)}`
+/**
+ * What tells one check from another on the same commit. Two workflows can
+ * each have a job named "build"; their workflow, job id and details page
+ * differ, and each is its own check to fix.
+ */
+function checkIdentity(check: CheckRun): string {
+  return [check.workflow ?? '', check.name, check.job_id ?? '', check.details_url ?? ''].join('\n')
 }
 
-/** The queue id a fix request gets: one per check per head commit. */
+function fnv(text: string): string {
+  let h = 2166136261
+  for (const c of text) h = Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0
+  return h.toString(36)
+}
+
+/** A fence token the excerpt cannot contain (it is neutralised if it does). */
+function fenceFor(sha: string, check: CheckRun): string {
+  return `CHECKLOG-${fnv(`${sha}\n${checkIdentity(check)}`)}`
+}
+
+/** The queue id a fix request gets: one per distinct check per head commit. */
 export function checkRepairId(pr: PrStatus, check: CheckRun): string {
-  return `checkfix:${pr.number}:${(pr.head_sha ?? '').slice(0, 12)}:${fenceFor(
-    pr.head_sha ?? '',
-    check.name
-  ).slice(9)}`
+  const sha = pr.head_sha ?? ''
+  // The job id, when there is one, is GitHub's own identity for the check.
+  const job = check.job_id != null ? `job${check.job_id}` : 'nojob'
+  return `checkfix:${pr.number}:${sha.slice(0, 12)}:${job}:${fnv(`${sha}\n${checkIdentity(check)}`)}`
 }
 
 /**
@@ -95,7 +108,7 @@ export function buildCheckRepairPrompt(
   ]
   if (check.details_url) lines.push('', `Check details: ${check.details_url}`)
   if (log.kind === 'log') {
-    const fence = fenceFor(sha, check.name)
+    const fence = fenceFor(sha, check)
     const body = log.excerpt.split(fence).join('[boundary]')
     lines.push(
       '',
