@@ -37,3 +37,18 @@ const SECOND_LEVEL: ReadonlySet<string> = new Set([
   'gov',
   'edu',
 ])
+
+/**
+ * The site's own favicon, fetched from the site itself (never a third-party
+ * favicon service, which would see every domain a search returned). Null for
+ * anything that is not http(s).
+ */
+export const faviconUrl = (url: string): string | null => {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    return `${u.origin}/favicon.ico`
+  } catch {
+    return null
+  }
+}

@@ -7,6 +7,7 @@ import {
 import { useWebCitationStore } from '@/stores/web-citation-store'
 import { cn } from '@/lib/utils'
 import { hostOf, siteInitial } from '@/lib/webUrl'
+import { SiteIcon } from '@/components/SiteIcon'
 
 export const WebCitationChip = memo(
   ({ messageId, url }: { messageId?: string; url: string }) => {
@@ -25,12 +26,18 @@ export const WebCitationChip = memo(
             className="mx-0.5 inline-flex translate-y-[-0.15em] align-baseline no-underline"
             title={citation?.title || url}
           >
-            <span
-              aria-hidden
-              className="inline-block size-3.5 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground hover:ring-2 hover:ring-primary/40"
-            >
-              {initial}
-            </span>
+            <SiteIcon
+              url={url}
+              className="inline-block size-3.5 rounded-full border border-border/60 bg-white object-contain hover:ring-2 hover:ring-primary/40"
+              fallback={
+                <span
+                  aria-hidden
+                  className="inline-block size-3.5 inline-flex items-center justify-center rounded-full border border-border/60 bg-muted text-[0.5rem] font-medium uppercase text-muted-foreground hover:ring-2 hover:ring-primary/40"
+                >
+                  {initial}
+                </span>
+              }
+            />
           </a>
         </HoverCardTrigger>
         <HoverCardContent
