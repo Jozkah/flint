@@ -179,6 +179,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_projects_register,
         core::agent::commands::agent_git_branch,
         core::agent::github_pr::agent_pr_status,
+        core::agent::github_pr::agent_pr_check_log,
         core::agent::commands::agent_worktree_ensure,
         core::agent::commands::agent_worktree_state,
         core::agent::commands::agent_worktree_discard,

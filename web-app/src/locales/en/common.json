@@ -1875,7 +1875,13 @@
     "refresh": "Refresh status",
     "open": "Open pull request",
     "dismiss": "Dismiss",
-    "notOpenedHere": "PR #{{number}} on {{branch}} (not opened here)"
+    "notOpenedHere": "PR #{{number}} on {{branch}} (not opened here)",
+    "fixCheck": "Fix this check",
+    "checkDetails": "Details",
+    "fixQueued": "Asked this session to fix \"{{name}}\". Nothing is pushed without your approval.",
+    "fixAlreadyQueued": "A fix for this check is already waiting in this session.",
+    "fixStale": "The pull request has new commits since this check ran. Status refreshed.",
+    "fixRefused": "This check can only be fixed from the session that opened the pull request."
   },
   "undo": "Undo",
   "coworkParallel": {
