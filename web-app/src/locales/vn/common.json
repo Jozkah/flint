@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Tìm kiếm web đang tắt nên Flint không thể mở liên kết hay tìm kiếm trên web.",
+    "enable": "Bật và gửi",
+    "sendAnyway": "Vẫn gửi"
+  },
   "groups": {
     "newGroup": "Nhóm mới",
     "groupName": "Tên nhóm",

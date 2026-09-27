@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "網頁搜尋已關閉，Flint 無法開啟連結或搜尋網頁。",
+    "enable": "開啟並傳送",
+    "sendAnyway": "仍要傳送"
+  },
   "groups": {
     "newGroup": "新增群組",
     "groupName": "群組名稱",

@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "La recherche web est désactivée : Flint ne peut ni ouvrir de liens ni chercher sur le web.",
+    "enable": "Activer et envoyer",
+    "sendAnyway": "Envoyer quand même"
+  },
   "groups": {
     "newGroup": "Nouveau groupe",
     "groupName": "Nom du groupe",

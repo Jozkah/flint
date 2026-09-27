@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Wyszukiwanie w sieci jest wyłączone, więc Flint nie może otwierać linków ani szukać w sieci.",
+    "enable": "Włącz i wyślij",
+    "sendAnyway": "Wyślij mimo to"
+  },
   "groups": {
     "newGroup": "Nowa grupa",
     "groupName": "Nazwa grupy",

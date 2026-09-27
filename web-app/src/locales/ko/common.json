@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "웹 검색이 꺼져 있어 Flint가 링크를 열거나 웹을 검색할 수 없습니다.",
+    "enable": "켜고 보내기",
+    "sendAnyway": "그래도 보내기"
+  },
   "groups": {
     "newGroup": "새 그룹",
     "groupName": "그룹 이름",

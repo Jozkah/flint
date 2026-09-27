@@ -1,4 +1,9 @@
 {
+  "webSearchOff": {
+    "text": "Die Websuche ist aus, daher kann Flint keine Links öffnen und nicht im Web suchen.",
+    "enable": "Einschalten und senden",
+    "sendAnyway": "Trotzdem senden"
+  },
   "groups": {
     "newGroup": "Neue Gruppe",
     "groupName": "Gruppenname",
