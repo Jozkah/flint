@@ -114,6 +114,11 @@ export function PrBar({
       >
         {pr.head}
       </span>
+      {pr.statusError && (
+        <span data-testid="pr-bar-status-error" className="shrink-0 text-xs text-destructive" title={pr.statusError}>
+          {t('common:pr.statusUnavailable')}
+        </span>
+      )}
       <span className="flex-1" />
       {pr.state === 'merged' ? (
         <span className="text-[0.78rem] font-medium text-merged">{t('common:pr.merged')}</span>
