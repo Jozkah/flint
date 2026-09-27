@@ -80,3 +80,16 @@ test('with a key, the Jev arm runs through fetch and falls back like the app on 
   // Ties keep the baseline order, so an undecided Jev changes nothing.
   assert.deepEqual(r.jev.retrieval, r.flint.retrieval)
 })
+
+test('requests match the shared fixture the app is also tested against', async () => {
+  const fs = await import('node:fs')
+  const { rerankRequest } = await import('./jev-eval/eval.mjs')
+  const fixture = JSON.parse(fs.readFileSync(new URL('./jev-eval/request.fixture.json', import.meta.url), 'utf8'))
+  const { skill, rerank } = fixture.input
+  assert.deepEqual(skillRequest(skill.message, skill.skills), fixture.expected.skill)
+  const passages = Object.fromEntries(rerank.candidates.map((c) => [c.id, c.text]))
+  assert.deepEqual(
+    rerankRequest(rerank.query, rerank.candidates.map((c) => c.id), passages),
+    fixture.expected.rerank
+  )
+})

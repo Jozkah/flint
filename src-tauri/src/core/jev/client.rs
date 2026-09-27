@@ -58,19 +58,32 @@ pub fn parse(bytes: &[u8]) -> Result<SystemOneResponse, CallError> {
     serde_json::from_slice(bytes).map_err(|e| CallError::Decode(e.to_string()))
 }
 
+/// One client for every call, so a warm connection to TypeSafe is reused:
+/// a fresh TLS handshake per call ate into timeouts as short as 1.5 s. The
+/// timeout is set per request; redirects are refused for all of them.
+fn shared_client() -> Result<&'static reqwest::Client, CallError> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(c) = CLIENT.get() {
+        return Ok(c);
+    }
+    let built = crate::core::net::tls::apply12(reqwest::Client::builder())
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(3))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .build()
+        .map_err(|e| CallError::Http(format!("client: {e}")))?;
+    Ok(CLIENT.get_or_init(|| built))
+}
+
 /// POST `body` to `endpoint` with the key as a bearer token.
 ///
 /// Redirects are refused: the key must only ever go to the endpoint named.
 pub async fn post(endpoint: &str, key: &str, body: &Value, timeout: Duration) -> Result<SystemOneResponse, CallError> {
-    let client = crate::core::net::tls::apply12(reqwest::Client::builder())
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(timeout)
-        .connect_timeout(timeout)
-        .build()
-        .map_err(|e| CallError::Http(format!("client: {e}")))?;
+    let client = shared_client()?;
     let work = async {
         let resp = client
             .post(endpoint)
+            .timeout(timeout)
             .bearer_auth(key)
             .json(body)
             .send()

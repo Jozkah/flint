@@ -338,3 +338,48 @@ async fn the_client_never_follows_a_redirect_with_the_key() {
     let r = client::post(&url, "k", &json!({}), Duration::from_secs(5)).await;
     assert_eq!(r, Err(CallError::Http("HTTP 307".into())));
 }
+
+#[test]
+fn the_daily_budget_survives_a_restart_and_resets_on_a_new_day() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("jev_budget.json");
+    assert_eq!(load_budget(&path), BudgetRecord::default(), "missing file: nothing used");
+    save_budget(&path, &BudgetRecord { date: today(), input_tokens: 1_234 });
+    // What a restarted app reads back.
+    assert_eq!(load_budget(&path), BudgetRecord { date: today(), input_tokens: 1_234 });
+    std::fs::write(&path, b"not json").unwrap();
+    assert_eq!(load_budget(&path), BudgetRecord::default());
+    assert!(!dir.path().join("jev_budget.json.tmp").exists());
+}
+
+#[tokio::test]
+async fn one_client_serves_consecutive_calls_with_their_own_timeouts() {
+    let body = r#"{"model":"jev-1.13.0","answers":{},"usage":{}}"#;
+    let response: &'static str = Box::leak(
+        format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}", body.len())
+            .into_boxed_str(),
+    );
+    let (url, _s) = one_shot_server(response, Duration::ZERO).await;
+    assert!(client::post(&url, "k", &json!({}), Duration::from_secs(5)).await.is_ok());
+    // A later call with a short timeout still times out on its own terms.
+    let (slow, _s2) = one_shot_server("HTTP/1.1 200 OK\r\n\r\n", Duration::from_secs(10)).await;
+    let t0 = Instant::now();
+    assert_eq!(client::post(&slow, "k", &json!({}), Duration::from_millis(300)).await, Err(CallError::Timeout));
+    assert!(t0.elapsed() < Duration::from_secs(3));
+}
+
+/// The eval harness builds the same requests (scripts/jev-eval/eval.mjs); both
+/// sides are held to this one fixture so a measurement is of what the app sends.
+#[test]
+fn requests_match_the_shared_fixture_the_eval_harness_uses() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../scripts/jev-eval/request.fixture.json");
+    let fixture: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let input = &fixture["input"];
+    let skills: Vec<SkillOption> = serde_json::from_value(input["skill"]["skills"].clone()).unwrap();
+    let message = input["skill"]["message"].as_str().unwrap();
+    assert_eq!(skill_request(message, &skills), fixture["expected"]["skill"]);
+    let candidates: Vec<Candidate> = serde_json::from_value(input["rerank"]["candidates"].clone()).unwrap();
+    let query = input["rerank"]["query"].as_str().unwrap();
+    assert_eq!(rerank_request(query, &candidates), fixture["expected"]["rerank"]);
+}

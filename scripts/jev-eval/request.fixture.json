@@ -1,0 +1,70 @@
+{
+  "note": "The TypeSafe request the app (src-tauri/src/core/jev) and the eval harness (scripts/jev-eval/eval.mjs) must both build from these inputs. A test on each side compares against this file, so the two cannot drift apart.",
+  "input": {
+    "skill": {
+      "message": "Fill in the vendor onboarding PDF",
+      "skills": [
+        {
+          "name": "pdf-forms",
+          "description": "Read, fill and flatten PDF forms."
+        },
+        {
+          "name": "release-notes",
+          "description": "Draft release notes from git history."
+        }
+      ]
+    },
+    "rerank": {
+      "query": "How long do customers have to return an item?",
+      "candidates": [
+        {
+          "id": "r1",
+          "text": "Items may be returned within 30 days."
+        },
+        {
+          "id": "r2",
+          "text": "Delivery takes three to five days."
+        }
+      ]
+    }
+  },
+  "expected": {
+    "skill": {
+      "model": "jev-1.13.0",
+      "state": {
+        "request": "Fill in the vendor onboarding PDF"
+      },
+      "questions": {
+        "skill": {
+          "type": "choice",
+          "instructions": "Which one skill, if any, should an assistant load to handle this request? Choose none unless a skill clearly applies.",
+          "criteria": {
+            "none": "No listed skill fits this request; answer normally.",
+            "s0": "pdf-forms: Read, fill and flatten PDF forms.",
+            "s1": "release-notes: Draft release notes from git history."
+          }
+        }
+      }
+    },
+    "rerank": {
+      "model": "jev-1.13.0",
+      "state": {
+        "query": "How long do customers have to return an item?",
+        "passages": {
+          "p0": "Items may be returned within 30 days.",
+          "p1": "Delivery takes three to five days."
+        }
+      },
+      "questions": {
+        "p0": {
+          "type": "noul",
+          "instructions": "Does passage p0 contain information that helps answer the query?"
+        },
+        "p1": {
+          "type": "noul",
+          "instructions": "Does passage p1 contain information that helps answer the query?"
+        }
+      }
+    }
+  }
+}

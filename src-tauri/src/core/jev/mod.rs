@@ -155,6 +155,58 @@ const MAX_RECEIPTS: usize = 200;
 static RECEIPTS: LazyLock<Mutex<VecDeque<Receipt>>> = LazyLock::new(|| Mutex::new(VecDeque::new()));
 /// (UTC date, input tokens used that day).
 static BUDGET: LazyLock<Mutex<(String, u64)>> = LazyLock::new(|| Mutex::new((String::new(), 0)));
+/// Where the day's usage is kept, so a restart does not reset the budget.
+/// Set once, from the data folder, by the first command.
+static BUDGET_FILE: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+#[derive(Serialize, Deserialize, Default, PartialEq, Debug)]
+pub(crate) struct BudgetRecord {
+    pub date: String,
+    pub input_tokens: u64,
+}
+
+/// The usage recorded at `path`, or none when missing or unreadable.
+pub(crate) fn load_budget(path: &std::path::Path) -> BudgetRecord {
+    std::fs::read(path)
+        .ok()
+        .and_then(|b| serde_json::from_slice(&b).ok())
+        .unwrap_or_default()
+}
+
+/// Write the day's usage beside a temporary file and rename it into place.
+pub(crate) fn save_budget(path: &std::path::Path, record: &BudgetRecord) {
+    let tmp = path.with_extension("json.tmp");
+    let ok = serde_json::to_vec(record)
+        .ok()
+        .is_some_and(|b| std::fs::write(&tmp, b).is_ok());
+    if ok {
+        let _ = std::fs::rename(&tmp, path);
+    }
+}
+
+/// Keep the budget in `path` from now on, starting from what it holds.
+pub fn use_budget_file(path: std::path::PathBuf) {
+    if BUDGET_FILE.set(path.clone()).is_err() {
+        return;
+    }
+    let stored = load_budget(&path);
+    let day = today();
+    if stored.date != day {
+        // Yesterday's count, or none: today starts from what is in memory.
+        return;
+    }
+    if let Ok(mut b) = BUDGET.lock() {
+        let in_memory = if b.0 == day { b.1 } else { 0 };
+        // Whichever is further along: nothing already counted is dropped.
+        *b = (day, stored.input_tokens.max(in_memory));
+    }
+}
+
+fn persist(b: &(String, u64)) {
+    if let Some(path) = BUDGET_FILE.get() {
+        save_budget(path, &BudgetRecord { date: b.0.clone(), input_tokens: b.1 });
+    }
+}
 
 fn record(receipt: Receipt) {
     log::info!(
@@ -193,6 +245,7 @@ fn reserve(tokens: u64) -> bool {
         return false;
     }
     b.1 += tokens;
+    persist(&b);
     true
 }
 
@@ -200,6 +253,7 @@ fn reserve(tokens: u64) -> bool {
 fn settle(reserved: u64, billed: u64) {
     if let Ok(mut b) = BUDGET.lock() {
         b.1 = b.1.saturating_sub(reserved).saturating_add(billed);
+        persist(&b);
     }
 }
 
@@ -560,6 +614,14 @@ fn live_post() -> impl Fn(Value, String, Duration) -> futures_util::future::BoxF
 pub mod commands {
     use super::*;
 
+    /// Name the budget file in the data folder, once.
+    fn budget_file(app: &tauri::AppHandle) {
+        if BUDGET_FILE.get().is_none() {
+            let data = crate::core::app::commands::get_jan_data_folder_path(app.clone());
+            use_budget_file(data.join("jev_budget.json"));
+        }
+    }
+
     /// Store the TypeSafe key. Write-only: nothing returns it.
     #[tauri::command]
     pub async fn jev_key_set(key: String) -> Result<(), String> {
@@ -572,7 +634,8 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn jev_status() -> Status {
+    pub async fn jev_status(app: tauri::AppHandle) -> Status {
+        budget_file(&app);
         let modes = current_modes();
         let key_configured = tokio::task::spawn_blocking(key_configured).await.unwrap_or(false);
         Status {
@@ -599,7 +662,12 @@ pub mod commands {
 
     /// A suggested skill for the message, or none. Never touches tools.
     #[tauri::command]
-    pub async fn jev_suggest_skill(message: String, skills: Vec<SkillOption>) -> SkillDecision {
+    pub async fn jev_suggest_skill(
+        app: tauri::AppHandle,
+        message: String,
+        skills: Vec<SkillOption>,
+    ) -> SkillDecision {
+        budget_file(&app);
         let modes = current_modes();
         let post = live_post();
         let deps = Deps { modes, key: deps_key(modes, modes.skills).await, post: &post };
@@ -608,7 +676,13 @@ pub mod commands {
 
     /// A relevance order for a retrieval shortlist, or none.
     #[tauri::command]
-    pub async fn jev_rerank(query: String, candidates: Vec<Candidate>, k: usize) -> RerankDecision {
+    pub async fn jev_rerank(
+        app: tauri::AppHandle,
+        query: String,
+        candidates: Vec<Candidate>,
+        k: usize,
+    ) -> RerankDecision {
+        budget_file(&app);
         let modes = current_modes();
         let post = live_post();
         let deps = Deps { modes, key: deps_key(modes, modes.rerank).await, post: &post };
