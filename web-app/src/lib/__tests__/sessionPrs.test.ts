@@ -27,6 +27,7 @@ const reset = () =>
     backfilled: false,
     sessionPrs: {},
     sessionPrsBackfilled: false,
+    sessionPrsBackfillVersion: 0,
   })
 
 describe('session pull requests', () => {
@@ -96,5 +97,43 @@ describe('session pull requests', () => {
     usePrStatusStore.setState({ backfilled: true })
     await backfillPrClaims(sessions, list)
     expect(list).not.toHaveBeenCalled()
+  })
+
+  // Shaped like the logged events: the succeeded event has no input, the
+  // output echoes the command (body included) and ends with the new URL.
+  const REAL_CREATE =
+    '$ gh pr create --repo acme/scraper --head fix/race --base master --title "Fix race" --body "Follows https://github.com/acme/scraper/pull/12.\n\nGenerated with [Flint](https://github.com/Jozkah/flint)"\nhttps://github.com/acme/scraper/pull/34'
+  const REAL_VIEW =
+    '$ gh pr view 35 --repo acme/scraper --json url,state\n{"state":"OPEN","url":"https://github.com/acme/scraper/pull/35"}'
+
+  it('reads the logged gh output, taking the URL gh printed last', () => {
+    expect(sessionPrFromTool('git', null, REAL_CREATE)).toMatchObject({ number: 34, repo: 'acme/scraper', head: 'fix/race' })
+    expect(sessionPrFromTool('git', null, REAL_VIEW)?.number).toBe(35)
+    // The same command through a shell tool.
+    expect(sessionPrFromTool('bash', { command: 'gh pr create --fill' }, 'https://github.com/acme/scraper/pull/36')?.number).toBe(36)
+    expect(sessionPrFromTool('powershell', { command: 'gh pr view 37' }, 'url: https://github.com/acme/scraper/pull/37')?.number).toBe(37)
+  })
+
+  it('reruns the backfill once where version 1 found nothing', async () => {
+    usePrStatusStore.setState({ sessionPrsBackfilled: true, sessionPrsBackfillVersion: 0, backfilled: true })
+    const e: EventEnvelope = {
+      v: 1, id: 'x', session: A, run: 'r', invocation: '', seq: 1, at: '2026-09-26T14:00:00Z',
+      kind: 'tool.succeeded', payload: { tool: 'git', input: null, output: REAL_CREATE }, redactions: [],
+    }
+    const list = vi.fn(async (): Promise<EventsPage> => ({ events: [e], lastSeq: 1, truncated: false }))
+    await backfillPrClaims([{ id: A, folder: 'C:\\scraper' }], list)
+    expect(usePrStatusStore.getState().sessionPrs[A]?.map((p) => p.number)).toEqual([34])
+    expect(usePrStatusStore.getState().sessionPrsBackfillVersion).toBe(2)
+    list.mockClear()
+    await backfillPrClaims([{ id: A, folder: 'C:\\scraper' }], list)
+    expect(list).not.toHaveBeenCalled()
+  })
+
+  it('marks a recorded pull request whose status lookup failed', () => {
+    const pr = sessionPrFromTool('git', null, REAL_CREATE, 't')!
+    const [shown] = sessionPrStatuses([pr], {
+      [pr.url]: { lookup: { kind: 'failed', message: 'gh: not authorized' }, at: 1, loading: false },
+    })
+    expect(shown).toMatchObject({ number: 34, statusError: 'gh: not authorized' })
   })
 })

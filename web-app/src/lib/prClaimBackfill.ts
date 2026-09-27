@@ -18,22 +18,43 @@ export type BackfillSession = {
   worktreePath?: string | null
 }
 
-const PR_URL = /https:\/\/github\.com\/[^/\s"]+\/[^/\s"]+\/pull\/(\d+)/
+const PR_URL_ALL = /https:\/\/github\.com\/([^/\s"]+)\/([^/\s"]+)\/pull\/(\d+)/g
+
+/**
+ * The last pull-request URL in `output`. `gh` prints the new pull request's
+ * URL after echoing the command, whose body may name other pull requests.
+ */
+function lastPrUrl(output: string): RegExpExecArray | null {
+  let last: RegExpExecArray | null = null
+  for (const m of output.matchAll(PR_URL_ALL)) last = m as RegExpExecArray
+  return last
+}
+
+/** A shell tool: the model may run `gh` through it instead of `git`. */
+const SHELL_TOOL = /^(bash|shell|sh|powershell|pwsh|terminal|exec|run_command)/i
+
+/** `tool` ran a `gh pr <verbs>` command, per its input or echoed output. */
+function ranGhPr(tool: string, text: string, verbs: string): boolean {
+  if (tool !== 'git' && !SHELL_TOOL.test(tool)) return false
+  return new RegExp(`\\bgh\\s+pr\\s+(${verbs})\\b`).test(text)
+}
+
+function inputText(input: unknown): string {
+  return typeof input === 'string' ? input : input == null ? '' : JSON.stringify(input)
+}
 
 /** The pull-request number a create event opened, or null. */
 export function createdPrNumber(event: EventEnvelope): number | null {
   if (event.kind !== 'tool.succeeded') return null
   const tool = String(event.payload.tool ?? '')
   const output = String(event.payload.output ?? '')
+  const text = `${inputText(event.payload.input)}\n${output}`
   const isCreate =
-    (tool === 'git' && /^\$ gh pr create\b/.test(output)) ||
-    /create_pull_request|pull_request_create/.test(tool)
+    ranGhPr(tool, text, 'create') || /create_pull_request|pull_request_create/.test(tool)
   if (!isCreate) return null
-  const m = PR_URL.exec(output)
-  return m ? Number(m[1]) : null
+  const m = lastPrUrl(output)
+  return m ? Number(m[3]) : null
 }
-
-const PR_URL_PARTS = /https:\/\/github\.com\/([^/\s"]+)\/([^/\s"]+)\/pull\/(\d+)/
 
 /**
  * The pull request a successful tool call opened or named, for recording on
@@ -47,14 +68,10 @@ export function sessionPrFromTool(
   output: string,
   at: string = new Date().toISOString()
 ): SessionPr | null {
-  const command =
-    typeof input === 'string' ? input : input == null ? '' : JSON.stringify(input)
-  const text = `${command}\n${output}`
-  const isPr =
-    (tool === 'git' && /\bgh\s+pr\s+(create|view|edit)\b/.test(text)) ||
-    /pull_request/.test(tool)
+  const text = `${inputText(input)}\n${output}`
+  const isPr = ranGhPr(tool, text, 'create|view|edit') || /pull_request/.test(tool)
   if (!isPr) return null
-  const m = PR_URL_PARTS.exec(output)
+  const m = lastPrUrl(output)
   if (!m) return null
   const head = /--head[=\s]+"?([^\s"\\]+)/.exec(text)?.[1]
   return {
@@ -149,15 +166,19 @@ export async function collectPrClaims(
   return claims
 }
 
+export const SESSION_PRS_BACKFILL_VERSION = 2
+
 /** Run the backfill unless it already ran. Never throws. */
 export async function backfillPrClaims(
   sessions: BackfillSession[],
   list: ListEvents = listEvents
 ): Promise<void> {
-  if (!usePrStatusStore.getState().sessionPrsBackfilled) {
+  // Version 2 reruns once where version 1 matched only the `git` tool's
+  // first URL; recording is idempotent per URL.
+  if (usePrStatusStore.getState().sessionPrsBackfillVersion < SESSION_PRS_BACKFILL_VERSION) {
     try {
       usePrStatusStore.getState().addSessionPrs(await collectSessionPrs(sessions, list))
-      usePrStatusStore.getState().markSessionPrsBackfilled()
+      usePrStatusStore.getState().markSessionPrsBackfilled(SESSION_PRS_BACKFILL_VERSION)
     } catch (e) {
       console.warn('Session PR backfill failed', e)
     }

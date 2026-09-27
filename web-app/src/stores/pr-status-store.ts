@@ -34,6 +34,8 @@ export type PrStatus = {
   additions: number
   deletions: number
   checks: { passed: number; failed: number; pending: number }
+  /** Why the live status could not be read; the rest is what was recorded. */
+  statusError?: string
 }
 
 export type PrLookup =
@@ -72,9 +74,11 @@ type PrStatusState = {
   sessionPrs: Record<string, SessionPr[]>
   /** The event-log backfill of `sessionPrs` has run. */
   sessionPrsBackfilled: boolean
+  /** Version of the event-log backfill of `sessionPrs` last run; 0 never. */
+  sessionPrsBackfillVersion: number
   /** Record pull requests for sessions; one already recorded is kept. */
   addSessionPrs: (add: Record<string, SessionPr[]>) => void
-  markSessionPrsBackfilled: () => void
+  markSessionPrsBackfilled: (version: number) => void
   /** Ask for one recorded pull request's status. */
   refreshUrl: (url: string, folder?: string | null, force?: boolean) => Promise<void>
   /** `folder#number` to the id of the session that opened or pushed it. */
@@ -155,6 +159,7 @@ export const usePrStatusStore = create<PrStatusState>()(
   byUrl: {},
   sessionPrs: {},
   sessionPrsBackfilled: false,
+  sessionPrsBackfillVersion: 0,
   addSessionPrs: (add) =>
     set((s) => {
       const next = { ...s.sessionPrs }
@@ -166,7 +171,8 @@ export const usePrStatusStore = create<PrStatusState>()(
       }
       return { sessionPrs: next }
     }),
-  markSessionPrsBackfilled: () => set({ sessionPrsBackfilled: true }),
+  markSessionPrsBackfilled: (version) =>
+    set({ sessionPrsBackfilled: true, sessionPrsBackfillVersion: version }),
   refreshUrl: async (url, folder, force = false) => {
     const cur = get().byUrl[url]
     if (cur?.loading) return
@@ -230,6 +236,7 @@ export const usePrStatusStore = create<PrStatusState>()(
         backfilled: s.backfilled,
         sessionPrs: s.sessionPrs,
         sessionPrsBackfilled: s.sessionPrsBackfilled,
+        sessionPrsBackfillVersion: s.sessionPrsBackfillVersion,
       }) as unknown as PrStatusState,
   }
   )
@@ -290,6 +297,7 @@ export function sessionPrStatuses(
       additions: 0,
       deletions: 0,
       checks: { passed: 0, failed: 0, pending: 0 },
+      ...(lookup?.kind === 'failed' ? { statusError: lookup.message } : {}),
     }
   })
 }

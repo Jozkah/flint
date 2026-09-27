@@ -1819,6 +1819,7 @@
   "open": "Open",
   "skillsScopeGlobal": "These skills apply to every chat.",
   "pr": {
+    "statusUnavailable": "Status unavailable",
     "merged": "Merged",
     "checks": "Checks",
     "noChecks": "No checks ran",
