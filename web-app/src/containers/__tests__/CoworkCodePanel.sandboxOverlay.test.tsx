@@ -61,6 +61,7 @@ vi.mock('@/components/CodeEditor', () => ({
   },
 }))
 
+import { projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
 import { CoworkCodePanel } from '../CoworkCodePanel'
 import {
   emptyCodePanelState,
@@ -77,7 +78,13 @@ vi.stubGlobal(
   vi.fn(async () => ({ ok: true, text: async () => 'a\nB\nc\n', headers: new Headers() }))
 )
 
-function Harness({ onApply }: { onApply: (p: string) => void }) {
+function Harness({
+  onApply,
+  onHunk = vi.fn(async () => 'applied' as const),
+}: {
+  onApply: (p: string) => void
+  onHunk?: (p: string, expected: string, content: string) => Promise<'applied' | 'changed'>
+}) {
   const [state, setState] = useState<CodePanelState>(
     openTab(emptyCodePanelState(), projectTab('app.ts', KEY))
   )
@@ -97,31 +104,73 @@ function Harness({ onApply }: { onApply: (p: string) => void }) {
         readRoot={ROOT}
         sandboxCopyFor={(p) => (p === 'app.ts' ? 'project/app.ts' : null)}
         onApplySandboxCopy={onApply}
+        onApplySandboxHunk={onHunk}
       />
     </>
   )
 }
 
+async function peekAt(marker = 'marker-modified-2') {
+  const found = await screen.findByTestId(marker)
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0))
+  })
+  fireEvent.click(found)
+  return within(screen.getByTestId('peek-host')).findByTestId('hunk-popover')
+}
+
+const readFile = vi.mocked(projectReadFile)
+const real = (content: string) => ({
+  relPath: 'app.ts', size: content.length, content, oversized: false, binary: false,
+})
+
 describe('sandbox changes on the real file', () => {
-  it('marks them in the gutter and peeks one inline on click', async () => {
+  it('peeks only the change, as markers then an inline diff', async () => {
+    render(<Harness onApply={vi.fn()} />)
+    await screen.findByTestId('marker-modified-2')
+    expect(screen.queryByTestId('hunk-popover')).toBeNull()
+    const peek = await peekAt()
+    // Only the lines: no title row.
+    expect(peek.textContent?.replace(/\s+/g, '')).toBe('-b+B')
+    expect(within(peek).getByTestId('peek-apply-hunk')).toHaveAttribute(
+      'title',
+      'common:codePanel.applyHunk'
+    )
+    fireEvent.click(screen.getByTestId('marker-modified-2'))
+    expect(screen.queryByTestId('hunk-popover')).toBeNull()
+  })
+
+  it('applies just that change to the re-read file', async () => {
+    const onHunk = vi.fn(async () => 'applied' as const)
+    render(<Harness onApply={vi.fn()} onHunk={onHunk} />)
+    const peek = await peekAt()
+    readFile.mockResolvedValueOnce(real('a\nb\nc\nd\n'))
+    await act(async () => {
+      fireEvent.click(within(peek).getByTestId('peek-apply-hunk'))
+    })
+    expect(onHunk).toHaveBeenCalledWith('app.ts', 'a\nb\nc\nd\n', 'a\nB\nc\nd\n')
+  })
+
+  it('writes nothing and says so when those lines changed', async () => {
+    const onHunk = vi.fn(async () => 'applied' as const)
+    render(<Harness onApply={vi.fn()} onHunk={onHunk} />)
+    const peek = await peekAt()
+    readFile.mockResolvedValueOnce(real('a\nbee\nc\n'))
+    await act(async () => {
+      fireEvent.click(within(peek).getByTestId('peek-apply-hunk'))
+    })
+    expect(onHunk).not.toHaveBeenCalled()
+    expect(peek).toHaveTextContent('common:codePanel.hunkConflict')
+  })
+
+  it('asks before replacing the whole file', async () => {
     const onApply = vi.fn()
     render(<Harness onApply={onApply} />)
-    const marker = await screen.findByTestId('marker-modified-2')
-    await act(async () => {
-      await new Promise((r) => setTimeout(r, 0))
-    })
-    // Only markers until one is clicked.
-    expect(screen.queryByTestId('hunk-popover')).toBeNull()
-    fireEvent.click(marker)
-    const peek = await within(screen.getByTestId('peek-host')).findByTestId('hunk-popover')
-    expect(peek).toHaveTextContent('- b')
-    expect(peek).toHaveTextContent('+ B')
-    fireEvent.click(within(peek).getByTestId('peek-apply-sandbox-copy'))
+    const peek = await peekAt()
+    fireEvent.click(within(peek).getByTestId('peek-apply-whole'))
+    expect(onApply).not.toHaveBeenCalled()
+    fireEvent.click(within(peek).getByTestId('peek-apply-whole-confirm'))
     expect(onApply).toHaveBeenCalledWith('app.ts')
-    // The same marker again closes it.
-    fireEvent.click(screen.getByTestId('marker-modified-2'))
-    fireEvent.click(screen.getByTestId('marker-modified-2'))
-    expect(screen.queryByTestId('hunk-popover')).toBeNull()
   })
 
   it('opens the whole sandbox copy from the header', async () => {

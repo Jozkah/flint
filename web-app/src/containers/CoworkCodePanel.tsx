@@ -8,8 +8,11 @@ import {
   useState,
 } from 'react'
 import {
+  Check,
   ChevronDown,
   ChevronRight,
+  CopyCheck,
+  FileSymlink,
   Columns2,
   File as FileIcon,
   Folder,
@@ -100,6 +103,7 @@ import {
   useCodeGitOverlays,
 } from '@/hooks/useCodeGitOverlays'
 import {
+  applySandboxHunk,
   revertHunk,
   sandboxHunks,
   type ChangeHunk,
@@ -174,8 +178,17 @@ type Props = {
    * changes show as markers on the real file.
    */
   sandboxCopyFor?: (projectPath: string) => string | null
-  /** Copy that sandbox file over the project file. */
+  /** Copy the whole sandbox file over the project file (after confirming). */
   onApplySandboxCopy?: (projectPath: string) => void
+  /**
+   * Write `content` (the real file with one sandbox change applied) over the
+   * project file while it still holds `expected`.
+   */
+  onApplySandboxHunk?: (
+    projectPath: string,
+    expected: string,
+    content: string
+  ) => Promise<'applied' | 'changed'>
 }
 
 type Conflict = {
@@ -213,6 +226,7 @@ export function CoworkCodePanel({
   onSaved,
   sandboxCopyFor,
   onApplySandboxCopy,
+  onApplySandboxHunk,
 }: Props): React.ReactElement {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
@@ -940,6 +954,42 @@ export function CoworkCodePanel({
   const [openHunk, setOpenHunk] = useState<ChangeHunk | null>(null)
   const showsAgentHunks = agentHunks !== null
   useEffect(() => setOpenHunk(null), [activeId, showsAgentHunks])
+  /** What the sandbox peek says under its header, if anything. */
+  const [peekNote, setPeekNote] = useState<
+    null | 'confirm-whole' | 'conflict' | 'dirty' | 'applied' | { error: string }
+  >(null)
+  useEffect(() => setPeekNote(null), [openHunk])
+  /**
+   * Apply the peeked change alone: re-read the real file, re-apply the change
+   * to what is there now, and write only if the lines it replaces are
+   * unchanged -- checked here and again by the backend at the write.
+   */
+  const applyPeekedHunk = async () => {
+    const hunk = openHunk
+    if (!hunk || !active || !onApplySandboxHunk || !folder || !dataFolder) return
+    if (activeDirty) {
+      setPeekNote('dirty')
+      return
+    }
+    try {
+      const fresh = await projectReadFile(dataFolder, folder, active.path, false)
+      const next = applySandboxHunk(fresh.content, hunk)
+      if (next === null) {
+        setPeekNote('conflict')
+        return
+      }
+      const outcome = await onApplySandboxHunk(active.path, fresh.content, next)
+      if (outcome === 'changed') {
+        setPeekNote('conflict')
+        return
+      }
+      if (activeId) setBuffers((current) => dropBuffer(current, activeId))
+      await loadFile(active)
+      setOpenHunk(null)
+    } catch (e) {
+      setPeekNote({ error: messageOf(e) })
+    }
+  }
   // The element a peeked change renders into, inline in the editor.
   const peekDom = useMemo(() => document.createElement('div'), [])
   const peek = useMemo(
@@ -1538,30 +1588,68 @@ export function CoworkCodePanel({
                                 line: openHunk.start,
                               })}
                               onClose={() => setOpenHunk(null)}
-                              actions={
-                                <>
-                                  <Button
-                                    size="xs"
-                                    variant="ghost"
-                                    onClick={openAgentCopy}
-                                    data-testid="peek-open-sandbox-copy"
-                                  >
-                                    {t('common:codePanel.openSandboxCopy')}
-                                  </Button>
-                                  {onApplySandboxCopy && active ? (
+                              actions={[
+                                ...(onApplySandboxHunk
+                                  ? [
+                                      {
+                                        label: t('common:codePanel.applyHunk'),
+                                        icon: <Check className="size-3" />,
+                                        onSelect: () => void applyPeekedHunk(),
+                                        testId: 'peek-apply-hunk',
+                                      },
+                                    ]
+                                  : []),
+                                {
+                                  label: t('common:codePanel.openSandboxCopy'),
+                                  icon: <FileSymlink className="size-3" />,
+                                  onSelect: openAgentCopy,
+                                  testId: 'peek-open-sandbox-copy',
+                                },
+                                ...(onApplySandboxCopy
+                                  ? [
+                                      {
+                                        label: t('common:codePanel.applyWholeFile'),
+                                        icon: <CopyCheck className="size-3" />,
+                                        onSelect: () => setPeekNote('confirm-whole'),
+                                        testId: 'peek-apply-whole',
+                                      },
+                                    ]
+                                  : []),
+                              ]}
+                              note={
+                                peekNote === 'confirm-whole' && active ? (
+                                  <span className="flex flex-wrap items-center gap-2">
+                                    {t('common:codePanel.applyWholeConfirm', {
+                                      path: active.path,
+                                    })}
+                                    <Button
+                                      size="xs"
+                                      variant="outline"
+                                      data-testid="peek-apply-whole-confirm"
+                                      onClick={() => {
+                                        onApplySandboxCopy?.(active.path)
+                                        setOpenHunk(null)
+                                      }}
+                                    >
+                                      {t('common:changes.applyReplace')}
+                                    </Button>
                                     <Button
                                       size="xs"
                                       variant="ghost"
-                                      onClick={() => {
-                                        onApplySandboxCopy(active.path)
-                                        setOpenHunk(null)
-                                      }}
-                                      data-testid="peek-apply-sandbox-copy"
+                                      onClick={() => setPeekNote(null)}
                                     >
-                                      {t('common:changes.applyToFolder')}
+                                      {t('common:cancel')}
                                     </Button>
-                                  ) : null}
-                                </>
+                                  </span>
+                                ) : peekNote === 'conflict' ? (
+                                  t('common:codePanel.hunkConflict')
+                                ) : peekNote === 'dirty' ? (
+                                  t('common:codePanel.hunkDirty')
+                                ) : peekNote && typeof peekNote === 'object' ? (
+                                  t('common:changes.applyFailed', {
+                                    message: peekNote.error,
+                                  })
+                                ) : null
                               }
                             />
                           ) : (

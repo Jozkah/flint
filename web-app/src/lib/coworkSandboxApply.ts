@@ -133,6 +133,22 @@ export function sandboxCopyOfProjectFile(
   return null
 }
 
+/**
+ * Write the real file with one sandbox change applied, only while it still
+ * holds `expected` (backend: `agent_sandbox_apply_hunk`, same confinement as
+ * a whole-file apply). `changed`: the file moved on; nothing was written.
+ */
+export async function applySandboxHunk(input: {
+  session: string
+  path: string
+  project: string
+  destination: string
+  expected: string
+  content: string
+}): Promise<'applied' | 'changed'> {
+  return await invoke<'applied' | 'changed'>('agent_sandbox_apply_hunk', input)
+}
+
 export async function applySandboxFile(input: {
   session: string
   path: string

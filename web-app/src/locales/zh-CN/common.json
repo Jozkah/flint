@@ -933,7 +933,13 @@
     "revertChange": "还原",
     "sandboxChange": "第 {{line}} 行的沙盒更改",
     "openSandboxCopy": "打开沙盒副本",
-    "sandboxChangesHint": "此会话的沙盒有该文件的独立版本。其更改在边栏中标出；点击可查看。"
+    "sandboxChangesHint": "此会话的沙盒有该文件的独立版本。其更改在边栏中标出；点击可查看。",
+    "applyHunk": "应用此更改",
+    "applyWholeFile": "应用整个文件…",
+    "applyWholeConfirm": "用完整的沙盒副本替换文件夹中的 {{path}}？",
+    "hunkConflict": "运行后文件夹中的这些行已更改，因此未写入任何内容。请重新查看文件。",
+    "hunkDirty": "请先保存或放弃你对此文件的编辑。",
+    "moreActions": "更多操作"
   },
   "coworkReview": {
     "hide": "隐藏",

@@ -764,7 +764,13 @@
     "revertChange": "元に戻す",
     "sandboxChange": "{{line}} 行目のサンドボックスの変更",
     "openSandboxCopy": "サンドボックスのコピーを開く",
-    "sandboxChangesHint": "このセッションのサンドボックスにはこのファイルの独自の版があります。変更は余白に表示され、クリックすると確認できます。"
+    "sandboxChangesHint": "このセッションのサンドボックスにはこのファイルの独自の版があります。変更は余白に表示され、クリックすると確認できます。",
+    "applyHunk": "この変更を適用",
+    "applyWholeFile": "ファイル全体を適用…",
+    "applyWholeConfirm": "フォルダー内の {{path}} をサンドボックスのコピー全体で置き換えますか？",
+    "hunkConflict": "実行後にフォルダー内のこの行が変更されたため、何も書き込んでいません。ファイルを確認し直してください。",
+    "hunkDirty": "先にこのファイルの編集を保存または破棄してください。",
+    "moreActions": "その他の操作"
   },
   "coworkReview": {
     "hide": "非表示",

@@ -653,7 +653,13 @@
     "revertChange": "Rétablir",
     "sandboxChange": "Modification du bac à sable à la ligne {{line}}",
     "openSandboxCopy": "Ouvrir la copie du bac à sable",
-    "sandboxChangesHint": "Le bac à sable de cette session a sa propre version de ce fichier. Ses modifications sont marquées dans la marge ; cliquez pour les voir."
+    "sandboxChangesHint": "Le bac à sable de cette session a sa propre version de ce fichier. Ses modifications sont marquées dans la marge ; cliquez pour les voir.",
+    "applyHunk": "Appliquer cette modification",
+    "applyWholeFile": "Appliquer le fichier entier…",
+    "applyWholeConfirm": "Remplacer {{path}} dans le dossier par toute la copie du bac à sable ?",
+    "hunkConflict": "Ces lignes ont changé dans le dossier depuis l’exécution ; rien n’a été écrit. Regardez à nouveau le fichier.",
+    "hunkDirty": "Enregistrez ou annulez d’abord vos modifications de ce fichier.",
+    "moreActions": "Plus d’actions"
   },
   "coworkReview": {
     "hide": "Masquer",

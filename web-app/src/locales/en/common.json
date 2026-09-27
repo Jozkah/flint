@@ -1081,6 +1081,12 @@
     "openDiff": "Show the change to {{path}} in Changes",
     "sandboxChange": "Sandbox change at line {{line}}",
     "openSandboxCopy": "Open sandbox copy",
+    "applyHunk": "Apply this change",
+    "applyWholeFile": "Apply whole file…",
+    "applyWholeConfirm": "Replace {{path}} in the folder with the whole sandbox copy?",
+    "hunkConflict": "These lines changed in the folder since the run, so nothing was written. Look at the file again.",
+    "hunkDirty": "Save or discard your edits to this file first.",
+    "moreActions": "More actions",
     "sandboxChangesHint": "This session’s sandbox has its own version of this file. Its changes are marked in the gutter; click one to see it.",
     "readOnlyReason": {
       "external": "Opened from outside the project, so there is nowhere to save it back to.",

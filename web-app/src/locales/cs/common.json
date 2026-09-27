@@ -652,7 +652,13 @@
     "revertChange": "Vrátit",
     "sandboxChange": "Změna v sandboxu na řádku {{line}}",
     "openSandboxCopy": "Otevřít kopii ze sandboxu",
-    "sandboxChangesHint": "Sandbox této relace má vlastní verzi tohoto souboru. Její změny jsou označeny v okraji; kliknutím je zobrazíte."
+    "sandboxChangesHint": "Sandbox této relace má vlastní verzi tohoto souboru. Její změny jsou označeny v okraji; kliknutím je zobrazíte.",
+    "applyHunk": "Použít tuto změnu",
+    "applyWholeFile": "Použít celý soubor…",
+    "applyWholeConfirm": "Nahradit {{path}} ve složce celou kopií ze sandboxu?",
+    "hunkConflict": "Tyto řádky se od běhu ve složce změnily, nic nebylo zapsáno. Podívejte se na soubor znovu.",
+    "hunkDirty": "Nejprve uložte nebo zahoďte své úpravy tohoto souboru.",
+    "moreActions": "Další akce"
   },
   "coworkReview": {
     "hide": "Skrýt",

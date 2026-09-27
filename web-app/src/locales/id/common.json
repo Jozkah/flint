@@ -650,7 +650,13 @@
     "revertChange": "Kembalikan",
     "sandboxChange": "Perubahan sandbox di baris {{line}}",
     "openSandboxCopy": "Buka salinan sandbox",
-    "sandboxChangesHint": "Sandbox sesi ini punya versi sendiri dari file ini. Perubahannya ditandai di margin; klik untuk melihatnya."
+    "sandboxChangesHint": "Sandbox sesi ini punya versi sendiri dari file ini. Perubahannya ditandai di margin; klik untuk melihatnya.",
+    "applyHunk": "Terapkan perubahan ini",
+    "applyWholeFile": "Terapkan seluruh file…",
+    "applyWholeConfirm": "Ganti {{path}} di folder dengan seluruh salinan sandbox?",
+    "hunkConflict": "Baris ini berubah di folder sejak proses berjalan, jadi tidak ada yang ditulis. Lihat file lagi.",
+    "hunkDirty": "Simpan atau buang dulu suntingan Anda pada file ini.",
+    "moreActions": "Tindakan lain"
   },
   "coworkReview": {
     "hide": "Sembunyikan",

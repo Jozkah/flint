@@ -308,7 +308,20 @@ export function CodeEditor({
     if (!host.current) return
     const created = new EditorView({ state: buildState(value), parent: host.current })
     view.current = created
+    // A peek sits in the document, which can be wider than the view; it is
+    // sized to what is visible so its corner actions stay on screen.
+    const hostEl = host.current
+    const measure = () => {
+      const gutters = created.dom.querySelector<HTMLElement>('.cm-gutters')
+      const width = created.scrollDOM.clientWidth - (gutters?.offsetWidth ?? 0)
+      hostEl.style.setProperty('--cm-peek-width', `${Math.max(0, width)}px`)
+    }
+    measure()
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure)
+    observer?.observe(created.scrollDOM)
     return () => {
+      observer?.disconnect()
       created.destroy()
       view.current = null
     }

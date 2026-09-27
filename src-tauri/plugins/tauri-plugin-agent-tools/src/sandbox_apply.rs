@@ -126,6 +126,41 @@ pub fn probe_sandbox_file_to(
     })
 }
 
+/// What writing one change of a sandbox copy into the project did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SandboxHunkOutcome {
+    /// The project file held `expected` and now holds the new content.
+    Applied,
+    /// The project file no longer holds what the change was worked out
+    /// against. Nothing was written; the caller re-reads and asks.
+    Changed,
+}
+
+/// Write `content` over the project file `destination` -- the real file with
+/// one change of its sandbox copy (`relative`) applied -- but only while the
+/// file still holds `expected`. Same confinement as a whole-file apply; the
+/// sandbox copy must exist, so only a file the run wrote can be patched.
+pub fn apply_sandbox_hunk_to(
+    sandbox: &Path,
+    project: &Path,
+    relative: &str,
+    destination: &str,
+    expected: &str,
+    content: &str,
+) -> Result<SandboxHunkOutcome, String> {
+    let (_source, destination, existed) = resolve(sandbox, project, relative, destination)?;
+    if !existed {
+        return Err("the project file is gone".into());
+    }
+    let current = std::fs::read_to_string(&destination).map_err(|e| e.to_string())?;
+    if current != expected {
+        return Ok(SandboxHunkOutcome::Changed);
+    }
+    std::fs::write(&destination, content).map_err(|e| e.to_string())?;
+    Ok(SandboxHunkOutcome::Applied)
+}
+
 /// The confined source and destination, and whether a file is already at the
 /// destination. Every check a copy needs happens here.
 fn resolve(
@@ -277,6 +312,21 @@ mod tests {
         std::fs::write(project.join("docs/notes.md"), "mine").unwrap();
         assert_eq!(probe("docs/notes.md").unwrap(), SandboxApplyProbe::Differs);
         assert!(probe("../x.md").is_err());
+    }
+
+    #[test]
+    fn applies_one_change_only_over_the_expected_file() {
+        let (_root, sandbox, project) = dirs();
+        std::fs::create_dir_all(project.join("docs")).unwrap();
+        std::fs::write(project.join("docs/notes.md"), "a\nb\n").unwrap();
+        let apply = |expected: &str| {
+            apply_sandbox_hunk_to(&sandbox, &project, "docs/notes.md", "docs/notes.md", expected, "a\nB\n")
+        };
+        assert_eq!(apply("a\nx\n").unwrap(), SandboxHunkOutcome::Changed);
+        assert_eq!(std::fs::read_to_string(project.join("docs/notes.md")).unwrap(), "a\nb\n");
+        assert_eq!(apply("a\nb\n").unwrap(), SandboxHunkOutcome::Applied);
+        assert_eq!(std::fs::read_to_string(project.join("docs/notes.md")).unwrap(), "a\nB\n");
+        assert!(apply_sandbox_hunk_to(&sandbox, &project, "docs/notes.md", "../x", "", "").is_err());
     }
 
     #[test]

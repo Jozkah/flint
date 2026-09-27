@@ -905,6 +905,7 @@ function seedCodeAnswers() {
     String(a.destination ?? a.path).endsWith('tooltip.ts') ? 'differs' : 'new'
   )
   answer('agent_sandbox_apply_file', () => 'created')
+  answer('agent_sandbox_apply_hunk', () => 'applied')
   answer('agent_pr_status', (a) => usePrStatusStore.getState().byFolder[String(a.project)]?.lookup ?? { kind: 'no_pull_request' })
 }
 

@@ -4,6 +4,7 @@ import {
   computeHunks,
   markersByLine,
   parseBlamePorcelain,
+  applySandboxHunk,
   peekLineOf,
   relativeTime,
   revertHunk,
@@ -110,8 +111,8 @@ describe('sandbox hunks on the real file', () => {
   it('reads each difference as the sandbox’s change, on real lines', () => {
     const hunks = sandboxHunks(real, 'a\nB\nc\nd\nnew\n')
     expect(hunks).toEqual([
-      { kind: 'modified', start: 2, end: 2, oldLines: ['b'], newLines: ['B'] },
-      { kind: 'added', start: 4, end: 4, oldLines: [], newLines: ['new'] },
+      { kind: 'modified', start: 2, end: 2, oldLines: ['b'], newLines: ['B'], at: 2 },
+      { kind: 'added', start: 4, end: 4, oldLines: [], newLines: ['new'], at: 5 },
     ])
   })
 
@@ -128,5 +129,20 @@ describe('sandbox hunks on the real file', () => {
   it('opens a peek under a change’s last line', () => {
     expect(peekLineOf({ kind: 'modified', start: 3, end: 5, oldLines: [], newLines: [] })).toBe(5)
     expect(peekLineOf({ kind: 'deleted', start: 4, end: 3, oldLines: ['x'], newLines: [] })).toBe(3)
+  })
+})
+
+describe('applying one sandbox hunk', () => {
+  const real = 'a\nb\nc\nd\n'
+  it('applies each kind of change on its own', () => {
+    const hunks = sandboxHunks(real, 'a\nB\nc\nnew\nd\n')
+    expect(applySandboxHunk(real, hunks[0])).toBe('a\nB\nc\nd\n')
+    expect(applySandboxHunk(real, hunks[1])).toBe('a\nb\nc\nnew\nd\n')
+    const [dropped] = sandboxHunks(real, 'a\nd\n')
+    expect(applySandboxHunk(real, dropped)).toBe('a\nd\n')
+  })
+  it('refuses when the lines it replaces are not there any more', () => {
+    const [hunk] = sandboxHunks(real, 'a\nB\nc\nd\n')
+    expect(applySandboxHunk('a\nbee\nc\nd\n', hunk)).toBeNull()
   })
 })

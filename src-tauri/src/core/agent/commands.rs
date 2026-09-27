@@ -1732,6 +1732,34 @@ pub async fn agent_sandbox_apply_probe(
     .map_err(|e| format!("the check did not finish: {e}"))?
 }
 
+/// Write one change of a Review only sandbox copy into the project file, only
+/// while that file still holds `expected` (what the change was computed on).
+#[tauri::command]
+pub async fn agent_sandbox_apply_hunk(
+    app: tauri::AppHandle,
+    session: String,
+    path: String,
+    project: String,
+    destination: String,
+    expected: String,
+    content: String,
+) -> Result<tauri_plugin_agent_tools::sandbox_apply::SandboxHunkOutcome, String> {
+    let data_folder = get_jan_data_folder_path(app);
+    tokio::task::spawn_blocking(move || {
+        let sandbox = workspace::session_workspace(&data_folder, &session)?;
+        tauri_plugin_agent_tools::sandbox_apply::apply_sandbox_hunk_to(
+            &sandbox,
+            std::path::Path::new(&project),
+            &path,
+            &destination,
+            &expected,
+            &content,
+        )
+    })
+    .await
+    .map_err(|e| format!("the change was not written: {e}"))?
+}
+
 /// Give up on a pending import; its proposal is rejected.
 #[tauri::command]
 pub async fn agent_bundle_abandon(

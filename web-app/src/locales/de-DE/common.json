@@ -650,7 +650,13 @@
     "revertChange": "Zurücksetzen",
     "sandboxChange": "Sandbox-Änderung in Zeile {{line}}",
     "openSandboxCopy": "Sandbox-Kopie öffnen",
-    "sandboxChangesHint": "Die Sandbox dieser Sitzung hat eine eigene Version dieser Datei. Ihre Änderungen sind am Rand markiert; ein Klick zeigt sie."
+    "sandboxChangesHint": "Die Sandbox dieser Sitzung hat eine eigene Version dieser Datei. Ihre Änderungen sind am Rand markiert; ein Klick zeigt sie.",
+    "applyHunk": "Diese Änderung übernehmen",
+    "applyWholeFile": "Ganze Datei übernehmen…",
+    "applyWholeConfirm": "{{path}} im Ordner durch die ganze Sandbox-Kopie ersetzen?",
+    "hunkConflict": "Diese Zeilen haben sich seit dem Lauf im Ordner geändert, es wurde nichts geschrieben. Sieh dir die Datei erneut an.",
+    "hunkDirty": "Speichere oder verwirf zuerst deine Änderungen an dieser Datei.",
+    "moreActions": "Weitere Aktionen"
   },
   "coworkReview": {
     "hide": "Ausblenden",

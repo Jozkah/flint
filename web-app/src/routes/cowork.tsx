@@ -229,6 +229,7 @@ import { CoworkPreviewPanel } from '@/containers/CoworkPreviewPanel'
 import { CoworkDiffPanel } from '@/containers/CoworkDiffPanel'
 import {
   applySandboxFile,
+  applySandboxHunk,
   isFlintInternalPath,
   planSandboxApply,
   sandboxCopyOfProjectFile,
@@ -5766,6 +5767,28 @@ export function CoworkPage() {
                   )?.plan.source ?? null)
                 : null
             }
+            onApplySandboxHunk={async (projectPath, expected, content) => {
+              const copy =
+                sandboxApply && session?.id
+                  ? sandboxCopyOfProjectFile(
+                      fileDiffs.map((f) => f.path),
+                      sandboxApply.planFor,
+                      folder,
+                      projectPath
+                    )
+                  : null
+              if (!copy || !session?.id) throw new Error(`${projectPath} has no sandbox copy`)
+              const outcome = await applySandboxHunk({
+                session: session.id,
+                path: copy.plan.source,
+                project: copy.plan.folder,
+                destination: copy.plan.destination,
+                expected,
+                content,
+              })
+              if (outcome === 'applied') git.refresh()
+              return outcome
+            }}
             onApplySandboxCopy={(projectPath) => {
               if (!sandboxApply) return
               const copy = sandboxCopyOfProjectFile(
@@ -5775,7 +5798,7 @@ export function CoworkPage() {
                 projectPath
               )
               if (!copy) return
-              // Asked from the change itself, with the difference in view.
+              // Confirmed in the peek ("Apply whole file…"), with the change in view.
               void sandboxApply
                 .apply(copy.path, true)
                 .then(() => toast.success(t('common:changes.applyReplaced')))

@@ -741,7 +741,13 @@
     "revertChange": "Ripristina",
     "sandboxChange": "Modifica della sandbox alla riga {{line}}",
     "openSandboxCopy": "Apri la copia nella sandbox",
-    "sandboxChangesHint": "La sandbox di questa sessione ha una propria versione di questo file. Le sue modifiche sono segnate a margine; fai clic per vederle."
+    "sandboxChangesHint": "La sandbox di questa sessione ha una propria versione di questo file. Le sue modifiche sono segnate a margine; fai clic per vederle.",
+    "applyHunk": "Applica questa modifica",
+    "applyWholeFile": "Applica l’intero file…",
+    "applyWholeConfirm": "Sostituire {{path}} nella cartella con l’intera copia della sandbox?",
+    "hunkConflict": "Queste righe sono cambiate nella cartella dopo l’esecuzione, quindi non è stato scritto nulla. Riguarda il file.",
+    "hunkDirty": "Prima salva o scarta le tue modifiche a questo file.",
+    "moreActions": "Altre azioni"
   },
   "coworkReview": {
     "hide": "Nascondi",

@@ -124,6 +124,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_bundle_abandon,
         core::agent::commands::agent_sandbox_apply_file,
         core::agent::commands::agent_sandbox_apply_probe,
+        core::agent::commands::agent_sandbox_apply_hunk,
         core::agent::commands::agent_replay_begin,
         core::agent::commands::agent_context_breakdown,
         core::agent::commands::agent_background_jobs,

@@ -652,7 +652,13 @@
     "revertChange": "Przywróć",
     "sandboxChange": "Zmiana w piaskownicy w wierszu {{line}}",
     "openSandboxCopy": "Otwórz kopię z piaskownicy",
-    "sandboxChangesHint": "Piaskownica tej sesji ma własną wersję tego pliku. Jej zmiany są zaznaczone na marginesie; kliknij, aby je zobaczyć."
+    "sandboxChangesHint": "Piaskownica tej sesji ma własną wersję tego pliku. Jej zmiany są zaznaczone na marginesie; kliknij, aby je zobaczyć.",
+    "applyHunk": "Zastosuj tę zmianę",
+    "applyWholeFile": "Zastosuj cały plik…",
+    "applyWholeConfirm": "Zastąpić {{path}} w folderze całą kopią z piaskownicy?",
+    "hunkConflict": "Te wiersze zmieniły się w folderze od czasu przebiegu, więc nic nie zapisano. Sprawdź plik ponownie.",
+    "hunkDirty": "Najpierw zapisz lub odrzuć swoje zmiany w tym pliku.",
+    "moreActions": "Więcej działań"
   },
   "coworkReview": {
     "hide": "Ukryj",

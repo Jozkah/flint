@@ -18,6 +18,11 @@ export type ChangeHunk = {
   oldLines: string[]
   /** The new lines (empty for `deleted`). */
   newLines: string[]
+  /**
+   * Sandbox hunks only: the 1-based real line `oldLines` start at, which the
+   * marker lines may not (see `sandboxHunks`). Where the change is applied.
+   */
+  at?: number
 }
 
 const splitLines = (text: string): string[] => {
@@ -139,8 +144,8 @@ export function peekLineOf(hunk: ChangeHunk): number {
  * the first of them.
  */
 export function sandboxHunks(real: string, sandbox: string): ChangeHunk[] {
-  return computeHunks(sandbox, real).map((h) => {
-    const flipped = { oldLines: h.newLines, newLines: h.oldLines }
+  return computeHunks(sandbox, real).map((h): ChangeHunk => {
+    const flipped = { oldLines: h.newLines, newLines: h.oldLines, at: h.start }
     if (h.kind === 'added') {
       return { kind: 'deleted', start: h.start + 1, end: h.start, ...flipped }
     }
@@ -150,6 +155,32 @@ export function sandboxHunks(real: string, sandbox: string): ChangeHunk[] {
     }
     return { ...h, ...flipped }
   })
+}
+
+/**
+ * `real` with one sandbox hunk applied, or null when the lines it replaces
+ * are no longer there as they were (the file changed since).
+ */
+export function applySandboxHunk(real: string, hunk: ChangeHunk): string | null {
+  if (hunk.at === undefined) return null
+  const crlf = real.includes('\r\n')
+  const endsWithNewline = /\r?\n$/.test(real)
+  const lines = real === '' ? [] : real.replace(/\r\n/g, '\n').split('\n')
+  if (endsWithNewline) lines.pop()
+  const from = hunk.at - 1
+  const current = lines.slice(from, from + hunk.oldLines.length)
+  if (
+    from > lines.length ||
+    current.length !== hunk.oldLines.length ||
+    current.some((line, i) => line !== hunk.oldLines[i])
+  ) {
+    return null
+  }
+  lines.splice(from, hunk.oldLines.length, ...hunk.newLines)
+  const joined = lines.join(crlf ? '\r\n' : '\n')
+  return joined && (endsWithNewline || lines.length === 0)
+    ? joined + (crlf ? '\r\n' : '\n')
+    : joined
 }
 
 /** Line number to marker kind, for painting a gutter. */

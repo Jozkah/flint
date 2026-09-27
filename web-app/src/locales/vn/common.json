@@ -650,7 +650,13 @@
     "revertChange": "Hoàn tác",
     "sandboxChange": "Thay đổi sandbox ở dòng {{line}}",
     "openSandboxCopy": "Mở bản sao sandbox",
-    "sandboxChangesHint": "Sandbox của phiên này có phiên bản riêng của tệp này. Các thay đổi được đánh dấu ở lề; bấm để xem."
+    "sandboxChangesHint": "Sandbox của phiên này có phiên bản riêng của tệp này. Các thay đổi được đánh dấu ở lề; bấm để xem.",
+    "applyHunk": "Áp dụng thay đổi này",
+    "applyWholeFile": "Áp dụng toàn bộ tệp…",
+    "applyWholeConfirm": "Thay {{path}} trong thư mục bằng toàn bộ bản sao sandbox?",
+    "hunkConflict": "Các dòng này đã thay đổi trong thư mục sau lần chạy nên chưa ghi gì. Hãy xem lại tệp.",
+    "hunkDirty": "Hãy lưu hoặc bỏ các chỉnh sửa của bạn với tệp này trước.",
+    "moreActions": "Thao tác khác"
   },
   "coworkReview": {
     "hide": "Ẩn",

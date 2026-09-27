@@ -650,7 +650,13 @@
     "revertChange": "還原",
     "sandboxChange": "第 {{line}} 行的沙箱變更",
     "openSandboxCopy": "開啟沙箱副本",
-    "sandboxChangesHint": "此工作階段的沙箱有這個檔案的獨立版本。其變更標示在邊欄中；按一下即可查看。"
+    "sandboxChangesHint": "此工作階段的沙箱有這個檔案的獨立版本。其變更標示在邊欄中；按一下即可查看。",
+    "applyHunk": "套用此變更",
+    "applyWholeFile": "套用整個檔案…",
+    "applyWholeConfirm": "以完整的沙箱副本取代資料夾中的 {{path}}？",
+    "hunkConflict": "執行後資料夾中的這些行已變更，因此未寫入任何內容。請重新查看檔案。",
+    "hunkDirty": "請先儲存或捨棄你對此檔案的編輯。",
+    "moreActions": "更多動作"
   },
   "coworkReview": {
     "hide": "隱藏",

@@ -652,7 +652,13 @@
     "revertChange": "Reverteix",
     "sandboxChange": "Canvi de l’entorn aïllat a la línia {{line}}",
     "openSandboxCopy": "Obre la còpia aïllada",
-    "sandboxChangesHint": "L’entorn aïllat d’aquesta sessió té la seva pròpia versió d’aquest fitxer. Els seus canvis es marquen al marge; fes-hi clic per veure’ls."
+    "sandboxChangesHint": "L’entorn aïllat d’aquesta sessió té la seva pròpia versió d’aquest fitxer. Els seus canvis es marquen al marge; fes-hi clic per veure’ls.",
+    "applyHunk": "Aplica aquest canvi",
+    "applyWholeFile": "Aplica el fitxer sencer…",
+    "applyWholeConfirm": "Vols substituir {{path}} a la carpeta per tota la còpia aïllada?",
+    "hunkConflict": "Aquestes línies han canviat a la carpeta des de l’execució; no s’ha escrit res. Torna a mirar el fitxer.",
+    "hunkDirty": "Primer desa o descarta les teves edicions d’aquest fitxer.",
+    "moreActions": "Més accions"
   },
   "coworkReview": {
     "hide": "Amaga",

@@ -720,7 +720,13 @@
     "revertChange": "Revertir",
     "sandboxChange": "Cambio del sandbox en la línea {{line}}",
     "openSandboxCopy": "Abrir copia del sandbox",
-    "sandboxChangesHint": "El sandbox de esta sesión tiene su propia versión de este archivo. Sus cambios están marcados en el margen; haz clic en uno para verlo."
+    "sandboxChangesHint": "El sandbox de esta sesión tiene su propia versión de este archivo. Sus cambios están marcados en el margen; haz clic en uno para verlo.",
+    "applyHunk": "Aplicar este cambio",
+    "applyWholeFile": "Aplicar el archivo completo…",
+    "applyWholeConfirm": "¿Reemplazar {{path}} en la carpeta por la copia completa del sandbox?",
+    "hunkConflict": "Estas líneas cambiaron en la carpeta desde la ejecución; no se escribió nada. Vuelve a mirar el archivo.",
+    "hunkDirty": "Primero guarda o descarta tus ediciones de este archivo.",
+    "moreActions": "Más acciones"
   },
   "coworkReview": {
     "hide": "Ocultar",

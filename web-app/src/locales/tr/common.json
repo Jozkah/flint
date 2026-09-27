@@ -931,7 +931,13 @@
     "revertChange": "Geri al",
     "sandboxChange": "{{line}}. satırda korumalı alan değişikliği",
     "openSandboxCopy": "Korumalı alan kopyasını aç",
-    "sandboxChangesHint": "Bu oturumun korumalı alanında bu dosyanın kendi sürümü var. Değişiklikleri kenar boşluğunda işaretli; görmek için tıklayın."
+    "sandboxChangesHint": "Bu oturumun korumalı alanında bu dosyanın kendi sürümü var. Değişiklikleri kenar boşluğunda işaretli; görmek için tıklayın.",
+    "applyHunk": "Bu değişikliği uygula",
+    "applyWholeFile": "Tüm dosyayı uygula…",
+    "applyWholeConfirm": "Klasördeki {{path}} korumalı alan kopyasının tamamıyla değiştirilsin mi?",
+    "hunkConflict": "Bu satırlar çalıştırmadan sonra klasörde değişti, bu yüzden hiçbir şey yazılmadı. Dosyaya yeniden bakın.",
+    "hunkDirty": "Önce bu dosyadaki düzenlemelerinizi kaydedin veya atın.",
+    "moreActions": "Diğer eylemler"
   },
   "coworkReview": {
     "hide": "Gizle",
