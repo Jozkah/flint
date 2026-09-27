@@ -1879,6 +1879,37 @@
       "timeout": "Response time"
     }
   },
+  "browserVerify": {
+    "title": "Verify in browser",
+    "explain": "Opens your local app in a separate, temporary Chrome or Edge profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",
+    "url": "Local app URL",
+    "notLocal": "Only an app on this machine (localhost, 127.0.0.1) can be verified.",
+    "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line",
+    "run": "Verify",
+    "cancel": "Stop",
+    "using": "Using {{browser}}",
+    "noBrowser": "No Chrome or Edge found. Install one; Flint does not download a browser.",
+    "meta": "{{origin}} · {{browser}} · {{date}} · {{ms}} ms",
+    "consoleErrors_one": "{{count}} console error",
+    "consoleErrors_other": "{{count}} console errors",
+    "blocked_one": "{{count}} request outside the app's origin blocked",
+    "blocked_other": "{{count}} requests outside the app's origin blocked",
+    "screenshotAlt": "The page at the end of the verification",
+    "inSummary": "Verified in browser",
+    "status": {
+      "pending": "Waiting",
+      "running": "Running",
+      "passed": "Passed",
+      "failed": "Failed",
+      "skipped": "Skipped"
+    },
+    "outcome": {
+      "passed": "Passed",
+      "failed": "Failed",
+      "cancelled": "Stopped",
+      "error": "Could not run"
+    }
+  },
   "pr": {
     "statusUnavailable": "Status unavailable",
     "merged": "Merged",

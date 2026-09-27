@@ -1,0 +1,576 @@
+//! "Verify in browser": drive a separate, throwaway Chrome or Edge against a
+//! local app the user is previewing, and bring back evidence.
+//!
+//! What this is not: Flint's own webview. The browser is a separate process
+//! with a fresh temporary profile (no cookies, storage or extensions from
+//! anywhere), deleted when the run ends. Flint's preview webview and its
+//! profile are never touched, so nothing the app under test does can reach
+//! Flint's privileged context.
+//!
+//! Confinement. Only the local origin being verified (and any other loopback
+//! origin the caller explicitly lists) may be loaded:
+//! - every request -- navigations, redirects, subresources, frames, workers
+//!   (auto-attached) -- is paused through the DevTools `Fetch` domain and
+//!   failed unless its origin is allowed; a blocked main-frame navigation
+//!   (including a redirect off the origin) stops the run;
+//! - underneath that, non-loopback traffic goes to a dead proxy, so a request
+//!   the interception could not see still goes nowhere.
+//!
+//! No browser is ever downloaded: an installed Chrome, Edge or Chromium is
+//! used, or the caller gets a setup message saying none was found.
+
+pub mod cdp;
+pub mod runner;
+
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+use url::{Host, Url};
+
+/// Steps one run may carry.
+pub const MAX_STEPS: usize = 30;
+/// Default and ceiling for a whole run.
+pub const DEFAULT_TIMEOUT_MS: u64 = 90_000;
+pub const MAX_TIMEOUT_MS: u64 = 300_000;
+/// One step, unless the run's own deadline is sooner.
+pub const STEP_TIMEOUT_MS: u64 = 15_000;
+/// A `wait` step is capped at this.
+pub const MAX_WAIT_MS: u64 = 10_000;
+
+/// One thing the browser is asked to do, in order.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum Step {
+    /// Load a URL: absolute, or relative to the run's URL. Must be allowed.
+    Navigate { url: String },
+    /// Click the element whose visible text (or label) matches `target`, or
+    /// the first match of a CSS selector written `css:<selector>`.
+    Click { target: String },
+    /// Type `text` into the field matching `target` (placeholder, label, name,
+    /// or `css:<selector>`).
+    Type { target: String, text: String },
+    /// The page's visible text must contain `text`.
+    Expect { text: String },
+    /// Wait, capped at `MAX_WAIT_MS`.
+    Wait { ms: u64 },
+    /// Capture the page now (the final state is always captured too).
+    Screenshot,
+}
+
+impl Step {
+    /// The line shown to the user for this step.
+    pub fn label(&self) -> String {
+        match self {
+            Step::Navigate { url } => format!("Open {url}"),
+            Step::Click { target } => format!("Click \"{target}\""),
+            Step::Type { target, text } => {
+                format!("Type {} characters into \"{target}\"", text.chars().count())
+            }
+            Step::Expect { text } => format!("Expect the page to show \"{text}\""),
+            Step::Wait { ms } => format!("Wait {} ms", (*ms).min(MAX_WAIT_MS)),
+            Step::Screenshot => "Take a screenshot".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct VerifyRequest {
+    /// Chosen by the caller, so it can cancel before the run answers.
+    pub id: String,
+    /// The local app's URL. Its origin is the one the run is confined to.
+    pub url: String,
+    #[serde(default)]
+    pub steps: Vec<Step>,
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    /// Console errors fail the run (default true).
+    #[serde(default)]
+    pub fail_on_console_error: Option<bool>,
+    /// Other loopback origins the user permitted (an API on another port).
+    #[serde(default)]
+    pub extra_origins: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StepStatus {
+    Pending,
+    Running,
+    Passed,
+    Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct StepRecord {
+    pub index: usize,
+    pub label: String,
+    pub status: StepStatus,
+    pub detail: Option<String>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Outcome {
+    Passed,
+    Failed,
+    Cancelled,
+    /// The run could not start: no browser, not a local URL, app not running.
+    Error,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ConsoleEntry {
+    /// `error`, `exception` or `log` (a browser log entry at error level).
+    pub kind: String,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BlockedRequest {
+    pub url: String,
+    pub resource_type: String,
+    /// A main-frame navigation: these stop the run.
+    pub navigation: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Screenshot {
+    /// The step it was taken after; `None` for the final capture.
+    pub step: Option<usize>,
+    pub png_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerifyReport {
+    pub id: String,
+    pub url: String,
+    /// The origin the run was confined to.
+    pub origin: String,
+    pub outcome: Outcome,
+    /// Why, in one sentence.
+    pub reason: String,
+    pub steps: Vec<StepRecord>,
+    pub screenshots: Vec<Screenshot>,
+    pub console_errors: Vec<ConsoleEntry>,
+    pub blocked_requests: Vec<BlockedRequest>,
+    /// HTTP status of the last main-frame document.
+    pub document_status: Option<u16>,
+    pub final_url: Option<String>,
+    /// Which installed browser ran it.
+    pub browser: Option<String>,
+    pub started_at: String,
+    pub duration_ms: u64,
+    /// The temporary profile was deleted afterwards.
+    pub profile_removed: bool,
+}
+
+// --- origins -----------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Origin {
+    pub scheme: String,
+    pub host: String,
+    pub port: u16,
+}
+
+impl Origin {
+    pub fn of(url: &Url) -> Option<Origin> {
+        if !matches!(url.scheme(), "http" | "https") {
+            return None;
+        }
+        Some(Origin {
+            scheme: url.scheme().to_string(),
+            host: url.host_str()?.to_ascii_lowercase(),
+            port: url.port_or_known_default()?,
+        })
+    }
+
+    pub fn serialize(&self) -> String {
+        format!("{}://{}:{}", self.scheme, self.host, self.port)
+    }
+
+    /// `host:port` to open a TCP connection to (IPv6 unbracketed).
+    pub fn socket_host(&self) -> String {
+        self.host.trim_start_matches('[').trim_end_matches(']').to_string()
+    }
+}
+
+fn is_loopback(url: &Url) -> bool {
+    match url.host() {
+        Some(Host::Domain(d)) => d.eq_ignore_ascii_case("localhost"),
+        Some(Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(Host::Ipv6(ip)) => ip.is_loopback(),
+        None => false,
+    }
+}
+
+/// The run's URL and origin, if it is an http(s) URL on this machine.
+pub fn local_origin(raw: &str) -> Result<(Url, Origin), String> {
+    let url = Url::parse(raw.trim()).map_err(|e| format!("not a URL: {e}"))?;
+    let origin = Origin::of(&url).ok_or("only http and https pages can be verified")?;
+    if !is_loopback(&url) {
+        return Err(format!(
+            "{} is not a local address; only an app running on this machine (localhost, 127.0.0.1, [::1]) can be verified",
+            origin.serialize()
+        ));
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("a URL with credentials in it is not verified".to_string());
+    }
+    Ok((url, origin))
+}
+
+/// What the browser may load.
+#[derive(Debug, Clone)]
+pub struct OriginPolicy {
+    allowed: Vec<Origin>,
+}
+
+impl OriginPolicy {
+    /// `primary` plus the extra origins, each of which must itself be local.
+    pub fn new(primary: Origin, extra: &[String]) -> Result<Self, String> {
+        let mut allowed = vec![primary];
+        for raw in extra {
+            let (_, o) = local_origin(raw)?;
+            if !allowed.contains(&o) {
+                allowed.push(o);
+            }
+        }
+        Ok(OriginPolicy { allowed })
+    }
+
+    pub fn allowed(&self) -> &[Origin] {
+        &self.allowed
+    }
+
+    /// Whether a request for `raw` may go ahead. Same origin means same
+    /// scheme, host and port: `localhost` and `127.0.0.1` are different
+    /// origins, as they are to the browser.
+    pub fn permits(&self, raw: &str) -> bool {
+        let Ok(url) = Url::parse(raw) else { return false };
+        match url.scheme() {
+            "http" | "https" => Origin::of(&url).is_some_and(|o| self.allowed.contains(&o)),
+            // Inline content fetches nothing.
+            "data" => true,
+            "about" => url.path() == "blank" || url.path() == "srcdoc",
+            // A blob URL carries the origin that made it.
+            "blob" => Url::parse(url.path()).ok().and_then(|u| Origin::of(&u))
+                .is_some_and(|o| self.allowed.contains(&o)),
+            // ws:// to the allowed origin (a dev server's hot reload).
+            "ws" | "wss" => {
+                let scheme = if url.scheme() == "ws" { "http" } else { "https" };
+                url.host_str().is_some_and(|h| {
+                    self.allowed.contains(&Origin {
+                        scheme: scheme.to_string(),
+                        host: h.to_ascii_lowercase(),
+                        port: url.port().unwrap_or(if scheme == "http" { 80 } else { 443 }),
+                    })
+                })
+            }
+            _ => false,
+        }
+    }
+}
+
+/// A URL as shown in evidence: no query or fragment (they can carry tokens),
+/// and bounded.
+pub fn display_url(raw: &str) -> String {
+    let shown = match Url::parse(raw) {
+        Ok(mut u) if u.scheme() != "data" => {
+            u.set_query(None);
+            u.set_fragment(None);
+            let _ = u.set_password(None);
+            let _ = u.set_username("");
+            u.to_string()
+        }
+        Ok(_) => "data:…".to_string(),
+        Err(_) => raw.to_string(),
+    };
+    shown.chars().take(200).collect()
+}
+
+// --- the browser -------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct BrowserInfo {
+    pub found: bool,
+    pub path: Option<String>,
+    pub name: Option<String>,
+    /// What to do when none was found.
+    pub hint: Option<String>,
+}
+
+fn browser_name(path: &Path) -> String {
+    let p = path.to_string_lossy().to_ascii_lowercase();
+    if p.contains("edge") || p.contains("msedge") {
+        "Microsoft Edge".into()
+    } else if p.contains("chromium") {
+        "Chromium".into()
+    } else {
+        "Google Chrome".into()
+    }
+}
+
+/// Default install locations. On Windows only absolute roots from the
+/// environment are used, so a planted `chrome.exe` in the working directory
+/// is never launched; PATH is not searched anywhere.
+fn candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/opt/google/chrome/chrome",
+        "/usr/bin/microsoft-edge",
+        "/usr/bin/microsoft-edge-stable",
+        "/opt/microsoft/msedge/msedge",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+    ]
+    .iter()
+    .map(PathBuf::from)
+    .collect();
+    let var = |name: &str| std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute());
+    for root in [var("ProgramFiles"), var("ProgramFiles(x86)"), var("LOCALAPPDATA")]
+        .into_iter()
+        .flatten()
+    {
+        out.push(root.join("Google").join("Chrome").join("Application").join("chrome.exe"));
+        out.push(root.join("Microsoft").join("Edge").join("Application").join("msedge.exe"));
+    }
+    out
+}
+
+/// An installed Chrome, Edge or Chromium. `FLINT_BROWSER_PATH` (or
+/// `CHROME_PATH`, which the screenshot tool reads) names one explicitly.
+pub fn find_browser() -> BrowserInfo {
+    let explicit = ["FLINT_BROWSER_PATH", "CHROME_PATH"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .find(|p| p.is_absolute() && p.is_file());
+    match explicit.or_else(|| candidates().into_iter().find(|p| p.is_file())) {
+        Some(path) => BrowserInfo {
+            found: true,
+            name: Some(browser_name(&path)),
+            path: Some(path.to_string_lossy().into_owned()),
+            hint: None,
+        },
+        None => BrowserInfo {
+            found: false,
+            path: None,
+            name: None,
+            hint: Some(
+                "No Chrome, Edge or Chromium was found. Install Google Chrome or Microsoft Edge, \
+                 or set FLINT_BROWSER_PATH to the browser's executable. Flint does not download \
+                 a browser."
+                    .to_string(),
+            ),
+        },
+    }
+}
+
+/// Whether this process runs as root, where Chrome refuses to start with its
+/// sandbox (a container, typically).
+fn running_as_root() -> bool {
+    #[cfg(unix)]
+    {
+        // SAFETY: geteuid has no preconditions and cannot fail.
+        unsafe { libc::geteuid() == 0 }
+    }
+    #[cfg(not(unix))]
+    {
+        false
+    }
+}
+
+/// Arguments for a throwaway, confined, headless browser.
+pub fn browser_args(profile: &Path, as_root: bool) -> Vec<String> {
+    let mut args: Vec<String> = [
+        "--headless=new",
+        "--remote-debugging-port=0",
+        "--no-first-run",
+        "--no-default-browser-check",
+        "--disable-extensions",
+        "--disable-sync",
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-domain-reliability",
+        "--disable-client-side-phishing-detection",
+        "--disable-features=Translate,OptimizationHints,MediaRouter,AutofillServerCommunication",
+        "--metrics-recording-only",
+        "--no-pings",
+        "--password-store=basic",
+        "--use-mock-keychain",
+        "--mute-audio",
+        "--window-size=1280,800",
+        // Anything not on loopback goes to a port nothing listens on. The
+        // DevTools interception is the policy; this is the floor under it.
+        "--proxy-server=http://127.0.0.1:9",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    args.push(format!("--user-data-dir={}", profile.display()));
+    if as_root {
+        args.push("--no-sandbox".to_string());
+    }
+    args.push("about:blank".to_string());
+    args
+}
+
+/// Loopback addresses, for tests and the app-server watchdog.
+pub fn loopback_ip(host: &str) -> Option<IpAddr> {
+    match host {
+        "localhost" => Some(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        "::1" | "[::1]" => Some(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+        other => other.parse().ok().filter(|ip: &IpAddr| ip.is_loopback()),
+    }
+}
+
+// --- commands ----------------------------------------------------------------
+
+#[cfg(not(feature = "cli"))]
+pub mod commands {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::{LazyLock, Mutex};
+    use tauri::Emitter;
+    use tokio::sync::watch;
+
+    pub const EVENT_PROGRESS: &str = "browser-verify://progress";
+
+    static RUNS: LazyLock<Mutex<HashMap<String, watch::Sender<bool>>>> =
+        LazyLock::new(|| Mutex::new(HashMap::new()));
+
+    #[derive(Clone, Serialize)]
+    struct Progress<'a> {
+        id: &'a str,
+        step: &'a StepRecord,
+    }
+
+    /// Which browser a run would use, or how to get one.
+    #[tauri::command]
+    pub async fn browser_verify_detect() -> BrowserInfo {
+        tokio::task::spawn_blocking(find_browser)
+            .await
+            .unwrap_or(BrowserInfo { found: false, path: None, name: None, hint: None })
+    }
+
+    /// Run one verification to its end (or cancellation) and return the
+    /// evidence. Steps are also emitted as they change.
+    #[tauri::command]
+    pub async fn browser_verify_run(
+        app: tauri::AppHandle,
+        request: VerifyRequest,
+    ) -> VerifyReport {
+        let (tx, rx) = watch::channel(false);
+        let id = request.id.clone();
+        if let Ok(mut runs) = RUNS.lock() {
+            if let Some(old) = runs.insert(id.clone(), tx) {
+                let _ = old.send(true);
+            }
+        }
+        let emit_id = id.clone();
+        let report = runner::run(request, find_browser(), rx, move |step| {
+            let _ = app.emit(EVENT_PROGRESS, Progress { id: &emit_id, step });
+        })
+        .await;
+        if let Ok(mut runs) = RUNS.lock() {
+            runs.remove(&id);
+        }
+        report
+    }
+
+    /// Stop a run: the browser is closed and its profile deleted.
+    #[tauri::command]
+    pub fn browser_verify_cancel(id: String) -> bool {
+        RUNS.lock()
+            .ok()
+            .and_then(|runs| runs.get(&id).map(|tx| tx.send(true).is_ok()))
+            .unwrap_or(false)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_a_loopback_http_url_is_verified() {
+        assert!(local_origin("http://localhost:5173/app").is_ok());
+        assert!(local_origin("http://127.0.0.1:3000").is_ok());
+        assert!(local_origin("http://[::1]:8080/").is_ok());
+        assert!(local_origin("https://example.com").is_err());
+        assert!(local_origin("http://192.168.1.10:3000").is_err());
+        assert!(local_origin("http://localhost.evil.com:3000").is_err());
+        assert!(local_origin("file:///etc/passwd").is_err());
+        assert!(local_origin("http://user:pw@localhost:3000").is_err());
+    }
+
+    #[test]
+    fn the_policy_is_the_exact_origin() {
+        let (_, o) = local_origin("http://localhost:5173/").unwrap();
+        let p = OriginPolicy::new(o, &[]).unwrap();
+        assert!(p.permits("http://localhost:5173/assets/app.js?v=1"));
+        assert!(p.permits("ws://localhost:5173/@vite/client"));
+        assert!(p.permits("data:image/png;base64,AAAA"));
+        assert!(p.permits("about:blank"));
+        assert!(p.permits("blob:http://localhost:5173/0f7c"));
+        // Another port, another loopback name, another scheme: other origins.
+        assert!(!p.permits("http://localhost:5174/"));
+        assert!(!p.permits("http://127.0.0.1:5173/"));
+        assert!(!p.permits("https://localhost:5173/"));
+        assert!(!p.permits("https://fonts.googleapis.com/css"));
+        assert!(!p.permits("ws://localhost:9229/"));
+        assert!(!p.permits("blob:https://evil.example/0f7c"));
+        assert!(!p.permits("file:///etc/passwd"));
+        assert!(!p.permits("chrome://settings"));
+        assert!(!p.permits("not a url"));
+    }
+
+    #[test]
+    fn extra_origins_must_be_local_and_are_then_allowed() {
+        let (_, o) = local_origin("http://localhost:5173/").unwrap();
+        let p = OriginPolicy::new(o.clone(), &["http://localhost:8787".into()]).unwrap();
+        assert!(p.permits("http://localhost:8787/api"));
+        assert!(OriginPolicy::new(o, &["https://api.example.com".into()]).is_err());
+    }
+
+    #[test]
+    fn a_fresh_profile_and_a_dead_proxy_every_time() {
+        let args = browser_args(Path::new("/tmp/flint-verify-x"), false);
+        assert!(args.contains(&"--user-data-dir=/tmp/flint-verify-x".to_string()));
+        assert!(args.contains(&"--proxy-server=http://127.0.0.1:9".to_string()));
+        assert!(args.contains(&"--disable-extensions".to_string()));
+        assert!(!args.contains(&"--no-sandbox".to_string()));
+        assert!(browser_args(Path::new("/p"), true).contains(&"--no-sandbox".to_string()));
+    }
+
+    #[test]
+    fn evidence_urls_drop_queries_and_credentials() {
+        assert_eq!(
+            display_url("http://localhost:3000/cb?token=abc#x"),
+            "http://localhost:3000/cb"
+        );
+        assert_eq!(display_url("data:text/html,<script>"), "data:…");
+    }
+
+    #[test]
+    fn steps_read_from_json_and_label_themselves() {
+        let steps: Vec<Step> = serde_json::from_str(
+            r#"[{"kind":"navigate","url":"/"},{"kind":"click","target":"Sign in"},
+                {"kind":"type","target":"Email","text":"a@b.c"},{"kind":"expect","text":"Welcome"},
+                {"kind":"wait","ms":999999},{"kind":"screenshot"}]"#,
+        )
+        .unwrap();
+        assert_eq!(steps.len(), 6);
+        assert_eq!(steps[2].label(), "Type 5 characters into \"Email\"");
+        assert_eq!(steps[4].label(), "Wait 10000 ms");
+    }
+}

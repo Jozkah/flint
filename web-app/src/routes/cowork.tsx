@@ -1,6 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrBar } from '@/containers/PrBar'
 import { ModelDoctor } from '@/containers/ModelDoctor'
+import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
+import { useBrowserVerify } from '@/hooks/useBrowserVerify'
+import type { VerifyReport } from '@/lib/browserVerify'
 import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
 import { createFileRoute } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
@@ -539,6 +542,8 @@ const slashTitle = (text: string) => {
   return slash ? slashDisplay(slash.invocation) : text
 }
 
+const NO_BROWSER_REPORTS: VerifyReport[] = []
+
 // Exported for split view, which shows a session in a pane of its own.
 export function CoworkPage() {
   const { t } = useTranslation()
@@ -908,6 +913,8 @@ export function CoworkPage() {
     (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
   )
   const doctorResults = useModelDoctor((s) => s.results)
+  const browserReports =
+    useBrowserVerify((s) => (session?.id ? s.reports[session.id] : undefined)) ?? NO_BROWSER_REPORTS
   // Model, context, MCP and local runtime are facts only this page holds; the
   // backend leaves them "checking" until they are reported.
   const rendererReports = useMemo(
@@ -5358,7 +5365,7 @@ export function CoworkPage() {
                       it has changed and checked so far, marked Running, with
                       no next steps offered until it ends (the outcome holds
                       them back while running). */}
-                  {(running || runEnding || runOrigins?.summary) &&
+                  {(((running || runEnding || runOrigins?.summary) &&
                     // Only when the run has something of its own to report:
                     // a write, a check, a loose end, or an ending that was
                     // not a clean finish. A working tree that was already
@@ -5369,9 +5376,13 @@ export function CoworkPage() {
                     (running
                       ? runOutcome.checks.length > 0 ||
                         runOutcome.resultLocation.paths.length > 0
-                      : shouldShowRunOutcome(runOutcome)) && (
+                      : shouldShowRunOutcome(runOutcome))) ||
+                    // A browser verification is evidence the user asked
+                    // for; it is shown even after a run with nothing else.
+                    browserReports.length > 0) && (
                       <CoworkRunSummary
                         outcome={runOutcome}
+                        browserChecks={browserReports}
                         canOpenPath={shouldOpenInCode}
                         onOpenPath={
                           runOutcome.resultLocation.destination ===
@@ -5702,6 +5713,7 @@ export function CoworkPage() {
             root={workspacePath}
             path={rail.path}
             onClose={closeRail}
+            verify={session?.id ? <BrowserVerifyPanel sessionId={session.id} /> : undefined}
           />
         )}
         {rail?.kind === 'diff' && (

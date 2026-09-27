@@ -1,5 +1,8 @@
 pub mod agent;
 pub mod app;
+// "Verify in browser": a separate, confined browser; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod browser_verify;
 pub mod compat_env;
 #[cfg(feature = "cli")]
 pub mod cli;

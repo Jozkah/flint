@@ -14,6 +14,9 @@ vi.mock('@/hooks/useServiceHub', () => ({
 }))
 
 import { WebPreviewHost } from '../WebPreviewHost'
+import { useBrowserVerify } from '@/hooks/useBrowserVerify'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkView } from '@/hooks/useCoworkView'
 
 describe('WebPreviewHost', () => {
   beforeEach(() => {
@@ -56,5 +59,20 @@ describe('WebPreviewHost', () => {
     render(<WebPreviewHost />)
     fireEvent.click(screen.getByTestId('wp-surface-toggle'))
     expect(useWebPreview.getState().surface).toBe('pip')
+  })
+
+  it('offers Verify in browser only for a local app, handing it to the Cowork Preview', () => {
+    useCoworkSessions.setState({ currentId: 's1' } as never)
+    useWebPreview.getState().openUrl('https://a.com')
+    const { unmount } = render(<WebPreviewHost />)
+    expect(screen.queryByTestId('wp-verify-in-browser')).toBeNull()
+    unmount()
+    useWebPreview.getState().openUrl('http://localhost:5173/')
+    render(<WebPreviewHost />)
+    fireEvent.click(screen.getByTestId('wp-verify-in-browser'))
+    expect(useBrowserVerify.getState().draftUrl).toBe('http://localhost:5173/')
+    expect(useCoworkView.getState().railBySession.s1).toEqual({ kind: 'preview' })
+    // The preview itself is unchanged.
+    expect(useWebPreview.getState().url()).toBe('http://localhost:5173/')
   })
 })
