@@ -566,7 +566,11 @@ function ModelProviders() {
                   </li>
                 )
               })}
-              <li>
+              {/* Enters after the last provider card, as part of the same stagger. */}
+              <li
+                className="motion-safe:animate-rise-in"
+                style={{ animationDelay: `${320 + visibleProviders.length * 35}ms` }}
+              >
                 <AddProviderDialog onCreateProvider={createProvider}>
                   <button
                     type="button"
