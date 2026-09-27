@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ChevronDown, ExternalLink, RefreshCw, X } from 'lucide-react'
+import { ChevronDown, ExternalLink, RefreshCw, Wrench, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,7 +14,24 @@ import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { usePrStatusView, usePrStatusStore, type PrStatus } from '@/stores/pr-status-store'
+import {
+  usePrStatusView,
+  usePrStatusStore,
+  prRelation,
+  type CheckRun,
+  type PrStatus,
+} from '@/stores/pr-status-store'
+import { useMessageQueue } from '@/stores/message-queue-store'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import {
+  canFixCheck,
+  orderedChecks,
+  requestCheckRepair,
+  type CheckLog,
+} from '@/lib/prCheckRepair'
+
+/** Named checks shown in the menu; the counts above cover the rest. */
+const MAX_LISTED_CHECKS = 12
 
 const fmt = (n: number) => n.toLocaleString()
 
@@ -27,6 +45,68 @@ function CiDot({ checks }: { checks: PrStatus['checks'] }) {
           ? 'bg-success'
           : 'shadow-[inset_0_0_0_1.5px_var(--subtle-foreground)]'
   return <i aria-hidden className={cn('inline-block size-2 shrink-0 rounded-full', cls)} />
+}
+
+const VERDICT_DOT: Record<CheckRun['verdict'], string> = {
+  failed: 'bg-destructive',
+  pending: 'bg-warning',
+  passed: 'bg-success',
+}
+
+/**
+ * Queue "Fix this check" into the owning session. The log is fetched through
+ * `gh`, bounded, and only while the pull request's head is still the commit
+ * the check ran on; a moved head refreshes the status instead.
+ */
+async function fixCheck(
+  folder: string,
+  sessionId: string,
+  pr: PrStatus,
+  check: CheckRun,
+  t: (key: string, opts?: Record<string, unknown>) => string
+) {
+  const { invoke } = await import('@tauri-apps/api/core')
+  const outcome = await requestCheckRepair(
+    { folder, sessionId, pr, relation: 'mine', check },
+    {
+      fetchLog: (a) =>
+        invoke<CheckLog>('agent_pr_check_log', {
+          project: a.project,
+          prUrl: a.prUrl,
+          headSha: a.headSha,
+          jobId: a.jobId,
+          detailsUrl: a.detailsUrl,
+        }).catch(
+          (e): CheckLog => ({
+            kind: 'unavailable',
+            reason: String(e),
+            details_url: a.detailsUrl,
+            // The backend never answered, so the head was never confirmed.
+            head_verified: false,
+          })
+        ),
+      queue: (sid) => useMessageQueue.getState().getQueue(sid),
+      enqueue: (sid, m) => useMessageQueue.getState().enqueue(sid, m),
+      refresh: () => {
+        void usePrStatusStore.getState().refresh(folder, true)
+        void usePrStatusStore.getState().refreshUrl(pr.url, folder, true)
+      },
+      // The session must still own the pull request once the log is back.
+      stillOwns: () => {
+        const s = usePrStatusStore.getState()
+        const own = s.sessionPrs[sessionId]?.some((p) => p.url === pr.url)
+        if (own) return true
+        const worktree = useCoworkWorktrees.getState().bySession[sessionId]
+        return prRelation(pr, folder, s.claims, sessionId, worktree) === 'mine'
+      },
+    }
+  )
+  if (outcome.status === 'queued') toast.success(t('common:pr.fixQueued', { name: check.name }))
+  else if (outcome.status === 'duplicate') toast.info(t('common:pr.fixAlreadyQueued'))
+  else if (outcome.status === 'stale') toast.warning(t('common:pr.fixStale'))
+  else if (outcome.status === 'unverified')
+    toast.error(t('common:pr.fixUnverified', { reason: outcome.reason }))
+  else toast.error(t('common:pr.fixRefused'))
 }
 
 /**
@@ -81,6 +161,7 @@ export function PrBar({
     folder.split(/[\\/]/).filter(Boolean).pop() ??
     folder
   const open = () => void getServiceHub().opener().openUrl(pr.url)
+  const listed = orderedChecks(pr.check_runs).slice(0, MAX_LISTED_CHECKS)
   const status = pr.state === 'open' ? 'pr' : pr.state
 
   return (
@@ -157,6 +238,49 @@ export function PrBar({
                   <i className="size-2 rounded-full bg-warning" /> {t('common:pr.pending', { count: pr.checks.pending })}
                 </div>
               )}
+              {listed.length > 0 && <DropdownMenuSeparator />}
+              {listed.map((check, i) => {
+                const fixable = !!sessionId && canFixCheck(pr, view.relation, sessionId, check)
+                return (
+                  <div
+                    key={`${check.name}-${i}`}
+                    data-testid="pr-check"
+                    data-verdict={check.verdict}
+                    className="flex flex-col gap-0.5 px-2 py-1 text-[0.78rem]"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <i className={cn('size-2 shrink-0 rounded-full', VERDICT_DOT[check.verdict])} />
+                      <span className="min-w-0 truncate" title={check.workflow ? `${check.workflow} / ${check.name}` : check.name}>
+                        {check.name}
+                      </span>
+                    </div>
+                    {check.verdict === 'failed' && (
+                      <div className="flex items-center gap-1 pl-4.5">
+                        {fixable && (
+                          <DropdownMenuItem
+                            data-testid="pr-check-fix"
+                            className="h-6 px-1.5 py-0 text-xs"
+                            onSelect={() => void fixCheck(folder, sessionId!, pr, check, t)}
+                          >
+                            <Wrench />
+                            <span>{t('common:pr.fixCheck')}</span>
+                          </DropdownMenuItem>
+                        )}
+                        {check.details_url && (
+                          <DropdownMenuItem
+                            data-testid="pr-check-details"
+                            className="h-6 px-1.5 py-0 text-xs"
+                            onSelect={() => void getServiceHub().opener().openUrl(check.details_url!)}
+                          >
+                            <ExternalLink />
+                            <span>{t('common:pr.checkDetails')}</span>
+                          </DropdownMenuItem>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={() => {

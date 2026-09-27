@@ -24,6 +24,19 @@ import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 
 export type PrState = 'open' | 'draft' | 'merged' | 'closed'
 
+/** One named check, bound to the pull request's head commit (`head_sha`). */
+export type CheckRun = {
+  name: string
+  workflow: string | null
+  verdict: 'passed' | 'failed' | 'pending'
+  /** Raw conclusion or state, upper-case (`FAILURE`, `TIMED_OUT`, ...). */
+  conclusion: string
+  /** The check's own page; kept for external checks with no fetchable log. */
+  details_url: string | null
+  /** GitHub Actions job id; only these have a log `gh` can read. */
+  job_id: number | null
+}
+
 export type PrStatus = {
   number: number
   title: string
@@ -34,6 +47,10 @@ export type PrStatus = {
   additions: number
   deletions: number
   checks: { passed: number; failed: number; pending: number }
+  /** The head commit the checks ran on. Absent in a status only recorded. */
+  head_sha?: string
+  /** The named checks; absent in a status only recorded. */
+  check_runs?: CheckRun[]
   /** Why the live status could not be read; the rest is what was recorded. */
   statusError?: string
 }

@@ -7,6 +7,7 @@ import {
   PictureInPicture2,
   PanelRight,
   ExternalLink,
+  ScanEye,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
@@ -17,6 +18,10 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { shouldIntercept } from '@/lib/webPreview'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useNativeWebPreview } from '@/hooks/useNativeWebPreview'
+import { useBrowserVerify } from '@/hooks/useBrowserVerify'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
+import { useCoworkView } from '@/hooks/useCoworkView'
+import { isLocalAppUrl } from '@/lib/browserVerify'
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
 
@@ -38,6 +43,7 @@ export function WebPreviewHost() {
   const canGoBack = useWebPreview((s) => s.canGoBack())
   const canGoForward = useWebPreview((s) => s.canGoForward())
   const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
+  const coworkSessionId = useCoworkSessions((s) => s.currentId)
   const [nonce, setNonce] = useState(0)
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
   const currentUrl = useWebPreview.getState().url()
@@ -123,6 +129,23 @@ export function WebPreviewHost() {
       <span className="mx-1 min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-fg-2">
         {url}
       </span>
+      {isLocalAppUrl(url) && coworkSessionId && (
+        // Hands the URL to the Cowork Preview's verifier, which runs it in a
+        // separate, confined browser; this preview is left as it is.
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          data-testid="wp-verify-in-browser"
+          aria-label={t('common:browserVerify.title')}
+          title={t('common:browserVerify.title')}
+          onClick={() => {
+            useBrowserVerify.getState().setDraftUrl(url)
+            useCoworkView.getState().setRail(coworkSessionId, { kind: 'preview' })
+          }}
+        >
+          <ScanEye className="size-4" aria-hidden />
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"

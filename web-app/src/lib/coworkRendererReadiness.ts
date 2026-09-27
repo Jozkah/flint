@@ -12,7 +12,16 @@ import type { ComponentReport } from '@janhq/tauri-plugin-agent-tools-api'
 
 export type RendererReadinessFacts = {
   /** The model this session would run, if one is selected. */
-  model: { id: string; provider: string; supportsTools: boolean | null } | null
+  model: {
+    id: string
+    provider: string
+    supportsTools: boolean | null
+    /**
+     * What a Model Doctor probe observed under the current settings, when one
+     * ran. An observation outranks the declared flag, and says when it was made.
+     */
+    observedTools?: { outcome: 'passed' | 'failed'; testedAt: string; detail?: string } | null
+  } | null
   /** The resolved context window, or null when no source gave one. */
   contextTokens: number | null
   /** Active MCP servers in Settings. Cowork runs are given none of them. */
@@ -44,7 +53,21 @@ export function rendererReadinessReports(
         capabilities: [],
       })
     )
-  } else if (model.supportsTools === false) {
+  } else if (model.observedTools?.outcome === 'failed') {
+    reports.push(
+      at(now, {
+        component: 'model',
+        state: 'degraded',
+        reason: 'ok',
+        message: `Tool calls failed a test of this model on ${model.observedTools.testedAt}${
+          model.observedTools.detail ? `: ${model.observedTools.detail}` : ''
+        }.`,
+        retryable: true,
+        capabilities: ['model.dispatch'],
+        details: [`provider=${model.provider}`, 'observed=model-doctor'],
+      })
+    )
+  } else if (model.supportsTools === false && model.observedTools?.outcome !== 'passed') {
     reports.push(
       at(now, {
         component: 'model',
@@ -63,11 +86,14 @@ export function rendererReadinessReports(
         component: 'model',
         state: 'ready',
         reason: 'ok',
-        message:
-          'A model is selected. Whether the provider answers is checked when a run starts.',
+        message: model.observedTools
+          ? `A model is selected. Tool calls worked in a test on ${model.observedTools.testedAt}; that is one probe, not a guarantee for every task.`
+          : 'A model is selected. Whether the provider answers is checked when a run starts.',
         retryable: false,
         capabilities: ['model.dispatch', 'model.tools'],
-        details: [`provider=${model.provider}`],
+        details: model.observedTools
+          ? [`provider=${model.provider}`, 'observed=model-doctor']
+          : [`provider=${model.provider}`],
       })
     )
   }

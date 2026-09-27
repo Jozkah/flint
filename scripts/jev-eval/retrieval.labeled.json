@@ -1,0 +1,75 @@
+{
+  "note": "Labeled attachment-retrieval tasks: a query, a shortlist of passages, and the ids that answer it. The shortlist has no order here; the baseline order comes from the ranker named in the report (a lexical TF-IDF proxy unless a recorded Flint embedding order is supplied with --baseline-order).",
+  "tasks": [
+    { "split": "dev", "query": "How long do customers have to return an item?", "gold": ["r1"], "passages": {
+      "r1": "Items may be returned within 30 days of delivery for a full refund, provided they are unused.",
+      "r2": "Returns shipping labels are emailed after you open a request in your account.",
+      "r3": "Our customer service team is available on weekdays from 9 to 5.",
+      "r4": "Customers who return frequently may be asked to verify their identity.",
+      "r5": "Gift cards cannot be exchanged for cash.",
+      "r6": "Delivery usually takes three to five business days." } },
+    { "split": "dev", "query": "What is the maximum upload size?", "gold": ["u2"], "passages": {
+      "u1": "Uploads are scanned for malware before they are stored.",
+      "u2": "A single file may not exceed 250 MB; larger files must be split.",
+      "u3": "The upload button is at the top right of the workspace.",
+      "u4": "Maximum team size on the free plan is five members.",
+      "u5": "Supported upload formats include PDF, DOCX and PNG.",
+      "u6": "Upload history is kept for 90 days." } },
+    { "split": "dev", "query": "Who approves expense reports over $5,000?", "gold": ["e3"], "passages": {
+      "e1": "Expense reports must include itemized receipts.",
+      "e2": "Reports are reimbursed in the next payroll cycle.",
+      "e3": "Any claim above five thousand dollars needs sign-off from the finance director.",
+      "e4": "Managers approve expense reports for their direct reports.",
+      "e5": "Travel expenses should be booked through the corporate portal.",
+      "e6": "Report fraud to the compliance hotline." } },
+    { "split": "dev", "query": "How do I rotate the API key?", "gold": ["k4"], "passages": {
+      "k1": "API keys are scoped to a single project.",
+      "k2": "Never commit an API key to version control.",
+      "k3": "The API rate limit is 100 requests per minute per key.",
+      "k4": "To replace a credential, open Settings > Security, create a new key, update your clients, then revoke the old one.",
+      "k5": "Keys can be given read-only or read-write permissions.",
+      "k6": "Contact support if you lose access to your account." } },
+    { "split": "dev", "query": "Is the office open on public holidays?", "gold": ["h2"], "passages": {
+      "h1": "The office is open Monday to Friday, 8am to 6pm.",
+      "h2": "We close on national bank holidays; the building remains locked.",
+      "h3": "Holiday requests should be submitted two weeks in advance.",
+      "h4": "Public transport to the office runs every ten minutes.",
+      "h5": "The office kitchen is cleaned daily.",
+      "h6": "Visitors must sign in at reception." } },
+    { "split": "holdout", "query": "What happens if a payment fails?", "gold": ["p5"], "passages": {
+      "p1": "We accept Visa, Mastercard and bank transfer.",
+      "p2": "Payments are processed in US dollars.",
+      "p3": "Invoices are issued on the first day of each month.",
+      "p4": "A payment receipt is emailed after every successful charge.",
+      "p5": "If a charge is declined we retry after three days and suspend the account after two further attempts.",
+      "p6": "Payment details can be updated in the billing page." } },
+    { "split": "holdout", "query": "Can I bring my dog to work?", "gold": ["d3"], "passages": {
+      "d1": "Work from home is allowed two days per week.",
+      "d2": "Service animals are always welcome in public areas.",
+      "d3": "Pets, including dogs, are permitted on the third floor only, on Fridays.",
+      "d4": "Bring your laptop charger; spares are limited.",
+      "d5": "The dog park near the office closes at dusk.",
+      "d6": "Allergies should be reported to HR." } },
+    { "split": "holdout", "query": "How is data encrypted at rest?", "gold": ["x2"], "passages": {
+      "x1": "Data in transit is protected with TLS 1.3.",
+      "x2": "Stored data is protected with AES-256, with keys held in a hardware security module.",
+      "x3": "We retain data for seven years.",
+      "x4": "Customers can export their data at any time.",
+      "x5": "Rest periods for on-call staff are scheduled weekly.",
+      "x6": "Encryption keys for backups are rotated yearly." } },
+    { "split": "holdout", "query": "What is the notice period for resignation?", "gold": ["n4"], "passages": {
+      "n1": "Resignation letters should be addressed to your manager.",
+      "n2": "Unused leave is paid out on your final payslip.",
+      "n3": "Probation lasts six months.",
+      "n4": "Employees must give four weeks' written notice before leaving; eight weeks for senior staff.",
+      "n5": "Notice boards are located by the lifts.",
+      "n6": "Exit interviews are optional." } },
+    { "split": "holdout", "query": "Does the plan include phone support?", "gold": ["s6"], "passages": {
+      "s1": "The plan includes unlimited projects.",
+      "s2": "Support tickets are answered within one business day.",
+      "s3": "Phone numbers can be added to your profile.",
+      "s4": "The enterprise plan adds single sign-on.",
+      "s5": "Plans are billed annually or monthly.",
+      "s6": "Calling our help line is available on Business and Enterprise tiers only." } }
+  ]
+}

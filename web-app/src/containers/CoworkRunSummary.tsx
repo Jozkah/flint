@@ -1,4 +1,6 @@
 import { Button } from '@/components/ui/button'
+import { BrowserVerifyEvidence } from '@/containers/BrowserVerifyPanel'
+import type { VerifyReport } from '@/lib/browserVerify'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ChangeDestination, CompletionSummary } from '@/lib/coworkOrigins'
 import {
@@ -50,6 +52,11 @@ export type CoworkRunSummaryProps = {
   onRetry?: () => void
   /** Opens the place where a checkpoint can be restored. */
   onRestore?: () => void
+  /**
+   * "Verify in browser" runs for this session, newest first: evidence the
+   * user asked for, shown with the run's own checks.
+   */
+  browserChecks?: VerifyReport[]
 }
 
 const EMPTY_SUMMARY: CompletionSummary = {
@@ -554,6 +561,12 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                   count: verification.otherCommands,
                 })}
               </p>
+            ) : null}
+            {props.browserChecks && props.browserChecks.length > 0 ? (
+              <div className="flex flex-col gap-1" data-testid="cowork-browser-checks">
+                <span className="text-fg-2">{t('common:browserVerify.inSummary')}</span>
+                <BrowserVerifyEvidence report={props.browserChecks[0]} />
+              </div>
             ) : null}
             {outcome.claims.length > 0 ? (
               <div className="flex flex-col gap-0.5">

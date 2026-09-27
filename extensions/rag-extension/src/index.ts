@@ -13,6 +13,7 @@ import {
 import './env.d'
 import { getRAGTools, RETRIEVE, LIST_ATTACHMENTS, GET_CHUNKS } from './tools'
 import { coerceIntegerArg, coerceStringArrayArg } from './args'
+import { jevBridge, retrieveWithRerank, type Citation } from './rerank'
 import * as ragApi from '@janhq/tauri-plugin-rag-api'
 
 export default class RagExtension extends RAGExtension {
@@ -241,26 +242,35 @@ export default class RagExtension extends RAGExtension {
         }
       }
 
-      let results
-      if (scope === 'project' && vec.searchCollectionForProject) {
-        results = await vec.searchCollectionForProject(
-          effectiveThreadId,
-          queryEmb,
-          topK,
-          threshold,
-          mode,
-          fileIds
-        )
-      } else {
-        results = await vec.searchCollection!(
-          effectiveThreadId,
-          queryEmb,
-          topK,
-          threshold,
-          mode,
-          fileIds
-        )
+      const search = async (limit: number) => {
+        const found =
+          scope === 'project' && vec.searchCollectionForProject
+            ? await vec.searchCollectionForProject(
+                effectiveThreadId,
+                queryEmb,
+                limit,
+                threshold,
+                mode,
+                fileIds
+              )
+            : await vec.searchCollection!(
+                effectiveThreadId,
+                queryEmb,
+                limit,
+                threshold,
+                mode,
+                fileIds
+              )
+        return (found ?? []) as Citation[]
       }
+      // Jev may reorder a shortlist when its opt-in is on; off, this is one
+      // search for `topK`, exactly as before. Citations pass through as-is.
+      const { citations: results } = await retrieveWithRerank(
+        query,
+        topK,
+        search,
+        jevBridge()
+      )
 
       const payload = {
         thread_id: threadId,

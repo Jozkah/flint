@@ -67,6 +67,11 @@ type Props = {
    * discoverable empty state rather than nothing. */
   path?: string
   onClose: () => void
+  /**
+   * "Verify in browser", shown at the top of the panel. The file preview
+   * below it is unchanged.
+   */
+  verify?: React.ReactNode
 }
 
 /**
@@ -77,7 +82,7 @@ type Props = {
  * footer, which is right for a model and wrong for a preview, and it hands back
  * a description of an image rather than its bytes.
  */
-export function CoworkPreviewPanel({ root, path, onClose }: Props) {
+export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
   const { t } = useTranslation()
   const serviceHub = useServiceHub()
   const [state, setState] = useState<PreviewState>({ status: 'idle' })
@@ -175,6 +180,7 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
   if (!path) {
     return (
       <CoworkSidePanel title={t('common:preview.title')} onClose={onClose}>
+        {verify}
         <p className="px-4 py-10 text-center text-xs text-muted-foreground motion-safe:animate-rise-in">
           {t('common:preview.empty')}
         </p>
@@ -220,7 +226,16 @@ export function CoworkPreviewPanel({ root, path, onClose }: Props) {
         </div>
       }
     >
-      <PreviewBody state={state} allowNetwork={allowNetwork} />
+      {verify ? (
+        <div className="flex h-full min-h-0 flex-col">
+          {verify}
+          <div className="min-h-0 flex-1">
+            <PreviewBody state={state} allowNetwork={allowNetwork} />
+          </div>
+        </div>
+      ) : (
+        <PreviewBody state={state} allowNetwork={allowNetwork} />
+      )}
     </CoworkSidePanel>
   )
 }

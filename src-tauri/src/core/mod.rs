@@ -1,6 +1,12 @@
 pub mod agent;
 pub mod app;
+// "Verify in browser": a separate, confined browser; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod browser_verify;
 pub mod compat_env;
+// Jev (TypeSafe) decision support: optional, off by default; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod jev;
 #[cfg(feature = "cli")]
 pub mod cli;
 // Native file dialogs/IO commands and the system/tray command surface are

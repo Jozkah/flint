@@ -25,6 +25,10 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **A richer System Monitor.** Drives, network rates, temperatures, per-core CPU, swap, uptime and host details, with usage bars throughout.
 - **AI-written MCP descriptions.** Generate "About this server" text for your MCP servers with a model you choose, reviewing each one before it is saved.
 - **Parallel sessions and split view.** Each new Cowork session in a Git folder gets its own worktree and branch, merged back, opened as a pull request or discarded from the session, and a pull request shows only on the session that opened it; plain folders can work on a copy. Up to four Chat, Cowork or Room panes sit side by side, each with a single aligned header, with keyboard shortcuts.
+- **Fix a failed pull-request check from the session that opened it.** Pull-request status now lists each named check and the commit it ran on. "Fix this check" hands a failed check to the owning Cowork session with its log (bounded, credentials removed, marked as untrusted CI output) once GitHub confirms the pull request is still on that commit; external checks keep their details link. The fix runs in the session's worktree under its usual approvals, and nothing is pushed automatically.
+- **Model Doctor.** "Test this model" in the Cowork readiness card checks through the model's real connection whether it can call a tool, with correct arguments, and continue from the result in time, using a synthetic tool and no project files. The result shows its date and the settings it was tested with, becomes stale when those settings change, and is one observation, not a promise that every task will work.
+- **Verify in browser.** From the Cowork Preview, run a local app in a separate, temporary Chrome or Edge profile — never Flint's own webview or cookies — confined to the app's exact origin, follow steps you write (open, click, type, expect), and get the step list, screenshots, console errors, blocked requests and a pass/fail in the run summary. Flint uses the browser you have installed and never downloads one.
+- **Jev decision support (optional).** Two separate opt-ins, both off by default, ask TypeSafe's Jev model (pinned `jev-1.13.0`) for help: suggesting one skill for what you are typing in Cowork, and reordering attachment passages for retrieval. Off means no request is made; a shadow mode records decisions without using them. The API key stays in the protected secret store, every call is bounded in time and cost, any failure falls back to Flint's own behaviour, and Jev never approves tools or changes what sources are cited.
 
 ## Migration
 
@@ -115,6 +119,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
 
 ### Cowork workspace
+- feat(cowork): "Fix this check" — named pull-request checks bound to their head commit, bounded failed logs through the user's `gh` login, and a focused fix request in the owning session once the head is confirmed; never pushed automatically
+- feat(cowork): Verify in browser — drive a local app in an isolated, temporary Chrome/Edge profile confined to its exact origin, with steps, screenshots, console errors, blocked requests and pass/fail in the run summary; stops on cancel, timeout, browser exit or app-server exit
 - feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line; the editor gutter marks added, changed and deleted lines against the repository, and inline blame shows each line's author and commit with links to the commit and its pull request
 - feat(cowork): complete Cowork workspace — Code, Preview, Changes (Git), Activity, Settings search, per-chat models, temporary chats (#4)
 - feat(cowork): a read-only code workspace, an Activity rail, and global settings search (#1)
@@ -267,6 +273,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(net): record what the model was sent and where every request goes, and trust custom certificate authorities (AH-190)
 
 ### Skills, permissions and security
+- feat(jev): optional Jev (TypeSafe) decision support — separate off/shadow/on opt-ins for skill suggestion and attachment reranking, a write-only key in the secret store, bounded time and cost, fallback to existing behaviour, decision receipts, and a labeled evaluation against Flint's own selection
 - feat(sandbox): a denial inside a package cache (Go modules, Cargo registry, npm, NuGet, Maven) names the cache root, so one read grant covers every package
 - feat(skills): user-level native skills in the CLI and the agent loop, declaring the tools they need and their version (AH-040, AH-121, AH-123, AH-124)
 - feat(cowork): offer enabled plugin skills to Cowork's skill tools, and refresh on plugin changes
@@ -299,6 +306,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cli): `flint doctor` prints hardware info (`--json`), and `flint cli models list-local|info|delete` manage local models
 
 ### Models, providers and inference
+- feat(models): Model Doctor — "Test this model" probes tool calling through the model's real transport with a synthetic tool (call, exact arguments, continuation, response time), cancellable, with the result dated and tied to the settings it was tested under
 - feat(models): evidence-based model fit, a real compatibility test, and a preferred default
 - feat(models): rename models, and put the list in an order (#5)
 - feat(models): show a provider as offline only when a request actually failed

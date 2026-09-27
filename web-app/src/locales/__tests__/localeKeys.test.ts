@@ -58,6 +58,16 @@ const DYNAMIC_KEYS: Record<string, string[]> = {
     'coworkEmpty.folder.first',
     'coworkEmpty.folder.second',
     'coworkEmpty.folder.third',
+    // ModelDoctor names each probe check by its id.
+    'modelDoctor.check.tool_call',
+    'modelDoctor.check.arguments',
+    'modelDoctor.check.continuation',
+    'modelDoctor.check.timeout',
+    // BrowserVerifyPanel names step statuses and outcomes by their value.
+    ...['pending', 'running', 'passed', 'failed', 'skipped'].map((k) => `browserVerify.status.${k}`),
+    ...['passed', 'failed', 'cancelled', 'error'].map((k) => `browserVerify.outcome.${k}`),
+    // JevSettingsCard names each mode by its value.
+    ...['off', 'shadow', 'on'].map((k) => `jev.mode.${k}`),
   ],
   'model-errors': [
     'engine.unknown',
