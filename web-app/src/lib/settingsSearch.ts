@@ -174,6 +174,13 @@ export const SETTINGS_PAGES = [
     keywords: ['claude', 'cli', 'code'],
   },
   {
+    id: 'jev',
+    route: route.settings.jev,
+    titleKey: 'common:jev.tab',
+    group: 'integrations',
+    keywords: ['jev', 'typesafe', 'decision', 'rerank', 'skill suggestion'],
+  },
+  {
     id: 'extensions',
     coverage: 'page-only',
     coverageNote:
@@ -501,6 +508,15 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
 
   // Claude Code
+  item('jev', 'key', 'common:jev.key', {
+    keywords: ['typesafe', 'api key'],
+  }),
+  item('jev', 'skills', 'common:jev.skillTitle', {
+    keywords: ['skill suggestion', 'typesafe'],
+  }),
+  item('jev', 'rerank', 'common:jev.rerankTitle', {
+    keywords: ['rerank', 'retrieval', 'attachments', 'typesafe'],
+  }),
   item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
     descriptionKey: 'settings:claudeCode.largeModelDesc',
     keywords: ['opus', 'model', 'claude code'],

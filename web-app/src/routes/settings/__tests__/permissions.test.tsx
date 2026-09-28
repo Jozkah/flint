@@ -320,6 +320,35 @@ describe('Permissions settings', () => {
     expect(auditRecent).toHaveBeenCalledWith('/data', 50)
   })
 
+  it('shows the latest 10 decisions, with the rest behind Show all', async () => {
+    auditRecent.mockResolvedValue(
+      Array.from({ length: 25 }, (_, i) => ({
+        v: 1,
+        at: `2026-09-13T10:${String(i).padStart(2, '0')}:00Z`,
+        session: 's',
+        run: '',
+        call: `c${i}`,
+        agent: '',
+        project: '',
+        tool: 'bash',
+        capability: 'exec',
+        kind: 'command',
+        resource: `cmd-${i}`,
+        decision: 'allow',
+        reason: '',
+        rule: '',
+      }))
+    )
+    render(<Page />)
+    expect(await screen.findByText('cmd-0')).toBeInTheDocument()
+    expect(screen.getByText('cmd-9')).toBeInTheDocument()
+    expect(screen.queryByText('cmd-10')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('permissions-history-toggle'))
+    expect(screen.getByText('cmd-24')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('permissions-history-toggle'))
+    expect(screen.queryByText('cmd-10')).not.toBeInTheDocument()
+  })
+
   it('says when decision history cannot be read', async () => {
     auditRecent.mockRejectedValue(new Error('not in the desktop app'))
     render(<Page />)

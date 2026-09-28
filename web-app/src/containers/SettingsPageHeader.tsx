@@ -58,7 +58,8 @@ function SettingsSections() {
     <Frame
       // Visible overflow: the settings-search results drop down over the
       // page, and a clipped frame would cut them off at its bottom edge.
-      className="sticky top-0 hidden w-[220px] shrink-0 self-start overflow-visible lg:flex"
+      // Outside the scrolling column, so it stays put while the page scrolls.
+      className="mt-4 hidden max-h-[calc(100%-1rem)] w-[220px] shrink-0 self-start overflow-visible lg:flex"
       aria-label={t('common:shell.sections')}
     >
       <FrameHeader
@@ -158,9 +159,13 @@ export function SettingsPageBody({
   const placed = layout && items.length > 1
   const balanced = !placed && width === 'read' && items.length > 1
   return (
-    <div className="h-full min-h-0 w-full overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
-      <div className="flex min-w-0 items-start gap-5 px-1 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
-        {showSections && <SettingsSections />}
+    // The Sections frame sits beside the scrolling column, not inside it:
+    // inside, it slid up with the page before sticking (and scrolled away on
+    // a short window). Only the page's own content scrolls.
+    <div className="flex h-full min-h-0 w-full gap-5 px-1">
+      {showSections && <SettingsSections />}
+      <div className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:thin]">
+      <div className="flex min-w-0 items-start pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))]">
         <div
           data-testid={testId}
           className="@container flex w-full min-w-0 flex-1 flex-col gap-3.5"
@@ -220,6 +225,7 @@ export function SettingsPageBody({
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   )
