@@ -16,6 +16,12 @@ const opts = (over = {}) => ({
 })
 
 describe('buildCoworkSystemPrompt', () => {
+  it('checks issue status and current base before opening a pull request', () => {
+    const prompt = buildCoworkSystemPrompt(opts())
+    expect(prompt).toContain('recent merged pull requests')
+    expect(prompt).toContain('merge-tree --write-tree')
+    expect(prompt).toContain('tool refuses an unverified or conflicting merge')
+  })
   // A later turn that changes code must not leave the existing tests broken
   // unnoticed: the model reruns them when it can.
   it('asks the model to rerun existing tests after changing code', () => {

@@ -295,6 +295,13 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
         | "check-ignore" | "version" | "diff-tree" | "diff-index" | "diff-files" | "range-diff" => {
             plan.class = GitClass::Read;
         }
+        "merge-tree" => {
+            if rest.len() != 3 || rest[0] != "--write-tree"
+                || rest[1].starts_with('-') || rest[2].starts_with('-') {
+                return Err("`git merge-tree` requires [\"--write-tree\", \"<base>\", \"<head>\"]".into());
+            }
+            plan.class = GitClass::Local;
+        }
         "ls-remote" => {
             plan.class = GitClass::Read;
             plan.reaches_remote = true;
@@ -478,7 +485,7 @@ fn git_plan(mut args: Vec<String>) -> Result<GitPlan, String> {
         }
         other => {
             return Err(format!(
-                "`git {other}` is not supported by this tool. Supported: status, log, diff, show, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)"
+                "`git {other}` is not supported by this tool. Supported: status, log, diff, show, merge-tree, branch, tag, remote, stash, add, commit, checkout, switch, restore, merge, rebase, cherry-pick, revert, reset, clean, rm, mv, init, clone, fetch, pull, push, worktree, config (read only)"
             ))
         }
     }
@@ -1451,9 +1458,90 @@ async fn remote_url_of(git: &Path, plan: &GitPlan, cwd: &Path) -> Option<String>
         .filter(|l| !l.is_empty())
 }
 
+fn pr_flag(args: &[String], long: &str, short: &str) -> Option<String> {
+    args.iter().enumerate().find_map(|(i, arg)| {
+        if arg == long || arg == short {
+            args.get(i + 1).cloned()
+        } else {
+            arg.strip_prefix(&format!("{long}=")).map(str::to_string)
+        }
+    })
+}
+
+fn pr_preflight_target(args: &[String]) -> Result<(String, String, String, String), String> {
+    let required = || "include explicit --repo owner/repo, --base branch and --head branch so Flint can verify the proposed pull request before opening it".to_string();
+    let repo = pr_flag(args, "--repo", "-R").ok_or_else(required)?;
+    let base = pr_flag(args, "--base", "-B").ok_or_else(required)?;
+    let head = pr_flag(args, "--head", "-H").ok_or_else(required)?;
+    let parts: Vec<&str> = repo.split('/').collect();
+    if !(parts.len() == 2 || parts.len() == 3)
+        || parts.iter().any(|p| p.is_empty() || *p == "." || *p == ".."
+            || !p.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)))
+    {
+        return Err("--repo must name owner/repo or host/owner/repo".into());
+    }
+    let valid_branch = |name: &str| !name.is_empty() && !name.contains("..")
+        && !name.starts_with('-')
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || "._/-".contains(c));
+    let (head_owner, head_branch) = head.split_once(':')
+        .map_or((parts[parts.len() - 2], head.as_str()), |(owner, branch)| (owner, branch));
+    if !valid_branch(&base) || !valid_branch(head_branch) || head_owner.is_empty()
+        || !head_owner.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
+    {
+        return Err("--base and --head must name ordinary branch refs".into());
+    }
+    let host = if parts.len() == 3 { parts[0] } else { "github.com" };
+    let base_url = format!("https://{host}/{}/{}.git", parts[parts.len() - 2], parts[parts.len() - 1]);
+    let head_url = format!("https://{host}/{head_owner}/{}.git", parts[parts.len() - 1]);
+    Ok((base_url, base, head_url, head_branch.to_string()))
+}
+
+fn sha_in(output: &str) -> Option<String> {
+    output.lines().filter_map(|line| line.split_whitespace().next()).find(|word|
+        word.len() == 40 && word.chars().all(|c| c.is_ascii_hexdigit())
+    ).map(str::to_string)
+}
+
+async fn pr_preflight(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
+    let (base_url, base, head_url, head) = pr_preflight_target(&plan.args)?;
+    let git = crate::tools::git_native::discover_git().ok_or("Git is needed to check pull request conflicts")?;
+    let remote_sha = |url: &str, branch: &str| -> Result<GitPlan, String> {
+        self::plan("git", &["ls-remote".into(), url.into(), format!("refs/heads/{branch}")])
+    };
+    let base_remote = Box::pin(execute(&remote_sha(&base_url, &base)?, cwd)).await;
+    let base_sha = sha_in(&base_remote).ok_or_else(|| format!("could not read current base {base} from {base_url}: {base_remote}"))?;
+    let head_remote = Box::pin(execute(&remote_sha(&head_url, &head)?, cwd)).await;
+    let head_sha = sha_in(&head_remote).ok_or_else(|| format!("could not read pushed head {head} from {head_url}: {head_remote}"))?;
+    let local_head = quiet_output(&git, &["rev-parse", "--verify", &format!("{head}^{{commit}}")], cwd)
+        .await.and_then(|o| sha_in(&o));
+    if local_head.as_deref() != Some(head_sha.as_str()) {
+        return Err(format!("pushed head {head} differs from local branch; push the intended commit before opening the pull request"));
+    }
+    let local_base = quiet_output(&git, &["rev-parse", "--verify", "FETCH_HEAD^{commit}"], cwd)
+        .await.and_then(|o| sha_in(&o));
+    let tracking_base = quiet_output(&git, &["rev-parse", "--verify", &format!("refs/remotes/origin/{base}^{{commit}}")], cwd)
+        .await.and_then(|o| sha_in(&o));
+    if local_base.as_deref() != Some(base_sha.as_str())
+        && tracking_base.as_deref() != Some(base_sha.as_str()) {
+        return Err(format!("base {base} has moved; fetch the target repository's current base branch before opening the pull request"));
+    }
+    let merge = self::plan("git", &["merge-tree".into(), "--write-tree".into(), base_sha, head_sha])?;
+    let checked = Box::pin(execute(&merge, cwd)).await;
+    if checked.starts_with("ERROR:") {
+        return Err(format!("the proposed pull request does not merge cleanly, or its merge could not be verified: {checked}"));
+    }
+    Ok(())
+}
+
 /// Run a planned call in `cwd`. Returns the tool result text; a failure starts
 /// with `ERROR:`.
 pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
+    if plan.program == Program::Gh && plan.args.first().map(String::as_str) == Some("pr")
+        && plan.args.get(1).map(String::as_str) == Some("create") {
+        if let Err(reason) = pr_preflight(plan, cwd).await {
+            return format!("ERROR: pull request not opened: {reason}");
+        }
+    }
     let bin = match plan.program {
         Program::Git => crate::tools::git_native::discover_git(),
         Program::Gh => discover_gh(),
@@ -1465,6 +1553,13 @@ pub async fn execute(plan: &GitPlan, cwd: &Path) -> String {
         };
     };
     let mut cmd = tokio::process::Command::new(&bin);
+    if plan.program == Program::Git && plan.args.first().map(String::as_str) == Some("merge-tree") {
+        // Repository attributes may name a merge driver. Local drivers are
+        // refused by check_repo_config; do not inherit one from user or system
+        // configuration for this conflict probe either.
+        cmd.env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null");
+    }
     if plan.program == Program::Git {
         // Nothing the repository's own files can name runs: no hooks (a hook
         // is a script any tool that can write the worktree could plant), no
@@ -1666,6 +1761,22 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn pull_request_preflight_requires_exact_target() {
+        let missing = p("gh", &["pr", "create", "--fill"]).unwrap();
+        assert!(pr_preflight_target(&missing.args).is_err());
+        let specified = p("gh", &[
+            "pr", "create", "--repo", "owner/project", "--base", "main",
+            "--head", "contributor:fix/issue", "--title", "Fix", "--body", "Details",
+        ]).unwrap();
+        assert_eq!(pr_preflight_target(&specified.args).unwrap(), (
+            "https://github.com/owner/project.git".into(),
+            "main".into(),
+            "https://github.com/contributor/project.git".into(),
+            "fix/issue".into(),
+        ));
     }
 
     #[test]

@@ -440,6 +440,7 @@ export async function runSubagent(
 
     const tools = subagentTools(opts.parentTools, resolved.allowedTools)
     const system = buildSubagentSystemPrompt(resolved.systemPrompt, {
+      availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
       extraFolders: opts.system.extraFolders,

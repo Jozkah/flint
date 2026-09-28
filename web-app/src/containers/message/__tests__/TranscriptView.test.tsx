@@ -111,6 +111,16 @@ describe('Transcript view', () => {
     expect(screen.getByTestId('transcript-steps-toggle')).toBeInTheDocument()
   })
 
+  it('thinking: approval follows expanded tool steps', () => {
+    const { container } = renderAs('thinking')
+    fireEvent.click(screen.getByTestId('transcript-steps-toggle'))
+    const steps = container.querySelector('#' + screen.getByTestId('transcript-steps-toggle').getAttribute('aria-controls'))
+    const approval = screen.getAllByTestId('approval-actions').at(-1)
+    expect(steps).toBeInTheDocument()
+    expect(approval).toBeInTheDocument()
+    expect(steps!.compareDocumentPosition(approval!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
   it('verbose: reasoning and every tool call, no disclosure', () => {
     renderAs('verbose')
     expect(screen.getByText('Plan the change carefully.')).toBeInTheDocument()

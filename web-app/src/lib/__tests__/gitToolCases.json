@@ -1,6 +1,8 @@
 [
   { "program": "git", "args": ["status"], "class": "read" },
   { "program": "git", "args": ["status", "--short"], "class": "read" },
+  { "program": "git", "args": ["merge-tree", "--write-tree", "origin/main", "HEAD"], "class": "local" },
+  { "program": "git", "args": ["merge-tree", "--stdin"], "class": "deny" },
   { "program": "git", "args": ["log", "--oneline", "-5"], "class": "read" },
   { "program": "git", "args": ["diff", "HEAD~1"], "class": "read" },
   { "program": "git", "args": ["show", "HEAD"], "class": "read" },
