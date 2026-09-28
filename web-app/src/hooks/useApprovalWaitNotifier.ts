@@ -1,4 +1,5 @@
 import { createElement, useEffect, useRef } from 'react'
+import { syncTaskbarAttention } from '@/lib/taskbarAttention'
 import { toast } from 'sonner'
 import {
   approvalDestination,
@@ -98,7 +99,8 @@ export function approvalReminderContent(
 /**
  * Remind the user of approval prompts that have waited over 30 seconds: a
  * toast that stays until the prompt is answered, and a system notification
- * while the window is in the background. Mounted once, in the app shell.
+ * while the window is in the background. The taskbar icon flashes as soon as
+ * a prompt arrives in the background. Mounted once, in the app shell.
  */
 export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
   // Read at click time, so the effect below never restarts for a new router
@@ -110,6 +112,9 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
     const check = () => {
       const entries = allApprovalRequests(useToolApprovalRequests.getState())
       const live = new Set(entries.map((e) => e.requestId))
+      // At once, not after the reminder delay: the taskbar icon flashes as
+      // soon as a run stops to ask while Flint is in the background.
+      syncTaskbarAttention(entries.map((e) => e.requestId))
       // An answered or withdrawn prompt takes its reminder with it.
       for (const id of reminded) {
         if (!live.has(id)) {
