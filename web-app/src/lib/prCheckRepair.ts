@@ -204,3 +204,66 @@ export function orderedChecks(checks: CheckRun[] | undefined): CheckRun[] {
   const rank = { failed: 0, pending: 1, passed: 2 } as const
   return [...(checks ?? [])].sort((a, b) => rank[a.verdict] - rank[b.verdict])
 }
+
+/** A branch name is the repository's; it must not forge a line either. */
+const safeRef = (ref: string) => ref.replace(/[^\w./-]/g, '').slice(0, 200)
+
+/**
+ * Whether `sessionId` may be offered "Resolve conflicts": the owning session,
+ * an open or draft pull request GitHub reports as conflicting, on a known
+ * head commit.
+ */
+export function canResolveConflicts(
+  pr: PrStatus,
+  relation: 'mine' | 'foreign' | null | undefined,
+  sessionId: string | null | undefined
+): boolean {
+  if (!sessionId || relation !== 'mine') return false
+  if (pr.state !== 'open' && pr.state !== 'draft') return false
+  if (pr.merge !== 'conflicting') return false
+  return HEAD_SHA.test(pr.head_sha ?? '')
+}
+
+/** One resolve request per pull request per head commit. */
+export function conflictRepairId(pr: PrStatus): string {
+  return `conflictfix:${pr.number}:${(pr.head_sha ?? '').slice(0, 12)}`
+}
+
+/** The request the owning session is sent to resolve the conflicts. */
+export function buildConflictPrompt(pr: PrStatus): string {
+  const base = safeRef(pr.base) || 'the base branch'
+  const head = safeRef(pr.head)
+  return [
+    `PR #${pr.number} (${pr.url}) has merge conflicts with its base branch ${base}; GitHub will not merge it until they are resolved. Head commit ${pr.head_sha ?? ''}.`,
+    '',
+    `Work in this session's worktree on ${head}. Fetch origin and merge origin/${base} into ${head} -- a merge, not a rebase, so the pull request's history stays as it is. Resolve every conflict so both sides' intent survives; where the two sides change the same logic and keeping both is not possible, stop and ask me which to keep. Then run the relevant tests and commit the merge.`,
+    'Do not push, force-push, open or update a pull request, or re-run CI: stop when the merge is committed, and tell me which files conflicted and how you resolved each.',
+  ].join('\n')
+}
+
+export type ConflictOutcome =
+  | { status: 'queued'; id: string }
+  | { status: 'duplicate' }
+  | { status: 'refused' }
+
+/** Queue a resolve request into the owning session. Never pushes. */
+export function requestConflictResolution(
+  input: {
+    sessionId: string
+    pr: PrStatus
+    relation: 'mine' | 'foreign' | null
+  },
+  deps: Pick<RepairDeps, 'queue' | 'enqueue' | 'now' | 'stillOwns'>
+): ConflictOutcome {
+  const { sessionId, pr, relation } = input
+  if (!canResolveConflicts(pr, relation, sessionId)) return { status: 'refused' }
+  if (deps.stillOwns && !deps.stillOwns()) return { status: 'refused' }
+  const id = conflictRepairId(pr)
+  if (deps.queue(sessionId).some((m) => m.id === id)) return { status: 'duplicate' }
+  deps.enqueue(sessionId, {
+    id,
+    text: buildConflictPrompt(pr),
+    createdAt: (deps.now ?? Date.now)(),
+  })
+  return { status: 'queued', id }
+}

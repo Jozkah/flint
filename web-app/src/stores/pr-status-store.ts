@@ -51,6 +51,8 @@ export type PrStatus = {
   head_sha?: string
   /** The named checks; absent in a status only recorded. */
   check_runs?: CheckRun[]
+  /** Whether it merges into its base as it stands; absent when unread. */
+  merge?: 'clean' | 'conflicting' | 'behind' | 'blocked' | 'unknown'
   /** Why the live status could not be read; the rest is what was recorded. */
   statusError?: string
 }
