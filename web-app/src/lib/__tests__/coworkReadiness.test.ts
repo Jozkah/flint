@@ -526,4 +526,15 @@ describe('a skill requested part-way through a conversation', () => {
     ])
     expect(unresolvedSkills(resolved)).toHaveLength(1)
   })
+
+describe('switches at the start of a line', () => {
+  it('are not skill requests', () => {
+    expect(parseSkillRequestTriggers('robocopy a b `\n/E /XD node_modules /XF *.log')).toEqual([])
+    expect(parseSkillRequestTriggers('/E /XD x /XF *.log')).toEqual([])
+  })
+  it('still leave a typed command alone', () => {
+    expect(parseSkillRequestTriggers('/review this file').map((r) => r.name)).toEqual(['review'])
+  })
+})
+
 })

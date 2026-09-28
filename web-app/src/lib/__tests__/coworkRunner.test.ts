@@ -988,3 +988,45 @@ describe('a call that ends the turn (#296)', () => {
     expect(d.onStep).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('automatic recovery', () => {
+  const cutOff = (text: string): UIMessageChunk[] => [
+    { type: 'text-delta', id: 't', delta: text } as UIMessageChunk,
+    { type: 'finish', messageMetadata: { finishReason: 'length' } } as unknown as UIMessageChunk,
+  ]
+  const run = (d: ReturnType<typeof deps>) =>
+    runTurn({ messages: [user('go')], signal: new AbortController().signal, deps: d } as never)
+
+  it('continues a reply cut off by the output limit, once', async () => {
+    const d = deps([cutOff('The class is `BasicParent'), textStep(' and that is all.')])
+    const out = await run(d)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(JSON.stringify(second.at(-1))).toContain('cut off by the output limit')
+  })
+
+  it('does not continue a second time', async () => {
+    const d = deps([cutOff('a'), cutOff('b'), textStep('c')])
+    await run(d)
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+  })
+
+  it('asks once more after an empty reply', async () => {
+    const d = deps([textStep(''), textStep('answer')])
+    const out = await run(d)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+  })
+
+  it('continues a text reply whose stream was cut off', async () => {
+    const dropped: UIMessageChunk[] = [
+      { type: 'text-delta', id: 't', delta: 'half an ans' } as UIMessageChunk,
+      { type: 'finish', messageMetadata: { streamCutOff: true } } as unknown as UIMessageChunk,
+    ]
+    const d = deps([dropped, textStep('wer.')])
+    const out = await run(d)
+    expect(out.stoppedBy).toBe('done')
+    expect(d.sendStep).toHaveBeenCalledTimes(2)
+  })
+})

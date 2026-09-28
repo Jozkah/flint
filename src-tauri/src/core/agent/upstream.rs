@@ -1624,6 +1624,10 @@ pub(crate) fn is_context_overflow_body(body: &str) -> bool {
         || b.contains("exceed context")
         || b.contains("context window")
         || (b.contains("context") && b.contains("too long"))
+        || b.contains("context length")
+        || b.contains("maximum context")
+        || b.contains("exceeds the context")
+        || b.contains("too many tokens")
 }
 
 /// True when an error string carries the [`CONTEXT_OVERFLOW_MARKER`].

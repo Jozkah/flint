@@ -1980,9 +1980,24 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
         // the command means what the model wrote it to mean (see
         // `ToolContext::sandbox_shell_parity`). Everything else unconfined
         // gets the host's preferred shell.
-        let parity = ctx.sandbox_shell_parity && jail::backend().enforces();
+        let parity = ctx.sandbox_shell_parity && (jail::backend().enforces() || cfg!(windows));
         let sandbox_choice = if parity {
-            jail::select_shell(&policy).ok().map(|s| s.report.cfg)
+            jail::select_shell(&policy)
+                .ok()
+                .map(|s| s.report.cfg)
+                // On Windows the model writes PowerShell for the sandbox. If
+                // the sandbox cannot say which shell it would use, the rerun
+                // still must not fall to Git Bash, where `Set-Location` and
+                // `Push-Location` do not exist.
+                .or_else(|| {
+                    if cfg!(windows) {
+                        proc::candidates()
+                            .into_iter()
+                            .find(|c| c.flavor != proc::ShellFlavor::Posix)
+                    } else {
+                        None
+                    }
+                })
         } else {
             None
         };

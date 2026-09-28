@@ -1,10 +1,18 @@
+import { isContextLengthError } from '@/lib/compaction'
 export const OUT_OF_CONTEXT_SIZE =
   'the request exceeds the available context size.'
 
 // Matches OUT_OF_CONTEXT_SIZE and llama-server's verbose variant
-// ("request (N tokens) exceeds the available context size (M tokens)…").
+// ("request (N tokens) exceeds the available context size (M tokens)…"),
+// and every other provider's wording the compactor recognises (OpenAI's
+// "maximum context length", Anthropic's "prompt is too long", ...). Only
+// llama-server's used to count, so the others reached the chat as raw
+// HTTP 400 text instead of the context banner.
 export function isContextOverflowMessage(message: string): boolean {
-  return /exceeds the available context size/i.test(message)
+  return (
+    /exceeds the available context size/i.test(message) ||
+    isContextLengthError(message)
+  )
 }
 
 export interface ContextOverflowInfo {

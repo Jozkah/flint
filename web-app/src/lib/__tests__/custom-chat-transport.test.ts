@@ -852,3 +852,22 @@ describe('hasGenuineUserQuery', () => {
     ).toBe(true)
   })
 })
+
+describe('resolveOrphanToolCalls: nameless calls', () => {
+  it('drops a tool call with no usable name', () => {
+    const out = resolveOrphanToolCalls([
+      {
+        id: 'a',
+        role: 'assistant',
+        parts: [
+          { type: 'text', text: 'hi' },
+          { type: 'tool-undefined', toolCallId: 'x', state: 'output-available', input: {}, output: 'r' },
+          { type: 'dynamic-tool', toolCallId: 'y', state: 'output-available', input: {}, output: 'r' },
+          { type: 'tool-read', toolCallId: 'z', state: 'output-available', input: {}, output: 'r' },
+        ],
+      } as never,
+    ])
+    const types = (out[0].parts as Array<{ type: string }>).map((p) => p.type)
+    expect(types).toEqual(['text', 'tool-read'])
+  })
+})

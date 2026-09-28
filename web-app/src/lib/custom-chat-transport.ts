@@ -618,8 +618,24 @@ export function resolveOrphanToolCalls(messages: UIMessage[]): UIMessage[] {
     const parts = Array.isArray(message.parts) ? message.parts : []
     if (parts.length === 0) return message
 
-    let mutated = false
-    const nextParts = parts.map((original) => {
+    // A tool call with no usable name (a stream that never sent one, an
+    // imported message) is replayed as `function.name: undefined`, and the
+    // provider rejects the whole request ("Expected 'function.name' to be a
+    // string"). There is nothing to replay: drop it.
+    const named = parts.filter((original) => {
+      const type = (original as { type?: string }).type
+      if (type === 'dynamic-tool') {
+        const name = (original as { toolName?: unknown }).toolName
+        return typeof name === 'string' && name.trim() !== '' && name !== 'undefined'
+      }
+      if (typeof type === 'string' && type.startsWith('tool-')) {
+        const name = type.slice('tool-'.length)
+        return name.trim() !== '' && name !== 'undefined' && name !== 'null'
+      }
+      return true
+    })
+    let mutated = named.length !== parts.length
+    const nextParts = named.map((original) => {
       const type = (original as { type?: string }).type
       if (typeof type !== 'string' || !type.startsWith('tool-')) return original
       let part = original
@@ -1296,7 +1312,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ragFeatureAvailable = Boolean(useAttachments.getState().enabled)
       }
     }
+    // The MCP tools that exist right now. Without it a server installed or
+    // activated after the chat opened never reached the chat: every send
+    // found the old key and kept the old tool list, so it took a new chat.
+    const mcpNames: unknown = useAppState.getState?.()?.mcpToolNames
+    const mcpFingerprint =
+      mcpNames instanceof Set || Array.isArray(mcpNames)
+        ? [...(mcpNames as Iterable<string>)].sort()
+        : []
     const cacheKey = JSON.stringify({
+      mcpFingerprint,
       model: selectedModel?.id ?? '',
       modelSupportsTools,
       hasDocuments,
@@ -1351,6 +1376,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ) {
           const summaries = await mcpService.getServerSummaries!()
           const routedSig = JSON.stringify({
+            // Tool identities, not only server names: a server that gains
+            // tools must re-route rather than keep the frozen subset.
+            tools: mcpFingerprint,
             servers: summaries.map((s) => s.name).sort(),
             disabled: [...disabledToolKeys].sort(),
           })

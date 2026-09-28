@@ -150,7 +150,8 @@ export function trimMessages(
     systemPromptTokens
   )
   if (inputBudget <= 0) {
-    return { messages: messages.slice(-1), trimmedCount: messages.length - 1 }
+    const kept = keepLastUser(messages, messages.slice(-1))
+    return { messages: kept, trimmedCount: messages.length - kept.length }
   }
 
   // Estimate tokens for each message
@@ -177,10 +178,24 @@ export function trimMessages(
     kept.push(messages[messages.length - 1])
   }
 
+  const withUser = keepLastUser(messages, kept)
   return {
-    messages: kept,
-    trimmedCount: messages.length - kept.length,
+    messages: withUser,
+    trimmedCount: messages.length - withUser.length,
   }
+}
+
+/**
+ * A long tool loop fills the budget with assistant and tool messages, and
+ * trimming from the newest end then dropped every user message: the request
+ * was refused with "This conversation has no user message to respond to"
+ * though the chat plainly had one. Keep the latest user message, even at a
+ * small overflow, rather than send a conversation nobody asked for.
+ */
+function keepLastUser(all: UIMessage[], kept: UIMessage[]): UIMessage[] {
+  if (kept.some((m) => m.role === 'user')) return kept
+  const lastUser = [...all].reverse().find((m) => m.role === 'user')
+  return lastUser ? [lastUser, ...kept] : kept
 }
 
 const COMPACT_SYSTEM_PROMPT =

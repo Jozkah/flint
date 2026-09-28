@@ -162,9 +162,9 @@ describe('trimMessages', () => {
       maxContextTokens: 200,
       maxOutputTokens: 50,
       autoCompact: false,
-    }, 180) // leaves only 200-50-180 = negative → only last message
-    expect(result.messages).toHaveLength(1)
-    expect(result.messages[0].id).toBe('2')
+    }, 180) // leaves only 200-50-180 = negative → the last message, plus
+    // the user message it answers: a request with no user turn is refused.
+    expect(result.messages.map((m) => m.id)).toEqual(['1', '2'])
   })
 
   it('should preserve message order', () => {
@@ -277,5 +277,23 @@ describe('deriveToolOutputCap', () => {
 
   it('returns a whole number of characters', () => {
     expect(Number.isInteger(deriveToolOutputCap(8_191))).toBe(true)
+  })
+})
+
+describe('trimMessages keeps the request', () => {
+  it('keeps the latest user message when newer turns fill the budget', () => {
+    const messages = [
+      makeMessage('u', 'user', 'fix the parser'),
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeMessage(`a${i}`, 'assistant', 'A'.repeat(500))
+      ),
+    ]
+    const result = trimMessages(messages, {
+      maxContextTokens: 400,
+      maxOutputTokens: 50,
+      autoCompact: false,
+    })
+    expect(result.messages[0].id).toBe('u')
+    expect(result.messages.some((m) => m.role === 'user')).toBe(true)
   })
 })

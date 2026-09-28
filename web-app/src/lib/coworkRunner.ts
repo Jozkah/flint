@@ -319,6 +319,8 @@ export type StepResult = {
   usage: Usage | null
   errorText?: string
   aborted: boolean
+  /** The provider's finish reason: `length` means the output cap cut it. */
+  finishReason?: string
 }
 
 export type RunHandle = {
@@ -721,6 +723,11 @@ export async function consumeStep(
         case 'finish':
           result.usage = usageOf(chunk.messageMetadata) ?? result.usage
           result.memory = memoryOf(chunk.messageMetadata) ?? result.memory
+          {
+            const reason = (chunk.messageMetadata as { finishReason?: unknown } | undefined)
+              ?.finishReason
+            if (typeof reason === 'string') result.finishReason = reason
+          }
           // A reply the provider never finished -- the connection dropped
           // mid-stream -- still ends with a `finish` chunk, carrying whatever
           // text arrived. Read as an answer, a child cut off after one word
@@ -929,6 +936,15 @@ export async function runTurn(opts: {
   // conversation, so summing totals charges the same context once per step.
   let spend = newSpend(opts.sessionTokens ?? 0)
   let usage: Usage | null = null
+  // One automatic recovery per run: a reply cut off by the output limit or a
+  // dropped stream, or an empty reply, is continued once without the user
+  // having to type "continue". Once, so it can never loop.
+  let autoContinued = false
+  const nudge = (text: string): UIMessage => ({
+    id: deps.nextMessageId(),
+    role: 'user',
+    parts: [{ type: 'text', text }],
+  })
 
   for (;;) {
     if (signal.aborted) {
@@ -1103,6 +1119,24 @@ export async function runTurn(opts: {
           assistantMessageFor(deps.nextMessageId(), result, new Map())
         )
       }
+      // A text reply cut off mid-stream: keep what arrived and ask for the
+      // rest, once, rather than ending the run on half an answer.
+      if (
+        !autoContinued &&
+        !signal.aborted &&
+        !result.aborted &&
+        result.text.trim() &&
+        result.toolCalls.length === 0
+      ) {
+        autoContinued = true
+        deps.onStep({ step, result, turns: turnsFor(result, new Map()), outcomes: new Map() })
+        messages.push(
+          nudge(
+            'Your previous reply was interrupted before it finished. Continue exactly where it stopped, without repeating what you already wrote.'
+          )
+        )
+        continue
+      }
       deps.onStep({
         step,
         result,
@@ -1272,6 +1306,24 @@ export async function runTurn(opts: {
       const late = (await deps.takeSteering?.()) ?? []
       if (late.length > 0) {
         messages.push(...late)
+        continue
+      }
+      if (!autoContinued && result.finishReason === 'length' && result.text.trim()) {
+        autoContinued = true
+        messages.push(
+          nudge(
+            'Your previous reply was cut off by the output limit. Continue exactly where it stopped, without repeating what you already wrote.'
+          )
+        )
+        continue
+      }
+      if (!autoContinued && !result.text.trim()) {
+        autoContinued = true
+        messages.push(
+          nudge(
+            'Your last reply had no text and no tool call. Answer the request, or call a tool to continue the work.'
+          )
+        )
         continue
       }
       return {
