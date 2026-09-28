@@ -140,3 +140,31 @@ it('tells the user, in their terms, why the run stopped', () => {
   )
   expect(notice).not.toMatch(/Say what you were trying|wait for instructions/)
 })
+
+describe('policy refusals', () => {
+  const denied = (path: string): ObservedCall => ({
+    tool: 'write',
+    input: { path },
+    failed: true,
+    error: "tool 'write' was refused: that path is outside the workspace",
+  })
+
+  it('allow a model a few refusals while it looks for another way', () => {
+    expect(detectLoop([denied('a'), denied('b'), denied('c')])).toEqual({ tripped: false })
+  })
+
+  it('still stop a model that keeps hitting the same refusal', () => {
+    const calls = ['a', 'b', 'c', 'd', 'e', 'f'].map(denied)
+    expect(detectLoop(calls).tripped).toBe(true)
+  })
+
+  it('do not spend the shell failure budget', () => {
+    const shellDenied = (n: number): ObservedCall => ({
+      tool: 'bash',
+      input: { command: `cmd ${n}` },
+      failed: true,
+      error: `[sandbox: blocked write ${n}]`,
+    })
+    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).tripped).toBe(false)
+  })
+})

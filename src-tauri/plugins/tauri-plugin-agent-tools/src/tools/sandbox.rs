@@ -379,7 +379,45 @@ pub fn command_touches_hidden_jan_path(project_root: &Path, command: &str) -> bo
         return true;
     }
     let substitutes = command.contains('$') || command.contains('`');
-    substitutes && (dequoted.contains(".j") || dequoted.contains("an/agent"))
+    substitutes && (could_spell_jan(&dequoted) || builds_agent_dir(&dequoted))
+}
+
+/// Whether the text holds a `.j` or `.ja` that a substitution could finish
+/// into `.jan`: one not followed by the rest of an ordinary name. `.json`,
+/// `.js`, `.jpg` and `.java` are file extensions, and on Windows nearly every
+/// PowerShell command has a `$`, so counting them refused `Get-Content
+/// package.json | ... $_` as if it reached the agent's hidden folder.
+fn could_spell_jan(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    let bytes = lower.as_bytes();
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(".j").map(|i| i + from) {
+        from = i + 2;
+        match bytes.get(i + 2) {
+            None => return true,
+            Some(b'a') => match bytes.get(i + 3) {
+                // `.jan` itself is caught by the token scan above; `.ja` then
+                // a name character (`.java`) is an ordinary name.
+                Some(c) if c.is_ascii_alphanumeric() || *c == b'_' => continue,
+                _ => return true,
+            },
+            Some(c) if c.is_ascii_alphanumeric() || *c == b'_' || *c == b'-' => continue,
+            _ => return true,
+        }
+    }
+    false
+}
+
+/// `${d}an/agent`, `$(x)an/agent`: the agent folder's path finished onto a
+/// substitution. A literal `.jan/agent` is caught by the token scan.
+fn builds_agent_dir(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase().replace('\\', "/");
+    lower.match_indices("an/agent").any(|(i, _)| {
+        matches!(
+            lower.as_bytes().get(i.wrapping_sub(1)),
+            Some(b'}' | b')' | b'$' | b'`')
+        ) || lower[..i].ends_with(".j")
+    })
 }
 
 /// Whether a token is a glob whose first component, relative to the project
@@ -786,6 +824,11 @@ mod tests {
             "grep -r 'jan' src",
             "cat JAN.md",
             "cp a.txt 'my file.txt'",
+            // PowerShell: `$` everywhere, and `.json`/`.js` are extensions.
+            "Get-Content package.json | ConvertFrom-Json | % { $_.name }",
+            "$files = Get-ChildItem *.js; $files.Count",
+            "Copy-Item $src\\logo.jpg $dst",
+            "java -jar $HOME/app.jar",
         ] {
             assert!(!command_touches_hidden_jan_path(&root, command), "{command}");
         }

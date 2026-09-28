@@ -416,8 +416,11 @@ export function convertThreadMessageToUIMessage(
         try {
           toolInput = JSON.parse(tc.tool.function.arguments)
         } catch (error) {
-          console.warn('Failed to parse tool call arguments; using raw string:', error)
-          toolInput = tc.tool.function.arguments
+          // A call cut off mid-stream leaves half a JSON object. Resending it
+          // made the provider reject every later request with HTTP 400, so
+          // "continue" failed the same way each time.
+          console.warn('Dropping unparseable tool call arguments:', error)
+          toolInput = {}
         }
       } else {
         toolInput = tc.tool?.function?.arguments || tc.args

@@ -66,6 +66,23 @@ export const SHELL_FAILURE_BUDGET = 8
  * shell has its own, reason-aware counting above and is not counted here.
  */
 export const TOOL_FAILURE_STREAK_LIMIT = 5
+/**
+ * The same refusal by Flint's own policy (a sandbox block, a path outside the
+ * workspace, a permission denial) before the run is stopped. Higher than
+ * `FAILURE_LIMIT`, and not counted toward the shell budget or the tool
+ * streaks: a refusal is not the model guessing, and a model that meets a few
+ * while looking for another way through was being stopped with every tool
+ * disabled even when that other way existed.
+ */
+export const DENIAL_LIMIT = 6
+
+const DENIED =
+  /\[sandbox:|was refused|is denied|not permitted|outside the workspace|permission_denied|sandbox_denied|access (is )?denied|UnauthorizedAccess/i
+
+/** Whether a failure is Flint (or the OS sandbox) refusing, not the call failing. */
+export function isDenial(error: string | undefined): boolean {
+  return !!error && DENIED.test(error)
+}
 export const NO_PROGRESS_LIMIT = 2
 export const DELEGATION_DEPTH_LIMIT = 3
 
@@ -229,7 +246,7 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
       const failureKey = `${call.tool}::${call.error ?? ''}`
       const count = (failures.get(failureKey) ?? 0) + 1
       failures.set(failureKey, count)
-      if (count >= FAILURE_LIMIT) {
+      if (count >= (isDenial(call.error) ? DENIAL_LIMIT : FAILURE_LIMIT)) {
         const kind =
           call.tool === SHELL_TOOL ? classifyShellFailure(call.error) : null
         const inputs = new Set(
@@ -303,6 +320,8 @@ function shellFailures(calls: ObservedCall[]): LoopVerdict | null {
         }
       }
     }
+    // Refusals are counted, the same one alone, by the check above.
+    if (isDenial(call.error)) continue
     total += 1
     if (total >= SHELL_FAILURE_BUDGET) {
       return {
@@ -334,6 +353,7 @@ function toolFailureStreak(calls: ObservedCall[]): LoopVerdict | null {
   const streaks = new Map<string, number>()
   for (const call of calls) {
     if (call.tool === SHELL_TOOL || call.failed === undefined) continue
+    if (call.failed && isDenial(call.error)) continue
     if (!call.failed) {
       streaks.delete(call.tool)
       continue
