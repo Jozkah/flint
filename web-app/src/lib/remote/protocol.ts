@@ -23,6 +23,7 @@ export type RemoteErrorCode =
   | 'internal'
   | 'forbidden'
   | 'unknown_method'
+  | 'desktop_only'
 
 export type RemoteError = { code: RemoteErrorCode | string; message: string }
 
@@ -42,6 +43,8 @@ export type SessionSummary = {
   updatedAt: number
   /** Project, folder or other grouping label, when the session has one. */
   group?: string
+  /** Pinned (starred) in the desktop's sidebar. */
+  pinned?: boolean
 }
 
 export type SessionsListParams = { kind?: SessionKind; limit?: number }
@@ -120,6 +123,9 @@ export type StatusResult = {
   modelsLoaded: number
   runs: { kind: SessionKind; id: string }[]
   approvalsWaiting: number
+  /** What the computer lets phones do (Settings › Remote access). Absent when
+   * the window could not read its own settings. */
+  permissions?: { approvals: boolean; alwaysAllow: boolean }
 }
 
 export type IdParams = { id: string }
@@ -232,6 +238,8 @@ export type SettingsSnapshot = {
   mcpServers: { total: number; active: number }
   providers: { total: number; active: number }
   remote: { allowApprovals: boolean; allowAlwaysAllow: boolean; interface: string } | null
+  /** This phone's notification choices, when it has set them. */
+  notifications?: NotificationPrefs
 }
 
 /** The desktop's accent, as inline CSS variables per theme (lib/accent.ts);
@@ -239,6 +247,180 @@ export type SettingsSnapshot = {
 export type AppearanceResult = {
   vars: { light: Record<string, string>; dark: Record<string, string> }
 }
+
+// ---------------------------------------------------------------------------
+// Acting on the computer (phase 3)
+// ---------------------------------------------------------------------------
+
+export type ModelRef = { id: string; provider: string }
+export type ReasoningMode = 'auto' | 'on' | 'off'
+export type CoworkModeId = CoworkDetail['mode']
+export type CoworkAccessId = CoworkDetail['access']
+
+/** Every send carries a `clientId` the phone makes once per message: a retry
+ * after a dropped connection sends the same one, and the computer answers it
+ * with the first result instead of sending twice. */
+export type ChatSendParams = {
+  clientId: string
+  text: string
+  /** An existing chat; omitted (or `new: true`) starts one. */
+  id?: string
+  new?: boolean
+  /** New chats only: the model to start with. */
+  model?: ModelRef
+  /** The composer's toggles, applied as the desktop composer applies them. */
+  webSearch?: boolean
+  reasoning?: ReasoningMode
+  /** While a run is going: hand it to the run at its next safe point
+   * (the desktop's Ctrl+Enter) instead of queueing it. */
+  steer?: boolean
+}
+
+export type CoworkSendParams = {
+  clientId: string
+  text: string
+  id?: string
+  new?: boolean
+  /** New sessions: a folder the desktop already knows (recent folders). */
+  folder?: string
+  mode?: CoworkModeId
+  /** Only `review-only` can be chosen from a phone; the others need the
+   * desktop's own consent dialog. */
+  access?: CoworkAccessId
+  model?: ModelRef
+  steer?: boolean
+}
+
+export type RoomSendParams = {
+  clientId: string
+  id: string
+  text: string
+  /** A participant id, `moderator`, or null/omitted for everyone. */
+  to?: string | null
+}
+
+export type SendResult = {
+  kind: SessionKind
+  /** The conversation it went to (new for a new chat or session). */
+  id: string
+  /** `sent`: a run started with it. `queued`: a run was going, so it waits
+   * its turn, as on the desktop. `steered`: handed to the running turn. */
+  delivery: 'sent' | 'queued' | 'steered'
+  /** The same `clientId` was seen before; this is the first answer again. */
+  duplicate?: boolean
+}
+
+export type RunStopParams = { kind: SessionKind; id: string; all?: false } | { all: true }
+export type RunStopResult = { stopped: number }
+
+export type RoomControlParams = {
+  id: string
+  action: 'start' | 'pause' | 'resume' | 'stop' | 'cancel' | 'next' | 'vote' | 'synthesize' | 'final'
+  /** `next`: who speaks next. */
+  participantId?: string
+  /** `vote`: what to vote on. */
+  proposal?: string
+}
+
+export type ApprovalRespondParams = {
+  requestId: string
+  decision: 'allow' | 'deny'
+  scope?: 'once' | 'thread' | 'always'
+}
+/** `gone`: nothing waits under that id any more -- it was answered on the
+ * computer (or another phone), or its run ended. */
+export type ApprovalRespondResult = { status: 'answered' | 'gone' }
+
+export type NotificationPrefs = {
+  approvals: boolean
+  runFinished: boolean
+  roomTurns: boolean
+  errors: boolean
+}
+
+export type SettingsSetParams =
+  | { key: 'webSearch'; value: boolean }
+  | { key: 'notifications'; value: NotificationPrefs }
+  | { scope: 'chat'; id: string; reasoning?: ReasoningMode; model?: ModelRef }
+  | {
+      scope: 'cowork'
+      id: string
+      mode?: CoworkModeId
+      access?: CoworkAccessId
+      model?: ModelRef
+    }
+
+/** The reply being written in a conversation right now, for a phone that
+ * (re)opens it mid-run. */
+export type StreamGetParams = { kind: SessionKind; id: string }
+export type StreamSnapshot = {
+  kind: SessionKind
+  id: string
+  messageId: string
+  text: string
+  reasoning: string
+  tools: RemoteToolStep[]
+  /** Room: who is speaking. */
+  author?: string
+}
+
+export type QueuedItem = {
+  id: string
+  text: string
+  /** Goes to the running turn at its next safe point. */
+  steer: boolean
+  /** Waits for the user to send or discard it (after a stop or a restart). */
+  held: boolean
+  /** Mail from another session: its name. */
+  from?: string
+}
+export type QueueResult = { items: QueuedItem[] }
+
+export type ChangedFile = {
+  path: string
+  additions: number
+  deletions: number
+  /** Who wrote it: the run, a subagent (its name), or the user. */
+  source: string
+  /** Unified-diff text of each write, oldest first (capped). */
+  hunks: string[]
+}
+
+export type RemotePr = {
+  number: number
+  title: string
+  url: string
+  state: 'open' | 'draft' | 'merged' | 'closed'
+  checks: { passed: number; failed: number; pending: number }
+  conflicts: boolean
+}
+
+export type CoworkChanges = {
+  files: ChangedFile[]
+  /** "3 files changed · +24 −8", once a run has finished; null otherwise. */
+  summary: string | null
+  /** Where the work happens: a managed worktree's branch and path. */
+  worktree: { branch: string | null; path: string } | null
+  pr: RemotePr | null
+  /** Applying a copy's changes to the folder is done on the computer. */
+  applyOnDesktop: boolean
+}
+
+export type CoworkActivity = {
+  subagents: { id: string; name: string; status: 'queued' | 'running' | 'done'; startedAt: number; endedAt?: number; steps: number }[]
+  commands: { id: string; command: string; status: RemoteToolStep['status'] }[]
+}
+
+export type LibraryItem = {
+  path: string
+  title: string
+  group: string
+  label: string
+  sessionId: string
+  sessionTitle: string
+  updatedAt: number
+}
+export type LibraryResult = { items: LibraryItem[] }
 
 /** Every method a phone may call, with its params and result. */
 export type RemoteMethods = {
@@ -253,14 +435,19 @@ export type RemoteMethods = {
   'tools.list': { params: Record<string, never>; result: ToolsListResult }
   'settings.get': { params: Record<string, never>; result: SettingsSnapshot }
   'appearance.get': { params: Record<string, never>; result: AppearanceResult }
-  // Later phases; answered with `not_implemented` for now.
-  'chat.send': { params: unknown; result: unknown }
-  'cowork.send': { params: unknown; result: unknown }
-  'run.stop': { params: unknown; result: unknown }
-  'room.send': { params: unknown; result: unknown }
-  'settings.set': { params: unknown; result: unknown }
+  'stream.get': { params: StreamGetParams; result: StreamSnapshot | null }
+  'thread.queue': { params: IdParams; result: QueueResult }
+  'cowork.changes': { params: IdParams; result: CoworkChanges }
+  'cowork.activity': { params: IdParams; result: CoworkActivity }
+  'library.list': { params: Record<string, never>; result: LibraryResult }
+  'chat.send': { params: ChatSendParams; result: SendResult }
+  'cowork.send': { params: CoworkSendParams; result: SendResult }
+  'run.stop': { params: RunStopParams; result: RunStopResult }
+  'room.send': { params: RoomSendParams; result: SendResult }
+  'room.control': { params: RoomControlParams; result: { ok: true } }
+  'settings.set': { params: SettingsSetParams; result: { ok: true } }
   /** `scope: 'always'` needs "Allow 'Always allow' from phones" (checked by the server too). */
-  'approvals.respond': { params: unknown; result: unknown }
+  'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
 }
 
 export type RemoteMethod = keyof RemoteMethods
@@ -283,6 +470,28 @@ export type RemoteEvent =
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }
+  /** Reply text (and reasoning) appended at `offset` of what was sent so far
+   * for `messageId`. A phone that sees a gap asks `stream.get`. */
+  | {
+      type: 'stream.delta'
+      kind: SessionKind
+      id: string
+      messageId: string
+      offset: number
+      text: string
+      reasoningOffset?: number
+      reasoning?: string
+      author?: string
+    }
+  /** A tool step began or changed. */
+  | { type: 'stream.tool'; kind: SessionKind; id: string; messageId: string; step: RemoteToolStep }
+  /** The reply is complete (or stopped); read `thread.messages` for it. */
+  | { type: 'stream.done'; kind: SessionKind; id: string; messageId: string }
+  /** Messages, queue or details of a conversation changed. */
+  | { type: 'thread.updated'; kind: SessionKind; id: string }
+
+/** Conversation-scoped events go to sockets subscribed to this topic. */
+export const threadTopic = (id: string) => `thread:${id}`
 
 /** One WebSocket message from the server. */
 export type RemoteSocketMessage =

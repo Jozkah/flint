@@ -2,16 +2,47 @@
 // `system.info`, `/me`); changing one asks the computer (`settings.set`),
 // which says so when it cannot yet. Phone-only choices (theme) apply here.
 import type { ReactNode } from 'react'
-import type { SettingsSnapshot } from '@/lib/remote/protocol'
+import type { NotificationPrefs, SettingsSnapshot } from '@/lib/remote/protocol'
+import { DEFAULT_NOTIFY } from '../state/controls'
 import { I } from '../ui/icons'
 import { Empty, FlintMark, TypeSafeMark } from '../ui/bits'
 import { Grp, IRow } from '../ui/ios'
 import { LEVELS } from '../shell/labels'
 import { act, app, back, client, go, notYet, openSheet, setTheme, toast, useApp } from '../state/app'
-import { useRpc } from '../state/rpc'
+import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
 
-const set = (key: string, value: unknown) => () => void act('settings.set', { key, value })
+/** Settings the phone may change are the ones with a plain desktop setter;
+ * the rest say where they are changed. */
+const set = (key: string, value: unknown) => () => {
+  if (key === 'webSearch.enabled') {
+    void act('settings.set', { key: 'webSearch', value: Boolean(value) }, value ? 'Web search on' : 'Web search off').then(() =>
+      invalidate(['settings.get'])
+    )
+    return
+  }
+  toast(
+    key.startsWith('remote.')
+      ? 'What phones may do is set on the computer, in Settings › Remote access'
+      : 'This setting is changed on the computer'
+  )
+}
+/** Kept on the computer for this phone, for the push notifications to come. */
+function NotifyRows() {
+  const { data } = useRpc('settings.get', {})
+  const prefs = data?.notifications ?? DEFAULT_NOTIFY
+  const flip = (k: keyof NotificationPrefs) => () =>
+    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
+  return (
+    <Grp cap="Notify me when">
+      <IRow label="An approval is waiting" sw={prefs.approvals} onClick={flip('approvals')} />
+      <IRow label="A run finishes" sw={prefs.runFinished} onClick={flip('runFinished')} />
+      <IRow label="A run fails or stops" sw={prefs.errors} onClick={flip('errors')} />
+      <IRow label="A Room is waiting for you" sw={prefs.roomTurns} onClick={flip('roomTurns')} />
+    </Grp>
+  )
+}
+
 const later = (what: string) => () => notYet(what)
 const cap = (v?: string) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : '—')
 
@@ -322,11 +353,7 @@ const PAGES: Record<string, Page> = {
         <Grp foot="Push notifications, even with Flint closed on this phone, come in a later update.">
           <IRow label="Show alerts while Flint is open" sw onClick={later('Turning alerts off')} />
         </Grp>
-        <Grp cap="Notify me when">
-          <IRow label="An approval is waiting" sw />
-          <IRow label="A run finishes" sw />
-          <IRow label="A Room is waiting for you" sw />
-        </Grp>
+        <NotifyRows />
       </>
     ),
   ],

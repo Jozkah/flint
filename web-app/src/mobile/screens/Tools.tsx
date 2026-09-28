@@ -1,7 +1,7 @@
 import { TopMain } from '../shell/TopBar'
 import { I } from '../ui/icons'
 import { Empty, Loading, Sw } from '../ui/bits'
-import { act } from '../state/app'
+import { toast } from '../state/app'
 import { useRpc } from '../state/rpc'
 
 export default function Tools() {
@@ -36,7 +36,7 @@ export default function Tools() {
                   type="button"
                   aria-label={`${s.active ? 'Turn off' : 'Turn on'} ${s.name}`}
                   style={{ all: 'unset', cursor: 'pointer', display: 'flex' }}
-                  onClick={() => void act('settings.set', { scope: 'mcp', server: s.name, active: !s.active })}
+                  onClick={() => toast('MCP servers are turned on and off on the computer')}
                 >
                   <Sw on={s.active} />
                 </button>

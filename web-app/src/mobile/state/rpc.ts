@@ -59,6 +59,32 @@ export function invalidate(prefixes: string[]) {
   if (hit) notify()
 }
 
+/** Refetches every cached read whose method starts with one of `prefixes`
+ * now, resolving once they are all back. */
+export function refresh(prefixes: string[]): Promise<void> {
+  const loads: Promise<void>[] = []
+  for (const key of [...cache.keys()]) {
+    if (!prefixes.some((p) => key.startsWith(p))) continue
+    const space = key.indexOf(' ')
+    const method = key.slice(0, space) as RemoteMethod
+    const params = JSON.parse(key.slice(space + 1)) as unknown
+    const prev = cache.get(key)
+    // A load already in flight may have started before the change.
+    if (prev?.promise) {
+      loads.push(prev.promise.then(() => load(method, params, key)))
+    } else loads.push(load(method, params, key))
+  }
+  return Promise.all(loads).then(() => undefined)
+}
+
+/** What a read last returned, without subscribing. */
+export function peekRpc<M extends RemoteMethod>(
+  method: M,
+  params: RemoteMethods[M]['params']
+): RemoteMethods[M]['result'] | undefined {
+  return cache.get(keyOf(method, params))?.data as RemoteMethods[M]['result'] | undefined
+}
+
 export function clearRpcCache() {
   cache.clear()
   notify()

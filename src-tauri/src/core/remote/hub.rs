@@ -135,6 +135,37 @@ pub fn check_policy(method: &str, params: &Value, cfg: &RemoteConfig) -> Result<
     Ok(())
 }
 
+/// What a call acts on, for the log: the conversation, request or setting it
+/// names (`chat:abc`, `request:r1`, `setting:webSearch`). Never message text.
+pub fn rpc_target(params: &Value) -> Option<String> {
+    let s = |k: &str| {
+        params
+            .get(k)
+            .and_then(Value::as_str)
+            .filter(|v| !v.is_empty())
+            .map(|v| v.chars().take(80).collect::<String>())
+    };
+    if let Some(r) = s("requestId") {
+        return Some(format!("request:{r}"));
+    }
+    if params.get("all").and_then(Value::as_bool) == Some(true) {
+        return Some("all".into());
+    }
+    if let Some(key) = s("key") {
+        return Some(format!("setting:{key}"));
+    }
+    let kind = s("kind").or_else(|| s("scope"));
+    match (kind, s("id")) {
+        (Some(k), Some(id)) => Some(format!("{k}:{id}")),
+        (None, Some(id)) => Some(id),
+        (Some(k), None) => Some(k),
+        (None, None) if params.get("new").and_then(Value::as_bool) == Some(true) => {
+            Some("new".into())
+        }
+        _ => None,
+    }
+}
+
 pub struct RemoteHub {
     config: Mutex<RemoteConfig>,
     devices: Mutex<DeviceStore>,
@@ -361,7 +392,13 @@ impl RemoteHub {
             );
             return Err(RpcReject::Forbidden(why));
         }
-        log::info!("remote: phone '{}' called {method}", device.name);
+        match rpc_target(&params) {
+            Some(target) => log::info!(
+                "remote: phone '{}' called {method} on {target}",
+                device.name
+            ),
+            None => log::info!("remote: phone '{}' called {method}", device.name),
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
         lock(&self.pending).insert(id.clone(), tx);

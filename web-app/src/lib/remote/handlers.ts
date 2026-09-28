@@ -4,9 +4,16 @@
 
 import type { UIMessage } from 'ai'
 import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
+import { createActionHandlers, type RemoteActions } from './actions'
 import type {
   AppearanceResult,
+  CoworkActivity,
+  CoworkChanges,
   CoworkDetail,
+  LibraryItem,
+  NotificationPrefs,
+  QueuedItem,
+  StreamSnapshot,
   McpServerInfo,
   RemoteApproval,
   RoomDetail,
@@ -26,6 +33,7 @@ export type ChatSource = {
   /** Seconds or milliseconds; both occur in stored threads. */
   updated: number
   project?: string
+  pinned?: boolean
 }
 export type CoworkSource = {
   id: string
@@ -67,6 +75,14 @@ export type RemoteSources = {
   mcpServers: () => McpServerInfo[]
   settings: () => Promise<SettingsSnapshot>
   appearance: () => AppearanceResult
+  // Phase 3 reads; a missing one answers `not_implemented`.
+  streamSnapshot?: (kind: SessionKind, id: string) => StreamSnapshot | null
+  queue?: (id: string) => QueuedItem[]
+  coworkChanges?: (id: string) => CoworkChanges | null
+  coworkActivity?: (id: string) => CoworkActivity | null
+  library?: () => LibraryItem[]
+  permissions?: () => Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
+  notificationPrefs?: (device: string) => NotificationPrefs | null
 }
 
 export const DEFAULT_PAGE = 50
@@ -123,9 +139,39 @@ export function uiMessageText(m: UIMessage): string {
     .join('\n')
 }
 
-export function createRemoteHandlers(src: RemoteSources): RemoteHandlers {
+function need<T>(fn: T | undefined, what: string): T {
+  if (!fn) throw new RemoteRpcError('not_implemented', `${what} is not available from phones yet`)
+  return fn
+}
+
+export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions): RemoteHandlers {
   return {
     ...plannedHandlers,
+    ...(actions ? createActionHandlers(actions) : {}),
+
+    'stream.get': (params) => {
+      const p = (isRecord(params) ? params : {}) as { kind?: unknown; id?: unknown }
+      if (typeof p.id !== 'string' || !p.id || !KINDS.includes(p.kind as SessionKind)) {
+        throw new RemoteRpcError('bad_params', 'id and kind are required')
+      }
+      return need(src.streamSnapshot, 'Following a reply')(p.kind as SessionKind, p.id)
+    },
+
+    'thread.queue': (params) => ({ items: need(src.queue, 'The queue')(requireId(params)) }),
+
+    'cowork.changes': (params) => {
+      const changes = need(src.coworkChanges, 'Changes')(requireId(params))
+      if (!changes) throw new RemoteRpcError('not_found', 'No such session')
+      return changes
+    },
+
+    'cowork.activity': (params) => {
+      const activity = need(src.coworkActivity, 'Activity')(requireId(params))
+      if (!activity) throw new RemoteRpcError('not_found', 'No such session')
+      return activity
+    },
+
+    'library.list': () => ({ items: need(src.library, 'The library')() }),
 
     'sessions.list': async (params) => {
       const p = isRecord(params) ? params : {}
@@ -146,6 +192,7 @@ export function createRemoteHandlers(src: RemoteSources): RemoteHandlers {
             status: status('chat', c.id),
             updatedAt: toMs(c.updated),
             ...(c.project ? { group: c.project } : {}),
+            ...(c.pinned ? { pinned: true } : {}),
           })
         }
       }
@@ -232,17 +279,23 @@ export function createRemoteHandlers(src: RemoteSources): RemoteHandlers {
 
     'tools.list': () => ({ servers: src.mcpServers() }),
 
-    'settings.get': () => src.settings(),
+    'settings.get': async (_params, ctx) => {
+      const snapshot = await src.settings()
+      const prefs = src.notificationPrefs?.(ctx.device.id)
+      return prefs ? { ...snapshot, notifications: prefs } : snapshot
+    },
 
     'appearance.get': () => src.appearance(),
 
     status: async () => {
       const running = src.running()
       const runs = KINDS.flatMap((kind) => [...running[kind]].map((id) => ({ kind, id })))
+      const permissions = await src.permissions?.().catch(() => null)
       return {
         modelsLoaded: (await src.loadedModels()).length,
         runs,
         approvalsWaiting: src.approvals().length,
+        ...(permissions ? { permissions } : {}),
       }
     },
   }

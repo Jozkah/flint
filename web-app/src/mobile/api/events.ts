@@ -8,6 +8,7 @@ import {
   REMOTE_API_PREFIX,
   REMOTE_WS_AUTH_PREFIX,
   REMOTE_WS_PROTOCOL,
+  type RemoteClientMessage,
   type RemoteEvent,
   type RemoteSocketMessage,
 } from '@/lib/remote/protocol'
@@ -55,6 +56,8 @@ export class EventSocket {
   private timer: unknown = null
   private ping: ReturnType<typeof setInterval> | null = null
   private stopped = true
+  /** Topics followed, with how many screens follow each. */
+  private topics = new Map<string, number>()
   private readonly o: Required<
     Pick<EventSocketOptions, 'backoff' | 'setTimer' | 'clearTimer'>
   > &
@@ -92,6 +95,40 @@ export class EventSocket {
       }
     }
     this.o.onState('offline')
+  }
+
+  /** Receive a topic's events (a conversation's stream) while followed.
+   * Re-sent on every reconnect, since a new socket starts with none. */
+  follow(topic: string): () => void {
+    const n = this.topics.get(topic) ?? 0
+    this.topics.set(topic, n + 1)
+    if (n === 0) this.send({ type: 'subscribe', topics: [topic] })
+    let done = false
+    return () => {
+      if (done) return
+      done = true
+      const left = (this.topics.get(topic) ?? 1) - 1
+      if (left > 0) {
+        this.topics.set(topic, left)
+        return
+      }
+      this.topics.delete(topic)
+      this.send({ type: 'unsubscribe', topics: [topic] })
+    }
+  }
+
+  followed(): string[] {
+    return [...this.topics.keys()]
+  }
+
+  private send(msg: RemoteClientMessage) {
+    const ws = this.ws
+    if (!ws || ws.readyState !== 1) return
+    try {
+      ws.send(JSON.stringify(msg))
+    } catch {
+      // The close handler reconnects and re-subscribes.
+    }
   }
 
   /** Reconnect now (the page came back to the foreground, the network
@@ -133,6 +170,7 @@ export class EventSocket {
       if (msg.type === 'ready') {
         ready = true
         this.attempt = 0
+        if (this.topics.size) this.send({ type: 'subscribe', topics: [...this.topics.keys()] })
         this.o.onState('connected')
         this.startPing()
       } else if (msg.type === 'event') {

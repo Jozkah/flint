@@ -1,8 +1,10 @@
 import { useEffect } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { remoteApi, type RemotePairingRequest } from '@/lib/remote/api'
 import { dispatchRemoteRpc } from '@/lib/remote/bridge'
 import { createRemoteHandlers } from '@/lib/remote/handlers'
 import { appSources } from '@/lib/remote/sources'
+import { appActions } from '@/lib/remote/appActions'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
 import {
   REMOTE_EVENT_DEVICES_CHANGED,
@@ -19,10 +21,14 @@ import { useRemoteAccess } from '@/hooks/useRemoteAccess'
  */
 export function useRemoteBridge() {
   const connected = useRemoteAccess((s) => s.status?.connectedDevices ?? 0)
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (!IS_TAURI) return
-    const handlers = createRemoteHandlers(appSources)
+    const handlers = createRemoteHandlers(
+      appSources,
+      appActions((to) => navigate(to as Parameters<typeof navigate>[0]))
+    )
     let cancelled = false
     const offs: (() => void)[] = []
     void (async () => {
@@ -47,12 +53,12 @@ export function useRemoteBridge() {
       cancelled = true
       offs.forEach((off) => off())
     }
-  }, [])
+  }, [navigate])
 
   useEffect(() => {
     if (!IS_TAURI || connected === 0) return
-    return startRemoteEventForwarding((event) => {
-      void remoteApi.emitEvent(event).catch(() => {})
+    return startRemoteEventForwarding((event, topic) => {
+      void remoteApi.emitEvent(event, topic).catch(() => {})
     })
   }, [connected])
 }

@@ -837,3 +837,17 @@ fn phone_app_dir_prefers_the_bundled_resources_folder() {
     std::fs::write(nested.join("index.html"), "<!doctype html>").unwrap();
     assert_eq!(phone_app_dir(tmp.path()), nested);
 }
+
+#[test]
+fn rpc_target_names_what_a_call_acts_on() {
+    assert_eq!(rpc_target(&json!({"kind": "chat", "id": "t1", "text": "secret"})).as_deref(), Some("chat:t1"));
+    assert_eq!(rpc_target(&json!({"requestId": "r9", "decision": "allow"})).as_deref(), Some("request:r9"));
+    assert_eq!(rpc_target(&json!({"all": true})).as_deref(), Some("all"));
+    assert_eq!(rpc_target(&json!({"key": "webSearch", "value": true})).as_deref(), Some("setting:webSearch"));
+    assert_eq!(rpc_target(&json!({"scope": "cowork", "id": "s1"})).as_deref(), Some("cowork:s1"));
+    assert_eq!(rpc_target(&json!({"id": "room1", "text": "hi"})).as_deref(), Some("room1"));
+    assert_eq!(rpc_target(&json!({"new": true, "text": "hi"})).as_deref(), Some("new"));
+    assert_eq!(rpc_target(&json!({"text": "hi"})), None);
+    let long = "x".repeat(200);
+    assert_eq!(rpc_target(&json!({"id": long})).map(|t| t.len()), Some(80));
+}

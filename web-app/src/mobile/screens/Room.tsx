@@ -7,9 +7,11 @@ import { I } from '../ui/icons'
 import { Avatar, Empty, Loading } from '../ui/bits'
 import { compact, duration, speakerColor } from '../ui/format'
 import { Prose } from '../ui/messages'
-import { act, openDrawer, openSheet } from '../state/app'
+import { openDrawer, openSheet, sendMessage } from '../state/app'
 import { useRpc } from '../state/rpc'
-import { useStickToBottom } from '../ui/hooks'
+import { pendingFor, useLive } from '../state/live'
+import { PendingBubble, StreamingMessage } from '../ui/live'
+import { useFollow, useStickToBottom } from '../ui/hooks'
 
 function UsageStrip({ room }: { room: RoomDetail }) {
   const { usage: u, limits: l } = room
@@ -40,7 +42,15 @@ export default function Room({ id }: { id: string }) {
   const { data: room, error } = useRpc('rooms.get', { id })
   const msgs = useRpc('thread.messages', { id, kind: 'room', limit: 100 })
   const messages = msgs.data?.messages ?? []
-  const ref = useStickToBottom(messages.length)
+  const stream = useLive((s) => s.streams[id])
+  const pending = pendingFor(
+    useLive((s) => s.pending),
+    id,
+    messages
+  )
+  useFollow('room', id)
+  const streamShown = stream && !messages.some((m) => m.id === stream.messageId) ? stream : null
+  const ref = useStickToBottom(messages.length + pending.length + (streamShown?.text.length ?? 0))
   const [to, setTo] = useState<string>('everyone')
   const running = room?.status === 'running'
   const next = room?.participants.find((p) => p.id === room.nextSpeakerId) ?? room?.participants[0]
@@ -111,6 +121,10 @@ export default function Room({ id }: { id: string }) {
             </div>
           )
         })}
+        {pending.map((p) => (
+          <PendingBubble key={p.clientId} p={p} />
+        ))}
+        {streamShown && <StreamingMessage s={streamShown} />}
       </div>
       <Composer
         placeholder="Write to the room… use @ to mention someone"
@@ -145,7 +159,7 @@ export default function Room({ id }: { id: string }) {
             </button>
           </>
         }
-        onSend={async (text) => (await act('room.send', { id, text, to: to === 'everyone' ? null : to })) !== undefined}
+        onSend={async (text) => (await sendMessage('room.send', { id, text, to: to === 'everyone' ? null : to })) !== undefined}
       />
     </>
   )

@@ -126,7 +126,11 @@
      "id": "r1"
     }
    ],
-   "approvalsWaiting": 1
+   "approvalsWaiting": 1,
+   "permissions": {
+    "approvals": true,
+    "alwaysAllow": false
+   }
   },
   "models.list": {
    "models": [
@@ -341,7 +345,7 @@
         "name": "github.list_checks",
         "kind": "other",
         "status": "done",
-        "origin": "MCP \u00b7 github",
+        "origin": "MCP · github",
         "arg": "acme/weather#12"
        }
       ]
@@ -656,13 +660,13 @@
      "name": "github",
      "active": true,
      "transport": "stdio",
-     "description": "12 tools \u00b7 stdio"
+     "description": "12 tools · stdio"
     },
     {
      "name": "filesystem",
      "active": true,
      "transport": "stdio",
-     "description": "Built in \u00b7 9 tools"
+     "description": "Built in · 9 tools"
     },
     {
      "name": "postgres",
@@ -718,6 +722,90 @@
    "vars": {
     "light": {},
     "dark": {}
+   }
+  },
+  "library.list": {
+   "items": [
+    {
+     "path": "docs/radar-cache.md",
+     "title": "radar-cache",
+     "group": "Document",
+     "label": "MD",
+     "sessionId": "w1",
+     "sessionTitle": "Retry the radar feed",
+     "updatedAt": 1760000000000
+    }
+   ]
+  },
+  "thread.queue": {
+   "items": []
+  },
+  "stream.get": null,
+  "cowork.changes": {
+   "w1": {
+    "files": [
+     {
+      "path": "internal/radar/client.go",
+      "additions": 12,
+      "deletions": 4,
+      "source": "main",
+      "hunks": [
+       "- resp, err := c.http.Do(req)\n+ err := retry.Do(ctx, retry.Policy{\n+     Attempts: 3, Jitter: true,"
+      ]
+     },
+     {
+      "path": "internal/radar/client_test.go",
+      "additions": 7,
+      "deletions": 0,
+      "source": "main",
+      "hunks": [
+       "+ func TestRetry(t *testing.T) {"
+      ]
+     }
+    ],
+    "summary": null,
+    "worktree": {
+     "branch": "flint/radar-retry",
+     "path": "/home/jo/.flint/worktrees/radar-retry"
+    },
+    "pr": {
+     "number": 12,
+     "title": "Retry the radar feed",
+     "url": "https://github.com/acme/weather/pull/12",
+     "state": "open",
+     "checks": {
+      "passed": 3,
+      "failed": 0,
+      "pending": 1
+     },
+     "conflicts": true
+    },
+    "applyOnDesktop": false
+   }
+  },
+  "cowork.activity": {
+   "w1": {
+    "subagents": [
+     {
+      "id": "sa1",
+      "name": "Explorer: map radar callers",
+      "status": "running",
+      "startedAt": 1760000000000,
+      "steps": 14
+     }
+    ],
+    "commands": [
+     {
+      "id": "t9",
+      "command": "go test ./... -count=1",
+      "status": "running"
+     },
+     {
+      "id": "t8",
+      "command": "go vet ./...",
+      "status": "done"
+     }
+    ]
    }
   }
  }

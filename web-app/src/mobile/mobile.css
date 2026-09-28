@@ -589,3 +589,9 @@ button,label,.waitcard,.srch,.stat{box-sizing:border-box!important}
 .row:active,.opt:active,.irow:active,.chip:active,.pills button:active,.segm button:active,.sugg button:active,.waitcard:active,.rc:active,.srch:active,.stat:active,.rtabs button:active,.scope:active,.th:active,.stepcount:active,.lvl button:active,.steer button:active,.profile:active,.navback:active,.apdet:active,.rq:active,.apill:active,.runpill:active{transform:scale(.97);background-color:color-mix(in srgb,var(--foreground) 6%,transparent)}
 .btn.pri:active,.send:active{filter:brightness(.92)}
 @media (hover:none){.ib:hover,.row:hover,.opt:hover,.mp:hover,.scope:hover{background:none}.row.act:hover{background:var(--card)}.opt[aria-pressed="true"]:hover{background:var(--accent)}}
+/* ---- Phase 3: live state ---- */
+.pendst{display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:-8px 2px 12px;font-size:11.5px;color:var(--muted-foreground)}
+.pendst .btn.sm{height:22px;font-size:11px;padding:0 8px}
+.prose .caret{margin-left:2px}
+.apnote{font-size:11.5px;color:var(--muted-foreground)}
+.hunk{margin:0 0 8px;border:.8px solid var(--border);border-radius:8px;overflow:hidden}

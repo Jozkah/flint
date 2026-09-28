@@ -44,6 +44,7 @@ export const PLANNED_METHODS = [
   'cowork.send',
   'run.stop',
   'room.send',
+  'room.control',
   'settings.set',
   'approvals.respond',
 ] as const satisfies readonly RemoteMethod[]

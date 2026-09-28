@@ -1,8 +1,8 @@
 // Every menu is a bottom sheet. Each sheet reads what it shows from the
 // computer; anything that would change the computer goes through `act`, so
-// a refusal (for now, `not_implemented`) is shown rather than faked.
+// a refusal (a setting that stays on the computer) is shown rather than faked.
 import { useMemo, useState, type ReactNode } from 'react'
-import type { RemoteApproval, RemoteModel, SessionKind } from '@/lib/remote/protocol'
+import type { NotificationPrefs, RemoteApproval, RemoteModel, SessionKind } from '@/lib/remote/protocol'
 import { Avatar, Grab, Kv, Opt, Sw, FlintMark } from '../ui/bits'
 import { I, type IconId } from '../ui/icons'
 import {
@@ -16,8 +16,11 @@ import {
   useApp,
   type AppState,
 } from '../state/app'
-import { useRpc } from '../state/rpc'
+import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel, useSessions } from '../state/sessions'
+import { respond } from '../ui/respond'
+import { usePhonePermissions } from '../ui/hooks'
+import { DEFAULT_NOTIFY, roomAct } from '../state/controls'
 import { COWORK_MODES, ACCESS_MODES, LEVELS } from './labels'
 
 type Props = Record<string, unknown>
@@ -77,7 +80,12 @@ function ModelSheet({ props }: { props: Props }) {
       toast(`Switched to ${m.name}`)
     } else {
       closeSheet()
-      void act('settings.set', { scope: target, id: str(props.id), model: { id: m.id, provider: m.provider } })
+      const id = str(props.id)
+      if ((target === 'chat' || target === 'cowork') && id) {
+        void act('settings.set', { scope: target, id, model: { id: m.id, provider: m.provider } }, `Switched to ${m.name}`).then(
+          () => invalidate(['cowork.get', 'sessions.list'])
+        )
+      } else notYet('Changing a participant’s model')
     }
   }
   const row = (m: RemoteModel) => (
@@ -137,7 +145,11 @@ function ReasonSheet({ props }: { props: Props }) {
       toast(label)
     } else {
       closeSheet()
-      void act('settings.set', { scope: target, id: str(props.id), ...patch })
+      const id = str(props.id)
+      if (target === 'chat' && id && patch.reason) {
+        void act('settings.set', { scope: 'chat', id, reasoning: patch.reason }, label)
+        app.set((s) => ({ composer: { ...s.composer, reason: patch.reason ?? s.composer.reason } }))
+      } else notYet(`${label.split(':')[0]} for ${where}`)
     }
   }
   return (
@@ -212,7 +224,7 @@ function ModeSheet({ props }: { props: Props }) {
           onClick={() => {
             closeSheet()
             if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } }))
-            else void act('settings.set', { scope: 'cowork', id, mode: m.id })
+            else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get']))
           }}
         />
       ))}
@@ -234,8 +246,9 @@ function AccessSheet({ props }: { props: Props }) {
           selected={current === m.id}
           onClick={() => {
             closeSheet()
-            if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } }))
-            else void act('settings.set', { scope: 'cowork', id, access: m.id })
+            if (m.id !== 'review-only') toast('Choose this on the computer: it asks before Flint may write there')
+            else if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } }))
+            else void act('settings.set', { scope: 'cowork', id, access: m.id }, 'Review only').then(() => invalidate(['cowork.get']))
           }}
         />
       ))}
@@ -255,7 +268,7 @@ function StopSheet({ props }: { props: Props }) {
         lead={<I n="sq" />}
         onClick={() => {
           closeSheet()
-          void act('run.stop', { kind, id }, 'Stopped.')
+          if (kind && id) void act('run.stop', { kind, id }, 'Stopped.')
         }}
       />
       <Opt
@@ -274,19 +287,24 @@ function StopSheet({ props }: { props: Props }) {
 
 function PermDetailsSheet({ props }: { props: Props }) {
   const a = props.approval as RemoteApproval | undefined
+  const perms = usePhonePermissions()
   if (!a) return <Title>Permission details</Title>
   return (
     <>
       <Title sub="Choose how far this permission goes">Permission details</Title>
       <div className="scopes">
-        {a.scopes.map((s, i) => (
+        {a.scopes.filter((s) => s.scope !== 'always' || perms.alwaysAllow).map((s, i) => (
           <button
             key={s.scope}
             type="button"
             className={`scope${i === 0 ? ' sug' : ''}`}
             onClick={() => {
               closeSheet()
-              void act('approvals.respond', { requestId: a.requestId, decision: 'allow', scope: s.scope }, `${s.label} · from this phone`)
+              if (!perms.approvals) {
+                toast('Answer this on the computer')
+                return
+              }
+              void respond(a, 'allow', s.scope, s.label)
             }}
           >
             <b>
@@ -467,20 +485,51 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
   )
 }
 
+function VoteSheet({ props }: { props: Props }) {
+  const [proposal, setProposal] = useState('')
+  const id = str(props.id)
+  return (
+    <>
+      <Title sub="Every participant answers yes or no, with a reason.">Call a vote</Title>
+      <label className="field">
+        Proposal
+        <input value={proposal} onChange={(e) => setProposal(e.target.value)} placeholder="Ship the 5-minute TTL" />
+      </label>
+      <button
+        type="button"
+        className="btn pri big"
+        disabled={!proposal.trim() || !id}
+        onClick={() => {
+          closeSheet()
+          if (id) void act('room.control', { id, action: 'vote', proposal: proposal.trim() }, 'Vote called.')
+        }}
+      >
+        Call vote
+      </button>
+    </>
+  )
+}
+
+const NOTIFY_ROWS: [keyof NotificationPrefs, string][] = [
+  ['approvals', 'An approval is waiting'],
+  ['runFinished', 'A run finishes'],
+  ['errors', 'A run fails or stops'],
+  ['roomTurns', 'A Room is waiting for you'],
+]
+
+
 function NotifSetSheet() {
+  const { data } = useRpc('settings.get', {})
+  const prefs = data?.notifications ?? DEFAULT_NOTIFY
+  const flip = (k: keyof NotificationPrefs) =>
+    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
   return (
     <>
       <Title sub="Push notifications arrive in a later update. Until then, alerts show while Flint is open on this phone.">
         Notify me when
       </Title>
-      {[
-        'An approval is waiting',
-        'A run finishes',
-        'A run fails or stops',
-        'A Room is waiting for you',
-        'A chat reply finishes',
-      ].map((r, i) => (
-        <Toggle key={r} label={r} on={i < 4} onClick={() => notYet('Notification settings')} />
+      {NOTIFY_ROWS.map(([k, label]) => (
+        <Toggle key={k} label={label} on={prefs[k]} onClick={() => flip(k)} />
       ))}
     </>
   )
@@ -519,7 +568,7 @@ function ToolsSheet() {
     <>
       <Title sub={`${servers.filter((s) => s.active).length} MCP servers on`}>Available tools</Title>
       {servers.map((s) => (
-        <Toggle key={s.name} label={s.name} on={s.active} onClick={() => void act('settings.set', { scope: 'mcp', server: s.name, active: !s.active })} />
+        <Toggle key={s.name} label={s.name} on={s.active} onClick={() => toast('MCP servers are turned on and off on the computer')} />
       ))}
       {data && servers.length === 0 && <p className="sh">No MCP servers are set up on the computer.</p>}
     </>
@@ -538,7 +587,7 @@ function ProfileSheet() {
   ]
   const pick = () => {
     closeSheet()
-    void act('settings.set', { scope: 'cowork', profile: true })
+    notYet('Choosing a work profile')
   }
   return (
     <>
@@ -568,7 +617,7 @@ function RoomNewSheet() {
         className="btn pri big"
         onClick={() => {
           closeSheet()
-          void act('room.send', { create: true })
+          notYet('Creating a room')
         }}
       >
         Create room
@@ -584,6 +633,14 @@ const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   access: AccessSheet,
   stop: StopSheet,
   permdetails: PermDetailsSheet,
+  vote: VoteSheet,
+  worktree: ({ props }) => (
+    <>
+      <Title sub="Merging and removing it happen on the computer.">Session worktree</Title>
+      <Kv k="Branch" v={<span className="mono">{str(props.branch) ?? 'Working copy'}</span>} />
+      <Kv k="Path" v={<span className="mono">{str(props.path) ?? '—'}</span>} />
+    </>
+  ),
   runs: RunsSheet,
   conn: ConnSheet,
   palette: PaletteSheet,
@@ -654,10 +711,11 @@ const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
       <Title>{str(props.title) ?? 'Room'}</Title>
       <Actions
         items={[
-          ['pause', 'Pause'],
-          ['vote', 'Call vote'],
-          ['file', 'Synthesize'],
-          ['sq', 'Stop room', () => void act('run.stop', { kind: 'room', id: str(props.id) }, 'Stopped.')],
+          ['pause', 'Pause', () => roomAct(props, 'pause', 'Paused.')],
+          ['play', 'Resume', () => roomAct(props, 'resume', 'Resumed.')],
+          ['vote', 'Call vote', () => openSheet('vote', props)],
+          ['file', 'Synthesize', () => roomAct(props, 'synthesize', 'Asked for a synthesis.')],
+          ['sq', 'Stop room', () => roomAct(props, 'stop', 'Stopped.')],
           ['trash', 'Delete'],
         ]}
       />

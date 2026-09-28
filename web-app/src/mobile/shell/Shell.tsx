@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, type ComponentType } from 'react'
 import { FlintMark, Loading } from '../ui/bits'
-import { act, app, closeAll, closeSheet, go, useApp } from '../state/app'
+import { respond } from '../ui/respond'
+import { app, closeAll, closeSheet, go, useApp } from '../state/app'
 import type { Route } from '../state/router'
 import { LeftNav } from './LeftNav'
 import { RightPanel } from './RightPanel'
@@ -120,7 +121,7 @@ function Push() {
                   onClick={(e) => {
                     e.stopPropagation()
                     app.set({ push: null })
-                    void act('approvals.respond', { requestId: push.requestId, decision: 'deny' }, 'Denied · from this phone')
+                    if (push.requestId) void respond({ requestId: push.requestId, threadId: push.route && 'id' in push.route ? String(push.route.id) : '' }, 'deny')
                   }}
                 >
                   Deny
@@ -131,7 +132,7 @@ function Push() {
                   onClick={(e) => {
                     e.stopPropagation()
                     app.set({ push: null })
-                    void act('approvals.respond', { requestId: push.requestId, decision: 'allow', scope: 'once' }, 'Allowed once · from this phone')
+                    if (push.requestId) void respond({ requestId: push.requestId, threadId: push.route && 'id' in push.route ? String(push.route.id) : '' }, 'allow')
                   }}
                 >
                   Allow once

@@ -7,9 +7,13 @@ import { Empty, Loading } from '../ui/bits'
 import { compact } from '../ui/format'
 import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
-import { act, openDrawer, openSheet } from '../state/app'
+import { ChangeBars, WhatChanged } from '../ui/changes'
+import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
+import { openDrawer, openSheet, sendMessage } from '../state/app'
 import { useRpc } from '../state/rpc'
-import { useStickToBottom } from '../ui/hooks'
+import { pendingFor, prunePending, useLive } from '../state/live'
+import { useFollow, useStickToBottom } from '../ui/hooks'
+import { useEffect } from 'react'
 
 const STATUS: Record<SessionStatus, string> = {
   running: 'Running',
@@ -24,11 +28,27 @@ export default function Cowork({ id }: { id: string }) {
   const msgs = useRpc('thread.messages', { id, kind: 'cowork', limit: 100 })
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
+  const changes = useRpc('cowork.changes', { id })
+  const queue = useRpc('thread.queue', { id })
   const d = detail.data
   const messages = msgs.data?.messages ?? []
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
-  const ref = useStickToBottom(messages.length + mine.length)
-  const running = d?.status === 'running' || d?.status === 'waiting'
+  const stream = useLive((s) => s.streams[id])
+  const pending = pendingFor(
+    useLive((s) => s.pending),
+    id,
+    messages
+  )
+  const resolvedAll = useLive((s) => s.resolved)
+  const resolved = Object.entries(resolvedAll).filter(
+    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid)
+  )
+  useFollow('cowork', id)
+  useEffect(() => {
+    if (msgs.data) prunePending(id, msgs.data.messages)
+  }, [id, msgs.data])
+  const ref = useStickToBottom(messages.length + mine.length + pending.length + (stream?.text.length ?? 0) + (stream?.tools.length ?? 0))
+  const running = d?.status === 'running' || d?.status === 'waiting' || Boolean(stream && !stream.done)
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')?.id
   const todos = d?.todos ?? []
   const done = todos.filter((t) => t.status === 'completed').length
@@ -95,6 +115,15 @@ export default function Cowork({ id }: { id: string }) {
           )
         })}
         {!lastAssistant && mine.map((a) => <ApprovalCard key={a.requestId} a={a} />)}
+        {pending.map((p) => (
+          <PendingBubble key={p.clientId} p={p} />
+        ))}
+        {stream && <StreamingMessage s={stream} model={d?.model?.id} />}
+        {resolved.map(([rid, r]) => (
+          <ResolvedLine key={rid} r={r} />
+        ))}
+        {changes.data && !running && <WhatChanged c={changes.data} />}
+        {changes.data && <ChangeBars c={changes.data} />}
       </div>
       {todos.length > 0 && (
         <div className="plan" role="button" data-tool-kind="todo" onClick={() => openDrawer('right', 'progress')}>
@@ -108,6 +137,7 @@ export default function Cowork({ id }: { id: string }) {
           </span>
         </div>
       )}
+      <QueueBar items={queue.data?.items ?? []} />
       <Composer
         placeholder="Ask me anything..."
         extra={
@@ -127,7 +157,8 @@ export default function Cowork({ id }: { id: string }) {
         tokens={d?.usage ? compact(d.usage.inputTokens + d.usage.outputTokens) : undefined}
         running={running}
         stopFor={{ kind: 'cowork', id }}
-        onSend={async (text) => (await act('cowork.send', { id, text })) !== undefined}
+        allowWhileRunning
+        onSend={async (text) => (await sendMessage('cowork.send', { id, text })) !== undefined}
       />
       <div className="runrow">
         <button type="button" className={`rq${d?.mode === 'auto' ? ' amber' : ''}`} onClick={() => openSheet('mode', { id, value: d?.mode })}>

@@ -17,7 +17,11 @@ export function Composer({
   label = 'Message',
   seed,
   stopFor,
+  allowWhileRunning,
 }: {
+  /** While running, typed text can still be sent (it queues on the
+   * computer); Stop shows when the box is empty. */
+  allowWhileRunning?: boolean
   placeholder: string
   /** The model chip; omitted in rooms, where each participant has its own. */
   model?: ComposerModel | null
@@ -107,7 +111,7 @@ export function Composer({
           ) : (
             <span className="tok" />
           )}
-          {running ? (
+          {running && !(allowWhileRunning && text.trim()) ? (
             <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label="Stop…">
               <I n="sq" />
             </button>

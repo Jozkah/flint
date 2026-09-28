@@ -1,11 +1,18 @@
 // A waiting permission prompt, as the desktop's approval card: "Approval
 // needed · bash", what Flint wants to do, the command, Why, What allowing it
-// means, Permission details, Deny / Allow once.
+// means, Permission details, Deny / Allow once. Once answered -- here, on the
+// computer or on another phone -- it becomes one line saying so.
 import type { RemoteApproval } from '@/lib/remote/protocol'
 import { openSheet } from '../state/app'
+import { useLive } from '../state/live'
+import { usePhonePermissions } from './hooks'
+import { ResolvedLine } from './live'
 import { respond } from './respond'
 
 export function ApprovalCard({ a }: { a: RemoteApproval }) {
+  const resolved = useLive((s) => s.resolved[a.requestId])
+  const perms = usePhonePermissions()
+  if (resolved) return <ResolvedLine r={resolved} />
   return (
     <div className="ap2" data-testid="approval-card">
       <div className="aph">
@@ -35,12 +42,18 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
           Permission details
         </button>
         <span style={{ flex: 1 }} />
-        <button type="button" className="btn dan" onClick={() => void respond(a, 'deny')}>
-          Deny
-        </button>
-        <button type="button" className="btn pri" onClick={() => void respond(a, 'allow')}>
-          Allow once
-        </button>
+        {perms.approvals ? (
+          <>
+            <button type="button" className="btn dan" onClick={() => void respond(a, 'deny')}>
+              Deny
+            </button>
+            <button type="button" className="btn pri" onClick={() => void respond(a, 'allow')}>
+              Allow once
+            </button>
+          </>
+        ) : (
+          <span className="apnote">Answer this on the computer</span>
+        )}
       </div>
     </div>
   )

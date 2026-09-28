@@ -199,6 +199,19 @@ export function LeftNav() {
           </button>
         </div>
         {chats.length === 0 && <div className="gh">No chats yet</div>}
+        {chats.some((s) => s.pinned) && (
+          <>
+            <div className="gh" data-testid="pinned">
+              <I n="pin" />
+              Pinned
+            </div>
+            {chats
+              .filter((s) => s.pinned)
+              .map((s) => (
+                <SessionRow key={`pin-${s.id}`} s={s} active={isActive({ name: 'chat', id: s.id })} />
+              ))}
+          </>
+        )}
         {ch.groups.map(([g, list]) => (
           <div key={g} style={{ display: 'contents' }}>
             <div className="gh">

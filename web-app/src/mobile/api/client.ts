@@ -33,6 +33,8 @@ export type ClientOptions = {
   fetchImpl?: typeof fetch
   /** Base URL of the listener; the page's own origin by default. */
   base?: string
+  /** How long a call may take before it counts as timed out (ms). */
+  timeoutMs?: number
 }
 
 let seq = 0
@@ -43,8 +45,10 @@ export class RemoteClient {
   private readonly fetchImpl: typeof fetch
   private readonly base: string
   private onUnauthorized?: () => void
+  private readonly timeoutMs: number
 
   constructor(opts: ClientOptions) {
+    this.timeoutMs = opts.timeoutMs ?? 40_000
     this.store = opts.store
     this.fetchImpl = opts.fetchImpl ?? ((...a) => globalThis.fetch(...a))
     this.base = (opts.base ?? '') + REMOTE_API_PREFIX
@@ -71,6 +75,12 @@ export class RemoteClient {
       h.Authorization = `Bearer ${token}`
     }
     let res: Response
+    const abort = typeof AbortController !== 'undefined' ? new AbortController() : null
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      abort?.abort()
+    }, this.timeoutMs)
     try {
       res = await this.fetchImpl(this.base + path, {
         ...rest,
@@ -78,9 +88,13 @@ export class RemoteClient {
         cache: 'no-store',
         credentials: 'omit',
         referrerPolicy: 'no-referrer',
+        ...(abort ? { signal: abort.signal } : {}),
       })
     } catch {
+      if (timedOut) throw new RemoteCallError('timeout', "Your computer didn't answer in time")
       throw new RemoteCallError('network', "Can't reach your computer")
+    } finally {
+      clearTimeout(timer)
     }
     let body: unknown = null
     try {

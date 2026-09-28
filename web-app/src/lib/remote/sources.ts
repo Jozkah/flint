@@ -31,7 +31,53 @@ import { i18n } from '@/i18n/react-i18next-compat'
 import { uiMessageText, type RemoteSources } from './handlers'
 import { approvalOf, coworkDetailOf, roomDetailOf, toolStepsOf } from './details'
 import { remoteApi } from './api'
-import type { RemoteMessage } from './protocol'
+import { useMessageQueue } from '@/stores/message-queue-store'
+import { sessionPrStatuses, usePrStatusStore } from '@/stores/pr-status-store'
+import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
+import { formatChangeSummary } from '@/lib/coworkChangeSummary'
+import { artifactsFromTurns } from '@/lib/coworkArtifacts'
+import { readNotificationPrefs } from './appActions'
+import { coworkReplyOf, roomReplyOf } from './events'
+import { streamSnapshot } from './streams'
+import { coworkToolStep, type LiveReply } from './live'
+import type {
+  CoworkActivity,
+  CoworkChanges,
+  RemoteMessage,
+  SessionKind,
+  StreamSnapshot,
+} from './protocol'
+
+const MAX_HUNKS = 6
+const MAX_HUNK_CHARS = 4000
+
+const snapshotOf = (kind: SessionKind, id: string, r: LiveReply | null): StreamSnapshot | null =>
+  r
+    ? {
+        kind,
+        id,
+        messageId: r.messageId,
+        text: r.text,
+        reasoning: r.reasoning,
+        tools: r.tools,
+        ...(r.author ? { author: r.author } : {}),
+      }
+    : null
+
+/** A session's committed turns, and the live lane while it runs. */
+function coworkTurnsOf(id: string) {
+  const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
+  if (!session) return null
+  const run = useCoworkRun.getState()
+  const live = run.runs[id] ? (run.liveTurns[id] ?? []) : []
+  return {
+    session,
+    turns: [...(session.turns ?? []), ...live],
+    subagents: run.subagents[id] ?? [],
+    running: Boolean(run.runs[id]),
+  }
+}
 
 function threadMessageText(m: ThreadMessage): string {
   return (m.content ?? [])
@@ -51,6 +97,7 @@ export const appSources: RemoteSources = {
         title: t.title,
         updated: t.updated,
         project: project?.name,
+        pinned: Boolean(t.isFavorite),
       }
     }),
 
@@ -272,6 +319,106 @@ export const appSources: RemoteSources = {
         : null,
     }
   },
+
+  streamSnapshot: (kind, id) =>
+    kind === 'cowork'
+      ? snapshotOf(kind, id, coworkReplyOf(id))
+      : kind === 'room'
+        ? snapshotOf(kind, id, roomReplyOf(id))
+        : streamSnapshot(kind, id),
+
+  queue: (id) =>
+    useMessageQueue
+      .getState()
+      .getQueue(id)
+      .map((m) => ({
+        id: m.id,
+        text: m.text,
+        steer: Boolean(m.steer),
+        held: Boolean(m.held),
+        ...(m.from ? { from: m.from.displayName } : {}),
+      })),
+
+  coworkChanges: (id): CoworkChanges | null => {
+    const found = coworkTurnsOf(id)
+    if (!found) return null
+    const { session, turns, subagents, running } = found
+    const diffs = collectCodeFileDiffs(turns, subagents)
+    const counts = {
+      fileCount: diffs.length,
+      additions: diffs.reduce((n, d) => n + d.additions, 0),
+      deletions: diffs.reduce((n, d) => n + d.deletions, 0),
+    }
+    const tree = useCoworkWorktrees.getState().bySession[id]
+    const prs = usePrStatusStore.getState()
+    const pr = sessionPrStatuses(prs.sessionPrs[id] ?? [], prs.byUrl)[0]
+    return {
+      files: diffs.map((d) => ({
+        path: d.path,
+        additions: d.additions,
+        deletions: d.deletions,
+        source: [...new Set(d.operations.map((o) => o.sourceName ?? o.source))].join(', '),
+        hunks: d.operations.slice(-MAX_HUNKS).map((o) => o.diff.slice(0, MAX_HUNK_CHARS)),
+      })),
+      // As the desktop's What changed row: only once a run has finished.
+      summary: !running && diffs.length ? formatChangeSummary(counts) : null,
+      worktree: tree ? { branch: tree.kind === 'copy' ? null : tree.branch, path: tree.path } : null,
+      pr: pr
+        ? {
+            number: pr.number,
+            title: pr.title,
+            url: pr.url,
+            state: pr.state,
+            checks: pr.checks,
+            conflicts: pr.merge === 'conflicting',
+          }
+        : null,
+      applyOnDesktop: diffs.length > 0 && (session.access ?? 'review-only') === 'review-only',
+    }
+  },
+
+  coworkActivity: (id): CoworkActivity | null => {
+    const found = coworkTurnsOf(id)
+    if (!found) return null
+    const commands = found.turns.flatMap((t) => {
+      if (t.role !== 'tool' || (t.name !== 'bash' && t.name !== 'shell')) return []
+      const step = coworkToolStep(t, new Set())
+      return step ? [{ id: step.id, command: step.arg ?? step.name, status: step.status }] : []
+    })
+    return {
+      subagents: found.subagents.map((r) => ({
+        id: r.runId,
+        name: r.name,
+        status: r.status,
+        startedAt: r.startedAt,
+        ...(r.endedAt ? { endedAt: r.endedAt } : {}),
+        steps: r.turns.filter((t) => t.role === 'tool').length,
+      })),
+      commands: commands.slice(-50),
+    }
+  },
+
+  library: () =>
+    useCoworkSessions.getState().sessions.flatMap((session) =>
+      artifactsFromTurns(session.turns, session.folder).map((a) => ({
+        path: a.path,
+        title: a.title,
+        group: a.group,
+        label: a.label,
+        sessionId: session.id,
+        sessionTitle: session.title,
+        updatedAt: ms(session.updated),
+      }))
+    ),
+
+  permissions: async () => {
+    const status = await remoteApi.getStatus().catch(() => null)
+    return status
+      ? { approvals: status.config.allowApprovals, alwaysAllow: status.config.allowAlwaysAllow }
+      : null
+  },
+
+  notificationPrefs: (device) => readNotificationPrefs(device),
 
   appearance: () => {
     const ui = useInterfaceSettings.getState()

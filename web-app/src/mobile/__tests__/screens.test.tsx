@@ -27,9 +27,9 @@ describe('phone screens (mocked RPC)', () => {
     expect(await screen.findByTestId('approvals-pill')).toHaveTextContent('1')
     fireEvent.click(screen.getByText('Explain this error message'))
     fireEvent.click(screen.getByRole('button', { name: 'Send Message' }))
-    // Sending needs phase 3: the refusal is shown, not a fake reply.
+    // A desktop that does not take it says so; nothing is faked.
     expect(await screen.findByText('Sending from the phone comes in a later update', {}, T)).toBeInTheDocument()
-    expect(client.rpc).toHaveBeenCalledWith('chat.send', expect.objectContaining({ text: 'Explain this error message' }))
+    expect(client.rpc).toHaveBeenCalledWith('chat.send', expect.objectContaining({ text: 'Explain this error message', new: true }))
   })
 
   it('Chat renders the thread', async () => {
@@ -48,8 +48,9 @@ describe('phone screens (mocked RPC)', () => {
     const card = await screen.findByTestId('approval-card')
     expect(within(card).getByText('git push -u origin flint/radar-retry && gh pr create --fill')).toBeInTheDocument()
     expect(screen.getAllByText('3 of 5 done').length).toBeGreaterThan(0)
+    client.rpc.mockImplementationOnce(async () => ({ status: 'answered' }))
     fireEvent.click(within(card).getByRole('button', { name: 'Allow once' }))
-    expect(await screen.findByText('Answering approvals from the phone comes in a later update', {}, T)).toBeInTheDocument()
+    expect((await screen.findAllByText('Allowed once · from this phone', {}, T)).length).toBeGreaterThan(0)
     expect(client.rpc).toHaveBeenCalledWith('approvals.respond', { requestId: 'ap1', decision: 'allow', scope: 'once' })
   })
 
@@ -63,7 +64,7 @@ describe('phone screens (mocked RPC)', () => {
   it.each([
     [{ name: 'rooms' }, 'Sensor calibration check'],
     [{ name: 'overview' }, 'Agent Runs'],
-    [{ name: 'library' }, /Artifacts open on the computer/],
+    [{ name: 'library' }, 'radar-cache'],
     [{ name: 'models' }, 'Gemma 3 12B'],
     [{ name: 'tools' }, 'filesystem'],
     [{ name: 'system' }, /Windows 11 · NVIDIA RTX 4070/],

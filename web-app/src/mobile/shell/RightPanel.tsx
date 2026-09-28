@@ -4,9 +4,11 @@ import type { CoworkDetail, RemoteToolStep } from '@/lib/remote/protocol'
 import { Avatar, Empty, Kv, Sw } from '../ui/bits'
 import { compact, duration, speakerColor } from '../ui/format'
 import { I, type IconId } from '../ui/icons'
-import { act, app, closeAll, notYet, openSheet, useApp } from '../state/app'
+import { act, app, closeAll, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { accessLabel, modeLabel } from './labels'
+import { roomAct } from '../state/controls'
+import { ActivityList, ChangesList } from '../ui/changes'
 
 function Header({ title }: { title: string }) {
   return (
@@ -90,6 +92,8 @@ function CoworkPanel({ id, tab }: { id: string; tab: string }) {
   const detail = useRpc('cowork.get', { id })
   const models = useRpc('models.list', {})
   const messages = useRpc('thread.messages', { id, kind: 'cowork', limit: 200 })
+  const changes = useRpc('cowork.changes', { id }, tab === 'changes')
+  const activity = useRpc('cowork.activity', { id }, tab === 'activity')
   const steps: RemoteToolStep[] = (messages.data?.messages ?? []).flatMap((m) => m.tools ?? [])
   const d = detail.data
   let body: ReactNode
@@ -149,10 +153,10 @@ function CoworkPanel({ id, tab }: { id: string; tab: string }) {
       )
       break
     case 'changes':
-      body = <Soon what="Changes and diffs" />
+      body = changes.data ? <ChangesList c={changes.data} /> : changes.error ? <Empty>{changes.error.message}</Empty> : <Empty>Loading…</Empty>
       break
     case 'activity':
-      body = <Soon what="Subagents and background commands" />
+      body = activity.data ? <ActivityList a={activity.data} /> : activity.error ? <Empty>{activity.error.message}</Empty> : <Empty>Loading…</Empty>
       break
     case 'code':
       body = <Soon what="Files and code" />
@@ -316,14 +320,33 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
               <i style={{ width: `${Math.min(100, (room.usage.turns / Math.max(1, room.limits.maxTurns)) * 100)}%` }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 6 }}>
-              <button type="button" className="btn pri" onClick={() => notYet('Pausing a room')}>
-                <I n="pause" />
-                Pause
-              </button>
-              <button type="button" className="btn" onClick={() => notYet('Choosing the next speaker')}>
+              {room.status === 'running' ? (
+                <button type="button" className="btn pri" onClick={() => roomAct({ id: room.id }, 'pause', 'Paused.')}>
+                  <I n="pause" />
+                  Pause
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn pri"
+                  onClick={() => roomAct({ id: room.id }, room.roomStatus === 'draft' ? 'start' : 'resume', 'Resumed.')}
+                >
+                  <I n="play" />
+                  {room.roomStatus === 'draft' ? 'Start' : 'Resume'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn"
+                disabled={order.length < 2}
+                onClick={() => {
+                  const who = order[1]
+                  if (who) void act('room.control', { id: room.id, action: 'next', participantId: who.id }, `${who.name} speaks next`)
+                }}
+              >
                 Next
               </button>
-              <button type="button" className="btn dan" onClick={() => void act('run.stop', { kind: 'room', id: room.id }, 'Stopped.')}>
+              <button type="button" className="btn dan" onClick={() => roomAct({ id: room.id }, 'stop', 'Stopped.')}>
                 Stop
               </button>
             </div>
@@ -352,13 +375,13 @@ function RoomPanel({ id, tab }: { id: string; tab: string }) {
             <div className="steer">
               {(
                 [
-                  ['vote', 'Call vote', 'Everyone agrees, disagrees or abstains'],
-                  ['flag', 'Final positions', 'Each participant states where they stand'],
-                  ['file', 'Synthesize', 'Summary of the outcome, with dissent'],
-                  ['x', 'Cancel turn', 'Stop only the reply in progress'],
-                ] as [IconId, string, string][]
-              ).map(([icon, t, s]) => (
-                <button key={t} type="button" onClick={() => notYet(t)}>
+                  ['vote', 'Call vote', 'Everyone agrees, disagrees or abstains', () => openSheet('vote', { id: room.id })],
+                  ['flag', 'Final positions', 'Each participant states where they stand', () => roomAct({ id: room.id }, 'final', 'Asked for final positions.')],
+                  ['file', 'Synthesize', 'Summary of the outcome, with dissent', () => roomAct({ id: room.id }, 'synthesize', 'Asked for a synthesis.')],
+                  ['x', 'Cancel turn', 'Stop only the reply in progress', () => roomAct({ id: room.id }, 'cancel', 'Turn cancelled.')],
+                ] as [IconId, string, string, () => void][]
+              ).map(([icon, t, s, run]) => (
+                <button key={t} type="button" onClick={run}>
                   <b>
                     <I n={icon} size={14} /> {t}
                   </b>

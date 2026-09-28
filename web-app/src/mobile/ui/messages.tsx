@@ -24,7 +24,7 @@ function inline(text: string): ReactNode[] {
 
 /** Plain text with light structure: paragraphs, bullet lists, fenced code.
  * Everything is rendered as text nodes, never as HTML. */
-export function Prose({ text }: { text: string }) {
+export function Prose({ text, tail }: { text: string; tail?: ReactNode }) {
   const blocks: ReactNode[] = []
   const chunks = text.split(/(```[\s\S]*?(?:```|$))/g)
   chunks.forEach((chunk, ci) => {
@@ -65,6 +65,18 @@ export function Prose({ text }: { text: string }) {
         }
       })
   })
+  if (tail) {
+    const last = blocks[blocks.length - 1]
+    // The caret sits at the end of the last line, as on the desktop.
+    if (last && typeof last === 'object' && 'type' in last && last.type === 'p') {
+      blocks[blocks.length - 1] = (
+        <p key={last.key ?? 'tail'}>
+          {(last.props as { children: ReactNode }).children}
+          {tail}
+        </p>
+      )
+    } else blocks.push(<p key="tail">{tail}</p>)
+  }
   return <div className="prose">{blocks}</div>
 }
 

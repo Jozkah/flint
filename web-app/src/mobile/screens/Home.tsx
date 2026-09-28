@@ -6,7 +6,7 @@ import { TopMain } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { I } from '../ui/icons'
 import { greet } from '../ui/format'
-import { act, app, go, openSheet, useApp } from '../state/app'
+import { app, go, notYet, openSheet, sendMessage, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { routeFor, useSessions } from '../state/sessions'
 import { accessLabel, modeLabel } from '../shell/labels'
@@ -110,14 +110,23 @@ export default function Home() {
   const fill = (text: string) => setSeed((s) => ({ text, n: (s?.n ?? 0) + 1 }))
 
   const send = async (text: string) => {
-    const method = mode === 'chat' ? 'chat.send' : mode === 'cowork' ? 'cowork.send' : 'room.send'
-    const r = await act(method, {
-      text,
-      new: true,
-      model: composer.model ? { id: composer.model.id, provider: composer.model.provider } : undefined,
-      ...(mode === 'chat' ? { webSearch: composer.web, reasoning: composer.reason } : {}),
-      ...(mode === 'cowork' ? { mode: composer.cwMode, access: composer.access } : {}),
-    })
+    if (mode === 'room') {
+      notYet('Creating a room')
+      return false
+    }
+    const model = composer.model ? { id: composer.model.id, provider: composer.model.provider } : undefined
+    const r =
+      mode === 'chat'
+        ? await sendMessage('chat.send', { text, new: true, model, webSearch: composer.web, reasoning: composer.reason })
+        : await sendMessage('cowork.send', {
+            text,
+            new: true,
+            model,
+            mode: composer.cwMode,
+            ...(composer.access === 'review-only' ? { access: composer.access } : {}),
+          })
+    // The computer opened the new conversation; so does the phone.
+    if (r) go({ name: r.kind, id: r.id })
     return r !== undefined
   }
 
