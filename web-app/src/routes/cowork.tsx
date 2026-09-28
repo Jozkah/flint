@@ -3201,6 +3201,7 @@ export function CoworkPage() {
           // The parent's instance: a second one would mean a second
           // llama-server load for the same model.
           model: transport.model,
+          providerOptions: transport.reasoningProviderOptions(),
           parentTools: transport.advertisedTools,
           system: {
             workspacePath,
@@ -5735,6 +5736,8 @@ export function CoworkPage() {
                 // The session's model, resolved as the run resolves it: the
                 // composer must not refuse a send the run would make.
                 modelSelection={composerModel.selection}
+                // The session's own effort, where its transport reads it.
+                modelOverrideScope={session?.id ?? ''}
                 unavailableModel={composerModel.unavailable}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere

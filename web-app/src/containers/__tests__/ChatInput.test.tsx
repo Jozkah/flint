@@ -590,6 +590,25 @@ describe('ChatInput', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  // Cowork's composer is not a chat thread: the agent-mode flag of whichever
+  // chat was last open must not take its Reasoning control away.
+  it('keeps the Reasoning control in Cowork while the current chat is in agent mode', () => {
+    agentModeOn = true
+    const modelSelection = {
+      selectedProvider: 'llamacpp',
+      selectedModel: { id: 'model-a', capabilities: ['tools'] },
+    }
+    const { unmount } = renderInput({ modelSelection })
+    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    unmount()
+    renderInput({
+      modelSelection,
+      slashSurface: 'cowork',
+      modelOverrideScope: 'session-1',
+    })
+    expect(screen.getByRole('button', { name: /^Reasoning:/ })).toBeInTheDocument()
+  })
+
   it('shows "please select a model" inline message when no model selected', () => {
     // With no selected model, Enter should set the inline error message
     selectedModelOverride = null

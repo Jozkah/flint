@@ -247,6 +247,15 @@ type ChatInputProps = {
    */
   modelSelection?: ModelSelection
   /**
+   * The key this composer's per-conversation model overrides (reasoning
+   * effort) are stored under, when that is not a thread: a Cowork session's
+   * id, which is the key its transport resolves the model with. Defaults to
+   * the thread id; an empty string means "no conversation yet" (the global
+   * model setting is written, as on the new-chat screen) rather than falling
+   * back to whichever chat thread is current.
+   */
+  modelOverrideScope?: string
+  /**
    * The saved model that no longer resolves, named in the message shown
    * instead of the generic "select a model" when nothing can be sent with.
    */
@@ -311,6 +320,7 @@ const ChatInput = memo(function ChatInput({
   hideTokenCounter,
   threadId: threadIdProp,
   modelSelection,
+  modelOverrideScope,
   unavailableModel,
   draftScope,
   takeFocus = true,
@@ -384,8 +394,12 @@ const ChatInput = memo(function ChatInput({
   // Subscribed to the map, not read through getState(), so the control
   // re-renders when this chat's overrides change.
   const overridesByThread = useModelOverrides((state) => state.byThread)
-  const chatOverrides = currentThreadId
-    ? overridesByThread[currentThreadId]
+  const overrideScope =
+    modelOverrideScope !== undefined
+      ? modelOverrideScope || undefined
+      : currentThreadId
+  const chatOverrides = overrideScope
+    ? overridesByThread[overrideScope]
     : undefined
   const setThreadOverride = useModelOverrides((state) => state.setForThread)
   const clearThreadOverride = useModelOverrides((state) => state.clearForThread)
@@ -3061,7 +3075,9 @@ const ChatInput = memo(function ChatInput({
                   </Tooltip>
                 )}
 
-                {!effectiveAgentMode &&
+                {/* Cowork has no chat agent mode of its own; the flag read
+                    above belongs to whichever chat thread was last open. */}
+                {(!effectiveAgentMode || slashSurface === 'cowork') &&
                   (selectedProvider === 'llamacpp' ||
                     selectedProvider === 'google' ||
                     selectedProvider === 'gemini' ||
@@ -3130,8 +3146,13 @@ const ChatInput = memo(function ChatInput({
                       })
                       // selectedModel is a snapshot, not a live derivation —
                       // re-select to refresh it so the dropdown UI and the
-                      // chat transport both observe the new value.
-                      selectModelProvider(selectedProvider, selectedModel.id)
+                      // chat transport both observe the new value. A surface
+                      // that supplies its own model (Cowork) re-derives it
+                      // from the providers, and must not move the global
+                      // picker.
+                      if (!modelSelection) {
+                        selectModelProvider(selectedProvider, selectedModel.id)
+                      }
                     }
 
                     // Providers that honour a discrete reasoning effort get the
@@ -3164,9 +3185,9 @@ const ChatInput = memo(function ChatInput({
                      * the menu it replaced always did.
                      */
                     const setEffort = (level: string) => {
-                      if (currentThreadId) {
+                      if (overrideScope) {
                         setThreadOverride(
-                          currentThreadId,
+                          overrideScope,
                           EFFORT_SETTING_KEY,
                           level
                         )
@@ -3262,10 +3283,10 @@ const ChatInput = memo(function ChatInput({
                                   overridden={effortOverridden}
                                   onChange={setEffort}
                                   onReset={
-                                    currentThreadId && effortOverridden
+                                    overrideScope && effortOverridden
                                       ? () =>
                                           clearThreadOverride(
-                                            currentThreadId,
+                                            overrideScope,
                                             EFFORT_SETTING_KEY
                                           )
                                       : undefined
