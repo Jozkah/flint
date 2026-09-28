@@ -24,6 +24,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { Streamdown } from 'streamdown'
@@ -100,6 +101,12 @@ export const ChainOfThought = memo(
       onChange: onOpenChange,
     })
 
+    // Once the user toggles the trace, stop auto-applying shouldCollapse so a
+    // streaming turn that alternates between tool calls and text does not keep
+    // re-opening a trace the user just closed. Auto-collapse still applies:
+    // a finished trace folds away even after a manual open.
+    const userToggledRef = useRef(false)
+
     // Follow the caller's open intent. forceOpen pins it open (e.g. a tool
     // awaiting approval). When shouldCollapse is a boolean, track it two-way so
     // the trace opens as a step gains content and collapses when it has none or
@@ -107,12 +114,18 @@ export const ChainOfThought = memo(
     // so defaultOpen / manual toggle is left untouched. Re-applied only on
     // input change, preserving a manual toggle between changes.
     useEffect(() => {
-      if (forceOpen) setIsOpen(true)
-      else if (shouldCollapse === true) setIsOpen(false)
-      else if (shouldCollapse === false) setIsOpen(true)
+      if (forceOpen) {
+        userToggledRef.current = false
+        setIsOpen(true)
+      } else if (shouldCollapse === true) {
+        setIsOpen(false)
+      } else if (shouldCollapse === false && !userToggledRef.current) {
+        setIsOpen(true)
+      }
     }, [forceOpen, shouldCollapse, setIsOpen])
 
     const handleOpenChange = (newOpen: boolean) => {
+      userToggledRef.current = true
       setIsOpen(newOpen)
     }
 
