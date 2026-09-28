@@ -401,6 +401,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(web): truncate long tool-card details, and keep string tracking across escaped quotes in tool-argument repair
 
 ### Design, onboarding and system
+- feat(shell): drag the sidebar's edge to resize it (200–420 px, saved; keyboard and double-click to reset)
+- feat(shell): an optional sound when a chat reply or Cowork run finishes, in the background or always, with volume and preview (Settings → Appearance → Sounds)
 - feat(web-app): web results, citations and sources show each site's own favicon, fetched from the site itself
 - feat(windows): the title bar takes the app's colours on Windows 11
 - fix(web-preview): the native preview is retried instead of staying on an iframe most sites refuse
