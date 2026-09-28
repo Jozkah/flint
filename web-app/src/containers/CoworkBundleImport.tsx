@@ -149,6 +149,25 @@ export function CoworkBundleImport({
 
   const shown = imports.filter((v) => v.state === 'pending' || v.state === 'applied' || v.state === 'partially-applied')
 
+  // Nothing imported, nothing running, nothing wrong: one quiet link, not a
+  // card, at the foot of the panel.
+  if (shown.length === 0 && !running && !error) {
+    return (
+      <div className="mx-3 mb-3 flex justify-end">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 gap-1.5 px-2 text-xs text-muted-foreground"
+          onClick={() => void start()}
+          data-testid="bundle-import"
+        >
+          <PackageOpen size={13} aria-hidden />
+          Import patch bundle
+        </Button>
+      </div>
+    )
+  }
+
   return (
     <section
       className="mx-3 mb-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] p-3 motion-safe:animate-rise-in"

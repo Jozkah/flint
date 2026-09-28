@@ -592,21 +592,44 @@ export function CoworkDiffPanel({
     () => groupSessionFiles(sandboxFiles, isSandboxPath, t, displayPath),
     [sandboxFiles, isSandboxPath, t, displayPath]
   )
-  const labelled = (showProject ? 1 : 0) + sessionGroups.length > 1
+  // One list per file: a file the session's own list names (with Apply) is
+  // not listed again under the project's working tree. Only when the working
+  // tree has nothing else does its section go; a clean tree still says so.
+  const sessionPaths = useMemo(
+    () =>
+      new Set(sessionGroups.flatMap((g) => g.files.map((f) => g.show(f.path)))),
+    [sessionGroups]
+  )
+  const projectFiles = useMemo(
+    () => gitFiles.filter((f) => !sessionPaths.has(f.path)),
+    [gitFiles, sessionPaths]
+  )
+  const projectAllListedBelow =
+    gitFiles.length > 0 && projectFiles.length === 0
+  const showProjectSection = showProject && !projectAllListedBelow
+  const labelled = (showProjectSection ? 1 : 0) + sessionGroups.length > 1
 
-  // Combined totals across both sources for the header summary.
+  // Combined totals across both sources for the header summary, each file
+  // counted once.
   const sandboxAdds = sandboxFiles.reduce((s, f) => s + f.additions, 0)
   const sandboxDels = sandboxFiles.reduce((s, f) => s + f.deletions, 0)
-  const additions = (git.status?.additions ?? 0) + sandboxAdds
-  const deletions = (git.status?.deletions ?? 0) + sandboxDels
+  const listedTwice = gitFiles.filter((f) => sessionPaths.has(f.path))
+  const additions =
+    (git.status?.additions ?? 0) -
+    listedTwice.reduce((s, f) => s + f.additions, 0) +
+    sandboxAdds
+  const deletions =
+    (git.status?.deletions ?? 0) -
+    listedTwice.reduce((s, f) => s + f.deletions, 0) +
+    sandboxDels
 
   // Stable id per row so one expansion set spans both lists.
   const allIds = useMemo(
     () => [
-      ...gitFiles.map((f) => `git:${f.path}`),
+      ...projectFiles.map((f) => `git:${f.path}`),
       ...sandboxFiles.map((f) => `sandbox:${f.path}`),
     ],
-    [gitFiles, sandboxFiles]
+    [projectFiles, sandboxFiles]
   )
   const allExpanded =
     allIds.length > 0 && allIds.every((id) => expanded.has(id))
@@ -736,7 +759,7 @@ export function CoworkDiffPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {/* Project · Working tree */}
-          {showProject ? (
+          {showProjectSection ? (
             <section>
               {labelled ? (
                 <h3 className="sticky top-0 z-[1] bg-card px-3 pt-2 pb-1.5 text-[11px] font-medium tracking-[0.025em] text-subtle-foreground uppercase">
@@ -759,7 +782,7 @@ export function CoworkDiffPanel({
                 </p>
               ) : (
                 <div>
-                  {gitFiles.map((file) => {
+                  {projectFiles.map((file) => {
                     const id = `git:${file.path}`
                     const isExpanded = expanded.has(id)
                     const origin = originByPath.get(file.path)

@@ -161,6 +161,43 @@ describe('CoworkDiffPanel', () => {
     expect(screen.getByText('src/a.ts')).toBeInTheDocument()
   })
 
+  it('lists a file once: the session list keeps it, the working tree drops it', () => {
+    const shared = sandboxFiles[0]
+    const status: GitStatus = {
+      branch: 'main',
+      repoRoot: '/home/user/proj',
+      additions: shared.additions,
+      deletions: shared.deletions,
+      files: [
+        {
+          path: shared.path,
+          origPath: null,
+          status: 'modified',
+          staged: false,
+          unstaged: true,
+          additions: shared.additions,
+          deletions: shared.deletions,
+          binary: false,
+        },
+      ],
+    }
+    render(
+      <CoworkDiffPanel
+        sandboxFiles={[shared]}
+        folder="/home/user/proj"
+        git={gitWith(status)}
+        onClose={vi.fn()}
+      />
+    )
+    // Nothing else in the working tree: its section goes altogether.
+    expect(screen.queryByText('common:changes.projectWorkingTree')).toBeNull()
+    expect(screen.getAllByText(shared.path)).toHaveLength(1)
+    // Counted once.
+    expect(screen.getByTestId('changes-total')).toHaveTextContent(
+      `+${shared.additions}−${shared.deletions}`
+    )
+  })
+
   it('loads a project file diff lazily on expand', async () => {
     const status: GitStatus = {
       branch: 'main',
