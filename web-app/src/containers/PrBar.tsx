@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ExternalLink, RefreshCw, Wrench, X } from 'lucide-react'
+import { ChevronDown, ExternalLink, GitMerge, RefreshCw, Wrench, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -25,8 +25,10 @@ import { useMessageQueue } from '@/stores/message-queue-store'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import {
   canFixCheck,
+  canResolveConflicts,
   orderedChecks,
   requestCheckRepair,
+  requestConflictResolution,
   type CheckLog,
 } from '@/lib/prCheckRepair'
 
@@ -109,6 +111,31 @@ async function fixCheck(
   else toast.error(t('common:pr.fixRefused'))
 }
 
+/** Queue "resolve the merge conflicts" into the owning session. */
+function resolveConflicts(
+  folder: string,
+  sessionId: string,
+  pr: PrStatus,
+  t: (key: string, opts?: Record<string, unknown>) => string
+) {
+  const outcome = requestConflictResolution(
+    { sessionId, pr, relation: 'mine' },
+    {
+      queue: (sid) => useMessageQueue.getState().getQueue(sid),
+      enqueue: (sid, m) => useMessageQueue.getState().enqueue(sid, m),
+      stillOwns: () => {
+        const s = usePrStatusStore.getState()
+        if (s.sessionPrs[sessionId]?.some((p) => p.url === pr.url)) return true
+        const worktree = useCoworkWorktrees.getState().bySession[sessionId]
+        return prRelation(pr, folder, s.claims, sessionId, worktree) === 'mine'
+      },
+    }
+  )
+  if (outcome.status === 'queued') toast.success(t('common:pr.resolveQueued'))
+  else if (outcome.status === 'duplicate') toast.info(t('common:pr.resolveAlreadyQueued'))
+  else toast.error(t('common:pr.fixRefused'))
+}
+
 /**
  * The pull request for a working folder's branch, shown above the composer
  * with the same mark as the sidebar row: number, repository, branch, the
@@ -171,6 +198,10 @@ export function PrBar({
       className={cn(
         'flex min-h-[38px] items-center gap-2.5 rounded-[10px] bg-muted py-1 pr-1.5 pl-3 text-[0.78rem] shadow-[inset_0_0_0_.8px_var(--border)] motion-safe:animate-rise-in',
         pr.state === 'open' && 'shadow-[inset_0_0_0_.8px_color-mix(in_oklab,var(--success)_35%,var(--border))]',
+        // Conflicts outrank an open PR's green edge: it cannot merge as is.
+        pr.merge === 'conflicting' &&
+          (pr.state === 'open' || pr.state === 'draft') &&
+          'shadow-[inset_0_0_0_.8px_color-mix(in_oklab,var(--destructive)_45%,var(--border))]',
         pr.state === 'merged' && 'bg-[color-mix(in_oklab,var(--merged)_14%,var(--muted))] shadow-[inset_0_0_0_.8px_color-mix(in_oklab,var(--merged)_30%,transparent)]',
         className
       )}
@@ -205,6 +236,55 @@ export function PrBar({
         <span className="text-[0.78rem] font-medium text-merged">{t('common:pr.merged')}</span>
       ) : (
         <>
+          {(pr.merge === 'conflicting' || pr.merge === 'behind') && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="pr-merge-state"
+                  data-merge={pr.merge}
+                  className={cn(
+                    'group/merge gap-1.5',
+                    pr.merge === 'conflicting'
+                      ? 'border-destructive/40 text-destructive hover:text-destructive'
+                      : 'text-muted-foreground'
+                  )}
+                >
+                  <GitMerge className="size-3.5" aria-hidden />
+                  {pr.merge === 'conflicting'
+                    ? t('common:pr.conflicts')
+                    : t('common:pr.behind', { base: pr.base })}
+                  <ChevronDown className="size-3 transition-transform group-data-[state=open]/merge:rotate-180" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72">
+                <DropdownMenuLabel>
+                  {pr.merge === 'conflicting'
+                    ? t('common:pr.conflictsTitle', { base: pr.base })
+                    : t('common:pr.behind', { base: pr.base })}
+                </DropdownMenuLabel>
+                <p className="px-2 pb-1.5 text-xs text-muted-foreground">
+                  {pr.merge === 'conflicting'
+                    ? t('common:pr.conflictsBody')
+                    : t('common:pr.behindBody', { base: pr.base })}
+                </p>
+                {sessionId && canResolveConflicts(pr, view.relation, sessionId) && (
+                  <DropdownMenuItem
+                    data-testid="pr-resolve-conflicts"
+                    onSelect={() => resolveConflicts(folder, sessionId, pr, t)}
+                  >
+                    <Wrench />
+                    <span>{t('common:pr.resolveConflicts')}</span>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onSelect={open}>
+                  <ExternalLink />
+                  <span>{t('common:pr.open')}</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <span className="inline-flex h-[26px] items-center gap-1.5 rounded-md bg-card px-2 font-mono text-xs font-medium shadow-[inset_0_0_0_.8px_var(--border)]">
             <span className="text-success">+{fmt(pr.additions)}</span>
             <span className="text-destructive">−{fmt(pr.deletions)}</span>

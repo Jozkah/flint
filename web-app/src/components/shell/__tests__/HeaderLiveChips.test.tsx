@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 const navigate = vi.hoisted(() => vi.fn())
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
+const route = vi.hoisted(() => ({ pathname: '/' }))
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+  useLocation: ({ select }: { select: (l: { pathname: string }) => string }) =>
+    select(route),
+}))
 vi.mock('@/containers/rooms/roomsBindings', () => ({
   useRoomsState: () => ({ summaries: [{ id: 'room-1', title: 'Design room' }] }),
 }))
@@ -18,6 +23,7 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 const selectSession = vi.fn()
 
 beforeEach(() => {
+  route.pathname = '/'
   navigate.mockReset()
   selectSession.mockReset()
   useCoworkSessions.setState({
@@ -64,6 +70,22 @@ describe('header live-work pills', () => {
     fireEvent.click(pill)
     expect(selectSession).toHaveBeenCalledWith('cw-1')
     expect(navigate).toHaveBeenCalledWith({ to: '/cowork' })
+  })
+
+  it('is not repeated on the Cowork page when the only run is the session in view', () => {
+    useCoworkRun.setState({
+      runs: { 'cw-1': { runId: 'r', startedAt: Date.now() - 5_000 } },
+    })
+    route.pathname = '/cowork'
+    useCoworkSessions.setState({ currentId: 'cw-1' } as never)
+    const { unmount } = render(<HeaderLiveChips />)
+    expect(screen.queryByTestId('header-runs-chip')).toBeNull()
+    unmount()
+
+    // Another session's run is not on screen: the pill stays.
+    useCoworkSessions.setState({ currentId: 'cw-2' } as never)
+    render(<HeaderLiveChips />)
+    expect(screen.getByTestId('header-runs-chip')).toBeInTheDocument()
   })
 
   it('with several runs the pill lists them, and a row opens its session', () => {

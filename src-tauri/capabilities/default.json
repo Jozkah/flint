@@ -20,6 +20,7 @@
     "shell:allow-open",
     "core:app:allow-set-app-theme",
     "core:window:allow-set-focus",
+    "core:window:allow-request-user-attention",
     "os:default",
     "opener:default",
     "log:default",

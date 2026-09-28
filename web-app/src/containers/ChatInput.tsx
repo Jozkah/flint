@@ -89,6 +89,7 @@ import {
 import { resolveThreadModelId } from '@/lib/models'
 import { useAssistant } from '@/hooks/useAssistant'
 import { AssistantSwitcher } from '@/containers/AssistantSwitcher'
+import { ComposerOptionsMenu } from '@/containers/ComposerOptionsMenu'
 import DropdownToolsAvailable from '@/containers/DropdownToolsAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
@@ -213,6 +214,9 @@ type ChatInputProps = {
    * both configure the *next* message rather than the run in flight.
    */
   surfaceControls?: ReactNode
+  /** Put the assistant, sampling, tools, web search and reasoning controls
+   * behind one Options button (Cowork), for a quieter row. */
+  groupOptions?: boolean
   /**
    * Replaces the default stop button while streaming.
    *
@@ -315,6 +319,7 @@ const ChatInput = memo(function ChatInput({
   referenceRoot,
   referenceSources,
   surfaceControls,
+  groupOptions = false,
   stopControl,
   tokenSource,
   hideTokenCounter,
@@ -2952,6 +2957,11 @@ const ChatInput = memo(function ChatInput({
                     useLastUsedModel={initialMessage}
                   />
                 )} */}
+                {(() => {
+                  // The model's less-used knobs: inline in a chat, behind one
+                  // Options button where the surface asks for a quieter row.
+                  const options = (
+                    <>
                 <AssistantSwitcher
                   assistants={assistants}
                   currentThread={currentThread}
@@ -3379,6 +3389,18 @@ const ChatInput = memo(function ChatInput({
                       </DropdownMenu>
                     )
                   })()}
+                    </>
+                  )
+                  if (!groupOptions) return options
+                  return (
+                    <ComposerOptionsMenu
+                      label={t('common:composerOptions')}
+                      active={webSearchEnabled && !effectiveAgentMode ? [t('common:web_search')] : []}
+                    >
+                      {options}
+                    </ComposerOptionsMenu>
+                  )
+                })()}
               </div>
               {surfaceControls && (
                 <div className="flex min-w-0 flex-wrap items-center gap-1">

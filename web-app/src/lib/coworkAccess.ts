@@ -33,6 +33,10 @@ export const ACCESS_MODES: readonly AccessMode[] = [
 export const accessLabelKey = (access: AccessMode): string =>
   `common:coworkAccess.${access}.label`
 
+/** i18n key for the one-word name used under the composer. */
+export const accessShortLabelKey = (access: AccessMode): string =>
+  `common:coworkAccess.${access}.short`
+
 export const accessDescriptionKey = (access: AccessMode): string =>
   `common:coworkAccess.${access}.description`
 

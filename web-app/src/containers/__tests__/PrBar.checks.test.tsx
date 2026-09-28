@@ -140,4 +140,34 @@ describe('PrBar named checks', () => {
     render(<PrBar folder={FOLDER} sessionId="s1" />)
     expect(screen.queryByTestId('pr-bar')).toBeNull()
   })
+
+  it('shows conflicts and lets the owning session resolve them, without pushing', async () => {
+    usePrStatusStore.setState({
+      byFolder: {
+        [FOLDER]: {
+          lookup: { kind: 'found', pr: { ...pr, merge: 'conflicting' } },
+          at: Date.now(),
+          loading: false,
+        },
+      },
+      byUrl: {},
+      sessionPrs: {},
+      claims: { [claimKey(FOLDER, 7)]: 's1' },
+    })
+    render(<PrBar folder={FOLDER} sessionId="s1" />)
+    const chip = screen.getByTestId('pr-merge-state')
+    expect(chip).toHaveAttribute('data-merge', 'conflicting')
+    fireEvent.pointerDown(chip, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+    fireEvent.keyDown(chip, { key: 'Enter' })
+    fireEvent.click(await screen.findByTestId('pr-resolve-conflicts'))
+    const queued = useMessageQueue.getState().getQueue('s1')
+    expect(queued).toHaveLength(1)
+    expect(queued[0].text).toContain('Do not push')
+  })
+
+  it('has no merge chip when the pull request merges cleanly', () => {
+    seed('s1')
+    render(<PrBar folder={FOLDER} sessionId="s1" />)
+    expect(screen.queryByTestId('pr-merge-state')).toBeNull()
+  })
 })

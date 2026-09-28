@@ -60,3 +60,7 @@ export const useProjectInitDrafts = create<DraftState>()(
     }
   )
 )
+
+/** The offer's label: a saved draft is continued rather than started over. */
+export const projectInitLabel = (hasDraft: boolean) =>
+  hasDraft ? 'Continue the FLINT.md draft' : 'Describe this project'

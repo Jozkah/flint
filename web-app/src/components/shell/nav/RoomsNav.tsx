@@ -1,4 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
+import { RowPreview } from '@/components/shell/nav/RowPreview'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,13 +27,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import {
-  Columns2,
-  DoorOpen,
-  MoreHorizontal,
-  Plus,
-  Trash2,
-} from 'lucide-react'
+import { Columns2, DoorOpen, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
 import {
   normalizeError,
   useRoomsApi,
@@ -96,15 +91,22 @@ const RoomItem = memo(function RoomItem({
 
   return (
     <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
-      <NavButton
-        size="sub"
-        isActive={isCurrent}
-        onClick={() => onSelect(room.id)}
-        data-testid="room-nav-item"
+      <RowPreview
+        title={room.title}
+        updated={room.updatedAt}
+        summary={room.objective}
+        suppressed={menuOpen}
       >
-        <ThreadStatusMark status={status} />
-        <FadeText>{room.title}</FadeText>
-      </NavButton>
+        <NavButton
+          size="sub"
+          isActive={isCurrent}
+          onClick={() => onSelect(room.id)}
+          data-testid="room-nav-item"
+        >
+          <ThreadStatusMark status={status} />
+          <FadeText>{room.title}</FadeText>
+        </NavButton>
+      </RowPreview>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <NavAction showOnHover>
@@ -124,7 +126,10 @@ const RoomItem = memo(function RoomItem({
           <DropdownMenuItem
             data-testid="open-room-in-split"
             onSelect={() =>
-              reportSplitResult(openInSplit({ kind: 'room', refId: room.id }), t)
+              reportSplitResult(
+                openInSplit({ kind: 'room', refId: room.id }),
+                t
+              )
             }
           >
             <Columns2 />
@@ -160,7 +165,8 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     strict: false,
     select: (params) => params.roomId,
   })
-  const onRooms = pathname === route.rooms || pathname.startsWith(`${route.rooms}/`)
+  const onRooms =
+    pathname === route.rooms || pathname.startsWith(`${route.rooms}/`)
   const [treeOpen, setTreeOpen] = useState<boolean | null>(null)
   const expanded = treeOpen ?? onRooms
   const [pendingDelete, setPendingDelete] = useState<{
@@ -298,7 +304,9 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
           <DialogHeader>
             <DialogTitle>{t('common:shell.deleteRoomTitle')}</DialogTitle>
             <DialogDescription>
-              {t('common:shell.deleteRoomBody', { title: pendingDelete?.title })}
+              {t('common:shell.deleteRoomBody', {
+                title: pendingDelete?.title,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

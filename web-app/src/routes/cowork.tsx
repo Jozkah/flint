@@ -49,15 +49,13 @@ import {
 import { cn } from '@/lib/utils'
 import {
   ArrowLeft,
-  FileDiff,
   Info,
   Loader2,
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { Icon } from '@/components/ui/icon'
 import { basenameOf } from '@/lib/coworkPreview'
-import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -313,6 +311,7 @@ import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkS
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
 import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
+import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { holdQueueThenStop } from '@/lib/chatSteering'
@@ -481,7 +480,9 @@ import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
-import { isWorkProfileId, workProfile, WORK_PROFILES } from '@/lib/workProfiles'
+import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
+import { CoworkBarStack } from '@/containers/CoworkBarStack'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { jevSuggestSkill } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -710,6 +711,7 @@ export function CoworkPage() {
   )
   // Bumped when Flint itself writes the folder's JAN.md, so it is read again.
   const [instructionsVersion, setInstructionsVersion] = useState(0)
+  const [projectInitOpen, setProjectInitOpen] = useState(false)
   const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>(
     []
   )
@@ -4814,9 +4816,34 @@ export function CoworkPage() {
       ? 'drawer'
       : 'docked'
   const inspectorVisible = phone ? view === 'output' : panelShown
-  // One set of rail buttons on the page at a time: in the panel header while
-  // the output panel is on screen, in the composer row otherwise. The smoke
-  // harness finds them by exact name and reads `aria-pressed`.
+  // The output panel's buttons in the composer row are a setting, off by
+  // default for a quieter composer; without them one header button opens and
+  // closes the panel on the tab last used.
+  const showComposerRailButtons = useInterfaceSettings(
+    (st) => st.showComposerRailButtons
+  )
+  const lastRail = useRef<RailMode>('changes')
+  if (activeRail) lastRail.current = activeRail
+  const outputToggle = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-[30px] shrink-0 pointer-coarse:h-11"
+      aria-pressed={panelShown}
+      aria-label={t('common:coworkLayout.output')}
+      data-testid="cowork-output-toggle"
+      onClick={() =>
+        panelShown ? closeRail() : selectRailInView(lastRail.current)
+      }
+    >
+      <PanelRight className="size-4" aria-hidden />
+      <span className="max-sm:sr-only">{t('common:coworkLayout.output')}</span>
+    </Button>
+  )
+  // The rail buttons stay in the composer row whether or not the output panel
+  // is open, so opening it never takes controls away from where they were;
+  // the panel header carries the same buttons as its tabs. Both sets share
+  // names and `aria-pressed`, so the smoke harness's first match is right.
   const railToolbar = (presentation: 'toolbar' | 'tabs') => (
     <CoworkRailToolbar
       presentation={presentation}
@@ -4848,15 +4875,56 @@ export function CoworkPage() {
     />
   )
 
+  // The session's own model (janhq/jan#8905): keyed by session so switching
+  // re-reads it, and a choice is written to the session in view only.
+  const quietModelSelector = (
+    <DropdownModelProvider
+      variant="quiet"
+      key={session?.id ?? 'none'}
+      model={session?.model}
+      useLastUsedModel={!session?.model}
+      onModelChange={(model) =>
+        useCoworkSessions
+          .getState()
+          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
+          provider: model.provider,
+          id: model.id,
+        })
+      }
+    />
+  )
+
   // Mode, access and workspace: in the context bar on wide screens, in the
   // composer row on phones where the bar holds the view switch.
   const workProfilesOn = useWorkProfiles((st) => st.enabled)
   const workProfileChoice = useWorkProfiles((st) =>
     session?.id ? st.sessions[session.id] : undefined
   )
-  const sessionControls = (
+  // AH-209: a folder with no FLINT.md is offered a starting one, from the
+  // folder menu. Offered only when FLINT.md is known to be absent; one that
+  // could not be read is still there, and is not overwritten.
+  const projectInitRoot = treeRoot ?? null
+  const projectInitOffered =
+    Boolean(projectInitRoot) &&
+    instructionFiles.some(
+      (file) => file.role === 'native' && file.state.kind === 'missing'
+    )
+  const hasProjectInitDraft = useProjectInitDrafts((st) =>
+    projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
+  )
+  // The project folder: in the header on wide screens, in the composer row
+  // on phones and in panes.
+  const workspacePill = (
     <>
       <CoworkWorkspacePill
+        describeProject={
+          projectInitOffered
+            ? {
+                label: projectInitLabel(hasProjectInitDraft),
+                onOpen: () => setProjectInitOpen(true),
+              }
+            : undefined
+        }
         folder={folder}
         workspacePath={workspacePath}
         gitBranch={gitBranch}
@@ -4870,7 +4938,15 @@ export function CoworkPage() {
         onAddExtra={() => void addExtraFolder()}
         onRemoveExtra={(extra) => void removeExtraFolder(extra)}
       />
+    </>
+  )
+
+  // What the run may do and how it works: under the composer, as quiet
+  // one-word buttons (Claude's layout), and as pills in a pane's composer row.
+  const runControls = (variant: 'pill' | 'quiet') => (
+    <>
       <CoworkModeSelector
+        variant={variant}
         mode={mode}
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
@@ -4882,6 +4958,7 @@ export function CoworkPage() {
         }
       />
       <CoworkAccessSelector
+        variant={variant}
         effective={effective}
         capability={capabilityState}
         hasFolder={Boolean(folder)}
@@ -4894,30 +4971,20 @@ export function CoworkPage() {
         onReviewOnly={() => void returnToReviewOnly()}
       />
       {workProfilesOn && session?.id && (
-        <select
-          data-testid="work-profile-picker"
-          aria-label={t('common:jev.profilesTitle')}
-          title={t('common:jev.profilesTitle')}
-          value={workProfileChoice?.manual ? workProfileChoice.id : ''}
-          onChange={(e) => {
-            const store = useWorkProfiles.getState()
-            if (isWorkProfileId(e.target.value)) store.choose(session.id, e.target.value, true)
-            else store.clearManual(session.id)
-          }}
-          className="h-[30px] min-w-0 shrink rounded-md border border-border bg-card px-2 text-xs text-muted-foreground pointer-coarse:h-11"
-        >
-          <option value="">
-            {workProfileChoice
-              ? `${t('common:jev.profilesAuto')}: ${workProfile(workProfileChoice.id).label}`
-              : t('common:jev.profilesAuto')}
-          </option>
-          {WORK_PROFILES.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <CoworkWorkProfilePicker
+          variant={variant}
+          choice={workProfileChoice}
+          onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
+          onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
+        />
       )}
+    </>
+  )
+
+  const sessionControls = (
+    <>
+      {workspacePill}
+      {runControls('pill')}
     </>
   )
 
@@ -5000,27 +5067,6 @@ export function CoworkPage() {
       </span>
     </Chip>
   ) : null
-
-  // The one primary action on the conversation, once there is something to
-  // review.
-  const reviewButton =
-    changeCounts.fileCount > 0 ? (
-      <Button
-        size="sm"
-        onClick={() => openRail({ kind: 'diff' })}
-        data-testid="cowork-header-review"
-        title={paneChrome ? t('common:coworkReview.open') : undefined}
-        className={cn(
-          'pointer-coarse:h-11',
-          paneChrome ? 'h-7 px-2' : 'max-md:px-2.5'
-        )}
-      >
-        <FileDiff aria-hidden />
-        <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
-          {t('common:coworkReview.open')}
-        </span>
-      </Button>
-    ) : null
 
   // An unpinned plan stays one click away in the header.
   const progressButton =
@@ -5115,8 +5161,8 @@ export function CoworkPage() {
         >
           {runningChip}
           {progressButton}
-          {reviewButton}
           {headerStop}
+          {!phone && !showComposerRailButtons && outputToggle}
           {/* No context bar in a pane: each pane picks its own session's
               model here, never the global one. */}
           <div
@@ -5140,21 +5186,21 @@ export function CoworkPage() {
             title is not repeated here: it heads the conversation frame. */}
         <PageHeaderRow>
           {!phone && (
-            // Set off from the breadcrumb by a dashed rule, as the design's
-            // context controls are. The pills never shrink below their own
-            // content (squeezed to nothing they drew on top of each other);
-            // the model pill truncates inside a bounded box, the mode and
-            // access pills drop their labels to icons when the row is tight,
-            // and anything still too wide is clipped at the right edge.
-            <div className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5">
-              <div className="flex min-w-28 max-w-56 shrink">
-                {modelSelector}
-              </div>
-              {sessionControls}
+            // Set off from the breadcrumb by a dashed rule: the project folder,
+            // which truncates its name when the row is tight. The run's own
+            // controls and the model sit under the composer.
+            <div
+              data-testid="cowork-context-bar"
+              className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5"
+            >
+              {workspacePill}
+              {runningChip}
+              {progressButton}
             </div>
           )}
           {!phone && (
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {!showComposerRailButtons && outputToggle}
               {!coworkPane && <SplitToggleButton />}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
@@ -5199,27 +5245,8 @@ export function CoworkPage() {
           )}
           data-testid="cowork-content-view"
         >
-          {/* In a pane the title heads the pane instead: shown once. */}
-          {!paneChrome && (
-          <FrameHeader
-            icon={<Icon name="x-cowork" size={16} />}
-            title={
-              <span
-                title={session?.title || undefined}
-                data-testid="cowork-session-title"
-              >
-                {session?.title || t('common:newSession')}
-              </span>
-            }
-            actions={
-              <>
-                {runningChip}
-                {progressButton}
-                {reviewButton}
-              </>
-            }
-          />
-          )}
+          {/* No title row: the title is the breadcrumb's, and the run's
+              state sits beside it in the header. */}
           <FrameBody className="min-h-0 overflow-hidden">
           {/* The live plan, pinned over the transcript so it never scrolls
               away. */}
@@ -5444,11 +5471,10 @@ export function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
-                  {/* Also while the run goes, as the design shows it: what
-                      it has changed and checked so far, marked Running, with
-                      no next steps offered until it ends (the outcome holds
-                      them back while running). */}
-                  {(((running || runEnding || runOrigins?.summary) &&
+                  {/* Once the run has ended: while it goes, the header says
+                      Running and Changes shows its files, and a card growing
+                      under the transcript said it a third time. */}
+                  {(((!running && (runEnding || runOrigins?.summary)) &&
                     // Only when the run has something of its own to report:
                     // a write, a check, a loose end, or an ending that was
                     // not a clean finish. A working tree that was already
@@ -5456,10 +5482,7 @@ export function CoworkPage() {
                     // a permanent panel over the composer listing the user's
                     // own edits. The stop reason itself stays in the notice
                     // below; this shows what was kept.
-                    (running
-                      ? runOutcome.checks.length > 0 ||
-                        runOutcome.resultLocation.paths.length > 0
-                      : shouldShowRunOutcome(runOutcome))) ||
+                    shouldShowRunOutcome(runOutcome)) ||
                     // A browser verification is evidence the user asked
                     // for; it is shown even after a run with nothing else.
                     browserReports.length > 0) && (
@@ -5584,7 +5607,7 @@ export function CoworkPage() {
             )}
           </div>
 
-          <div className="shrink-0 px-3.5 pt-2 pb-3.5">
+          <div className={cn('shrink-0 px-3.5 pt-2', paneChrome ? 'pb-3.5' : 'pb-1.5')}>
             <div className="mx-auto w-full max-w-[780px]">
               {/* Work a crashed or closed run left behind. Shown where the
                   session is about to start, because that is the moment someone
@@ -5595,131 +5618,130 @@ export function CoworkPage() {
                   beneath the conversation. */}
               {/* Not beside the session's own worktree bar: a session that
                   already has a worktree is not about to adopt another. */}
-              {folder &&
-                !recoveryHiddenHere &&
-                ((!worktree && (session?.turns.length ?? 0) === 0) ||
-                  effective.downgradedFrom === 'managed-worktree') && (
-                <div className="px-1 pb-2">
-                  <CoworkWorktreeRecovery
-                    orphans={recoverableWorktrees(
-                      foundWorktrees,
-                      worktree,
-                      session?.id,
-                      coworkSessionIds,
-                      heldWorktreePaths
-                    )}
-                    onHide={() => {
-                      hideRecovery(folder)
-                      setRecoveryHiddenHere(true)
-                    }}
-                    ownBranch={
-                      session?.id ? sessionWorktreeBranch(session.id) : undefined
-                    }
-                    downgradeNote={(() => {
-                      const key = effectiveDowngradeKey(effective)
-                      return key &&
-                        effective.downgradedFrom === 'managed-worktree'
-                        ? t(key)
-                        : undefined
-                    })()}
-                    onAdopt={(record) => {
-                      if (session?.id)
-                        useCoworkWorktrees.getState().adopt(session.id, record)
-                    }}
-                    onPending={(record) =>
-                      useCoworkWorktrees.getState().pending(record)
-                    }
-                    onRemove={async (record, force) => {
-                      const dataFolder = await serviceHub
-                        .app()
-                        .getJanDataFolder()
-                      if (!dataFolder) return
-                      // Removed under a temporary binding rather than through
-                      // the session's own record: this checkout belongs to no
-                      // session, and adopting it first to delete it would put
-                      // the session on a worktree that is about to be gone.
-                      const key = `recovery:${record.path}`
-                      useCoworkWorktrees.getState().adopt(key, record)
-                      const done = await useCoworkWorktrees
-                        .getState()
-                        .discard(key, dataFolder, force)
-                      useCoworkWorktrees.getState().forget(key)
-                      if (!done.ok) toast.error(done.reason)
-                      setFoundWorktrees(
-                        await useCoworkWorktrees
+              {/* The bars over the composer stack: two at a time, the rest
+                  behind "Show N more". */}
+              <CoworkBarStack>
+                {folder &&
+                  !recoveryHiddenHere &&
+                  ((!worktree && (session?.turns.length ?? 0) === 0) ||
+                    effective.downgradedFrom === 'managed-worktree') && (
+                  <div className="px-1 pb-2">
+                    <CoworkWorktreeRecovery
+                      orphans={recoverableWorktrees(
+                        foundWorktrees,
+                        worktree,
+                        session?.id,
+                        coworkSessionIds,
+                        heldWorktreePaths
+                      )}
+                      onHide={() => {
+                        hideRecovery(folder)
+                        setRecoveryHiddenHere(true)
+                      }}
+                      ownBranch={
+                        session?.id ? sessionWorktreeBranch(session.id) : undefined
+                      }
+                      downgradeNote={(() => {
+                        const key = effectiveDowngradeKey(effective)
+                        return key &&
+                          effective.downgradedFrom === 'managed-worktree'
+                          ? t(key)
+                          : undefined
+                      })()}
+                      onAdopt={(record) => {
+                        if (session?.id)
+                          useCoworkWorktrees.getState().adopt(session.id, record)
+                      }}
+                      onPending={(record) =>
+                        useCoworkWorktrees.getState().pending(record)
+                      }
+                      onRemove={async (record, force) => {
+                        const dataFolder = await serviceHub
+                          .app()
+                          .getJanDataFolder()
+                        if (!dataFolder) return
+                        // Removed under a temporary binding rather than through
+                        // the session's own record: this checkout belongs to no
+                        // session, and adopting it first to delete it would put
+                        // the session on a worktree that is about to be gone.
+                        const key = `recovery:${record.path}`
+                        useCoworkWorktrees.getState().adopt(key, record)
+                        const done = await useCoworkWorktrees
                           .getState()
-                          .list(folder, dataFolder)
+                          .discard(key, dataFolder, force)
+                        useCoworkWorktrees.getState().forget(key)
+                        if (!done.ok) toast.error(done.reason)
+                        setFoundWorktrees(
+                          await useCoworkWorktrees
+                            .getState()
+                            .list(folder, dataFolder)
+                        )
+                      }}
+                    />
+                  </div>
+                )}
+                {/* AH-210: what a handed-off session could not bring with it. */}
+                <CoworkHandoffNotice
+                  handoff={session?.handoff}
+                  folder={folder}
+                  onDismiss={() =>
+                    session &&
+                    useCoworkSessions.getState().dismissHandoff(session.id)
+                  }
+                />
+                {/* The session's changed files, one step from review: over the
+                    composer, where the design keeps it while the run goes on. */}
+                <CoworkReviewReady
+                  fileCount={changeCounts.fileCount}
+                  additions={changeCounts.additions}
+                  deletions={changeCounts.deletions}
+                  onReview={() => openRail({ kind: 'diff' })}
+                  sessionId={session?.id}
+                  running={running}
+                  sandboxPaths={fileDiffs.map((f) => f.path)}
+                  applyActions={sandboxApply}
+                />
+                {/* The pull request for the folder's branch, if it has one, with
+                    the same mark the session carries in the sidebar. */}
+                {session?.id && folder ? (
+                  <CoworkSessionWorktreeBar
+                    sessionId={session.id}
+                    title={session.title}
+                    folder={folder}
+                    record={worktree}
+                    offerCopy={
+                      autoWorktree.isGit === false &&
+                      capabilityState.known &&
+                      capabilityState.managedWorktree &&
+                      (session.turns.length ?? 0) === 0
+                    }
+                    onWorkOnCopy={autoWorktree.workOnCopy}
+                    onCreatePr={(branch, base) =>
+                      handleSubmit(
+                        t('common:coworkParallel.prPrompt', {
+                          branch,
+                          base: base || 'the default branch',
+                        })
                       )
+                    }
+                    onDiscarded={() => {
+                      const sid = session.id
+                      void useDirectEditGrants.getState().revokeSession(sid)
+                      useCoworkWorktrees.getState().forget(sid)
+                      useCoworkSessions.getState().setAccess(sid, 'review-only')
+                      useCoworkParallel.getState().mark(sid, folder, 'skipped')
                     }}
                   />
-                </div>
-              )}
-              {/* AH-210: what a handed-off session could not bring with it. */}
-              <CoworkHandoffNotice
-                handoff={session?.handoff}
-                folder={folder}
-                onDismiss={() =>
-                  session &&
-                  useCoworkSessions.getState().dismissHandoff(session.id)
-                }
-              />
-              {/* The session's changed files, one step from review: over the
-                  composer, where the design keeps it while the run goes on. */}
-              <CoworkReviewReady
-                fileCount={changeCounts.fileCount}
-                additions={changeCounts.additions}
-                deletions={changeCounts.deletions}
-                onReview={() => openRail({ kind: 'diff' })}
-                sessionId={session?.id}
-                running={running}
-                sandboxPaths={fileDiffs.map((f) => f.path)}
-                applyActions={sandboxApply}
-              />
-              {/* The pull request for the folder's branch, if it has one, with
-                  the same mark the session carries in the sidebar. */}
-              {session?.id && folder ? (
-                <CoworkSessionWorktreeBar
-                  sessionId={session.id}
-                  title={session.title}
-                  folder={folder}
-                  record={worktree}
-                  offerCopy={
-                    autoWorktree.isGit === false &&
-                    capabilityState.known &&
-                    capabilityState.managedWorktree &&
-                    (session.turns.length ?? 0) === 0
-                  }
-                  onWorkOnCopy={autoWorktree.workOnCopy}
-                  onCreatePr={(branch, base) =>
-                    handleSubmit(
-                      t('common:coworkParallel.prPrompt', {
-                        branch,
-                        base: base || 'the default branch',
-                      })
-                    )
-                  }
-                  onDiscarded={() => {
-                    const sid = session.id
-                    void useDirectEditGrants.getState().revokeSession(sid)
-                    useCoworkWorktrees.getState().forget(sid)
-                    useCoworkSessions.getState().setAccess(sid, 'review-only')
-                    useCoworkParallel.getState().mark(sid, folder, 'skipped')
-                  }}
-                />
-              ) : null}
-              <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
-              {/* AH-209: a folder with no JAN.md is offered a starting one,
-                  proposed from a survey and written only when accepted. */}
+                ) : null}
+                <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
+              </CoworkBarStack>
+              {/* The FLINT.md dialog; the folder menu opens it. */}
               <CoworkProjectInit
-                folder={treeRoot ?? null}
-                // Offered only when JAN.md is known to be absent; one that
-                // could not be read is still there, and is not overwritten.
-                hasInstructions={
-                  !instructionFiles.some(
-                    (file) =>
-                      file.role === 'native' && file.state.kind === 'missing'
-                  )
-                }
+                hideTrigger
+                open={projectInitOpen}
+                onOpenChange={setProjectInitOpen}
+                folder={projectInitRoot}
+                hasInstructions={!projectInitOffered}
                 onAccepted={() => setInstructionsVersion((v) => v + 1)}
               />
               {/* Jev: a suggested skill, only when its opt-in is on. */}
@@ -5768,17 +5790,42 @@ export function CoworkPage() {
                 // (TurnUsageDetails); hide the composer's counter so the same
                 // number is not reported in two places.
                 hideTokenCounter
+                // Assistant, sampling, web search and reasoning behind one
+                // Options button: the Cowork row stays quiet.
+                groupOptions
                 surfaceControls={
                   <>
-                    {(phone || paneChrome) && sessionControls}
+                    {paneChrome ? sessionControls : phone ? workspacePill : null}
                     <CoworkSandboxChip />
-                    {!inspectorVisible && railToolbar('toolbar')}
+                    {/* On a phone the composer is out of view while the
+                        output is, so it keeps one set there. */}
+                    {showComposerRailButtons &&
+                      (!phone || !inspectorVisible) &&
+                      railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
                   </>
                 }
               />
+              {!paneChrome && (
+                // Under the composer, as Claude lays it out: what the run may
+                // do on the left, the model on the right. Wraps, never clips.
+                <div
+                  data-testid="cowork-run-controls"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
+                >
+                  {/* The run controls stay on one line; the model takes the
+                      rest and truncates its name, and only when not even a
+                      short name fits does it drop to a line of its own. */}
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    {runControls('quiet')}
+                  </div>
+                  <div className="ml-auto flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
+                    {quietModelSelector}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           </FrameBody>

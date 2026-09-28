@@ -198,4 +198,28 @@ describe('CoworkWorkspacePill', () => {
       expect(await open({})).toEqual(['read-only', 'read-only'])
     })
   })
+
+  it('offers describing the project from the folder menu, and closes itself', async () => {
+    const onOpen = vi.fn()
+    render(
+      <CoworkWorkspacePill
+        folder="/home/u/Projects/jan-app"
+        onAttach={vi.fn()}
+        onDetach={vi.fn()}
+        describeProject={{ label: 'Describe this project', onOpen }}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+    await userEvent.click(screen.getByTestId('project-init-open'))
+    expect(onOpen).toHaveBeenCalledTimes(1)
+    expect(screen.queryByTestId('project-init-open')).toBeNull()
+  })
+
+  it('does not offer it when the folder already has a FLINT.md', async () => {
+    render(
+      <CoworkWorkspacePill folder="/home/u/Projects/jan-app" onAttach={vi.fn()} onDetach={vi.fn()} />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
+    expect(screen.queryByTestId('project-init-open')).toBeNull()
+  })
 })

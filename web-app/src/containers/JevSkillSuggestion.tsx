@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Sparkles, X } from 'lucide-react'
+import { X } from 'lucide-react'
+import { TypeSafeMark } from '@/components/ui/TypeSafeMark'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { usePrompt } from '@/hooks/usePrompt'
@@ -89,7 +90,7 @@ export function JevSkillSuggestion({
       data-testid="jev-skill-suggestion"
       className="mb-2 flex items-center gap-2 rounded-[10px] bg-muted px-3 py-1.5 text-xs"
     >
-      <Sparkles className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      <TypeSafeMark size={14} className="shrink-0 text-muted-foreground" />
       <span className="min-w-0 truncate">
         {t('common:jev.suggestion', { skill })}
       </span>

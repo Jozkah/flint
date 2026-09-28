@@ -2,8 +2,9 @@ import { Link, useLocation } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ReactNode } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, FlaskConical } from 'lucide-react'
 import { Icon, type IconName } from '@/components/ui/icon'
+import { TypeSafeMark } from '@/components/ui/TypeSafeMark'
 import { cn } from '@/lib/utils'
 import { SettingsSearch } from '@/containers/SettingsSearch'
 import {
@@ -83,7 +84,8 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   hardware: mark('x-cpu'),
   'mcp-servers': mark('flow'),
   extensions: mark('x-puzzle'),
-  jev: mark('x-sparkle'),
+  // TypeSafe's mark: Jev is its model.
+  jev: ({ size, className }) => <TypeSafeMark size={size} className={className} />,
   // Claude's own mark keeps its colour in both themes.
   'claude-code': ({ size, className }) => (
     <img
@@ -186,8 +188,13 @@ const SettingsMenu = ({ variant = 'column' }: SettingsMenuProps) => {
       <menu.icon size={16} className="size-4 shrink-0 text-muted-foreground" />
       <span className="shrink-0 whitespace-nowrap">{t(menu.titleKey)}</span>
       {menu.experimental && (
-        <span className="ml-auto min-w-0 truncate text-[10.5px] font-normal text-subtle-foreground">
-          {t('common:experimental')}
+        // A mark, not a word: the word was cut off on every row anyway.
+        <span
+          className="ml-auto flex shrink-0 text-subtle-foreground"
+          title={t('common:experimental')}
+        >
+          <FlaskConical aria-hidden className="size-3" />
+          <span className="sr-only">{t('common:experimental')}</span>
         </span>
       )}
     </Link>

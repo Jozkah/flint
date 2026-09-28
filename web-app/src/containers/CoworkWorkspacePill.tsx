@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import { FadeText } from '@/components/ui/fade-text'
 import {
   Box,
   Copy,
   ExternalLink,
+  FileText,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -79,6 +81,12 @@ type Props = {
   /** Pick another folder to attach beside the primary one. */
   onAddExtra?: () => void
   onRemoveExtra?: (folder: string) => void
+  /**
+   * Offer a starting FLINT.md for the folder, labelled as given ("Describe
+   * this project", or continuing a saved draft). Absent when the folder
+   * already has one.
+   */
+  describeProject?: { label: string; onOpen: () => void }
 }
 
 /**
@@ -104,8 +112,10 @@ export function CoworkWorkspacePill({
   extraFoldersWritable = false,
   onAddExtra,
   onRemoveExtra,
+  describeProject,
 }: Props) {
   const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
   const serviceHub = useServiceHub()
   const folderName = folder ? basenameOf(folder) : null
   const primaryAccess = primaryFolderAccess(access)
@@ -127,7 +137,7 @@ export function CoworkWorkspacePill({
   }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant={folderName ? 'outline' : 'ghost'}
@@ -347,6 +357,22 @@ export function CoworkWorkspacePill({
                 <Copy size={14} aria-hidden />
                 {t('common:workspace.copyPath')}
               </Button>
+              {describeProject ? (
+                <Button
+                  variant="surface"
+                  size="sm"
+                  className="w-full"
+                  data-testid="project-init-open"
+                  onClick={() => {
+                    // The dialog outlives this menu, so the menu goes first.
+                    setOpen(false)
+                    describeProject.onOpen()
+                  }}
+                >
+                  <FileText size={14} aria-hidden />
+                  {describeProject.label}
+                </Button>
+              ) : null}
             </section>
 
             <Separator className="my-0.5 bg-transparent border-t border-dashed border-border" />

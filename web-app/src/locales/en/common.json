@@ -283,6 +283,11 @@
     "chooseView": "Choose what to show: code, a preview, changes, activity or the timeline.",
     "closeOverlay": "Close panel"
   },
+  "composerOptions": "Options",
+  "coworkBars": {
+    "showMore": "Show {{count}} more",
+    "showFewer": "Show fewer"
+  },
   "coworkLayout": {
     "views": "Cowork view",
     "content": "Content",
@@ -1289,14 +1294,17 @@
     "label": "What Flint may do",
     "review": {
       "label": "Review first",
+      "short": "Review",
       "description": "Reads, searches and inspects. Cannot write files or run commands."
     },
     "ask": {
       "label": "Ask before changes",
+      "short": "Ask",
       "description": "Works normally, but every change waits for you to allow it."
     },
     "auto": {
       "label": "Auto mode",
+      "short": "Auto",
       "description": "Changes files and runs commands without asking."
     }
   },
@@ -1445,14 +1453,17 @@
     "label": "Where changes go",
     "review-only": {
       "label": "Review only",
+      "short": "Sandbox",
       "description": "Flint can inspect this folder. Changes are created only in the session sandbox."
     },
     "managed-worktree": {
       "label": "Managed worktree",
+      "short": "Worktree",
       "description": "Flint works in an isolated Git worktree. Your current checkout is not modified."
     },
     "edit-folder": {
       "label": "Edit this folder",
+      "short": "Edits",
       "description": "Flint can modify files in this exact folder."
     },
     "notBuiltYet": "Not available yet",
@@ -1519,6 +1530,10 @@
   "coworkOrigins": {
     "title": "What changed",
     "subtitle": "Recorded by Flint, not written by the model.",
+    "files_one": "{{count}} file",
+    "files_other": "{{count}} files",
+    "checks_one": "{{count}} check",
+    "checks_other": "{{count}} checks",
     "janWrites": {
       "repository": "Flint changed in this folder",
       "managed": "Flint changed in the worktree",
@@ -1920,6 +1935,8 @@
     "profilesSave": "Save",
     "profilesReset": "Reset to default",
     "profilesAuto": "Auto",
+    "profilesAutoDesc": "Picked from the session's first message: by Jev when skill suggestions are On, by keywords otherwise.",
+    "profilesAutoPicked": "Auto picked {{profile}}",
     "title": "Jev decision support (TypeSafe)",
     "tab": "Jev",
     "pageDesc": "Optional decision support from TypeSafe's Jev model. Off by default; Flint's own behaviour stays in charge.",
@@ -1961,6 +1978,14 @@
     "open": "Open pull request",
     "dismiss": "Dismiss",
     "notOpenedHere": "PR #{{number}} on {{branch}} (not opened here)",
+    "conflicts": "Conflicts",
+    "conflictsTitle": "Conflicts with {{base}}",
+    "conflictsBody": "GitHub will not merge this until the conflicts are resolved.",
+    "behind": "Behind {{base}}",
+    "behindBody": "The repository requires the branch to be up to date with {{base}} before merging.",
+    "resolveConflicts": "Resolve in this session",
+    "resolveQueued": "Asked this session to resolve the conflicts. Nothing will be pushed.",
+    "resolveAlreadyQueued": "Resolving the conflicts is already queued.",
     "fixCheck": "Fix this check",
     "checkDetails": "Details",
     "fixQueued": "Asked this session to fix \"{{name}}\". Nothing is pushed without your approval.",
