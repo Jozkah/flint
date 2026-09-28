@@ -1,4 +1,5 @@
 import { FadeText } from '@/components/ui/fade-text'
+import { RowPreview, lastUserText } from '@/components/shell/nav/RowPreview'
 import {
   NavAction,
   NavButton,
@@ -87,7 +88,6 @@ import { GroupedTree, MoveToGroupSub } from '@/components/shell/nav/GroupedTree'
 import { coworkFolderAdapter } from '@/lib/groups/adapters'
 import { addNewItemToGroup } from '@/lib/groups/inherit'
 
-
 type CoworkNavItem = {
   title: string
   icon: LucideIcon
@@ -119,6 +119,10 @@ const SessionItem = memo(function SessionItem({
   const ledger = useCoworkOrigins((state) => state.bySession[session.id])
   const activity = useFileActivity((s) => s.byConversation[session.id])
   const running = useCoworkRun((s) => !!s.runs[session.id])
+  const summary = useMemo(
+    () => lastUserText(session.messages),
+    [session.messages]
+  )
 
   /**
    * Open this row's own menu from right-click or the keyboard — the same
@@ -138,31 +142,42 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <NavItem onContextMenu={openRowMenu} onKeyDown={onRowKeyDown}>
-      <NavButton
-        size="sub"
-        isActive={isCurrent}
-        onClick={() => onSelect(session.id)}
-        data-testid="cowork-session-item"
-        data-session-id={session.id}
-        data-current={isCurrent ? 'true' : 'false'}
+      <RowPreview
+        title={session.title}
+        updated={session.updated}
+        summary={summary}
+        suppressed={menuOpen}
       >
-        <SessionMark session={session} running={running} selected={isCurrent} />
-        <FadeText>{session.title}</FadeText>
-        {running && (
-          // A session running in the background shows here, without the
-          // session in view being treated as busy (janhq/jan#8905). The row's
-          // status mark shows it; this names it for assistive technology.
-          <span
-            role="status"
-            aria-label={t('common:tasks.running', { count: 1 })}
-            title={t('common:tasks.running', { count: 1 })}
-            data-testid={`cowork-session-running-${session.id}`}
-            className="sr-only"
-          >
-            <Loader2 aria-hidden />
-          </span>
-        )}
-      </NavButton>
+        <NavButton
+          size="sub"
+          isActive={isCurrent}
+          onClick={() => onSelect(session.id)}
+          data-testid="cowork-session-item"
+          data-session-id={session.id}
+          data-current={isCurrent ? 'true' : 'false'}
+        >
+          <SessionMark
+            session={session}
+            running={running}
+            selected={isCurrent}
+          />
+          <FadeText>{session.title}</FadeText>
+          {running && (
+            // A session running in the background shows here, without the
+            // session in view being treated as busy (janhq/jan#8905). The row's
+            // status mark shows it; this names it for assistive technology.
+            <span
+              role="status"
+              aria-label={t('common:tasks.running', { count: 1 })}
+              title={t('common:tasks.running', { count: 1 })}
+              data-testid={`cowork-session-running-${session.id}`}
+              className="sr-only"
+            >
+              <Loader2 aria-hidden />
+            </span>
+          )}
+        </NavButton>
+      </RowPreview>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <NavAction showOnHover>
@@ -356,20 +371,30 @@ function SessionMark({
     (s) => (s.pendingAsks[session.id]?.length ?? 0) > 0
   )
   const waiting = awaitingApproval || awaitingAnswer
-  const recency = useThreadStatus({ updated: session.updated }, running, waiting, {
-    id: `cowork:${session.id}`,
-    selected,
-  })
+  const recency = useThreadStatus(
+    { updated: session.updated },
+    running,
+    waiting,
+    {
+      id: `cowork:${session.id}`,
+      selected,
+    }
+  )
   const status: ThreadStatus = waiting
     ? 'wait'
     : running
-    ? 'active'
-    : pr
-      ? pr.state === 'open'
-        ? 'pr'
-        : pr.state
-      : recency
-  return <ThreadStatusMark status={status} detail={pr ? `#${pr.number}` : undefined} />
+      ? 'active'
+      : pr
+        ? pr.state === 'open'
+          ? 'pr'
+          : pr.state
+        : recency
+  return (
+    <ThreadStatusMark
+      status={status}
+      detail={pr ? `#${pr.number}` : undefined}
+    />
+  )
 }
 
 /**
