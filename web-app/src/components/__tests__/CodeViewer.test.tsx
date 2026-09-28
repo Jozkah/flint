@@ -92,6 +92,16 @@ describe('CodeViewer', () => {
     )
   })
 
+  it('adds changed-line markers before line numbers', async () => {
+    render(<CodeViewer {...defaults} changedLines={{ 2: { added: true, removed: true } }} />)
+    await waitFor(() => expect(highlight).toHaveBeenCalled())
+    const transformer = highlight.mock.calls[0][1].transformers[0]
+    const node: any = { properties: {}, children: [] }
+    transformer.line(node, 2)
+    expect(node.children[0].properties.className).toContain('cv-change-marker')
+    expect(node.children[0].children.map((part: { children: { value: string }[] }) => part.children[0].value)).toEqual(['−', '+'])
+  })
+
   it('re-highlights once when the theme changes', async () => {
     resolves()
     render(<CodeViewer {...defaults} onToggleWrap={vi.fn()} />)

@@ -113,7 +113,7 @@ export function CoworkTimelinePanel({
   const [events, setEvents] = useState<EventEnvelope[]>([])
   const [error, setError] = useState<string | null>(null)
   const [enabled, setEnabled] = useState<Set<TimelineCategory>>(
-    () => new Set(TIMELINE_CATEGORIES)
+    () => new Set(['tools'])
   )
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
   const [following, setFollowing] = useState(true)

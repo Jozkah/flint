@@ -61,19 +61,20 @@ export function InputControl({
 
   if (type === 'number') {
     return (
-      <ButtonGroup className={className}>
+      <ButtonGroup className={cn('max-w-full', className)}>
         <Input
-          value={stringValue || undefined}
+          value={stringValue}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
-          className="h-8 w-16 font-mono text-center text-xs!"
+          inputMode="decimal"
+          className="h-8 w-24 shrink-0 font-mono text-center text-sm tabular-nums"
         />
         <Button
           variant="outline"
           size="icon-sm"
           type="button"
           aria-label="Decrement"
-          className='rounded-none'
+          className='shrink-0 rounded-none'
           onClick={() => handleNumberAdjustment(-step)}
           disabled={min !== undefined && numericValue <= min}
         >
@@ -84,7 +85,7 @@ export function InputControl({
           size="icon-sm"
           type="button"
           aria-label="Increment"
-          className='rounded-r-md'
+          className='shrink-0 rounded-r-md'
           onClick={() => handleNumberAdjustment(step)}
           disabled={max !== undefined && numericValue >= max}
         >

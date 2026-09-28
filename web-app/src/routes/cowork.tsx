@@ -351,6 +351,7 @@ import {
   effectiveAccess,
   effectiveDowngradeKey,
   runCarries,
+  type AccessMode,
 } from '@/lib/coworkAccess'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
@@ -663,6 +664,8 @@ export function CoworkPage() {
    * merely stale-looking.
    */
   const [confirmDirectEdit, setConfirmDirectEdit] = useState(false)
+  const [pendingFolder, setPendingFolder] = useState<Record<string, string>>({})
+  const [pendingAccess, setPendingAccess] = useState<Record<string, AccessMode>>({})
   /**
    * The binding as it stands right now.
    *
@@ -1616,21 +1619,22 @@ export function CoworkPage() {
   )
 
   const attachFolder = useCallback(async () => {
-    // Checked before the dialog and again after it: the picker is modal to
-    // Flint, but a run started before it opened is still going behind it.
-    if (folderHeld(session?.id)) return
+    const openingSessionId = session?.id
     const picked = await serviceHub.dialog().open({ directory: true })
     if (typeof picked !== 'string') return
-    if (folderHeld(session?.id)) return
+    if (openingSessionId &&
+      useCoworkSessions.getState().currentId !== openingSessionId) return
     const sid = ensureCurrentSession(paneSessionIdRef.current)
-    const previous = useCoworkSessions
-      .getState()
-      .sessions.find((entry) => entry.id === sid)?.folder
-    if (previous !== picked) {
-      await useDirectEditGrants.getState().revokeSession(sid)
-    }
-    useCoworkSessions.getState().setFolder(sid, picked)
-  }, [serviceHub, session?.id, folderHeld])
+    if (!useCoworkRun.getState().runs[sid] && authorityMayChange(sid))
+      useCoworkSessions.getState().setFolder(sid, picked)
+    else setPendingFolder((pending) => ({ ...pending, [sid]: picked }))
+    setPendingAccess((pending) => {
+      if (!pending[sid]) return pending
+      const next = { ...pending }
+      delete next[sid]
+      return next
+    })
+  }, [serviceHub, session?.id])
 
   const detachFolder = useCallback(async () => {
     if (!session?.id || folderHeld(session.id)) return
@@ -1950,6 +1954,11 @@ export function CoworkPage() {
    */
   const authorizeDirectEdit = useCallback(async (): Promise<boolean> => {
     const sid = session?.id ?? null
+    if (sid && (useCoworkRun.getState().runs[sid] || !authorityMayChange(sid))) {
+      setPendingAccess((pending) => ({ ...pending, [sid]: 'edit-folder' }))
+      setConfirmDirectEdit(false)
+      return true
+    }
     const done = useCoworkActiveWork.getState().acquire({
       sessionId: sid ?? 'none',
       kind: 'authorizing',
@@ -2221,6 +2230,33 @@ export function CoworkPage() {
       (liveJobs.some((job) => !job.finished) ? 'job' : null)
     )
   }, [session?.id, activeWorkItems, liveJobs])
+
+  // A running task keeps its original binding. Apply choices made while it
+  // runs only after every task and background job in this session has ended.
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid || running || blockingKind) return
+    if (pendingFolder[sid]) {
+      useCoworkSessions.getState().setFolder(sid, pendingFolder[sid])
+      setPendingFolder((pending) => {
+        const next = { ...pending }
+        delete next[sid]
+        return next
+      })
+      return
+    }
+    const choice = pendingAccess[sid]
+    if (!choice) return
+    setPendingAccess((pending) => {
+      const next = { ...pending }
+      delete next[sid]
+      return next
+    })
+    if (choice === 'managed-worktree') void authorizeManagedWorktree()
+    else if (choice === 'edit-folder') void authorizeDirectEdit()
+    else void returnToReviewOnly()
+  }, [session?.id, running, blockingKind, pendingFolder, pendingAccess,
+    authorizeManagedWorktree, authorizeDirectEdit, returnToReviewOnly])
 
   // The one activity record. The panel, the chip and every inline workflow
   // card select from this, so none of them can disagree about the same work.
@@ -5041,11 +5077,32 @@ export function CoworkPage() {
         // Authority must not move under work already running. A background
         // shell job outlives its run and can still write, so it holds
         // authority in place just as a live turn does.
-        busyReason={blockingKind}
+        busyReason={null}
         onRequestDirectEdit={() => setConfirmDirectEdit(true)}
-        onRequestWorktree={() => void authorizeManagedWorktree()}
-        onReviewOnly={() => void returnToReviewOnly()}
+        onRequestWorktree={() => {
+          if (!session?.id) return
+          if (running || blockingKind)
+            setPendingAccess((pending) => ({ ...pending, [session.id]: 'managed-worktree' }))
+          else void authorizeManagedWorktree()
+        }}
+        onReviewOnly={() => {
+          if (!session?.id) return
+          if (running || blockingKind)
+            setPendingAccess((pending) => ({ ...pending, [session.id]: 'review-only' }))
+          else void returnToReviewOnly()
+        }}
       />
+      {session?.id &&
+        (pendingFolder[session.id] || pendingAccess[session.id]) && (
+          <span role="status" className="text-xs text-muted-foreground">
+            {t('common:coworkAccess.pendingNextRun')}
+          </span>
+        )}
+      {running && (
+        <span className="text-xs text-muted-foreground">
+          {t('common:coworkAccess.currentRunUnchanged')}
+        </span>
+      )}
       {workProfilesOn && session?.id && (
         <CoworkWorkProfilePicker
           variant={variant}
@@ -5921,7 +5978,6 @@ export function CoworkPage() {
               <ArrowLeft className="size-4" aria-hidden />
               {t('common:coworkLayout.back')}
             </Button>
-            {modelSelector}
             <CoworkSessionDetails inline summary={sessionDetailsSummary}>
               {detailsBody}
             </CoworkSessionDetails>

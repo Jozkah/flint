@@ -114,7 +114,8 @@ export class DefaultModelsService implements ModelsService {
     bypassAutoUnload: boolean = false
   ): Promise<SessionInfo | undefined> {
     const engine = this.getEngine(provider.provider)
-    if (!engine) return undefined
+    if (!engine)
+      throw new Error(`The ${provider.provider} engine is not available. Restart Flint and try again.`)
 
     const loadedModels = await engine.getLoadedModels()
     if (loadedModels.includes(model)) return undefined
