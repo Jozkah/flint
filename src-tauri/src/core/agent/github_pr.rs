@@ -80,6 +80,36 @@ pub struct PrStatus {
     pub head_sha: String,
     /// The named checks, in the order GitHub lists them.
     pub check_runs: Vec<CheckRun>,
+    /// Whether the pull request can merge into its base as it stands.
+    pub merge: MergeState,
+}
+
+/// GitHub's view of whether the pull request merges, from `mergeable` and
+/// `mergeStateStatus`. `Unknown` while GitHub is still computing it.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum MergeState {
+    Clean,
+    /// Conflicts with the base branch that must be resolved before merging.
+    Conflicting,
+    /// Behind the base branch, which the repository requires to be current.
+    Behind,
+    /// Held by a rule: required reviews or checks.
+    Blocked,
+    Unknown,
+}
+
+fn merge_state(mergeable: &str, state: &str) -> MergeState {
+    match (
+        mergeable.to_ascii_uppercase().as_str(),
+        state.to_ascii_uppercase().as_str(),
+    ) {
+        ("CONFLICTING", _) | (_, "DIRTY") => MergeState::Conflicting,
+        (_, "BEHIND") => MergeState::Behind,
+        (_, "BLOCKED") => MergeState::Blocked,
+        ("MERGEABLE", _) => MergeState::Clean,
+        _ => MergeState::Unknown,
+    }
 }
 
 /// Why no status could be read. `NoPullRequest` is the ordinary case of a
@@ -116,6 +146,10 @@ struct GhPr {
     head_ref_oid: String,
     #[serde(default)]
     status_check_rollup: Vec<GhCheck>,
+    #[serde(default)]
+    mergeable: String,
+    #[serde(default)]
+    merge_state_status: String,
 }
 
 /// `statusCheckRollup` mixes check runs (`status` + `conclusion`) and commit
@@ -243,6 +277,7 @@ fn parse_pr(json: &str) -> Result<PrStatus, String> {
         checks: summarize_checks(&pr.status_check_rollup),
         head_sha: pr.head_ref_oid,
         check_runs: check_runs(&pr.status_check_rollup),
+        merge: merge_state(&pr.mergeable, &pr.merge_state_status),
     })
 }
 
@@ -255,7 +290,7 @@ fn view_args(pr: Option<&str>) -> Vec<String> {
     }
     args.push("--json".to_string());
     args.push(
-        "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,additions,deletions,statusCheckRollup"
+        "number,title,url,state,isDraft,headRefName,headRefOid,baseRefName,additions,deletions,statusCheckRollup,mergeable,mergeStateStatus"
             .to_string(),
     );
     args
@@ -706,6 +741,32 @@ mod tests {
         assert!(!is_pr_url("https://github.com/o/r/pull/1 --web"));
         assert_eq!(view_args(Some(url))[2], url);
         assert_eq!(view_args(None)[2], "--json");
+    }
+
+    #[test]
+    fn reads_whether_the_pull_request_merges() {
+        let with = |mergeable: &str, state: &str| {
+            parse_pr(&format!(
+                r#"{{"number":36,"title":"t","url":"u","state":"OPEN","mergeable":"{mergeable}","mergeStateStatus":"{state}"}}"#
+            ))
+            .unwrap()
+            .merge
+        };
+        assert_eq!(with("CONFLICTING", "DIRTY"), MergeState::Conflicting);
+        // Either field alone is enough to call it conflicting.
+        assert_eq!(with("UNKNOWN", "DIRTY"), MergeState::Conflicting);
+        assert_eq!(with("MERGEABLE", "BEHIND"), MergeState::Behind);
+        assert_eq!(with("MERGEABLE", "BLOCKED"), MergeState::Blocked);
+        assert_eq!(with("MERGEABLE", "CLEAN"), MergeState::Clean);
+        assert_eq!(with("UNKNOWN", "UNKNOWN"), MergeState::Unknown);
+        // Older gh, no merge fields: unknown, never clean.
+        assert_eq!(
+            parse_pr(r#"{"number":1,"title":"t","url":"u","state":"OPEN"}"#)
+                .unwrap()
+                .merge,
+            MergeState::Unknown
+        );
+        assert!(view_args(None)[3].contains("mergeable,mergeStateStatus"));
     }
 
     #[test]

@@ -93,6 +93,34 @@ describe('Cowork and Rooms groups on the sidebar', () => {
     expect(within(group).queryByText('Session s2')).toBeNull()
   })
 
+  it('opens New group from a control outside the tree, once', () => {
+    const handled = vi.fn()
+    const props = {
+      surface: 'cowork' as const,
+      ids: ['s1'],
+      renderItem: (id: string) => <li key={id}>{`Session ${id}`}</li>,
+      keepVisible: () => false,
+      adapter,
+      onNewInGroup: vi.fn(),
+      newInLabelKey: 'common:groups.newSessionIn' as const,
+      showNewGroup: false,
+    }
+    const { rerender } = render(
+      <ul>
+        <GroupedTree {...props} newGroupRequest={0} onNewGroupRequestHandled={handled} />
+      </ul>
+    )
+    expect(screen.queryByTestId('cowork-new-group')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
+    rerender(
+      <ul>
+        <GroupedTree {...props} newGroupRequest={1} onNewGroupRequestHandled={handled} />
+      </ul>
+    )
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(handled).toHaveBeenCalledTimes(1)
+  })
+
   it("the group's + starts a new item in it", async () => {
     let id = ''
     await act(async () => {

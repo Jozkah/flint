@@ -440,16 +440,33 @@ export function CoworkProposalReview({
       className="m-3 rounded-[10px] bg-muted shadow-[inset_0_0_0_0.8px_var(--border)] px-3 py-2.5 text-[12.5px] motion-safe:animate-rise-in"
       data-testid="proposal-review"
     >
-      {/* Icon, what this is, then what can be done with it: stacked, as the
-          design lays out the note that heads the Changes panel. */}
-      <GitBranch size={14} className="mb-2 shrink-0 text-muted-foreground" />
-      <p className="mb-2 min-w-0 text-[12.5px] text-foreground">
-        {proposal
-          ? `${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`
-          : (title ??
-            'This run works in its own copy. Nothing reaches your folder until you apply it.')}
-      </p>
+      {/* Before a proposal exists this is one row: the icon carries the
+          explanation as its tooltip, and the actions sit beside it. Once
+          there is a proposal, what it is and where it goes is worth a line. */}
+      {proposal ? (
+        <>
+          <GitBranch size={14} className="mb-2 shrink-0 text-muted-foreground" />
+          <p className="mb-2 min-w-0 text-[12.5px] text-foreground">
+            {`${title ?? 'Proposed changes'} to ${worktree.sourceRoot}`}
+          </p>
+        </>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 empty:hidden">
+        {!proposal ? (
+          <span
+            className="inline-flex shrink-0 items-center text-muted-foreground"
+            title={
+              title ??
+              'This run works in its own copy. Nothing reaches your folder until you apply it.'
+            }
+          >
+            <GitBranch size={14} aria-hidden />
+            <span className="sr-only">
+              {title ??
+                'This run works in its own copy. Nothing reaches your folder until you apply it.'}
+            </span>
+          </span>
+        ) : null}
         {!proposal ? (
           <Button
             size="sm"

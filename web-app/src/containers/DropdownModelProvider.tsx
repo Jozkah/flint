@@ -73,6 +73,8 @@ type DropdownModelProviderProps = {
    * and to no other (janhq/jan#8905).
    */
   onModelChange?: (model: ThreadModel) => void
+  /** `quiet` under a composer: the model's name as text, no box, no arrow. */
+  variant?: 'pill' | 'quiet'
 }
 
 interface SearchableModel {
@@ -160,7 +162,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   model,
   useLastUsedModel = false,
   onModelChange,
+  variant = 'pill',
 }: DropdownModelProviderProps) {
+  const quiet = variant === 'quiet'
   const {
     providers,
     getProviderByName,
@@ -804,7 +808,16 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
             also holds the settings and support controls, which are not part
             of the trigger (a div carrying aria-expanded failed axe). */}
         <PopoverAnchor asChild>
-          <div data-slot="model-pill" className="relative z-20 flex h-[30px] min-w-0 max-w-full shrink items-center gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift pointer-coarse:h-11">
+          <div
+            data-slot="model-pill"
+            data-variant={variant}
+            className={cn(
+              'relative z-20 flex min-w-0 max-w-full shrink items-center pointer-coarse:h-11',
+              quiet
+                ? 'h-7 gap-1.5 rounded-md px-2 text-xs transition-colors duration-150 hover:bg-hover-row data-[state=open]:bg-hover-row'
+                : 'h-[30px] gap-[7px] rounded-lg border-[0.8px] border-border bg-card px-2 text-[12.5px] transition-[border-color,box-shadow] duration-150 hover:border-border-strong hover:shadow-lift data-[state=open]:border-border-strong data-[state=open]:shadow-lift'
+            )}
+          >
             <PopoverTrigger asChild>
             <button
               type="button"
@@ -825,7 +838,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 <TooltipTrigger asChild>
                   <span
                     className={cn(
-                      'min-w-0 flex-1 truncate text-left leading-normal text-foreground',
+                      'min-w-0 flex-1 truncate text-left leading-normal',
+                      quiet ? 'font-medium text-muted-foreground' : 'text-foreground',
                       !selectedModel?.id && 'text-muted-foreground'
                     )}
                     data-unavailable={
@@ -837,7 +851,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 </TooltipTrigger>
                 <TooltipContent>{displayModel}</TooltipContent>
               </Tooltip>
-              <ChevronsUpDown className="size-[13px] shrink-0 text-muted-foreground" />
+              {!quiet && (
+                <ChevronsUpDown className="size-[13px] shrink-0 text-muted-foreground" />
+              )}
             </button>
             </PopoverTrigger>
           {currentModel?.settings &&

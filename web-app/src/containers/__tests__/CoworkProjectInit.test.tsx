@@ -156,4 +156,31 @@ describe('CoworkProjectInit', () => {
       Object.keys(options.partialize!(useProjectInitDrafts.getState()))
     ).toEqual(['drafts'])
   })
+
+  it('opens from a control elsewhere and surveys on opening', async () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <CoworkProjectInit
+        folder="/repo"
+        hasInstructions={false}
+        hideTrigger
+        open={false}
+        onOpenChange={onOpenChange}
+      />
+    )
+    // Its own button is gone; the folder menu offers it instead.
+    expect(screen.queryByTestId('project-init-open')).toBeNull()
+    expect(api.projectSurvey).not.toHaveBeenCalled()
+    rerender(
+      <CoworkProjectInit
+        folder="/repo"
+        hasInstructions={false}
+        hideTrigger
+        open
+        onOpenChange={onOpenChange}
+      />
+    )
+    expect(await screen.findByTestId('project-init-text')).toHaveValue(survey.draft)
+    expect(api.projectSurvey).toHaveBeenCalledTimes(1)
+  })
 })

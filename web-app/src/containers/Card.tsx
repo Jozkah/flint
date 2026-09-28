@@ -114,7 +114,18 @@ export function CardItem({
               </div>
             )}
             {description && (
-              <div id={descriptionId} className="text-xs leading-[1.4] text-muted-foreground">
+              <div
+                id={descriptionId}
+                // A plain-text explanation reads as one line, whole on hover;
+                // assistive tech still gets all of it through the control's
+                // aria-describedby. Rich descriptions (lists, links) show in
+                // full.
+                title={typeof description === 'string' ? description : undefined}
+                className={cn(
+                  'text-xs leading-[1.4] text-muted-foreground',
+                  typeof description === 'string' && 'line-clamp-1'
+                )}
+              >
                 {description}
               </div>
             )}

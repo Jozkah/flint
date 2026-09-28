@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, act, waitFor, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
@@ -339,6 +339,7 @@ import { CoworkPaneContext, PaneChromeContext } from '@/hooks/useCoworkPane'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useMessageQueue } from '@/stores/message-queue-store'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { Route, CoworkPage as PanePage } from '@/routes/cowork'
 
 const CoworkPage = (Route as any).component as () => React.ReactElement
@@ -422,6 +423,9 @@ const renderRoute = async () => {
 beforeEach(() => {
   vi.clearAllMocks()
   installInvoke()
+  // Most tests drive the output panel from the composer's buttons, which are
+  // a setting; the default (off) has its own test.
+  useInterfaceSettings.setState({ showComposerRailButtons: true })
   h.deps = null
   useTeamConflictRequests.setState({ bySession: {} })
   h.directEditCapability.mockResolvedValue(true)
@@ -482,7 +486,7 @@ const isHidden = (el: HTMLElement) => el.classList.contains('hidden')
 describe('the layout at each width', () => {
   afterEach(() => setViewport(4000))
 
-  it('docks the output panel on a wide window, with one set of rail tabs', async () => {
+  it('docks the output panel on a wide window, keeping the composer rail buttons', async () => {
     setViewport(1440)
     await renderRoute()
     // Closed: the rail buttons are in the composer row.
@@ -491,17 +495,56 @@ describe('the layout at each width', () => {
 
     const inspector = await screen.findByTestId('cowork-inspector')
     expect(inspector).toHaveAttribute('data-layout', 'docked')
-    // Open: the same buttons, once, in the panel header, still pressed.
+    // Open: the panel header has them as tabs, and the composer keeps its own,
+    // so opening the panel takes nothing away. Both show the open one.
     const code = screen.getAllByRole('button', { name: 'common:rail.code' })
-    expect(code).toHaveLength(1)
-    expect(inspector.contains(code[0])).toBe(true)
-    expect(code[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(code).toHaveLength(2)
+    const tab = code.find((b) => inspector.contains(b))!
+    const inComposer = code.find((b) => screen.getByTestId('composer').contains(b))
+    expect(tab).toBeDefined()
+    expect(inComposer).toBeDefined()
+    for (const b of code) expect(b).toHaveAttribute('aria-pressed', 'true')
 
     // Pressing the open tab again closes it, as the toolbar always did.
-    await userEvent.click(code[0])
+    await userEvent.click(tab)
     await waitFor(() =>
       expect(screen.queryByTestId('cowork-inspector')).toBeNull()
     )
+  })
+
+  it('keeps the rail buttons out of the composer by default, with one Output button instead', async () => {
+    useInterfaceSettings.setState({ showComposerRailButtons: false })
+    setViewport(1440)
+    await renderRoute()
+    expect(screen.queryByRole('button', { name: 'common:rail.code' })).toBeNull()
+
+    const toggle = screen.getByTestId('cowork-output-toggle')
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await userEvent.click(toggle)
+    const inspector = await screen.findByTestId('cowork-inspector')
+    // The panel's own tabs are still there; the composer has none.
+    expect(within(inspector).getByRole('button', { name: 'common:rail.changes' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(
+      within(screen.getByTestId('composer')).queryByRole('button', { name: 'common:rail.code' })
+    ).toBeNull()
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+
+    // Another tab, closed, and opened again: it comes back on that tab.
+    await userEvent.click(within(inspector).getByRole('button', { name: 'common:rail.code' }))
+    await userEvent.click(toggle)
+    await waitFor(() => expect(screen.queryByTestId('cowork-inspector')).toBeNull())
+    await userEvent.click(toggle)
+    expect(
+      within(await screen.findByTestId('cowork-inspector')).getByRole('button', {
+        name: 'common:rail.code',
+      })
+    ).toHaveAttribute('aria-pressed', 'true')
+    // The open panel is remembered; leave it closed for the next test.
+    await userEvent.click(toggle)
+    await waitFor(() => expect(screen.queryByTestId('cowork-inspector')).toBeNull())
   })
 
   it('puts the panel in a drawer below 1100px that its scrim closes', async () => {
@@ -1092,8 +1135,11 @@ describe('what the route says about the run', () => {
     await chooseAccess('managed-worktree')
     await waitFor(() => expect(h.directEditAuthorize).toHaveBeenCalled())
 
+    // The composer's copy: the panel may already be open, with its own.
     await userEvent.click(
-      screen.getByRole('button', { name: 'common:rail.changes' })
+      within(screen.getByTestId('composer')).getByRole('button', {
+        name: 'common:rail.changes',
+      })
     )
     await userEvent.click(await screen.findByText('common:rewind.goBack'))
     // Planning changes nothing; the restore waits for the confirmation.

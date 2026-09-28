@@ -100,6 +100,8 @@ function InterfaceSettings() {
     setAutoGenerateTitle,
     reduceMotion,
     setReduceMotion,
+    showComposerRailButtons,
+    setShowComposerRailButtons,
   } = useInterfaceSettings()
 
   const theme = (
@@ -198,6 +200,19 @@ function InterfaceSettings() {
         }
       />
       <CardItem
+        anchor="settings-appearance-composer-rail-buttons"
+        title={t('settings:interface.composerRailButtons')}
+        description={t('settings:interface.composerRailButtonsDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.composerRailButtons')}
+            data-testid="composer-rail-buttons-switch"
+            checked={Boolean(showComposerRailButtons)}
+            onCheckedChange={(v) => setShowComposerRailButtons?.(v)}
+          />
+        }
+      />
+      <CardItem
         anchor="settings-appearance-auto-title"
         title={t('settings:interface.autoGenerateTitle')}
         description={t('settings:interface.autoGenerateTitleDesc')}
@@ -241,16 +256,19 @@ function InterfaceSettings() {
       <SettingsPageBody
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
-        layout={[0, 1, 0, 1, 1, 0, 0, 1]}
+        // Two columns of about equal height, so neither ends in a long empty
+        // stretch: the everyday settings on the left with Reset last, the
+        // tall pickers (accent, transcript view) and Sounds on the right.
+        layout={[0, 1, 0, 1, 0, 1, 0, 0]}
       >
         {theme}
         <AccentSettings />
         {reading}
         {transcript}
         {chatDisplay}
-        {reset}
-        {motion}
         <CompletionSoundSettings />
+        {motion}
+        {reset}
       </SettingsPageBody>
     </div>
   )
