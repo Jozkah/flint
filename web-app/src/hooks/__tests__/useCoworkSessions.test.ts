@@ -9,11 +9,14 @@ vi.mock('@/lib/backendStorage', () => ({
 }))
 
 import { useCoworkSessions } from '../useCoworkSessions'
+import { useCoworkParallel } from '../useCoworkParallel'
 import { accessOf } from '@/lib/coworkAccess'
 import type { CoworkTurn, SubagentRun } from '@/types/coworkSession'
 
-const reset = () =>
+const reset = () => {
+  useCoworkParallel.getState().setAutoWorktree(false)
   useCoworkSessions.setState({ sessions: [], currentId: null })
+}
 
 const sub = (runId: string, name: string): SubagentRun => ({
   runId,
@@ -251,6 +254,7 @@ describe('the mode a repository-bound session starts in', () => {
  * that was swapped, and consent that named a different repository.
  */
 describe('what a session may write to', () => {
+  beforeEach(reset)
   const sessionOf = (id: string) =>
     useCoworkSessions.getState().sessions.find((x) => x.id === id)!
 
@@ -269,6 +273,23 @@ describe('what a session may write to', () => {
     expect(accessOf(sessionOf(id))).toBe('edit-folder')
   })
 
+  it('defaults an attached folder to direct editing', () => {
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+
+    expect(accessOf(sessionOf(id))).toBe('edit-folder')
+    useCoworkSessions.getState().setAccess(id, 'review-only')
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    expect(accessOf(sessionOf(id))).toBe('review-only')
+  })
+
+  it('keeps automatic worktrees when explicitly enabled', () => {
+    useCoworkParallel.getState().setAutoWorktree(true)
+    const id = useCoworkSessions.getState().createSession()
+    useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
+    expect(accessOf(sessionOf(id))).toBe('review-only')
+  })
+
   it('records consent against the session and folder it was given for', () => {
     const id = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
@@ -280,8 +301,9 @@ describe('what a session may write to', () => {
     })
   })
 
-  // Swapping the repository withdraws everything agreed about the old one.
-  it('returns to review only when the folder changes', () => {
+  // Swapping the repository withdraws old consent; new attachment requests a
+  // fresh direct-edit grant before writes can reach it.
+  it('requests direct editing again when the folder changes', () => {
     const id = useCoworkSessions.getState().createSession()
     useCoworkSessions.getState().setFolder(id, '/home/dev/obs-forwarder')
     useCoworkSessions.getState().setAccess(id, 'edit-folder')
@@ -289,7 +311,7 @@ describe('what a session may write to', () => {
 
     useCoworkSessions.getState().setFolder(id, '/home/dev/note-py')
 
-    expect(accessOf(sessionOf(id))).toBe('review-only')
+    expect(accessOf(sessionOf(id))).toBe('edit-folder')
     expect(sessionOf(id).editConsent).toBeUndefined()
   })
 

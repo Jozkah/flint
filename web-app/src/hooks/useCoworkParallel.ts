@@ -4,11 +4,9 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 /**
  * Parallel sessions on one folder.
  *
- * Every new Cowork session attached to a Git folder works in its own managed
- * worktree and branch by default, so any number of sessions can edit the same
- * repository at once without writing over each other (or over the user's own
- * checkout). The setting turns that default off; a session can still pick an
- * access mode by hand either way.
+ * Users can opt into a managed worktree and branch for each new Cowork session
+ * attached to a Git folder. Direct editing is the default when a folder is
+ * attached; Review only and Managed worktree remain explicit choices.
  *
  * `auto` records which sessions were put in a worktree (or copy) by this
  * default, so reopening one after a restart re-attaches its own worktree
@@ -36,7 +34,7 @@ const key = (sessionId: string, folder: string) => `${sessionId}\u0000${folder}`
 export const useCoworkParallel = create<ParallelState>()(
   persist(
     (set, get) => ({
-      autoWorktree: true,
+      autoWorktree: false,
       setAutoWorktree: (value) => set({ autoWorktree: value }),
       auto: {},
       mark: (sessionId, folder, state) =>
@@ -65,6 +63,11 @@ export const useCoworkParallel = create<ParallelState>()(
     {
       name: 'flint-cowork-parallel',
       storage: createJSONStorage(() => localStorage),
+      version: 1,
+      migrate: (persisted) => ({
+        ...(persisted as ParallelState),
+        autoWorktree: false,
+      }),
     }
   )
 )

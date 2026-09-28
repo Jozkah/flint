@@ -16,7 +16,7 @@ use serde_json::{json, Value};
 /// refused. Built per platform so each one reads only its own syntax rules.
 fn shell_line() -> &'static str {
     if cfg!(windows) {
-        "Runs Windows PowerShell 5.1, not bash: write PowerShell syntax. No heredocs (`<<'EOF'`), no `&&`/`||` chaining (use `;`, or `if ($?) { ... }`), no `export VAR=` (use `$env:VAR = '...'`). To run a multi-line script, write it to a file with the `write` tool and run that file (`python check.py`) instead of piping it in."
+        "Runs Windows PowerShell 5.1, not bash: write PowerShell syntax. Use `Set-Location 'C:\\Users\\name\\project'`, never `cd /c/Users/name/project`; do not launch another PowerShell inside this tool. No heredocs (`<<'EOF'`), no `&&`/`||` chaining (use `;`, or `if ($?) { ... }`), no `export VAR=` (use `$env:VAR = '...'`). To run a multi-line script, write it to a file with the `write` tool and run that file (`python check.py`) instead of piping it in."
     } else {
         "Runs one POSIX shell command."
     }
@@ -620,7 +620,7 @@ mod tests {
         let s = builtin_tool_schemas();
         let desc = tool(&s, "bash")["function"]["description"].as_str().unwrap();
         if cfg!(windows) {
-            for needle in ["PowerShell 5.1", "not bash", "No heredocs", "`write` tool"] {
+            for needle in ["PowerShell 5.1", "not bash", "No heredocs", "`write` tool", "never `cd /c/Users/name/project`"] {
                 assert!(desc.contains(needle), "missing {needle:?}: {desc}");
             }
         } else {
