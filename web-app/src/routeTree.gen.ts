@@ -24,6 +24,7 @@ import { Route as SettingsPermissionsRouteImport } from './routes/settings/permi
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
+import { Route as SettingsJevRouteImport } from './routes/settings/jev'
 import { Route as SettingsInterfaceRouteImport } from './routes/settings/interface'
 import { Route as SettingsHttpsProxyRouteImport } from './routes/settings/https-proxy'
 import { Route as SettingsHardwareRouteImport } from './routes/settings/hardware'
@@ -112,6 +113,11 @@ const SettingsMcpServersRoute = SettingsMcpServersRouteImport.update({
 const SettingsLocalApiServerRoute = SettingsLocalApiServerRouteImport.update({
   id: '/settings/local-api-server',
   path: '/settings/local-api-server',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsJevRoute = SettingsJevRouteImport.update({
+  id: '/settings/jev',
+  path: '/settings/jev',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsInterfaceRoute = SettingsInterfaceRouteImport.update({
@@ -206,6 +212,7 @@ export interface FileRoutesByFullPath {
   '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
+  '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
@@ -237,6 +244,7 @@ export interface FileRoutesByTo {
   '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
+  '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
@@ -269,6 +277,7 @@ export interface FileRoutesById {
   '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
+  '/settings/jev': typeof SettingsJevRoute
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
@@ -302,6 +311,7 @@ export interface FileRouteTypes {
     | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
+    | '/settings/jev'
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
@@ -333,6 +343,7 @@ export interface FileRouteTypes {
     | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
+    | '/settings/jev'
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
@@ -364,6 +375,7 @@ export interface FileRouteTypes {
     | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
+    | '/settings/jev'
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
@@ -396,6 +408,7 @@ export interface RootRouteChildren {
   SettingsHardwareRoute: typeof SettingsHardwareRoute
   SettingsHttpsProxyRoute: typeof SettingsHttpsProxyRoute
   SettingsInterfaceRoute: typeof SettingsInterfaceRoute
+  SettingsJevRoute: typeof SettingsJevRoute
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
@@ -513,6 +526,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/local-api-server'
       fullPath: '/settings/local-api-server'
       preLoaderRoute: typeof SettingsLocalApiServerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/jev': {
+      id: '/settings/jev'
+      path: '/settings/jev'
+      fullPath: '/settings/jev'
+      preLoaderRoute: typeof SettingsJevRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/interface': {
@@ -636,6 +656,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsHardwareRoute: SettingsHardwareRoute,
   SettingsHttpsProxyRoute: SettingsHttpsProxyRoute,
   SettingsInterfaceRoute: SettingsInterfaceRoute,
+  SettingsJevRoute: SettingsJevRoute,
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,

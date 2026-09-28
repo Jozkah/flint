@@ -92,19 +92,23 @@ export function JevSettingsCard({
   }
 
   return (
-    <Card title={t('common:jev.title')}>
+    <>
+    <Card title={t('common:jev.cardKey')}>
       <CardItem
         align="start"
         description={<p className="text-muted-foreground">{t('common:jev.intro', { model: status?.model ?? 'jev-1.13.0' })}</p>}
       />
       <CardItem
+        // The field and its buttons get their own line under the text: side
+        // by side they overflowed the control column and covered the text.
+        column
         anchor="settings-jev-key"
         title={t('common:jev.key')}
         description={
           status?.key_configured ? t('common:jev.keyConfigured') : t('common:jev.keyMissing')
         }
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2">
             <input
               type="password"
               autoComplete="off"
@@ -113,7 +117,7 @@ export function JevSettingsCard({
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
               placeholder={status?.key_configured ? '••••••••' : 'ts_…'}
-              className="h-8 w-44 rounded border border-border bg-card px-2 text-xs"
+              className="h-8 min-w-0 flex-1 basis-48 rounded border border-border bg-card px-2 text-xs"
             />
             <Button size="sm" variant="outline" disabled={!keyInput.trim()} onClick={() => void saveKey()}>
               {t('common:jev.saveKey')}
@@ -127,6 +131,8 @@ export function JevSettingsCard({
         }
       />
       {error && <p className="px-4 text-xs text-destructive">{error}</p>}
+    </Card>
+    <Card title={t('common:jev.cardFeatures')}>
       <CardItem
         anchor="settings-jev-skills"
         align="start"
@@ -159,9 +165,10 @@ export function JevSettingsCard({
         align="start"
         description={<p className="text-muted-foreground">{t('common:jev.modesExplained')}</p>}
       />
+    </Card>
+    <Card title={t('common:jev.receipts')}>
       <CardItem
         align="start"
-        title={t('common:jev.receipts')}
         description={
           <div className="flex flex-col gap-1">
             {status && (
@@ -192,5 +199,6 @@ export function JevSettingsCard({
         }
       />
     </Card>
+    </>
   )
 }

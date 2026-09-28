@@ -1912,6 +1912,10 @@
   },
   "jev": {
     "title": "Jev decision support (TypeSafe)",
+    "tab": "Jev",
+    "pageDesc": "Optional decision support from TypeSafe's Jev model. Off by default; Flint's own behaviour stays in charge.",
+    "cardKey": "Connection",
+    "cardFeatures": "Features",
     "intro": "Optional help from TypeSafe's Jev model ({{model}}, pinned). Both features are off by default and separate. Jev only suggests or reorders: Flint's permission checks, skill catalog, retrieved sources and agent behaviour stay in charge, and Jev never approves a tool. If Jev is slow, fails or is unsure, Flint does exactly what it does without it.",
     "key": "TypeSafe API key",
     "keyConfigured": "A key is stored in the protected secret store. It is never shown again or sent anywhere but TypeSafe.",

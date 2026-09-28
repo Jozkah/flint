@@ -1,6 +1,4 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { isPlatformTauri } from '@/lib/platform/utils'
-import { JevSettingsCard } from '@/containers/JevSettingsCard'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useThreads } from '@/hooks/useThreads'
 import { invoke } from '@tauri-apps/api/core'
@@ -554,9 +552,6 @@ function General() {
           />
         </Card>
 
-
-        {/* Jev decision support: optional, both opt-ins off by default. */}
-        {isPlatformTauri() && <JevSettingsCard />}
 
         {/* Credits */}
         <Card title={t('settings:general.credits')}>

@@ -29,6 +29,7 @@ export const route = {
     hardware: '/settings/hardware',
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',
+    jev: '/settings/jev',
   },
   localApiServerlogs: '/local-api-server/logs',
   systemMonitor: '/system-monitor',

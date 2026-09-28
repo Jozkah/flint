@@ -48,7 +48,7 @@ const GROUPS: {
   {
     key: 'tools',
     labelKey: 'navigation:groupModelsAndTools',
-    ids: ['mcp-servers', 'web-search', 'claude-code', 'extensions'],
+    ids: ['mcp-servers', 'web-search', 'claude-code', 'jev', 'extensions'],
   },
   {
     key: 'advanced',
@@ -83,6 +83,7 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   hardware: mark('x-cpu'),
   'mcp-servers': mark('flow'),
   extensions: mark('x-puzzle'),
+  jev: mark('x-sparkle'),
   // Claude's own mark keeps its colour in both themes.
   'claude-code': ({ size, className }) => (
     <img
