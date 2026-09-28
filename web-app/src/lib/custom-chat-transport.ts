@@ -1315,7 +1315,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The MCP tools that exist right now. Without it a server installed or
     // activated after the chat opened never reached the chat: every send
     // found the old key and kept the old tool list, so it took a new chat.
-    const mcpFingerprint = [...(useAppState.getState().mcpToolNames ?? [])].sort()
+    const mcpNames: unknown = useAppState.getState?.()?.mcpToolNames
+    const mcpFingerprint =
+      mcpNames instanceof Set || Array.isArray(mcpNames)
+        ? [...(mcpNames as Iterable<string>)].sort()
+        : []
     const cacheKey = JSON.stringify({
       mcpFingerprint,
       model: selectedModel?.id ?? '',
