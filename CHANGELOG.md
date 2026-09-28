@@ -29,6 +29,10 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **Model Doctor.** "Test this model" in the Cowork readiness card checks through the model's real connection whether it can call a tool, with correct arguments, and continue from the result in time, using a synthetic tool and no project files. The result shows its date and the settings it was tested with, becomes stale when those settings change, and is one observation, not a promise that every task will work.
 - **Verify in browser.** From the Cowork Preview, run a local app in a separate, temporary Chrome or Edge profile — never Flint's own webview or cookies — confined to the app's exact origin, follow steps you write (open, click, type, expect), and get the step list, screenshots, console errors, blocked requests and a pass/fail in the run summary. Flint uses the browser you have installed and never downloads one.
 - **Jev decision support (optional).** Two separate opt-ins, both off by default, ask TypeSafe's Jev model (pinned `jev-1.13.0`) for help: suggesting one skill for what you are typing in Cowork, and reordering attachment passages for retrieval. Off means no request is made; a shadow mode records decisions without using them. The API key stays in the protected secret store, every call is bounded in time and cost, any failure falls back to Flint's own behaviour, and Jev never approves tools or changes what sources are cited.
+- **Work profiles (optional, with Jev).** An independent system prompt per type of work — Execute, Review, Plan, Refactor, Debug, Reverse engineer and Explain — added on top of the global rules. Jev (or a keyword match) picks one from a session's first message and keeps it for the session; switch it from the Cowork header, and edit every profile's text in Settings → Jev. Off by default: the global prompt alone is used.
+- **Clearer global agent rules.** The agent no longer gives up after two failures: it stops only the blocked step, tries another authorized way and carries on with the rest, finishes every part of a request and reports exactly what is done and what is not. It follows the project's own instructions and selected skills, tells a sandbox-blocked program apart from a missing one, verifies in proportion to the change, and carries your permission forward within its scope.
+- **Runs that recover on their own.** A reply cut off by the output limit, a dropped stream or an empty reply is continued automatically once; sandbox refusals no longer end a run while the agent works around them; a stalled stream gives up after three minutes instead of retrying for most of an hour.
+- **A status line that says what the run is doing.** Waiting for the model, Thinking, Running <tool>, Reading tool results, Writing — with a timer, and wording that changes as a step drags on.
 
 ## Migration
 
@@ -119,6 +123,13 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(i18n): add a Turkish locale, and fill in missing Simplified Chinese translations
 
 ### Cowork workspace
+- feat(cowork): a status line naming the run's phase (Waiting for the model, Thinking, Running <tool>, Reading tool results, Writing) with a timer and escalating wording
+- feat(cowork): sessions are named by the model instead of by their first prompt
+- fix(cowork): "What changed" lists only the files the session wrote, not every changed file in the checkout
+- fix(cowork): intermediate steps of a reply no longer each show "The run ended without a reply" or their own token-speed line; Continue is offered on a run that ended without an answer
+- fix(cowork): the Code panel opens a session's worktree instead of refusing it as overlapping the workspace
+- fix(cowork): readable worktree branch names (`flint/edit-bodycam-as-drone-camera-9d7c67`)
+- fix(cowork): the workspace pill truncates instead of clipping the header controls
 - feat(cowork): "Fix this check" — named pull-request checks bound to their head commit, bounded failed logs through the user's `gh` login, and a focused fix request in the owning session once the head is confirmed; never pushed automatically
 - feat(cowork): Verify in browser — drive a local app in an isolated, temporary Chrome/Edge profile confined to its exact origin, with steps, screenshots, console errors, blocked requests and pass/fail in the run summary; stops on cancel, timeout, browser exit or app-server exit
 - feat(cowork): edit files in the Code panel (undo, find, Ctrl+S, conflict prompt when the file changes on disk), saved where the session's access allows and listed in Changes as your edit; widen the Output rail up to 70% of the window; click a file path in any tool card, diff or reply to open it in the Code panel at the line; the editor gutter marks added, changed and deleted lines against the repository, and inline blame shows each line's author and commit with links to the commit and its pull request
@@ -150,6 +161,16 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cowork): compact a long run automatically instead of stopping at the context window
 
 ### Agent runtime and harness
+- feat(prompt): work profiles — an editable system-prompt add-on per type of work, picked by Jev or a keyword match once per session, with a picker in the Cowork header; left out in plan mode
+- feat(prompt): global rules rewritten — stop only the blocked step and continue independent work; follow loaded project guidance and selected skills; a sandbox-blocked program is not a missing one; proportional verification; permission carries forward within its scope; finish every requested part; review-only changes delivered as a diff
+- feat(cowork): continue a reply cut off by the output limit, a dropped stream or an empty reply once, automatically
+- fix(agent): sandbox and permission refusals no longer count as failures that disable every tool
+- fix(agent): robocopy-style switches (`/E /XD /XF`) are no longer read as missing skills that block every write
+- fix(agent): PowerShell commands using `.json`/`.js` files are no longer refused as touching the hidden `.jan` folder
+- fix(agent): an approved rerun outside the sandbox keeps PowerShell instead of falling back to Git Bash
+- fix(agent): entering the workspace by its full path works inside the Windows sandbox
+- fix(agent): stream retries stop after three minutes, and a timeout is retried once
+- fix(agent): tools that take no arguments accept whatever the model sends; `web_fetch` with web access off says so plainly; the git tool accepts its arguments as one string
 - feat(agent): core execution — a run that can be reconstructed (#8)
 - feat(harness): the feature registry and Phase 0 foundation, and one versioned event log per session exported through the UI
 - feat(agent): the Rust agent loop writes its calls and runs to the session's execution record (AH-004, AH-050)
@@ -230,6 +251,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(agent): correlate agent requests with the provider's billing records, and read recorded usage and spend from the usage API
 
 ### MCP
+- fix(chat): MCP tools installed after a chat opened reach that chat without starting a new one
 - feat(mcp): trust a server by fingerprint, not the name it chose, with a per-server auto-approve toggle
 - feat(mcp): OAuth tokens in the secret store refreshed ahead of expiry, with declared and enforced scopes (AH-134, AH-135)
 - feat(mcp): read a server's documents and prompts, and prove a listing is followed to the end (AH-137, AH-138, AH-143)
@@ -247,6 +269,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(mcp): reject duplicate server names in add-by-JSON, merge desktop saves with the file on disk, and keep an unreadable trust file instead of overwriting it
 
 ### Memory
+- feat(cowork): memories a session proposes are asked about in the session, so they can be approved and saved
 - feat(memory): one canonical record per scope, a precedence chain enforced and stated in every prompt (AH-081..085)
 - feat(memory): let the model propose a memory and Flint decide; review before storing and refuse what must not be stored
 - feat(memory): user-level memory with per-scope recall, clear, and a forget that leaves no text (AH-082)
@@ -257,6 +280,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(chat,context): project memory binding, request attribution and a verified context panel
 
 ### Context, usage and cost
+- fix(chat): trimming history always keeps the latest user message
+- fix(chat): every provider's context-limit error shows the context banner instead of raw HTTP 400 text
 - feat(context): learn a model's real window from the server that refused it, and classify what filled it (AH-077, AH-087)
 - feat(context): warn as the window fills, on every surface, and diff what the model received against the previous request (AH-077, AH-086)
 - feat(usage): flag prompt-cache reuse from provider-reported counts, per request, turn and session (AH-211)
@@ -338,6 +363,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(vector-db): skip chunks of another dimension in linear search; move RAG to calamine 0.36 for RUSTSEC-2026-0194
 
 ### Chat and composer
+- feat(chat): hold a message that needs the web while web search is off, and offer to turn it on
+- fix(chat): broken tool-call arguments and nameless tool calls from an interrupted stream are no longer resent
 - feat(chat): warn before sending images to a model without vision
 - feat(chat): per-chat model settings and a reasoning-effort bar (#2)
 - feat(chat): search the Add parameter menu by name, description or key, with keyboard navigation and a tooltip naming providers that may not support a parameter
@@ -374,6 +401,10 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(web): truncate long tool-card details, and keep string tracking across escaped quotes in tool-argument repair
 
 ### Design, onboarding and system
+- feat(web-app): web results, citations and sources show each site's own favicon, fetched from the site itself
+- feat(windows): the title bar takes the app's colours on Windows 11
+- fix(web-preview): the native preview is retried instead of staying on an iframe most sites refuse
+- fix(ci): the PR labeller creates a missing label instead of failing
 - feat(groups): group Cowork sessions and rooms as well as chats, with folders on a group that every session, chat or room created in it or moved into it inherits; joining asks whether to keep, inherit, merge or add folders, and leaving asks whether to keep them
 - feat(chat): attach folders to a chat, read by its tools and never written
 - feat(design): a new interface design, replacing the Graphite and Atelier redesigns (#15, #11): a 250px sidebar (Workspace, Engine, Chats, Support) beside a main panel with a 52px top header and breadcrumb, and a local-status card in the sidebar footer
