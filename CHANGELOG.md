@@ -29,6 +29,10 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 - **Model Doctor.** "Test this model" in the Cowork readiness card checks through the model's real connection whether it can call a tool, with correct arguments, and continue from the result in time, using a synthetic tool and no project files. The result shows its date and the settings it was tested with, becomes stale when those settings change, and is one observation, not a promise that every task will work.
 - **Verify in browser.** From the Cowork Preview, run a local app in a separate, temporary Chrome or Edge profile — never Flint's own webview or cookies — confined to the app's exact origin, follow steps you write (open, click, type, expect), and get the step list, screenshots, console errors, blocked requests and a pass/fail in the run summary. Flint uses the browser you have installed and never downloads one.
 - **Jev decision support (optional).** Two separate opt-ins, both off by default, ask TypeSafe's Jev model (pinned `jev-1.13.0`) for help: suggesting one skill for what you are typing in Cowork, and reordering attachment passages for retrieval. Off means no request is made; a shadow mode records decisions without using them. The API key stays in the protected secret store, every call is bounded in time and cost, any failure falls back to Flint's own behaviour, and Jev never approves tools or changes what sources are cited.
+- **Work profiles (optional, with Jev).** An independent system prompt per type of work — Execute, Review, Plan, Refactor, Debug, Reverse engineer and Explain — added on top of the global rules. Jev (or a keyword match) picks one from a session's first message and keeps it for the session; switch it from the Cowork header, and edit every profile's text in Settings → Jev. Off by default: the global prompt alone is used.
+- **Clearer global agent rules.** The agent no longer gives up after two failures: it stops only the blocked step, tries another authorized way and carries on with the rest, finishes every part of a request and reports exactly what is done and what is not. It follows the project's own instructions and selected skills, tells a sandbox-blocked program apart from a missing one, verifies in proportion to the change, and carries your permission forward within its scope.
+- **Runs that recover on their own.** A reply cut off by the output limit, a dropped stream or an empty reply is continued automatically once; sandbox refusals no longer end a run while the agent works around them; a stalled stream gives up after three minutes instead of retrying for most of an hour.
+- **A status line that says what the run is doing.** Waiting for the model, Thinking, Running <tool>, Reading tool results, Writing — with a timer, and wording that changes as a step drags on.
 
 ## Migration
 
@@ -43,6 +47,35 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 ---
 
 ## What's Changed
+
+### Latest fixes and features
+- feat(prompt): work profiles — an editable system-prompt add-on per type of work, picked by Jev or a keyword match once per session, with a picker in the Cowork header; left out in plan mode
+- feat(prompt): global rules rewritten — stop only the blocked step and continue independent work; follow loaded project guidance and selected skills; a sandbox-blocked program is not a missing one; proportional verification; permission carries forward within its scope; finish every requested part; review-only changes delivered as a diff
+- feat(cowork): a status line naming the run's phase (Waiting for the model, Thinking, Running <tool>, Reading tool results, Writing) with a timer and escalating wording
+- feat(cowork): sessions are named by the model instead of by their first prompt
+- feat(cowork): memories a session proposes are asked about in the session, so they can be approved and saved
+- feat(cowork): continue a reply cut off by the output limit, a dropped stream or an empty reply once, automatically
+- feat(chat): hold a message that needs the web while web search is off, and offer to turn it on
+- feat(web-app): web results, citations and sources show each site's own favicon, fetched from the site itself
+- feat(windows): the title bar takes the app's colours on Windows 11
+- fix(cowork): "What changed" lists only the files the session wrote, not every changed file in the checkout
+- fix(cowork): intermediate steps of a reply no longer each show "The run ended without a reply" or their own token-speed line; Continue is offered on a run that ended without an answer
+- fix(cowork): the Code panel opens a session's worktree instead of refusing it as overlapping the workspace
+- fix(cowork): readable worktree branch names (`flint/edit-bodycam-drone-camera-9d7c67`)
+- fix(cowork): the workspace pill truncates instead of clipping the header controls
+- fix(agent): sandbox and permission refusals no longer count as failures that disable every tool
+- fix(agent): robocopy-style switches (`/E /XD /XF`) are no longer read as missing skills that block every write
+- fix(agent): PowerShell commands using `.json`/`.js` files are no longer refused as touching the hidden `.jan` folder
+- fix(agent): an approved rerun outside the sandbox keeps PowerShell instead of falling back to Git Bash
+- fix(agent): entering the workspace by its full path works inside the Windows sandbox
+- fix(agent): stream retries stop after three minutes, and a timeout is retried once
+- fix(agent): tools that take no arguments accept whatever the model sends; `web_fetch` with web access off says so plainly; the git tool accepts its arguments as one string
+- fix(chat): trimming history always keeps the latest user message
+- fix(chat): every provider's context-limit error shows the context banner instead of raw HTTP 400 text
+- fix(chat): broken tool-call arguments and nameless tool calls from an interrupted stream are no longer resent
+- fix(chat): MCP tools installed after a chat opened reach that chat without starting a new one
+- fix(web-preview): the native preview is retried instead of staying on an iframe most sites refuse
+- fix(ci): the PR labeller creates a missing label instead of failing
 
 ### Testing round before release
 - feat(web-app): show a command's non-zero exit as an amber failed check
