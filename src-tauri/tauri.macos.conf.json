@@ -41,6 +41,7 @@
     ],
     "resources": [
       "resources/LICENSE",
+      "resources/mobile/",
       "resources/bin/mlx-server",
       "resources/bin/mlx-swift_Cmlx.bundle",
       "resources/bin/flint",

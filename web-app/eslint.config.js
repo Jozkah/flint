@@ -25,4 +25,21 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The phone app (src/mobile) runs in a phone's browser, not in Tauri.
+    files: ['src/mobile/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@tauri-apps/*', '@janhq/*'],
+              message: 'The phone app runs in a browser; it cannot use Tauri or the desktop extensions.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 )

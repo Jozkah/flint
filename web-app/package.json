@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && vite build -c vite.mobile.config.ts",
+    "dev:mobile": "vite -c vite.mobile.config.ts",
+    "build:mobile": "vite build -c vite.mobile.config.ts",
     "typecheck": "yarn build:tauri:plugin:api && tsc -b",
     "lint": "eslint .",
     "preview": "vite preview",

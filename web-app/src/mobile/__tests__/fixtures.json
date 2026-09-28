@@ -1,0 +1,724 @@
+{
+ "me": {
+  "id": "d1",
+  "name": "Pixel 9",
+  "pairedAt": 1789218504422
+ },
+ "rpc": {
+  "sessions.list": {
+   "sessions": [
+    {
+     "id": "w1",
+     "kind": "cowork",
+     "title": "Retry the radar feed",
+     "status": "waiting",
+     "updatedAt": 1790600784422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "c1",
+     "kind": "chat",
+     "title": "Forecast cache returns stale data",
+     "status": "running",
+     "updatedAt": 1790600724422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "r1",
+     "kind": "room",
+     "title": "Radar feed retry policy",
+     "status": "running",
+     "updatedAt": 1790600724422
+    },
+    {
+     "id": "w2",
+     "kind": "cowork",
+     "title": "Convert units in the API",
+     "status": "idle",
+     "updatedAt": 1790597304422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "r2",
+     "kind": "room",
+     "title": "Changelog wording",
+     "status": "waiting",
+     "updatedAt": 1790597304422
+    },
+    {
+     "id": "c2",
+     "kind": "chat",
+     "title": "Dashboard color palette",
+     "status": "idle",
+     "updatedAt": 1790595504422
+    },
+    {
+     "id": "w3",
+     "kind": "cowork",
+     "title": "Draft 1.4 changelog",
+     "status": "idle",
+     "updatedAt": 1790590104422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "w4",
+     "kind": "cowork",
+     "title": "Hourly chart tooltip",
+     "status": "idle",
+     "updatedAt": 1790586504422,
+     "group": "dashboard"
+    },
+    {
+     "id": "c3",
+     "kind": "chat",
+     "title": "Unit conversion edge cases",
+     "status": "idle",
+     "updatedAt": 1790582904422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "c4",
+     "kind": "chat",
+     "title": "Retry policy for the radar feed",
+     "status": "idle",
+     "updatedAt": 1790576904422,
+     "group": "acme-weather"
+    },
+    {
+     "id": "r3",
+     "kind": "room",
+     "title": "Sensor calibration check",
+     "status": "done",
+     "updatedAt": 1790557704422
+    },
+    {
+     "id": "c5",
+     "kind": "chat",
+     "title": "Lisbon packing list",
+     "status": "idle",
+     "updatedAt": 1790480904422
+    },
+    {
+     "id": "c6",
+     "kind": "chat",
+     "title": "Regex for UK postcodes",
+     "status": "idle",
+     "updatedAt": 1790420904422
+    },
+    {
+     "id": "c7",
+     "kind": "chat",
+     "title": "Sourdough hydration maths",
+     "status": "idle",
+     "updatedAt": 1790360904422
+    }
+   ]
+  },
+  "status": {
+   "modelsLoaded": 3,
+   "runs": [
+    {
+     "kind": "cowork",
+     "id": "w1"
+    },
+    {
+     "kind": "room",
+     "id": "r1"
+    }
+   ],
+   "approvalsWaiting": 1
+  },
+  "models.list": {
+   "models": [
+    {
+     "id": "qwen3-8b-instruct",
+     "name": "Qwen3 8B Instruct",
+     "provider": "llamacpp",
+     "local": true,
+     "loaded": true,
+     "providerName": "Llama.cpp",
+     "favorite": true
+    },
+    {
+     "id": "gemma-3-12b-it-Q5_K_M",
+     "name": "Gemma 3 12B",
+     "provider": "llamacpp",
+     "local": true,
+     "loaded": true,
+     "providerName": "Llama.cpp"
+    },
+    {
+     "id": "llama-3.1-8b",
+     "name": "Llama 3.1 8B",
+     "provider": "llamacpp",
+     "local": true,
+     "loaded": false,
+     "providerName": "Llama.cpp"
+    },
+    {
+     "id": "Mistral-Small-3.2-24B-Q4_K_S",
+     "name": "Mistral Small 3.2",
+     "provider": "llamacpp",
+     "local": true,
+     "loaded": false,
+     "providerName": "Llama.cpp"
+    },
+    {
+     "id": "phi-4-mini-Q8_0",
+     "name": "Phi-4 mini",
+     "provider": "llamacpp",
+     "local": true,
+     "loaded": true,
+     "providerName": "Llama.cpp"
+    },
+    {
+     "id": "claude-sonnet-5",
+     "name": "Claude Sonnet 5",
+     "provider": "anthropic",
+     "local": false,
+     "loaded": false,
+     "providerName": "Anthropic",
+     "favorite": true
+    },
+    {
+     "id": "claude-opus-5-5",
+     "name": "Claude Opus 5.5",
+     "provider": "anthropic",
+     "local": false,
+     "loaded": false,
+     "providerName": "Anthropic"
+    },
+    {
+     "id": "gpt-5",
+     "name": "GPT-5",
+     "provider": "openai",
+     "local": false,
+     "loaded": false,
+     "providerName": "OpenAI"
+    },
+    {
+     "id": "gemini-3-pro",
+     "name": "Gemini 3 Pro",
+     "provider": "gemini",
+     "local": false,
+     "loaded": false,
+     "providerName": "Gemini"
+    },
+    {
+     "id": "deepseek/deepseek-v3.2",
+     "name": "DeepSeek V3.2",
+     "provider": "openrouter",
+     "local": false,
+     "loaded": false,
+     "providerName": "OpenRouter"
+    }
+   ]
+  },
+  "approvals.list": {
+   "approvals": [
+    {
+     "requestId": "ap1",
+     "threadId": "w1",
+     "toolName": "bash",
+     "title": "Flint wants to run a command in acme-weather",
+     "subject": "git push -u origin flint/radar-retry && gh pr create --fill",
+     "why": "Push the branch and open a pull request for the retry fix.",
+     "consequences": [
+      "It can change files and run programs on this computer."
+     ],
+     "scopes": [
+      {
+       "scope": "once",
+       "label": "Allow once",
+       "explanation": "Only this request. Flint asks again next time.",
+       "broader": false
+      },
+      {
+       "scope": "thread",
+       "label": "Allow in this conversation",
+       "explanation": "This tool, in this conversation, until you revoke it.",
+       "broader": false
+      },
+      {
+       "scope": "always",
+       "label": "Always allow bash",
+       "explanation": "bash, in every conversation, until you revoke it.",
+       "broader": true
+      }
+     ],
+     "argumentsJson": "{\"command\":\"git push -u origin flint/radar-retry && gh pr create --fill\"}",
+     "requestedAt": 1790600784422
+    }
+   ]
+  },
+  "thread.messages": {
+   "w1": {
+    "messages": [
+     {
+      "id": "m1",
+      "role": "user",
+      "text": "The radar feed times out and the map shows a spinner forever. Retry it with backoff, fall back to the cached frame, and open a PR.",
+      "createdAt": 1790600304422
+     },
+     {
+      "id": "m2",
+      "role": "assistant",
+      "text": "I'll read the radar client, reproduce the timeout in a test, then add a bounded retry with a cached fallback.",
+      "createdAt": 1790600364422,
+      "tools": [
+       {
+        "id": "t1",
+        "name": "read",
+        "kind": "read",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "internal/radar/client.go"
+       },
+       {
+        "id": "t2",
+        "name": "grep",
+        "kind": "search",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "\"Timeout\" internal/radar"
+       },
+       {
+        "id": "t3",
+        "name": "bash",
+        "kind": "fail",
+        "status": "failed",
+        "origin": "Workspace",
+        "arg": "go test ./internal/radar/ -run TestFetchTimeout"
+       },
+       {
+        "id": "t4",
+        "name": "edit",
+        "kind": "edit",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "internal/radar/client.go"
+       },
+       {
+        "id": "t5",
+        "name": "write",
+        "kind": "edit",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "internal/radar/client_test.go"
+       },
+       {
+        "id": "t6",
+        "name": "bash",
+        "kind": "bash",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "go test ./internal/radar/..."
+       },
+       {
+        "id": "t7",
+        "name": "git",
+        "kind": "other",
+        "status": "done",
+        "origin": "Workspace"
+       },
+       {
+        "id": "t8",
+        "name": "find",
+        "kind": "search",
+        "status": "done",
+        "origin": "Workspace",
+        "arg": "\"*radar*\""
+       },
+       {
+        "id": "t9",
+        "name": "todo_write",
+        "kind": "todo",
+        "status": "done",
+        "arg": "3 of 5 done"
+       },
+       {
+        "id": "t10",
+        "name": "github.list_checks",
+        "kind": "other",
+        "status": "done",
+        "origin": "MCP \u00b7 github",
+        "arg": "acme/weather#12"
+       }
+      ]
+     }
+    ],
+    "start": 0,
+    "total": 2
+   },
+   "c1": {
+    "messages": [
+     {
+      "id": "a1",
+      "role": "user",
+      "text": "Why does /forecast sometimes return yesterday's data after a deploy? Check what people say about Redis TTL and stale keys too.",
+      "createdAt": 1790599704422
+     },
+     {
+      "id": "a2",
+      "role": "assistant",
+      "text": "The cache key is built from the region only, so a deploy that changes the response shape keeps serving the old entry until its 24 h TTL runs out.\n\nTwo fixes, cheapest first:\n\n- Add the build ID to the key: `forecast:{build}:{region}`.\n- Lower the TTL to 10 minutes and use stale-while-revalidate.",
+      "createdAt": 1790599764422
+     },
+     {
+      "id": "a3",
+      "role": "user",
+      "text": "Do the build ID one. Just show me the diff.",
+      "createdAt": 1790600304422
+     },
+     {
+      "id": "a4",
+      "role": "assistant",
+      "text": "Here it is. It only touches the key builder.\n\n```go\nkey := fmt.Sprintf(\"forecast:%s:%s\", build.ID, region)\n```",
+      "createdAt": 1790600364422
+     }
+    ],
+    "start": 0,
+    "total": 4
+   },
+   "r1": {
+    "messages": [
+     {
+      "id": "q1",
+      "role": "user",
+      "text": "Keep it short, we cut 1.4 on Friday. When the radar feed times out, how hard should we retry?",
+      "createdAt": 1790600364422
+     },
+     {
+      "id": "q2",
+      "role": "assistant",
+      "author": "Claude",
+      "authorRole": "skeptic",
+      "authorModel": "claude-sonnet-5",
+      "text": "Not hard. Every retry holds a request open, and the feed usually recovers within a minute. A stale frame is better than a spinner. @GPT how often does it actually fail?",
+      "createdAt": 1790600424422
+     },
+     {
+      "id": "q3",
+      "role": "assistant",
+      "author": "GPT",
+      "authorRole": "domain expert",
+      "authorModel": "gpt-5",
+      "text": "From September's logs: 2.4% of radar fetches timed out, and 88% of those succeeded on the second or third try. Three retries with jitter cover almost all of it. @Gemini can you check the tests?",
+      "createdAt": 1790600484422
+     },
+     {
+      "id": "q4",
+      "role": "assistant",
+      "author": "Gemini",
+      "authorRole": "tester",
+      "authorModel": "gemini-3-pro",
+      "text": "There are 9 client tests and none cover a timeout followed by a cached fallback. I couldn't run them from here, since running tests needs approval.",
+      "createdAt": 1790600544422
+     }
+    ],
+    "start": 0,
+    "total": 4
+   }
+  },
+  "cowork.get": {
+   "w1": {
+    "id": "w1",
+    "title": "Retry the radar feed",
+    "status": "waiting",
+    "folder": "/home/jo/acme-weather",
+    "group": "acme-weather",
+    "mode": "ask",
+    "access": "managed-worktree",
+    "model": {
+     "id": "qwen3-8b-instruct",
+     "provider": "llamacpp"
+    },
+    "todos": [
+     {
+      "text": "Reproduce the timeout in a test",
+      "status": "completed"
+     },
+     {
+      "text": "Add bounded retry with jitter",
+      "status": "completed"
+     },
+     {
+      "text": "Fall back to the cached frame",
+      "status": "completed"
+     },
+     {
+      "text": "Push branch and open PR",
+      "status": "in_progress"
+     },
+     {
+      "text": "Update README on radar caching",
+      "status": "pending"
+     }
+    ],
+    "usage": {
+     "inputTokens": 40100,
+     "outputTokens": 8112
+    }
+   }
+  },
+  "rooms.get": {
+   "r1": {
+    "id": "r1",
+    "title": "Radar feed retry policy",
+    "objective": "Decide how acme-weather should retry the upstream radar feed before the 1.4 release.",
+    "status": "running",
+    "roomStatus": "running",
+    "mode": "round-robin",
+    "participants": [
+     {
+      "id": "p1",
+      "name": "Claude",
+      "role": "skeptic",
+      "model": "claude-sonnet-5",
+      "provider": "anthropic",
+      "toolAccess": "read"
+     },
+     {
+      "id": "p2",
+      "name": "GPT",
+      "role": "domain expert",
+      "model": "gpt-5",
+      "provider": "openai",
+      "toolAccess": "read"
+     },
+     {
+      "id": "p3",
+      "name": "Gemini",
+      "role": "tester",
+      "model": "gemini-3-pro",
+      "provider": "gemini",
+      "toolAccess": "edit"
+     }
+    ],
+    "moderator": {
+     "enabled": false,
+     "name": "Moderator",
+     "model": null
+    },
+    "nextSpeakerId": "p2",
+    "round": 3,
+    "folder": "/home/jo/acme-weather",
+    "limits": {
+     "maxRounds": 6,
+     "maxTurns": 40,
+     "maxTotalTokens": 200000,
+     "maxOutputTokensPerTurn": 2000,
+     "maxCostUsd": 2,
+     "maxDurationMs": 1800000
+    },
+    "usage": {
+     "turns": 14,
+     "rounds": 3,
+     "tokens": 48200,
+     "costUsd": 0.42,
+     "activeMs": 372000
+    }
+   },
+   "r2": {
+    "id": "r2",
+    "title": "Changelog wording",
+    "objective": "Agree on the tone and length of the acme-weather 1.4 release notes.",
+    "status": "waiting",
+    "roomStatus": "awaiting-user",
+    "mode": "user-selected",
+    "participants": [
+     {
+      "id": "p4",
+      "name": "Qwen",
+      "role": "editor",
+      "model": "qwen3-8b-instruct",
+      "provider": "llamacpp",
+      "toolAccess": "none"
+     },
+     {
+      "id": "p5",
+      "name": "Mistral",
+      "role": "writer",
+      "model": "Mistral-Small-3.2-24B-Q4_K_S",
+      "provider": "llamacpp",
+      "toolAccess": "none"
+     }
+    ],
+    "moderator": {
+     "enabled": false,
+     "name": "Moderator",
+     "model": null
+    },
+    "nextSpeakerId": "p2",
+    "round": 3,
+    "folder": "/home/jo/acme-weather",
+    "limits": {
+     "maxRounds": 6,
+     "maxTurns": 40,
+     "maxTotalTokens": 200000,
+     "maxOutputTokensPerTurn": 2000,
+     "maxCostUsd": 2,
+     "maxDurationMs": 1800000
+    },
+    "usage": {
+     "turns": 9,
+     "rounds": 2,
+     "tokens": 12800,
+     "costUsd": null,
+     "activeMs": 200000
+    }
+   },
+   "r3": {
+    "id": "r3",
+    "title": "Sensor calibration check",
+    "objective": "Confirm the temperature offset for the rooftop sensor from two logs.",
+    "status": "done",
+    "roomStatus": "completed",
+    "mode": "moderator-selected",
+    "participants": [
+     {
+      "id": "p6",
+      "name": "DeepSeek",
+      "role": "analyst",
+      "model": "deepseek/deepseek-v3.2",
+      "provider": "openrouter",
+      "toolAccess": "read"
+     },
+     {
+      "id": "p7",
+      "name": "Gemma",
+      "role": "checker",
+      "model": "gemma-3-12b-it-Q5_K_M",
+      "provider": "llamacpp",
+      "toolAccess": "none"
+     }
+    ],
+    "moderator": {
+     "enabled": false,
+     "name": "Moderator",
+     "model": null
+    },
+    "nextSpeakerId": "p2",
+    "round": 3,
+    "folder": "/home/jo/acme-weather",
+    "limits": {
+     "maxRounds": 6,
+     "maxTurns": 40,
+     "maxTotalTokens": 200000,
+     "maxOutputTokensPerTurn": 2000,
+     "maxCostUsd": 2,
+     "maxDurationMs": 1800000
+    },
+    "usage": {
+     "turns": 14,
+     "rounds": 6,
+     "tokens": 61000,
+     "costUsd": null,
+     "activeMs": 900000
+    }
+   }
+  },
+  "system.info": {
+   "computerName": "desk-pc",
+   "os": "Windows 11",
+   "cpu": {
+    "name": "Ryzen 7 7700",
+    "cores": 16,
+    "arch": "x86_64",
+    "extensions": [
+     "avx2",
+     "avx512f"
+    ],
+    "usage": 23
+   },
+   "ram": {
+    "total": 32768,
+    "used": 18637
+   },
+   "gpus": [
+    {
+     "name": "NVIDIA RTX 4070",
+     "vram": 8192,
+     "used": 7782,
+     "driver": "CUDA 12.4"
+    }
+   ],
+   "localApi": {
+    "running": true,
+    "host": "127.0.0.1",
+    "port": 1337,
+    "prefix": "/v1"
+   }
+  },
+  "tools.list": {
+   "servers": [
+    {
+     "name": "github",
+     "active": true,
+     "transport": "stdio",
+     "description": "12 tools \u00b7 stdio"
+    },
+    {
+     "name": "filesystem",
+     "active": true,
+     "transport": "stdio",
+     "description": "Built in \u00b7 9 tools"
+    },
+    {
+     "name": "postgres",
+     "active": false,
+     "transport": "stdio",
+     "description": "Not connected"
+    }
+   ]
+  },
+  "settings.get": {
+   "version": "0.9.0",
+   "theme": "dark",
+   "spellCheck": true,
+   "language": "en",
+   "localApi": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 1337,
+    "prefix": "/v1",
+    "cors": false,
+    "hasKey": true
+   },
+   "webSearch": {
+    "enabled": true,
+    "provider": "brave"
+   },
+   "proxy": {
+    "enabled": false,
+    "url": "",
+    "verifySsl": true,
+    "noProxy": "localhost"
+   },
+   "jev": {
+    "skills": "off",
+    "rerank": "off"
+   },
+   "agentTools": true,
+   "mcpServers": {
+    "total": 3,
+    "active": 2
+   },
+   "providers": {
+    "total": 6,
+    "active": 5
+   },
+   "remote": {
+    "allowApprovals": true,
+    "allowAlwaysAllow": true,
+    "interface": "tailscale"
+   }
+  },
+  "appearance.get": {
+   "vars": {
+    "light": {},
+    "dark": {}
+   }
+  }
+ }
+}
