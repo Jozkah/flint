@@ -38,6 +38,19 @@ it('stops the second failure after the shell said not to retry', () => {
   expect(verdict.tripped && verdict.reason).toBe('failing-shell')
 })
 
+it('stops the second failure after the toolchain note said the program cannot run', () => {
+  const blocked = (n: number) =>
+    call({
+      tool: 'bash',
+      input: { command: `node --version ${n}` },
+      failed: true,
+      error: `node : The term 'node' is not recognized as the name of a cmdlet\n[sandbox: node is installed at C:\\Program Files\\nodejs\\node.exe but this sandbox cannot run it: its folder does not grant ALL APPLICATION PACKAGES read and execute, so the sandbox is not allowed to run it. Tell the user that node is not available in the sandbox until they run icacls in an elevated terminal and restart the app.]`,
+    })
+  expect(detectLoop([blocked(1)])).toEqual({ tripped: false })
+  const verdict = detectLoop([blocked(1), call(), blocked(2)])
+  expect(verdict.tripped && verdict.reason).toBe('failing-shell')
+})
+
 it('does not count a NUL refusal, which is offered as an unsandboxed retry', () => {
   const refused = (n: number) =>
     call({

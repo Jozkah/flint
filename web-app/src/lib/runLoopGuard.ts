@@ -119,7 +119,7 @@ export function classifyShellFailure(error: string | undefined): ShellFailureCla
 
 /** Notes from the shell tool that already say retrying cannot help. */
 const TOLD_NOT_TO_RETRY =
-  /\[device_path:|cannot open it on this platform|reported exit 0, but/i
+  /\[device_path:|cannot open it on this platform|reported exit 0, but|is installed at/i
 
 /**
  * The null device refusing the sandbox. Not a dead end: Flint offers the user
