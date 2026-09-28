@@ -164,6 +164,8 @@ vi.mock('@/hooks/useModelProvider', () => {
     // from the bare selection.
     providers: [{ provider: 'llamacpp', active: true, models: [selectedModel] }],
     selectModelProvider: () => {},
+    getProviderByName: (name: string) =>
+      state.providers.find((p: { provider: string }) => p.provider === name),
   }
   const useModelProvider: any = () => state
   useModelProvider.getState = () => state
