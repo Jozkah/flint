@@ -88,7 +88,7 @@ function sessionBlock(opts: {
  * `plan_review` question id the ask card special-cases. */
 const PLAN_ADDENDUM =
   'PLAN MODE (read only): You are exploring to produce a plan. You may only ' +
-  'read, search, and list files, do web research, and read memory/skills. You ' +
+  'read, search, and list files, read memory/skills, and use the web tools if you have them. You ' +
   'CANNOT edit files, run shell commands, or make any change; those tools are ' +
   'disabled. Investigate thoroughly, then stage the full phased plan by calling ' +
   'the `todo` tool with an `init` action listing every task. When the plan is ' +

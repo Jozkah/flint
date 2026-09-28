@@ -816,12 +816,60 @@ pub fn plan_from_args(v: &Value) -> Result<GitPlan, String> {
                     .ok_or_else(|| "every entry of `args` must be a string".to_string())
             })
             .collect::<Result<Vec<_>, _>>()?,
-        Some(Value::String(_)) => {
-            return Err("`args` must be an array of separate arguments, e.g. [\"commit\", \"-m\", \"Fix typo\"], not one command string".into())
-        }
+        // A model often sends the command as one string ("log --oneline -5").
+        // Split it the way a shell would, quotes included, rather than refuse
+        // and spend a turn; the plan below still checks every argument.
+        Some(Value::String(line)) => match split_command_line(line) {
+            Some(parts) if !parts.is_empty() => parts,
+            _ => {
+                return Err("`args` must be an array of separate arguments, e.g. [\"commit\", \"-m\", \"Fix typo\"]; this one string could not be split (unbalanced quotes)".into())
+            }
+        },
         _ => return Err("`args` (array of strings) is required, e.g. [\"status\"]".into()),
     };
     plan(program, &args)
+}
+
+/// Split a command line into arguments: whitespace separates, and single or
+/// double quotes group (with `\"` inside double quotes). No expansion of any
+/// kind. `None` for an unterminated quote.
+fn split_command_line(line: &str) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_word = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' | '"' => {
+                in_word = true;
+                loop {
+                    match chars.next() {
+                        None => return None,
+                        Some(q) if q == c => break,
+                        Some('\\') if c == '"' && chars.peek() == Some(&'"') => {
+                            cur.push('"');
+                            chars.next();
+                        }
+                        Some(other) => cur.push(other),
+                    }
+                }
+            }
+            c if c.is_whitespace() => {
+                if in_word {
+                    out.push(std::mem::take(&mut cur));
+                    in_word = false;
+                }
+            }
+            other => {
+                in_word = true;
+                cur.push(other);
+            }
+        }
+    }
+    if in_word {
+        out.push(cur);
+    }
+    Some(out)
 }
 
 fn strip_verbatim(p: PathBuf) -> PathBuf {
@@ -1716,7 +1764,12 @@ mod tests {
 
     #[test]
     fn args_must_be_an_array() {
-        assert!(plan_from_args(&json!({"args": "status"})).is_err());
+        // One string is split like a command line, then planned as usual.
+        assert_eq!(
+            plan_from_args(&json!({"args": "status"})).unwrap().class,
+            GitClass::Read
+        );
+        assert!(plan_from_args(&json!({"args": "log \"unterminated"})).is_err());
         assert!(plan_from_args(&json!({})).is_err());
         assert!(plan_from_args(&json!({"args": ["status", 1]})).is_err());
         assert_eq!(
@@ -2083,5 +2136,18 @@ mod tests {
         let c = cap(big);
         assert!(c.contains("[output truncated"));
         assert!(c.len() < OUTPUT_CAP + 100);
+    }
+
+    #[test]
+    fn a_command_line_splits_like_a_shell() {
+        assert_eq!(
+            split_command_line(r#"commit -m "Fix the \"parser\"" --author='A B'"#).unwrap(),
+            vec!["commit", "-m", r#"Fix the "parser""#, "--author=A B"]
+        );
+        assert_eq!(
+            split_command_line("  log   --oneline -5 ").unwrap(),
+            vec!["log", "--oneline", "-5"]
+        );
+        assert!(split_command_line("log 'open").is_none());
     }
 }

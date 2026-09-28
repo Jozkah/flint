@@ -26,6 +26,7 @@ import {
 } from '@/lib/runLoopGuard'
 import { isExpired, operationSignal, type Deadline } from '@/lib/runDeadline'
 import { decideRetry, waitFor } from '@/lib/runRetry'
+import { WEB_TOOL_NAMES } from '@/lib/webSearchTool'
 import { readTokenUsage, toCoworkUsage } from '@/lib/tokenUsage'
 import { estimateHistoryTokens, isContextLengthError } from '@/lib/compaction'
 
@@ -158,6 +159,14 @@ export type ToolOutcome = {
  * - `invalid-call`: the call named an offered tool but its arguments could not
  *   be used.
  */
+/** Built-in tools whose schema has no properties: any arguments mean `{}`. */
+export const NO_ARG_TOOLS: ReadonlySet<string> = new Set([
+  'memory_list',
+  'skill_list',
+  'list_sessions',
+  'message_check',
+])
+
 export type HarnessRefusalKind = 'tool-not-offered' | 'invalid-call'
 
 export type HarnessRefusal = {
@@ -667,9 +676,13 @@ export async function consumeStep(
             raw === null ||
             raw === undefined ||
             (typeof raw === 'string' && /^\s*(null)?\s*$/.test(raw))
-          const salvaged =
-            empty &&
+          const offered =
             refusalKindOf(String(chunk.errorText ?? '')) !== 'tool-not-offered'
+          // A tool that takes no arguments has nothing to get wrong: local
+          // models send `[]`, `"list"` or a stray template fragment for
+          // `memory_list`, and refusing that cost a turn every time.
+          const salvaged =
+            (empty || NO_ARG_TOOLS.has(chunk.toolName)) && offered
               ? {}
               : typeof raw === 'string'
                 ? recoverToolArgs(raw)
@@ -1125,10 +1138,15 @@ export async function runTurn(opts: {
           ...(who?.agent ? { agent: who.agent } : {}),
         }
         const outcome: ToolOutcome = {
-          output:
-            `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
-            'Use one of the tools you were given, with the arguments its ' +
-            'schema describes.',
+          output: WEB_TOOL_NAMES.has(call.toolName)
+            ? // Named, so the model stops asking for it: it knows
+              // `web_fetch` from training and kept retrying it.
+              `\`${call.toolName}\` is not available: web access is turned ` +
+              'off in Settings. Work from the local files, or tell the user ' +
+              'that web search has to be turned on for this.'
+            : `The call to \`${call.toolName}\` was not run: ${call.invalid} ` +
+              'Use one of the tools you were given, with the arguments its ' +
+              'schema describes.',
           isError: true,
           refusal,
         }

@@ -510,6 +510,15 @@ const MAX_RETRY_DELAY: Duration = Duration::from_secs(8);
 /// Total time that may be spent *waiting* between attempts. Bounds the worst
 /// case regardless of attempt count or a hostile `Retry-After`.
 const RETRY_BUDGET: Duration = Duration::from_secs(45);
+/// Wall-clock time after which a failing request is not tried again, however
+/// many attempts remain. [`RETRY_BUDGET`] counts only the waits: an attempt
+/// that hangs until the upstream gives up (a 300 s stream timeout) cost its
+/// whole length each time, so ten of them stalled a run for most of an hour.
+const RETRY_WALL_BUDGET: Duration = Duration::from_secs(180);
+/// A request that timed out is tried this many times in all. A timeout is
+/// seldom transient the way a dropped connection is, and each one is long.
+const MAX_TIMEOUT_ATTEMPTS: u32 = 2;
+
 /// Fraction of a backoff that jitter may remove.
 ///
 /// Jitter only ever *shortens*. Lengthening would let a delay quietly exceed
@@ -777,6 +786,7 @@ pub(crate) async fn stream_chat_completions(
     // R13: diagnosed once per call, the first time a failure has no response.
     let mut diagnosed = false;
 
+    let started = std::time::Instant::now();
     for (key_index, key) in keys.iter().enumerate() {
         let client = client_for(
             http,
@@ -841,6 +851,16 @@ pub(crate) async fn stream_chat_completions(
                                     ));
                                 }
                             }
+                            let timed_out = {
+                                let d = described.to_ascii_lowercase();
+                                d.contains("timed out") || d.contains("timeout")
+                            };
+                            if timed_out && attempt + 1 >= MAX_TIMEOUT_ATTEMPTS {
+                                return Err(format!(
+                                    "{last_err} (timed out {} times; not retried again)",
+                                    attempt + 1
+                                ));
+                            }
                             Disposition::Retry
                         }
                     };
@@ -858,6 +878,12 @@ pub(crate) async fn stream_chat_completions(
                         }
                         Disposition::Retry if attempt + 1 == MAX_ATTEMPTS => {
                             return Err(format!("{last_err} (after {MAX_ATTEMPTS} attempts)"));
+                        }
+                        Disposition::Retry if started.elapsed() >= RETRY_WALL_BUDGET => {
+                            return Err(format!(
+                                "{last_err} (gave up after {}s of retries)",
+                                started.elapsed().as_secs()
+                            ));
                         }
                         Disposition::Retry => {
                             // A 429 with more keys available rotates rather than

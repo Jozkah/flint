@@ -807,11 +807,13 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let body = ps_literal(&format!("{command}\n$global:__JanOk = $?"));
             let nested = NESTED_SHELL;
             let web = POWERSHELL_WEB_DEFAULTS;
+            let cd = POWERSHELL_WORKSPACE_CD;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
                  $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
                  {web}\n\
+                 {cd}\n\
                  {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
@@ -824,6 +826,23 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
         _ => command.to_string(),
     }
 }
+
+/// Sends `Set-Location`/`Push-Location` (and `cd`, `sl`, `chdir`, `pushd`) to
+/// the workspace's full path through the `JanWorkspace:` drive instead.
+///
+/// In an AppContainer, PowerShell checks every folder above a location it is
+/// asked to enter, and the sandbox may not look at those, so
+/// `Set-Location C:\...\sessions\<id>` failed with "Access is denied" in the
+/// agent's own workspace. The drive reaches the same folder without walking
+/// its parents. Only arguments under `$env:JAN_WORKSPACE` change; everything
+/// else, parameter names included, is passed to the real cmdlet as given.
+pub(crate) const POWERSHELL_WORKSPACE_CD: &str = "foreach ($__jc in 'Set-Location','Push-Location') { \
+     Set-Item -Path \"Function:global:$__jc\" -Value ([scriptblock]::Create(\
+     'for ($i = 0; $i -lt $args.Count; $i++) { $a = $args[$i]; \
+     if ($a -is [string] -and $env:JAN_WORKSPACE) { $n = $a.Replace(''/'', ''\\''); \
+     if ($n.StartsWith($env:JAN_WORKSPACE, [StringComparison]::OrdinalIgnoreCase)) { \
+     $args[$i] = ''JanWorkspace:\\'' + $n.Substring($env:JAN_WORKSPACE.Length).TrimStart(''\\'') } } }; \
+     Microsoft.PowerShell.Management\\' + $__jc + ' @args')) }";
 
 /// Makes the web commands a model reaches for behave in Windows PowerShell 5.1.
 ///
@@ -1037,6 +1056,21 @@ mod located_tests {
             String::from_utf8_lossy(&out.stdout).to_string(),
             String::from_utf8_lossy(&out.stderr).to_string(),
         )
+    }
+
+    /// b6343e27/3a6cdcf3: entering the workspace by its full path goes through
+    /// the `JanWorkspace:` drive, and other paths and parameters are unchanged.
+    #[cfg(windows)]
+    #[test]
+    fn entering_the_workspace_by_its_full_path_uses_the_drive() {
+        let (code, out, err) = run_wrapped(
+            "Set-Location -Path $env:JAN_WORKSPACE; (Get-Location).Path; \
+             Push-Location ($env:JAN_WORKSPACE.Replace('\\', '/')); Pop-Location; \
+             cd C:\\; (Get-Location).Path",
+        );
+        assert_eq!(code, 0, "{out} / {err}");
+        assert!(out.contains("JanWorkspace:\\"), "{out}");
+        assert!(out.trim_end().ends_with("C:\\"), "{out}");
     }
 
     #[cfg(windows)]
