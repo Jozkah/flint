@@ -36,6 +36,7 @@ import {
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
 import type { StreamReply } from './callError'
+import { normaliseParticipantReasoning } from './participantReasoning'
 import {
   DEFAULT_ROOM_LIMITS,
   ROOM_LIMIT_CEILINGS,
@@ -59,6 +60,7 @@ export type ParticipantInput = {
   model: RoomModelRef
   toolAccess?: ToolAccess
   pricing?: Participant['pricing']
+  reasoning?: Participant['reasoning']
 }
 
 export type CreateRoomInput = {
@@ -77,7 +79,10 @@ export type CreateRoomInput = {
  */
 export type ParticipantPatch = { id?: string } & Partial<
   Pick<Participant, 'name' | 'role' | 'model' | 'toolAccess' | 'pricing' | 'order'>
->
+> & {
+  /** `null` returns the participant to its model's default reasoning. */
+  reasoning?: Participant['reasoning'] | null
+}
 
 export type RoomSettingsPatch = {
   title?: string
@@ -346,6 +351,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     // dropped to 'none' when the model has no tools.
     const requested: ToolAccess = input.toolAccess ?? 'read'
     const wantsTools = requested === 'read' || requested === 'edit'
+    const reasoning = normaliseParticipantReasoning(input.reasoning)
     let pricing: Participant['pricing']
     if (input.pricing) {
       const i = Number(input.pricing.inputPerMTokUsd)
@@ -371,6 +377,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       order: input.order,
       availability: { state: 'unknown' },
       ...(pricing ? { pricing } : {}),
+      ...(reasoning ? { reasoning } : {}),
     }
   }
 
@@ -606,6 +613,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
                 model: edit.model,
                 toolAccess: edit.toolAccess,
                 pricing: edit.pricing,
+                reasoning: edit.reasoning ?? undefined,
                 order: edit.order ?? order,
               }),
             ]
@@ -619,6 +627,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
             model: edit.model ?? prev.model,
             toolAccess: edit.toolAccess ?? prev.toolAccess,
             pricing: edit.pricing === undefined ? prev.pricing : edit.pricing,
+            reasoning:
+              edit.reasoning === undefined
+                ? prev.reasoning
+                : (edit.reasoning ?? undefined),
             order: edit.order ?? prev.order,
             removed: prev.removed,
           })

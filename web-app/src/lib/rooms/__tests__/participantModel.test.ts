@@ -49,6 +49,40 @@ describe('streamParticipantReply', () => {
     expect(createModel).toHaveBeenCalledWith('model-1', expect.objectContaining({ provider: 'provider-a' }), {})
   })
 
+  it("applies the participant's reasoning: body fields to the model, native options to the stream", async () => {
+    const local = providerLookup([
+      makeProvider('llamacpp', [{ id: 'qwen', settings: { ctx_len: { controller_props: { value: 40960 } } } as never }]),
+      makeProvider('openai', ['gpt-5']),
+    ])
+    const createModel = vi.fn(async () => ({}) as LanguageModel)
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({
+        model: { provider: 'llamacpp', id: 'qwen' },
+        reasoning: { mode: 'on', level: 'low' },
+        maxOutputTokens: 8192,
+      }),
+      { lookup: local, createModel, streamText: stream as never }
+    )
+    // Low = 10% of the 40960-token context.
+    expect(createModel).toHaveBeenCalledWith('qwen', expect.anything(), {
+      chat_template_kwargs: { enable_thinking: true },
+      thinking_budget_tokens: 4096,
+    })
+    expect(stream.mock.calls[0][0]).not.toHaveProperty('providerOptions')
+
+    const createCloud = vi.fn(async () => ({}) as LanguageModel)
+    const cloudStream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({ model: { provider: 'openai', id: 'gpt-5' }, reasoning: { level: 'high' } }),
+      { lookup: local, createModel: createCloud, streamText: cloudStream as never }
+    )
+    expect(createCloud).toHaveBeenCalledWith('gpt-5', expect.anything(), {})
+    expect(cloudStream.mock.calls[0][0].providerOptions).toEqual({
+      openai: { reasoningEffort: 'high', reasoningSummary: 'auto' },
+    })
+  })
+
   it('reports a missing provider as unavailable', async () => {
     await expect(
       streamParticipantReply(input({ model: { provider: 'gone', id: 'x' } }), { lookup })

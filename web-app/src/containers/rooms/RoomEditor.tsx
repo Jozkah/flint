@@ -4,6 +4,7 @@ import { ChevronDown, Lock, Pencil, Plus, Settings2, Users } from 'lucide-react'
 import type {
   ModeratorConfig,
   Participant,
+  ParticipantReasoning,
   Room,
   RoomLimits,
   RoomModelRef,
@@ -35,6 +36,16 @@ import {
 } from './roomUi'
 import { findModel, modelSupportsTools, RoomModelSelect } from './RoomModelSelect'
 import { RoomAvatar } from './RoomAvatar'
+import {
+  applicableParticipantReasoning,
+  participantReasoningControls,
+} from '@/lib/rooms/participantReasoning'
+import {
+  DEFAULT_THINKING_BUDGET_LEVEL,
+  THINKING_BUDGET_LEVELS,
+  type ThinkingBudgetLevelKey,
+} from '@/lib/thinkingBudget'
+import { effortLabel, isEffortLevel } from '@/lib/modelEffort'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -112,6 +123,7 @@ type DraftParticipant = {
   toolAccess: ToolAccess
   priceIn: string
   priceOut: string
+  reasoning?: ParticipantReasoning
   source: Participant
 }
 
@@ -123,8 +135,107 @@ const toDraftParticipant = (p: Participant): DraftParticipant => ({
   toolAccess: p.toolAccess,
   priceIn: p.pricing ? String(p.pricing.inputPerMTokUsd) : '',
   priceOut: p.pricing ? String(p.pricing.outputPerMTokUsd) : '',
+  reasoning: p.reasoning,
   source: p,
 })
+
+/**
+ * A participant's Reasoning control: the same choices, labels and defaults as
+ * chat's composer (Auto / On / Off, Reasoning effort, and a Thinking Budget for
+ * llama.cpp), limited to what this participant's provider and model act on.
+ */
+function ParticipantReasoningField({
+  pid,
+  t,
+  disabled,
+  controls,
+  value,
+  onChange,
+}: {
+  pid: string
+  t: T
+  disabled: boolean
+  controls: ReturnType<typeof participantReasoningControls>
+  value: ParticipantReasoning | undefined
+  onChange: (value: ParticipantReasoning | undefined) => void
+}) {
+  const { modes, thinkingBudget, effortLevels } = controls
+  if (!modes && !thinkingBudget && effortLevels.length === 0) return null
+  const set = (patch: Partial<ParticipantReasoning>) => {
+    const next = { ...(value ?? {}), ...patch }
+    if (!next.mode) delete next.mode
+    if (!next.level) delete next.level
+    onChange(next.mode || next.level ? next : undefined)
+  }
+  const level = value?.level
+  return (
+    <div className="flex flex-col gap-2" data-testid="room-participant-reasoning">
+      {modes && (
+        <div className="flex flex-col gap-1.5">
+          <span id={`${pid}-reasoning`} className="text-[12.5px] font-medium">
+            {t('rooms:editor.reasoning')}
+          </span>
+          <Segmented<'auto' | 'on' | 'off'>
+            size="sm"
+            aria-label={t('rooms:editor.reasoning')}
+            value={value?.mode ?? 'auto'}
+            onValueChange={(mode) => !disabled && set({ mode })}
+            options={[
+              { value: 'auto', label: t('rooms:editor.reasoningAuto') },
+              { value: 'on', label: t('rooms:editor.reasoningOn') },
+              { value: 'off', label: t('rooms:editor.reasoningOff') },
+            ]}
+          />
+        </div>
+      )}
+      {thinkingBudget && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium">
+            {t('rooms:editor.thinkingBudget')}
+          </span>
+          <Segmented<ThinkingBudgetLevelKey>
+            size="sm"
+            aria-label={t('rooms:editor.thinkingBudget')}
+            value={level ?? DEFAULT_THINKING_BUDGET_LEVEL}
+            onValueChange={(next) => !disabled && set({ level: next })}
+            options={THINKING_BUDGET_LEVELS.map((l) => ({
+              value: l.key,
+              label: l.label,
+            }))}
+          />
+          <p className="text-xs text-muted-foreground">
+            {t('rooms:editor.thinkingBudgetHint')}
+          </p>
+        </div>
+      )}
+      {effortLevels.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[12.5px] font-medium">
+            {t('rooms:editor.reasoningEffort')}
+          </span>
+          <Segmented<string>
+            size="sm"
+            aria-label={t('rooms:editor.reasoningEffort')}
+            value={level && effortLevels.includes(level) ? level : 'default'}
+            onValueChange={(next) =>
+              !disabled &&
+              set({
+                level: next === 'default' ? undefined : (next as ThinkingBudgetLevelKey),
+              })
+            }
+            options={[
+              { value: 'default', label: t('rooms:editor.reasoningEffortDefault') },
+              ...effortLevels.map((l) => ({
+                value: l,
+                label: isEffortLevel(l) ? effortLabel(l) : l,
+              })),
+            ]}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
 
 function parsePricing(d: Pick<DraftParticipant, 'priceIn' | 'priceOut'>) {
   const i = Number(d.priceIn)
@@ -307,6 +418,14 @@ export function RoomEditor({ room }: { room: Room }) {
           model: d.model,
           toolAccess: d.toolAccess,
           pricing: parsePricing(d),
+          // Only what the chosen model acts on is kept; `null` returns the
+          // participant to the model's default.
+          reasoning:
+            applicableParticipantReasoning(
+              d.model.provider,
+              findModel(providers, d.model),
+              d.reasoning
+            ) ?? null,
         }
       })
       await api.updateRoomSettings(room, {
@@ -569,6 +688,15 @@ export function RoomEditor({ room }: { room: Room }) {
                             : t('rooms:editor.toolReadHint')}
                       </p>
                     </div>
+
+                    <ParticipantReasoningField
+                      pid={pid}
+                      t={t}
+                      disabled={disabled}
+                      controls={participantReasoningControls(p.model.provider, model)}
+                      value={p.reasoning}
+                      onChange={(reasoning) => updateParticipant(p.id, { reasoning })}
+                    />
 
                     <details className="group/price text-sm">
                       <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-muted-foreground hover:text-foreground [&::-webkit-details-marker]:hidden">

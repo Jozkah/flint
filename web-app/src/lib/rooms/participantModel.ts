@@ -19,6 +19,7 @@ import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
 import { buildRoomTools, ROOM_TOOL_MAX_STEPS } from './roomTools'
+import { buildParticipantReasoningRequest } from './participantReasoning'
 import {
   RoomCallError,
   cleanErrorMessage,
@@ -50,9 +51,10 @@ export function createModelOrAbort(
   model: { provider: string; id: string },
   provider: ModelProvider,
   signal: AbortSignal,
-  create: CreateModel = (id, p, params) => ModelFactory.createModel(id, p, params)
+  create: CreateModel = (id, p, params) => ModelFactory.createModel(id, p, params),
+  parameters: Record<string, unknown> = {}
 ): Promise<LanguageModel> {
-  const modelPromise = create(model.id, provider, {})
+  const modelPromise = create(model.id, provider, parameters)
   return new Promise<LanguageModel>((resolve, reject) => {
     const onAbort = () => {
       if (model.provider === 'llamacpp') {
@@ -103,9 +105,25 @@ export async function streamParticipantReply(
     )
   }
 
+  // The participant's own reasoning setting, mapped per provider exactly as
+  // chat maps it. Nothing is added for a participant left at the default.
+  const reasoning = await buildParticipantReasoningRequest(
+    input.model.provider,
+    provider.models?.find((m) => m.id === input.model.id),
+    input.model.id,
+    input.reasoning,
+    input.maxOutputTokens
+  )
+
   let languageModel: LanguageModel
   try {
-    languageModel = await createModelOrAbort(input.model, provider, input.signal, deps.createModel)
+    languageModel = await createModelOrAbort(
+      input.model,
+      provider,
+      input.signal,
+      deps.createModel,
+      reasoning.params
+    )
   } catch (e) {
     if (isAbortLike(e, input.signal)) throw toRoomCallError(e, input.signal)
     throw new RoomCallError('load-failed', 'load-failed', cleanErrorMessage(e))
@@ -131,6 +149,9 @@ export async function streamParticipantReply(
       messages: input.messages,
       maxOutputTokens: input.maxOutputTokens,
       abortSignal: input.signal,
+      ...(reasoning.providerOptions
+        ? { providerOptions: reasoning.providerOptions }
+        : {}),
       // Read-only built-in tools, executed by the SDK's own loop, bounded so a
       // turn cannot spin. Absent unless the room has a folder and the
       // participant has tool access.

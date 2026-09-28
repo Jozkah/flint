@@ -555,6 +555,9 @@ class RoomRun {
         try {
           const res = await this.deps.streamReply({
             model: args.model,
+            ...(args.participant?.reasoning
+              ? { reasoning: args.participant.reasoning }
+              : {}),
             system: built.system,
             messages: built.messages,
             maxOutputTokens: this.maxOutputTokens(),
