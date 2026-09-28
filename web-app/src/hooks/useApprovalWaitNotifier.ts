@@ -9,6 +9,7 @@ import {
 } from '@/lib/approvalDestination'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useRoomsStore } from '@/lib/rooms/store'
+import { emitRemoteNotification } from '@/lib/remote/events'
 import {
   allApprovalRequests,
   useToolApprovalRequests,
@@ -136,6 +137,8 @@ export function useApprovalWaitNotifier(navigate?: ApprovalNavigate): void {
           duration: Infinity,
         })
         osNotify(title, body)
+        // A paired phone is often where the user is while a run waits.
+        emitRemoteNotification(title, body)
       }
     }
     const timer = setInterval(check, CHECK_EVERY_MS)
