@@ -36,3 +36,39 @@ test('Windows installer recovers only Flint bundled processes and locked files',
   assert.match(template, /UnlockBundledBinary "\$INSTDIR\\bun\.exe"/)
   assert.doesNotMatch(template, /StopBundledProcess "jan-llama-worker\.exe"/)
 })
+
+test('Windows installer uses the Flint UI and every asset it embeds exists', async () => {
+  const template = await readFile(templatePath, 'utf8')
+  const ui = await readFile(
+    new URL('../src-tauri/installer/windows/flint-ui.nsh', import.meta.url),
+    'utf8'
+  )
+
+  // The workspace placeholder CI rewrites reaches the include through a define.
+  assert.match(template, /!define FLINT_WORKSPACE "flint_workspace"/)
+  assert.match(template, /!include "flint_workspace\\src-tauri\\installer\\windows\\flint-ui\.nsh"/)
+  for (const hook of ['FlintInstFilesShow', 'FlintInstFilesLeave']) {
+    assert.match(template, new RegExp(`MUI_PAGE_CUSTOMFUNCTION_\\w+ ${hook}\\n`))
+    assert.match(template, new RegExp(`MUI_PAGE_CUSTOMFUNCTION_\\w+ un\\.${hook}\\n`))
+  }
+  assert.match(template, /FLINT_UNINSTALL_CONFIRM_PAGE \$DeleteAppDataCheckboxState/)
+
+  const roots = {
+    FLINT_UI: '../src-tauri/installer/windows/',
+    FLINT_INTER: '../web-app/public/fonts/inter/',
+  }
+  const extract = ui.match(/!macro _FlintExtract[\s\S]*?!macroend/)[0]
+  const files = [...ui.matchAll(/"\$\{(FLINT_UI|FLINT_INTER)\}\\([^"]+)"/g)]
+    .filter((m) => !m[2].includes('${'))
+    .map((m) => roots[m[1]] + m[2].replaceAll('\\', '/'))
+  for (const theme of ['light', 'dark']) {
+    for (const scale of [100, 125, 150, 200]) {
+      assert.match(ui, new RegExp(`_FlintExtract ${theme} ${scale}\\n`))
+      for (const m of extract.matchAll(/\\\$\{scale\}\\([\w-]+\.bmp)"/g)) {
+        files.push(`${roots.FLINT_UI}${theme}/${scale}/${m[1]}`)
+      }
+    }
+  }
+  assert.ok(files.length >= 34, `found ${files.length} embedded files`)
+  await Promise.all(files.map((f) => readFile(new URL(f, import.meta.url))))
+})
