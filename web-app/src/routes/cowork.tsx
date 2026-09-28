@@ -54,6 +54,8 @@ import {
   Loader2,
   MessageSquare,
   PanelRight,
+  ChevronDown,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { basenameOf } from '@/lib/coworkPreview'
@@ -312,7 +314,10 @@ import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
-import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
+import { CoworkProjectInit, projectInitLabel } from '@/containers/CoworkProjectInit'
+import { useProjectInitDrafts } from '@/lib/projectInit'
+import { useOverflowCollapse } from '@/hooks/useOverflowCollapse'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { holdQueueThenStop } from '@/lib/chatSteering'
@@ -481,7 +486,7 @@ import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
-import { isWorkProfileId, workProfile, WORK_PROFILES } from '@/lib/workProfiles'
+import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { jevSuggestSkill } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -710,6 +715,7 @@ export function CoworkPage() {
   )
   // Bumped when Flint itself writes the folder's JAN.md, so it is read again.
   const [instructionsVersion, setInstructionsVersion] = useState(0)
+  const [projectInitOpen, setProjectInitOpen] = useState(false)
   const [instructionFiles, setInstructionFiles] = useState<InstructionFile[]>(
     []
   )
@@ -4754,6 +4760,10 @@ export function CoworkPage() {
   const windowPhone = useMediaQuery('(max-width: 767px)')
   const narrow = paneWidth != null ? paneWidth < 1100 : windowNarrow
   const phone = paneWidth != null ? paneWidth < 768 : windowPhone
+  // The header's context controls, when they no longer fit even at their
+  // smallest (a narrow window, the output or preview panel open), fold behind
+  // one button rather than being cut off at the edge.
+  const ctxBar = useOverflowCollapse<HTMLDivElement>(!phone && !paneChrome)
   const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
   const view: CoworkPhoneView = phone ? phoneView : 'content'
   const transcriptScroll = useRef<number | null>(null)
@@ -4813,9 +4823,10 @@ export function CoworkPage() {
       ? 'drawer'
       : 'docked'
   const inspectorVisible = phone ? view === 'output' : panelShown
-  // One set of rail buttons on the page at a time: in the panel header while
-  // the output panel is on screen, in the composer row otherwise. The smoke
-  // harness finds them by exact name and reads `aria-pressed`.
+  // The rail buttons stay in the composer row whether or not the output panel
+  // is open, so opening it never takes controls away from where they were;
+  // the panel header carries the same buttons as its tabs. Both sets share
+  // names and `aria-pressed`, so the smoke harness's first match is right.
   const railToolbar = (presentation: 'toolbar' | 'tabs') => (
     <CoworkRailToolbar
       presentation={presentation}
@@ -4853,9 +4864,29 @@ export function CoworkPage() {
   const workProfileChoice = useWorkProfiles((st) =>
     session?.id ? st.sessions[session.id] : undefined
   )
+  // AH-209: a folder with no FLINT.md is offered a starting one, from the
+  // folder menu. Offered only when FLINT.md is known to be absent; one that
+  // could not be read is still there, and is not overwritten.
+  const projectInitRoot = treeRoot ?? null
+  const projectInitOffered =
+    Boolean(projectInitRoot) &&
+    instructionFiles.some(
+      (file) => file.role === 'native' && file.state.kind === 'missing'
+    )
+  const hasProjectInitDraft = useProjectInitDrafts((st) =>
+    projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
+  )
   const sessionControls = (
     <>
       <CoworkWorkspacePill
+        describeProject={
+          projectInitOffered
+            ? {
+                label: projectInitLabel(hasProjectInitDraft),
+                onOpen: () => setProjectInitOpen(true),
+              }
+            : undefined
+        }
         folder={folder}
         workspacePath={workspacePath}
         gitBranch={gitBranch}
@@ -4893,29 +4924,11 @@ export function CoworkPage() {
         onReviewOnly={() => void returnToReviewOnly()}
       />
       {workProfilesOn && session?.id && (
-        <select
-          data-testid="work-profile-picker"
-          aria-label={t('common:jev.profilesTitle')}
-          title={t('common:jev.profilesTitle')}
-          value={workProfileChoice?.manual ? workProfileChoice.id : ''}
-          onChange={(e) => {
-            const store = useWorkProfiles.getState()
-            if (isWorkProfileId(e.target.value)) store.choose(session.id, e.target.value, true)
-            else store.clearManual(session.id)
-          }}
-          className="h-[30px] min-w-0 shrink rounded-md border border-border bg-card px-2 text-xs text-muted-foreground pointer-coarse:h-11"
-        >
-          <option value="">
-            {workProfileChoice
-              ? `${t('common:jev.profilesAuto')}: ${workProfile(workProfileChoice.id).label}`
-              : t('common:jev.profilesAuto')}
-          </option>
-          {WORK_PROFILES.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+        <CoworkWorkProfilePicker
+          choice={workProfileChoice}
+          onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
+          onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
+        />
       )}
     </>
   )
@@ -5145,11 +5158,51 @@ export function CoworkPage() {
             // the model pill truncates inside a bounded box, the mode and
             // access pills drop their labels to icons when the row is tight,
             // and anything still too wide is clipped at the right edge.
-            <div className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5">
-              <div className="flex min-w-28 max-w-56 shrink">
+            <div
+              ref={ctxBar.ref}
+              data-testid="cowork-context-bar"
+              data-collapsed={ctxBar.collapsed ? '' : undefined}
+              className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5"
+            >
+              {/* Folded, the model pill may shrink further: it truncates its
+                  own name, and the row then holds only it and one button. */}
+              <div
+                className={cn(
+                  'flex max-w-56 shrink',
+                  ctxBar.collapsed ? 'min-w-16' : 'min-w-28'
+                )}
+              >
                 {modelSelector}
               </div>
-              {sessionControls}
+              {ctxBar.collapsed ? (
+                // Too tight for the controls even as icons: one button opens
+                // them, full size, rather than cutting them off at the edge.
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      data-testid="cowork-context-more"
+                      aria-label={t('common:coworkLayout.sessionControls')}
+                      title={t('common:coworkLayout.sessionControls')}
+                      className="h-[30px] shrink-0 gap-1 px-2 text-xs text-muted-foreground pointer-coarse:h-11"
+                    >
+                      <SlidersHorizontal aria-hidden className="size-3.5" />
+                      <ChevronDown aria-hidden className="size-3" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    collisionPadding={12}
+                    className="flex w-auto max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2 p-2"
+                    data-testid="cowork-context-more-panel"
+                  >
+                    {sessionControls}
+                  </PopoverContent>
+                </Popover>
+              ) : (
+                sessionControls
+              )}
             </div>
           )}
           {!phone && (
@@ -5707,18 +5760,13 @@ export function CoworkPage() {
                 />
               ) : null}
               <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
-              {/* AH-209: a folder with no JAN.md is offered a starting one,
-                  proposed from a survey and written only when accepted. */}
+              {/* The FLINT.md dialog; the folder menu opens it. */}
               <CoworkProjectInit
-                folder={treeRoot ?? null}
-                // Offered only when JAN.md is known to be absent; one that
-                // could not be read is still there, and is not overwritten.
-                hasInstructions={
-                  !instructionFiles.some(
-                    (file) =>
-                      file.role === 'native' && file.state.kind === 'missing'
-                  )
-                }
+                hideTrigger
+                open={projectInitOpen}
+                onOpenChange={setProjectInitOpen}
+                folder={projectInitRoot}
+                hasInstructions={!projectInitOffered}
                 onAccepted={() => setInstructionsVersion((v) => v + 1)}
               />
               {/* Jev: a suggested skill, only when its opt-in is on. */}
@@ -5769,7 +5817,9 @@ export function CoworkPage() {
                   <>
                     {(phone || paneChrome) && sessionControls}
                     <CoworkSandboxChip />
-                    {!inspectorVisible && railToolbar('toolbar')}
+                    {/* On a phone the composer is out of view while the
+                        output is, so it keeps one set there. */}
+                    {(!phone || !inspectorVisible) && railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>

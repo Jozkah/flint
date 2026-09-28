@@ -284,6 +284,7 @@
     "closeOverlay": "Close panel"
   },
   "coworkLayout": {
+    "sessionControls": "Folder, mode and access",
     "views": "Cowork view",
     "content": "Content",
     "output": "Output",
@@ -1920,6 +1921,8 @@
     "profilesSave": "Save",
     "profilesReset": "Reset to default",
     "profilesAuto": "Auto",
+    "profilesAutoDesc": "Picked from the session's first message: by Jev when skill suggestions are On, by keywords otherwise.",
+    "profilesAutoPicked": "Auto picked {{profile}}",
     "title": "Jev decision support (TypeSafe)",
     "tab": "Jev",
     "pageDesc": "Optional decision support from TypeSafe's Jev model. Off by default; Flint's own behaviour stays in charge.",

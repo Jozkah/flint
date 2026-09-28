@@ -27,18 +27,38 @@ import { getServiceHub } from '@/hooks/useServiceHub'
 import { errorText } from '@/lib/errorText'
 import { useProjectInitDrafts } from '@/lib/projectInit'
 
+/** The offer's label: a saved draft is continued rather than started over. */
+export const projectInitLabel = (hasDraft: boolean) =>
+  hasDraft ? 'Continue the FLINT.md draft' : 'Describe this project'
+
 export function CoworkProjectInit({
   folder,
   hasInstructions,
   onAccepted,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: {
+  /** Controlled open state, for a trigger that lives elsewhere. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  /** Render only the dialog; another control opens it. */
+  hideTrigger?: boolean
   folder: string | null
   /** The folder already has a `FLINT.md`; nothing is offered. */
   hasInstructions: boolean
   /** `FLINT.md` was written; whatever reads it should read it again. */
   onAccepted?: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [innerOpen, setInnerOpen] = useState(false)
+  const open = openProp ?? innerOpen
+  const setOpen = useCallback(
+    (next: boolean) => {
+      if (openProp === undefined) setInnerOpen(next)
+      onOpenChange?.(next)
+    },
+    [openProp, onOpenChange]
+  )
   const [busy, setBusy] = useState<'survey' | 'accept' | null>(null)
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -80,10 +100,15 @@ export function CoworkProjectInit({
     }
   }, [folder])
 
-  const begin = () => {
-    setOpen(true)
-    if (!draft) void runSurvey()
-  }
+  // Opening with no draft yet starts the survey, whichever control opened it.
+  const hasDraft = Boolean(draft)
+  useEffect(() => {
+    if (open && !hasDraft) void runSurvey()
+    // Only on opening: a failed survey is retried from the dialog, not looped.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  const begin = () => setOpen(true)
 
   const accept = async () => {
     if (!folder || !draft) return
@@ -127,16 +152,18 @@ export function CoworkProjectInit({
 
   return (
     <>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1 text-xs"
-        onClick={begin}
-        data-testid="project-init-open"
-      >
-        <FileText aria-hidden className="size-3.5" />
-        {draft ? 'Continue the FLINT.md draft' : 'Describe this project'}
-      </Button>
+      {!hideTrigger && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-1 text-xs"
+          onClick={begin}
+          data-testid="project-init-open"
+        >
+          <FileText aria-hidden className="size-3.5" />
+          {projectInitLabel(Boolean(draft))}
+        </Button>
+      )}
       {announcement}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl" data-testid="project-init-dialog">
