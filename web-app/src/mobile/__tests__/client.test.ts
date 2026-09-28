@@ -84,4 +84,19 @@ describe('localPairingStore', () => {
     store.clear()
     expect(localStorage.getItem(PAIRING_KEY)).toBeNull()
   })
+
+  it('keeps a pairing for this visit when storage writes fail', () => {
+    const unavailable = {
+      getItem: () => null,
+      setItem: () => { throw new Error('QuotaExceededError') },
+      removeItem: () => { throw new Error('SecurityError') },
+    } as unknown as Storage
+    const store = localPairingStore(unavailable)
+    store.set(pairing)
+    expect(store.get()).toEqual(pairing)
+    store.clear()
+    expect(store.get()).toBeNull()
+    store.set(pairing)
+    expect(store.get()).toEqual(pairing)
+  })
 })

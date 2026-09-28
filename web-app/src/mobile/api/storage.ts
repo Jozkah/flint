@@ -35,11 +35,27 @@ function isPairing(v: unknown): v is Pairing {
   return typeof p.token === 'string' && p.token.length > 0 && typeof p.deviceId === 'string'
 }
 
-export function localPairingStore(storage: Storage | undefined = globalThis.localStorage): PairingStore {
+export function localPairingStore(storage?: Storage): PairingStore {
+  let available = storage
+  if (!available) {
+    try {
+      available = globalThis.localStorage
+    } catch {
+      // Some browsers deny access to localStorage itself.
+    }
+  }
+  let temporary: Pairing | null = null
+  let memoryOnly = !available
   return {
     get() {
+      if (memoryOnly) return temporary
+      let raw: string | null | undefined
       try {
-        const raw = storage?.getItem(PAIRING_KEY)
+        raw = available?.getItem(PAIRING_KEY)
+      } catch {
+        return temporary
+      }
+      try {
         const v: unknown = raw ? JSON.parse(raw) : null
         return isPairing(v) ? v : null
       } catch {
@@ -47,17 +63,27 @@ export function localPairingStore(storage: Storage | undefined = globalThis.loca
       }
     },
     set(p) {
+      temporary = p
       try {
-        storage?.setItem(PAIRING_KEY, JSON.stringify(p))
+        if (!available) {
+          memoryOnly = true
+          return
+        }
+        available.setItem(PAIRING_KEY, JSON.stringify(p))
+        memoryOnly = false
       } catch {
-        // Private mode or a full quota: the pairing lasts for this visit only.
+        // Private mode or a full quota: keep pairing for this visit.
+        memoryOnly = true
       }
     },
     clear() {
+      temporary = null
+      memoryOnly = !available
       try {
-        storage?.removeItem(PAIRING_KEY)
+        available?.removeItem(PAIRING_KEY)
       } catch {
-        // Nothing stored.
+        // Ignore any stale entry when storage cannot remove it.
+        memoryOnly = true
       }
     },
   }
