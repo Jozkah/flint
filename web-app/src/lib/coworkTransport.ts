@@ -201,6 +201,7 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   protected override buildSystemPrompt(messages: UIMessage[]): string {
     const base = buildCoworkSystemPrompt({
+      availableTools: Object.keys(this.advertisedTools),
       workspacePath: this.config.workspacePath,
       readOnlyFolder: this.config.readOnlyFolder,
       extraFolders: this.config.extraFolders,

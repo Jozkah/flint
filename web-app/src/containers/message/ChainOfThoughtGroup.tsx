@@ -108,9 +108,6 @@ const CompactTrace = ({
           transcriptView="trace"
         />
       )}
-      {pinned.map((e) =>
-        card(e, e.part.state === 'output-error' ? false : undefined)
-      )}
       {steps.length > 0 ? (
         <>
           <button
@@ -154,6 +151,9 @@ const CompactTrace = ({
             {t('chat:reasoning.thinking')}
           </span>
         )
+      )}
+      {pinned.map((e) =>
+        card(e, e.part.state === 'output-error' ? false : undefined)
       )}
     </div>
   )
@@ -245,6 +245,10 @@ export const ChainOfThoughtGroup = memo(
             return Boolean(toolCallId && pendingApprovals[toolCallId])
           })
         : entries
+    const approvalLast = (rows: PartEntry[]) => [
+      ...rows.filter(({ part }) => !part.toolCallId || !pendingApprovals[part.toolCallId]),
+      ...rows.filter(({ part }) => Boolean(part.toolCallId && pendingApprovals[part.toolCallId])),
+    ]
 
     // Streaming label reflects the current step, not whether the whole trace
     // ever used a tool — otherwise it sticks on "Using tools…" once the model
@@ -373,7 +377,7 @@ export const ChainOfThoughtGroup = memo(
     // Condensed: the settled step only, so the text does not shift mid-read.
     // 5 lines of text-sm (1.25rem line-height).
     const renderCondensed = () =>
-      visibleEntries.map(({ part, index: partIndex }) => {
+      approvalLast(visibleEntries).map(({ part, index: partIndex }) => {
         if (part.type === CONTENT_TYPE.REASONING) {
           if (partIndex !== totalParts - 1) return null
           return (
@@ -424,7 +428,7 @@ export const ChainOfThoughtGroup = memo(
             : isExtended
               ? // The live timeline flows at full size along the chat, as it
                 // does once the turn ends; no capped inner scroll box.
-                renderTimeline(entries, true)
+                renderTimeline(approvalLast(entries), true)
               : renderCondensed()}
         </ChainOfThoughtContent>
       </ChainOfThought>

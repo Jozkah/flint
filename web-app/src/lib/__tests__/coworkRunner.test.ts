@@ -215,6 +215,33 @@ describe('steering a running turn (janhq/jan#8864)', () => {
     expect(first).toHaveLength(1)
   })
 
+  it('skips remaining tool calls when steering arrives during a tool batch', async () => {
+    let waiting = false
+    const dispatch = vi.fn(async () => {
+      waiting = true
+      return { output: 'first complete' }
+    })
+    const d = {
+      ...deps([[...toolStep('first', 'c1'), ...toolStep('second', 'c2')], textStep('redirected')], dispatch),
+      hasSteering: () => waiting,
+      takeSteering: vi.fn(() => {
+        if (!waiting) return []
+        waiting = false
+        return [{ id: 's1', role: 'user', parts: [{ type: 'text', text: 'change direction' }] } as UIMessage]
+      }),
+    }
+    const out = await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    expect(second.at(-1)?.role).toBe('user')
+    expect(out.errorText).toBeUndefined()
+    expect(out.stoppedBy).toBe('done')
+  })
+
   it('continues the same run when input arrives with the final answer', async () => {
     let offered = 0
     const d = {

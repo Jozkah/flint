@@ -4253,6 +4253,10 @@ export function CoworkPage() {
           // session's queue: input typed in another session never reaches
           // this run, whichever session is in view. Shown in the transcript
           // where it entered the conversation, marked as steering.
+          hasSteering: () =>
+            useMessageQueue.getState().getQueue(sid).some((m) =>
+              !m.held && (m.steer === true || !!m.from)
+            ),
           takeSteering: async () => {
             // Mail a tool already consumed (wait_for_reply, read_messages)
             // is dropped here, so it is never injected a second time.

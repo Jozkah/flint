@@ -863,6 +863,8 @@ export type RunDeps = {
    * once returned. janhq/jan#8864.
    */
   takeSteering?: () => UIMessage[] | Promise<UIMessage[]>
+  /** Check for pending steering between calls from one model response. */
+  hasSteering?: () => boolean
   /**
    * Compact the conversation when it needs it (`lib/compaction.ts`).
    *
@@ -1156,7 +1158,8 @@ export async function runTurn(opts: {
     // Tools run one at a time: they share a workspace, and the progress
     // attribution in the UI assumes a single call in flight.
     const outcomes = new Map<string, ToolOutcome>()
-    for (const call of result.toolCalls) {
+    let steeringPending = false
+    for (const [index, call] of result.toolCalls.entries()) {
       if (signal.aborted) {
         outcomes.set(call.toolCallId, {
           output: '(interrupted)',
@@ -1232,6 +1235,16 @@ export async function runTurn(opts: {
         path: pathOf(call.input),
         after: outcome.diff,
       })
+      if (deps.hasSteering?.() && ![...outcomes.values()].some((one) => one.endsTurn)) {
+        steeringPending = true
+        for (const skipped of result.toolCalls.slice(index + 1)) {
+          outcomes.set(skipped.toolCallId, {
+            output: 'Not run because the user steered this turn before this call started.',
+            isError: true,
+          })
+        }
+        break
+      }
     }
 
     /**
@@ -1242,7 +1255,7 @@ export async function runTurn(opts: {
      * guard is not something it can waive.
      */
     const loop = detectLoop(observed)
-    if (loop.tripped) {
+    if (loop.tripped && !steeringPending) {
       // The guard's note rides on the last call's result, where the model
       // reads it on its closing turn, rather than as a message the user did
       // not write.
