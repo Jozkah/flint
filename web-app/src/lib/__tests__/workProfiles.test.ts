@@ -15,6 +15,10 @@ describe('classifyLocally', () => {
     expect(classifyLocally('plan the migration to the new SDK')).toBe('plan')
     expect(classifyLocally('reverse engineer the save file format')).toBe('reverse-engineer')
     expect(classifyLocally('add a settings toggle for the overlay')).toBe('execute')
+    // Words that name a kind of work only in passing do not pick it.
+    expect(classifyLocally('add error handling to the loader')).toBe('execute')
+    expect(classifyLocally('design a button for the toolbar')).toBe('execute')
+    expect(classifyLocally('how do I add a new tab? add it to settings')).toBe('execute')
   })
 })
 
@@ -28,9 +32,14 @@ describe('chooseWorkProfile', () => {
   })
 
   it('uses Jev when it answers with a profile, the keyword match otherwise', async () => {
-    expect(await chooseWorkProfile('s', 'review this', async () => 'plan')).toBe('plan')
-    expect(await chooseWorkProfile('s', 'review this', async () => null)).toBe('review')
-    expect(await chooseWorkProfile('s', 'review this', async () => 'nonsense')).toBe('review')
+    expect(await chooseWorkProfile('a', 'review this', async () => 'plan')).toBe('plan')
+    expect(await chooseWorkProfile('b', 'review this', async () => null)).toBe('review')
+    expect(await chooseWorkProfile('c', 'review this', async () => 'nonsense')).toBe('review')
+  })
+
+  it('keeps the first choice for the rest of the session', async () => {
+    expect(await chooseWorkProfile('s', 'review this diff')).toBe('review')
+    expect(await chooseWorkProfile('s', 'refactor the loader')).toBe('review')
   })
 
   it('keeps a profile the user picked by hand', async () => {
@@ -44,3 +53,4 @@ describe('chooseWorkProfile', () => {
     expect(useWorkProfiles.getState().blockFor('s')).toContain('Only list security issues.')
   })
 })
+

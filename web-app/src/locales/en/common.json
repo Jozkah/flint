@@ -1914,9 +1914,10 @@
   "jev": {
     "profilesTitle": "Work profiles",
     "profilesToggle": "Independent system prompt per type of work",
-    "profilesExplained": "Adds a short block to the system prompt for the kind of work each message asks for: review, planning, executing, refactoring, debugging, reverse engineering or explaining. Jev picks the profile when skill suggestions are On; otherwise a keyword match picks it. Off, every run uses the global prompt alone. Edit each profile below.",
+    "profilesExplained": "Adds a short block to the system prompt for the kind of work each message asks for: review, planning, executing, refactoring, debugging, reverse engineering or explaining. Jev picks the profile from a session's first message when skill suggestions are On; otherwise a keyword match picks it. The profile stays for the session; change it from the picker in the Cowork header. Off, every run uses the global prompt alone. Edit each profile below.",
     "profilesSave": "Save",
     "profilesReset": "Reset to default",
+    "profilesAuto": "Auto",
     "title": "Jev decision support (TypeSafe)",
     "tab": "Jev",
     "pageDesc": "Optional decision support from TypeSafe's Jev model. Off by default; Flint's own behaviour stays in charge.",

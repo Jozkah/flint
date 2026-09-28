@@ -602,3 +602,13 @@ describe('agent working rules and environment facts', () => {
     ).toContain('Access mode: Managed worktree')
   })
 })
+
+describe('the work-profile block', () => {
+  it('is included normally, and left out in plan mode', () => {
+    const block = '# PROFILE-BLOCK'
+    expect(buildCoworkSystemPrompt({ ...opts(), workProfileBlock: block })).toContain(block)
+    expect(
+      buildCoworkSystemPrompt({ ...opts(), workProfileBlock: block, planMode: true })
+    ).not.toContain(block)
+  })
+})

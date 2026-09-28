@@ -50,6 +50,7 @@ export const WORK_PROFILES: readonly WorkProfile[] = [
       '- Read the whole change and the code it touches before judging it; follow calls into other files when a finding depends on them.',
       '- Report findings ranked by severity, each with the file and line, the concrete failure (inputs or state that break it), and a suggested fix.',
       '- Say what you checked and found fine as well as what is wrong; do not pad with style nits.',
+      '- Output: a list ranked by severity; each item is `file:line`, the problem, how it fails, and the fix.',
     ].join('\n'),
   },
   {
@@ -60,6 +61,7 @@ export const WORK_PROFILES: readonly WorkProfile[] = [
       '- The user wants a plan, not the implementation. Investigate enough to ground it in the real code.',
       '- Give the approach, the files and components involved, the ordered steps, the risks, and the decisions that are the user\'s to make.',
       '- Recommend one option when there are several, and say why.',
+      '- Output: numbered steps, then the risks, then the decisions left to the user.',
     ].join('\n'),
   },
   {
@@ -114,12 +116,12 @@ export function isWorkProfileId(value: unknown): value is WorkProfileId {
 
 /** Keyword rules, most specific first. Used when Jev is not set up or abstains. */
 const RULES: Array<[WorkProfileId, RegExp]> = [
-  ['reverse-engineer', /\b(reverse[- ]?engineer\w*|disassembl\w*|decompil\w*|figure out how .* works|sdk dump|offsets?|ida|ghidra)\b/i],
-  ['review', /\b(review|audit|code review|look over|check (this|the|my) (code|diff|pr|change)s?)\b/i],
-  ['refactor', /\b(refactor\w*|clean ?up|restructure|rename|simplify|split (this|the) (file|function|module))\b/i],
-  ['debug', /\b(debug\w*|why (does|is|do|isn't|doesn't|won't)|crash\w*|error|exception|stack ?trace|fails?|failing|broken|not working|bug)\b/i],
-  ['plan', /\b(plan|design|architect\w*|approach|proposal|roadmap|how should (i|we)|strategy)\b/i],
-  ['explain', /^\s*(what|how|why|where|when|which|explain|can you explain|tell me)\b/i],
+  ['reverse-engineer', /\b(reverse[- ]?engineer\w*|disassembl\w*|decompil\w*|ghidra|ida pro)\b|\bfigure out how\b.*\bworks?\b/i],
+  ['review', /\b(review|audit)\b(?!\s+(button|screen|page|step|modal|form))|\bcheck (this|the|my) (code|diff|pr|change)s?\b/i],
+  ['refactor', /\b(refactor\w*|restructure|clean ?up (the |this )?(code|module|file))\b/i],
+  ['debug', /\b(debug\w*|why (does|is|do|isn'?t|doesn'?t|won'?t|did)\b.*\b(fail\w*|crash\w*|break\w*|error\w*|wrong|work)|(crash(es|ed|ing)?|throws?|stack ?trace)\b|(is|are|keeps?) (failing|crashing|broken)|not working|doesn'?t work)/i],
+  ['plan', /\b(make|write|draft|give me) (a |the )?plan\b|\bplan (out|how|the|for)\b|\bhow should (i|we)\b|\b(architecture|roadmap)\b/i],
+  ['explain', /^\s*(what|how|why|where|which|explain|can you explain|tell me)\b(?![^?]*\b(add|make|create|fix|change|implement|build)\b)/i],
 ]
 
 /** A profile from the message's wording; `execute` when nothing matches. */

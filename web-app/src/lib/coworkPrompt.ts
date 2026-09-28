@@ -526,7 +526,11 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   )
   // After the global rules, before the project's instructions: the profile
   // shapes how to approach the request, the project still has the last word.
-  if (opts.workProfileBlock?.trim()) blocks.push(opts.workProfileBlock.trim())
+  // Not in plan mode or the opening inspection: those carry their own
+  // contract and tool limits, and a profile would contradict them.
+  if (opts.workProfileBlock?.trim() && !opts.planMode && !opts.openingInspection) {
+    blocks.push(opts.workProfileBlock.trim())
+  }
   if (opts.projectInstructions?.trim() || compat.length > 0) {
     blocks.push(
       instructionsBlock(opts.projectInstructions ?? null, compat)

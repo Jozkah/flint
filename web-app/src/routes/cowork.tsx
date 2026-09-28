@@ -479,7 +479,8 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
-import { chooseWorkProfile } from '@/hooks/useWorkProfiles'
+import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { isWorkProfileId, workProfile, WORK_PROFILES } from '@/lib/workProfiles'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { jevSuggestSkill } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -4844,6 +4845,10 @@ export function CoworkPage() {
 
   // Mode, access and workspace: in the context bar on wide screens, in the
   // composer row on phones where the bar holds the view switch.
+  const workProfilesOn = useWorkProfiles((st) => st.enabled)
+  const workProfileChoice = useWorkProfiles((st) =>
+    session?.id ? st.sessions[session.id] : undefined
+  )
   const sessionControls = (
     <>
       <CoworkWorkspacePill
@@ -4883,6 +4888,31 @@ export function CoworkPage() {
         onRequestWorktree={() => void authorizeManagedWorktree()}
         onReviewOnly={() => void returnToReviewOnly()}
       />
+      {workProfilesOn && session?.id && (
+        <select
+          data-testid="work-profile-picker"
+          aria-label={t('common:jev.profilesTitle')}
+          title={t('common:jev.profilesTitle')}
+          value={workProfileChoice?.manual ? workProfileChoice.id : ''}
+          onChange={(e) => {
+            const store = useWorkProfiles.getState()
+            if (isWorkProfileId(e.target.value)) store.choose(session.id, e.target.value, true)
+            else store.clearManual(session.id)
+          }}
+          className="h-[30px] min-w-0 shrink rounded-md border border-border bg-card px-2 text-xs text-muted-foreground pointer-coarse:h-11"
+        >
+          <option value="">
+            {workProfileChoice
+              ? `${t('common:jev.profilesAuto')}: ${workProfile(workProfileChoice.id).label}`
+              : t('common:jev.profilesAuto')}
+          </option>
+          {WORK_PROFILES.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+      )}
     </>
   )
 
