@@ -9,7 +9,13 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { FontSizeSwitcher } from '@/containers/FontSizeSwitcher'
 import { AccentSettings } from '@/containers/AccentSettings'
 import { NotificationPositionSwitcher } from '@/containers/NotificationPositionSwitcher'
-import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import {
+  COMPLETION_SOUNDS,
+  useInterfaceSettings,
+  type CompletionSound,
+} from '@/hooks/useInterfaceSettings'
+import { Slider } from '@/components/ui/slider'
+import { playCompletionSound } from '@/lib/completionSound'
 import { useTheme } from '@/hooks/useTheme'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -235,7 +241,7 @@ function InterfaceSettings() {
       <SettingsPageBody
         title={t('common:appearance')}
         description={t('settings:pageDesc.appearance')}
-        layout={[0, 1, 0, 1, 1, 0, 0]}
+        layout={[0, 1, 0, 1, 1, 0, 0, 1]}
       >
         {theme}
         <AccentSettings />
@@ -244,6 +250,7 @@ function InterfaceSettings() {
         {chatDisplay}
         {reset}
         {motion}
+        <CompletionSoundSettings />
       </SettingsPageBody>
     </div>
   )
@@ -298,5 +305,82 @@ function TranscriptViewPicker() {
         )
       })}
     </RadioGroup>
+  )
+}
+
+const LABEL: Record<CompletionSound, string> = {
+  off: 'settings:appearance.completionSoundOff',
+  background: 'settings:appearance.completionSoundBackground',
+  always: 'settings:appearance.completionSoundAlways',
+}
+
+/** Settings › Appearance › Sounds: when a finished answer plays a sound. */
+function CompletionSoundSettings() {
+  const { t } = useTranslation()
+  const mode = useInterfaceSettings((s) => s.completionSound)
+  const volume = useInterfaceSettings((s) => s.completionSoundVolume)
+  const setMode = useInterfaceSettings((s) => s.setCompletionSound)
+  const setVolume = useInterfaceSettings((s) => s.setCompletionSoundVolume)
+
+  return (
+    <Card title={t('settings:appearance.soundGroup')}>
+      <CardItem
+        column
+        anchor="settings-appearance-completion-sound"
+        title={t('settings:appearance.completionSound')}
+        description={t('settings:appearance.completionSoundDesc')}
+        actions={
+          <div
+            role="radiogroup"
+            aria-label={t('settings:appearance.completionSound')}
+            data-testid="completion-sound-mode"
+            className="inline-flex flex-wrap rounded-md border border-border p-0.5"
+          >
+            {COMPLETION_SOUNDS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                data-mode={m}
+                onClick={() => setMode(m)}
+                className={cn(
+                  'rounded px-2.5 py-1 text-xs pointer-coarse:py-2.5',
+                  mode === m ? 'bg-accent font-medium text-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {t(LABEL[m])}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-completion-sound-volume"
+        title={t('settings:appearance.completionSoundVolume')}
+        actions={
+          <div className="flex items-center gap-3">
+            <Slider
+              aria-label={t('settings:appearance.completionSoundVolume')}
+              data-testid="completion-sound-volume"
+              className="w-32"
+              min={0}
+              max={100}
+              step={5}
+              value={[Math.round(volume * 100)]}
+              onValueChange={([v]) => setVolume(v / 100)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="completion-sound-preview"
+              onClick={() => playCompletionSound(volume, { force: true })}
+            >
+              {t('settings:appearance.completionSoundPreview')}
+            </Button>
+          </div>
+        }
+      />
+    </Card>
   )
 }

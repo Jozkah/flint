@@ -436,6 +436,7 @@ describe('structural coverage of the settings surface', () => {
 const ROUTE_FILES: Record<string, string> = {
   general: 'routes/settings/general.tsx',
   appearance: 'routes/settings/interface.tsx',
+  jev: 'routes/settings/jev.tsx',
   assistants: 'routes/settings/assistant.tsx',
   attachments: 'routes/settings/attachments.tsx',
   'local-api-server': 'routes/settings/local-api-server.tsx',

@@ -458,6 +458,7 @@ import {
   type ToolOutcome,
 } from '@/lib/coworkRunner'
 import { useCoworkRun, type RunEnding } from '@/hooks/useCoworkRun'
+import { notifyAnswerFinished } from '@/lib/completionSound'
 import {
   listSubagents,
   type SubagentDefinition,
@@ -4349,6 +4350,9 @@ export function CoworkPage() {
         : null
       useCoworkRun.getState().finishRun(sid, runId, ending)
       recordRunEnded(ending)
+      // Only a run that finished on its own, and not one about to go on with
+      // what was queued behind it: that one sounds when it ends.
+      if (stop === 'done' && !continueWith) notifyAnswerFinished()
       // A finished run lets what was typed after its last boundary go as the
       // next request, from the effect watching the session in view. Any other
       // ending -- a failure, Stop, a cap -- holds it for the user to send or

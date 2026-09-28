@@ -16,7 +16,13 @@ function JevSettings() {
     <div className="flex h-full w-full flex-col">
       <SettingsPageHeader title={t('common:jev.tab')} />
       <SettingsPageBody title={t('common:jev.title')} description={t('common:jev.pageDesc')}>
-        <JevSettingsCard />
+        <JevSettingsCard
+          anchors={{
+            key: 'settings-jev-key',
+            skills: 'settings-jev-skills',
+            rerank: 'settings-jev-rerank',
+          }}
+        />
       </SettingsPageBody>
     </div>
   )

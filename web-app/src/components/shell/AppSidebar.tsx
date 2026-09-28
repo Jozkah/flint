@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState, type CSSProperties } from 'react'
 import { useSidebarGlide } from '@/components/shell/useSidebarGlide'
 import { Link, useLocation, useNavigate } from '@tanstack/react-router'
 import {
@@ -42,6 +42,13 @@ import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import {
+  SIDEBAR_DEFAULT_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  sanitizeSidebarWidth,
+  useInterfaceSettings,
+} from '@/hooks/useInterfaceSettings'
 
 type LinkRow = {
   to: string
@@ -393,18 +400,131 @@ export function AppSidebar() {
   }
 
   return (
+    <ResizableSidebar open={open}>
+      <SidebarBody />
+    </ResizableSidebar>
+  )
+}
+
+/** How far one arrow-key press moves the sidebar's edge. */
+const KEY_STEP = 16
+
+/**
+ * The docked sidebar, with a handle on its right edge that drags its width
+ * between SIDEBAR_MIN_WIDTH and SIDEBAR_MAX_WIDTH. The width is kept only
+ * when the drag ends, so a drag is not a stream of settings writes.
+ * Double-clicking the handle puts the default width back.
+ */
+export function ResizableSidebar({
+  open,
+  children,
+}: {
+  open: boolean
+  children: React.ReactNode
+}) {
+  const { t } = useTranslation()
+  const savedWidth = useInterfaceSettings((s) => s.sidebarWidth)
+  const setSidebarWidth = useInterfaceSettings((s) => s.setSidebarWidth)
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+  const asideRef = useRef<HTMLElement>(null)
+  const width = dragWidth ?? sanitizeSidebarWidth(savedWidth)
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    const aside = asideRef.current
+    if (!aside) return
+    e.preventDefault()
+    const handle = e.currentTarget
+    handle.setPointerCapture(e.pointerId)
+    // The app can be zoomed: pointer positions are in screen pixels, the
+    // width in CSS pixels, and the box's two sizes give the ratio between them.
+    const rect = aside.getBoundingClientRect()
+    const scale = aside.offsetWidth > 0 ? rect.width / aside.offsetWidth : 1
+    const widthAt = (clientX: number) =>
+      sanitizeSidebarWidth((clientX - rect.left) / (scale || 1))
+    let latest = width
+    const onMove = (ev: PointerEvent) => {
+      latest = widthAt(ev.clientX)
+      setDragWidth(latest)
+    }
+    const onEnd = () => {
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onEnd)
+      handle.removeEventListener('pointercancel', onEnd)
+      document.body.style.removeProperty('cursor')
+      document.body.style.removeProperty('user-select')
+      setSidebarWidth(latest)
+      setDragWidth(null)
+    }
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onEnd)
+    handle.addEventListener('pointercancel', onEnd)
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    setDragWidth(width)
+  }
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const next =
+      e.key === 'ArrowLeft'
+        ? width - KEY_STEP
+        : e.key === 'ArrowRight'
+          ? width + KEY_STEP
+          : e.key === 'Home'
+            ? SIDEBAR_MIN_WIDTH
+            : e.key === 'End'
+              ? SIDEBAR_MAX_WIDTH
+              : null
+    if (next === null) return
+    e.preventDefault()
+    setSidebarWidth(next)
+  }
+
+  const resizing = dragWidth !== null
+
+  return (
     <aside
+      ref={asideRef}
       data-testid="app-sidebar-panel"
       data-state={open ? 'open' : 'closed'}
+      data-resizing={resizing ? '' : undefined}
+      style={{ '--sidebar-w': `${width}px` } as CSSProperties}
       className={cn(
-        'relative flex h-full shrink-0 flex-col overflow-hidden bg-background transition-[width,opacity] duration-300 ease-expo',
+        'relative flex h-full shrink-0 flex-col overflow-hidden bg-background',
+        // Following the pointer, not easing after it.
+        !resizing && 'transition-[width,opacity] duration-300 ease-expo',
         open ? 'w-(--sidebar-w) opacity-100' : 'w-0 opacity-0'
       )}
       inert={!open}
     >
       <div className="flex h-full w-(--sidebar-w) min-w-(--sidebar-w) flex-col">
-        <SidebarBody />
+        {children}
       </div>
+      {open && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('common:appRail.resize')}
+          aria-valuenow={width}
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          tabIndex={0}
+          data-testid="app-sidebar-resize"
+          title={t('common:appRail.resizeHint')}
+          onPointerDown={onPointerDown}
+          onKeyDown={onKeyDown}
+          onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+          className="group/resize absolute inset-y-0 right-0 z-20 flex w-2 cursor-col-resize touch-none justify-end outline-hidden"
+        >
+          <span
+            aria-hidden
+            className={cn(
+              'h-full w-0.5 bg-transparent transition-colors duration-150 group-hover/resize:bg-border-strong group-focus-visible/resize:bg-ring',
+              resizing && 'bg-ring'
+            )}
+          />
+        </div>
+      )}
     </aside>
   )
 }

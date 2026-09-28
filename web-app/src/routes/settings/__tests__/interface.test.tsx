@@ -51,6 +51,7 @@ vi.mock('@/containers/NotificationPositionSwitcher', () => ({
 
 const { setReduceMotion } = vi.hoisted(() => ({ setReduceMotion: vi.fn() }))
 vi.mock('@/hooks/useInterfaceSettings', () => ({
+  COMPLETION_SOUNDS: ['off', 'background', 'always'],
   useInterfaceSettings: () => ({
     resetInterface: vi.fn(),
     reduceMotion: false,
