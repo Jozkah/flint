@@ -46,6 +46,17 @@ function sources(over: Partial<RemoteSources> = {}): RemoteSources {
       { provider: 'anthropic', local: false, models: [{ id: 'claude' }] },
     ],
     loadedModels: async () => ['qwen'],
+    roomDetail: async () => null,
+    coworkDetail: () => null,
+    approvalDetails: () => [],
+    systemInfo: async () => {
+      throw new Error('unused')
+    },
+    mcpServers: () => [],
+    settings: async () => {
+      throw new Error('unused')
+    },
+    appearance: () => ({ vars: { light: {}, dark: {} } }),
     ...over,
   }
 }

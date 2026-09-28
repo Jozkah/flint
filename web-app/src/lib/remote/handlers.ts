@@ -5,6 +5,13 @@
 import type { UIMessage } from 'ai'
 import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
 import type {
+  AppearanceResult,
+  CoworkDetail,
+  McpServerInfo,
+  RemoteApproval,
+  RoomDetail,
+  SettingsSnapshot,
+  SystemInfo,
   RemoteMessage,
   RemoteModel,
   SessionKind,
@@ -44,8 +51,22 @@ export type RemoteSources = {
   chatMessages: (id: string) => Promise<RemoteMessage[]>
   coworkMessages: (id: string) => RemoteMessage[] | null
   roomMessages: (id: string) => Promise<RemoteMessage[]>
-  providers: () => { provider: string; local: boolean; models: { id: string; name?: string }[] }[]
+  providers: () => {
+    provider: string
+    title?: string
+    local: boolean
+    models: { id: string; name?: string }[]
+  }[]
   loadedModels: () => Promise<string[]>
+  /** Ids starred in the model picker. */
+  favoriteModels?: () => string[]
+  roomDetail: (id: string) => Promise<RoomDetail | null>
+  coworkDetail: (id: string) => CoworkDetail | null
+  approvalDetails: () => RemoteApproval[]
+  systemInfo: () => Promise<SystemInfo>
+  mcpServers: () => McpServerInfo[]
+  settings: () => Promise<SettingsSnapshot>
+  appearance: () => AppearanceResult
 }
 
 export const DEFAULT_PAGE = 50
@@ -55,7 +76,7 @@ const toMs = (t: number) => (t < 1e12 ? Math.round(t * 1000) : t)
 
 const basename = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 
-function roomStatus(s: string): SessionStatus {
+export function roomStatus(s: string): SessionStatus {
   switch (s) {
     case 'running':
       return 'running'
@@ -80,6 +101,12 @@ function clampLimit(raw: unknown): number {
 }
 
 const KINDS: readonly SessionKind[] = ['chat', 'cowork', 'room']
+
+function requireId(params: unknown): string {
+  const id = isRecord(params) ? params.id : undefined
+  if (typeof id !== 'string' || !id) throw new RemoteRpcError('bad_params', 'id is required')
+  return id
+}
 
 /** A page of `all`, ending before index `before` (default: the end). */
 export function pageOf<T>(all: T[], before: number | undefined, limit: number) {
@@ -166,6 +193,7 @@ export function createRemoteHandlers(src: RemoteSources): RemoteHandlers {
 
     'models.list': async () => {
       const loaded = new Set(await src.loadedModels())
+      const favorites = new Set(src.favoriteModels?.() ?? [])
       const models: RemoteModel[] = []
       for (const prov of src.providers()) {
         for (const m of prov.models) {
@@ -173,13 +201,40 @@ export function createRemoteHandlers(src: RemoteSources): RemoteHandlers {
             id: m.id,
             name: m.name || m.id,
             provider: prov.provider,
+            ...(prov.title ? { providerName: prov.title } : {}),
             local: prov.local,
             loaded: loaded.has(m.id),
+            ...(favorites.has(m.id) ? { favorite: true } : {}),
           })
         }
       }
       return { models }
     },
+
+    'rooms.get': async (params) => {
+      const room = await src.roomDetail(requireId(params))
+      if (!room) throw new RemoteRpcError('not_found', 'No such room')
+      return src.running().room.has(room.id) ? { ...room, status: 'running' } : room
+    },
+
+    'cowork.get': (params) => {
+      const id = requireId(params)
+      const detail = src.coworkDetail(id)
+      if (!detail) throw new RemoteRpcError('not_found', 'No such session')
+      const waiting = src.approvals().some((a) => a.threadId === id)
+      const running = src.running().cowork.has(id)
+      return { ...detail, status: waiting ? 'waiting' : running ? 'running' : detail.status }
+    },
+
+    'approvals.list': () => ({ approvals: src.approvalDetails() }),
+
+    'system.info': () => src.systemInfo(),
+
+    'tools.list': () => ({ servers: src.mcpServers() }),
+
+    'settings.get': () => src.settings(),
+
+    'appearance.get': () => src.appearance(),
 
     status: async () => {
       const running = src.running()

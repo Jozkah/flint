@@ -813,3 +813,27 @@ async fn websocket_subprotocol_auth() {
     assert!(first.to_text().unwrap().contains("ready"));
     srv.stop();
 }
+
+#[test]
+fn pairing_url_carries_code_and_name_in_the_fragment() {
+    use super::commands::pairing_url;
+    assert_eq!(
+        pairing_url("https://desk.tailnet.ts.net:1340", "abc123", None),
+        "https://desk.tailnet.ts.net:1340/m/#pair=abc123"
+    );
+    assert_eq!(
+        pairing_url("http://100.64.0.2:1340", "abc123", Some("Jo's Desk PC")),
+        "http://100.64.0.2:1340/m/#pair=abc123&name=Jo%27s+Desk+PC"
+    );
+}
+
+#[test]
+fn phone_app_dir_prefers_the_bundled_resources_folder() {
+    use super::commands::phone_app_dir;
+    let tmp = tempfile::tempdir().unwrap();
+    assert_eq!(phone_app_dir(tmp.path()), tmp.path().join("mobile"));
+    let nested = tmp.path().join("resources").join("mobile");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(nested.join("index.html"), "<!doctype html>").unwrap();
+    assert_eq!(phone_app_dir(tmp.path()), nested);
+}

@@ -107,6 +107,18 @@ pub struct RemoteState {
     rt: tokio::sync::Mutex<Runtime_>,
 }
 
+/// Where the phone app (web-app `build:mobile`) sits among the bundled
+/// resources. The bundle config lists the folder `resources/mobile/`, which
+/// keeps that path under the resource dir; a flat `mobile/` is accepted too.
+pub(crate) fn phone_app_dir(resources: &std::path::Path) -> PathBuf {
+    let nested = resources.join("resources").join("mobile");
+    if nested.join("index.html").is_file() {
+        nested
+    } else {
+        resources.join("mobile")
+    }
+}
+
 fn remote_dir(data: &std::path::Path) -> PathBuf {
     data.join("remote")
 }
@@ -117,7 +129,7 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
     let dir = remote_dir(&get_jan_data_folder_path(app.clone()));
     let config = RemoteConfig::load(&dir.join("config.json"));
     let devices = DeviceStore::load(dir.join("devices.json"));
-    let static_dir = app.path().resource_dir().ok().map(|d| d.join("mobile"));
+    let static_dir = app.path().resource_dir().ok().map(|d| phone_app_dir(&d));
     let hub = Arc::new(RemoteHub::new(
         config.clone(),
         devices,
@@ -295,6 +307,27 @@ pub struct PairingInfo {
     pub url: String,
 }
 
+/// This computer's name, for the phone's "Pair with <computer>?".
+fn computer_name() -> Option<String> {
+    hostname::get()
+        .ok()
+        .and_then(|h| h.into_string().ok())
+        .map(|h| h.split('.').next().unwrap_or_default().trim().to_string())
+        .filter(|h| !h.is_empty())
+}
+
+/// The link the QR code carries. The code (and the computer's name, shown
+/// before pairing) ride in the fragment, which browsers never send to a
+/// server or put in a Referer.
+pub fn pairing_url(base: &str, code: &str, name: Option<&str>) -> String {
+    let mut url = format!("{base}/m/#pair={code}");
+    if let Some(name) = name {
+        url.push_str("&name=");
+        url.extend(url::form_urlencoded::byte_serialize(name.as_bytes()));
+    }
+    url
+}
+
 #[tauri::command]
 pub async fn remote_start_pairing(state: State<'_, RemoteState>) -> Result<PairingInfo, String> {
     let base = state
@@ -307,7 +340,7 @@ pub async fn remote_start_pairing(state: State<'_, RemoteState>) -> Result<Pairi
         .ok_or("Turn on remote access first")?;
     let p = state.hub.start_pairing();
     Ok(PairingInfo {
-        url: format!("{base}/m/#pair={}", p.code),
+        url: pairing_url(&base, &p.code, computer_name().as_deref()),
         code: p.code,
         confirm_number: p.confirm_number,
         expires_in_ms: p.expires_in_ms,
