@@ -5791,6 +5791,9 @@ export function CoworkPage() {
                 // (TurnUsageDetails); hide the composer's counter so the same
                 // number is not reported in two places.
                 hideTokenCounter
+                // Assistant, sampling, web search and reasoning behind one
+                // Options button: the Cowork row stays quiet.
+                groupOptions
                 surfaceControls={
                   <>
                     {paneChrome ? sessionControls : phone ? workspacePill : null}

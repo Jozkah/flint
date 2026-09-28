@@ -283,6 +283,7 @@
     "chooseView": "Choose what to show: code, a preview, changes, activity or the timeline.",
     "closeOverlay": "Close panel"
   },
+  "composerOptions": "Options",
   "coworkBars": {
     "showMore": "Show {{count}} more",
     "showFewer": "Show fewer"
