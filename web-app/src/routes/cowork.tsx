@@ -5470,11 +5470,10 @@ export function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
-                  {/* Also while the run goes, as the design shows it: what
-                      it has changed and checked so far, marked Running, with
-                      no next steps offered until it ends (the outcome holds
-                      them back while running). */}
-                  {(((running || runEnding || runOrigins?.summary) &&
+                  {/* Once the run has ended: while it goes, the header says
+                      Running and Changes shows its files, and a card growing
+                      under the transcript said it a third time. */}
+                  {(((!running && (runEnding || runOrigins?.summary)) &&
                     // Only when the run has something of its own to report:
                     // a write, a check, a loose end, or an ending that was
                     // not a clean finish. A working tree that was already
@@ -5482,10 +5481,7 @@ export function CoworkPage() {
                     // a permanent panel over the composer listing the user's
                     // own edits. The stop reason itself stays in the notice
                     // below; this shows what was kept.
-                    (running
-                      ? runOutcome.checks.length > 0 ||
-                        runOutcome.resultLocation.paths.length > 0
-                      : shouldShowRunOutcome(runOutcome))) ||
+                    shouldShowRunOutcome(runOutcome)) ||
                     // A browser verification is evidence the user asked
                     // for; it is shown even after a run with nothing else.
                     browserReports.length > 0) && (

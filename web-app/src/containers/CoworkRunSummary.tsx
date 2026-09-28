@@ -1,5 +1,7 @@
 import { useState, type ReactNode } from 'react'
+import { ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { BrowserVerifyEvidence } from '@/containers/BrowserVerifyPanel'
 import type { VerifyReport } from '@/lib/browserVerify'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -421,27 +423,70 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       data-status={outcome.status}
       data-session-id={outcome.source.sessionId ?? undefined}
       data-run-id={outcome.source.runId ?? undefined}
-      className="my-2 rounded-xl border-[0.8px] border-border bg-card text-[13px] motion-safe:animate-rise-in"
+      data-quiet={interrupted ? undefined : ''}
+      className={
+        interrupted
+          ? 'my-2 rounded-xl border-[0.8px] border-border bg-card text-[13px] motion-safe:animate-rise-in'
+          : // A clean finish is one quiet line, like the steps row, until
+            // opened: under every run a full card grew tiresome.
+            'my-1 rounded-xl text-[13px] open:border-[0.8px] open:border-border open:bg-card has-[details[open]]:border-[0.8px] has-[details[open]]:border-border has-[details[open]]:bg-card'
+      }
     >
       {/* Collapsed by default after a clean finish: Flint's record of a run is
           worth keeping, but it was opening in full under every single
           message. A run that did not finish opens, because what it left
           behind is the thing to read. */}
       <details open={interrupted} className="group">
-        <summary className="flex min-h-10 cursor-pointer list-none flex-wrap items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] text-foreground outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
+        <summary
+          className={
+            interrupted
+              ? 'flex min-h-10 cursor-pointer list-none flex-wrap items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] text-foreground outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
+              : 'flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-lg px-1 py-1 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 group-open:px-3 group-open:py-2.5 group-open:text-[13.5px] group-open:text-foreground pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden'
+          }
+        >
+          {!interrupted && (
+            <ChevronRight
+              aria-hidden
+              className="size-3.5 shrink-0 transition-transform duration-200 group-open:rotate-90"
+            />
+          )}
           <span
-            className="min-w-0 truncate font-semibold"
+            className={cn(
+              'min-w-0 truncate',
+              interrupted ? 'font-semibold' : 'font-medium group-open:font-semibold'
+            )}
             // Where this record comes from, on hover rather than on the row.
             title={t('common:coworkOrigins.subtitle')}
           >
             {t('common:coworkOrigins.title')}
           </span>
-          <span
-            data-testid="cowork-run-status"
-            className={`${CHIP} ${STATUS_TONE[outcome.status]}`}
-          >
-            {statusLabel(t, outcome.status)}
-          </span>
+          {interrupted ? (
+            <span
+              data-testid="cowork-run-status"
+              className={`${CHIP} ${STATUS_TONE[outcome.status]}`}
+            >
+              {statusLabel(t, outcome.status)}
+            </span>
+          ) : (
+            // What happened in numbers rather than a status the run already
+            // showed: the files it wrote and the checks it ran.
+            <span data-testid="cowork-run-counts" className="min-w-0 truncate">
+              {[
+                resultLocation.paths.length > 0
+                  ? t('common:coworkOrigins.files', { count: resultLocation.paths.length })
+                  : null,
+                outcome.checks.length > 0
+                  ? t('common:coworkOrigins.checks', { count: outcome.checks.length })
+                  : null,
+              ]
+                .filter(Boolean)
+                .map((part) => ` · ${part}`)
+                .join('')}
+              <span data-testid="cowork-run-status" className="sr-only">
+                {statusLabel(t, outcome.status)}
+              </span>
+            </span>
+          )}
           <span className="sr-only">{t('common:coworkOrigins.subtitle')}</span>
         </summary>
         <h3 className="sr-only">{t('common:coworkOrigins.title')}</h3>

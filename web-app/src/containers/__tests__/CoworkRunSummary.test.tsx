@@ -138,6 +138,14 @@ describe('the run summary the application writes', () => {
     // The heading still names it while collapsed, so it can be found.
     expect(region()).toHaveTextContent('common:coworkOrigins.title')
   })
+
+  it('is a quiet line after a clean finish, with what it did in numbers', () => {
+    show({ janWrites: [{ destination: 'repository', paths: ['a.ts', 'b.ts'] }] })
+    expect(region()).toHaveAttribute('data-quiet')
+    expect(screen.getByTestId('cowork-run-counts')).toHaveTextContent(
+      'common:coworkOrigins.files'
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
