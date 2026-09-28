@@ -266,6 +266,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:appearance.reduceMotionDesc',
     keywords: ['animation', 'motion', 'accessibility', 'transitions'],
   }),
+  item('appearance', 'completion-sound', 'settings:appearance.completionSound', {
+    descriptionKey: 'settings:appearance.completionSoundDesc',
+    keywords: ['sound', 'audio', 'chime', 'notification', 'finished', 'done'],
+  }),
   item('appearance', 'font-size', 'settings:interface.fontSize', {
     descriptionKey: 'settings:interface.fontSizeDesc',
     keywords: ['text size', 'zoom', 'typography'],

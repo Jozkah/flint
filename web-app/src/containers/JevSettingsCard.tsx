@@ -57,7 +57,10 @@ function ModePicker({
  */
 export function JevSettingsCard({
   api = { jevStatus, jevReceipts, jevSetKey, jevClearKey },
+  anchors,
 }: {
+  /** Search targets for the three settings, named by the page that renders them. */
+  anchors?: { key: string; skills: string; rerank: string }
   api?: {
     jevStatus: typeof jevStatus
     jevReceipts: typeof jevReceipts
@@ -102,7 +105,7 @@ export function JevSettingsCard({
         // The field and its buttons get their own line under the text: side
         // by side they overflowed the control column and covered the text.
         column
-        anchor="settings-jev-key"
+        anchor={anchors?.key}
         title={t('common:jev.key')}
         description={
           status?.key_configured ? t('common:jev.keyConfigured') : t('common:jev.keyMissing')
@@ -134,7 +137,7 @@ export function JevSettingsCard({
     </Card>
     <Card title={t('common:jev.cardFeatures')}>
       <CardItem
-        anchor="settings-jev-skills"
+        anchor={anchors?.skills}
         align="start"
         title={t('common:jev.skillTitle')}
         description={<p>{t('common:jev.skillSends')}</p>}
@@ -148,7 +151,7 @@ export function JevSettingsCard({
         }
       />
       <CardItem
-        anchor="settings-jev-rerank"
+        anchor={anchors?.rerank}
         align="start"
         title={t('common:jev.rerankTitle')}
         description={<p>{t('common:jev.rerankSends')}</p>}

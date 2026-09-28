@@ -24,6 +24,32 @@ import {
 
 export type FontSize = '14px' | '15px' | '16px' | '18px' | '20px'
 
+/** The left sidebar's width range, in CSS pixels. Dragging stops at either end. */
+export const SIDEBAR_MIN_WIDTH = 200
+export const SIDEBAR_MAX_WIDTH = 420
+export const SIDEBAR_DEFAULT_WIDTH = 250
+
+export const sanitizeSidebarWidth = (width: unknown): number =>
+  typeof width === 'number' && Number.isFinite(width)
+    ? Math.round(Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, width)))
+    : SIDEBAR_DEFAULT_WIDTH
+
+/**
+ * When a finished answer plays a sound: never, only while Flint is in the
+ * background (the window hidden or not focused), or every time.
+ */
+export type CompletionSound = 'off' | 'background' | 'always'
+export const COMPLETION_SOUNDS: readonly CompletionSound[] = ['off', 'background', 'always']
+const defaultCompletionSoundVolume = 0.6
+
+export const sanitizeCompletionSound = (mode: unknown): CompletionSound =>
+  COMPLETION_SOUNDS.includes(mode as CompletionSound) ? (mode as CompletionSound) : 'off'
+
+export const sanitizeVolume = (volume: unknown): number =>
+  typeof volume === 'number' && Number.isFinite(volume)
+    ? Math.min(1, Math.max(0, volume))
+    : defaultCompletionSoundVolume
+
 export const MESSAGE_ZOOM_LEVELS = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
 const defaultMessageZoom = 1
 
@@ -63,6 +89,11 @@ interface InterfaceSettingsState {
   autoGenerateTitle: boolean
   /** How much of each turn the Chat, Cowork and Rooms transcripts show. */
   transcriptView: TranscriptView
+  /** The left sidebar's width in CSS pixels, within the SIDEBAR_* range. */
+  sidebarWidth: number
+  completionSound: CompletionSound
+  /** 0 to 1. */
+  completionSoundVolume: number
   setFontSize: (size: FontSize) => void
   zoomInMessages: () => void
   zoomOutMessages: () => void
@@ -80,6 +111,9 @@ interface InterfaceSettingsState {
   setRenderHtmlArtifacts: (render: boolean) => void
   setAutoGenerateTitle: (auto: boolean) => void
   setTranscriptView: (view: TranscriptView) => void
+  setSidebarWidth: (width: number) => void
+  setCompletionSound: (mode: CompletionSound) => void
+  setCompletionSoundVolume: (volume: number) => void
   resetInterface: () => void
 }
 
@@ -95,6 +129,9 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'renderHtmlArtifacts'
   | 'autoGenerateTitle'
   | 'transcriptView'
+  | 'sidebarWidth'
+  | 'completionSound'
+  | 'completionSoundVolume'
 >
 
 export const fontSizeOptions = [
@@ -119,6 +156,9 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     renderHtmlArtifacts: false,
     autoGenerateTitle: true,
     transcriptView: DEFAULT_TRANSCRIPT_VIEW,
+    sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+    completionSound: 'off',
+    completionSoundVolume: defaultCompletionSoundVolume,
   }
 }
 
@@ -173,6 +213,9 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             renderHtmlArtifacts: false,
             autoGenerateTitle: true,
             transcriptView: DEFAULT_TRANSCRIPT_VIEW,
+            sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
+            completionSound: 'off',
+            completionSoundVolume: defaultCompletionSoundVolume,
           })
         },
 
@@ -241,6 +284,18 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           if (!isTranscriptView(view)) return
           set({ transcriptView: view })
         },
+
+        setSidebarWidth: (width) => {
+          set({ sidebarWidth: sanitizeSidebarWidth(width) })
+        },
+
+        setCompletionSound: (mode) => {
+          set({ completionSound: sanitizeCompletionSound(mode) })
+        },
+
+        setCompletionSoundVolume: (volume) => {
+          set({ completionSoundVolume: sanitizeVolume(volume) })
+        },
       }
     },
     {
@@ -278,6 +333,9 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         renderHtmlArtifacts: state.renderHtmlArtifacts,
         autoGenerateTitle: state.autoGenerateTitle,
         transcriptView: state.transcriptView,
+        sidebarWidth: state.sidebarWidth,
+        completionSound: state.completionSound,
+        completionSoundVolume: state.completionSoundVolume,
       }),
       // Apply settings when hydrating from storage
       onRehydrateStorage: () => (state) => {
@@ -294,6 +352,9 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
           )
 
           state.messageZoom = sanitizeMessageZoom(state.messageZoom)
+          state.sidebarWidth = sanitizeSidebarWidth(state.sidebarWidth)
+          state.completionSound = sanitizeCompletionSound(state.completionSound)
+          state.completionSoundVolume = sanitizeVolume(state.completionSoundVolume)
 
           state.accent = sanitizeAccentSelection(
             state.accent,

@@ -1713,6 +1713,8 @@
   },
   "appRail": {
     "label": "Global navigation",
+    "resize": "Resize sidebar",
+    "resizeHint": "Drag to resize. Double-click for the default width.",
     "home": "Flint home",
     "working": "Agents are working",
     "workspace": "Workspace",

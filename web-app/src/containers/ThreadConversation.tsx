@@ -28,6 +28,7 @@ import { useTools } from '@/hooks/useTools'
 import { useAppState } from '@/hooks/useAppState'
 import { SESSION_STORAGE_PREFIX, TEMPORARY_CHAT_ID } from '@/constants/chat'
 import { useChat } from '@/hooks/use-chat'
+import { notifyAnswerFinished } from '@/lib/completionSound'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
@@ -518,7 +519,7 @@ export function ThreadConversation({
     systemMessage,
     resolveModelSelection: isSplit ? resolvePaneModel : undefined,
     experimental_throttle: 50,
-    onFinish: ({ message, messages: finishedMessages, isAbort }) => {
+    onFinish: ({ message, messages: finishedMessages, isAbort, isError, isDisconnect }) => {
       const msgMeta = message.metadata as Record<string, unknown> | undefined
       const finishReason = msgMeta?.finishReason as string | undefined
       // Consume once per generation so a skipped persist (error/empty) can't
@@ -580,6 +581,19 @@ export function ThreadConversation({
       // offer a "Continue" affordance, and stamp the live message so the button
       // appears without waiting for a reload.
       const isStoppedTurn = isAbort || finishReason === 'length'
+
+      // The reply is over only when it ended on its own with no tool calls
+      // left to run: a step that ends in tool calls goes on once they settle.
+      if (
+        !isStoppedTurn &&
+        !isError &&
+        !isDisconnect &&
+        finishReason !== 'tool-calls' &&
+        finishReason !== 'error' &&
+        sessionData.tools.length === 0
+      ) {
+        notifyAnswerFinished()
+      }
 
       // Persist assistant message to backend (skip if aborted).
       // For continuations, message.parts already contains partial + new content
