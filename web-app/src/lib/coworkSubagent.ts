@@ -7,6 +7,7 @@ import {
   type UIMessage,
   type UIMessageChunk,
 } from 'ai'
+import type { JSONObject } from '@ai-sdk/provider'
 import type { Usage } from '@/types/coworkSession'
 import type { ToolActivityContext } from '@/lib/toolActivity'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
@@ -316,6 +317,12 @@ export type RunSubagentOptions = {
   description: string
   /** The parent's model instance. Reused so no second load happens. */
   model: LanguageModel
+  /**
+   * The parent's per-request reasoning options (the provider's native
+   * thinking/effort settings). The body-level ones -- llama.cpp's budget and
+   * `enable_thinking`, `reasoning_effort` -- are already part of `model`.
+   */
+  providerOptions?: Record<string, JSONObject>
   parentTools: Record<string, Tool>
   system: {
     workspacePath: string | null
@@ -365,6 +372,7 @@ export type SubagentResult = {
 /** One model turn for a child, as a UI message stream the runner can consume. */
 function childStep(opts: {
   model: LanguageModel
+  providerOptions?: Record<string, JSONObject>
   system: string
   tools: Record<string, Tool>
   messages: UIMessage[]
@@ -381,6 +389,7 @@ function childStep(opts: {
       system: opts.system,
       messages: modelMessages,
       abortSignal: opts.signal,
+      ...(opts.providerOptions ? { providerOptions: opts.providerOptions } : {}),
       tools: Object.keys(opts.tools).length > 0 ? opts.tools : undefined,
       toolChoice:
         Object.keys(opts.tools).length > 0
@@ -481,6 +490,7 @@ export async function runSubagent(
         sendStep: (msgs, signal, stepOpts) =>
           childStep({
             model: opts.model,
+            providerOptions: opts.providerOptions,
             system,
             tools,
             messages: msgs,

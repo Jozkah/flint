@@ -1,6 +1,7 @@
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { type UIMessage } from '@ai-sdk/react'
+import type { JSONObject } from '@ai-sdk/provider'
 import {
   convertToModelMessages,
   streamText,
@@ -63,11 +64,13 @@ import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
+import { clampThinkingBudget } from '@/lib/thinkingBudget'
 import {
-  clampThinkingBudget,
-  tokensForThinkingBudgetLevel,
-  isThinkingBudgetLevelKey,
-} from '@/lib/thinkingBudget'
+  buildLlamacppReasoningParams,
+  resolveThinkingBudgetTokens,
+} from '@/lib/llamacppReasoning'
+// Moved to llamacppReasoning so Rooms can share it; still exported from here.
+export { buildLlamacppReasoningParams }
 import {
   buildReasoningProviderOptions,
   buildReasoningBodyParams,
@@ -277,42 +280,6 @@ function extractModelTemplateKwargs(
     }
   }
   return out
-}
-
-/**
- * `thinking_budget_tokens` is stored as a symbolic level (low/medium/high/
- * xhigh/unlimited), not a frozen absolute count — llama.cpp's --fit can pick
- * a runtime n_ctx far from the configured/default size, and that's only known
- * once the model is actually loaded. Resolve against the live n_ctx here, at
- * send time, instead of whatever context size was in scope when the level
- * was picked in ChatInput.
- */
-async function resolveThinkingBudgetTokens(
-  model: Model | null | undefined,
-  modelId: string | undefined
-): Promise<number | undefined> {
-  const rawLevel = model?.settings?.thinking_budget_tokens?.controller_props?.value
-  if (!isThinkingBudgetLevelKey(rawLevel)) return undefined
-  if (rawLevel === 'unlimited') return -1
-
-  let contextSize: number | undefined
-  if (modelId) {
-    try {
-      contextSize = (await getLlamacppExtension()?.getModelProps?.(modelId))?.nCtx
-    } catch {
-      // Model not loaded yet or router unreachable; fall through to configured/default.
-    }
-  }
-  if (!contextSize) {
-    const configured = model?.settings?.ctx_len?.controller_props?.value
-    contextSize =
-      typeof configured === 'number'
-        ? configured
-        : typeof configured === 'string' && configured !== ''
-          ? Number(configured)
-          : undefined
-  }
-  return tokensForThinkingBudgetLevel(rawLevel, contextSize || 8192)
 }
 
 export function effectiveContextWindow(
@@ -786,43 +753,6 @@ export function isValidToolName(name: unknown): name is string {
 }
 
 /** Text from the most recent user message (for MCP server routing). */
-type ChatTemplateKwargs = Record<string, boolean | number | string>
-
-/**
- * Build the per-request `chat_template_kwargs` for llama-server's chat
- * completions endpoint, merging the reasoning toggle with any user-set
- * per-model template kwargs (e.g. `preserve_thinking`) into one object. The
- * server parses each value via `json_value(...).dump()`
- * (server-common.cpp:1056-1069) and rejects values that serialize to a quoted
- * JSON string where a boolean/number is expected — so this emits real JSON
- * types, never the strings `"true"` / `"false"`. Reasoning 'auto'/undefined
- * omits `enable_thinking` so the server falls back to its --reasoning-budget
- * default; `enable_thinking` from the reasoning control always wins over a
- * user-supplied value. The function is a no-op for non-llamacpp providers.
- */
-export function buildLlamacppReasoningParams(
-  providerName: string | null | undefined,
-  reasoning: 'auto' | 'on' | 'off' | undefined,
-  userKwargs?: ChatTemplateKwargs | null
-): { chat_template_kwargs?: ChatTemplateKwargs } {
-  if (providerName !== 'llamacpp') return {}
-  const kwargs: ChatTemplateKwargs = {}
-  if (userKwargs && typeof userKwargs === 'object') {
-    for (const [key, value] of Object.entries(userKwargs)) {
-      if (key === 'enable_thinking') continue
-      const t = typeof value
-      if (t === 'boolean' || t === 'number' || t === 'string') {
-        kwargs[key] = value
-      }
-    }
-  }
-  if (reasoning === 'on' || reasoning === 'off') {
-    kwargs.enable_thinking = reasoning === 'on'
-  }
-  if (Object.keys(kwargs).length === 0) return {}
-  return { chat_template_kwargs: kwargs }
-}
-
 function extractLatestUserText(messages: UIMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
@@ -1002,6 +932,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (scoped) return scoped
     const { selectedProvider, selectedModel } = useModelProvider.getState()
     return { selectedProvider, selectedModel }
+  }
+
+  /**
+   * The reasoning options this conversation's next request carries in the AI
+   * SDK's `providerOptions` (the first-party providers' native thinking and
+   * effort settings), read with the conversation's own overrides. Public so a
+   * Cowork subagent, which streams on the parent's model, sends the same.
+   */
+  reasoningProviderOptions(
+    threadId: string | undefined = this.threadId
+  ): Record<string, JSONObject> | undefined {
+    const { selectedProvider, selectedModel } = this.getModelSelection()
+    return buildReasoningProviderOptions(
+      selectedProvider,
+      resolveModel(
+        selectedModel,
+        useModelOverrides.getState().forThread(threadId)
+      )
+    )
   }
 
   private modelSelectionResolver?: () =>
@@ -2129,13 +2078,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // this chat has overridden layered on top. Resolved here rather than
     // stored, so a setting the chat never touched still follows the global
     // default as that default changes.
-    const reasoningProviderOptions = buildReasoningProviderOptions(
-      providerId,
-      resolveModel(
-        this.getModelSelection().selectedModel,
-        useModelOverrides.getState().forThread(threadId)
-      )
-    )
+    const reasoningProviderOptions = this.reasoningProviderOptions(threadId)
 
     // The assembled request, by reference: ids and hashes of what went in,
     // never the content. Dispatch events move it to sent / response-started /

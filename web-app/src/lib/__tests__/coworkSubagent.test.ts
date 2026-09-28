@@ -352,6 +352,17 @@ describe('runSubagent', () => {
     expect(out.usage).not.toHaveProperty('uncached_prompt_tokens')
   })
 
+  it("sends the parent's reasoning providerOptions with each child step", async () => {
+    mockSteps([textStep('done')])
+    const providerOptions = { openai: { reasoningEffort: 'high', reasoningSummary: 'auto' } }
+    await runSubagent(baseOpts({ providerOptions }))
+    expect(streamText).toHaveBeenCalledWith(expect.objectContaining({ providerOptions }))
+    streamText.mockReset()
+    mockSteps([textStep('done')])
+    await runSubagent(baseOpts())
+    expect(streamText.mock.calls[0][0]).not.toHaveProperty('providerOptions')
+  })
+
   it('reuses the parent model instance rather than creating one', async () => {
     mockSteps([textStep('done')])
     await runSubagent(baseOpts())
