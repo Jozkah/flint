@@ -4,6 +4,7 @@ import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
+import { explainRawToolCall } from '@/lib/rawToolCallText'
 import { cn } from '@/lib/utils'
 import { formatDuration } from '@/lib/utils'
 import {
@@ -454,11 +455,13 @@ export const MessageItem = memo(
                 content={
                   grounding && !isStreaming
                     ? injectCitationMarkers(
-                        part.text,
+                        explainRawToolCall(part.text),
                         grounding.sentenceCitations,
                         `cite-${message.id}`
                       )
-                    : part.text
+                    : message.role === 'assistant'
+                      ? explainRawToolCall(part.text)
+                      : part.text
                 }
                 isStreaming={isStreaming && isLastPart}
                 messageId={message.id}
