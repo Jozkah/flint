@@ -28,8 +28,8 @@ type Input = {
 }
 
 /**
- * Put a new session in its own worktree, by default, so many sessions can work
- * in one repository at once.
+ * Put a new session in its own worktree when the user enables that setting,
+ * so many sessions can work in one repository at once.
  *
  * A new session (no turns yet, still on the default access mode) attached to a
  * Git folder gets a managed worktree and branch -- `flint/<title>-<id>` -- and

@@ -260,12 +260,20 @@ pub fn unavailable_hint(
     } else {
         "its folder is not on the sandbox PATH".to_string()
     };
+    let remedy = if can_execute(dir) == Some(false) && can_change_acl(dir) == Some(false) {
+        format!(
+            "Settings cannot grant this folder. Ask the user to run `{}` in an elevated terminal, then restart Flint, or run the command themselves.",
+            admin_grant_command(dir)
+        )
+    } else {
+        format!(
+            "Ask the user to allow `{name}` in Settings > Agent Tools > Sandbox toolchains, or run the command themselves."
+        )
+    };
     format!(
         "\n[sandbox: `{name}` is installed at {} but this sandbox cannot run it: {reason}. \
-         Do not search the disk for another copy, and do not run a runtime bundled with a \
-         different application. Tell the user that `{name}` is not available in the sandbox, \
-         and that they can run the command themselves or allow it in Settings > Agent Tools > \
-         Sandbox toolchains (\"Let the sandbox use this\").]",
+         Do not search the disk for another copy, run a runtime bundled with another application, \
+         probe settings, or retry until the user acts. {remedy}]",
         found.display()
     )
 }

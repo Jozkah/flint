@@ -4,6 +4,9 @@ import { SlashInvocation } from '@/components/SlashInvocation'
 import { parseSlashMarker } from '@/lib/slashCommands'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
+import { explainRawToolCall, hasRawToolCall } from '@/lib/rawToolCallText'
+import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCapabilityDialog'
+import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { cn } from '@/lib/utils'
 import { formatDuration } from '@/lib/utils'
 import {
@@ -53,6 +56,7 @@ import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
 import { useConversationModel } from '@/hooks/useConversationPane'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
 import { EditMessageDialog } from '@/containers/dialogs/EditMessageDialog'
@@ -136,7 +140,12 @@ export const MessageItem = memo(
   }: MessageItemProps) => {
     const { t } = useTranslation()
     // This conversation's model, so a split pane gates on its own.
-    const { selectedModel } = useConversationModel()
+    const { selectedModel, selectedProvider } = useConversationModel()
+    const getProviderByName = useModelProvider(
+      (state) => state.getProviderByName
+    )
+    const updateProvider = useModelProvider((state) => state.updateProvider)
+    const [enableToolsOpen, setEnableToolsOpen] = useState(false)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
@@ -262,7 +271,8 @@ export const MessageItem = memo(
     // Aggregate RAG citations in part order and record each rag tool part's
     // base offset, so its card numbers/anchors continue the same global
     // sequence the inline superscript markers use.
-    const { ragCitations, citationOffsets, webCitations, webReads } = useMemo(() => {
+    const { ragCitations, citationOffsets, webCitations, webReads } =
+      useMemo(() => {
       const out: RagCitation[] = []
       const web: WebCitation[] = []
       const reads: string[] = []
@@ -423,7 +433,10 @@ export const MessageItem = memo(
                         className="flex min-w-0 max-w-full items-center gap-1.5 px-2 py-1 rounded-md bg-card text-foreground border-[0.8px] border-border text-xs"
                       >
                         <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 truncate font-medium" title={file.name}>
+                        <span
+                          className="min-w-0 truncate font-medium"
+                          title={file.name}
+                        >
                           {file.name}
                         </span>
                         {file.injectionMode && (
@@ -454,16 +467,32 @@ export const MessageItem = memo(
                 content={
                   grounding && !isStreaming
                     ? injectCitationMarkers(
-                        part.text,
+                        explainRawToolCall(part.text),
                         grounding.sentenceCitations,
                         `cite-${message.id}`
                       )
-                    : part.text
+                    : message.role === 'assistant'
+                      ? explainRawToolCall(part.text)
+                      : part.text
                 }
                 isStreaming={isStreaming && isLastPart}
                 messageId={message.id}
                 isAnimating={isAnimating}
               />
+              {message.role === 'assistant' &&
+                !isStreaming &&
+                selectedModel &&
+                !selectedModel.capabilities?.includes('tools') &&
+                hasRawToolCall(part.text) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => setEnableToolsOpen(true)}
+                  >
+                    {t('common:modelCapability.enableTools')}
+                  </Button>
+                )}
             </>
           )}
         </div>
@@ -697,7 +726,9 @@ export const MessageItem = memo(
             >
               <FlintMark className="size-full" />
             </span>
-            <span className="shrink-0 font-semibold text-foreground">Flint</span>
+            <span className="shrink-0 font-semibold text-foreground">
+              Flint
+            </span>
             {answeredBy && (
               <>
                 <span aria-hidden>·</span>
@@ -720,12 +751,15 @@ export const MessageItem = memo(
         {/* Render message parts */}
         {renderedParts}
 
-        {message.role === 'assistant' && !isStreaming &&
+        {message.role === 'assistant' &&
+          !isStreaming &&
           (webCitations.length > 0 || webReads.length > 0) && (
           <WebSourcesRow citations={webCitations} readUrls={webReads} />
         )}
 
-        {message.role === 'assistant' && !isStreaming && usedSkills.length > 0 && (
+        {message.role === 'assistant' &&
+          !isStreaming &&
+          usedSkills.length > 0 && (
           <div
             aria-label={t('common:skillsUsedLabel')}
             className="mt-2 inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground"
@@ -771,9 +805,7 @@ export const MessageItem = memo(
               <div className="font-medium text-destructive">
                 Generation failed
               </div>
-              <div className="text-fg-2 break-words">
-                {messageError}
-              </div>
+              <div className="text-fg-2 break-words">{messageError}</div>
             </div>
             {selectedModel &&
               onRegenerate &&
@@ -871,7 +903,10 @@ export const MessageItem = memo(
                     </Button>
                   )}
 
-                {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
+              {selectedModel &&
+                onRegenerate &&
+                !isStreaming &&
+                isLastMessage && (
                   <Button
                     variant="ghost"
                     size="icon-xs"
@@ -885,7 +920,10 @@ export const MessageItem = memo(
             </div>
 
             {!midReply && (
-              <TokenSpeedIndicator streaming={isStreaming} metadata={metadata} />
+              <TokenSpeedIndicator
+                streaming={isStreaming}
+                metadata={metadata}
+              />
             )}
           </div>
         )}
@@ -897,7 +935,9 @@ export const MessageItem = memo(
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem
-              onClick={() => navigator.clipboard.writeText(getFullTextContent())}
+              onClick={() =>
+                navigator.clipboard.writeText(getFullTextContent())
+              }
             >
               <Copy className="mr-2 size-4" />
               {t('chat:actions.copy')}
@@ -937,6 +977,26 @@ export const MessageItem = memo(
         </DropdownMenu>
 
         {/* Image Preview Dialog */}
+        <EnableModelCapabilityDialog
+          open={enableToolsOpen}
+          modelName={selectedModel?.displayName || selectedModel?.id || ''}
+          capabilities={['tools']}
+          onCancel={() => setEnableToolsOpen(false)}
+          onEnable={() => {
+            setEnableToolsOpen(false)
+            if (!selectedProvider || !selectedModel) return
+            const provider = getProviderByName(selectedProvider)
+            if (!provider) return
+            updateProvider(selectedProvider, {
+              ...provider,
+              models: enableModelCapabilities(
+                provider.models,
+                selectedModel.id,
+                ['tools']
+              ),
+            })
+          }}
+        />
         {previewImage && (
           <div
             className="fixed inset-0 z-100 bg-background/80 backdrop-blur-md flex items-center justify-center cursor-pointer"

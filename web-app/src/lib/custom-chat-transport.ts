@@ -1120,6 +1120,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         files,
         web,
         agentTools,
+        'Use only structured tool calls supplied by this request. Never print <tool_call> or <function=...> markup as an answer. If no suitable tool is available, say that you cannot run it.',
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),

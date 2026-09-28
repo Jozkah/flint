@@ -248,9 +248,10 @@ describe('describing the attached folder', () => {
 
     expect(prompt).not.toContain('READ-ONLY')
     expect(prompt).toContain('authorized you to edit it')
-    // #322: bash never runs in the project, whatever the access.
+    // The shell starts in scratch, but direct-edit access allows changing
+    // location to the attached folder.
     expect(prompt).not.toContain('working directory')
-    expect(prompt).toContain('has no cwd parameter')
+    expect(prompt).toContain('the project is writable')
   })
 
   // A managed worktree is not the user's checkout, and not their branch.
@@ -479,7 +480,7 @@ describe('where bash runs (#322)', () => {
     const prompt = buildCoworkSystemPrompt(opts({ readOnlyFolder: '/home/u/repo' }))
 
     expect(prompt).toContain(
-      '`bash` runs in your sandbox workspace (`/data/agent-workspace/sessions/s1`), not in the project;'
+      '`bash` starts in your sandbox workspace (`/data/agent-workspace/sessions/s1`), not in the project;'
     )
     expect(prompt).toContain('Put absolute project')
   })
@@ -503,7 +504,10 @@ describe('where bash runs (#322)', () => {
       opts({ readOnlyFolder: '/home/u/repo', folderAccess: 'editable' as const })
     )
 
-    expect(prompt).toContain('`bash` runs in your sandbox workspace')
+    expect(prompt).toContain('`bash` starts in your sandbox workspace')
+    expect(prompt).toContain('the project is writable')
+    expect(prompt).toContain('Relative file-tool paths still resolve in the workspace.')
+    expect(prompt).not.toContain('cannot cd into the project')
     expect(prompt).not.toContain('starts in the session worktree')
   })
 
@@ -587,6 +591,8 @@ describe('agent working rules and environment facts', () => {
     expect(out).toContain('Windows PowerShell 5.1')
     expect(out).toContain('`$env:NAME`')
     expect(out).toContain('`2>$null`')
+    expect(out).toContain('never Git Bash paths such as `/c/Users/name/project`')
+    expect(out).toContain('Do not launch a second PowerShell inside `bash`.')
     expect(out).toContain('not runnable in the sandbox: node')
     expect(out).toContain('the `git` tool')
     expect(out).toContain('Settings > Agent Tools')

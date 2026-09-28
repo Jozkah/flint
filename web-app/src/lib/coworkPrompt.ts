@@ -253,7 +253,9 @@ function environmentBlock(opts: CoworkPromptOptions): string | null {
     opts.shellFlavor === 'powershell'
       ? 'Shell commands run in Windows PowerShell 5.1 (no POSIX shell): chain with `;` ' +
         '(or `a; if ($?) { b }` to stop on failure), never `&&`/`||`; read env vars as ' +
-        '`$env:NAME`; discard output with `2>$null`, not `2>nul`.'
+        '`$env:NAME`; discard output with `2>$null`, not `2>nul`. Use Windows paths ' +
+        'such as `C:\\Users\\name\\project`, never Git Bash paths such as `/c/Users/name/project`. ' +
+        'Do not launch a second PowerShell inside `bash`.'
       : opts.shellFlavor === 'posix'
         ? 'Shell commands run in a POSIX shell.'
         : null
@@ -404,9 +406,16 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
     }
     if (!inWorktree && opts.bashAvailable && opts.readOnlyFolder) {
       lines.push(
-        `\`bash\` runs in your sandbox workspace (\`${opts.workspacePath}\`), not in the project;`,
-        'it has no cwd parameter and cannot cd into the project. Put absolute project',
-        'paths inside the command.'
+        `\`bash\` starts in your sandbox workspace (\`${opts.workspacePath}\`), not in the project;`,
+        ...(opts.folderAccess === 'editable'
+          ? [
+              'the project is writable. For project commands, change location to its absolute',
+              'path first. Relative file-tool paths still resolve in the workspace.',
+            ]
+          : [
+              'it has no cwd parameter and cannot cd into the project. Put absolute project',
+              'paths inside the command.',
+            ])
       )
     }
   } else {

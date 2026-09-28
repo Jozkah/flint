@@ -1636,8 +1636,9 @@ export function CoworkPage() {
     })
   }, [serviceHub, session?.id])
 
-  const detachFolder = useCallback(() => {
+  const detachFolder = useCallback(async () => {
     if (!session?.id || folderHeld(session.id)) return
+    await useDirectEditGrants.getState().revokeSession(session.id)
     useCoworkSessions.getState().setFolder(session.id, null)
   }, [session?.id, folderHeld])
 
@@ -1995,6 +1996,68 @@ export function CoworkPage() {
     serviceHub,
     effective.access,
     effective.destination,
+  ])
+
+  // Attaching a folder is the user's choice to work in it. Obtain the same
+  // scoped grant as the manual access selector; until it arrives, effective
+  // access remains Review only. Never override a later mode selection.
+  const autoEditAttempted = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const current = session?.id && folder ? `${session.id}\u0000${folder}` : null
+    for (const key of autoEditAttempted.current) {
+      if (key !== current) autoEditAttempted.current.delete(key)
+    }
+  }, [session?.id, folder])
+  useEffect(() => {
+    const sid = session?.id
+    if (!sid || !folder || access !== 'edit-folder' || liveGrant) return
+    if (
+      !capabilityState.known ||
+      !capabilityState.directEdit ||
+      useCoworkActiveWork.getState().blockingKind(sid)
+    ) return
+    const key = `${sid}\u0000${folder}`
+    if (autoEditAttempted.current.has(key)) return
+    autoEditAttempted.current.add(key)
+    const done = useCoworkActiveWork.getState().acquire({
+      sessionId: sid,
+      kind: 'authorizing',
+      authority: { folder, access: effective.access, destination: effective.destination },
+    })
+    void (async () => {
+      try {
+        const dataFolder = await serviceHub.app().getJanDataFolder()
+        if (!dataFolder) return
+        const result = await useDirectEditGrants
+          .getState()
+          .authorize(sid, folder, dataFolder, extraFolders)
+        if (!result.ok) {
+          if (result.reason !== 'superseded') toast.error(result.reason)
+          return
+        }
+        const current = useCoworkSessions
+          .getState()
+          .sessions.find((entry) => entry.id === sid)
+        if (current?.folder !== folder || accessOf(current) !== 'edit-folder') {
+          await useDirectEditGrants.getState().revokeSession(sid)
+        }
+      } catch (error) {
+        toast.error(String(error))
+      } finally {
+        done()
+      }
+    })()
+  }, [
+    session?.id,
+    folder,
+    access,
+    liveGrant,
+    capabilityState.known,
+    capabilityState.known && capabilityState.directEdit,
+    effective.access,
+    effective.destination,
+    serviceHub,
+    extraFolders,
   ])
 
   /**

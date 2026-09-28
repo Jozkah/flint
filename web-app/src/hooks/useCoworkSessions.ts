@@ -6,6 +6,7 @@ import {
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
+import { useCoworkParallel } from '@/hooks/useCoworkParallel'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
@@ -608,11 +609,18 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
                         ? defaultModeFor(folder)
                         : undefined))
                     : x.mode,
-                  // Changing the repository withdraws everything that was
-                  // agreed about the previous one. Consent named that folder,
-                  // and an access mode chosen for it says nothing about this
-                  // one, so both return to the safe default.
-                  access: folder === x.folder ? x.access : 'review-only',
+                  // Attaching a folder defaults to direct editing. The route
+                  // obtains a scoped backend grant before any tool can write.
+                  // Users who explicitly enabled automatic worktrees keep
+                  // that behavior; later mode choices stay in force.
+                  access:
+                    folder === x.folder
+                      ? x.access
+                      : folder
+                        ? useCoworkParallel.getState().autoWorktree
+                          ? 'review-only'
+                          : 'edit-folder'
+                        : 'review-only',
                   editConsent:
                     folder === x.folder && x.editConsent?.folder === folder
                       ? x.editConsent

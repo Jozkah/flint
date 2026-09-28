@@ -654,6 +654,23 @@ async function chooseAccess(mode: string) {
 }
 
 describe('what a run carries, decided by the route', () => {
+  it('grants an attached folder before direct edits and respects Review only afterward', async () => {
+    seedSession({ access: 'edit-folder' })
+    await renderRoute()
+    await waitFor(() =>
+      expect(h.directEditAuthorize).toHaveBeenCalledWith('/data', SESSION, FOLDER)
+    )
+    await waitFor(() =>
+      expect(useDirectEditGrants.getState().bySession[SESSION]?.grantId).toBe('grant-1')
+    )
+
+    await chooseAccess('review-only')
+    await waitFor(() =>
+      expect(useCoworkSessions.getState().sessions[0]?.access).toBe('review-only')
+    )
+    expect(useDirectEditGrants.getState().bySession[SESSION]).toBeUndefined()
+  })
+
   it('writes nowhere in review only, whatever the folder is', async () => {
     await renderRoute()
     const deps = await runOneTurn()
@@ -1309,7 +1326,7 @@ describe('the folder the session is bound to', () => {
     expect(h.executeAgentTool).not.toHaveBeenCalled()
   })
 
-  it('attaches what the picker returned, and nothing else', async () => {
+  it('attaches what the picker returned and authorizes direct edits', async () => {
     seedSession({ folder: null })
     h.pickFolder.mockResolvedValue('/another/repo')
     await renderRoute()
@@ -1324,6 +1341,13 @@ describe('the folder the session is bound to', () => {
         useCoworkSessions.getState().sessions.find((one) => one.id === SESSION)
           ?.folder
       ).toBe('/another/repo')
+    )
+    await waitFor(() =>
+      expect(h.directEditAuthorize).toHaveBeenCalledWith(
+        '/data',
+        SESSION,
+        '/another/repo'
+      )
     )
   })
 })

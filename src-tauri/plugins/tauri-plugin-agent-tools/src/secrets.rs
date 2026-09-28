@@ -110,7 +110,7 @@ fn classify_line(line: &str) -> Option<(SecretKind, String)> {
     // the warning that matters.
     named_pairs(trimmed).into_iter().find_map(|(name, v, w)| {
         let value = &trimmed[v..w];
-        if value.len() < 8 || is_placeholder(value) || is_call(trimmed, v, value) {
+        if value.len() < 8 || is_placeholder(value) || is_code_reference(trimmed, v, value) {
             return None;
         }
         let kind = secret_name_kind(&name)?;
@@ -217,6 +217,22 @@ fn is_call(line: &str, v: usize, value: &str) -> bool {
     !quoted && value.contains('(')
 }
 
+/// A property read is code, not a literal credential.
+fn is_code_reference(line: &str, v: usize, value: &str) -> bool {
+    if is_call(line, v, value) {
+        return true;
+    }
+    let quoted = v > 0 && matches!(line.as_bytes()[v - 1], b'"' | b'\'');
+    !quoted
+        && value.contains('.')
+        && value.split('.').all(|part| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+        })
+}
+
 /// Whether a value is a stand-in rather than a credential.
 fn is_placeholder(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
@@ -242,7 +258,7 @@ fn redact_named_values(line: &str) -> Option<String> {
             && value.len() >= 8
             && !value.contains(REDACTED)
             && !is_placeholder(value)
-            && !is_call(line, v, value)
+            && !is_code_reference(line, v, value)
         {
             out.push_str(&line[copied..v]);
             out.push_str(REDACTED);
@@ -606,6 +622,13 @@ mod code_reading_a_secret_tests {
 \treq.Header.Set(\"Authorization\", \"Bearer \"+cfg.InternalSecret)\n\
 \ttoken := loadToken(ctx)\n";
         assert!(scan_text(go).is_empty(), "{:?}", scan_text(go));
+    }
+
+    #[test]
+    fn property_read_is_not_a_literal_credential() {
+        assert!(scan_text("sessionTokens: spend.spent\n").is_empty());
+        assert!(super::scan_diff("+++ b/coworkRunner.ts\n@@ -1,0 +1,1 @@\n+          sessionTokens: spend.spent,\n").is_empty());
+        assert!(!scan_text("sessionTokens: \"abcdefghijklmnop\"\n").is_empty());
     }
 
     #[test]
