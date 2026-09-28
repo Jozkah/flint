@@ -47,7 +47,9 @@ describe('the run summary the application writes', () => {
   })
 
   // The distinction the whole ledger exists to preserve.
-  it('keeps what Jan did apart from what was merely found', () => {
+  // Only the session's own writes are listed. Files that were already
+  // changed, or changed by something else, are not its work.
+  it('lists only what the session wrote', () => {
     show({
       janWrites: [{ destination: 'repository', paths: ['mine.ts'] }],
       observed: ['built.js'],
@@ -55,9 +57,26 @@ describe('the run summary the application writes', () => {
       unknown: ['nowhere.ts'],
     })
 
-    expect(region()).toHaveTextContent('common:coworkOrigins.observed')
-    expect(region()).toHaveTextContent('common:coworkOrigins.preExisting')
-    expect(region()).toHaveTextContent('common:coworkOrigins.unknown')
+    expect(region()).toHaveTextContent('mine.ts')
+    expect(region()).not.toHaveTextContent('theirs.ts')
+    expect(region()).not.toHaveTextContent('built.js')
+    expect(region()).not.toHaveTextContent('nowhere.ts')
+    expect(region()).not.toHaveTextContent('common:coworkOrigins.preExisting')
+  })
+
+  it('says nothing changed when only other files did', () => {
+    show({ preExisting: ['theirs.ts'], observed: ['built.js'] })
+
+    expect(region()).toHaveTextContent('common:coworkOrigins.nothing')
+  })
+
+  it('lists a long set of writes a few at a time', () => {
+    const paths = Array.from({ length: 25 }, (_, i) => `f${i}.ts`)
+    show({ janWrites: [{ destination: 'repository', paths }] })
+
+    expect(region()).toHaveTextContent('f9.ts')
+    expect(region()).not.toHaveTextContent('f10.ts')
+    expect(region()).toHaveTextContent('common:coworkOrigins.showAll')
   })
 
   it('reports both facts about a write over existing changes', () => {
