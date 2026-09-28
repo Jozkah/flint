@@ -100,6 +100,8 @@ function InterfaceSettings() {
     setAutoGenerateTitle,
     reduceMotion,
     setReduceMotion,
+    showComposerRailButtons,
+    setShowComposerRailButtons,
   } = useInterfaceSettings()
 
   const theme = (
@@ -194,6 +196,19 @@ function InterfaceSettings() {
           <Switch
             checked={renderHtmlArtifacts}
             onCheckedChange={setRenderHtmlArtifacts}
+          />
+        }
+      />
+      <CardItem
+        anchor="settings-appearance-composer-rail-buttons"
+        title={t('settings:interface.composerRailButtons')}
+        description={t('settings:interface.composerRailButtonsDesc')}
+        actions={
+          <Switch
+            aria-label={t('settings:interface.composerRailButtons')}
+            data-testid="composer-rail-buttons-switch"
+            checked={Boolean(showComposerRailButtons)}
+            onCheckedChange={(v) => setShowComposerRailButtons?.(v)}
           />
         }
       />

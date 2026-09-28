@@ -483,6 +483,7 @@ import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
+import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { jevSuggestSkill } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
@@ -4815,6 +4816,30 @@ export function CoworkPage() {
       ? 'drawer'
       : 'docked'
   const inspectorVisible = phone ? view === 'output' : panelShown
+  // The output panel's buttons in the composer row are a setting, off by
+  // default for a quieter composer; without them one header button opens and
+  // closes the panel on the tab last used.
+  const showComposerRailButtons = useInterfaceSettings(
+    (st) => st.showComposerRailButtons
+  )
+  const lastRail = useRef<RailMode>('changes')
+  if (activeRail) lastRail.current = activeRail
+  const outputToggle = (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-[30px] shrink-0 pointer-coarse:h-11"
+      aria-pressed={panelShown}
+      aria-label={t('common:coworkLayout.output')}
+      data-testid="cowork-output-toggle"
+      onClick={() =>
+        panelShown ? closeRail() : selectRailInView(lastRail.current)
+      }
+    >
+      <PanelRight className="size-4" aria-hidden />
+      <span className="max-sm:sr-only">{t('common:coworkLayout.output')}</span>
+    </Button>
+  )
   // The rail buttons stay in the composer row whether or not the output panel
   // is open, so opening it never takes controls away from where they were;
   // the panel header carries the same buttons as its tabs. Both sets share
@@ -5159,6 +5184,7 @@ export function CoworkPage() {
           {progressButton}
           {reviewButton}
           {headerStop}
+          {!phone && !showComposerRailButtons && outputToggle}
           {/* No context bar in a pane: each pane picks its own session's
               model here, never the global one. */}
           <div
@@ -5194,6 +5220,7 @@ export function CoworkPage() {
           )}
           {!phone && (
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {!showComposerRailButtons && outputToggle}
               {!coworkPane && <SplitToggleButton />}
               {/* Closed until asked for. */}
               <CoworkSessionDetails summary={sessionDetailsSummary}>
@@ -5623,7 +5650,7 @@ export function CoworkPage() {
             )}
           </div>
 
-          <div className="shrink-0 px-3.5 pt-2 pb-3.5">
+          <div className={cn('shrink-0 px-3.5 pt-2', paneChrome ? 'pb-3.5' : 'pb-1.5')}>
             <div className="mx-auto w-full max-w-[780px]">
               {/* Work a crashed or closed run left behind. Shown where the
                   session is about to start, because that is the moment someone
@@ -5806,7 +5833,9 @@ export function CoworkPage() {
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}
-                    {(!phone || !inspectorVisible) && railToolbar('toolbar')}
+                    {showComposerRailButtons &&
+                      (!phone || !inspectorVisible) &&
+                      railToolbar('toolbar')}
                     <div className="ml-auto flex items-center">
                       <SkillSelector folder={folder} />
                     </div>
@@ -5818,7 +5847,7 @@ export function CoworkPage() {
                 // do on the left, the model on the right. Wraps, never clips.
                 <div
                   data-testid="cowork-run-controls"
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1.5"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
                 >
                   {/* The run controls stay on one line; the model takes the
                       rest and truncates its name, and only when not even a

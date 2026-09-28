@@ -266,6 +266,10 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
     descriptionKey: 'settings:appearance.reduceMotionDesc',
     keywords: ['animation', 'motion', 'accessibility', 'transitions'],
   }),
+  item('appearance', 'composer-rail-buttons', 'settings:interface.composerRailButtons', {
+    descriptionKey: 'settings:interface.composerRailButtonsDesc',
+    keywords: ['cowork', 'output', 'preview', 'changes', 'activity', 'timeline', 'composer', 'buttons'],
+  }),
   item('appearance', 'completion-sound', 'settings:appearance.completionSound', {
     descriptionKey: 'settings:appearance.completionSoundDesc',
     keywords: ['sound', 'audio', 'chime', 'notification', 'finished', 'done'],

@@ -94,6 +94,9 @@ interface InterfaceSettingsState {
   completionSound: CompletionSound
   /** 0 to 1. */
   completionSoundVolume: number
+  /** The output panel's buttons (Preview, Code, Changes, Activity, Timeline)
+   * in the Cowork composer row. Off: one Output button in the header. */
+  showComposerRailButtons: boolean
   setFontSize: (size: FontSize) => void
   zoomInMessages: () => void
   zoomOutMessages: () => void
@@ -114,6 +117,7 @@ interface InterfaceSettingsState {
   setSidebarWidth: (width: number) => void
   setCompletionSound: (mode: CompletionSound) => void
   setCompletionSoundVolume: (volume: number) => void
+  setShowComposerRailButtons: (show: boolean) => void
   resetInterface: () => void
 }
 
@@ -132,6 +136,7 @@ type InterfaceSettingsPersistedSlice = Pick<
   | 'sidebarWidth'
   | 'completionSound'
   | 'completionSoundVolume'
+  | 'showComposerRailButtons'
 >
 
 export const fontSizeOptions = [
@@ -159,6 +164,7 @@ const createDefaultInterfaceValues = (): InterfaceSettingsPersistedSlice => {
     sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
     completionSound: 'off',
     completionSoundVolume: defaultCompletionSoundVolume,
+    showComposerRailButtons: false,
   }
 }
 
@@ -216,6 +222,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
             sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
             completionSound: 'off',
             completionSoundVolume: defaultCompletionSoundVolume,
+            showComposerRailButtons: false,
           })
         },
 
@@ -296,6 +303,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         setCompletionSoundVolume: (volume) => {
           set({ completionSoundVolume: sanitizeVolume(volume) })
         },
+
+        setShowComposerRailButtons: (show) => {
+          set({ showComposerRailButtons: show })
+        },
       }
     },
     {
@@ -336,6 +347,7 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
         sidebarWidth: state.sidebarWidth,
         completionSound: state.completionSound,
         completionSoundVolume: state.completionSoundVolume,
+        showComposerRailButtons: state.showComposerRailButtons,
       }),
       // Apply settings when hydrating from storage
       onRehydrateStorage: () => (state) => {
@@ -387,6 +399,10 @@ export const useInterfaceSettings = create<InterfaceSettingsState>()(
 
           if (typeof state.autoGenerateTitle !== 'boolean') {
             state.autoGenerateTitle = true
+          }
+
+          if (typeof state.showComposerRailButtons !== 'boolean') {
+            state.showComposerRailButtons = false
           }
 
           if (!isTranscriptView(state.transcriptView)) {
