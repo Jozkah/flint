@@ -23,7 +23,7 @@ describe('buildCoworkSystemPrompt', () => {
       "rerun the project's existing tests or checks"
     )
     expect(buildCoworkSystemPrompt(opts())).toContain(
-      'write a real test file'
+      "prefer the project's existing relevant tests"
     )
   })
 
@@ -519,7 +519,12 @@ describe('guidelines', () => {
     expect(prompt).toContain('conflict markers first')
     expect(prompt).toContain('say it was not run')
     expect(prompt).toContain('do not ask first with `ask`')
-    expect(prompt).toContain('fails the same way twice')
+    expect(prompt).toContain('Do not repeat an unchanged failing action')
+    expect(prompt).toContain('continue the work that does not depend on it')
+    expect(prompt).toContain('A program the sandbox blocks is not missing')
+    expect(prompt).toContain('Finish every part the user asked for')
+    expect(prompt).toContain('carries forward within its scope')
+    expect(prompt).toContain('AGENTS.md')
   })
 })
 
@@ -595,5 +600,15 @@ describe('agent working rules and environment facts', () => {
         worktreeBranch: 'flint/x',
       })
     ).toContain('Access mode: Managed worktree')
+  })
+})
+
+describe('the work-profile block', () => {
+  it('is included normally, and left out in plan mode', () => {
+    const block = '# PROFILE-BLOCK'
+    expect(buildCoworkSystemPrompt({ ...opts(), workProfileBlock: block })).toContain(block)
+    expect(
+      buildCoworkSystemPrompt({ ...opts(), workProfileBlock: block, planMode: true })
+    ).not.toContain(block)
   })
 })

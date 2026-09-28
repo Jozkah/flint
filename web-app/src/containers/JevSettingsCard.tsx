@@ -4,6 +4,7 @@ import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { WorkProfilesCard } from '@/containers/WorkProfilesCard'
 import {
   jevClearKey,
   jevReceipts,
@@ -169,6 +170,7 @@ export function JevSettingsCard({
         description={<p className="text-muted-foreground">{t('common:jev.modesExplained')}</p>}
       />
     </Card>
+    <WorkProfilesCard />
     <Card title={t('common:jev.receipts')}>
       <CardItem
         align="start"
