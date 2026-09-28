@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useLocation, useNavigate } from '@tanstack/react-router'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import {
   HoverCard,
@@ -88,6 +88,15 @@ export function HeaderLiveChips() {
   const threads = useThreads((s) => s.threads)
   const { summaries } = useRoomsState()
   const runCount = Object.keys(runs).length
+  // On the Cowork page, a lone run in the session in view is already shown
+  // as Running beside its title; the chip would say it twice.
+  const pathname = useLocation({ select: (l) => l.pathname })
+  const currentSessionId = useCoworkSessions((s) => s.currentId)
+  const runsShownInPage =
+    pathname.startsWith('/cowork') &&
+    runCount === 1 &&
+    currentSessionId != null &&
+    currentSessionId in runs
   const approvalCount = pendingEntries.length
   const now = useNow(runCount > 0 || approvalCount > 0)
   const [runsOpen, setRunsOpen] = useState(false)
@@ -114,7 +123,7 @@ export function HeaderLiveChips() {
 
   return (
     <>
-      {runCount > 0 && (
+      {runCount > 0 && !runsShownInPage && (
         <HoverCard openDelay={250} closeDelay={120} open={runsOpen} onOpenChange={setRunsOpen}>
           <HoverCardTrigger asChild>
             <button

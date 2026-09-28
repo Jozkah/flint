@@ -49,15 +49,13 @@ import {
 import { cn } from '@/lib/utils'
 import {
   ArrowLeft,
-  FileDiff,
   Info,
   Loader2,
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { Icon } from '@/components/ui/icon'
 import { basenameOf } from '@/lib/coworkPreview'
-import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
+import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
@@ -483,6 +481,7 @@ import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
 import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
+import { CoworkBarStack } from '@/containers/CoworkBarStack'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { jevSuggestSkill } from '@/lib/jev'
@@ -5068,27 +5067,6 @@ export function CoworkPage() {
     </Chip>
   ) : null
 
-  // The one primary action on the conversation, once there is something to
-  // review.
-  const reviewButton =
-    changeCounts.fileCount > 0 ? (
-      <Button
-        size="sm"
-        onClick={() => openRail({ kind: 'diff' })}
-        data-testid="cowork-header-review"
-        title={paneChrome ? t('common:coworkReview.open') : undefined}
-        className={cn(
-          'pointer-coarse:h-11',
-          paneChrome ? 'h-7 px-2' : 'max-md:px-2.5'
-        )}
-      >
-        <FileDiff aria-hidden />
-        <span className={paneChrome ? 'sr-only' : 'max-md:sr-only'}>
-          {t('common:coworkReview.open')}
-        </span>
-      </Button>
-    ) : null
-
   // An unpinned plan stays one click away in the header.
   const progressButton =
     session?.progressUi?.unpinned ? (
@@ -5182,7 +5160,6 @@ export function CoworkPage() {
         >
           {runningChip}
           {progressButton}
-          {reviewButton}
           {headerStop}
           {!phone && !showComposerRailButtons && outputToggle}
           {/* No context bar in a pane: each pane picks its own session's
@@ -5216,6 +5193,8 @@ export function CoworkPage() {
               className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5"
             >
               {workspacePill}
+              {runningChip}
+              {progressButton}
             </div>
           )}
           {!phone && (
@@ -5265,27 +5244,8 @@ export function CoworkPage() {
           )}
           data-testid="cowork-content-view"
         >
-          {/* In a pane the title heads the pane instead: shown once. */}
-          {!paneChrome && (
-          <FrameHeader
-            icon={<Icon name="x-cowork" size={16} />}
-            title={
-              <span
-                title={session?.title || undefined}
-                data-testid="cowork-session-title"
-              >
-                {session?.title || t('common:newSession')}
-              </span>
-            }
-            actions={
-              <>
-                {runningChip}
-                {progressButton}
-                {reviewButton}
-              </>
-            }
-          />
-          )}
+          {/* No title row: the title is the breadcrumb's, and the run's
+              state sits beside it in the header. */}
           <FrameBody className="min-h-0 overflow-hidden">
           {/* The live plan, pinned over the transcript so it never scrolls
               away. */}
@@ -5661,119 +5621,123 @@ export function CoworkPage() {
                   beneath the conversation. */}
               {/* Not beside the session's own worktree bar: a session that
                   already has a worktree is not about to adopt another. */}
-              {folder &&
-                !recoveryHiddenHere &&
-                ((!worktree && (session?.turns.length ?? 0) === 0) ||
-                  effective.downgradedFrom === 'managed-worktree') && (
-                <div className="px-1 pb-2">
-                  <CoworkWorktreeRecovery
-                    orphans={recoverableWorktrees(
-                      foundWorktrees,
-                      worktree,
-                      session?.id,
-                      coworkSessionIds,
-                      heldWorktreePaths
-                    )}
-                    onHide={() => {
-                      hideRecovery(folder)
-                      setRecoveryHiddenHere(true)
-                    }}
-                    ownBranch={
-                      session?.id ? sessionWorktreeBranch(session.id) : undefined
-                    }
-                    downgradeNote={(() => {
-                      const key = effectiveDowngradeKey(effective)
-                      return key &&
-                        effective.downgradedFrom === 'managed-worktree'
-                        ? t(key)
-                        : undefined
-                    })()}
-                    onAdopt={(record) => {
-                      if (session?.id)
-                        useCoworkWorktrees.getState().adopt(session.id, record)
-                    }}
-                    onPending={(record) =>
-                      useCoworkWorktrees.getState().pending(record)
-                    }
-                    onRemove={async (record, force) => {
-                      const dataFolder = await serviceHub
-                        .app()
-                        .getJanDataFolder()
-                      if (!dataFolder) return
-                      // Removed under a temporary binding rather than through
-                      // the session's own record: this checkout belongs to no
-                      // session, and adopting it first to delete it would put
-                      // the session on a worktree that is about to be gone.
-                      const key = `recovery:${record.path}`
-                      useCoworkWorktrees.getState().adopt(key, record)
-                      const done = await useCoworkWorktrees
-                        .getState()
-                        .discard(key, dataFolder, force)
-                      useCoworkWorktrees.getState().forget(key)
-                      if (!done.ok) toast.error(done.reason)
-                      setFoundWorktrees(
-                        await useCoworkWorktrees
+              {/* The bars over the composer stack: two at a time, the rest
+                  behind "Show N more". */}
+              <CoworkBarStack>
+                {folder &&
+                  !recoveryHiddenHere &&
+                  ((!worktree && (session?.turns.length ?? 0) === 0) ||
+                    effective.downgradedFrom === 'managed-worktree') && (
+                  <div className="px-1 pb-2">
+                    <CoworkWorktreeRecovery
+                      orphans={recoverableWorktrees(
+                        foundWorktrees,
+                        worktree,
+                        session?.id,
+                        coworkSessionIds,
+                        heldWorktreePaths
+                      )}
+                      onHide={() => {
+                        hideRecovery(folder)
+                        setRecoveryHiddenHere(true)
+                      }}
+                      ownBranch={
+                        session?.id ? sessionWorktreeBranch(session.id) : undefined
+                      }
+                      downgradeNote={(() => {
+                        const key = effectiveDowngradeKey(effective)
+                        return key &&
+                          effective.downgradedFrom === 'managed-worktree'
+                          ? t(key)
+                          : undefined
+                      })()}
+                      onAdopt={(record) => {
+                        if (session?.id)
+                          useCoworkWorktrees.getState().adopt(session.id, record)
+                      }}
+                      onPending={(record) =>
+                        useCoworkWorktrees.getState().pending(record)
+                      }
+                      onRemove={async (record, force) => {
+                        const dataFolder = await serviceHub
+                          .app()
+                          .getJanDataFolder()
+                        if (!dataFolder) return
+                        // Removed under a temporary binding rather than through
+                        // the session's own record: this checkout belongs to no
+                        // session, and adopting it first to delete it would put
+                        // the session on a worktree that is about to be gone.
+                        const key = `recovery:${record.path}`
+                        useCoworkWorktrees.getState().adopt(key, record)
+                        const done = await useCoworkWorktrees
                           .getState()
-                          .list(folder, dataFolder)
+                          .discard(key, dataFolder, force)
+                        useCoworkWorktrees.getState().forget(key)
+                        if (!done.ok) toast.error(done.reason)
+                        setFoundWorktrees(
+                          await useCoworkWorktrees
+                            .getState()
+                            .list(folder, dataFolder)
+                        )
+                      }}
+                    />
+                  </div>
+                )}
+                {/* AH-210: what a handed-off session could not bring with it. */}
+                <CoworkHandoffNotice
+                  handoff={session?.handoff}
+                  folder={folder}
+                  onDismiss={() =>
+                    session &&
+                    useCoworkSessions.getState().dismissHandoff(session.id)
+                  }
+                />
+                {/* The session's changed files, one step from review: over the
+                    composer, where the design keeps it while the run goes on. */}
+                <CoworkReviewReady
+                  fileCount={changeCounts.fileCount}
+                  additions={changeCounts.additions}
+                  deletions={changeCounts.deletions}
+                  onReview={() => openRail({ kind: 'diff' })}
+                  sessionId={session?.id}
+                  running={running}
+                  sandboxPaths={fileDiffs.map((f) => f.path)}
+                  applyActions={sandboxApply}
+                />
+                {/* The pull request for the folder's branch, if it has one, with
+                    the same mark the session carries in the sidebar. */}
+                {session?.id && folder ? (
+                  <CoworkSessionWorktreeBar
+                    sessionId={session.id}
+                    title={session.title}
+                    folder={folder}
+                    record={worktree}
+                    offerCopy={
+                      autoWorktree.isGit === false &&
+                      capabilityState.known &&
+                      capabilityState.managedWorktree &&
+                      (session.turns.length ?? 0) === 0
+                    }
+                    onWorkOnCopy={autoWorktree.workOnCopy}
+                    onCreatePr={(branch, base) =>
+                      handleSubmit(
+                        t('common:coworkParallel.prPrompt', {
+                          branch,
+                          base: base || 'the default branch',
+                        })
                       )
+                    }
+                    onDiscarded={() => {
+                      const sid = session.id
+                      void useDirectEditGrants.getState().revokeSession(sid)
+                      useCoworkWorktrees.getState().forget(sid)
+                      useCoworkSessions.getState().setAccess(sid, 'review-only')
+                      useCoworkParallel.getState().mark(sid, folder, 'skipped')
                     }}
                   />
-                </div>
-              )}
-              {/* AH-210: what a handed-off session could not bring with it. */}
-              <CoworkHandoffNotice
-                handoff={session?.handoff}
-                folder={folder}
-                onDismiss={() =>
-                  session &&
-                  useCoworkSessions.getState().dismissHandoff(session.id)
-                }
-              />
-              {/* The session's changed files, one step from review: over the
-                  composer, where the design keeps it while the run goes on. */}
-              <CoworkReviewReady
-                fileCount={changeCounts.fileCount}
-                additions={changeCounts.additions}
-                deletions={changeCounts.deletions}
-                onReview={() => openRail({ kind: 'diff' })}
-                sessionId={session?.id}
-                running={running}
-                sandboxPaths={fileDiffs.map((f) => f.path)}
-                applyActions={sandboxApply}
-              />
-              {/* The pull request for the folder's branch, if it has one, with
-                  the same mark the session carries in the sidebar. */}
-              {session?.id && folder ? (
-                <CoworkSessionWorktreeBar
-                  sessionId={session.id}
-                  title={session.title}
-                  folder={folder}
-                  record={worktree}
-                  offerCopy={
-                    autoWorktree.isGit === false &&
-                    capabilityState.known &&
-                    capabilityState.managedWorktree &&
-                    (session.turns.length ?? 0) === 0
-                  }
-                  onWorkOnCopy={autoWorktree.workOnCopy}
-                  onCreatePr={(branch, base) =>
-                    handleSubmit(
-                      t('common:coworkParallel.prPrompt', {
-                        branch,
-                        base: base || 'the default branch',
-                      })
-                    )
-                  }
-                  onDiscarded={() => {
-                    const sid = session.id
-                    void useDirectEditGrants.getState().revokeSession(sid)
-                    useCoworkWorktrees.getState().forget(sid)
-                    useCoworkSessions.getState().setAccess(sid, 'review-only')
-                    useCoworkParallel.getState().mark(sid, folder, 'skipped')
-                  }}
-                />
-              ) : null}
-              <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
+                ) : null}
+                <PrBar folder={treeRoot ?? folder} sessionId={session?.id} className="mb-2" />
+              </CoworkBarStack>
               {/* The FLINT.md dialog; the folder menu opens it. */}
               <CoworkProjectInit
                 hideTrigger
