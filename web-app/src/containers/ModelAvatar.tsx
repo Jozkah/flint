@@ -1,5 +1,5 @@
 import { modelLogo } from '@/lib/brandLogos'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/cn'
 
 /** Tile colours for models with no brand mark, one per name. */
 const TONES = ['#2563eb', '#7c3aed', '#0891b2', '#059669', '#d97706', '#db2777', '#4b5563']

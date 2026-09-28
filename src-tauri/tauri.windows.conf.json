@@ -26,6 +26,7 @@
     ],
     "resources": [
       "resources/LICENSE",
+      "resources/mobile/",
       "resources/bin/flint.exe",
       "resources/bin/flint-llama-worker.exe",
       "resources/bin/ggml*.dll"

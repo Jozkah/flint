@@ -1,4 +1,7 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { useRemoteComposer } from '@/lib/remote/composer'
+import { chatLiveReply } from '@/lib/remote/live'
+import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
 import {
   Fragment,
@@ -1947,6 +1950,14 @@ export function ThreadConversation({
     },
     [processAndSendMessage, clearBannerErrors]
   )
+
+  // A paired phone's message goes through this same submit, and the reply
+  // it streams is followed from here (lib/remote).
+  useRemoteComposer('chat', threadId, handleSubmit, stop)
+  useEffect(() => {
+    reportLiveReply('chat', threadId, chatLiveReply(chatMessages, status))
+  }, [threadId, chatMessages, status])
+  useEffect(() => () => reportLiveReply('chat', threadId, null), [threadId])
 
   // Versioning helpers --------------------------------------------------------
 

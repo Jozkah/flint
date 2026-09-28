@@ -41,6 +41,8 @@ import { TemporaryChatGuard } from '@/containers/TemporaryChatGuard'
 import { useWindowTitle } from '@/hooks/useWindowTitle'
 import { useAppViewport } from '@/hooks/useAppViewport'
 import { useApprovalWaitNotifier } from '@/hooks/useApprovalWaitNotifier'
+import { useRemoteBridge } from '@/hooks/useRemoteBridge'
+import { RemotePairingConfirm } from '@/containers/RemotePairingConfirm'
 import { detectWindowChrome } from '@/lib/titlebar'
 
 export const Route = createRootRoute({
@@ -61,6 +63,8 @@ const AppLayout = () => {
   useWindowTitle()
   useAppViewport()
   useApprovalWaitNotifier(useNavigate())
+  // Remote access: answers paired phones and asks to confirm new ones.
+  useRemoteBridge()
   const appDrawsChrome = detectWindowChrome() === 'custom'
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)
@@ -75,6 +79,7 @@ const AppLayout = () => {
         >
           <KeyboardShortcutsProvider />
           <TemporaryChatGuard />
+          <RemotePairingConfirm />
           {/* Only a borderless window draws its own caption buttons and resize
               grips. Windows has a native title bar, which owns dragging, snap,
               double-click maximise and the caption buttons; nothing here may sit

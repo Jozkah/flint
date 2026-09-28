@@ -72,7 +72,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/LICENSE"
+      "resources/LICENSE",
+      "resources/mobile/"
     ]
   }
 }

@@ -46,7 +46,10 @@ import {
   usePendingApprovalCount,
 } from '@/hooks/useToolApprovalRequests'
 import { useArmedAfterChange } from '@/hooks/useArmedAfterChange'
-import { describePermissionRequest } from '@/lib/permissionRequest'
+import {
+  describePermissionRequest,
+  requestSubject,
+} from '@/lib/permissionRequest'
 import { classifyPermissionOutcome } from '@/lib/permissionOutcome'
 import {
   PermissionRequestDetails,
@@ -526,21 +529,6 @@ export const ToolInput = memo(
     )
   }
 )
-
-/** The full text a request acts on: a command in full, else what it touches. */
-const requestSubject = (
-  input: unknown,
-  resources: string[]
-): string | undefined => {
-  const parsed = parseToolInput(input)
-  if (isPlainObject(parsed)) {
-    for (const key of ['command', 'cmd', 'url', 'query']) {
-      const value = parsed[key]
-      if (typeof value === 'string' && value.trim()) return value.trim()
-    }
-  }
-  return resources.length > 0 ? resources.join('\n') : undefined
-}
 
 /**
  * A pending request, as the one expanded step of the timeline: what is asked

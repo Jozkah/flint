@@ -25,6 +25,7 @@
     ],
     "resources": [
       "resources/LICENSE",
+      "resources/mobile/",
       "resources/bin/flint",
       "resources/bin/flint-llama-worker",
       "resources/bin/libggml*.so*"

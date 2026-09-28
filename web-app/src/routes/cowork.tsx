@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { PrBar } from '@/containers/PrBar'
+import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
 import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
@@ -4395,6 +4396,8 @@ export function CoworkPage() {
   runRequestRef.current = runRequest
 
   const handleSubmit = (text: string) => void runRequest(text)
+  // A paired phone's message to the session in view takes the same path.
+  useRemoteComposer('cowork', session?.id, handleSubmit)
   // Cowork's own `/` built-ins; `/help` is added by the composer.
   /**
    * Compact this session now: fold its older messages into a summary written

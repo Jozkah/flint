@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '@/lib/cn'
 import { ICONS, type IconName } from './icons.data'
 
 export type { IconName }

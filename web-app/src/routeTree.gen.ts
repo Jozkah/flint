@@ -20,6 +20,7 @@ import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
+import { Route as SettingsRemoteAccessRouteImport } from './routes/settings/remote-access'
 import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
@@ -93,6 +94,11 @@ const SettingsWebSearchRoute = SettingsWebSearchRouteImport.update({
 const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
   id: '/settings/shortcuts',
   path: '/settings/shortcuts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRemoteAccessRoute = SettingsRemoteAccessRouteImport.update({
+  id: '/settings/remote-access',
+  path: '/settings/remote-access',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsPermissionsRoute = SettingsPermissionsRouteImport.update({
@@ -217,6 +223,7 @@ export interface FileRoutesByFullPath {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
+  '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -249,6 +256,7 @@ export interface FileRoutesByTo {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
+  '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -282,6 +290,7 @@ export interface FileRoutesById {
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
+  '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -316,6 +325,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/memory'
     | '/settings/permissions'
+    | '/settings/remote-access'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -348,6 +358,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/memory'
     | '/settings/permissions'
+    | '/settings/remote-access'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -380,6 +391,7 @@ export interface FileRouteTypes {
     | '/settings/mcp-servers'
     | '/settings/memory'
     | '/settings/permissions'
+    | '/settings/remote-access'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -413,6 +425,7 @@ export interface RootRouteChildren {
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
   SettingsPermissionsRoute: typeof SettingsPermissionsRoute
+  SettingsRemoteAccessRoute: typeof SettingsRemoteAccessRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
@@ -498,6 +511,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/shortcuts'
       fullPath: '/settings/shortcuts'
       preLoaderRoute: typeof SettingsShortcutsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/remote-access': {
+      id: '/settings/remote-access'
+      path: '/settings/remote-access'
+      fullPath: '/settings/remote-access'
+      preLoaderRoute: typeof SettingsRemoteAccessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/permissions': {
@@ -661,6 +681,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,
   SettingsPermissionsRoute: SettingsPermissionsRoute,
+  SettingsRemoteAccessRoute: SettingsRemoteAccessRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,

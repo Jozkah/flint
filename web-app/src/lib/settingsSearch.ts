@@ -97,6 +97,13 @@ export const SETTINGS_PAGES = [
     keywords: ['server', 'openai compatible', 'port'],
   },
   {
+    id: 'remote-access',
+    route: route.settings.remote_access,
+    titleKey: 'remote:title',
+    group: 'core',
+    keywords: ['phone', 'mobile', 'tailscale', 'pair', 'remote', 'qr code'],
+  },
+  {
     id: 'https-proxy',
     route: route.settings.https_proxy,
     titleKey: 'common:https_proxy',
@@ -524,6 +531,21 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
   item('jev', 'rerank', 'common:jev.rerankTitle', {
     keywords: ['rerank', 'retrieval', 'attachments', 'typesafe'],
+  }),
+  // Remote access
+  item('remote-access', 'enable', 'remote:enable', {
+    descriptionKey: 'remote:enableDesc',
+    keywords: ['phone', 'mobile', 'remote control'],
+  }),
+  item('remote-access', 'interface', 'remote:reachable', {
+    keywords: ['tailscale', 'wifi', 'lan', 'network', 'https', 'port'],
+  }),
+  item('remote-access', 'approvals', 'remote:allowApprovals', {
+    descriptionKey: 'remote:allowApprovalsDesc',
+    keywords: ['always allow', 'approve from phone'],
+  }),
+  item('remote-access', 'devices', 'remote:cardDevices', {
+    keywords: ['pair', 'qr code', 'unpair', 'devices'],
   }),
   item('claude-code', 'large-model', 'settings:claudeCode.largeModel', {
     descriptionKey: 'settings:claudeCode.largeModelDesc',

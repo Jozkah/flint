@@ -30,6 +30,7 @@ export const route = {
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',
     jev: '/settings/jev',
+    remote_access: '/settings/remote-access',
   },
   localApiServerlogs: '/local-api-server/logs',
   systemMonitor: '/system-monitor',

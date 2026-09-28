@@ -102,6 +102,34 @@ console.log(await window.__TAURI__.invoke('command_name'))
 # Press F12 → Console tab
 ```
 
+## Phone app (remote access)
+
+`mobile.html` + `src/mobile/` is a separate Vite entry: the web app a paired
+phone opens at `https://<computer>:1340/m/`, served by the desktop's
+remote-access server (`src-tauri/src/core/remote`). It runs in the phone's
+browser, so it must not import Tauri or the desktop's stores (ESLint enforces
+this for `src/mobile/**`). It talks to the desktop only through
+`/remote/v1` (see `src/lib/remote/protocol.ts`); the desktop window answers
+RPCs in `src/lib/remote/handlers.ts`.
+
+```bash
+# Build it into src-tauri/resources/mobile (bundled as a Tauri resource;
+# `yarn build` does this too)
+yarn build:mobile
+
+# Develop against a running Flint with Settings > Remote access on:
+# http://localhost:1430/m/ proxies /remote/v1 (HTTP + WebSocket) to it.
+yarn dev:mobile
+FLINT_REMOTE_URL=https://100.64.0.2:1340 yarn dev:mobile   # another address
+
+# Pair the dev page: copy the pairing link from the desktop's QR dialog and
+# open it with the dev origin, e.g. http://localhost:1430/m/#pair=<code>
+```
+
+To try the built app end to end in `yarn dev`, run `yarn build:mobile`
+first: Tauri copies `src-tauri/resources/mobile` next to the binary when it
+builds, and the server shows a placeholder page while the folder is empty.
+
 ## Accessibility Guidelines
 
 - Use semantic HTML (`<button>`, `<nav>`, `<main>`)

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- The phone app (src/mobile), served by the desktop under /m/. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0A0B0D" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F8F8F8" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Flint" />
+    <link rel="manifest" href="/m/manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="/m/icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="/m/icons/apple-touch-icon.png" />
+    <title>Flint</title>
+    <style>
+      /* First paint, before the stylesheet: the page colour of either theme. */
+      html { background: #f8f8f8; }
+      @media (prefers-color-scheme: dark) { html { background: #0a0b0d; } }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/mobile/main.tsx"></script>
+  </body>
+</html>

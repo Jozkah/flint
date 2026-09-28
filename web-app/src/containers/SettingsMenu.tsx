@@ -54,7 +54,13 @@ const GROUPS: {
   {
     key: 'advanced',
     labelKey: 'navigation:advancedSettings',
-    ids: ['local-api-server', 'https-proxy', 'hardware', 'agent-tools'],
+    ids: [
+      'local-api-server',
+      'remote-access',
+      'https-proxy',
+      'hardware',
+      'agent-tools',
+    ],
   },
 ]
 
@@ -75,6 +81,7 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   assistants: mark('x-feather'),
   attachments: mark('x-clip'),
   'local-api-server': mark('x-server'),
+  'remote-access': mark('signal-full'),
   'https-proxy': mark('x-globe'),
   'web-search': mark('x-search'),
   memory: mark('x-brain'),

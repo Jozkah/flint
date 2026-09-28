@@ -1,0 +1,28 @@
+/* Tool call kind colours (lib/toolKind.ts), shared by the desktop transcript
+   (chat.css) and the phone app (mobile/mobile.css). */
+
+/* ---- Tool call kinds (lib/toolKind.ts) ----
+   One hue per family. --tk reaches the card's left edge, its icon tile, its
+   status text and the dot on the timeline rail beside it. */
+[data-tool-kind] {
+  --tk: var(--muted-foreground);
+}
+[data-tool-kind='read'] { --tk: #3b82f6; }
+[data-tool-kind='search'] { --tk: #8b5cf6; }
+[data-tool-kind='web'] { --tk: #0891b2; }
+[data-tool-kind='bash'] { --tk: #d97706; }
+[data-tool-kind='edit'] { --tk: #059669; }
+[data-tool-kind='todo'] { --tk: #ea580c; }
+[data-tool-kind='fail'] { --tk: #ef4444; }
+[data-tool-kind='warn'] { --tk: #f59e0b; }
+[data-tool-kind='appr'] { --tk: #f59e0b; }
+[data-tool-kind='other'] { --tk: #64748b; }
+.dark [data-tool-kind='read'] { --tk: #60a5fa; }
+.dark [data-tool-kind='search'] { --tk: #a78bfa; }
+.dark [data-tool-kind='web'] { --tk: #22d3ee; }
+.dark [data-tool-kind='bash'] { --tk: #fbbf24; }
+.dark [data-tool-kind='edit'] { --tk: #34d399; }
+.dark [data-tool-kind='todo'] { --tk: #fb923c; }
+.dark [data-tool-kind='fail'] { --tk: #f87171; }
+.dark [data-tool-kind='warn'] { --tk: #fbbf24; }
+.dark [data-tool-kind='other'] { --tk: #94a3b8; }

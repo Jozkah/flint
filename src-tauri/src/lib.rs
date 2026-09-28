@@ -615,9 +615,20 @@ pub fn build_app() -> tauri::App {
         app_builder = app_builder.plugin(tauri_plugin_hardware::init());
     }
 
-    // Desktop registers the shared command list and nothing extra.
+    // Desktop registers the shared command list plus remote access.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![]);
+    let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
+        // Remote access (phone pairing and the window bridge); desktop-only.
+        core::remote::commands::remote_get_status,
+        core::remote::commands::remote_set_config,
+        core::remote::commands::remote_start_pairing,
+        core::remote::commands::remote_cancel_pairing,
+        core::remote::commands::remote_confirm_pairing,
+        core::remote::commands::remote_list_devices,
+        core::remote::commands::remote_revoke_device,
+        core::remote::commands::remote_rpc_respond,
+        core::remote::commands::remote_emit_event,
+    ]);
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
@@ -739,6 +750,10 @@ pub fn build_app() -> tauri::App {
                 core::window_state::install(&window, data_folder);
                 suppress_beforeunload_dialog(&window);
             }
+            // Remote access: off unless the user turned it on; if so the
+            // listener starts now, with the settings they left.
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            core::remote::commands::init(app.handle());
             // Start migration
             let mut store_path = get_jan_data_folder_path(app.handle().clone());
             store_path.push("store.json");

@@ -700,3 +700,18 @@ export function describePermissionRequest(
     },
   }
 }
+
+/** The full text a request acts on: a command in full, else what it touches. */
+export const requestSubject = (
+  input: unknown,
+  resources: string[]
+): string | undefined => {
+  const parsed = parseToolInput(input)
+  if (isPlainObject(parsed)) {
+    for (const key of ['command', 'cmd', 'url', 'query']) {
+      const value = parsed[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+  }
+  return resources.length > 0 ? resources.join('\n') : undefined
+}

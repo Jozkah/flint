@@ -1,6 +1,4 @@
 import { providerDisplayName } from '@/lib/providerDisplayNames'
-import { type ClassValue, clsx } from 'clsx'
-import { twMerge } from 'tailwind-merge'
 import type { Node, Position } from 'unist'
 import type { Code, Paragraph, Parent, Text } from 'mdast'
 import { visit } from 'unist-util-visit'
@@ -8,9 +6,8 @@ import { ExtensionManager } from './extension'
 import path from 'path'
 import type { VFile } from 'vfile'
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+export { cn } from './cn'
+export { getProviderLogo } from './providerLogos'
 
 export function basenameNoExt(filePath: string): string {
   const base = path.basename(filePath)
@@ -126,43 +123,6 @@ export function splitHtmlArtifacts(content: string): MarkdownSegment[] {
  */
 export function getModelDisplayName(model: Model): string {
   return model.displayName || model.id
-}
-
-export function getProviderLogo(provider: string) {
-  switch (provider) {
-    case 'jan':
-      return '/images/model-provider/jan.png'
-    case 'llamacpp':
-      return '/images/model-provider/llamacpp.svg'
-    case 'mlx':
-      return '/images/model-provider/mlx.png'
-    case 'anthropic':
-      return '/images/model-provider/anthropic.svg'
-    case 'huggingface':
-      return '/images/model-provider/huggingface.svg'
-    case 'mistral':
-      return '/images/model-provider/mistral.svg'
-    case 'openrouter':
-      return '/images/model-provider/open-router.svg'
-    case 'groq':
-      return '/images/model-provider/groq.svg'
-    case 'cohere':
-      return '/images/model-provider/cohere.svg'
-    case 'gemini':
-      return '/images/model-provider/gemini.svg'
-    case 'openai':
-      return '/images/model-provider/openai.svg'
-    case 'azure':
-      return '/images/model-provider/azure.svg'
-    case 'xai':
-      return '/images/model-provider/xai.svg'
-    case 'minimax':
-      return '/images/model-provider/minimax.svg'
-    case 'nvidia':
-      return '/images/model-provider/nvidia.svg'
-    default:
-      return undefined
-  }
 }
 
 export const getProviderTitle = (provider: string) =>
