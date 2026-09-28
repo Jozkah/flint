@@ -14,7 +14,8 @@ import {
   sanitizeAccentSelection,
   semanticProximity,
 } from '../accent'
-import css from '../../index.css?raw'
+// The tokens live in styles/tokens.css, which index.css imports.
+import css from '../../styles/tokens.css?raw'
 
 const themes = ['light', 'dark'] as const
 

@@ -1,4 +1,4 @@
-import { getProviderLogo } from '@/lib/utils'
+import { getProviderLogo } from '@/lib/providerLogos'
 
 /**
  * Brand marks for providers and model families.
@@ -13,7 +13,8 @@ import { getProviderLogo } from '@/lib/utils'
  */
 export type BrandLogo = { src: string; mono: boolean }
 
-const LOGOS = '/images/logos'
+// Vite's base: `/` on the desktop, `/m/` in the phone app.
+const LOGOS = `${import.meta.env.BASE_URL}images/logos`
 
 const logo = (file: string, mono = false): BrandLogo => ({
   src: `${LOGOS}/${file}.svg`,
