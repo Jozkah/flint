@@ -6,7 +6,7 @@ import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
 import { currentDoctorResult, observedToolsFact, useModelDoctor } from '@/hooks/useModelDoctor'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
@@ -479,6 +479,8 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
+import { MemoryProposalList } from '@/containers/MemoryProposalCard'
+import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 
 
 export const Route = createFileRoute(route.cowork as any)({
@@ -2296,6 +2298,28 @@ export function CoworkPage() {
     () => awaitsModel(running, displayedTurns),
     [running, displayedTurns]
   )
+  /**
+   * Memories this session's agent proposed that wait for an answer. With
+   * automatic saving off (the default) a proposed memory is only saved once
+   * the user approves it, and Cowork never showed the question, so nothing
+   * the agent asked to remember was ever kept.
+   */
+  const {
+    proposals: memoryProposals,
+    location: memoryProposalLocation,
+    reload: reloadMemoryProposals,
+    onResolved: onMemoryProposalResolved,
+  } = useMemoryProposals({
+    sessionId: session?.id,
+    projectRoot: folder ?? undefined,
+    enabled: Boolean(session?.id),
+  })
+  const navigateTo = useNavigate()
+  // A proposal is written by a tool call during the run: read once it ends.
+  useEffect(() => {
+    if (!running) void reloadMemoryProposals()
+  }, [running, reloadMemoryProposals])
+
   // The status line's phase: shown for the whole run, not only the gaps.
   const runStatusNow = useMemo(
     () => runStatus(running, displayedTurns),
@@ -5428,6 +5452,17 @@ export function CoworkPage() {
                         status={runStatusNow}
                       />
                     </div>
+                  )}
+                  {memoryProposalLocation && (
+                    <MemoryProposalList
+                      className="my-2"
+                      proposals={memoryProposals}
+                      location={memoryProposalLocation}
+                      onResolved={onMemoryProposalResolved}
+                      onOpenSettings={() =>
+                        navigateTo({ to: route.settings.memory })
+                      }
+                    />
                   )}
                   {stoppedBy === 'steps' && (
                     <CoworkBudgetNotice
