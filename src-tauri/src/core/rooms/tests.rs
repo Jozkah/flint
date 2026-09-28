@@ -632,3 +632,30 @@ fn full_message_fields_round_trip() {
         expected
     );
 }
+
+#[test]
+fn participant_reasoning_round_trips_and_is_optional() {
+    let (_dir, store) = new_store();
+    let mut json = room_json("r1");
+    json["participants"][0]["reasoning"] = json!({ "mode": "on", "level": "high" });
+    let room = parse_room(json).expect("room with reasoning parses");
+    store.save(room, 5000).unwrap();
+
+    let loaded = store.get("r1").unwrap().room;
+    assert_eq!(
+        loaded.participants[0].reasoning,
+        Some(ParticipantReasoning {
+            mode: Some(ReasoningMode::On),
+            level: Some(ReasoningLevel::High),
+        })
+    );
+    let raw: Value =
+        serde_json::from_slice(&fs::read(store.root().join("r1").join(ROOM_FILE)).unwrap())
+            .unwrap();
+    assert_eq!(
+        raw["participants"][0]["reasoning"],
+        json!({ "mode": "on", "level": "high" })
+    );
+    // A participant left at the model default stores nothing at all.
+    assert!(raw["participants"][1].get("reasoning").is_none());
+}

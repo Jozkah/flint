@@ -73,6 +73,22 @@ export type Participant = {
   availability: ParticipantAvailability
   /** Optional user-entered prices, used only for the optional cost limit. */
   pricing?: { inputPerMTokUsd: number; outputPerMTokUsd: number }
+  /**
+   * How this participant's model reasons on its turns. Absent means the
+   * model's own default: nothing reasoning-related is sent.
+   */
+  reasoning?: ParticipantReasoning
+}
+
+/**
+ * A participant's reasoning setting, in the same terms as chat's Reasoning
+ * control: `mode` is Auto / On / Off, and `level` is the one value chat
+ * stores under `thinking_budget_tokens` -- the Reasoning effort for a
+ * provider that takes one, the Thinking Budget for llama.cpp.
+ */
+export type ParticipantReasoning = {
+  mode?: 'auto' | 'on' | 'off'
+  level?: 'low' | 'medium' | 'high' | 'xhigh' | 'unlimited'
 }
 
 export type ModeratorConfig = {

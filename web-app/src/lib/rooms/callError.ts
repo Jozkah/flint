@@ -11,7 +11,12 @@ import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { classifyFailure, type FailureClass, type FailureFacts } from '@/lib/runRetry'
 import { redactSecrets } from '@/lib/redact'
 import type { PromptMessage } from './context'
-import type { RoomModelRef, RoomToolActivity, ToolAccess } from './types'
+import type {
+  ParticipantReasoning,
+  RoomModelRef,
+  RoomToolActivity,
+  ToolAccess,
+} from './types'
 
 export type { RoomToolActivity }
 
@@ -31,6 +36,8 @@ export type RoomToolContext = {
 
 export type StreamReplyInput = {
   model: RoomModelRef
+  /** The speaking participant's reasoning setting; absent for the model's default. */
+  reasoning?: ParticipantReasoning
   system: string
   messages: PromptMessage[]
   maxOutputTokens: number

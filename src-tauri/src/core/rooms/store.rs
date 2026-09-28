@@ -205,6 +205,40 @@ pub struct Participant {
     pub availability: ParticipantAvailability,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pricing: Option<ParticipantPricing>,
+    /// How this participant's model reasons on its turns. Absent on rooms
+    /// saved before it existed and on participants left at the model default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<ParticipantReasoning>,
+}
+
+/// A participant's reasoning setting, mirroring `ParticipantReasoning` in
+/// web-app/src/lib/rooms/types.ts. Stored, never interpreted here: the turn is
+/// built on the frontend, which maps it per provider.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParticipantReasoning {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mode: Option<ReasoningMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<ReasoningLevel>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningMode {
+    Auto,
+    On,
+    Off,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningLevel {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Unlimited,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

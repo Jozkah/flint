@@ -54,8 +54,13 @@ export type NewParticipantInput = Pick<Participant, 'name' | 'role' | 'model' | 
 
 /** Fields only the user may change, through the editor. */
 export type RoomSettingsPatch = Partial<
-  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'participants' | 'folder'>
->
+  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'folder'>
+> & {
+  /** A participant's `reasoning: null` returns it to its model's default. */
+  participants?: Array<
+    Omit<Participant, 'reasoning'> & { reasoning?: Participant['reasoning'] | null }
+  >
+}
 
 export interface RoomsUiApi {
   /** `pending` while the engine modules load; `unavailable` when absent. */
