@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  render,
-  screen,
-  fireEvent,
-  act,
-  waitFor,
-} from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // --- Module mocks (must be declared before component import) ---------------
@@ -84,6 +78,7 @@ let selectedModelOverride: any = {
 }
 let selectedProviderOverride: any = 'llamacpp'
 const getProviderByNameMock = vi.fn()
+const updateProviderMock = vi.fn()
 vi.mock('@/hooks/useModelProvider', () => ({
   useModelProvider: (selector: any) =>
     selector({
@@ -91,7 +86,7 @@ vi.mock('@/hooks/useModelProvider', () => ({
       selectedProvider: selectedProviderOverride,
       providers: [],
       selectModelProvider: vi.fn(),
-      updateProvider: vi.fn(),
+      updateProvider: updateProviderMock,
       getProviderByName: getProviderByNameMock,
     }),
 }))
@@ -373,6 +368,8 @@ const resetAll = () => {
   holdQueueMock.mockClear()
   for (const k of Object.keys(queueState)) delete queueState[k]
   getCurrentThreadMock.mockReturnValue(undefined)
+  updateProviderMock.mockClear()
+  getProviderByNameMock.mockReset()
 }
 
 const getTextarea = () =>
@@ -380,7 +377,9 @@ const getTextarea = () =>
 
 // Shared render helper that returns last rerender handle
 const renderInput = (props: any = {}) =>
-  render(<ChatInput onSubmit={props.onSubmit} onStop={props.onStop} {...props} />)
+  render(
+    <ChatInput onSubmit={props.onSubmit} onStop={props.onStop} {...props} />
+  )
 
 describe('ChatInput', () => {
   beforeEach(() => {
@@ -393,7 +392,9 @@ describe('ChatInput', () => {
     expect(ta).toBeInTheDocument()
     expect(ta).toHaveAttribute('placeholder', 'common:placeholder.chatInput')
     // send button is present
-    expect(document.querySelector('[data-test-id="send-message-button"]')).toBeTruthy()
+    expect(
+      document.querySelector('[data-test-id="send-message-button"]')
+    ).toBeTruthy()
   })
 
   it('shows the project assistant for a new conversation', () => {
@@ -492,8 +493,8 @@ describe('ChatInput', () => {
     getQueueMock.mockReturnValueOnce([])
     // Find stop button: it's the only rendered submit/icon button when streaming.
     const allButtons = Array.from(document.querySelectorAll('button'))
-    const stopBtn = allButtons.find((b) =>
-      b.className.includes('destructive') || b.innerHTML.includes('svg')
+    const stopBtn = allButtons.find(
+      (b) => b.className.includes('destructive') || b.innerHTML.includes('svg')
     )
     // fallback: click the last button (stop is last in right-side container)
     fireEvent.click(stopBtn ?? allButtons[allButtons.length - 1])
@@ -523,10 +524,9 @@ describe('ChatInput', () => {
       { id: 'r', text: 'ready one', createdAt: 1 },
     ]
     renderInput({ chatStatus: 'streaming' })
-    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
-      'held one',
-      'ready one',
-    ])
+    expect(
+      screen.getAllByTestId('queued-chip').map((c) => c.textContent)
+    ).toEqual(['held one', 'ready one'])
   })
 
   it('leaves held messages to the surface that shows them (Cowork), once', () => {
@@ -534,10 +534,14 @@ describe('ChatInput', () => {
       { id: 'h', text: 'held one', createdAt: 1, held: true },
       { id: 'r', text: 'ready one', createdAt: 1 },
     ]
-    renderInput({ chatStatus: 'streaming', scopeKey: 'scope-1', heldShownElsewhere: true })
-    expect(screen.getAllByTestId('queued-chip').map((c) => c.textContent)).toEqual([
-      'ready one',
-    ])
+    renderInput({
+      chatStatus: 'streaming',
+      scopeKey: 'scope-1',
+      heldShownElsewhere: true,
+    })
+    expect(
+      screen.getAllByTestId('queued-chip').map((c) => c.textContent)
+    ).toEqual(['ready one'])
   })
 
   it('queues the message when streaming with a currentThreadId', async () => {
@@ -606,7 +610,9 @@ describe('ChatInput', () => {
       slashSurface: 'cowork',
       modelOverrideScope: 'session-1',
     })
-    expect(screen.getByRole('button', { name: /^Reasoning:/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /^Reasoning:/ })
+    ).toBeInTheDocument()
   })
 
   it('shows "please select a model" inline message when no model selected', () => {
@@ -620,7 +626,7 @@ describe('ChatInput', () => {
     ).toBeInTheDocument()
   })
 
-  it('sends with the surface\'s own model while the global picker is empty', async () => {
+  it("sends with the surface's own model while the global picker is empty", async () => {
     // A Cowork session (in a split pane or not) keeps its model on the
     // session; the global picker can be empty while the header shows one.
     selectedModelOverride = null
@@ -691,6 +697,11 @@ describe('ChatInput', () => {
 
   it('adds attached image files to onSubmit payload', async () => {
     promptState = 'with image'
+    selectedModelOverride = {
+      id: 'model-a',
+      capabilities: ['tools', 'vision'],
+      provider: 'llamacpp',
+    }
     attachmentsList = [
       {
         type: 'image',
@@ -716,6 +727,41 @@ describe('ChatInput', () => {
     expect(clearAttachmentsMock).toHaveBeenCalled()
   })
 
+  it('holds a message with unsupported audio until user enables it', async () => {
+    promptState = 'transcribe this'
+    selectedProviderOverride = 'llamacpp'
+    selectedModelOverride = {
+      id: 'model-a',
+      capabilities: ['tools'],
+      provider: 'llamacpp',
+    }
+    getProviderByNameMock.mockReturnValue({
+      provider: 'llamacpp',
+      models: [selectedModelOverride],
+    })
+    attachmentsList = [
+      {
+        type: 'audio',
+        dataUrl: 'data:audio/wav;base64,xxx',
+        audioFormat: 'wav',
+      },
+    ]
+    const onSubmit = vi.fn()
+    renderInput({ onSubmit })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    expect(screen.getByText('common:modelCapability.title')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByTestId('enable-model-capability'))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(
+        'transcribe this',
+        expect.arrayContaining([
+          expect.objectContaining({ mediaType: 'audio/wav' }),
+        ])
+      )
+    )
+  })
+
   it('shows the queued-message chips from the message queue', () => {
     queueState['thread-1'] = [
       { id: 'q1', text: 'queued one', createdAt: 1 },
@@ -734,7 +780,9 @@ describe('ChatInput', () => {
     act(() => {
       fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     })
-    const errorNode = screen.getByText('Please select a model to start chatting.')
+    const errorNode = screen.getByText(
+      'Please select a model to start chatting.'
+    )
     expect(errorNode).toBeInTheDocument()
     // dismiss icon (svg) sits alongside
     const svg = container.querySelector('.text-destructive svg')
@@ -834,6 +882,59 @@ describe('ChatInput', () => {
       // The composer still works: the textarea and attachments stay.
       expect(getTextarea()).toBeInTheDocument()
     })
+
+    it('asks before enabling tool calls for a model without them', async () => {
+      selectedProviderOverride = 'llamacpp'
+      selectedModelOverride = {
+        id: 'model-a',
+        capabilities: [],
+        provider: 'llamacpp',
+      }
+      getProviderByNameMock.mockReturnValue({
+        provider: 'llamacpp',
+        models: [selectedModelOverride],
+      })
+      renderInput()
+      fireEvent.click(screen.getByTestId('composer-enable-tools'))
+      expect(
+        screen.getByText('common:modelCapability.title')
+      ).toBeInTheDocument()
+      expect(updateProviderMock).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByTestId('enable-model-capability'))
+      expect(updateProviderMock).toHaveBeenCalledWith(
+        'llamacpp',
+        expect.objectContaining({
+          models: [expect.objectContaining({ capabilities: ['tools'] })],
+        })
+      )
+    })
+
+    it('offers audio and video when missing and asks before enabling', () => {
+      selectedProviderOverride = 'llamacpp'
+      selectedModelOverride = {
+        id: 'model-a',
+        capabilities: ['tools'],
+        provider: 'llamacpp',
+      }
+      getProviderByNameMock.mockReturnValue({
+        provider: 'llamacpp',
+        models: [selectedModelOverride],
+      })
+      renderInput()
+      fireEvent.click(screen.getByRole('button', { name: 'Add Audio' }))
+      expect(
+        screen.getByText('common:modelCapability.title')
+      ).toBeInTheDocument()
+      fireEvent.click(screen.getByTestId('enable-model-capability'))
+      expect(updateProviderMock).toHaveBeenCalledWith(
+        'llamacpp',
+        expect.objectContaining({
+          models: [
+            expect.objectContaining({ capabilities: ['tools', 'audio'] }),
+          ],
+        })
+      )
+    })
   })
 
   // Split conversations render two composers. Each must write its own draft
@@ -893,7 +994,7 @@ describe('ChatInput', () => {
   })
 
   describe('surfaceControls', () => {
-    it('docks a surface\'s own controls in the control row', () => {
+    it("docks a surface's own controls in the control row", () => {
       renderInput({ surfaceControls: <button>plan</button> })
       expect(screen.getByText('plan')).toBeInTheDocument()
     })
@@ -1071,7 +1172,11 @@ describe('ChatInput', () => {
     it('tells the model how to reach a referenced agent, and names one that is not saved', async () => {
       promptState = 'check with @agent:review-bot and @agent:ghost'
       const onSubmit = vi.fn()
-      renderInput({ referenceRoot: '/repo', referenceSources: sources, onSubmit })
+      renderInput({
+        referenceRoot: '/repo',
+        referenceSources: sources,
+        onSubmit,
+      })
       await act(async () => {})
       fireEvent.keyDown(getTextarea(), { key: 'Enter' })
       await waitFor(() => expect(onSubmit).toHaveBeenCalled())
@@ -1152,7 +1257,10 @@ describe('ChatInput slash commands', () => {
     await waitFor(() => expect(loadSlashCatalogMock).toHaveBeenCalled())
     fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith('/usr/bin/env is missing', undefined)
+      expect(onSubmit).toHaveBeenCalledWith(
+        '/usr/bin/env is missing',
+        undefined
+      )
     )
   })
 })

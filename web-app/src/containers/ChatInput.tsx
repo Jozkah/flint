@@ -119,6 +119,11 @@ import {
   VisionDisabledDialog,
   type VisionDisabledChoice,
 } from '@/containers/dialogs/VisionDisabledDialog'
+import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCapabilityDialog'
+import {
+  enableModelCapabilities,
+  type EnableableCapability,
+} from '@/lib/modelCapabilityEnable'
 
 import {
   acceptAttribute,
@@ -304,7 +309,6 @@ const videoMimeForExt = (ext: string | undefined): string => {
   }
 }
 
-
 const ChatInput = memo(function ChatInput({
   className,
   initialMessage,
@@ -424,18 +428,14 @@ const ChatInput = memo(function ChatInput({
   useTools()
   const router = useRouter()
   const createThread = useThreads((state) => state.createThread)
-  const { 
-    loading,
-    currentAssistant,
-    setCurrentAssistant,
-    assistants
-  } = useAssistant()
+  const { loading, currentAssistant, setCurrentAssistant, assistants } =
+    useAssistant()
 
   // Agent mode
   // Use TEMPORARY_CHAT_ID as fallback key on the home screen (same pattern as attachments)
   const agentModeKey = currentThreadId ?? TEMPORARY_CHAT_ID
-  const isAgentMode = useAgentMode((state) =>
-    state.agentThreads[agentModeKey] === true
+  const isAgentMode = useAgentMode(
+    (state) => state.agentThreads[agentModeKey] === true
   )
   // When projectId is present, treat as normal chat (disable agent mode UI)
   const effectiveAgentMode = isAgentMode && !projectId
@@ -591,7 +591,13 @@ const ChatInput = memo(function ChatInput({
         setFilePickerOpen(false)
       }
     },
-    [workingDir, referenceDataFolder, setPrompt, referenceSkills, referenceAgents]
+    [
+      workingDir,
+      referenceDataFolder,
+      setPrompt,
+      referenceSkills,
+      referenceAgents,
+    ]
   )
 
   // Insert the selected reference into the prompt
@@ -676,7 +682,9 @@ const ChatInput = memo(function ChatInput({
 
   // Resolve @path references in the prompt text, returning the resolved content
   const resolvePromptReferences = useCallback(
-    async (text: string): Promise<{
+    async (
+      text: string
+    ): Promise<{
       text: string
       resolvedContents: string
     }> => {
@@ -684,7 +692,8 @@ const ChatInput = memo(function ChatInput({
       // No folder, no references: an `@name` in an ordinary chat is left as
       // typed. It used to be read as a path -- relative to nothing, or
       // absolute -- so `@C:\Users\me\.ssh\id_rsa` put that file in the prompt.
-      if (refs.length === 0 || !workingDir) return { text, resolvedContents: '' }
+      if (refs.length === 0 || !workingDir)
+        return { text, resolvedContents: '' }
 
       const parts: string[] = []
       for (const ref of refs) {
@@ -724,7 +733,9 @@ const ChatInput = memo(function ChatInput({
         } else {
           // Said in the message, not dropped: the model should know a
           // reference was refused, and why, rather than miss it silently.
-          parts.push(`[Reference @${ref} was not included: ${resolved.message}]`)
+          parts.push(
+            `[Reference @${ref} was not included: ${resolved.message}]`
+          )
         }
       }
 
@@ -755,32 +766,20 @@ const ChatInput = memo(function ChatInput({
   const conversationModel = modelSelection ?? threadModelSelection
   const selectedModel = conversationModel.selectedModel
 
-  /**
-   * What the picker offers.
-   *
-   * Images are always offered, whatever the model claims: picking one now
-   * opens a question -- send without it, or turn vision on -- and a file the
-   * picker refuses to show cannot raise that question at all. The desktop
-   * dialog has always offered images regardless, so this is also the two
-   * intakes finally agreeing. Audio and video still follow the capability,
-   * since neither has an equivalent answer to offer.
-   */
-  const attachmentAccept = useMemo(
-    () =>
-      acceptAttribute({
+  /** The general picker handles images; audio and video have their own entries. */
+  const attachmentAccept = acceptAttribute({
         vision: true,
-        audio: Boolean(selectedModel?.capabilities?.includes('audio')),
-        video: Boolean(selectedModel?.capabilities?.includes('video')),
-      }),
-    [selectedModel?.capabilities]
-  )
+    audio: false,
+    video: false,
+  })
   const selectedProvider = conversationModel.selectedProvider
   const selectModelProvider = useModelProvider(
     (state) => state.selectModelProvider
   )
   const updateProvider = useModelProvider((state) => state.updateProvider)
-  const { maxTokens: liveMaxTokens, configuredCtxLen } =
-    useTokensCount(threadMessages || [])
+  const { maxTokens: liveMaxTokens, configuredCtxLen } = useTokensCount(
+    threadMessages || []
+  )
   const [message, setMessage] = useState('')
   // A send held back because it needs the web and web search is off.
   const [webOffPrompt, setWebOffPrompt] = useState<string | null>(null)
@@ -791,10 +790,16 @@ const ChatInput = memo(function ChatInput({
   const [isDragOver, setIsDragOver] = useState(false)
   const activeModels = useAppState(useShallow((state) => state.activeModels))
   // Check if selected model is currently loaded/active
-  const isModelActive = selectedModel?.id ? activeModels.includes(selectedModel.id) : false
+  const isModelActive = selectedModel?.id
+    ? activeModels.includes(selectedModel.id)
+    : false
 
   // Reconcile video capability from /props once the model is loaded.
-  useReconcileVideoCapability(selectedModel?.id, selectedProvider, isModelActive)
+  useReconcileVideoCapability(
+    selectedModel?.id,
+    selectedProvider,
+    isModelActive
+  )
 
   const tokenCounterVisible =
     !hideTokenCounter &&
@@ -901,7 +906,11 @@ const ChatInput = memo(function ChatInput({
 
   const handleSendMessage = async (
     typed: string,
-    { steer = false, allowNoWeb = false }: { steer?: boolean; allowNoWeb?: boolean } = {}
+    {
+      steer = false,
+      allowNoWeb = false,
+      capabilityAsked = false,
+    }: { steer?: boolean; allowNoWeb?: boolean; capabilityAsked?: boolean } = {}
   ) => {
     setWebOffPrompt(null)
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
@@ -916,6 +925,43 @@ const ChatInput = memo(function ChatInput({
       )
       return
     }
+    if (selectedModel && !capabilityAsked) {
+      const missing: EnableableCapability[] = []
+      for (const [attachmentType, capability] of [
+        ['image', 'vision'],
+        ['audio', 'audio'],
+        ['video', 'video'],
+      ] as const) {
+        if (
+          attachments.some(
+            (attachment) => attachment.type === attachmentType
+          ) &&
+          !selectedModel.capabilities?.includes(capability)
+        ) {
+          missing.push(capability)
+        }
+      }
+      if (missing.length > 0) {
+        if (missing.includes('vision') && selectedProvider === 'llamacpp') {
+          let canSeeImages = false
+          try {
+            canSeeImages = await serviceHub
+              .models()
+              .checkMmprojExists(selectedModel.id)
+          } catch (error) {
+            console.error('Failed to check mmproj support:', error)
+          }
+          if (!canSeeImages) {
+            setMessage(t('common:attachFiles.visionDisabled.needsMmproj'))
+            return
+          }
+        }
+        requestCapabilities(missing, () =>
+          handleSendMessage(typed, { steer, allowNoWeb, capabilityAsked: true })
+        )
+        return
+      }
+    }
     // A `/command` expands into what the model receives; a built-in runs here
     // and sends nothing. Anything that names no known command is sent as typed.
     const slash = await slashCommands.prepareSend(typed)
@@ -925,7 +971,10 @@ const ChatInput = memo(function ChatInput({
     }
     if (slash.kind === 'error') {
       toast.error(
-        t('slash:error', { command: typed.trim().split(/\s/)[0], error: slash.error })
+        t('slash:error', {
+          command: typed.trim().split(/\s/)[0],
+          error: slash.error,
+        })
       )
       return
     }
@@ -1572,32 +1621,58 @@ const ChatInput = memo(function ChatInput({
     [selectedModel?.id, selectedProvider, serviceHub]
   )
 
-  /** Turn vision on for the selected model, the way the edit dialog would. */
-  const enableVisionOnSelectedModel = useCallback(() => {
-    if (!selectedModel?.id || !selectedProvider) return
-    const provider = getProviderByName(selectedProvider)
-    if (!provider) return
+  /** Update the same model metadata as the edit dialog. */
+  const enableCapabilitiesOnSelectedModel = useCallback(
+    (capabilities: readonly EnableableCapability[]) => {
+      if (!selectedModel?.id || !selectedProvider) return false
+      const provider = getProviderByName(selectedProvider)
+      if (!provider) return false
+      const models = enableModelCapabilities(
+        provider.models,
+        selectedModel.id,
+        capabilities
+      )
+      updateProvider(selectedProvider, { ...provider, models })
+      return true
+    },
+    [getProviderByName, selectedModel?.id, selectedProvider, updateProvider]
+  )
 
-    const models = provider.models.map((model: Model) =>
-      model.id === selectedModel.id
-        ? ({
-            ...model,
-            capabilities: Array.from(
-              new Set([...(model.capabilities ?? []), 'vision'])
-            ),
-            // Marked as the user's own decision so the automatic capability
-            // detection does not quietly take it away again.
-            _userConfiguredCapabilities: true,
-          } as Model)
-        : model
-    )
-    updateProvider(selectedProvider, { ...provider, models })
-  }, [
-    getProviderByName,
-    selectedModel?.id,
-    selectedProvider,
-    updateProvider,
-  ])
+  const [capabilityPrompt, setCapabilityPrompt] = useState<{
+    capabilities: EnableableCapability[]
+    onEnabled: () => void | Promise<void>
+  } | null>(null)
+
+  const requestCapabilities = useCallback(
+    (
+      capabilities: EnableableCapability[],
+      onEnabled: () => void | Promise<void>
+    ) => {
+      if (!selectedModel) return
+      setCapabilityPrompt({ capabilities, onEnabled })
+    },
+    [selectedModel]
+  )
+
+  const handleEnableCapabilities = useCallback(() => {
+    const pending = capabilityPrompt
+    if (!pending) return
+    if (!enableCapabilitiesOnSelectedModel(pending.capabilities)) {
+      toast.error('Selected model is no longer available')
+      return
+    }
+    setCapabilityPrompt(null)
+    try {
+      const continued = pending.onEnabled()
+      if (continued) void Promise.resolve(continued).catch((error) => {
+        console.error('Failed to continue after enabling model capability:', error)
+        toast.error('Could not complete that action. Please try again.')
+      })
+    } catch (error) {
+      console.error('Failed to continue after enabling model capability:', error)
+      toast.error('Could not complete that action. Please try again.')
+    }
+  }, [capabilityPrompt, enableCapabilitiesOnSelectedModel])
 
   type ProcessImageOptions = {
     /**
@@ -1610,10 +1685,8 @@ const ChatInput = memo(function ChatInput({
     visionAsked?: boolean
   }
 
-  const processImageFiles = useCallback(async (
-    files: File[],
-    options?: ProcessImageOptions
-  ) => {
+  const processImageFiles = useCallback(
+    async (files: File[], options?: ProcessImageOptions) => {
     const maxSize = 10 * 1024 * 1024 // 10MB in bytes
 
     const validFiles: File[] = []
@@ -1721,9 +1794,9 @@ const ChatInput = memo(function ChatInput({
     const duplicates: string[] = []
     const newFiles: Attachment[] = []
 
-    const currentAttachments = useChatAttachments.getState().getAttachments(
-      attachmentsKey
-    )
+      const currentAttachments = useChatAttachments
+        .getState()
+        .getAttachments(attachmentsKey)
 
     const existingImageHashes = new Set<string>()
     const existingImageNames = new Set<string>()
@@ -1742,10 +1815,8 @@ const ChatInput = memo(function ChatInput({
     for (const att of preparedFiles) {
       const hash = att.contentHash
       const isDuplicateByContent =
-        hash &&
-        (existingImageHashes.has(hash) || seenHashesInBatch.has(hash))
-      const isDuplicateByName =
-        existingImageNames.has(att.name)
+          hash && (existingImageHashes.has(hash) || seenHashesInBatch.has(hash))
+        const isDuplicateByName = existingImageNames.has(att.name)
       if (isDuplicateByContent || isDuplicateByName) {
         duplicates.push(att.name)
         continue
@@ -1775,7 +1846,9 @@ const ChatInput = memo(function ChatInput({
 
             try {
               setAttachmentsForThread(attachmentsKey, (prev) =>
-                prev.map((a) => (matchImg(a) ? { ...a, processing: true } : a))
+                  prev.map((a) =>
+                    matchImg(a) ? { ...a, processing: true } : a
+                  )
               )
 
               const result = await serviceHub
@@ -1851,7 +1924,8 @@ const ChatInput = memo(function ChatInput({
     } else {
       setMessage('')
     }
-  }, [
+    },
+    [
     attachmentsKey,
     currentThreadId,
     setAttachmentsForThread,
@@ -1860,7 +1934,8 @@ const ChatInput = memo(function ChatInput({
     selectedModel?.capabilities,
     openVisionPrompt,
     t,
-  ])
+    ]
+  )
 
   /** Act on the answer to the vision question, then let the attach finish. */
   const handleVisionChoice = useCallback(
@@ -1883,7 +1958,7 @@ const ChatInput = memo(function ChatInput({
         return
       }
 
-      enableVisionOnSelectedModel()
+      if (!enableCapabilitiesOnSelectedModel(['vision'])) return
       await processImageFiles(pending.files, {
         visionAsked: true,
         // The store update lands in the next render; this call must not wait
@@ -1896,7 +1971,7 @@ const ChatInput = memo(function ChatInput({
       })
     },
     [
-      enableVisionOnSelectedModel,
+      enableCapabilitiesOnSelectedModel,
       processImageFiles,
       selectedModel?.capabilities,
       visionPrompt,
@@ -1945,8 +2020,14 @@ const ChatInput = memo(function ChatInput({
       for (const file of Array.from(files)) {
         const lower = file.name.toLowerCase()
         const ext = lower.split('.').pop()
-        const isWav = file.type === 'audio/wav' || file.type === 'audio/x-wav' || ext === 'wav'
-        const isMp3 = file.type === 'audio/mpeg' || file.type === 'audio/mp3' || ext === 'mp3'
+        const isWav =
+          file.type === 'audio/wav' ||
+          file.type === 'audio/x-wav' ||
+          ext === 'wav'
+        const isMp3 =
+          file.type === 'audio/mpeg' ||
+          file.type === 'audio/mp3' ||
+          ext === 'mp3'
         if (!isWav && !isMp3) {
           invalid.push(file.name)
           continue
@@ -1964,7 +2045,8 @@ const ChatInput = memo(function ChatInput({
             if (typeof r === 'string') resolve(r)
             else reject(new Error('read failed'))
           }
-          reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+          reader.onerror = () =>
+            reject(reader.error ?? new Error('read failed'))
           reader.readAsDataURL(file)
         })
         const base64 = dataUrl.split(',')[1] ?? ''
@@ -1982,7 +2064,9 @@ const ChatInput = memo(function ChatInput({
         )
       }
 
-      const current = useChatAttachments.getState().getAttachments(attachmentsKey)
+      const current = useChatAttachments
+        .getState()
+        .getAttachments(attachmentsKey)
       const existingNames = new Set(
         current.filter((a) => a.type === 'audio').map((a) => a.name)
       )
@@ -2050,14 +2134,16 @@ const ChatInput = memo(function ChatInput({
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
-              const fileName = path.split(/[\\/]/).filter(Boolean).pop() || 'audio'
+              const fileName =
+                path.split(/[\\/]/).filter(Boolean).pop() || 'audio'
               const ext = fileName.toLowerCase().split('.').pop()
               const mimeType = ext === 'mp3' ? 'audio/mpeg' : 'audio/wav'
               files.push(new File([blob], fileName, { type: mimeType }))
             } catch (error) {
               console.error('Failed to read audio file:', error)
               toast.error('Failed to read audio file', {
-                description: error instanceof Error ? error.message : String(error),
+                description:
+                  error instanceof Error ? error.message : String(error),
               })
             }
           }
@@ -2101,7 +2187,8 @@ const ChatInput = memo(function ChatInput({
             if (typeof r === 'string') resolve(r)
             else reject(new Error('read failed'))
           }
-          reader.onerror = () => reject(reader.error ?? new Error('read failed'))
+          reader.onerror = () =>
+            reject(reader.error ?? new Error('read failed'))
           reader.readAsDataURL(file)
         })
         const base64 = dataUrl.split(',')[1] ?? ''
@@ -2116,7 +2203,9 @@ const ChatInput = memo(function ChatInput({
         )
       }
 
-      const current = useChatAttachments.getState().getAttachments(attachmentsKey)
+      const current = useChatAttachments
+        .getState()
+        .getAttachments(attachmentsKey)
       const existingNames = new Set(
         current.filter((a) => a.type === 'video').map((a) => a.name)
       )
@@ -2184,13 +2273,17 @@ const ChatInput = memo(function ChatInput({
               const response = await fetch(fileUrl)
               if (!response.ok) throw new Error(response.statusText)
               const blob = await response.blob()
-              const fileName = path.split(/[\\/]/).filter(Boolean).pop() || 'video'
+              const fileName =
+                path.split(/[\\/]/).filter(Boolean).pop() || 'video'
               const ext = fileName.toLowerCase().split('.').pop()
-              files.push(new File([blob], fileName, { type: videoMimeForExt(ext) }))
+              files.push(
+                new File([blob], fileName, { type: videoMimeForExt(ext) })
+              )
             } catch (error) {
               console.error('Failed to read video file:', error)
               toast.error('Failed to read video file', {
-                description: error instanceof Error ? error.message : String(error),
+                description:
+                  error instanceof Error ? error.message : String(error),
               })
             }
           }
@@ -2330,49 +2423,63 @@ const ChatInput = memo(function ChatInput({
       return f.type.startsWith('video/') || VIDEO_EXTS.includes(ext ?? '')
     }
 
-    const audioOnes = audioSupported ? dropped.filter(isAudioFile) : []
-    const videoOnes = videoSupported ? dropped.filter(isVideoFile) : []
+    const audioOnes = dropped.filter(isAudioFile)
+    const videoOnes = dropped.filter(
+      (file) => !audioOnes.includes(file) && isVideoFile(file)
+    )
     const otherOnes = dropped.filter(
       (f) => !audioOnes.includes(f) && !videoOnes.includes(f)
     )
 
-    if (otherOnes.length > 0) {
-      const dt = new DataTransfer()
-      otherOnes.forEach((f) => dt.items.add(f))
-      const syntheticEvent = {
-        target: { files: dt.files },
-      } as React.ChangeEvent<HTMLInputElement>
-      handleFileChange(syntheticEvent)
+    const missing: EnableableCapability[] = []
+    if (audioOnes.length > 0 && !audioSupported) missing.push('audio')
+    if (videoOnes.length > 0 && !videoSupported) missing.push('video')
+    const attachMedia = () => {
+      if (otherOnes.length > 0) {
+        const dt = new DataTransfer()
+        otherOnes.forEach((f) => dt.items.add(f))
+        const syntheticEvent = {
+          target: { files: dt.files },
+        } as React.ChangeEvent<HTMLInputElement>
+        handleFileChange(syntheticEvent)
+      }
+      if (audioOnes.length > 0) void processAudioFiles(audioOnes)
+      if (videoOnes.length > 0) void processVideoFiles(videoOnes)
     }
-    if (audioOnes.length > 0) {
-      void processAudioFiles(audioOnes)
-    }
-    if (videoOnes.length > 0) {
-      void processVideoFiles(videoOnes)
-    }
+    if (missing.length > 0) requestCapabilities(missing, attachMedia)
+    else attachMedia()
   }
 
   const handlePaste = async (e: React.ClipboardEvent) => {
-    if (audioSupported) {
-      const clipboardItems = e.clipboardData?.items
-      if (clipboardItems && clipboardItems.length > 0) {
+    const mediaItems = e.clipboardData?.items
+    if (mediaItems && mediaItems.length > 0) {
         const audioFiles: File[] = []
-        for (const item of Array.from(clipboardItems)) {
+      const videoFiles: File[] = []
+      for (const item of Array.from(mediaItems)) {
+        const file = item.getAsFile()
+        if (!file) continue
           if (
-            item.type === 'audio/wav' ||
-            item.type === 'audio/x-wav' ||
-            item.type === 'audio/mpeg' ||
-            item.type === 'audio/mp3'
+          ['audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp3'].includes(
+            item.type
+          )
           ) {
-            const f = item.getAsFile()
-            if (f) audioFiles.push(f)
+          audioFiles.push(file)
+        } else if (item.type.startsWith('video/')) {
+          videoFiles.push(file)
           }
         }
-        if (audioFiles.length > 0) {
+      if (audioFiles.length > 0 || videoFiles.length > 0) {
           e.preventDefault()
-          await processAudioFiles(audioFiles)
-          return
+        const missing: EnableableCapability[] = []
+        if (audioFiles.length > 0 && !audioSupported) missing.push('audio')
+        if (videoFiles.length > 0 && !videoSupported) missing.push('video')
+        const attachMedia = async () => {
+          if (audioFiles.length > 0) await processAudioFiles(audioFiles)
+          if (videoFiles.length > 0) await processVideoFiles(videoFiles)
         }
+        if (missing.length > 0) requestCapabilities(missing, attachMedia)
+        else await attachMedia()
+          return
       }
     }
 
@@ -2474,9 +2581,7 @@ const ChatInput = memo(function ChatInput({
     }
 
     // If we reach here, no image was found - allow normal text pasting to continue
-    console.log(
-      'No image data found in clipboard, allowing normal text paste'
-    )
+    console.log('No image data found in clipboard, allowing normal text paste')
   }
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
@@ -2522,7 +2627,9 @@ const ChatInput = memo(function ChatInput({
                       const ext = att.fileType || att.mimeType?.split('/')[1]
                       const durLabel =
                         isAudio && typeof att.durationSec === 'number'
-                          ? `${Math.floor(att.durationSec / 60)}:${Math.floor(att.durationSec % 60)
+                          ? `${Math.floor(att.durationSec / 60)}:${Math.floor(
+                              att.durationSec % 60
+                            )
                               .toString()
                               .padStart(2, '0')}`
                           : undefined
@@ -2557,7 +2664,11 @@ const ChatInput = memo(function ChatInput({
                                 <span className="min-w-0 truncate font-medium">
                                   {att.name}
                                 </span>
-                                {(durLabel || (!isImage && !isAudio && !isVideo && ext)) && (
+                                {(durLabel ||
+                                  (!isImage &&
+                                    !isAudio &&
+                                    !isVideo &&
+                                    ext)) && (
                                   <span className="shrink-0 text-[11px] uppercase text-muted-foreground tabular-nums">
                                     {durLabel ?? `.${ext}`}
                                   </span>
@@ -2648,11 +2759,13 @@ const ChatInput = memo(function ChatInput({
                         : undefined,
                     onMoveUp:
                       index > 0
-                        ? (id) => useMessageQueue.getState().move(queueId, id, -1)
+                        ? (id) =>
+                            useMessageQueue.getState().move(queueId, id, -1)
                         : undefined,
                     onMoveDown:
                       index < queuedMessages.length - 1
-                        ? (id) => useMessageQueue.getState().move(queueId, id, 1)
+                        ? (id) =>
+                            useMessageQueue.getState().move(queueId, id, 1)
                         : undefined,
                   })}
                 />
@@ -2795,8 +2908,7 @@ const ChatInput = memo(function ChatInput({
                 if (e.key === 'ArrowUp' && !isComposing) {
                   const textarea = e.currentTarget
                   const cursorAtStart =
-                    textarea.selectionStart === 0 &&
-                    textarea.selectionEnd === 0
+                    textarea.selectionStart === 0 && textarea.selectionEnd === 0
                   if (cursorAtStart || !prompt) {
                     e.preventDefault()
                     navigateHistory('up')
@@ -2861,7 +2973,10 @@ const ChatInput = memo(function ChatInput({
           </div>
         </div>
 
-        <div ref={footerRef} className="absolute z-20 bg-transparent bottom-0 w-full p-2">
+        <div
+          ref={footerRef}
+          className="absolute z-20 bg-transparent bottom-0 w-full p-2"
+        >
           <div className="flex justify-between items-center w-full">
             <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
               <div
@@ -2890,9 +3005,7 @@ const ChatInput = memo(function ChatInput({
                         attach anything at all. */}
                     <DropdownMenuItem onClick={() => void openImagePicker()}>
                       <ImageIcon className="size-4 text-muted-foreground" />
-                      <span>
-                        {t('common:attachFiles.addFilesOrImages')}
-                      </span>
+                        <span>{t('common:attachFiles.addFilesOrImages')}</span>
                       <input
                         type="file"
                         ref={fileInputRef}
@@ -2902,38 +3015,35 @@ const ChatInput = memo(function ChatInput({
                         onChange={handleFileChange}
                       />
                     </DropdownMenuItem>
-                    {audioSupported && (
-                      <DropdownMenuItem onClick={() => void openAudioPicker()}>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          if (audioSupported) void openAudioPicker()
+                          else requestCapabilities(['audio'], openAudioPicker)
+                        }}
+                      >
                         <Music className="size-4 text-muted-foreground" />
                         <span>Add Audio</span>
-                        <input
-                          type="file"
-                          ref={audioInputRef}
-                          className="hidden"
-                          multiple
-                          accept="audio/wav,audio/mpeg,.wav,.mp3"
-                          onChange={handleAudioFileChange}
-                        />
                       </DropdownMenuItem>
-                    )}
-                    {videoSupported && (
-                      <DropdownMenuItem onClick={() => void openVideoPicker()}>
+                      <DropdownMenuItem
+                        onClick={() => {
+                          if (videoSupported) void openVideoPicker()
+                          else requestCapabilities(['video'], openVideoPicker)
+                        }}
+                      >
                         <Video className="size-4 text-muted-foreground" />
                         <span>Add Video</span>
-                        <input
-                          type="file"
-                          ref={videoInputRef}
-                          className="hidden"
-                          multiple
-                          accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,.mp4,.mov,.webm,.mkv,.avi,.m4v"
-                          onChange={handleVideoFileChange}
-                        />
                       </DropdownMenuItem>
-                    )}
                     {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
                     <DropdownMenuItem
-                      onClick={handleAttachDocsIngest}
-                      disabled={!selectedModel?.capabilities?.includes('tools')}
+                        onClick={() => {
+                          if (selectedModel?.capabilities?.includes('tools'))
+                            void handleAttachDocsIngest()
+                          else
+                            requestCapabilities(
+                              ['tools'],
+                              handleAttachDocsIngest
+                            )
+                        }}
                     >
                       {ingestingDocs ? (
                         <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />
@@ -2967,7 +3077,9 @@ const ChatInput = memo(function ChatInput({
                   currentThread={currentThread}
                   selectedAssistantId={selectedAssistantId}
                   setSelectedAssistantId={setSelectedAssistantId}
-                  updateCurrentThreadAssistant={updateCurrentThreadAssistant}
+                        updateCurrentThreadAssistant={
+                          updateCurrentThreadAssistant
+                        }
                 />
                 <SamplerPopover
                   providerId={selectedProvider}
@@ -2980,7 +3092,8 @@ const ChatInput = memo(function ChatInput({
                     updateCurrentThreadAssistant,
                   }}
                 />
-                {showToolControls && selectedModel?.capabilities?.includes('embeddings') && (
+                      {showToolControls &&
+                        selectedModel?.capabilities?.includes('embeddings') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -2998,7 +3111,25 @@ const ChatInput = memo(function ChatInput({
                   </Tooltip>
                 )}
 
-                {showToolControls && selectedModel?.capabilities?.includes('tools') &&
+                      {showToolControls &&
+                        selectedModel &&
+                        !selectedModel.capabilities?.includes('tools') && (
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label={t('common:modelCapability.enableTools')}
+                            data-testid="composer-enable-tools"
+                            className="size-7 rounded-[7px] pointer-coarse:size-11"
+                            onClick={() =>
+                              requestCapabilities(['tools'], () => {})
+                            }
+                          >
+                            <Wrench className="size-4 text-muted-foreground" />
+                          </Button>
+                        )}
+
+                      {showToolControls &&
+                        selectedModel?.capabilities?.includes('tools') &&
                   hasActiveMCPServers &&
                   (MCPToolComponent ? (
                     // Use custom MCP component
@@ -3006,7 +3137,8 @@ const ChatInput = memo(function ChatInput({
                       tools={tools}
                       hasActiveMCPServers={hasActiveMCPServers}
                       selectedModelHasTools={
-                        selectedModel?.capabilities?.includes('tools') ?? false
+                              selectedModel?.capabilities?.includes('tools') ??
+                              false
                       }
                       MCPToolComponent={MCPToolComponent}
                     />
@@ -3053,7 +3185,8 @@ const ChatInput = memo(function ChatInput({
                     </Tooltip>
                   ))}
 
-                {!effectiveAgentMode && selectedModel?.capabilities?.includes('tools') && (
+                      {!effectiveAgentMode &&
+                        selectedModel?.capabilities?.includes('tools') && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -3063,9 +3196,12 @@ const ChatInput = memo(function ChatInput({
                         aria-pressed={webSearchEnabled}
                         className={cn(
                           'size-7 rounded-[7px] pointer-coarse:size-11',
-                          webSearchEnabled && 'bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]'
+                                  webSearchEnabled &&
+                                    'bg-[color-mix(in_oklab,var(--primary)_12%,transparent)] text-foreground hover:bg-[color-mix(in_oklab,var(--primary)_16%,transparent)]'
                         )}
-                        onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                                onClick={() =>
+                                  setWebSearchEnabled(!webSearchEnabled)
+                                }
                       >
                         <Globe
                           className={cn(
@@ -3078,7 +3214,8 @@ const ChatInput = memo(function ChatInput({
                     <TooltipContent>
                       <p>
                         {webSearchEnabled
-                          ? t('common:web_search') + t('common:activeSuffix')
+                                  ? t('common:web_search') +
+                                    t('common:activeSuffix')
                           : t('common:web_search')}
                       </p>
                     </TooltipContent>
@@ -3101,7 +3238,8 @@ const ChatInput = memo(function ChatInput({
                     // The token-budget submenu only applies to local llama.cpp
                     // (budget resolved against live n_ctx). Cloud providers size
                     // their own budget dynamically, so on/off/auto is enough.
-                    const showThinkingBudget = selectedProvider === 'llamacpp'
+                          const showThinkingBudget =
+                            selectedProvider === 'llamacpp'
                     // Auto/On/Off writes the `reasoning` setting, which only the
                     // first-party providers wire into a request. A remote
                     // OpenAI-compatible model reaches this menu solely for the
@@ -3114,8 +3252,12 @@ const ChatInput = memo(function ChatInput({
                       selectedProvider === 'anthropic' ||
                       selectedProvider === 'openai'
                     const reasoningValue =
-                      (selectedModel?.settings?.reasoning?.controller_props
-                        ?.value as 'auto' | 'on' | 'off' | undefined) ?? 'auto'
+                            (selectedModel?.settings?.reasoning
+                              ?.controller_props?.value as
+                              | 'auto'
+                              | 'on'
+                              | 'off'
+                              | undefined) ?? 'auto'
                     const updateModelSetting = (
                       settingKey: string,
                       title: string,
@@ -3123,13 +3265,16 @@ const ChatInput = memo(function ChatInput({
                       value: unknown
                     ) => {
                       if (!selectedProvider || !selectedModel) return
-                      const providerObj = getProviderByName(selectedProvider)
+                            const providerObj =
+                              getProviderByName(selectedProvider)
                       if (!providerObj) return
                       const modelIndex = providerObj.models.findIndex(
                         (m) => m.id === selectedModel.id
                       )
                       if (modelIndex === -1) return
-                      const existing = selectedModel.settings?.[settingKey] ?? {
+                            const existing = selectedModel.settings?.[
+                              settingKey
+                            ] ?? {
                         key: settingKey,
                         title,
                         description: '',
@@ -3161,7 +3306,10 @@ const ChatInput = memo(function ChatInput({
                       // from the providers, and must not move the global
                       // picker.
                       if (!modelSelection) {
-                        selectModelProvider(selectedProvider, selectedModel.id)
+                              selectModelProvider(
+                                selectedProvider,
+                                selectedModel.id
+                              )
                       }
                     }
 
@@ -3243,14 +3391,17 @@ const ChatInput = memo(function ChatInput({
                     )
                       ? rawBudgetLevel
                       : DEFAULT_THINKING_BUDGET_LEVEL
-                    const setThinkingBudget = (level: ThinkingBudgetLevelKey) =>
+                          const setThinkingBudget = (
+                            level: ThinkingBudgetLevelKey
+                          ) =>
                       updateModelSetting(
                         'thinking_budget_tokens',
                         'Thinking Budget',
                         'dropdown',
                         level
                       )
-                    const currentBudgetLabel = THINKING_BUDGET_LEVELS.find(
+                          const currentBudgetLabel =
+                            THINKING_BUDGET_LEVELS.find(
                       (l) => l.key === currentBudgetLevel
                     )!.label
                     // Best-effort preview only; the request-time value may
@@ -3272,8 +3423,10 @@ const ChatInput = memo(function ChatInput({
                                 <Brain
                                   className={cn(
                                     'size-4 text-muted-foreground',
-                                    reasoningValue === 'on' && 'text-foreground',
-                                    reasoningValue === 'off' && 'opacity-50'
+                                          reasoningValue === 'on' &&
+                                            'text-foreground',
+                                          reasoningValue === 'off' &&
+                                            'opacity-50'
                                   )}
                                 />
                               </Button>
@@ -3283,7 +3436,10 @@ const ChatInput = memo(function ChatInput({
                             <p>{tooltipText}</p>
                           </TooltipContent>
                         </Tooltip>
-                        <DropdownMenuContent align="start" className="w-64">
+                              <DropdownMenuContent
+                                align="start"
+                                className="w-64"
+                              >
                           {effortLevels.length > 0 && (
                             <>
                               <div className="px-2 py-1.5">
@@ -3303,7 +3459,9 @@ const ChatInput = memo(function ChatInput({
                                   }
                                 />
                               </div>
-                              {showReasoningModes && <DropdownMenuSeparator />}
+                                    {showReasoningModes && (
+                                      <DropdownMenuSeparator />
+                                    )}
                             </>
                           )}
                           {showReasoningModes && (
@@ -3318,7 +3476,9 @@ const ChatInput = memo(function ChatInput({
                                   </span>
                                 )}
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setReasoning('on')}>
+                                    <DropdownMenuItem
+                                      onClick={() => setReasoning('on')}
+                                    >
                                 On
                                 {reasoningValue === 'on' && (
                                   <span className="ml-auto text-xs text-muted-foreground">
@@ -3343,7 +3503,9 @@ const ChatInput = memo(function ChatInput({
                               <DropdownMenuSeparator />
                               <DropdownMenuSub>
                                 <DropdownMenuSubTrigger>
-                                  <span className="flex-1">Thinking Budget</span>
+                                        <span className="flex-1">
+                                          Thinking Budget
+                                        </span>
                                   <span className="text-xs text-muted-foreground">
                                     {currentBudgetLabel}
                                   </span>
@@ -3374,7 +3536,8 @@ const ChatInput = memo(function ChatInput({
                                             : `~${approxTokens}`}
                                         </span>
                                         <span className="w-3 shrink-0 text-xs text-muted-foreground">
-                                          {currentBudgetLevel === level.key
+                                                {currentBudgetLevel ===
+                                                level.key
                                             ? '✓'
                                             : ''}
                                         </span>
@@ -3395,7 +3558,11 @@ const ChatInput = memo(function ChatInput({
                   return (
                     <ComposerOptionsMenu
                       label={t('common:composerOptions')}
-                      active={webSearchEnabled && !effectiveAgentMode ? [t('common:web_search')] : []}
+                      active={
+                        webSearchEnabled && !effectiveAgentMode
+                          ? [t('common:web_search')]
+                          : []
+                      }
                     >
                       {options}
                     </ComposerOptionsMenu>
@@ -3463,7 +3630,9 @@ const ChatInput = memo(function ChatInput({
                 <Button
                   variant="default"
                   size="icon-sm"
-                  disabled={(!prompt.trim() && !hasSendableMedia) || ingestingAny}
+                  disabled={
+                    (!prompt.trim() && !hasSendableMedia) || ingestingAny
+                  }
                   data-test-id="send-message-button"
                   aria-label={t('chat:sendMessage')}
                   onClick={() => handleSendMessage(prompt)}
@@ -3550,16 +3719,38 @@ const ChatInput = memo(function ChatInput({
         </div>
       )}
 
+      <input
+        type="file"
+        ref={audioInputRef}
+        className="hidden"
+        multiple
+        accept="audio/wav,audio/mpeg,.wav,.mp3"
+        onChange={handleAudioFileChange}
+      />
+      <input
+        type="file"
+        ref={videoInputRef}
+        className="hidden"
+        multiple
+        accept="video/mp4,video/quicktime,video/webm,video/x-matroska,video/x-msvideo,.mp4,.mov,.webm,.mkv,.avi,.m4v"
+        onChange={handleVideoFileChange}
+      />
+
       <VisionDisabledDialog
         open={visionPrompt !== null}
         fileNames={(visionPrompt?.blocked ?? []).map((file) => file.name)}
-        modelName={
-          selectedModel ? getModelDisplayName(selectedModel) : ''
-        }
+        modelName={selectedModel ? getModelDisplayName(selectedModel) : ''}
         canEnable={visionPrompt?.canEnable ?? false}
         onChoose={(choice) => void handleVisionChoice(choice)}
       />
 
+      <EnableModelCapabilityDialog
+        open={capabilityPrompt !== null}
+        modelName={selectedModel ? getModelDisplayName(selectedModel) : ''}
+        capabilities={capabilityPrompt?.capabilities ?? []}
+        onEnable={handleEnableCapabilities}
+        onCancel={() => setCapabilityPrompt(null)}
+      />
     </div>
   )
 })
