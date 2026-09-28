@@ -429,7 +429,11 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           behind is the thing to read. */}
       <details open={interrupted} className="group">
         <summary className="flex min-h-10 cursor-pointer list-none flex-wrap items-center gap-2.5 rounded-xl px-3 py-2.5 text-[13.5px] text-foreground outline-none transition-colors hover:bg-hover-row focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11 [&::-webkit-details-marker]:hidden">
-          <span className="min-w-0 truncate font-semibold">
+          <span
+            className="min-w-0 truncate font-semibold"
+            // Where this record comes from, on hover rather than on the row.
+            title={t('common:coworkOrigins.subtitle')}
+          >
             {t('common:coworkOrigins.title')}
           </span>
           <span
@@ -438,9 +442,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
           >
             {statusLabel(t, outcome.status)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-            {t('common:coworkOrigins.subtitle')}
-          </span>
+          <span className="sr-only">{t('common:coworkOrigins.subtitle')}</span>
         </summary>
         <h3 className="sr-only">{t('common:coworkOrigins.title')}</h3>
 
