@@ -5818,13 +5818,15 @@ export function CoworkPage() {
                 // do on the left, the model on the right. Wraps, never clips.
                 <div
                   data-testid="cowork-run-controls"
-                  className="flex items-center gap-2 px-1 pt-1.5"
+                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1.5"
                 >
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-0.5 gap-y-1">
+                  {/* The run controls stay on one line; the model takes the
+                      rest and truncates its name, and only when not even a
+                      short name fits does it drop to a line of its own. */}
+                  <div className="flex shrink-0 items-center gap-0.5">
                     {runControls('quiet')}
                   </div>
-                  {/* The model's name truncates before anything wraps. */}
-                  <div className="ml-auto flex min-w-24 max-w-64 shrink-[20]">
+                  <div className="ml-auto flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
                     {quietModelSelector}
                   </div>
                 </div>
