@@ -45,6 +45,7 @@ import {
   Puzzle,
   Trash2,
   Loader2,
+  FolderPlus,
   type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -486,7 +487,18 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
     )
   }
 
+  // New group lives in this menu (and on right-click), not as a row of its own.
+  // The tree is opened first so the group has somewhere to appear.
+  const [newGroupRequest, setNewGroupRequest] = useState(0)
   const items: CoworkNavItem[] = [
+    {
+      title: t('common:groups.newGroup'),
+      icon: FolderPlus,
+      onClick: () => {
+        setTreeOpen(true)
+        setNewGroupRequest((n) => n + 1)
+      },
+    },
     {
       title: t('common:artifacts'),
       icon: Box,
@@ -581,6 +593,11 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
         <NavButton
           isActive={pathname === route.cowork}
           onClick={goCowork}
+          // Right-click opens the row's menu (New group, Artifacts…).
+          onContextMenu={(e) => {
+            e.preventDefault()
+            setMoreOpen(true)
+          }}
           data-testid="nav-cowork"
         >
           {icon}
@@ -659,7 +676,9 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               adapter={coworkFolderAdapter}
               onNewInGroup={newSession}
               newInLabelKey="common:groups.newSessionIn"
-              showNewGroup
+              showNewGroup={false}
+              newGroupRequest={newGroupRequest}
+              onNewGroupRequestHandled={() => setNewGroupRequest(0)}
             />
           ) : (
             visibleSessions.map((session) => renderSession(session.id))

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   DndContext,
   PointerSensor,
@@ -113,7 +113,16 @@ export function GroupedTree({
   onNewInGroup,
   newInLabelKey,
   showNewGroup,
+  newGroupRequest = 0,
+  onNewGroupRequestHandled,
 }: {
+  /**
+   * Nonzero: open the New group dialog now, for a control outside the tree
+   * (a menu, a right-click). Reported back as handled so a remount does not
+   * open it again.
+   */
+  newGroupRequest?: number
+  onNewGroupRequestHandled?: () => void
   surface: Extract<GroupSurface, 'cowork' | 'rooms'>
   /** Items to list, in recency order. */
   ids: string[]
@@ -170,6 +179,13 @@ export function GroupedTree({
     const id = await store.createGroup(surface, trimmed)
     if (id && d.itemId) await move(d.itemId, id)
   }
+
+  useEffect(() => {
+    if (!newGroupRequest) return
+    setName('')
+    setNameDialog({ mode: 'create' })
+    onNewGroupRequestHandled?.()
+  }, [newGroupRequest, onNewGroupRequestHandled])
 
   const toggle = (g: ConversationGroup) =>
     void useConversationGroups
