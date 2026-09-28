@@ -10,7 +10,7 @@
 import type { CoworkSession } from '@/hooks/useCoworkSessions'
 
 export type SessionStartDecision =
-  /** Stay where we are: this session is already the new one, or holds a draft. */
+  /** Stay where we are: this session is already the new one. */
   | 'reuse'
   /** The current session has something in it; start a fresh one. */
   | 'create'
@@ -41,7 +41,13 @@ export type SessionStartInput = {
   current: CoworkSession | undefined
   /** A run is in flight. Work in progress is content, even before it lands. */
   running: boolean
-  /** Unsent composer text, or attachments waiting to be sent. */
+  /**
+   * Unsent composer text, or attachments waiting to be sent.
+   *
+   * Reported, not a veto: the store parks the draft on the session it was
+   * typed in (held input, janhq/jan#8864) and starts the new one blank.
+   * The decision itself no longer reads it.
+   */
   hasDraft: boolean
   /**
    * The session already has recorded file activity.
@@ -58,14 +64,13 @@ export type SessionStartInput = {
 /**
  * Whether to create a session or stay on this one.
  *
- * A draft wins over everything: the composer is shared across sessions, so
- * starting a new one while text is sitting unsent would either strand it or
- * carry it somewhere the user did not put it. Neither is worth a blank
- * session, so the press does nothing and the draft survives.
+ * A draft no longer blocks the press: it is parked on the session it was
+ * typed in as held input, shown there with Send and Discard, and the new
+ * session opens with a blank composer. Blocking used to leave the press a
+ * silent no-op, which read as a dead button.
  */
 export function decideSessionStart(input: SessionStartInput): SessionStartDecision {
   if (!input.current) return 'create'
-  if (input.hasDraft) return 'reuse'
   if (input.running) return 'create'
   if (input.hasFileActivity) return 'create'
   return isSessionEmpty(input.current) ? 'reuse' : 'create'

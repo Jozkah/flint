@@ -111,19 +111,20 @@ describe('pressing New session', () => {
 })
 
 describe('an unsent draft', () => {
-  it('keeps the user where they are, blank session or not', () => {
-    // The composer is shared between sessions: starting a new one would
-    // either strand the text or carry it somewhere it was not typed.
-    expect(decide({ hasDraft: true })).toBe('reuse')
+  it('no longer blocks a blank session', () => {
+    // The draft is parked on the session being left (held input) and the
+    // composer cleared, so the press can go through: a silent no-op read as
+    // a dead button.
+    expect(decide({ hasDraft: true })).toBe('create')
   })
 
-  it('outranks a session that has content', () => {
+  it('does not block a session that has content', () => {
     expect(
       decide({ current: session({ turns: [{}] as never }), hasDraft: true })
-    ).toBe('reuse')
+    ).toBe('create')
   })
 
-  it('outranks a run in flight', () => {
-    expect(decide({ running: true, hasDraft: true })).toBe('reuse')
+  it('does not block a run in flight', () => {
+    expect(decide({ running: true, hasDraft: true })).toBe('create')
   })
 })

@@ -1,4 +1,5 @@
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { usePrompt } from '@/hooks/usePrompt'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/backendStorage', () => ({
@@ -23,6 +24,7 @@ const idle = { running: false, hasDraft: false }
 beforeEach(() => {
   useCoworkSessions.setState({ sessions: [], currentId: null })
   useFileActivity.setState({ byConversation: {} })
+  usePrompt.setState({ prompt: '', historyIndex: -1, draftPrompt: '' })
 })
 
 describe('starting a session', () => {
@@ -77,14 +79,60 @@ describe('starting a session', () => {
     expect(store().sessions).toHaveLength(2)
   })
 
-  it('stays put rather than stranding an unsent draft', () => {
+  it('parks an unsent draft on the session it was typed in', () => {
     const first = store().startSession(idle)
     store().setMessages(first, [{ id: 'm1' } as never])
+    usePrompt.getState().setPrompt('draft text')
 
-    const again = store().startSession({ running: false, hasDraft: true })
+    const again = store().startSession({ running: false, hasDraft: false })
 
-    expect(again).toBe(first)
-    expect(store().sessions).toHaveLength(1)
+    expect(again).not.toBe(first)
+    expect(store().sessions).toHaveLength(2)
+    expect(store().currentId).toBe(again)
+    // The draft survives, held on the old session for the user to send or
+    // discard.
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'draft text' }),
+    ])
+  })
+
+  it('parks a draft on a blank session too', () => {
+    const first = store().startSession(idle)
+    usePrompt.getState().setPrompt('draft text')
+
+    const again = store().startSession({ running: false, hasDraft: false })
+
+    expect(again).not.toBe(first)
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'draft text' }),
+    ])
+  })
+
+  it('does not park a whitespace-only draft', () => {
+    const first = store().startSession(idle)
+    store().setMessages(first, [{ id: 'm1' } as never])
+    usePrompt.getState().setPrompt('   ')
+
+    const again = store().startSession({ running: false, hasDraft: false })
+
+    expect(again).not.toBe(first)
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toBeUndefined()
+  })
+
+  it('keeps existing held input when parking a draft', () => {
+    const first = store().startSession(idle)
+    store().setMessages(first, [{ id: 'm1' } as never])
+    store().setPendingInput(first, [
+      { id: 'held-1', text: 'already held', createdAt: 1 },
+    ])
+    usePrompt.getState().setPrompt('new draft')
+
+    store().startSession({ running: false, hasDraft: false })
+
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      { id: 'held-1', text: 'already held', createdAt: 1 },
+      expect.objectContaining({ text: 'new draft' }),
+    ])
   })
 
   it('starts a fresh session when a run is in flight', () => {

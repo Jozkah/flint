@@ -445,18 +445,23 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSession = (groupId?: string) => {
     // Idempotent: on a blank session this returns the same one, so a second
-    // press cannot leave a trail of empty sessions behind. An unsent draft
-    // keeps the user where they are rather than stranding it.
+    // press cannot leave a trail of empty sessions behind. An unsent draft is
+    // parked on the session being left (held input), so the new one opens
+    // blank.
     const store = useCoworkSessions.getState()
     const id = store.startSession({
       running: Boolean(
         store.currentId && useCoworkRun.getState().runs[store.currentId]
       ),
-      hasDraft: usePrompt.getState().prompt.trim().length > 0,
+      hasDraft: false,
     })
     store.selectSession(id)
     if (groupId)
       void addNewItemToGroup('cowork', id, groupId, coworkFolderAdapter)
+    // The draft is parked on the session being left, so the composer clears
+    // here, not in the store: the store is the session layer, the composer is
+    // the surface's.
+    usePrompt.getState().resetPrompt()
     goCowork()
   }
   const selectSession = useCallback(

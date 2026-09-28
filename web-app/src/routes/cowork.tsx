@@ -4587,7 +4587,8 @@ export function CoworkPage() {
         description: t('slash:builtin.newSession'),
         run: () => {
           // Same rule as the sidebar's entry point: one press, at most one
-          // session. The draft is the `/new` being consumed, so it is no draft.
+          // session. The composer's text is the `/new` being consumed, so it
+          // is no draft.
           const paneId = sidePaneIdRef.current
           const paneSid = paneSessionIdRef.current
           if (paneId && paneSid) {
@@ -5721,16 +5722,22 @@ export function CoworkPage() {
                         void compactNow({ thenContinue: true })
                       }
                       compacting={compacting}
-                      onNewSession={() => {
+                        onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
-                        // at most one session.
+                        // at most one session. An unsent draft is parked on
+                        // the session being left (held input), so the new one
+                        // opens blank.
                         const store = useCoworkSessions.getState()
                         const id = store.startSession({
                           running,
-                          hasDraft:
-                            usePrompt.getState().prompt.trim().length > 0,
+                          hasDraft: false,
                         })
                         store.selectSession(id)
+                        // The draft is parked on the session being left, so
+                        // the composer clears here, not in the store: the
+                        // store is the session layer, the composer is the
+                        // surface's.
+                        usePrompt.getState().resetPrompt()
                       }}
                     />
                   )}

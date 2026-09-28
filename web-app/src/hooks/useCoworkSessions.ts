@@ -261,7 +261,9 @@ type CoworkSessionsState = {
   createSession: () => string
   /**
    * What "New session" does: create one, or stay put when this session is
-   * already blank or holds an unsent draft. Returns the session to show.
+   * already blank. An unsent draft is parked on the session it was typed in
+   * as held input and the composer is cleared, so the new session opens
+   * blank. Returns the session to show.
    */
   startSession: (input: { running: boolean; hasDraft: boolean }) => string
   selectSession: (id: string) => void
@@ -362,6 +364,7 @@ import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { usePrompt } from '@/hooks/usePrompt'
 import type { QueuedMessageSender } from '@/stores/message-queue-store'
 import {
   checkBundle,
@@ -438,6 +441,29 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           current
         ) {
           return current.id
+        }
+        // The draft is the user's, and it was typed for the session they are
+        // leaving. Park it there as held input (shown with Send and Discard,
+        // janhq/jan#8864) so the new session opens blank instead of
+        // inheriting it. The text comes from the prompt store, not the
+        // caller's report: `hasDraft` is a stale check, the store is the
+        // source of truth, so a stale report can only skip a park, never
+        // park a blank. The composer itself is cleared by the entry point
+        // that knows which composer this is (the main one, or a pane's
+        // scoped one).
+        if (current) {
+          const prompt = usePrompt.getState().prompt
+          if (prompt.trim()) {
+            const existing = current.pendingInput ?? []
+            get().setPendingInput(current.id, [
+              ...existing,
+              {
+                id: crypto.randomUUID(),
+                text: prompt,
+                createdAt: Date.now(),
+              },
+            ])
+          }
         }
         return get().createSession()
       },
