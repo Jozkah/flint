@@ -196,6 +196,9 @@ vi.mock('@/lib/coworkTransport', () => ({
       this.config = config
     }
     unfreezeTools() {}
+    reasoningProviderOptions() {
+      return undefined
+    }
     memoryBinding: { projectRoot?: string; temporary?: boolean } | undefined
     setMemoryBinding(binding: { projectRoot?: string; temporary?: boolean }) {
       this.memoryBinding = binding

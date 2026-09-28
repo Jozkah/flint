@@ -154,6 +154,41 @@ describe('room editor', () => {
     })
   })
 
+  it("a participant's reasoning setting persists, reaches its own turns only, and null clears it", async () => {
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl)
+    const alice = room.participants[0].id
+    const updated = await ctl.updateRoomSettings(room, {
+      participants: [
+        // Unknown values are dropped rather than stored.
+        { id: alice, reasoning: { mode: 'on', level: 'high', junk: 1 } as never },
+      ],
+    })
+    expect(updated.participants[0].reasoning).toEqual({ mode: 'on', level: 'high' })
+    expect(persistence.rooms.get(room.id)!.participants[0].reasoning).toEqual({
+      mode: 'on',
+      level: 'high',
+    })
+    expect(updated.participants[1].reasoning).toBeUndefined()
+
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    expect(calls.map(speakerOf)).toEqual(['Alice', 'Bob'])
+    expect(calls[0].reasoning).toEqual({ mode: 'on', level: 'high' })
+    expect(calls[1].reasoning).toBeUndefined()
+
+    // An edit that does not mention reasoning keeps it; null clears it.
+    const renamed = await ctl.updateRoomSettings(persistence.rooms.get(room.id)!, {
+      participants: [{ id: alice, name: 'Alicia' }],
+    })
+    expect(renamed.participants[0].reasoning).toEqual({ mode: 'on', level: 'high' })
+    const cleared = await ctl.updateRoomSettings(renamed, {
+      participants: [{ id: alice, reasoning: null }],
+    })
+    expect(cleared.participants[0].reasoning).toBeUndefined()
+  })
+
   it('back-to-back edits from the same rendered room all land (no stale_revision)', async () => {
     const { ctl, persistence } = setup(scriptedStream(() => ({ text: 'x' })).fn)
     const room = await createDefault(ctl)

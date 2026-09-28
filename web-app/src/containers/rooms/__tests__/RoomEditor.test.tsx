@@ -88,7 +88,7 @@ describe('RoomEditor', () => {
     renderWithApi(<RoomEditor room={room} />, api)
 
     const bob = participantCard('Bob')
-    const bobRadios = within(bob).getAllByRole('radio')
+    const bobRadios = within(within(bob).getByRole('radiogroup', { name: 'Tool access' })).getAllByRole('radio')
     bobRadios.forEach((r) => expect(r).toBeDisabled())
     expect(within(bob).getByRole('radio', { name: 'None' })).toBeChecked()
     expect(within(bob).getByText('This model does not support tools, so tool access stays off.')).toBeInTheDocument()
@@ -96,6 +96,43 @@ describe('RoomEditor', () => {
     const alice = participantCard('Alice')
     expect(within(alice).getByRole('radio', { name: 'Read-only' })).toBeEnabled()
     expect(within(alice).getByText(/Approvals never apply in rooms/)).toBeInTheDocument()
+  })
+
+  it("saves a participant's Reasoning and Reasoning effort, and leaves the others at the default", async () => {
+    const user = userEvent.setup()
+    const { api } = createFakeApi()
+    renderWithApi(<RoomEditor room={makeRoom()} />, api)
+
+    const alice = participantCard('Alice')
+    const reasoning = within(alice).getByRole('radiogroup', { name: 'Reasoning' })
+    expect(within(reasoning).getByRole('radio', { name: 'Auto' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(reasoning).getByRole('radio', { name: 'On' }))
+    const effort = within(alice).getByRole('radiogroup', { name: 'Reasoning effort' })
+    expect(within(effort).getByRole('radio', { name: 'Default' })).toHaveAttribute('aria-checked', 'true')
+    await user.click(within(effort).getByRole('radio', { name: 'High' }))
+    // OpenAI takes no token budget: that control is llama.cpp's alone.
+    expect(within(alice).queryByRole('radiogroup', { name: 'Thinking Budget' })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    const patch = api.updateRoomSettings.mock.calls[0][1]
+    expect(patch.participants[0].reasoning).toEqual({ mode: 'on', level: 'high' })
+    expect(patch.participants[1].reasoning).toBeNull()
+  })
+
+  it('offers a Thinking Budget, defaulting to Unlimited, for a llama.cpp participant', () => {
+    const { api } = createFakeApi()
+    const room = makeRoom({
+      participants: [
+        makeParticipant('p1', { name: 'Alice', model: { provider: 'llamacpp', id: 'qwen' } }),
+      ],
+    })
+    renderWithApi(<RoomEditor room={room} />, api)
+    const budget = within(participantCard('Alice')).getByRole('radiogroup', { name: 'Thinking Budget' })
+    expect(
+      ['Low', 'Medium', 'High', 'XHigh', 'Unlimited'].map((n) => within(budget).getByRole('radio', { name: n }))
+    ).toHaveLength(5)
+    expect(within(budget).getByRole('radio', { name: 'Unlimited' })).toHaveAttribute('aria-checked', 'true')
+    expect(within(participantCard('Alice')).queryByRole('radiogroup', { name: 'Reasoning effort' })).toBeNull()
   })
 
   it('flags a limit below its minimum and saves the raised value (#175)', async () => {
