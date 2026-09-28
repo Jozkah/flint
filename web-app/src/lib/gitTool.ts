@@ -196,6 +196,12 @@ function gitPlan(input: string[]): GitPlanResult {
     case 'range-diff':
       plan.class = 'read'
       break
+    case 'merge-tree':
+      if (rest.length !== 3 || rest[0] !== '--write-tree' ||
+          rest[1].startsWith('-') || rest[2].startsWith('-'))
+        return fail('`git merge-tree` requires ["--write-tree", "<base>", "<head>"]')
+      plan.class = 'local'
+      break
     case 'ls-remote':
       plan.class = 'read'
       plan.reachesRemote = true
