@@ -61,7 +61,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - fix(cowork): "What changed" lists only the files the session wrote, not every changed file in the checkout
 - fix(cowork): intermediate steps of a reply no longer each show "The run ended without a reply" or their own token-speed line; Continue is offered on a run that ended without an answer
 - fix(cowork): the Code panel opens a session's worktree instead of refusing it as overlapping the workspace
-- fix(cowork): readable worktree branch names (`flint/edit-bodycam-drone-camera-9d7c67`)
+- fix(cowork): readable worktree branch names (`flint/edit-bodycam-as-drone-camera-9d7c67`)
 - fix(cowork): the workspace pill truncates instead of clipping the header controls
 - fix(agent): sandbox and permission refusals no longer count as failures that disable every tool
 - fix(agent): robocopy-style switches (`/E /XD /XF`) are no longer read as missing skills that block every write
