@@ -479,6 +479,9 @@ import { useMCPServers } from '@/hooks/useMCPServers'
 import { sessionDetailsLabel } from '@/lib/windowTitle'
 import { autoTitleCoworkSession } from '@/lib/coworkAutoTitle'
 import { runStatus } from '@/lib/runStatus'
+import { chooseWorkProfile } from '@/hooks/useWorkProfiles'
+import { useJevSettings } from '@/hooks/useJevSettings'
+import { jevSuggestSkill } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 
@@ -2411,6 +2414,20 @@ export function CoworkPage() {
       const placeholder = slashTitle(text).slice(0, 40)
       store.setTitle(sid, placeholder)
       autoTitleCoworkSession(sid, slashTitle(text), placeholder)
+    }
+    // Work profiles (off unless the user turned them on): the new message
+    // picks how the run approaches it -- Jev decides when its suggestions are
+    // on, a keyword match otherwise, and a profile picked by hand is kept.
+    if (text && !from && !hidden) {
+      const jevOn = useJevSettings.getState().skillMode === 'on'
+      await chooseWorkProfile(
+        sid,
+        text,
+        jevOn
+          ? (message, options) =>
+              jevSuggestSkill(message, options).then((d) => d.skill)
+          : undefined
+      )
     }
 
     /**

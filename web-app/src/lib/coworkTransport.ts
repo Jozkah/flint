@@ -1,3 +1,4 @@
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
@@ -216,6 +217,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
+      workProfileBlock: useWorkProfiles.getState().blockFor(this.threadId),
     })
     // Remembered facts come after everything that states policy -- the run's
     // own rules, `JAN.md`, the compatibility instructions -- and the block

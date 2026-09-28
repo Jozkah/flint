@@ -35,6 +35,7 @@ import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
@@ -86,6 +87,7 @@ const secondaryStores = [
   useModelEvidence,
   useModelDoctor,
   useJevSettings,
+  useWorkProfiles,
   useOnboardingGuide,
   useSessionMessaging,
   useSplitConversation,
