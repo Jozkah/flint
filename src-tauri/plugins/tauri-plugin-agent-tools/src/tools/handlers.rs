@@ -555,7 +555,7 @@ pub async fn execute_builtin(
 
     let work = async {
         match tool.name {
-            "read" => read(args, project_root, scratch, ctx.read_roots).await,
+            "read" => read_or_list(args, ctx).await,
             "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
             _ => (execute_text(tool, args, ctx).await, None),
         }
@@ -606,7 +606,7 @@ pub(crate) async fn execute_text(
         // Read tools consult the attached read-only roots; `write`/`edit`
         // deliberately do not, which is what keeps an attached folder
         // readable and unwritable.
-        "read" => read(args, project_root, scratch, ctx.read_roots).await.0,
+        "read" => read_or_list(args, ctx).await.0,
         "ls" => ls(args, project_root, scratch, ctx.sandbox, ctx.read_roots, ctx.write_roots).await,
         "write" => {
             write(
@@ -1315,6 +1315,31 @@ async fn memory_write(args: &serde_json::Value, store: &Path) -> String {
         Ok(file) => format!("Wrote {} bytes to memory/{file}", content.len()),
         Err(e) => e,
     }
+}
+
+async fn read_or_list(
+    args: &serde_json::Value,
+    ctx: &ToolContext<'_>,
+) -> (String, Option<Vec<ImageContentPart>>) {
+    if let Some(path) = arg_str(args, "path") {
+        let target = resolve_path(ctx.project_root, ctx.scratch_root, path);
+        if target.is_dir() {
+            let listing = ls(
+                args,
+                ctx.project_root,
+                ctx.scratch_root,
+                ctx.sandbox,
+                ctx.read_roots,
+                ctx.write_roots,
+            )
+            .await;
+            if listing.starts_with("ERROR:") {
+                return (listing, None);
+            }
+            return (format!("{path} is a directory. Contents:\n{listing}"), None);
+        }
+    }
+    read(args, ctx.project_root, ctx.scratch_root, ctx.read_roots).await
 }
 
 async fn read(
@@ -7305,6 +7330,20 @@ on_failure = \"warn\"
         // A call with no arguments at all lists the workspace.
         let listed = ls(&serde_json::Value::Null, &root, None, false, &[], &[]).await;
         assert!(listed.contains("plain.txt"), "{listed}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn read_tool_lists_a_directory_without_failing() {
+        let root = unique_root();
+        std::fs::create_dir_all(root.join("dir")).unwrap();
+        std::fs::write(root.join("dir").join("file.txt"), "contents").unwrap();
+        let ctx = ToolContext::new(&root, &root, &[]);
+
+        let (result, images) = read_or_list(&serde_json::json!({"path": "dir"}), &ctx).await;
+        assert_eq!(result, "dir is a directory. Contents:\nfile.txt");
+        assert!(images.is_none());
+
         let _ = std::fs::remove_dir_all(&root);
     }
 
