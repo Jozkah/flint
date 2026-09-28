@@ -1,6 +1,9 @@
 name: Tauri Builder - Tag
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 concurrency:
@@ -12,6 +15,9 @@ jobs:
   get-update-version:
     uses: ./.github/workflows/template-get-update-version.yml
 
+  # Create a draft release when a tag is pushed for the first time.
+  # When re-pushing an existing tag (or dispatching manually), the release
+  # already exists, so this job is skipped and resolve-release-url picks it up.
   create-draft-release:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
@@ -23,7 +29,7 @@ jobs:
     steps:
       - name: Extract tag name without v prefix
         id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV && echo "::set-output name=version::${GITHUB_REF#refs/tags/v}"
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV && echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_REF: ${{ github.ref }}
       - name: Create Draft Release
@@ -37,41 +43,90 @@ jobs:
           prerelease: false
           generate_release_notes: true
 
+  # When a tag is force-pushed or the workflow is dispatched manually, the
+  # release already exists.  Look it up by tag and delete stale assets so
+  # the build jobs can re-upload them.
+  resolve-release-url:
+    runs-on: ubuntu-latest
+    needs: [create-draft-release]
+    if: always()
+    outputs:
+      upload_url: ${{ steps.resolve.outputs.upload_url }}
+    permissions:
+      contents: write
+    steps:
+      - name: Resolve upload URL
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Prefer the URL from create-draft-release; fall back to the
+          # existing release for the current tag.
+          UPLOAD_URL="${{ needs.create-draft-release.outputs.upload_url }}"
+          if [ -z "$UPLOAD_URL" ]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            # workflow_dispatch may not set a tag ref; derive from branch
+            if [ -z "$TAG" ] || [ "$TAG" = "$GITHUB_REF" ]; then
+              TAG=$(gh api repos/${{ github.repository }}/releases --jq '.[0].tag_name' 2>/dev/null || true)
+            fi
+            echo "Looking up existing release for tag $TAG"
+            RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" 2>/dev/null || true)
+            UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url // empty')
+            RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty')
+
+            # Delete existing build assets so re-upload doesn't 422
+            if [ -n "$RELEASE_ID" ]; then
+              echo "Deleting stale assets from release $RELEASE_ID"
+              gh api "repos/${{ github.repository }}/releases/$RELEASE_ID/assets" --jq '.[].id' | while read -r ASSET_ID; do
+                echo "  Deleting asset $ASSET_ID"
+                gh api -X DELETE "repos/${{ github.repository }}/releases/$RELEASE_ID/assets/$ASSET_ID" || true
+              done
+            fi
+          fi
+
+          if [ -z "$UPLOAD_URL" ]; then
+            echo "::error::Could not resolve an upload URL for this tag."
+            exit 1
+          fi
+
+          echo "upload_url=$UPLOAD_URL" >> "$GITHUB_OUTPUT"
+          echo "Resolved upload URL: $UPLOAD_URL"
+
   build-macos:
     uses: ./.github/workflows/template-tauri-build-macos.yml
     secrets: inherit
-    needs: [get-update-version, create-draft-release]
+    needs: [get-update-version, resolve-release-url]
     with:
       ref: ${{ github.ref }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
-      upload_url: ${{ needs.create-draft-release.outputs.upload_url }}
+      upload_url: ${{ needs.resolve-release-url.outputs.upload_url }}
 
   build-windows-x64:
     uses: ./.github/workflows/template-tauri-build-windows-x64.yml
     secrets: inherit
-    needs: [get-update-version, create-draft-release]
+    needs: [get-update-version, resolve-release-url]
     with:
       ref: ${{ github.ref }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
-      upload_url: ${{ needs.create-draft-release.outputs.upload_url }}
+      upload_url: ${{ needs.resolve-release-url.outputs.upload_url }}
 
   build-linux-x64:
     uses: ./.github/workflows/template-tauri-build-linux-x64.yml
     secrets: inherit
-    needs: [get-update-version, create-draft-release]
+    needs: [get-update-version, resolve-release-url]
     with:
       ref: ${{ github.ref }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
-      upload_url: ${{ needs.create-draft-release.outputs.upload_url }}
+      upload_url: ${{ needs.resolve-release-url.outputs.upload_url }}
 
   sync-temp-to-latest:
-    needs: [create-draft-release, get-update-version, build-macos, build-windows-x64, build-linux-x64]
+    needs: [resolve-release-url, get-update-version, build-macos, build-windows-x64, build-linux-x64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -119,7 +174,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         uses: actions/upload-release-asset@64e5e85fc528f162d7ba7ce2d15a3bb67efb3d80 # v1.0.1
         with:
-          upload_url: ${{ needs.create-draft-release.outputs.upload_url }}
+          upload_url: ${{ needs.resolve-release-url.outputs.upload_url }}
           asset_path: ./latest.json
           asset_name: latest.json
           asset_content_type: text/json
