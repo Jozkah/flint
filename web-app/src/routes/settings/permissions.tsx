@@ -38,6 +38,8 @@ export const Route = createFileRoute(route.settings.permissions as any)({
 
 /** How many recorded decisions the page shows. */
 const HISTORY_LIMIT = 50
+/** Decisions shown before "Show all": the log is reference, not the page. */
+const HISTORY_PREVIEW = 10
 
 /** Whether a standing server grant still describes the configured server. */
 type GrantState = 'current' | 'changed' | 'missing' | 'unknown'
@@ -58,10 +60,10 @@ type RenewalRow = {
 
 /** One integrated row: what the grant is on the left, its control on the right. */
 const ROW =
-  'flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-dashed border-border px-0.5 py-[11px] last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
+  'flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-b border-dashed border-border px-0.5 py-1.5 last:border-b-0 [&>:first-child]:flex-[1_1_10rem]'
 const EMPTY = 'py-3 text-[13px] text-muted-foreground'
 /** Outlined destructive, never the accent fill. */
-const REVOKE = 'shrink-0 pointer-coarse:h-11'
+const REVOKE = 'h-7 shrink-0 px-2.5 text-xs pointer-coarse:h-11'
 
 const GRANT_TONE: Record<GrantState, StatusTone> = {
   current: 'success',
@@ -130,6 +132,7 @@ function PermissionsSettings() {
 
   /** `null` until the backend answers; kept on failure so nothing is hidden. */
   const [report, setReport] = useState<MCPTrustReport | null>(null)
+  const [historyExpanded, setHistoryExpanded] = useState(false)
   /** Current fingerprint per configured server; `null` until known. */
   const [fingerprints, setFingerprints] = useState<Record<
     string,
@@ -344,7 +347,12 @@ function PermissionsSettings() {
               {t('permissions:settings.noConversationGrants')}
             </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-border">
+            // Bounded: dozens of per-conversation grants scroll inside the
+            // card instead of stretching the whole page.
+            <ul
+              data-testid="permissions-conversation-list"
+              className="flex max-h-[26rem] flex-col divide-y divide-border overflow-y-auto pr-1 [scrollbar-width:thin]"
+            >
               {conversations.map(({ id: threadId, tools, mcpTools }) => (
                 <li key={threadId} className="py-1.5">
                   <p className="truncate pt-1 text-[11px] font-medium tracking-[.025em] text-subtle-foreground uppercase">
@@ -672,7 +680,7 @@ function PermissionsSettings() {
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((record, index) => (
+                  {(historyExpanded ? history : history.slice(0, HISTORY_PREVIEW)).map((record, index) => (
                     <tr
                       key={`${record.at}-${record.call}-${index}`}
                       className="border-b border-dashed border-border last:border-b-0"
@@ -707,6 +715,19 @@ function PermissionsSettings() {
                   ))}
                 </tbody>
               </table>
+              {history.length > HISTORY_PREVIEW && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  data-testid="permissions-history-toggle"
+                  className="mt-1"
+                  onClick={() => setHistoryExpanded((v) => !v)}
+                >
+                  {historyExpanded
+                    ? t('permissions:settings.historyShowFewer')
+                    : t('permissions:settings.historyShowAll', { count: history.length })}
+                </Button>
+              )}
             </div>
           )}
         </Card>

@@ -165,6 +165,8 @@
     "decisionDenied": "Denied",
     "historyRow": "{{decision}} · {{tool}} · {{at}}",
     "historyLimit": "Last {{count}}",
+    "historyShowAll": "Show all {{count}}",
+    "historyShowFewer": "Show fewer",
     "stateTrusted": "Trusted",
     "stateChanged": "Invalidated",
     "stateMissing": "Not configured",
