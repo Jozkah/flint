@@ -47,13 +47,17 @@ export function CoworkWorkProfilePicker({
   choice,
   onChoose,
   onAuto,
+  variant = 'pill',
 }: {
+  /** `quiet` under the composer: the profile's name only, no arrow. */
+  variant?: 'pill' | 'quiet'
   /** The session's profile, and whether the user picked it by hand. */
   choice: { id: WorkProfileId; manual: boolean } | undefined
   onChoose: (id: WorkProfileId) => void
   onAuto: () => void
 }) {
   const { t } = useTranslation()
+  const quiet = variant === 'quiet'
   const manual = choice?.manual ? choice.id : null
   const picked = choice ? workProfile(choice.id) : null
   const Icon = manual ? ICONS[manual] : WandSparkles
@@ -63,7 +67,7 @@ export function CoworkWorkProfilePicker({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant={quiet ? 'ghost' : 'outline'}
           size="xs"
           data-testid="work-profile-picker"
           aria-label={`${t('common:jev.profilesTitle')}: ${label}`}
@@ -72,17 +76,29 @@ export function CoworkWorkProfilePicker({
               ? t('common:jev.profilesAutoPicked', { profile: picked.label })
               : t('common:jev.profilesTitle')
           }
-          className="h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium text-secondary-foreground pointer-coarse:h-11"
+          className={cn(
+            'shrink-0 gap-1.5 text-xs font-medium pointer-coarse:h-11',
+            quiet
+              ? 'h-7 px-2 text-muted-foreground'
+              : 'h-[30px] px-2.5 text-secondary-foreground'
+          )}
         >
           <Icon aria-hidden className="size-3.5 shrink-0" />
-          {/* Icon only when the Cowork header row is tight, like Mode. */}
-          <span className="@max-2xl/ctx:sr-only">
-            {label}
-            {!manual && picked ? (
-              <span className="font-normal text-muted-foreground"> · {picked.label}</span>
-            ) : null}
-          </span>
-          <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+          {quiet ? (
+            // One word: the profile in use. The wand says Auto chose it.
+            <span>{picked ? picked.label : label}</span>
+          ) : (
+            <>
+              {/* Icon only when the Cowork header row is tight, like Mode. */}
+              <span className="@max-2xl/ctx:sr-only">
+                {label}
+                {!manual && picked ? (
+                  <span className="font-normal text-muted-foreground"> · {picked.label}</span>
+                ) : null}
+              </span>
+              <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            </>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

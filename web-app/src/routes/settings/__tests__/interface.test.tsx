@@ -190,7 +190,7 @@ describe('Interface Settings Route', () => {
     expect(setReduceMotion).toHaveBeenCalledWith(true)
   })
 
-  it('reads theme, reading, reset and motion down the first column', () => {
+  it('reads theme, reading, chat display, motion and reset down the first column', () => {
     const Component = InterfaceRoute.component as React.ComponentType
     render(<Component />)
 
@@ -200,8 +200,9 @@ describe('Interface Settings Route', () => {
     const order = [
       'settings:appearance.themeGroup',
       'settings:appearance.readingGroup',
-      'settings:appearance.resetGroup',
+      'settings:appearance.behaviourGroup',
       'settings:appearance.motionGroup',
+      'settings:appearance.resetGroup',
     ].map((title) => titles.indexOf(title))
     expect(order.every((at) => at >= 0)).toBe(true)
     expect([...order].sort((x, y) => x - y)).toEqual(order)

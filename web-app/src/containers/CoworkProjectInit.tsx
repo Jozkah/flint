@@ -25,11 +25,7 @@ import {
 } from '@/components/ui/dialog'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { errorText } from '@/lib/errorText'
-import { useProjectInitDrafts } from '@/lib/projectInit'
-
-/** The offer's label: a saved draft is continued rather than started over. */
-export const projectInitLabel = (hasDraft: boolean) =>
-  hasDraft ? 'Continue the FLINT.md draft' : 'Describe this project'
+import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 
 export function CoworkProjectInit({
   folder,

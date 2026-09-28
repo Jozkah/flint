@@ -13,6 +13,7 @@ import {
   COWORK_MODES,
   modeDescriptionKey,
   modeLabelKey,
+  modeShortLabelKey,
   type CoworkMode,
 } from '@/lib/coworkMode'
 
@@ -25,6 +26,8 @@ const ICONS: Record<CoworkMode, typeof Diamond> = {
 type Props = {
   mode: CoworkMode
   onChange: (mode: CoworkMode) => void
+  /** `pill` in a header row; `quiet` under the composer: text only, one word. */
+  variant?: 'pill' | 'quiet'
 }
 
 /**
@@ -36,7 +39,8 @@ type Props = {
  * here, and every option carries the sentence that says what it does, because
  * a person choosing Autonomous should be choosing it deliberately.
  */
-export function CoworkModeSelector({ mode, onChange }: Props) {
+export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) {
+  const quiet = variant === 'quiet'
   const { t } = useTranslation()
   const Icon = ICONS[mode]
 
@@ -45,28 +49,42 @@ export function CoworkModeSelector({ mode, onChange }: Props) {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
+            variant={quiet ? 'ghost' : 'outline'}
             size="xs"
             aria-label={t('common:coworkMode.label')}
+            title={quiet ? t(modeLabelKey(mode)) : undefined}
+            data-testid="cowork-mode-selector"
             className={cn(
-              // 30px, the height of every context control in the top header.
-              'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
+              quiet
+                ? 'h-7 shrink-0 gap-1.5 px-2 text-xs font-medium pointer-coarse:h-11'
+                : // 30px, the height of every context control in the top header.
+                  'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row. Warning,
               // not the accent: the accent means selected.
               mode === 'auto'
-                ? 'border-warning/35 bg-warning-tint text-warning'
-                : 'text-secondary-foreground'
+                ? quiet
+                  ? 'text-warning hover:text-warning'
+                  : 'border-warning/35 bg-warning-tint text-warning'
+                : quiet
+                  ? 'text-muted-foreground'
+                  : 'text-secondary-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            {/* Icon only when the Cowork header row is tight (@container/ctx);
-                the button keeps its aria-label either way. */}
-            <span className="@max-2xl/ctx:sr-only">{t(modeLabelKey(mode))}</span>
-            <ChevronDown
-              aria-hidden
-              className="size-3 shrink-0 text-muted-foreground"
-            />
+            {quiet ? (
+              <span>{t(modeShortLabelKey(mode))}</span>
+            ) : (
+              <>
+                {/* Icon only when the Cowork header row is tight (@container/ctx);
+                    the button keeps its aria-label either way. */}
+                <span className="@max-2xl/ctx:sr-only">{t(modeLabelKey(mode))}</span>
+                <ChevronDown
+                  aria-hidden
+                  className="size-3 shrink-0 text-muted-foreground"
+                />
+              </>
+            )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-80 p-1.5">

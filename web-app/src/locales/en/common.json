@@ -284,7 +284,6 @@
     "closeOverlay": "Close panel"
   },
   "coworkLayout": {
-    "sessionControls": "Folder, mode and access",
     "views": "Cowork view",
     "content": "Content",
     "output": "Output",
@@ -1290,14 +1289,17 @@
     "label": "What Flint may do",
     "review": {
       "label": "Review first",
+      "short": "Review",
       "description": "Reads, searches and inspects. Cannot write files or run commands."
     },
     "ask": {
       "label": "Ask before changes",
+      "short": "Ask",
       "description": "Works normally, but every change waits for you to allow it."
     },
     "auto": {
       "label": "Auto mode",
+      "short": "Auto",
       "description": "Changes files and runs commands without asking."
     }
   },
@@ -1446,14 +1448,17 @@
     "label": "Where changes go",
     "review-only": {
       "label": "Review only",
+      "short": "Sandbox",
       "description": "Flint can inspect this folder. Changes are created only in the session sandbox."
     },
     "managed-worktree": {
       "label": "Managed worktree",
+      "short": "Worktree",
       "description": "Flint works in an isolated Git worktree. Your current checkout is not modified."
     },
     "edit-folder": {
       "label": "Edit this folder",
+      "short": "Edits",
       "description": "Flint can modify files in this exact folder."
     },
     "notBuiltYet": "Not available yet",

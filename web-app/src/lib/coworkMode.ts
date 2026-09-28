@@ -27,6 +27,10 @@ export const COWORK_MODES: readonly CoworkMode[] = ['review', 'ask', 'auto']
 export const modeLabelKey = (mode: CoworkMode): string =>
   `common:coworkMode.${mode}.label`
 
+/** i18n key for the one-word name used under the composer. */
+export const modeShortLabelKey = (mode: CoworkMode): string =>
+  `common:coworkMode.${mode}.short`
+
 /** i18n key for the one-line explanation shown under the name. */
 export const modeDescriptionKey = (mode: CoworkMode): string =>
   `common:coworkMode.${mode}.description`

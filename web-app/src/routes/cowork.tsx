@@ -54,8 +54,6 @@ import {
   Loader2,
   MessageSquare,
   PanelRight,
-  ChevronDown,
-  SlidersHorizontal,
 } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import { basenameOf } from '@/lib/coworkPreview'
@@ -314,10 +312,8 @@ import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
 import { CoworkReadinessCard } from '@/containers/CoworkReadinessCard'
-import { CoworkProjectInit, projectInitLabel } from '@/containers/CoworkProjectInit'
-import { useProjectInitDrafts } from '@/lib/projectInit'
-import { useOverflowCollapse } from '@/hooks/useOverflowCollapse'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
+import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
 import { holdQueueThenStop } from '@/lib/chatSteering'
@@ -4760,10 +4756,6 @@ export function CoworkPage() {
   const windowPhone = useMediaQuery('(max-width: 767px)')
   const narrow = paneWidth != null ? paneWidth < 1100 : windowNarrow
   const phone = paneWidth != null ? paneWidth < 768 : windowPhone
-  // The header's context controls, when they no longer fit even at their
-  // smallest (a narrow window, the output or preview panel open), fold behind
-  // one button rather than being cut off at the edge.
-  const ctxBar = useOverflowCollapse<HTMLDivElement>(!phone && !paneChrome)
   const [phoneView, setPhoneView] = useState<CoworkPhoneView>('content')
   const view: CoworkPhoneView = phone ? phoneView : 'content'
   const transcriptScroll = useRef<number | null>(null)
@@ -4858,6 +4850,25 @@ export function CoworkPage() {
     />
   )
 
+  // The session's own model (janhq/jan#8905): keyed by session so switching
+  // re-reads it, and a choice is written to the session in view only.
+  const quietModelSelector = (
+    <DropdownModelProvider
+      variant="quiet"
+      key={session?.id ?? 'none'}
+      model={session?.model}
+      useLastUsedModel={!session?.model}
+      onModelChange={(model) =>
+        useCoworkSessions
+          .getState()
+          .setModel(ensureCurrentSession(paneSessionIdRef.current), {
+          provider: model.provider,
+          id: model.id,
+        })
+      }
+    />
+  )
+
   // Mode, access and workspace: in the context bar on wide screens, in the
   // composer row on phones where the bar holds the view switch.
   const workProfilesOn = useWorkProfiles((st) => st.enabled)
@@ -4876,7 +4887,9 @@ export function CoworkPage() {
   const hasProjectInitDraft = useProjectInitDrafts((st) =>
     projectInitRoot ? st.draftFor(projectInitRoot) !== null : false
   )
-  const sessionControls = (
+  // The project folder: in the header on wide screens, in the composer row
+  // on phones and in panes.
+  const workspacePill = (
     <>
       <CoworkWorkspacePill
         describeProject={
@@ -4900,7 +4913,15 @@ export function CoworkPage() {
         onAddExtra={() => void addExtraFolder()}
         onRemoveExtra={(extra) => void removeExtraFolder(extra)}
       />
+    </>
+  )
+
+  // What the run may do and how it works: under the composer, as quiet
+  // one-word buttons (Claude's layout), and as pills in a pane's composer row.
+  const runControls = (variant: 'pill' | 'quiet') => (
+    <>
       <CoworkModeSelector
+        variant={variant}
         mode={mode}
         // A choice made before the first message still needs a session to
         // live on; dropping it left the session in its default mode while the
@@ -4912,6 +4933,7 @@ export function CoworkPage() {
         }
       />
       <CoworkAccessSelector
+        variant={variant}
         effective={effective}
         capability={capabilityState}
         hasFolder={Boolean(folder)}
@@ -4925,11 +4947,19 @@ export function CoworkPage() {
       />
       {workProfilesOn && session?.id && (
         <CoworkWorkProfilePicker
+          variant={variant}
           choice={workProfileChoice}
           onChoose={(id) => useWorkProfiles.getState().choose(session.id, id, true)}
           onAuto={() => useWorkProfiles.getState().clearManual(session.id)}
         />
       )}
+    </>
+  )
+
+  const sessionControls = (
+    <>
+      {workspacePill}
+      {runControls('pill')}
     </>
   )
 
@@ -5152,57 +5182,14 @@ export function CoworkPage() {
             title is not repeated here: it heads the conversation frame. */}
         <PageHeaderRow>
           {!phone && (
-            // Set off from the breadcrumb by a dashed rule, as the design's
-            // context controls are. The pills never shrink below their own
-            // content (squeezed to nothing they drew on top of each other);
-            // the model pill truncates inside a bounded box, the mode and
-            // access pills drop their labels to icons when the row is tight,
-            // and anything still too wide is clipped at the right edge.
+            // Set off from the breadcrumb by a dashed rule: the project folder,
+            // which truncates its name when the row is tight. The run's own
+            // controls and the model sit under the composer.
             <div
-              ref={ctxBar.ref}
               data-testid="cowork-context-bar"
-              data-collapsed={ctxBar.collapsed ? '' : undefined}
               className="@container/ctx flex min-w-0 flex-1 items-center gap-2 overflow-hidden border-l border-dashed border-border pl-3.5"
             >
-              {/* Folded, the model pill may shrink further: it truncates its
-                  own name, and the row then holds only it and one button. */}
-              <div
-                className={cn(
-                  'flex max-w-56 shrink',
-                  ctxBar.collapsed ? 'min-w-16' : 'min-w-28'
-                )}
-              >
-                {modelSelector}
-              </div>
-              {ctxBar.collapsed ? (
-                // Too tight for the controls even as icons: one button opens
-                // them, full size, rather than cutting them off at the edge.
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="xs"
-                      data-testid="cowork-context-more"
-                      aria-label={t('common:coworkLayout.sessionControls')}
-                      title={t('common:coworkLayout.sessionControls')}
-                      className="h-[30px] shrink-0 gap-1 px-2 text-xs text-muted-foreground pointer-coarse:h-11"
-                    >
-                      <SlidersHorizontal aria-hidden className="size-3.5" />
-                      <ChevronDown aria-hidden className="size-3" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="start"
-                    collisionPadding={12}
-                    className="flex w-auto max-w-[calc(100vw-1.5rem)] flex-col items-start gap-2 p-2"
-                    data-testid="cowork-context-more-panel"
-                  >
-                    {sessionControls}
-                  </PopoverContent>
-                </Popover>
-              ) : (
-                sessionControls
-              )}
+              {workspacePill}
             </div>
           )}
           {!phone && (
@@ -5815,7 +5802,7 @@ export function CoworkPage() {
                 hideTokenCounter
                 surfaceControls={
                   <>
-                    {(phone || paneChrome) && sessionControls}
+                    {paneChrome ? sessionControls : phone ? workspacePill : null}
                     <CoworkSandboxChip />
                     {/* On a phone the composer is out of view while the
                         output is, so it keeps one set there. */}
@@ -5826,6 +5813,22 @@ export function CoworkPage() {
                   </>
                 }
               />
+              {!paneChrome && (
+                // Under the composer, as Claude lays it out: what the run may
+                // do on the left, the model on the right. Wraps, never clips.
+                <div
+                  data-testid="cowork-run-controls"
+                  className="flex items-center gap-2 px-1 pt-1.5"
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-0.5 gap-y-1">
+                    {runControls('quiet')}
+                  </div>
+                  {/* The model's name truncates before anything wraps. */}
+                  <div className="ml-auto flex min-w-24 max-w-64 shrink-[20]">
+                    {quietModelSelector}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           </FrameBody>

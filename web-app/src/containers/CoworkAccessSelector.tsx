@@ -20,6 +20,7 @@ import {
   ACCESS_MODES,
   accessDescriptionKey,
   accessLabelKey,
+  accessShortLabelKey,
   effectiveDowngradeKey,
   type AccessMode,
   type EffectiveAccess,
@@ -46,6 +47,8 @@ const ICONS: Record<AccessMode, typeof FolderLock> = {
 }
 
 export type AccessSelectorProps = {
+  /** `pill` in a header row; `quiet` under the composer: text only, one word. */
+  variant?: 'pill' | 'quiet'
   /** What is in force, including any downgrade from the stored preference. */
   effective: EffectiveAccess
   capability: CapabilityState
@@ -98,6 +101,7 @@ function blockedReason(
 export function CoworkAccessSelector(props: AccessSelectorProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const quiet = props.variant === 'quiet'
   const active = props.effective.access
   const Icon = ICONS[active]
   const downgradeKey = effectiveDowngradeKey(props.effective)
@@ -115,27 +119,46 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
       <DropdownMenu open={open} onOpenChange={setOpen}>
         <DropdownMenuTrigger asChild>
           <Button
-            variant="outline"
+            variant={quiet ? 'ghost' : 'outline'}
             size="xs"
             aria-label={t('common:coworkAccess.label')}
-            title={downgradeKey ? t(downgradeKey) : undefined}
+            title={
+              downgradeKey
+                ? t(downgradeKey)
+                : quiet
+                  ? t(accessLabelKey(active))
+                  : undefined
+            }
+            data-testid="cowork-access-selector"
             className={cn(
-              // 30px, the height of every context control in the top header.
-              'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
+              quiet
+                ? 'h-7 shrink-0 gap-1.5 px-2 text-xs font-medium pointer-coarse:h-11'
+                : // 30px, the height of every context control in the top header.
+                  'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
               // Editing the user's own checkout is the state worth noticing.
               active === 'edit-folder'
-                ? 'border-warning/35 bg-warning-tint text-warning'
-                : 'text-secondary-foreground'
+                ? quiet
+                  ? 'text-warning hover:text-warning'
+                  : 'border-warning/35 bg-warning-tint text-warning'
+                : quiet
+                  ? 'text-muted-foreground'
+                  : 'text-secondary-foreground'
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            {/* Icon only when the Cowork header row is tight (@container/ctx);
-                the button keeps its aria-label either way. */}
-            <span className="@max-2xl/ctx:sr-only">{t(accessLabelKey(active))}</span>
-            <ChevronDown
-              aria-hidden
-              className="size-3 shrink-0 text-muted-foreground"
-            />
+            {quiet ? (
+              <span>{t(accessShortLabelKey(active))}</span>
+            ) : (
+              <>
+                {/* Icon only when the Cowork header row is tight (@container/ctx);
+                    the button keeps its aria-label either way. */}
+                <span className="@max-2xl/ctx:sr-only">{t(accessLabelKey(active))}</span>
+                <ChevronDown
+                  aria-hidden
+                  className="size-3 shrink-0 text-muted-foreground"
+                />
+              </>
+            )}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-[340px] p-1.5">
