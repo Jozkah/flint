@@ -1528,6 +1528,7 @@
     "inTree": "These paths are in {{tree}}, not in the folder this session is attached to.",
     "overExisting": "Already had uncommitted changes before this run, so only Flint’s edit is Flint’s:",
     "preExisting": "Already changed before this run. Not Flint’s:",
+    "showAll": "Show all {{formattedCount}}",
     "observed": "Appeared during this run. Nothing shows Flint caused these:",
     "unknown": "No Git evidence either way for these:",
     "baseline": {

@@ -1,3 +1,4 @@
+import { useState, type ReactNode } from 'react'
 import { Button } from '@/components/ui/button'
 import { BrowserVerifyEvidence } from '@/containers/BrowserVerifyPanel'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -303,39 +304,47 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
   const openable = (path: string) =>
     Boolean(props.onOpenPath) && (props.canOpenPath?.(path) ?? true)
 
+  const pathRow = (path: string, open: boolean) => (
+    <li
+      key={path}
+      className="flex min-w-0 items-center gap-2 border-b border-dashed border-border py-1.5 font-mono text-xs text-fg-2 last:border-b-0"
+    >
+      <span className="min-w-0 flex-1 break-all">{path}</span>
+      {open && openable(path) ? (
+        <Button
+          variant="link"
+          size="sm"
+          className="h-6 shrink-0 px-1 font-sans text-[12.5px] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:h-11"
+          aria-label={t('results:location.open', { path })}
+          onClick={() => props.onOpenPath?.(path)}
+        >
+          {t('results:actions.openResult')}
+        </Button>
+      ) : null}
+    </li>
+  )
+
+  /**
+   * One group of this session's own writes: the first few, with "Show all"
+   * for the rest.
+   */
   const group = (label: string, paths: readonly string[], open = false) =>
     paths.length === 0 ? null : (
-      <div key={label} className="flex flex-col gap-1">
-        <span className="text-xs text-muted-foreground">{label}</span>
-        <ul className="flex flex-col">
-          {paths.map((path) => (
-            <li
-              key={path}
-              className="flex min-w-0 items-center gap-2 border-b border-dashed border-border py-1.5 font-mono text-xs text-fg-2 last:border-b-0"
-            >
-              <span className="min-w-0 flex-1 break-all">{path}</span>
-              {open && openable(path) ? (
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-6 shrink-0 px-1 font-sans text-[12.5px] text-secondary-foreground underline underline-offset-2 hover:text-foreground pointer-coarse:h-11"
-                  aria-label={t('results:location.open', { path })}
-                  onClick={() => props.onOpenPath?.(path)}
-                >
-                  {t('results:actions.openResult')}
-                </Button>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <PathGroup
+        key={label}
+        label={label}
+        paths={paths}
+        row={(path) => pathRow(path, open)}
+      />
     )
 
+  // Only this session's own writes are listed. Files that were already
+  // changed, or changed by something else while it ran, are not its work: a
+  // checkout with thousands of uncommitted files turned this card into a
+  // wall of paths that said nothing about the run.
   const nothingFound =
     changes.janAuthored.length === 0 &&
-    changes.preExisting.length === 0 &&
-    changes.observed.length === 0 &&
-    changes.unknown.length === 0
+    changes.janWritesOverExisting.length === 0
 
   const verification = summarizeVerification(outcome)
   const firstOpenable = resultLocation.paths.find(openable)
@@ -481,12 +490,6 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
                   t('common:coworkOrigins.overExisting'),
                   changes.janWritesOverExisting
                 )}
-                {group(
-                  t('common:coworkOrigins.preExisting'),
-                  changes.preExisting
-                )}
-                {group(t('common:coworkOrigins.observed'), changes.observed)}
-                {group(t('common:coworkOrigins.unknown'), changes.unknown)}
               </>
             )}
             <p className="text-xs text-muted-foreground">
@@ -611,5 +614,37 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
         </div>
       </details>
     </section>
+  )
+}
+
+const OWN_SHOWN = 10
+
+function PathGroup(props: {
+  label: string
+  paths: readonly string[]
+  row: (path: string) => ReactNode
+}) {
+  const { t } = useTranslation()
+  const [all, setAll] = useState(false)
+  const { label, paths, row } = props
+  const count = paths.length
+  const shown = all ? paths : paths.slice(0, OWN_SHOWN)
+  return (
+    <div className="flex flex-col gap-1" data-testid="cowork-path-group">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <ul className="flex flex-col">{shown.map(row)}</ul>
+      {count > shown.length ? (
+        <button
+          type="button"
+          className="self-start text-xs text-secondary-foreground underline underline-offset-2 hover:text-foreground"
+          onClick={() => setAll(true)}
+        >
+          {t('common:coworkOrigins.showAll', {
+            count,
+            formattedCount: count.toLocaleString(),
+          })}
+        </button>
+      ) : null}
+    </div>
   )
 }
