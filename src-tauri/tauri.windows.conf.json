@@ -35,6 +35,10 @@
       "resources/bin/uv"
     ],
     "windows": {
+      "wix": {
+        "bannerPath": "./installer/wix/banner.bmp",
+        "dialogImagePath": "./installer/wix/dialog.bmp"
+      },
       "nsis": {
         "installerIcon": "icons/icon.ico"
       },
