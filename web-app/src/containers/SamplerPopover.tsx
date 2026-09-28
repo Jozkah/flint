@@ -101,12 +101,9 @@ export function SamplerPopover({
     if (!activeAssistant) return
     const updated = { ...activeAssistant, parameters: next }
     if (isThreadAssistant && assistantSwitcher) {
-      // Sync the thread's copy so inference picks it up immediately; mirror
-      // into the canonical assistant only when it still exists.
+      // Sampling overrides belong to this thread. Updating the canonical
+      // assistant also rewrites every other thread using that assistant.
       assistantSwitcher.updateCurrentThreadAssistant(updated)
-      if (assistantSwitcher.assistants.some((a) => a.id === updated.id)) {
-        updateAssistant(updated)
-      }
     } else {
       updateAssistant(updated)
     }

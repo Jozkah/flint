@@ -49,6 +49,7 @@ type CodeViewerProps = {
   /** When set, a selection offers “Add to chat” and reports the selected span. */
   onAddToChat?: (ref: CodeRef) => void
   className?: string
+  changedLines?: Record<number, { added: boolean; removed: boolean }>
   /** Why this file cannot be edited, when editing exists for the session.
    * Replaces the generic read-only tooltip. */
   readOnlyHint?: string
@@ -58,7 +59,7 @@ type CodeViewerProps = {
 
 /** Same line-number transformer style as `ai-elements/code-block`, kept local so
  * the viewer and the chat block can diverge (gutter is unselectable here). */
-const lineNumbers: ShikiTransformer = {
+const lineNumbers = (changedLines: CodeViewerProps['changedLines']): ShikiTransformer => ({
   name: 'code-viewer-line-numbers',
   line(node, line) {
     // Stamped on the line itself so a selection can be mapped back to a line
@@ -83,8 +84,23 @@ const lineNumbers: ShikiTransformer = {
       },
       children: [{ type: 'text', value: String(line) }],
     })
+    const marker = changedLines?.[line]
+    if (marker) {
+      node.children.unshift({
+        type: 'element',
+        tagName: 'span',
+        properties: {
+          className: ['cv-change-marker', 'inline-block', 'min-w-5', 'select-none'],
+          'aria-label': marker.added && marker.removed ? 'Changed line' : marker.added ? 'Added line' : 'Removed line',
+        },
+        children: [
+          ...(marker.removed ? [{ type: 'element' as const, tagName: 'span', properties: { className: ['text-destructive'] }, children: [{ type: 'text' as const, value: '−' }] }] : []),
+          ...(marker.added ? [{ type: 'element' as const, tagName: 'span', properties: { className: ['text-success'] }, children: [{ type: 'text' as const, value: '+' }] }] : []),
+        ],
+      })
+    }
   },
-}
+})
 
 /** 1-based line number of the rendered line containing `node`, if any. */
 function lineOfNode(node: Node | null): number | null {
@@ -111,6 +127,7 @@ export function CodeViewer({
   onToggleWrap,
   onAddToChat,
   className,
+  changedLines,
   readOnlyHint,
   revealLine,
 }: CodeViewerProps) {
@@ -125,7 +142,8 @@ export function CodeViewer({
   useEffect(() => {
     let alive = true
     const theme = isDark ? 'one-dark-pro' : 'one-light'
-    const cacheKey = highlightKey(content, language.lang, theme)
+    const markers = JSON.stringify(changedLines ?? {})
+    const cacheKey = `${highlightKey(content, language.lang, theme)}:${markers}`
     const cached = readHighlight(cacheKey)
     if (cached) {
       setHtml(cached)
@@ -138,7 +156,7 @@ export function CodeViewer({
     void codeToHtml(content, {
       lang: language.lang,
       theme,
-      transformers: [lineNumbers],
+      transformers: [lineNumbers(changedLines)],
     })
       .then((markup) => {
         rememberHighlight(cacheKey, markup)
@@ -151,7 +169,7 @@ export function CodeViewer({
     return () => {
       alive = false
     }
-  }, [content, language.lang, isDark, relPath])
+  }, [content, language.lang, isDark, relPath, changedLines])
 
   // Scroll to a requested line once the highlighted lines exist, and mark it
   // briefly so the eye lands on it.

@@ -70,6 +70,7 @@ import {
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
 import { errorText } from '@/lib/errorText'
+import { changedLines, collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { useTheme } from '@/hooks/useTheme'
 import {
   checkDisk,
@@ -592,6 +593,17 @@ export function CoworkCodePanel({
   // Fetch the active tab's content once per open file.
   const active = activeTab(state)
   const activeId = active ? tabId(active) : null
+  const fileChanges = useMemo(() => {
+    if (!active || active.origin.kind === 'external') return undefined
+    const root = active.origin.kind === 'project' ? folder : workspacePath
+    if (!root) return undefined
+    const selected = resolveInRoot(root, active.path)?.toLowerCase()
+    if (!selected) return undefined
+    const diff = collectCodeFileDiffs(turns ?? [], []).find(
+      (file) => resolveInRoot(root, file.path)?.toLowerCase() === selected
+    )
+    return diff ? changedLines(diff) : undefined
+  }, [active, folder, workspacePath, turns])
   useEffect(() => {
     if (!active || !activeId || files.has(activeId)) return
     void loadFile(active)
@@ -1703,6 +1715,7 @@ export function CoworkCodePanel({
                       onStateChange({ ...state, wordWrap })
                     }
                     origin={active.origin}
+                    changedLines={fileChanges}
                     onAddToChat={onAddToChat}
                     readOnlyHint={
                       editAccess && editTarget?.kind === 'read-only'

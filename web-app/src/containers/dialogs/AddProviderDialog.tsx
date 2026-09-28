@@ -80,7 +80,7 @@ export function AddProviderDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="sm:max-w-[460px] lg:max-w-[460px] xl:max-w-[460px]"
+        className="flex flex-col sm:max-w-[460px] lg:max-w-[460px] xl:max-w-[460px]"
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           nameInputRef.current?.focus()
@@ -90,7 +90,7 @@ export function AddProviderDialog({
           <DialogTitle>{t('provider:addOpenAIProvider')}</DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
           <div className="flex flex-col gap-1">
           <label
             htmlFor="add-provider-name"
@@ -170,7 +170,7 @@ export function AddProviderDialog({
           )}
         </div>
 
-        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+        <DialogFooter className={`${STICKY_DIALOG_FOOTER} shrink-0`}>
           <DialogClose asChild>
             <Button
               variant="ghost"

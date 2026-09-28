@@ -21,7 +21,7 @@ describe('CacheReuseBadge', () => {
     render(<CacheReuseBadge usage={usage(1000, 900)} />)
     const badge = screen.getByTestId('cache-status')
     expect(badge.dataset.cacheStatus).toBe('reused')
-    expect(badge).toHaveTextContent('Cache reused 90%')
+    expect(badge).toHaveTextContent('90% input cached')
     // Not colour alone: the label names the state and every number.
     expect(badge.getAttribute('aria-label')).toBe(
       'Cache reused. Input 1,000, Cached 900, Uncached 100, Output 10, Total 1,010.'

@@ -283,7 +283,7 @@ vi.mock('@/containers/HeaderPage', () => ({
   ),
 }))
 vi.mock('@/containers/DropdownModelProvider', () => ({
-  default: () => <div />,
+  default: () => <div data-testid="model-selector" />,
 }))
 vi.mock('@/containers/SkillSelector', () => ({ default: () => <div /> }))
 vi.mock('@/containers/MessageItem', () => ({ MessageItem: () => <div /> }))
@@ -613,6 +613,7 @@ describe('the layout at each width', () => {
     await userEvent.click(screen.getByTestId('cowork-view-details'))
     expect(await screen.findByTestId('cowork-details-view')).toBeInTheDocument()
     expect(screen.getByTestId('session-details-body')).toBeInTheDocument()
+    expect(screen.getAllByTestId('model-selector')).toHaveLength(1)
   })
 })
 

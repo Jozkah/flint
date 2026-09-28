@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
+import { changedLines, collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import type { CoworkTurn, SubagentRun } from '@/hooks/useCoworkSessions'
 
 const edit = (
@@ -17,6 +17,16 @@ const edit = (
 })
 
 describe('collectCodeFileDiffs', () => {
+  it('locates added and removed line markers for the code gutter', () => {
+    const [file] = collectCodeFileDiffs(
+      [edit('src/a.ts', '-    2 | old\n+    2 | new\n+    3 | added')],
+      []
+    )
+    expect(changedLines(file)).toEqual({
+      2: { added: true, removed: true },
+      3: { added: true, removed: false },
+    })
+  })
   it('groups repeated main-agent operations by path and preserves first-seen file order', () => {
     const files = collectCodeFileDiffs(
       [

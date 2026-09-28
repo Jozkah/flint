@@ -115,11 +115,9 @@ export function CoworkStopMenu({
           onStopCurrent()
           report(choice, await stop({ session: sessionId, run: runId }))
         } else {
-          // No scope: everything, everywhere. Abort the renderer-side run loops
-          // first (the Rust emergency-stop only sweeps subprocess Tokens and
-          // never reaches these JS AbortControllers), then sweep the backend.
-          onStopAll()
-          report(choice, await stop({}))
+          // Abort this chat's renderer loop and stop its backend activity.
+          onStopCurrent()
+          report(choice, await stop({ session: sessionId }))
         }
         close()
         triggerRef.current?.focus()

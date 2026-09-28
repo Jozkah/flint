@@ -1129,6 +1129,7 @@
   },
   "tasks": {
     "title": "Activity",
+    "activityTitle": "Background activity",
     "empty": "Subagents and shell commands from this session will appear here.",
     "running": "Running ({{count}})",
     "finished": "Finished ({{count}})",
@@ -1451,6 +1452,8 @@
   },
   "coworkAccess": {
     "label": "Where changes go",
+    "pendingNextRun": "Pending until current activity finishes",
+    "currentRunUnchanged": "Changes to these controls apply to the next run.",
     "review-only": {
       "label": "Review only",
       "short": "Sandbox",
@@ -1642,13 +1645,13 @@
     "trigger": "Stop…",
     "current": "Stop current task",
     "currentDescription": "Ends this response and everything under it. Other sessions keep running.",
-    "all": "Stop all activity",
-    "allDescription": "Ends every run, tool, command and agent everywhere in Flint.",
-    "confirm": "Stop everything?",
-    "allConfirm": "Stop all",
+    "all": "Stop all in this chat",
+    "allDescription": "Ends every run, tool, command and agent in this chat.",
+    "confirm": "Stop all activity in this chat?",
+    "allConfirm": "Stop this chat",
     "stopping": "Stopping…",
     "currentStopped": "Stopped this task.",
-    "allStopped": "Stopped all activity ({{count}} stopped).",
+    "allStopped": "Stopped chat activity ({{count}} stopped).",
     "incomplete": "Stopped, but {{count}} process(es) are still running."
   },
   "timeline": {
