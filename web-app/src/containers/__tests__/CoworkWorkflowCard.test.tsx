@@ -95,7 +95,7 @@ function Card({
 }
 
 describe('CoworkWorkflowCard', () => {
-  it('names the run and how far it has got', () => {
+  it('names background activity without repeating the prompt', () => {
     render(
       <Card
         state={stateWith(
@@ -104,7 +104,8 @@ describe('CoworkWorkflowCard', () => {
         )}
       />
     )
-    expect(screen.getByText('refactor the parser')).toBeInTheDocument()
+    expect(screen.getByText('common:tasks.activityTitle')).toBeInTheDocument()
+    expect(screen.queryByText('refactor the parser')).not.toBeInTheDocument()
     // While work is running the summary says how much is running; the
     // finished count returns once nothing is.
     expect(screen.getByText(/common:tasks.runningTasks count=1/)).toBeInTheDocument()

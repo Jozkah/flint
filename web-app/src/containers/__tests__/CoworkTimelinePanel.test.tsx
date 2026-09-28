@@ -68,10 +68,16 @@ beforeEach(() => {
 })
 
 const rows = () => screen.queryAllByTestId('timeline-row')
+const showAll = () => {
+  for (const category of ['messages', 'reasoning', 'edits', 'usage', 'steering', 'approvals', 'background', 'subagents', 'run']) {
+    fireEvent.click(screen.getByTestId(`timeline-filter-${category}`))
+  }
+}
 
 describe('CoworkTimelinePanel', () => {
   it('lists the session\'s events in log order with their state in words', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     expect(rows().map((r) => r.dataset.status)).toEqual([
       'completed', 'completed', 'completed', 'completed', 'refused', 'completed',
@@ -84,11 +90,12 @@ describe('CoworkTimelinePanel', () => {
 
   it('filters by category and shows everything again', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
-    await waitFor(() => expect(rows()).toHaveLength(6))
-    for (const c of ['messages', 'tools', 'usage', 'run', 'approvals', 'subagents', 'steering', 'background', 'reasoning']) {
-      fireEvent.click(screen.getByTestId(`timeline-filter-${c}`))
-    }
-    // Only edits left.
+    expect(screen.getByTestId('timeline-filter-tools')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('timeline-filter-messages')).toHaveAttribute('aria-pressed', 'false')
+    await waitFor(() => expect(rows()).toHaveLength(3))
+    fireEvent.click(screen.getByTestId('timeline-filter-tools'))
+    expect(rows()).toHaveLength(0)
+    fireEvent.click(screen.getByTestId('timeline-filter-edits'))
     expect(rows()).toHaveLength(1)
     expect(screen.getByTestId('timeline-filter-edits').getAttribute('aria-pressed')).toBe('true')
     fireEvent.click(screen.getByTestId('timeline-filter-tools'))
@@ -97,6 +104,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('opens an edit to its own unified diff, with file and hunk metadata', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     const edit = rows().find((r) => r.dataset.categories?.includes('edits'))!
     fireEvent.click(edit.querySelector('[data-row-toggle]')!)
@@ -109,6 +117,7 @@ describe('CoworkTimelinePanel', () => {
   // asked for by the edit's invocation as well as its call.
   it('loads an edit\'s diff by its invocation, not by the call id alone', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     const edit = rows().find((r) => r.dataset.categories?.includes('edits'))!
     fireEvent.click(edit.querySelector('[data-row-toggle]')!)
@@ -118,6 +127,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('shows a typed refusal in the row details', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     const refused = rows().find((r) => r.dataset.status === 'refused')!
     fireEvent.click(refused.querySelector('[data-row-toggle]')!)
@@ -128,6 +138,7 @@ describe('CoworkTimelinePanel', () => {
   // same point, and every phase in a row's history appeared twice.
   it('lists each phase of a call once when opened on an idle session', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     await act(async () => {})
     const read = rows().find((r) => r.textContent?.includes('a.txt'))!
@@ -137,6 +148,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('links everything from one model request', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     fireEvent.click(screen.getAllByTestId('timeline-invocation')[0])
     const linked = rows().filter((r) => r.dataset.linked === 'true')
@@ -146,6 +158,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('moves between rows with the arrow keys, Home and End', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     const toggles = () => [...document.querySelectorAll<HTMLButtonElement>('[data-row-toggle]')]
     toggles()[0].focus()
@@ -161,6 +174,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('pauses following when scrolled up and resumes on request', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     const list = screen.getByTestId('timeline-list')
     Object.defineProperty(list, 'scrollHeight', { value: 1000, configurable: true })
@@ -174,6 +188,7 @@ describe('CoworkTimelinePanel', () => {
 
   it('shows only the session it is given, and drops the previous one on a switch', async () => {
     const { rerender } = render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showAll()
     await waitFor(() => expect(rows()).toHaveLength(6))
     rerender(<CoworkTimelinePanel sessionId="s2" running={false} onClose={() => {}} />)
     await waitFor(() => expect(rows()).toHaveLength(1))
@@ -190,6 +205,7 @@ describe('CoworkTimelinePanel', () => {
     vi.useFakeTimers()
     try {
       render(<CoworkTimelinePanel sessionId="s1" running={true} onClose={() => {}} />)
+      showAll()
       await act(async () => {
         await vi.advanceTimersByTimeAsync(10)
       })

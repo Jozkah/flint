@@ -14,6 +14,25 @@ export type CoworkFileDiff = {
   operations: CoworkDiffOperation[]
 }
 
+/** Gutter markers for focused edit/write lines in the agent's diff output. */
+export function changedLines(diff: CoworkFileDiff | undefined): Record<number, { added: boolean; removed: boolean }> {
+  const lines: Record<number, { added: boolean; removed: boolean }> = {}
+  if (!diff) return lines
+  for (const operation of diff.operations) {
+    for (const text of operation.diff.split('\n')) {
+      const match = /^([+-])\s+(\d+)\s*\|/.exec(text)
+      if (!match) continue
+      const line = Number(match[2])
+      if (!Number.isSafeInteger(line) || line < 1) continue
+      const marker = lines[line] ?? { added: false, removed: false }
+      if (match[1] === '+') marker.added = true
+      else marker.removed = true
+      lines[line] = marker
+    }
+  }
+  return lines
+}
+
 function addOperation(
   files: Map<string, CoworkFileDiff>,
   turn: CoworkTurn,

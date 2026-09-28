@@ -136,6 +136,12 @@ describe('DefaultModelsService - coverage supplement', () => {
 
   // ── startModel with settings mapping ──
   describe('startModel with settings', () => {
+    it('reports an unavailable engine instead of silently succeeding', async () => {
+      mockEngineManager.get.mockReturnValueOnce(undefined)
+      await expect(
+        svc.startModel({ provider: 'llamacpp', models: [] } as any, 'm1')
+      ).rejects.toThrow('llamacpp engine is not available')
+    })
     it('maps ctx_len to ctx_size and ngl to n_gpu_layers', async () => {
       mockEngine.getLoadedModels.mockResolvedValue([])
       mockEngine.load.mockResolvedValue({ id: 'session' })

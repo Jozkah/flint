@@ -720,7 +720,9 @@ function ProviderDetail() {
         setFailedModels((prev) =>
           prev.includes(modelId) ? prev : [...prev, modelId]
         )
-        setModelLoadError(error as ErrorObject)
+        const message = errorText(error, 'Model could not start')
+        setModelLoadError(message)
+        toast.error(`Could not start ${modelId}`, { description: message })
       } finally {
         // Remove model from loading state
         setLoadingModels((prev) => prev.filter((id) => id !== modelId))

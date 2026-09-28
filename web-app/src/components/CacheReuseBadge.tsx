@@ -46,7 +46,8 @@ export function CacheReuseBadge({
   const requests = usage?.requests
   const several = requests !== undefined && requests > 1
   let shown = TEXT[status]
-  if (status === 'reused' && pct !== undefined) shown += ` ${formatPercent(pct)}`
+  if (status === 'reused' && pct !== undefined)
+    shown = `${formatPercent(pct)} input cached`
   const counts =
     several && hits !== undefined
       ? ` Cache reused on ${hits} of ${requests} requests.`

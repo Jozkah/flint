@@ -65,8 +65,8 @@ export function CoworkWorkflowCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <StatusIcon status={status} size="size-[15px]" />
-        <p className="min-w-0 truncate font-semibold" title={workflow.title}>
-          {workflow.title}
+        <p className="min-w-0 truncate font-semibold">
+          {t('common:tasks.activityTitle')}
         </p>
         <p
           className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"

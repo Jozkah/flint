@@ -109,20 +109,17 @@ describe('CoworkStopMenu', () => {
     expect(onStop).not.toHaveBeenCalled()
   })
 
-  it('stops everything with no scope once confirmed', async () => {
+  it('stops this session once confirmed', async () => {
     const user = userEvent.setup()
     mount()
     await user.click(screen.getByTestId('cowork-stop'))
     await user.click(await screen.findByTestId('stop-all'))
     await user.click(await screen.findByTestId('stop-all-confirmed'))
 
-    await waitFor(() => expect(onStop).toHaveBeenCalledWith({}))
-    // Application scope is the absence of a scope, not a second command.
+    await waitFor(() => expect(onStop).toHaveBeenCalledWith({ session: 's1' }))
     expect(onStop).toHaveBeenCalledTimes(1)
-    expect(onStopCurrent).not.toHaveBeenCalled()
-    // The renderer-side loops must be aborted too: the backend {} sweep only
-    // reaps subprocess Tokens and cannot reach the JS AbortControllers.
-    expect(onStopAll).toHaveBeenCalledTimes(1)
+    expect(onStopCurrent).toHaveBeenCalledTimes(1)
+    expect(onStopAll).not.toHaveBeenCalled()
   })
 
   it('reports surviving processes instead of claiming success', async () => {
