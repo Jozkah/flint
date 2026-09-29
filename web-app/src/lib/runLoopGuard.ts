@@ -77,7 +77,20 @@ export function classifyShellFailure(
 export type StableFailureClass =
   | 'dirty git worktree'
   | 'access must change before retrying'
+  | 'pull request base changed'
+  | 'pull request head is not pushed'
+  | 'pull request has conflicts'
+  | 'tool is unavailable'
 
+/**
+ * Failures whose text already says that repeating the operation cannot help.
+ *
+ * These are intentionally semantic rather than exact-output matches: the
+ * transcript showed the same blocker with different commands (`npm`, `npm.cmd`,
+ * direct node), and Git PR attempts with different argument spellings. The
+ * strategy needs external state to change first, so two occurrences are enough
+ * to stop burning the run budget.
+ */
 export function classifyStableFailure(
   tool: string,
   error: string | undefined
@@ -90,6 +103,37 @@ export function classifyStableFailure(
     )
   ) {
     return 'dirty git worktree'
+  }
+  if (
+    tool === 'git' &&
+    /pull request not opened: base .* has moved|fetch the target repository'?s current base branch before opening the pull request/i.test(
+      error
+    )
+  ) {
+    return 'pull request base changed'
+  }
+  if (
+    tool === 'git' &&
+    /pull request not opened: could not read pushed head|push the branch first/i.test(
+      error
+    )
+  ) {
+    return 'pull request head is not pushed'
+  }
+  if (
+    tool === 'git' &&
+    /pull request not opened: the proposed pull request does not merge cleanly|merge-tree .* exited with 1|resolve reported conflicts first/i.test(
+      error
+    )
+  ) {
+    return 'pull request has conflicts'
+  }
+  if (
+    /model tried to call unavailable tool|tool ['`][^'`]+['`] is not available to this run|tool ['`][^'`]+['`] is disabled/i.test(
+      error
+    )
+  ) {
+    return 'tool is unavailable'
   }
   if (
     /do not retry (?:the )?(?:same )?(?:call|command).*?(?:until|before).*?(?:grant|permission|access)|do not retry .* before it is granted/i.test(
