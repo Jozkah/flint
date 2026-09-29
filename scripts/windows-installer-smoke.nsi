@@ -49,10 +49,11 @@ Page custom FlintMaintenance
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
-  ; Production initializes this from /P. The smoke build models a normal
-  ; interactive launch so /WX can catch real warnings without reporting an
-  ; intentionally uninitialized harness-only variable.
+  ; Production initializes these before the maintenance renderer can read them.
+  ; The smoke build models a normal first install while still referencing the
+  ; maintenance state so /WX only reports genuine installer warnings.
   StrCpy $PassiveMode 0
+  StrCpy $ReinstallPageCheck 0
 FunctionEnd
 
 Function RunMainBinary
