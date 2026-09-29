@@ -56,7 +56,6 @@ export default function Chat({ id }: { id: string }) {
   }, [id, data, olderStart])
 
   const streamShown = stream && !allMessages.some((m) => m.id === stream.messageId) ? stream : null
-  // Loading old history must not snap the user back to the newest message.
   const ref = useStickToBottom(messages.length + pending.length + (streamShown?.text.length ?? 0))
   const running = session?.status === 'running' || Boolean(stream && !stream.done)
   const earlier = olderStart ?? data?.start ?? 0
@@ -163,9 +162,6 @@ export default function Chat({ id }: { id: string }) {
               }}
             >
               <I n="globe" />
-            </button>
-            <button type="button" className="ib" onClick={() => openSheet('reason', { for: 'chat', id })} aria-label="Reasoning settings">
-              <I n="bulb" />
             </button>
           </>
         }
