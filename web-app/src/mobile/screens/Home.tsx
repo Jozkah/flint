@@ -31,43 +31,14 @@ function WaitCards() {
   const list = approvals.data?.approvals ?? []
   const rooms = sessions.filter((s) => s.kind === 'room' && s.status === 'waiting')
   const first = list[0]
-  return (
-    <>
-      {waiting > 0 && (
-        <button
-          type="button"
-          className="waitcard"
-          onClick={() => (first ? go(routeFor(first.threadId, sessions)) : go({ name: 'notifications' }))}
-          data-testid="approvals-waiting"
-        >
-          <I n="shield" size={18} />
-          <span className="tx">
-            <b>{waiting} {waiting === 1 ? 'approval' : 'approvals'} waiting</b>
-            {first && <small>{sessions.find((s) => s.id === first.threadId)?.title ?? first.toolName}{first.subject ? ` · ${first.subject}` : ''}</small>}
-          </span>
-          <I n="chevr" style={{ color: 'var(--muted-foreground)' }} />
-        </button>
-      )}
-      {rooms.slice(0, 2).map((r) => (
-        <button key={r.id} type="button" className="waitcard" style={{ borderColor: 'var(--border)', background: 'var(--card)' }} onClick={() => go({ name: 'room', id: r.id })}>
-          <I n="hand" size={18} style={{ color: 'var(--warning)' }} />
-          <span className="tx"><b>{r.title} is waiting for you</b><small>Choose who speaks next or reply</small></span>
-          <I n="chevr" style={{ color: 'var(--muted-foreground)' }} />
-        </button>
-      ))}
-    </>
-  )
+  return <>
+    {waiting > 0 && <button type="button" className="waitcard" onClick={() => (first ? go(routeFor(first.threadId, sessions)) : go({ name: 'notifications' }))} data-testid="approvals-waiting"><I n="shield" size={18} /><span className="tx"><b>{waiting} {waiting === 1 ? 'approval' : 'approvals'} waiting</b>{first && <small>{sessions.find((s) => s.id === first.threadId)?.title ?? first.toolName}{first.subject ? ` · ${first.subject}` : ''}</small>}</span><I n="chevr" style={{ color: 'var(--muted-foreground)' }} /></button>}
+    {rooms.slice(0, 2).map((r) => <button key={r.id} type="button" className="waitcard" onClick={() => go({ name: 'room', id: r.id })}><I n="hand" size={18} style={{ color: 'var(--warning)' }} /><span className="tx"><b>{r.title} is waiting for you</b><small>Choose who speaks next or reply</small></span><I n="chevr" /></button>)}
+  </>
 }
 
 function Suggestions({ items, onPick, label }: { items: string[]; onPick: (s: string) => void; label: string }) {
-  return (
-    <>
-      <div className="ssec" style={{ paddingTop: 18 }}>{label}</div>
-      <div className="sugg">
-        {items.map((s) => <button key={s} type="button" onClick={() => onPick(s)}><I n="sparkles" />{s}</button>)}
-      </div>
-    </>
-  )
+  return <><div className="ssec" style={{ paddingTop: 18 }}>{label}</div><div className="sugg">{items.map((s) => <button key={s} type="button" onClick={() => onPick(s)}><I n="sparkles" />{s}</button>)}</div></>
 }
 
 export default function Home() {
@@ -103,21 +74,18 @@ export default function Home() {
     }
     const picked = choices.slice(0, Math.min(3, choices.length))
     try {
-      const result = await client().rpc('settings.set', {
-        mobileOp: 'room.create',
-        input: {
-          title: objective.trim().slice(0, 60) || 'New room',
-          objective: objective.trim(),
-          mode: 'round-robin',
-          participants: picked.map((m, i) => ({
-            name: m.name || `Participant ${i + 1}`,
-            role: i === 0 ? 'proposer' : i === 1 ? 'reviewer' : 'cross-checker',
-            model: { id: m.id, provider: m.provider },
-            toolAccess: 'none',
-          })),
-          moderator: { enabled: false },
-        },
-      } as never) as unknown as { ok: true; id: string }
+      const result = await client().rpc('room.create', {
+        title: objective.trim().slice(0, 60) || 'New room',
+        objective: objective.trim(),
+        mode: 'round-robin',
+        participants: picked.map((m, i) => ({
+          name: m.name || `Participant ${i + 1}`,
+          role: i === 0 ? 'proposer' : i === 1 ? 'reviewer' : 'cross-checker',
+          model: { id: m.id, provider: m.provider },
+          toolAccess: 'none',
+        })),
+        moderator: { enabled: false },
+      })
       go({ name: 'room', id: result.id })
       return true
     } catch (e) {
@@ -143,55 +111,14 @@ export default function Home() {
     return r !== undefined
   }
 
-  return (
-    <>
-      <TopMain crumb="Workspace" title="New chat" />
-      <div className="scroll">
-        <div className="hero">
-          <h2>{greet()}</h2>
-          <p>Ask anything, attach files, or hand a bigger task to Cowork.</p>
-          <div className="segm" role="group" aria-label="Start">
-            <button type="button" aria-pressed={mode === 'chat'} onClick={() => setMode('chat')}><I n="pen" />Chat</button>
-            <button type="button" aria-pressed={mode === 'cowork'} onClick={() => setMode('cowork')}><I n="cowork" />Cowork</button>
-            <button type="button" aria-pressed={mode === 'room'} onClick={() => setMode('room')}><I n="rooms" />Room</button>
-          </div>
-        </div>
-        {mode === 'chat' && <><WaitCards /><Suggestions label="Suggestions" items={CHAT_SUGGESTIONS} onPick={fill} /><div className="tempbar"><I n="eye" size={14} />Nothing is saved until you send · <u style={{ cursor: 'pointer' }} onClick={() => openSheet('temp')}>Temporary chat</u></div></>}
-        {mode === 'cowork' && (
-          <>
-            <div className="frame" style={{ padding: '10px 12px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div className="kv"><span>Folder</span><span>{folder ? folder.split(/[\\/]/).pop() : 'No recent folder'}</span></div>
-              {folders.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{folders.map((f) => <button key={f} type="button" className={`chip${folder === f ? ' on' : ''}`} aria-pressed={folder === f} onClick={() => setFolder(f)}><I n="folder" size={12} />{f.split(/[\\/]/).pop()}</button>)}</div>}
-              <div className="kv"><span>What Flint may do</span><span>{modeLabel(composer.cwMode)?.label}</span></div>
-              <div className="kv"><span>Where changes go</span><span>{accessLabel(composer.access)?.label}</span></div>
-            </div>
-            <Suggestions label="Try" items={COWORK_SUGGESTIONS} onPick={fill} />
-          </>
-        )}
-        {mode === 'room' && (
-          <>
-            <div className="ssec" style={{ paddingTop: 18 }}>Start from a template</div>
-            <div className="sugg">
-              {[
-                ['Architecture review', 'Several models and a moderator'],
-                ['Naming', '3 models · round-robin'],
-                ['Cross-check', '2 models verify each other'],
-                ['Debate', 'Two sides and a moderator'],
-              ].map(([t, s]) => <button key={t} type="button" onClick={() => openSheet('roomnew', { template: t })}><I n="rooms" /><span style={{ flex: 1 }}>{t}<br /><small className="muted">{s}</small></span></button>)}
-            </div>
-          </>
-        )}
-      </div>
-      <Composer
-        key={mode}
-        placeholder={mode === 'chat' ? 'Ask me anything...' : mode === 'cowork' ? 'Describe the task…' : 'What should the participants discuss or decide?'}
-        model={mode === 'room' ? undefined : composer.model}
-        modelFor="home"
-        tokens="0"
-        extra={mode === 'chat' ? <><button type="button" className="ib" onClick={() => openSheet('tools')} aria-label="Tools"><I n="wrench" /></button><button type="button" className={`ib${composer.web ? ' on' : ''}`} aria-label="Web Search" aria-pressed={composer.web} onClick={() => app.set((s) => ({ composer: { ...s.composer, web: !s.composer.web } }))}><I n="globe" /></button><button type="button" className="ib" onClick={() => openSheet('reason', { for: 'home' })} aria-label={`Reasoning: ${composer.reason}`}><I n="bulb" /></button></> : mode === 'cowork' ? <><button type="button" className="ib" onClick={() => openSheet('mode')} aria-label="What Flint may do"><I n="shield" /></button><button type="button" className="ib" onClick={() => openSheet('access')} aria-label="Where changes go"><I n="folder" /></button></> : <button type="button" className="ib" onClick={() => openSheet('roomnew')} aria-label="Configure room"><I n="users" /></button>}
-        onSend={send}
-        seed={seed}
-      />
-    </>
-  )
+  return <>
+    <TopMain crumb="Workspace" title="New chat" />
+    <div className="scroll">
+      <div className="hero"><h2>{greet()}</h2><p>Ask anything, attach files, or hand a bigger task to Cowork.</p><div className="segm" role="group" aria-label="Start"><button type="button" aria-pressed={mode === 'chat'} onClick={() => setMode('chat')}><I n="pen" />Chat</button><button type="button" aria-pressed={mode === 'cowork'} onClick={() => setMode('cowork')}><I n="cowork" />Cowork</button><button type="button" aria-pressed={mode === 'room'} onClick={() => setMode('room')}><I n="rooms" />Room</button></div></div>
+      {mode === 'chat' && <><WaitCards /><Suggestions label="Suggestions" items={CHAT_SUGGESTIONS} onPick={fill} /><div className="tempbar"><I n="eye" size={14} />Nothing is saved until you send · <u style={{ cursor: 'pointer' }} onClick={() => openSheet('temp')}>Temporary chat</u></div></>}
+      {mode === 'cowork' && <><div className="frame" style={{ padding: '10px 12px', marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}><div className="kv"><span>Folder</span><span>{folder ? folder.split(/[\\/]/).pop() : 'No recent folder'}</span></div>{folders.length > 0 && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{folders.map((f) => <button key={f} type="button" className={`chip${folder === f ? ' on' : ''}`} aria-pressed={folder === f} onClick={() => setFolder(f)}><I n="folder" size={12} />{f.split(/[\\/]/).pop()}</button>)}</div>}<div className="kv"><span>What Flint may do</span><span>{modeLabel(composer.cwMode)?.label}</span></div><div className="kv"><span>Where changes go</span><span>{accessLabel(composer.access)?.label}</span></div></div><Suggestions label="Try" items={COWORK_SUGGESTIONS} onPick={fill} /></>}
+      {mode === 'room' && <><div className="ssec" style={{ paddingTop: 18 }}>Start from a template</div><div className="sugg">{[['Architecture review','Several models and a moderator'],['Naming','3 models · round-robin'],['Cross-check','2 models verify each other'],['Debate','Two sides and a moderator']].map(([t,s]) => <button key={t} type="button" onClick={() => openSheet('roomnew', { template: t })}><I n="rooms" /><span style={{ flex: 1 }}>{t}<br /><small className="muted">{s}</small></span></button>)}</div></>}
+    </div>
+    <Composer key={mode} placeholder={mode === 'chat' ? 'Ask me anything...' : mode === 'cowork' ? 'Describe the task…' : 'What should the participants discuss or decide?'} model={mode === 'room' ? undefined : composer.model} modelFor="home" tokens="0" extra={mode === 'chat' ? <><button type="button" className="ib" onClick={() => openSheet('tools')} aria-label="Tools"><I n="wrench" /></button><button type="button" className={`ib${composer.web ? ' on' : ''}`} aria-label="Web Search" aria-pressed={composer.web} onClick={() => app.set((s) => ({ composer: { ...s.composer, web: !s.composer.web } }))}><I n="globe" /></button><button type="button" className="ib" onClick={() => openSheet('reason', { for: 'home' })} aria-label={`Reasoning: ${composer.reason}`}><I n="bulb" /></button></> : mode === 'cowork' ? <><button type="button" className="ib" onClick={() => openSheet('mode')} aria-label="What Flint may do"><I n="shield" /></button><button type="button" className="ib" onClick={() => openSheet('access')} aria-label="Where changes go"><I n="folder" /></button></> : <button type="button" className="ib" onClick={() => openSheet('roomnew')} aria-label="Configure room"><I n="users" /></button>} onSend={send} seed={seed} />
+  </>
 }
