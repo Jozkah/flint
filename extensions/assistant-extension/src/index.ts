@@ -1,4 +1,5 @@
 import { Assistant, AssistantExtension, fs, joinPath, logger } from '@janhq/core'
+import { BUILT_IN_ASSISTANTS } from './builtInAssistants'
 
 const V2_IDENTITY_LINE =
   'You are Flint, a helpful AI assistant who assists users with their requests. Flint is trained by Menlo Research (https://www.menlo.ai).'
@@ -8,7 +9,7 @@ const V2_IDENTITY_LINE =
  * functionality for managing assistants.
  */
 export default class JanAssistantExtension extends AssistantExtension {
-  private readonly CURRENT_MIGRATION_VERSION = 3
+  private readonly CURRENT_MIGRATION_VERSION = 4
   private readonly MIGRATION_FILE = 'file://assistants/.migration_version'
 
   /**
@@ -87,6 +88,12 @@ export default class JanAssistantExtension extends AssistantExtension {
       logger.info('Running migration v3: Strip identity preamble from default assistant')
       await this.migrateStripIdentityPreamble()
       await this.saveMigrationVersion(3)
+    }
+
+    if (currentVersion < 4) {
+      logger.info('Running migration v4: Seed specialized built-in assistants')
+      await this.migrateSeedBuiltInAssistants()
+      await this.saveMigrationVersion(4)
     }
 
     logger.info(
@@ -237,6 +244,36 @@ Current date: {{current_date}}`
       } catch (error) {
         logger.error(`Failed to migrate assistant ${assistant.id}:`, error)
       }
+    }
+  }
+
+  /**
+   * Migration v4: Add the specialized built-ins once without overwriting any
+   * existing assistant that already owns one of their IDs. Fresh installs also
+   * persist the existing Flint default here so seeding specialists first cannot
+   * suppress it in onLoad.
+   */
+  private async migrateSeedBuiltInAssistants(): Promise<void> {
+    const persisted = await this.readAssistantsFromDisk()
+    const existingIds = new Set(persisted.map((assistant) => assistant.id))
+
+    if (persisted.length === 0) {
+      await this.createAssistant({
+        ...this.defaultAssistant,
+        parameters: {
+          temperature: 0.7,
+          top_k: 20,
+          top_p: 0.8,
+          repeat_penalty: 1.12,
+        },
+      } as Assistant)
+      existingIds.add(this.defaultAssistant.id)
+    }
+
+    for (const assistant of BUILT_IN_ASSISTANTS) {
+      if (existingIds.has(assistant.id)) continue
+      await this.createAssistant(assistant)
+      existingIds.add(assistant.id)
     }
   }
 
