@@ -136,6 +136,9 @@ export function classifyStableFailure(
     return 'tool is unavailable'
   }
   if (
+    /outside the workspace and every folder the user has granted.*call request_access/i.test(
+      error
+    ) ||
     /do not retry (?:the )?(?:same )?(?:call|command).*?(?:until|before).*?(?:grant|permission|access)|do not retry .* before it is granted/i.test(
       error
     )
@@ -189,13 +192,59 @@ export function canonicalKey(call: { tool: string; input: unknown }): string {
   return `${call.tool}::${canonicalJson(call.input)}`
 }
 
+function inputRecord(call: ObservedCall): Record<string, unknown> | null {
+  return call.input && typeof call.input === 'object' && !Array.isArray(call.input)
+    ? (call.input as Record<string, unknown>)
+    : null
+}
+
+function inputPath(call: ObservedCall): string | null {
+  const record = inputRecord(call)
+  if (!record) return null
+  for (const key of ['path', 'file_path', 'file', 'target', 'cwd']) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim().replace(/\\/g, '/').toLowerCase()
+    }
+  }
+  return null
+}
+
+function gitFlag(call: ObservedCall, flag: string): string | null {
+  const args = inputRecord(call)?.args
+  if (!Array.isArray(args)) return null
+  const index = args.findIndex((arg) => arg === flag)
+  const value = index >= 0 ? args[index + 1] : null
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+function stableFailureScope(
+  call: ObservedCall,
+  stable: StableFailureClass
+): string {
+  if (stable === 'access must change before retrying') {
+    return inputPath(call) ?? ''
+  }
+  if (
+    stable === 'pull request base changed' ||
+    stable === 'pull request head is not pushed' ||
+    stable === 'pull request has conflicts'
+  ) {
+    return gitFlag(call, '--head') ?? inputRecord(call)?.cwd?.toString() ?? ''
+  }
+  if (stable === 'dirty git worktree') {
+    return inputRecord(call)?.cwd?.toString() ?? ''
+  }
+  return ''
+}
+
 function stableFailureRepeat(calls: ObservedCall[]): LoopVerdict | null {
   const counts = new Map<string, number>()
   for (const call of calls) {
     if (!call.failed) continue
     const stable = classifyStableFailure(call.tool, call.error)
     if (!stable) continue
-    const key = `${call.tool}:${stable}`
+    const key = `${call.tool}:${stable}:${stableFailureScope(call, stable)}`
     const count = (counts.get(key) ?? 0) + 1
     counts.set(key, count)
     if (count >= 2) {
@@ -288,6 +337,18 @@ function progressiveReadLoop(calls: ObservedCall[]): LoopVerdict | null {
   return null
 }
 
+function genericFailureScope(call: ObservedCall, error: string): string {
+  if (
+    /cannot find the path|path specified|not found|no such file or directory|os error [23]/i.test(
+      error
+    )
+  ) {
+    const path = inputPath(call)
+    if (path) return `path:${path}`
+  }
+  return ''
+}
+
 export function detectLoop(calls: ObservedCall[]): LoopVerdict {
   if (calls.length === 0) return { tripped: false }
 
@@ -326,7 +387,8 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
     }
 
     if (!call.failed) continue
-    const failureKey = `${call.tool}::${call.error ?? ''}`
+    const error = call.error ?? ''
+    const failureKey = `${call.tool}::${genericFailureScope(call, error)}::${error}`
     const count = (failures.get(failureKey) ?? 0) + 1
     failures.set(failureKey, count)
     if (count < (isDenial(call.error) ? DENIAL_LIMIT : FAILURE_LIMIT)) continue
@@ -334,9 +396,11 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
     const kind = call.tool === SHELL_TOOL ? classifyShellFailure(call.error) : null
     const inputs = new Set(
       calls
-        .filter(
-          (one) => one.failed && `${one.tool}::${one.error ?? ''}` === failureKey
-        )
+        .filter((one) => {
+          if (!one.failed || one.tool !== call.tool) return false
+          const oneError = one.error ?? ''
+          return `${one.tool}::${genericFailureScope(one, oneError)}::${oneError}` === failureKey
+        })
         .map((one) => canonicalKey(one))
     )
     return {
