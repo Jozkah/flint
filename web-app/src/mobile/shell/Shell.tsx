@@ -6,12 +6,14 @@ import type { Route } from '../state/router'
 import { LeftNav } from './LeftNav'
 import { RightPanel } from './RightPanel'
 import { SheetBody } from './sheets'
+import Home from '../screens/Home'
+import Chat from '../screens/Chat'
+import Cowork from '../screens/Cowork'
+import Room from '../screens/Room'
 
-// Screens load on demand; the shell, drawers and sheets are in the entry.
-const Home = lazy(() => import('../screens/Home'))
-const Chat = lazy(() => import('../screens/Chat'))
-const Cowork = lazy(() => import('../screens/Cowork'))
-const Room = lazy(() => import('../screens/Room'))
+// Conversation screens are eager: opening a thread should never swap the
+// whole viewport for a loading placeholder. Less frequently used screens can
+// still load on demand to keep the initial phone bundle modest.
 const Rooms = lazy(() => import('../screens/Rooms'))
 const Overview = lazy(() => import('../screens/Overview'))
 const Library = lazy(() => import('../screens/Library'))
@@ -52,8 +54,6 @@ function Screen({ route }: { route: Route }) {
     }
   }
 }
-
-const routeKey = (r: Route) => ('id' in r ? `${r.name}:${r.id}` : 'sub' in r ? `sub:${r.sub}` : r.name)
 
 /** Opens a drawer with a swipe in from the screen edge, closes it with a
  * swipe back (the design's gestures). */
@@ -174,7 +174,7 @@ export function Shell() {
     <div className="app" ref={ref}>
       <div id="views">
         <Suspense fallback={<Loading />}>
-          <section className="view" key={routeKey(route)}>
+          <section className="view">
             <Screen route={route} />
           </section>
         </Suspense>
