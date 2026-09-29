@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canonicalKey,
+  classifyStableFailure,
   detectLoop,
   loopStopMessage,
   loopStopNotice,
@@ -57,10 +58,56 @@ it('does not count a NUL refusal, which is offered as an unsandboxed retry', () 
       tool: 'bash',
       input: { command: `go build ./... ${n}` },
       failed: true,
-      error: `open NUL: Access is denied ${n}
-[device_path_sandbox_refused: ... Do not retry the same command inside the sandbox.]`,
+      error: `open NUL: Access is denied ${n}\n[device_path_sandbox_refused: ... Do not retry the same command inside the sandbox.]`,
     })
   expect(detectLoop([refused(1), call(), refused(2)])).toEqual({ tripped: false })
+})
+
+describe('non-transient blockers', () => {
+  const dirty = (subcommand: 'checkout' | 'switch'): ObservedCall => ({
+    tool: 'git',
+    input: { args: [subcommand, 'feature'] },
+    failed: true,
+    error:
+      `ERROR: git ${subcommand} feature exited with 1\n` +
+      'error: Your local changes would be overwritten by checkout:\n\ta.ts\n' +
+      'Please commit your changes or stash them before you switch branches.\nAborting',
+  })
+
+  it('recognises a dirty worktree as stable rather than a transient git failure', () => {
+    expect(classifyStableFailure('git', dirty('checkout').error)).toBe(
+      'dirty git worktree'
+    )
+    expect(detectLoop([dirty('checkout')])).toEqual({ tripped: false })
+    expect(detectLoop([dirty('checkout'), dirty('switch')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops a second sandbox retry when Flint explicitly said access must change first', () => {
+    const blocked = (command: string): ObservedCall => ({
+      tool: 'bash',
+      input: { command },
+      failed: true,
+      error:
+        "EPERM: operation not permitted, lstat 'C:\\\\'\n" +
+        '[sandbox: files under your home directory are not readable. ' +
+        'Call request_access with the narrowest required path. ' +
+        'Do not retry the same command before it is granted.]',
+    })
+    expect(classifyStableFailure('bash', blocked('npm install').error)).toBe(
+      'access must change before retrying'
+    )
+    expect(detectLoop([blocked('npm install')])).toEqual({ tripped: false })
+    expect(
+      detectLoop([
+        blocked('npm install'),
+        call(),
+        blocked('node npm-cli.js install'),
+      ])
+    ).toMatchObject({ tripped: true, reason: 'failing-shell' })
+  })
 })
 
 it('stops the same call made over and over', () => {
