@@ -49,7 +49,7 @@ const YOU_COM_HOSTED_URL: &str = "https://api.you.com/mcp?profile=free";
 const YOU_COM_USER_AGENT: &str = concat!(
     "jan-websearch/",
     env!("CARGO_PKG_VERSION"),
-    " (https://github.com/janhq/jan)"
+    " (https://github.com/Jozkah/flint)"
 );
 const YOU_COM_CLIENT_INFO: &str = concat!(
     "plugin; client=jan-websearch/",
@@ -1891,7 +1891,7 @@ mod tests {
         // the segment split on the receiving side.
         assert!(segments.iter().all(|s| !s.contains(';')));
         assert!(YOU_COM_USER_AGENT.starts_with("jan-websearch/"));
-        assert!(YOU_COM_USER_AGENT.contains("github.com/janhq/jan"));
+        assert!(YOU_COM_USER_AGENT.contains("github.com/Jozkah/flint"));
     }
 
     #[test]

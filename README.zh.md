@@ -21,7 +21,7 @@
   <a href="https://jan.ai/docs/desktop">快速开始</a>
   - <a href="https://discord.gg/Exe46xPMbK">社区</a>
   - <a href="https://jan.ai/changelog">更新日志</a>
-  - <a href="https://github.com/janhq/jan/issues">问题反馈</a>
+  - <a href="https://github.com/Jozkah/flint/issues">问题反馈</a>
 </p>
 
 Jan 致力于通过易于使用的产品，将开源 AI 的精华呈现给大众。下载并运行大语言模型 (LLMs)，享有**完全的控制权**和**隐私保护**。
@@ -85,7 +85,7 @@ Jan 致力于通过易于使用的产品，将开源 AI 的精华呈现给大众
 </table>
 
 
-您可以从 [jan.ai](https://jan.ai/) 或 [GitHub Releases](https://github.com/janhq/jan/releases) 下载。
+您可以从 [jan.ai](https://jan.ai/) 或 [GitHub Releases](https://github.com/Jozkah/flint/releases) 下载。
 
 ## 核心功能 (Features)
 
@@ -111,8 +111,8 @@ Jan 致力于通过易于使用的产品，将开源 AI 的精华呈现给大众
 ### 使用 Make 运行
 
 ```bash
-git clone https://github.com/janhq/jan
-cd jan
+git clone https://github.com/Jozkah/flint
+cd flint
 make dev
 ```
 
@@ -166,7 +166,7 @@ yarn dev
 
 ## 联系我们 (Contact)
 
-- **Bug 反馈**: [GitHub Issues](https://github.com/janhq/jan/issues)
+- **Bug 反馈**: [GitHub Issues](https://github.com/Jozkah/flint/issues)
 - **商务合作**: hello@jan.ai
 - **人才招聘**: hr@jan.ai
 - **综合讨论**: [Discord](https://discord.gg/FTk2MvZwJH)
