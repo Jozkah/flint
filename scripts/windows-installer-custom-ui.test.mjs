@@ -39,7 +39,11 @@ test('installer template transformation creates the complete Flint wizard', asyn
   assert.doesNotMatch(generated, /always run in passive mode/)
   assert.doesNotMatch(generated, /flint_workspace/)
   assert.match(generated, /\$FlintDesktopShortcutState = 1/)
-  assert.match(generated, /\$FlintLaunchState = 1[\s\S]*Call RunMainBinary/)
+  assert.match(generated, /Interactive installs always[\s\S]*completion page, which exclusively owns app launch/)
+  assert.doesNotMatch(
+    generated,
+    /\$\{ElseIf\} \$FlintLaunchState = 1[\s\S]{0,120}Call RunMainBinary/
+  )
   assert.match(generated, /SetAutoClose false/)
 })
 
