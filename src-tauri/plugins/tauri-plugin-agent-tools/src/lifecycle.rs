@@ -341,8 +341,10 @@ impl Default for Timeouts {
         Self {
             // Filesystem work is local and either finishes quickly or is stuck.
             filesystem_secs: 30,
-            // A shell command is the one tool a user legitimately waits on.
-            bash_secs: 120,
+            // `bash` enforces its model-facing command deadline itself (at most
+            // 120s). This is the outer emergency bound, so it must leave room
+            // for sandbox startup plus process-tree termination/output drain.
+            bash_secs: 150,
             // A network round trip that has not answered in a minute will not.
             net_secs: 60,
             // MCP servers do real work, but not unbounded work.
@@ -635,7 +637,7 @@ mod tests {
     #[test]
     fn every_tool_has_a_limit_including_ones_we_have_not_met() {
         let t = Timeouts::default();
-        assert_eq!(t.for_tool("bash"), Duration::from_secs(120));
+        assert_eq!(t.for_tool("bash"), Duration::from_secs(150));
         assert_eq!(t.for_tool("read"), Duration::from_secs(30));
         assert_eq!(t.for_tool("web_fetch"), Duration::from_secs(60));
         assert_eq!(t.for_tool("some.mcp.tool"), Duration::from_secs(120));
