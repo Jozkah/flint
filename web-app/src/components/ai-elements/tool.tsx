@@ -41,6 +41,7 @@ import {
 } from '@/lib/toolInputSummary'
 import { summarizeToolOutput } from '@/lib/toolOutputSummary'
 import {
+  canTemporarilyAllowGit,
   useToolApprovalRequests,
   wasCommandAllowedOnce,
   usePendingApprovalCount,
@@ -609,10 +610,16 @@ export const ToolApprovalActions = memo(() => {
   // `CoworkChildApprovals`).
   if (!pending || !toolCallId || pending.origin || !request) return null
 
-  const decide = (decision: PermissionDecision) =>
-    resolveApproval(toolCallId, decision, pending.requestId)
+  const decide = (
+    decision: PermissionDecision | 'allow-git-temporary'
+  ) => resolveApproval(toolCallId, decision, pending.requestId)
   const broader = request.scopesOffered.filter(
     (scope) => scope !== 'allow-once' && request.scopeExplanations[scope]
+  )
+  const temporaryGit = canTemporarilyAllowGit(
+    pending.toolName,
+    pending.input,
+    pending.threadIsEphemeral === true
   )
   const once = request.scopeExplanations['allow-once']
   const subject = requestSubject(pending.input, request.resources)
@@ -704,25 +711,23 @@ export const ToolApprovalActions = memo(() => {
           >
             {t('tools:toolApproval.permissionDetails')}
           </button>
-          {broader.length > 0 && (
-            <button
-              type="button"
-              aria-expanded={moreOpen}
-              aria-controls={moreId}
-              data-testid="approval-more-options"
-              className="inline-flex items-center gap-1 rounded-sm text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
-              onClick={() => setMoreOpen((open) => !open)}
-            >
-              {t('tools:toolApproval.moreOptions')}
-              <ChevronDownIcon
-                aria-hidden
-                className={cn(
-                  'size-3 motion-safe:transition-transform',
-                  moreOpen && 'rotate-180'
-                )}
-              />
-            </button>
-          )}
+          <button
+            type="button"
+            aria-expanded={moreOpen}
+            aria-controls={moreId}
+            data-testid="approval-more-options"
+            className="inline-flex items-center gap-1 rounded-sm text-muted-foreground outline-hidden hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+            onClick={() => setMoreOpen((open) => !open)}
+          >
+            {t('tools:toolApproval.moreOptions')}
+            <ChevronDownIcon
+              aria-hidden
+              className={cn(
+                'size-3 motion-safe:transition-transform',
+                moreOpen && 'rotate-180'
+              )}
+            />
+          </button>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Button
@@ -755,12 +760,35 @@ export const ToolApprovalActions = memo(() => {
             </span>
           )}
         </div>
-        {moreOpen && broader.length > 0 && (
+        {moreOpen && (
           <ul
             id={moreId}
             data-testid="approval-scope-menu"
             className="flex w-full min-w-0 flex-col divide-y divide-border overflow-hidden rounded-md border border-border"
           >
+            {temporaryGit && (
+              <li className="flex">
+                <button
+                  type="button"
+                  aria-describedby={`${moreId}-allow-git-temporary`}
+                  data-scope="allow-git-temporary"
+                  disabled={!armed}
+                  className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left transition-colors outline-hidden hover:bg-hover-row focus-visible:bg-hover-row focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-inset disabled:pointer-events-none disabled:opacity-50 pointer-coarse:min-h-11"
+                  onClick={() => decide('allow-git-temporary')}
+                >
+                  <b className="text-[13px] font-medium text-foreground">
+                    {t('permissions:scope.allowGitTemporary')}
+                  </b>
+                  <Chip tone="warn">{t('permissions:scope.broader')}</Chip>
+                  <span
+                    id={`${moreId}-allow-git-temporary`}
+                    className="w-full text-xs leading-snug text-muted-foreground"
+                  >
+                    {t('permissions:scope.allowGitTemporaryExplanation')}
+                  </span>
+                </button>
+              </li>
+            )}
             {broader.map((scope) => {
               const info = request.scopeExplanations[scope]!
               const explanationId = `${moreId}-${scope}`
@@ -794,6 +822,14 @@ export const ToolApprovalActions = memo(() => {
                 </li>
               )
             })}
+            {!temporaryGit && broader.length === 0 && (
+              <li
+                data-testid="approval-no-broader-options"
+                className="px-3 py-2 text-xs text-muted-foreground"
+              >
+                {t('permissions:scope.noBroaderOptions')}
+              </li>
+            )}
           </ul>
         )}
       </div>
