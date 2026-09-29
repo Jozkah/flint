@@ -220,7 +220,6 @@ Function ${UN}FlintGuiInit
   ${FlintPx} $1 48
   System::Call 'user32::LoadImageW(p r0, p 103, i 1, i r1, i r1, i 0) p .r0'
   StrCpy $FlintIcon $0
-  ; Force the installer title bar to use the exact icon embedded by Tauri.
   SendMessage $HWNDPARENT ${WM_SETICON} 0 $FlintIcon
   SendMessage $HWNDPARENT ${WM_SETICON} 1 $FlintIcon
 
@@ -264,8 +263,6 @@ Function ${UN}FlintGuiInit
   System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i r2, i r3, i r6, i r7, i 0x14)'
   !insertmacro _FlintCtl $HWNDPARENT NONE BG
 
-  ; The old template forced every interactive install into passive mode. Restore
-  ; the intended distinction here without changing /P or silent update flows.
   !if "${UN}" == ""
     IfSilent flint_keep_passive
     StrCpy $PassiveMode 0
@@ -317,7 +314,6 @@ Function FlintWelcome
   !insertmacro _FlintLabel $4 $R2 116 42 580 42 "Install ${PRODUCTNAME}" $FlintFontHero FG
   !insertmacro _FlintLabel $4 $R2 116 91 580 28 "Your local AI workspace, ready in minutes." $FlintFontTitle MUTED
   !insertmacro _FlintLabel $4 $R2 116 142 580 52 "${PRODUCTNAME} runs locally on your computer, giving you a private space for chats, coding and agent workflows with the models you choose." $FlintFontBody FG2
-
   !insertmacro _FlintLabel $4 $R2 116 224 240 22 "Private by default" $FlintFontMedium FG
   !insertmacro _FlintLabel $4 $R2 116 248 500 20 "Your data stays on your machine." $FlintFontSmall MUTED
   !insertmacro _FlintLabel $4 $R2 116 286 240 22 "Local-first" $FlintFontMedium FG
@@ -425,8 +421,6 @@ FunctionEnd
 
 Function FlintFinish
   ${IfThen} $PassiveMode = 1 ${|} Abort ${|}
-  ; The stock finish page used to create the desktop shortcut. Do it here so
-  ; the custom finish page preserves that behaviour.
   ${If} $NoShortcutMode <> 1
     Call CreateOrUpdateDesktopShortcut
   ${EndIf}
@@ -477,8 +471,6 @@ Function FlintFinishLeave
   ${EndIf}
 FunctionEnd
 
-; Replace only the three stock pages that define the user's main setup flow.
-; The installation engine, update/reinstall checks and progress page stay Tauri's.
 !macroundef MUI_PAGE_WELCOME
 !macro MUI_PAGE_WELCOME
   !ifdef MUI_PAGE_CUSTOMFUNCTION_PRE
@@ -503,7 +495,7 @@ FunctionEnd
   Page custom FlintFinish FlintFinishLeave
 !macroend
 
-; Shared icon/title block used by progress and uninstall pages.
+!macro FLINT_PROGRESS_FUNCTIONS UN
 Function ${UN}FlintHeader
   ${FlintPx} $0 ${FLINT_PAD}
   ${FlintPx} $1 42
@@ -580,7 +572,7 @@ Function ${UN}FlintRestoreButtons
 FunctionEnd
 
 Function ${UN}FlintInstFilesLeave
-  IfAbort 0 flint_done
+  IfAbort 0 flint_done_${UN}
     !if "${UN}" == "un."
       SendMessage $FlintTitle ${WM_SETTEXT} 0 "STR:Couldn't uninstall ${PRODUCTNAME}"
     !else
@@ -590,8 +582,12 @@ Function ${UN}FlintInstFilesLeave
     FindWindow $0 "#32770" "" $HWNDPARENT
     !insertmacro _FlintHide $0 1004
     Call ${UN}FlintRestoreButtons
-  flint_done:
+  flint_done_${UN}:
 FunctionEnd
+!macroend
+
+!insertmacro FLINT_PROGRESS_FUNCTIONS ""
+!insertmacro FLINT_PROGRESS_FUNCTIONS "un."
 
 !macro FLINT_UNINSTALL_CONFIRM_PAGE stateVar
 Var FlintToggle
