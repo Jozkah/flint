@@ -217,6 +217,43 @@ describe('CoworkChatTransport', () => {
     expect(buildCoworkTools).toHaveBeenCalledTimes(2)
   })
 
+  // A Settings toggle (web search) applies at the next run, like a mode
+  // change: the advertised set is frozen for a run's lifetime, so the toggle
+  // must not rebuild it. The web tools are added to or removed from the frozen
+  // record in place, and the next run re-reads the setting from scratch.
+  it('applies a web-search toggle in place without rebuilding the frozen set', async () => {
+    const t = new CoworkChatTransport('s1', config({ webSearch: true }))
+    buildCoworkTools.mockResolvedValue({ read: {}, web_search: {}, web_fetch: {} })
+    await t.refreshTools()
+    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
+
+    t.setWebSearch(false)
+    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read'])
+    expect(buildCoworkTools).toHaveBeenCalledTimes(1)
+
+    t.setWebSearch(true)
+    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
+    expect(buildCoworkTools).toHaveBeenCalledTimes(1)
+
+    // The next run re-reads the setting from scratch. Toggled back to what the
+    // cached set was built with, it reuses that set instead of rebuilding.
+    t.unfreezeTools()
+    await t.refreshTools()
+    expect(buildCoworkTools).toHaveBeenCalledTimes(1)
+    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
+
+    // Left off, the next run rebuilds the set with the new setting.
+    t.setWebSearch(false)
+    buildCoworkTools.mockResolvedValue({ read: {} })
+    t.unfreezeTools()
+    await t.refreshTools()
+    expect(buildCoworkTools).toHaveBeenCalledTimes(2)
+    expect(buildCoworkTools).toHaveBeenLastCalledWith(
+      expect.objectContaining({ webSearch: false })
+    )
+    expect(Object.keys(t.advertisedTools)).toEqual(['read'])
+  })
+
   // The parent throws when a window has no user turn. That is right for chat,
   // where it means eviction ate the question, and wrong for a long agent run
   // whose recent traffic is all tool results.
