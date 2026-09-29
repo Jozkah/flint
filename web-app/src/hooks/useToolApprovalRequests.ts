@@ -143,50 +143,12 @@ export type ApprovalRefusal = 'denied' | 'cancelled'
 const REFUSAL_MEMORY = 200
 
 type ToolApprovalRequestsState = {
-  // In-flight per-tool-call approval prompts. Kept out of the persisted
-  // useToolApproval store so approval churn never flushes to disk (the
-  // resolve callbacks are non-serializable anyway).
   pending: Record<string, PendingApproval>
-  /**
-   * Requests waiting behind one already shown under the same call id.
-   *
-   * A call id is the model's, and it is only unique within one conversation:
-   * a team's children are separate conversations, and a provider that numbers
-   * calls per response gives each child's first call the same id. Keyed on the
-   * id alone, a second request replaced the first, whose promise then never
-   * resolved -- and that child waited forever with no prompt on screen. Each
-   * is now shown in turn, in the order asked.
-   */
   queued: Record<string, PendingApproval[]>
-  /**
-   * toolCallId -> why its request resolved `false`. Lets the caller record
-   * "cancelled because the conversation stopped" rather than "denied" for a
-   * prompt nobody answered. Bounded; read with {@link takeRefusal}.
-   */
   refusals: Record<string, ApprovalRefusal>
-  /**
-   * toolCallId -> the server fingerprint an approved MCP call was approved
-   * for, so the one-time backend permission can be bound to the same
-   * definition. Bounded; read with {@link takeApprovedFingerprint}.
-   */
   approvedFingerprints: Record<string, string>
-  /**
-   * Calls the user allowed by answering a prompt, as opposed to calls a mode
-   * or standing grant let through. Read by `approvalSourceFor` so the audit
-   * can tell the two apart.
-   */
   answeredByPrompt: Record<string, true>
-  /**
-   * threadId -> keys ({@link repeatCommandKey}) of the shell commands the
-   * user answered "Allow once" for in that conversation. In memory only, so
-   * a repeat of the same command can be shown as one; it never answers a
-   * request by itself.
-   */
   allowedOnceCommands: Record<string, string[]>
-  /**
-   * Conversation-scoped, in-memory permission for ordinary remote Git/GitHub
-   * actions. It never covers destructive plans and is never persisted.
-   */
   temporaryGitThreads: Record<string, true>
 
   requestApproval: (
@@ -196,40 +158,20 @@ type ToolApprovalRequestsState = {
     serverName?: string,
     context?: ApprovalRequestContext
   ) => Promise<boolean>
-  /**
-   * Answer a request. With `requestId`, exactly that request is answered,
-   * shown or still queued, and an answer for one already gone does nothing;
-   * without it, the one shown under the call id.
-   */
   resolveApproval: (
     toolCallId: string,
     decision: ApprovalDecision,
     requestId?: string
   ) => void
-  /**
-   * Answer every request of a thread no. With `notify`, the user is told the
-   * prompts went away unanswered instead of their silently vanishing.
-   */
   clearPendingForThread: (
     threadId: string,
     options?: { notify?: boolean }
   ) => void
-  /**
-   * Take one request away unanswered, shown or queued, and answer it no. An
-   * answer that arrives for it afterwards names a request that is gone.
-   */
   withdrawApproval: (requestId: string) => void
-  /** Why this call's request was refused, once; `undefined` if it was not. */
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
-  /** The fingerprint this call was approved for, once. */
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
 
-/**
- * Why a `bash` call's command looks destructive, or null. The scope is
- * `workspaceRoots` when given; otherwise `workspaceLabel` when it is an
- * absolute path (a display label is ignored); otherwise unknown.
- */
 function bashDestructiveReason(
   toolName: string,
   input: unknown,
@@ -247,12 +189,6 @@ function bashDestructiveReason(
   return destructiveCommandReason(command, roots)
 }
 
-/**
- * Whether this Git request may be covered by the temporary conversation-wide
- * Git grant. Remote is intentional: local Git already has the ordinary
- * per-tool conversation scope. Anything capable of losing work or rewriting
- * shared history remains prompt-only.
- */
 export function canTemporarilyAllowGit(
   toolName: string,
   input: unknown,
@@ -270,7 +206,6 @@ export function canTemporarilyAllowGit(
 let nextRequest = 0
 const newRequestId = () => `req-${Date.now().toString(36)}-${++nextRequest}`
 
-/** Every request waiting for an answer, shown or queued, in the order asked. */
 export function allApprovalRequests(state: {
   pending: Record<string, PendingApproval>
   queued: Record<string, PendingApproval[]>
@@ -298,10 +233,6 @@ function remember<T>(
   return next
 }
 
-/**
- * Take `entry` out of the shown/queued maps for its call id, promoting the
- * next one waiting under that id when `entry` was the one shown.
- */
 function without(
   s: Pick<ToolApprovalRequestsState, 'pending' | 'queued'>,
   entry: PendingApproval
@@ -331,8 +262,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     temporaryGitThreads: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
-      // An MCP call is approved for one definition of its server, so the
-      // backend's fingerprint is needed before any grant can be checked.
       if (serverName && context?.serverFingerprint === undefined) {
         return resolveServerFingerprint(serverName).then((fingerprint) =>
           get().requestApproval(toolCallId, toolName, threadId, serverName, {
@@ -364,26 +293,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           }
           resolve(true)
         }
-        // Grants recorded for an older definition of this server stop
-        // applying now, and are listed as needing renewal.
         if (serverName && serverFingerprint) {
           settings.noteServerFingerprint(serverName, serverFingerprint)
         }
-        // A standing grant answers without a prompt: allow-all, a server the
-        // user trusts, the tool everywhere, or the tool in this thread --
-        // except for a tool that must be asked about every time.
-        //
-        // A shell command that looks destructive (`rm -rf ~`, `git push
-        // --force`, an `eval` nobody can check) is asked about on every
-        // surface, whatever grant exists -- not only where the caller thought
-        // to pass `alwaysAsk`. Without a known project path every absolute
-        // path counts as outside it, which errs toward asking.
         const destructive = context?.destructiveChecked
           ? null
           : bashDestructiveReason(toolName, context?.input, context)
-        // A server tool that approves commands on that server (super-shell's
-        // `approve_command`, a `whitelist_add`) would let the model answer
-        // for the user; only this prompt may, every time.
         const selfApproval = !!serverName && isSelfApprovalTool(toolName)
         let alwaysAsk =
           ALWAYS_ASK_TOOLS.has(toolName) ||
@@ -398,24 +313,28 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
               : undefined)
 
-        // Explicitly temporary Git/GitHub trust is the one exception to the
-        // ordinary "always ask" treatment of remote Git. The classifier above
-        // refuses destructive plans and ephemeral thread ids, so this cannot
-        // cover a force-push/reset/history rewrite or leak into the next temp chat.
-        if (
-          get().temporaryGitThreads[threadId] &&
+        const temporaryGitApproved =
+          !!get().temporaryGitThreads[threadId] &&
           canTemporarilyAllowGit(
             toolName,
             context?.input,
             context?.threadIsEphemeral === true
           )
-        ) {
-          approve()
-          return
+        if (temporaryGitApproved) {
+          const streakKey = context?.autoApproveStreak
+          if (streakKey === undefined) {
+            approve()
+            return
+          }
+          const limit = useAutoApproveLimit.getState().limit
+          if (!noteAutoApproved(streakKey, limit)) {
+            approve()
+            return
+          }
+          alwaysAsk = true
+          taskContext = autoApprovePauseReason(limit)
         }
 
-        // A call a standing grant would answer counts toward the limit on
-        // consecutive unasked calls; past it, this one is put to the user.
         const streakKey = context?.autoApproveStreak
         if (!alwaysAsk && streakKey !== undefined) {
           const wouldAutoApprove =
@@ -431,10 +350,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             }
           }
         }
-        // "Allow all MCP permissions" is an MCP-server setting (that is what its
-        // label promises), so it only auto-approves a server's tool -- never a
-        // built-in agent tool (write/edit/bash, no serverName), which must still
-        // be asked about in Ask mode.
         if (!alwaysAsk && serverName && settings.allowAllMCPPermissions) {
           approve()
           return
@@ -448,8 +363,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           approve()
           return
         }
-        // A prompt is about to be shown: whoever answers it has answered for
-        // the streak so far, so the count starts over.
         if (streakKey !== undefined) resetAutoApproveStreak(streakKey)
         const entry: PendingApproval = {
           requestId: newRequestId(),
@@ -501,7 +414,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       if (!entry) return
       set((s) => ({
         ...without(s, entry),
-        // Nobody said no: the run that asked stopped.
         refusals: remember(s.refusals, [[entry.toolCallId, 'cancelled']]),
       }))
       entry.resolve(false)
@@ -528,16 +440,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         )
 
       if (temporaryGit) {
-        // Intentionally no persisted grant. The transient map is updated in
-        // the state transaction below and future safe remote Git calls in this
-        // conversation resolve before a prompt is created.
+        // Intentionally transient; persisted grants are not changed.
       } else if (
         ALWAYS_ASK_TOOLS.has(entry.toolName) ||
         (serverName && isSelfApprovalTool(entry.toolName)) ||
         entry.alwaysAsk
       ) {
-        // Allowed this once whatever was clicked: no ordinary grant is ever
-        // recorded for a tool that must be asked about every time.
+        // Prompt-only request: no ordinary standing grant is recorded.
       } else if (decision === 'allow-thread') {
         if (!serverName) {
           approval.approveToolForThread(entry.threadId, entry.toolName)
@@ -549,18 +458,11 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             serverFingerprint
           )
         }
-        // A server tool whose definition is unknown is allowed this once and
-        // nothing is recorded: a grant bound to no identity would match none.
       } else if (decision === 'allow-always') {
         if (serverName) {
           if (serverFingerprint) {
             approval.approveServer(serverName, serverFingerprint)
           }
-          // AH-041. The backend holds the record the gate reads, so an answer
-          // that only updated renderer state would be forgotten by the thing
-          // that enforces it. It is bound to the definition the user was
-          // shown; if the backend refuses (the server changed meanwhile), the
-          // renderer grant is withdrawn too and the user is told.
           void getServiceHub()
             .mcp()
             .trustServer(serverName, serverFingerprint)
@@ -632,8 +534,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         for (const [id, list] of Object.entries(s.queued)) {
           const kept = list.filter((entry) => entry.threadId !== threadId)
           if (kept.length === 0) continue
-          // Something still waiting for an id whose shown prompt was cleared
-          // takes its place.
           if (!next[id]) next[id] = kept.shift()!
           if (kept.length > 0) waiting[id] = kept
         }
@@ -649,9 +549,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           ),
         }
       })
-      // Resolve as denied so any awaiting tool loop unblocks instead of hanging.
       for (const entry of stranded) entry.resolve(false)
-      // Never silently: the user may have meant to come back and answer.
       if (options?.notify) {
         const names = [...new Set(stranded.map((e) => e.toolName))].join(', ')
         toast.warning(
@@ -692,10 +590,6 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
   })
 )
 
-/**
- * Requests waiting on an answer, in one thread or everywhere. Queued ones
- * count: each will be shown and needs its own answer.
- */
 export function selectPendingApprovalCount(
   state: Pick<ToolApprovalRequestsState, 'pending'> &
     Partial<Pick<ToolApprovalRequestsState, 'queued'>>,
@@ -714,10 +608,6 @@ export function usePendingApprovalCount(threadId?: string): number {
   return useToolApprovalRequests((s) => selectPendingApprovalCount(s, threadId))
 }
 
-/**
- * Whether the user already answered "Allow once" for this exact shell
- * command in this conversation (see `allowedOnceCommands`).
- */
 export function wasCommandAllowedOnce(
   state: Pick<ToolApprovalRequestsState, 'allowedOnceCommands'>,
   threadId: string,
@@ -728,11 +618,6 @@ export function wasCommandAllowedOnce(
   return key !== null && !!state.allowedOnceCommands[threadId]?.includes(key)
 }
 
-/**
- * How a call about to run was allowed: `prompted` when the user answered its
- * prompt, `auto` when nothing asked (a mode, a standing grant, or a tool that
- * needs no approval). Passed to the backend for its audit record only.
- */
 export function approvalSourceFor(toolCallId: string): 'prompted' | 'auto' {
   return useToolApprovalRequests.getState().answeredByPrompt[toolCallId]
     ? 'prompted'
