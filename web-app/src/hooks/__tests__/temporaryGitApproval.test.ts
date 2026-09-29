@@ -3,6 +3,10 @@ import {
   canTemporarilyAllowGit,
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
+import {
+  resetAutoApproveStreak,
+  useAutoApproveLimit,
+} from '@/hooks/useAutoApproveLimit'
 
 describe('temporary Git conversation approval', () => {
   beforeEach(() => {
@@ -15,6 +19,8 @@ describe('temporary Git conversation approval', () => {
       allowedOnceCommands: {},
       temporaryGitThreads: {},
     })
+    useAutoApproveLimit.setState({ limit: 50 })
+    resetAutoApproveStreak('git-temp-test')
   })
 
   it('is offered only for non-destructive remote Git in a stable conversation', () => {
@@ -82,5 +88,38 @@ describe('temporary Git conversation approval', () => {
       .getState()
       .resolveApproval('g3', 'deny', request.requestId)
     await expect(destructive).resolves.toBe(false)
+  })
+
+  it('still pauses at the unattended-run checkpoint', async () => {
+    useToolApprovalRequests.setState({
+      temporaryGitThreads: { 'thread-1': true },
+    })
+    useAutoApproveLimit.setState({ limit: 1 })
+
+    const first = useToolApprovalRequests
+      .getState()
+      .requestApproval('g4', 'git', 'thread-1', undefined, {
+        input: { args: ['push', 'origin', 'feature-a'] },
+        alwaysAsk: true,
+        autoApproveStreak: 'git-temp-test',
+      })
+    await expect(first).resolves.toBe(true)
+    expect(useToolApprovalRequests.getState().pending.g4).toBeUndefined()
+
+    const second = useToolApprovalRequests
+      .getState()
+      .requestApproval('g5', 'git', 'thread-1', undefined, {
+        input: { args: ['push', 'origin', 'feature-b'] },
+        alwaysAsk: true,
+        autoApproveStreak: 'git-temp-test',
+      })
+    const request = useToolApprovalRequests.getState().pending.g5
+    expect(request).toBeDefined()
+    expect(request.taskContext).toContain('1 tool calls ran without asking')
+
+    useToolApprovalRequests
+      .getState()
+      .resolveApproval('g5', 'allow-once', request.requestId)
+    await expect(second).resolves.toBe(true)
   })
 })
