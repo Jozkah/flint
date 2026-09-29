@@ -1,0 +1,42 @@
+name: Installer UI
+
+on:
+  pull_request:
+    paths:
+      - 'src-tauri/installer/**'
+      - 'src-tauri/tauri.bundle.windows.nsis*.template'
+      - 'src-tauri/tauri.windows.conf.json'
+      - 'src-tauri/tauri.conf.json'
+      - 'scripts/prepare-windows-installer.mjs'
+      - 'scripts/windows-installer*.mjs'
+      - 'scripts/windows-installer-smoke.nsi'
+      - '.github/workflows/installer-ui.yml'
+  workflow_dispatch:
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Install NSIS
+        shell: pwsh
+        run: choco install nsis --yes --no-progress
+
+      - name: Test installer wiring
+        shell: pwsh
+        run: node --test scripts/windows-installer-template.test.mjs scripts/windows-installer-custom-ui.test.mjs
+
+      - name: Prepare production template
+        shell: pwsh
+        run: node scripts/prepare-windows-installer.mjs
+
+      - name: Compile custom installer UI with warnings as errors
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\NSIS\makensis.exe" /WX scripts\windows-installer-smoke.nsi'
