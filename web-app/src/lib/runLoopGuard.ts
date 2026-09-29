@@ -117,6 +117,39 @@ export function classifyShellFailure(error: string | undefined): ShellFailureCla
   return null
 }
 
+/**
+ * A blocker whose own output says that changing the spelling of the next call
+ * cannot fix it. These get one opportunity for the model to change strategy,
+ * then stop on the second encounter instead of spending the ordinary 5/6-call
+ * retry budgets.
+ */
+export type StableFailureClass =
+  | 'dirty git worktree'
+  | 'access must change before retrying'
+
+export function classifyStableFailure(
+  tool: string,
+  error: string | undefined
+): StableFailureClass | null {
+  if (!error) return null
+  if (
+    tool === 'git' &&
+    /would be overwritten by (?:checkout|switch)|please commit your changes or stash them before you switch branches|untracked working tree files would be overwritten/i.test(
+      error
+    )
+  ) {
+    return 'dirty git worktree'
+  }
+  if (
+    /do not retry (?:the )?(?:same )?(?:call|command).*?(?:until|before).*?(?:grant|permission|access)|do not retry .* before it is granted/i.test(
+      error
+    )
+  ) {
+    return 'access must change before retrying'
+  }
+  return null
+}
+
 /** Notes from the shell tool that already say retrying cannot help. */
 const TOLD_NOT_TO_RETRY =
   /\[device_path:|cannot open it on this platform|reported exit 0, but|is installed at/i
@@ -197,6 +230,32 @@ function canonicalJson(value: unknown): string {
 }
 
 /**
+ * A non-transient blocker may have different arguments or slightly different
+ * OS text each time. Count the semantic blocker instead of waiting for five
+ * byte-identical calls. The first failure is still returned to the model so it
+ * can choose a genuinely different strategy.
+ */
+function stableFailureRepeat(calls: ObservedCall[]): LoopVerdict | null {
+  const counts = new Map<string, number>()
+  for (const call of calls) {
+    if (!call.failed) continue
+    const stable = classifyStableFailure(call.tool, call.error)
+    if (!stable) continue
+    const key = `${call.tool}:${stable}`
+    const count = (counts.get(key) ?? 0) + 1
+    counts.set(key, count)
+    if (count >= 2) {
+      return {
+        tripped: true,
+        reason: call.tool === SHELL_TOOL ? 'failing-shell' : 'failing-tool',
+        detail: `${call.tool} hit the same non-transient blocker twice (${stable})`,
+      }
+    }
+  }
+  return null
+}
+
+/**
  * Whether the run has stopped making progress.
  *
  * Takes the whole history rather than being fed one call at a time, so the
@@ -216,6 +275,9 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
       detail: `delegation reached depth ${deepest}`,
     }
   }
+
+  const stable = stableFailureRepeat(calls)
+  if (stable) return stable
 
   const exact = new Map<string, number>()
   const failures = new Map<string, number>()
