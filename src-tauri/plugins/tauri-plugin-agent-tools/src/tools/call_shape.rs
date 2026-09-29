@@ -135,6 +135,20 @@ fn alias_hint(tool: &str, sent: &[&str]) -> Option<String> {
 /// `output` with the expected shape appended, when it is a refusal of the
 /// call's arguments; otherwise `output` unchanged.
 pub fn explain(tool: &str, args: &Value, output: String) -> String {
+    // `grep`'s pattern is a regex by default. "invalid pattern" used to leave
+    // the model guessing at another regex spelling, even when it was searching
+    // for punctuation that should simply have been literal. Keep the regex
+    // error, but give the one repair that cannot change the intended text.
+    if tool == "grep"
+        && output.trim_start().starts_with("ERROR: invalid pattern:")
+        && args.get("literal").and_then(Value::as_bool) != Some(true)
+    {
+        return format!(
+            "{}\n`grep.pattern` is a regular expression by default. If you meant the text literally, retry the same pattern with `literal: true`; otherwise fix the regex before retrying.",
+            output.trim_end()
+        );
+    }
+
     if !is_argument_refusal(&output) || output.contains("Expected call shape:") {
         return output;
     }
@@ -242,6 +256,27 @@ mod tests {
         assert!(out.contains(r#"{"action":"list"}"#), "{out}");
         assert!(out.contains(r#"{"job_id":"ID"}"#), "{out}");
         assert!(out.contains("Do not send an empty object"), "{out}");
+    }
+
+    #[test]
+    fn invalid_grep_regex_points_to_literal_mode() {
+        let out = explain(
+            "grep",
+            &json!({"pattern": "("}),
+            "ERROR: invalid pattern: unclosed group".into(),
+        );
+        assert!(out.contains("`literal: true`"), "{out}");
+        assert!(out.contains("fix the regex before retrying"), "{out}");
+    }
+
+    #[test]
+    fn invalid_literal_grep_does_not_repeat_literal_advice() {
+        let out = explain(
+            "grep",
+            &json!({"pattern": "(", "literal": true}),
+            "ERROR: invalid pattern: unexpected failure".into(),
+        );
+        assert_eq!(out, "ERROR: invalid pattern: unexpected failure");
     }
 
     #[test]
