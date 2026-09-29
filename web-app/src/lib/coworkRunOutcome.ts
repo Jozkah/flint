@@ -91,7 +91,7 @@ export type ObservedCheck = {
   /** False when the permission gate refused it before it ran. */
   attempted: boolean
   completion: CommandCompletion
-  /** The command's exit status, when the tool reported one. */
+  /** The command's exit status, when the tool reported it. */
   exitCode: number | null
   limitations: CheckLimitation[]
   callId?: string
@@ -855,7 +855,7 @@ export function continueRequest(unresolved: readonly UnresolvedItem[]): string {
     (item): item is Extract<UnresolvedItem, { kind: 'stop' }> =>
       item.kind === 'stop'
   )
-  const selected: UnresolvedItem[] = []
+  const selected: Exclude<UnresolvedItem, { kind: 'stop' }>[] = []
   const seenTools = new Set<string>()
   let keptCheck = false
 
