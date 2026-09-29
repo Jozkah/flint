@@ -142,13 +142,32 @@ export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions
     ...plannedHandlers,
     ...(actionHandlers ?? {}),
 
-    // Safe extra phone mutations reuse desktop stores/controllers. This
-    // intentionally excludes permission-widening Cowork actions.
+    // First-class Room mutations. These deliberately reuse the exact Room
+    // controller/persistence path used by the desktop and do not grant any
+    // filesystem permissions.
+    'room.create': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.create', input: params })
+      if (!result || typeof result.id !== 'string') throw new RemoteRpcError('internal', 'Room could not be created')
+      return { ok: true, id: result.id }
+    },
+    'room.update': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.update', id: params.id, patch: params.patch })
+      if (!result || typeof result.id !== 'string') throw new RemoteRpcError('internal', 'Room could not be updated')
+      return { ok: true, id: result.id }
+    },
+    'room.delete': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.delete', id: params.id })
+      if (!result) throw new RemoteRpcError('internal', 'Room could not be deleted')
+      return { ok: true }
+    },
+
+    // Legacy safe mobile mutations for chat/Cowork menus. These do not widen
+    // permissions; Room mutations no longer travel through settings.set.
     'settings.set': async (params, ctx) => {
       if (isRecord(params) && typeof params.mobileOp === 'string') {
         const result = await handleMobileMutation(params)
         if (!result) throw new RemoteRpcError('bad_params', 'Unknown mobile operation')
-        return result as { ok: true }
+        return { ok: true }
       }
       if (!actionHandlers) throw new RemoteRpcError('not_implemented', 'Changing settings is not available from phones yet')
       return actionHandlers['settings.set'](params, ctx)
