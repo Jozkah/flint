@@ -25,6 +25,21 @@ jobs:
         with:
           node-version: 20
 
+      - name: Configure Yarn
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn --version
+
+      - name: Install dependencies
+        shell: bash
+        run: yarn install --immutable
+
+      - name: Generate the canonical Flint platform icon set
+        shell: bash
+        run: yarn build:icon
+
       - name: Install NSIS
         shell: pwsh
         run: choco install nsis --yes --no-progress
