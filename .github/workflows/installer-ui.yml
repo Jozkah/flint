@@ -7,6 +7,9 @@ on:
       - 'src-tauri/tauri.bundle.windows.nsis*.template'
       - 'src-tauri/tauri.windows.conf.json'
       - 'src-tauri/tauri.conf.json'
+      - 'src-tauri/plugins/tauri-plugin-hardware/**'
+      - 'src-tauri/plugins/tauri-plugin-llamacpp/**'
+      - 'src-tauri/build-utils/check-engine-toolchain.sh'
       - 'scripts/prepare-windows-installer.mjs'
       - 'scripts/windows-installer*.mjs'
       - 'scripts/windows-installer-smoke.nsi'
@@ -68,6 +71,7 @@ jobs:
       CARGO_TERM_COLOR: always
       NODE_OPTIONS: '--max-old-space-size=4096'
       RUSTFLAGS: '-D warnings'
+      FLINT_ENGINE_BUILD_DIR: '${{ runner.temp }}\flint-engine'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
