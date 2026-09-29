@@ -71,7 +71,6 @@ jobs:
       CARGO_TERM_COLOR: always
       NODE_OPTIONS: '--max-old-space-size=4096'
       RUSTFLAGS: '-D warnings'
-      FLINT_ENGINE_BUILD_DIR: '${{ runner.temp }}\flint-engine'
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -109,6 +108,8 @@ jobs:
 
       - name: Build Flint and Windows bundles
         shell: bash
+        env:
+          FLINT_ENGINE_BUILD_DIR: '${{ runner.temp }}\flint-engine'
         run: |
           set -o pipefail
           make build 2>&1 | tee windows-build.log
