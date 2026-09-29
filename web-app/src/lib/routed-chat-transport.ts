@@ -11,8 +11,8 @@ function latestUserMessage(
     const message = messages[i]
     if (message.role !== 'user') continue
     const text = message.parts
-      .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
-      .map((part) => part.text)
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .filter(Boolean)
       .join('\n')
       .trim()
     if (text) return { id: message.id, text }
@@ -76,7 +76,7 @@ export class RoutedChatTransport extends CustomChatTransport {
 
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
-  ): ReturnType<CustomChatTransport['sendMessages']> {
+  ) {
     await this.routeAssistant(options.messages)
     return super.sendMessages(options)
   }
