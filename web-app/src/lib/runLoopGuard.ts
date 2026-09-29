@@ -76,11 +76,13 @@ export function classifyShellFailure(
 
 export type StableFailureClass =
   | 'dirty git worktree'
+  | 'git target cannot be changed here'
   | 'access must change before retrying'
   | 'pull request base changed'
   | 'pull request head is not pushed'
   | 'pull request has conflicts'
   | 'tool is unavailable'
+  | 'subagent exhausted its run'
 
 /**
  * Failures whose text already says that repeating the operation cannot help.
@@ -106,6 +108,14 @@ export function classifyStableFailure(
   }
   if (
     tool === 'git' &&
+    /is attached read-only, so .* cannot run there|is outside the project folder, worktree and session workspace; git runs only there/i.test(
+      error
+    )
+  ) {
+    return 'git target cannot be changed here'
+  }
+  if (
+    tool === 'git' &&
     /pull request not opened: base .* has moved|fetch the target repository'?s current base branch before opening the pull request/i.test(
       error
     )
@@ -127,6 +137,14 @@ export function classifyStableFailure(
     )
   ) {
     return 'pull request has conflicts'
+  }
+  if (
+    tool === 'task' &&
+    /subagent .* stopped at its \d+-step budget without finishing|subagent .* stopped at a repeating loop .* without finishing/i.test(
+      error
+    )
+  ) {
+    return 'subagent exhausted its run'
   }
   if (
     /model tried to call unavailable tool|tool ['`][^'`]+['`] is not available to this run|tool ['`][^'`]+['`] is disabled/i.test(
@@ -237,8 +255,14 @@ function stableFailureScope(
   ) {
     return gitFlag(call, '--head') ?? inputString(call, 'cwd')
   }
-  if (stable === 'dirty git worktree') {
+  if (
+    stable === 'dirty git worktree' ||
+    stable === 'git target cannot be changed here'
+  ) {
     return inputString(call, 'cwd')
+  }
+  if (stable === 'subagent exhausted its run') {
+    return inputString(call, 'subagent_name') || inputString(call, 'name')
   }
   return ''
 }
