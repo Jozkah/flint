@@ -346,8 +346,12 @@ Function FlintFinish
   SendMessage $4 ${WM_SETFONT} $FlintFontSmall 1
   !insertmacro _FlintCtl $4 MUTED BG
 
-  !insertmacro _FlintSecondaryButton 412 366 "Close" FlintFinishClose
-  !insertmacro _FlintPrimaryButton 556 366 "Launch Flint" FlintFinishLaunch
+  ${If} $FlintLaunchState = 1
+    !insertmacro _FlintSecondaryButton 412 366 "Close" FlintFinishClose
+    !insertmacro _FlintPrimaryButton 556 366 "Launch Flint" FlintFinishLaunch
+  ${Else}
+    !insertmacro _FlintPrimaryButton 556 366 "Finish" FlintFinishClose
+  ${EndIf}
   nsDialogs::Show
 FunctionEnd
 
@@ -362,7 +366,6 @@ FunctionEnd
 
 Function FlintFinishLaunch
   Pop $0
-  StrCpy $FlintLaunchState 1
   Call RunMainBinary
   StrCpy $FlintLaunchState 0
   SendMessage $HWNDPARENT ${WM_COMMAND} 1 0
