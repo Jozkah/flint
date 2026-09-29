@@ -61,9 +61,10 @@ export function parseJevRouteChoice(choice: string | null): {
 }
 
 /**
- * Build the bounded choice set handed to Jev. Cowork sends the cross product
- * of five assistants and three work-style suggestions (15 choices, below the
- * backend's 24-choice cap); Chat sends only the five assistants.
+ * Build the bounded choice set handed to Jev. A caller that asks for mode
+ * guidance sends the cross product of five assistants and three work-style
+ * suggestions (15 choices, below the backend's 24-choice cap); otherwise it
+ * sends only the five assistants.
  */
 export function buildJevRouteOptions(
   assistants: readonly Pick<Assistant, 'id' | 'name' | 'description'>[],
@@ -87,10 +88,10 @@ export function buildJevRouteOptions(
 }
 
 /**
- * Ask Jev which built-in should handle this prompt and, in Cowork, which mode
- * it recommends to that assistant. The mode is advisory only: callers may put
- * it in the model's system prompt, but must never use it to widen tool/folder
- * permissions.
+ * Ask Jev which built-in should handle this prompt and, when requested, which
+ * mode it recommends to that assistant. The mode is advisory only: callers may
+ * put it in the model's system prompt, but must never use it to widen
+ * tool/folder permissions.
  *
  * This deliberately uses the existing Jev skill-choice channel. That keeps the
  * API key, opt-in (`skillMode`), budgets, timeout, probability threshold,
@@ -125,8 +126,12 @@ export async function chooseJevPromptRoute(args: {
     const decision = await jevSuggestSkill(message, options)
     const parsed = parseJevRouteChoice(decision.skill)
     if (!parsed) {
+      // In active routing, every unconfident/failed choice returns to the
+      // generalist rather than accidentally carrying the previous specialist
+      // into an unrelated prompt. Shadow mode must not change behaviour.
+      const flintAvailable = args.assistants.some((assistant) => assistant.id === 'jan')
       return {
-        assistantId: null,
+        assistantId: jevMode === 'on' && flintAvailable ? 'jan' : null,
         mode: null,
         probability: decision.probability,
         fallback: decision.fallback,
@@ -145,7 +150,7 @@ export async function chooseJevPromptRoute(args: {
   }
 }
 
-/** System-prompt text for Cowork. It changes behaviour, never authority. */
+/** System-prompt text for a routed turn. It changes behaviour, never authority. */
 export function jevModeSuggestion(mode: JevSuggestedMode | null): string | undefined {
   if (!mode) return undefined
   return [
