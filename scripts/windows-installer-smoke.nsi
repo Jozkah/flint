@@ -28,6 +28,11 @@ Var DeleteAppDataCheckboxState
 
 !insertmacro FLINT_WELCOME_PAGE
 !insertmacro FLINT_OPTIONS_PAGE
+; Exercise the existing-install renderer too. The production template reaches
+; this function from its reinstall/upgrade page; without a corresponding page
+; in the smoke harness NSIS correctly reports it as dead code (warning 6010),
+; which /WX then promotes to a CI failure.
+Page custom FlintMaintenance
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW FlintInstFilesShow
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE FlintInstFilesLeave
 !insertmacro MUI_PAGE_INSTFILES
