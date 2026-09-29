@@ -19,7 +19,9 @@ const uiPaths = [
 ].map((name) => new URL(`../src-tauri/installer/windows/${name}`, import.meta.url))
 
 async function readInstallerUi() {
-  return (await Promise.all(uiPaths.map((path) => readFile(path, 'utf8')))).join('\n')
+  return (await Promise.all(uiPaths.map((path) => readFile(path, 'utf8'))))
+    .join('\n')
+    .replace(/\r\n/g, '\n')
 }
 
 test('Windows installer resolves every source path from current workspace', async () => {
@@ -48,7 +50,7 @@ test('Windows installer recovers only Flint bundled processes and locked files',
 })
 
 test('Windows installer uses the Flint UI and every asset it embeds exists', async () => {
-  const template = await readFile(templatePath, 'utf8')
+  const template = (await readFile(templatePath, 'utf8')).replace(/\r\n/g, '\n')
   const ui = await readInstallerUi()
 
   assert.match(template, /!define FLINT_WORKSPACE "flint_workspace"/)
