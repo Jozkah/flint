@@ -72,7 +72,7 @@ describe('shouldShowTokenCounter', () => {
     expect(shouldShowTokenCounter(inputs)).toBe(true)
   })
 
-  it('agent mode wins even with a selected model and messages', () => {
+  it('hides agent mode before usage is available', () => {
     expect(
       shouldShowTokenCounter({
         ...base,
@@ -127,7 +127,7 @@ describe('shouldShowTokenCounter', () => {
       ).toBe(false)
     })
 
-    it('does not override the model and agent-mode conditions', () => {
+    it('still requires a model but shows measured agent usage', () => {
       expect(
         shouldShowTokenCounter({
           ...cowork,
@@ -141,7 +141,7 @@ describe('shouldShowTokenCounter', () => {
           hasReportedUsage: true,
           isAgentMode: true,
         })
-      ).toBe(false)
+      ).toBe(true)
     })
   })
 })

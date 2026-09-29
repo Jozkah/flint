@@ -10157,9 +10157,9 @@ mod tests {
             )
             .into())
         };
-        // 1) the main request overflows, 2) the summarizer it spawned overflows too.
+        // Main request and every progressively smaller summary request overflow.
         let model = ResultQueueModel {
-            results: StdMutex::new(vec![overflow(), overflow()].into_iter().collect()),
+            results: StdMutex::new((0..7).map(|_| overflow()).collect()),
         };
         let tool = MockTool::default();
         let mut budget = SessionBudget::new(None);

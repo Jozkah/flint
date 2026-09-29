@@ -803,14 +803,15 @@ const ChatInput = memo(function ChatInput({
 
   const tokenCounterVisible =
     !hideTokenCounter &&
-    shouldShowTokenCounter({
+    ((!!tokenSource?.threadId && !!selectedModel) || shouldShowTokenCounter({
       hasSelectedModel: !!selectedModel,
       isAgentMode: effectiveAgentMode,
       isInitialMessage: !!initialMessage,
       hasMessages: (threadMessages?.length ?? 0) > 0,
       hasPromptText: prompt.trim().length > 0,
-      hasReportedUsage: (tokenSource?.usage?.totalTokens ?? 0) > 0,
-    })
+      hasReportedUsage:
+        (tokenSource?.usage?.totalTokens ?? 0) > 0 || !!tokenSource?.contextError,
+    }))
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')

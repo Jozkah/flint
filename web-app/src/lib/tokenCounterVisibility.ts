@@ -27,5 +27,4 @@ export const shouldShowTokenCounter = ({
   hasReportedUsage = false,
 }: TokenCounterVisibilityInput): boolean =>
   hasSelectedModel &&
-  !isAgentMode &&
-  (hasReportedUsage || (!isInitialMessage && (hasMessages || hasPromptText)))
+  (hasReportedUsage || (!isAgentMode && !isInitialMessage && (hasMessages || hasPromptText)))

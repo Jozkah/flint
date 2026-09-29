@@ -272,6 +272,19 @@ describe('useTokensCount', () => {
   // Cowork keeps its own turns, not ThreadMessages, so it reports usage
   // directly rather than synthesising messages to carry it.
   describe('direct usage source', () => {
+    it('shows failed Cowork request size even without a completed turn', () => {
+      modelProviderState.selectedProvider = 'anthropic'
+      const { result } = renderHook(() =>
+        useTokensCount([], {
+          threadId: 'session-1',
+          contextError: 'request (33333 tokens) exceeds the available context size (32768 tokens)',
+        })
+      )
+      expect(result.current.tokenCount).toBe(33333)
+      expect(result.current.maxTokens).toBe(32768)
+      expect(result.current.isOverflow).toBe(true)
+    })
+
     it('counts tokens for a remote provider with no messages at all', () => {
       modelProviderState.selectedProvider = 'anthropic'
       const { result } = renderHook(() =>

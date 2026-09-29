@@ -52,6 +52,8 @@ export type UsageMeta = TokenUsage
 export interface TokenUsageSource {
   threadId?: string
   usage?: UsageMeta
+  /** Last failed request, when it never produced usage metadata. */
+  contextError?: string
   /** Every request in this session, added up (see `summarizeUsage`). */
   session?: UsageMeta
   /**
@@ -186,6 +188,9 @@ export const useTokensCount = (
   ])
 
   const tokenData: TokenCountData = useMemo(() => {
+    const sourceOverflow = source?.contextError
+      ? parseContextOverflow(source.contextError)
+      : null
     if (!isLocalProvider) {
       if (!selectedModel) {
         return {
@@ -197,10 +202,12 @@ export const useTokensCount = (
       }
       const usage = source?.usage ?? getLatestServerUsage(messages)
       return {
-        tokenCount: usage.totalTokens ?? 0,
+        tokenCount: sourceOverflow?.requestTokens ?? usage.totalTokens ?? 0,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         usage,
+        maxTokens: sourceOverflow?.contextTokens,
+        isOverflow: sourceOverflow != null,
         loading: false,
         isNearLimit: false,
         fitEnabled: false,
@@ -215,7 +222,7 @@ export const useTokensCount = (
         fitEnabled: false,
       }
     }
-    const overflow = getActiveContextOverflow(messages)
+    const overflow = sourceOverflow ?? getActiveContextOverflow(messages)
     const usage: UsageMeta = liveStats
       ? finalizeTokenUsage({
           inputTokens: liveStats.promptTokens,
