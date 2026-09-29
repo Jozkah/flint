@@ -8,10 +8,10 @@ Function ${UN}FlintGuiInit
     StrCpy $FlintDark 1
   ${EndIf}
   ${If} $FlintDark = 1
-    StrCpy $FlintBarRef 0xF4C8A8
+    StrCpy $FlintBarRef 0xEBE8E6
     StrCpy $FlintTrackRef 0x2B2522
   ${Else}
-    StrCpy $FlintBarRef 0x915B31
+    StrCpy $FlintBarRef 0x37291F
     StrCpy $FlintTrackRef 0xF3F0EE
   ${EndIf}
 
