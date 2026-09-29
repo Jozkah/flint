@@ -4,7 +4,6 @@ import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
-  applyWebSearchToTools,
   buildCoworkTools,
   coworkToolSignature,
   type CoworkToolOptions,
@@ -106,6 +105,8 @@ export class CoworkChatTransport extends CustomChatTransport {
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
   private builtSig = ''
+  /** A settings change queued while this run is frozen. */
+  private pendingWebSearch: boolean | null = null
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
@@ -154,25 +155,27 @@ export class CoworkChatTransport extends CustomChatTransport {
   }
 
   /**
-   * A Settings toggle (web search) mid-run.
+   * Queue a Settings web-search change for the next run.
    *
-   * Settings apply at the next run, like a mode change: the advertised set is
-   * frozen for a run's lifetime, so the toggle must not rebuild it. The web
-   * tools are the only part of the set a Settings toggle touches, so they are
-   * added to or removed from the frozen record in place, and the next run
-   * re-reads the setting from scratch.
+   * The active run keeps both its advertised tools and its prompt/config
+   * unchanged. Applying the setting to `config` while frozen would still alter
+   * the system prompt on the next step even if the tool record stayed frozen.
    */
   setWebSearch(webSearch: boolean) {
-    this.config = { ...this.config, webSearch }
     if (this.frozenTools) {
-      this.frozenTools = applyWebSearchToTools(this.frozenTools, webSearch)
-      this.tools = this.frozenTools
+      this.pendingWebSearch = webSearch
+      return
     }
+    this.config = { ...this.config, webSearch }
   }
 
   /** Drop the freeze so the next run re-reads the config. */
   unfreezeTools() {
     this.frozenTools = null
+    if (this.pendingWebSearch !== null) {
+      this.config = { ...this.config, webSearch: this.pendingWebSearch }
+      this.pendingWebSearch = null
+    }
   }
 
   /**
