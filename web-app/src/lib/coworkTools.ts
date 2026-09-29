@@ -338,37 +338,6 @@ export function coworkToolSignature(
 }
 
 /**
- * The advertised set with the web tools added or removed, in place.
- *
- * A web-search toggle is a Settings change, and Settings changes apply at the
- * next run: the set is frozen for a run's lifetime, so toggling mid-run must
- * not rebuild it (that would change the tool JSON and discard the prompt
- * prefix on the next of this turn's many prefills). The web tools are the
- * only part of the set a Settings toggle touches, so they are added or removed
- * from the frozen record rather than rebuilt from the backend's schemas.
- */
-export function applyWebSearchToTools(
-  tools: Record<string, Tool>,
-  webSearch: boolean
-): Record<string, Tool> {
-  const next = { ...tools }
-  if (webSearch) {
-    next['web_search'] = {
-      description: WEB_SEARCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_SEARCH_INPUT_SCHEMA as Record<string, unknown>),
-    } as Tool
-    next['web_fetch'] = {
-      description: WEB_FETCH_DESCRIPTION,
-      inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
-    } as Tool
-  } else {
-    delete next['web_search']
-    delete next['web_fetch']
-  }
-  return next
-}
-
-/**
  * The part of readiness that can change which tools are advertised.
  *
  * State and reason only -- not timestamps, which change on every probe and
