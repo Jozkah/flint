@@ -8,6 +8,7 @@ import {
 } from '@janhq/tauri-plugin-agent-tools-api'
 import type { LiveGrant } from '@/lib/coworkAccess'
 import { errorText } from '@/lib/errorText'
+import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 
 /**
  * The grants this renderer believes the backend is holding.
@@ -177,3 +178,25 @@ export const useDirectEditGrants = create<DirectEditGrantsState>()(
       }),
   })
 )
+
+/**
+ * A grant is scoped to the exact primary folder it was issued for. Changing the
+ * session binding must therefore withdraw the old grant; otherwise Cowork sees
+ * a truthy `liveGrant`, skips its automatic authorization effect, and the UI can
+ * say "Edit this folder" while the backend still only authorizes the previous
+ * folder. Once this revocation clears local state, Cowork's existing auto-edit
+ * effect obtains a fresh grant for the newly attached folder.
+ */
+useCoworkSessions.subscribe((state, previous) => {
+  const previousById = new Map(previous.sessions.map((session) => [session.id, session]))
+
+  for (const session of state.sessions) {
+    const before = previousById.get(session.id)
+    if (!before || before.folder === session.folder) continue
+
+    const grant = useDirectEditGrants.getState().bySession[session.id]
+    if (!grant || grant.folder === session.folder) continue
+
+    void useDirectEditGrants.getState().revokeSession(session.id)
+  }
+})
