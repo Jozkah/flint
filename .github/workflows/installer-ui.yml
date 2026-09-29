@@ -40,10 +40,6 @@ jobs:
       - name: Compile custom installer UI with warnings as errors
         shell: pwsh
         run: |
-          Push-Location scripts
-          try {
-            & "C:\Program Files (x86)\NSIS\makensis.exe" /WX windows-installer-smoke.nsi
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          } finally {
-            Pop-Location
-          }
+          $root = (Resolve-Path .).Path
+          & "C:\Program Files (x86)\NSIS\makensis.exe" /WX "/DFLINT_SMOKE_ROOT=$root" scripts\windows-installer-smoke.nsi
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
