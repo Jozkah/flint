@@ -47,7 +47,7 @@ const ICONS: Record<AccessMode, typeof FolderLock> = {
 }
 
 export type AccessSelectorProps = {
-  /** `pill` in a header row; `quiet` under the composer: text only, one word. */
+  /** `pill` in a split-pane composer row; `quiet` under the composer. */
   variant?: 'pill' | 'quiet'
   /** What is in force, including any downgrade from the stored preference. */
   effective: EffectiveAccess
@@ -125,15 +125,13 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             title={
               downgradeKey
                 ? t(downgradeKey)
-                : quiet
-                  ? t(accessLabelKey(active))
-                  : undefined
+                : t(accessLabelKey(active))
             }
             data-testid="cowork-access-selector"
             className={cn(
               quiet
                 ? 'h-7 shrink-0 gap-1.5 px-2 text-xs font-medium pointer-coarse:h-11'
-                : // 30px, the height of every context control in the top header.
+                : // 30px, the height of every context control in the split pane.
                   'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
               // Editing the user's own checkout is the state worth noticing.
               active === 'edit-folder'
@@ -146,18 +144,12 @@ export function CoworkAccessSelector(props: AccessSelectorProps) {
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            {quiet ? (
-              <span>{t(accessShortLabelKey(active))}</span>
-            ) : (
-              <>
-                {/* Icon only when the Cowork header row is tight (@container/ctx);
-                    the button keeps its aria-label either way. */}
-                <span className="@max-2xl/ctx:sr-only">{t(accessLabelKey(active))}</span>
-                <ChevronDown
-                  aria-hidden
-                  className="size-3 shrink-0 text-muted-foreground"
-                />
-              </>
+            <span>{t(accessShortLabelKey(active))}</span>
+            {!quiet && (
+              <ChevronDown
+                aria-hidden
+                className="size-3 shrink-0 text-muted-foreground"
+              />
             )}
           </Button>
         </DropdownMenuTrigger>
