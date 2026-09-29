@@ -118,8 +118,8 @@ export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate 
   out = replaceOnce(
     out,
     /  ; Auto close this page for passive mode\n  \$\{If\} \$PassiveMode = 1\n    SetAutoClose true\n  \$\{EndIf\}\nSectionEnd/,
-    `  ; Auto close passive installs. Interactive installs honor the Launch\n  ; Flint switch as soon as the install section has completed successfully.\n  \${If} $PassiveMode = 1\n    SetAutoClose true\n  \${ElseIf} $FlintLaunchState = 1\n    Call RunMainBinary\n    StrCpy $FlintLaunchState 0\n  \${EndIf}\nSectionEnd`,
-    'interactive launch behaviour'
+    `  ; Passive installs have no completion page. Interactive installs always\n  ; continue to Flint's completion page, which exclusively owns app launch.\n  \${If} $PassiveMode = 1\n    SetAutoClose true\n  \${EndIf}\nSectionEnd`,
+    'interactive completion behaviour'
   )
 
   out = replaceOnce(
