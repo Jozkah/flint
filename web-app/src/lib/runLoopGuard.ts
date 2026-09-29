@@ -198,6 +198,11 @@ function inputRecord(call: ObservedCall): Record<string, unknown> | null {
     : null
 }
 
+function inputString(call: ObservedCall, key: string): string {
+  const value = inputRecord(call)?.[key]
+  return typeof value === 'string' ? value.trim() : ''
+}
+
 function inputPath(call: ObservedCall): string | null {
   const record = inputRecord(call)
   if (!record) return null
@@ -230,10 +235,10 @@ function stableFailureScope(
     stable === 'pull request head is not pushed' ||
     stable === 'pull request has conflicts'
   ) {
-    return gitFlag(call, '--head') ?? inputRecord(call)?.cwd?.toString() ?? ''
+    return gitFlag(call, '--head') ?? inputString(call, 'cwd')
   }
   if (stable === 'dirty git worktree') {
-    return inputRecord(call)?.cwd?.toString() ?? ''
+    return inputString(call, 'cwd')
   }
   return ''
 }
