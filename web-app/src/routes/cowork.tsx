@@ -678,10 +678,6 @@ export function CoworkPage() {
     folder: string | null
   }>({ sessionId: null, folder: null })
   bindingRef.current = { sessionId: session?.id ?? null, folder }
-  // The run's transport, so a Settings toggle can be pushed to it in place
-  // (web tools added or removed) rather than letting the next step rebuild
-  // the advertised set and discard the prompt prefix.
-  const transportRef = useRef<CoworkChatTransport | null>(null)
 
   // A confirmation is about one folder in one session. If either changes while
   // it is open, the question no longer means what it said.
@@ -964,13 +960,6 @@ export function CoworkPage() {
   const workspacePath = useSessionWorkspacePath(session?.id)
   const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
   const hasTurns = (session?.turns?.length ?? 0) > 0
-  // A Settings toggle applies at the next run, like a mode change: the run's
-  // advertised set is frozen for its lifetime, so the toggle is pushed to the
-  // transport in place (web tools added or removed) rather than letting the
-  // next step rebuild the set and discard the prompt prefix.
-  useEffect(() => {
-    transportRef.current?.setWebSearch(webSearchEnabled)
-  }, [webSearchEnabled])
   /**
    * What a run started now would send, before one has.
    *
@@ -3077,7 +3066,6 @@ export function CoworkPage() {
       networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
       mcpServers: [],
     })
-    transportRef.current = transport
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
     // a session with no folder has no project memory at all. Never temporary.

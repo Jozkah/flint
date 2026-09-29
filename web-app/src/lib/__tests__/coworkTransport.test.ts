@@ -204,34 +204,6 @@ describe('CoworkChatTransport', () => {
     expect(buildCoworkTools).toHaveBeenCalledTimes(2)
   })
 
-  // A Settings toggle is queued while the run is frozen. Neither its tool JSON
-  // nor its system prompt changes until the boundary, so the current run keeps
-  // one stable prefix and the next run gets the new setting.
-  it('keeps a web-search toggle out of the active run and applies it at the next boundary', async () => {
-    const t = new CoworkChatTransport('s1', config({ webSearch: true }))
-    buildCoworkTools.mockResolvedValue({ read: {}, web_search: {}, web_fetch: {} })
-    await t.refreshTools()
-    const promptOf = () =>
-      (t as unknown as { buildSystemPrompt: (m: unknown[]) => string }).buildSystemPrompt([])
-    const beforePrompt = promptOf()
-    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
-
-    t.setWebSearch(false)
-    await t.refreshTools()
-    expect(Object.keys(t.advertisedTools).sort()).toEqual(['read', 'web_fetch', 'web_search'])
-    expect(promptOf()).toBe(beforePrompt)
-    expect(buildCoworkTools).toHaveBeenCalledTimes(1)
-
-    buildCoworkTools.mockResolvedValue({ read: {} })
-    t.unfreezeTools()
-    await t.refreshTools()
-    expect(Object.keys(t.advertisedTools)).toEqual(['read'])
-    expect(buildCoworkTools).toHaveBeenCalledTimes(2)
-    expect(buildCoworkTools).toHaveBeenLastCalledWith(
-      expect.objectContaining({ webSearch: false })
-    )
-  })
-
   // The parent throws when a window has no user turn. That is right for chat,
   // where it means eviction ate the question, and wrong for a long agent run
   // whose recent traffic is all tool results.
