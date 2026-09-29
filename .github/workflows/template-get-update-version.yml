@@ -1,4 +1,5 @@
 name: get-update-version
+
 on:
   workflow_call:
     outputs:
@@ -15,48 +16,36 @@ jobs:
       - name: Install jq
         uses: dcarbone/install-jq-action@b7ef57d46ece78760b4019dbc4080a1ba2a40b45 # v3.2.0
 
-      - name: Get tag
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-        id: tag
-        uses: dawidd6/action-get-tag@727a6f0a561be04e09013531e73a3983a65e3479 # v1
-
-      - name: Update app version based on latest release tag with build number
+      - name: Update app version
         id: version_update
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          RUN_NUMBER: ${{ github.run_number }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          # Function to get the latest release tag
-          get_latest_tag() {
-            local retries=0
-            local max_retries=3
-            local tag
-            while [ $retries -lt $max_retries ]; do
-              tag=$(curl -H "Authorization: token ${GITHUB_TOKEN}" -s https://api.github.com/repos/Jozkah/flint/releases/latest | jq -r .tag_name)
-              if [ -n "$tag" ] && [ "$tag" != "null" ]; then
-                echo $tag
-                return
-              else
-                let retries++
-                echo "Retrying... ($retries/$max_retries)"
-                sleep 2
-              fi
-            done
-            echo "Failed to fetch latest tag after $max_retries attempts."
-            exit 1
-          }
+          set -euo pipefail
 
-            if ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}; then
-            echo "Tag detected, set output follow tag"
-            sanitized_tag="${{ steps.tag.outputs.tag }}"
-            # Remove the 'v' prefix if it exists
-            sanitized_tag="${sanitized_tag#v}"
-            echo "::set-output name=new_version::$sanitized_tag"
+          if [[ "$EVENT_NAME" == "push" && "$REF_TYPE" == "tag" ]]; then
+            version="${REF_NAME#v}"
+            echo "Tag detected: $REF_NAME -> $version"
           else
-            # Get the latest release tag from GitHub API
-            LATEST_TAG=$(get_latest_tag)
-            
-            # Remove the 'v' and append the build number to the version
-            new_version="${LATEST_TAG#v}-${GITHUB_RUN_NUMBER}"
-            echo "New version: $new_version"
-            echo "::set-output name=new_version::$new_version"
+            latest_tag=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${REPOSITORY}/releases/latest" \
+              | jq -r '.tag_name // empty')
+
+            if [[ -z "$latest_tag" ]]; then
+              echo "::error::Could not determine the latest release tag."
+              exit 1
+            fi
+
+            version="${latest_tag#v}-${RUN_NUMBER}"
+            echo "Dispatch build version: $version"
           fi
+
+          echo "new_version=$version" >> "$GITHUB_OUTPUT"
