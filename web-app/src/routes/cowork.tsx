@@ -1873,6 +1873,7 @@ export function CoworkPage() {
       // Cache counts included: the counter's popover shows them for Cowork
       // exactly as it does for Chat.
       usage: fromCoworkUsage(usage),
+      contextError: stoppedBy === 'error' ? runError : undefined,
       // This session's requests only, from its own turns: how many reused the
       // cache, kept apart from how many tokens were cached.
       session: summarizeUsage(
@@ -1880,7 +1881,7 @@ export function CoworkPage() {
       ),
       loadingModel: sessionLoadingModel,
     }),
-    [session?.id, session?.turns, usage, sessionLoadingModel]
+    [session?.id, session?.turns, usage, sessionLoadingModel, stoppedBy, runError]
   )
 
   // Live runs write into the run store; a committed session carries its own.

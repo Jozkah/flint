@@ -124,6 +124,17 @@ describe('TokenCounter', () => {
     expect(svg).toBeTruthy()
     const circles = container.querySelectorAll('circle')
     expect(circles.length).toBe(2)
+    expect(container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#22c55e')
+  })
+
+  it('changes ring gradient as context fills', () => {
+    mockTokens({ tokenCount: 900, maxTokens: 1000 })
+    const { container, unmount } = render(<TokenCounter />)
+    expect(container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#eab308')
+    unmount()
+    mockTokens({ tokenCount: 1100, maxTokens: 1000 })
+    const full = render(<TokenCounter />)
+    expect(full.container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#f97316')
   })
 
   it('renders nothing when maxTokens is unavailable', () => {

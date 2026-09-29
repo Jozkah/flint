@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState, useRef, memo } from 'react'
+import { useMemo, useEffect, useState, useRef, useId, memo } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn, formatTokenCount } from '@/lib/utils'
 import {
@@ -49,6 +49,7 @@ export const TokenCounter = memo(function TokenCounter({
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
+  const ringGradientId = useId()
   // Which conversation these numbers belong to, stamped on the badge and its
   // popover so nothing -- a test, a screen reader, a stale portal left over
   // from the previous session -- can mistake one session's usage for another's.
@@ -156,12 +157,12 @@ export const TokenCounter = memo(function TokenCounter({
       : tier === 'warn'
         ? 'text-warning'
         : 'text-foreground'
-  const ringCls =
+  const ringColors =
     tier === 'over'
-      ? 'stroke-destructive'
+      ? ['#f97316', '#ef4444']
       : tier === 'warn'
-        ? 'stroke-warning'
-        : 'stroke-secondary-foreground'
+        ? ['#eab308', '#f97316']
+        : ['#22c55e', '#06b6d4']
   const barCls =
     tier === 'over'
       ? 'bg-destructive'
@@ -203,6 +204,12 @@ export const TokenCounter = memo(function TokenCounter({
                 className="size-[18px] shrink-0 -rotate-90"
                 viewBox="0 0 20 20"
               >
+                <defs>
+                  <linearGradient id={ringGradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+                    <stop stopColor={ringColors[0]} />
+                    <stop offset="1" stopColor={ringColors[1]} />
+                  </linearGradient>
+                </defs>
                 <circle
                   cx="10"
                   cy="10"
@@ -218,12 +225,10 @@ export const TokenCounter = memo(function TokenCounter({
                   strokeWidth="2.4"
                   fill="none"
                   strokeLinecap="round"
+                  stroke={`url(#${ringGradientId})`}
                   strokeDasharray={`${2 * Math.PI * 8}`}
                   strokeDashoffset={`${2 * Math.PI * 8 * (1 - Math.min(pct ?? 0, 100) / 100)}`}
-                  className={cn(
-                    'motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo',
-                    ringCls
-                  )}
+                  className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
                 />
               </svg>
               <span
