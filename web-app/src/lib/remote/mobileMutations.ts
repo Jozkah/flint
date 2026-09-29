@@ -3,7 +3,6 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
 import type { CreateRoomInput, RoomSettingsPatch } from '@/lib/rooms/controller'
-import type { Navigate } from './appActions'
 
 const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
@@ -16,7 +15,6 @@ const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
  * absent: they still require the desktop consent UI.
  */
 export async function handleMobileMutation(
-  navigate: Navigate,
   raw: unknown
 ): Promise<Record<string, unknown> | null> {
   const p = rec(raw)
@@ -32,7 +30,6 @@ export async function handleMobileMutation(
       title,
       objective: str(input.objective),
     } as CreateRoomInput)
-    navigate({ to: '/rooms/$roomId', params: { roomId: room.id } })
     return { ok: true, id: room.id }
   }
 
@@ -79,7 +76,6 @@ export async function handleMobileMutation(
     if (!id) throw new Error('Session id is required')
     const next = useCoworkSessions.getState().forkSession(id)
     if (!next) throw new Error('Session could not be forked')
-    navigate({ to: '/cowork' })
     return { ok: true, id: next }
   }
 
