@@ -13,7 +13,10 @@ import type {
   ComponentReport,
   ToolSchema,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
+import {
+  SESSION_MESSAGING_TOOL_NAMES,
+  STOP_SESSION_TOOL_NAME,
+} from '@/lib/sessionMessagingTools'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -394,13 +397,20 @@ export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
   // `session` scope: Cowork is the surface the backend offers the
-  // session-messaging tools to. Without it they are never advertised.
+  // session-messaging tools to. Those tools require a project identity, so a
+  // folderless Cowork run must not advertise calls that are guaranteed to end
+  // in `no_project`.
   const schemas = await getAgentToolSchemas(
     opts.projectRoot,
     opts.reported,
     'session'
   )
-  return coworkToolsFromSchemas(schemas, opts)
+  const runnableSchemas = opts.projectRoot
+    ? schemas
+    : schemas.filter(
+        (schema) => !SESSION_MESSAGING_TOOL_NAMES.has(schema.function.name)
+      )
+  return coworkToolsFromSchemas(runnableSchemas, opts)
 }
 
 /**
