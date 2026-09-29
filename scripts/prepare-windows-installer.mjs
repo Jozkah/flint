@@ -6,6 +6,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const repoRoot = join(here, '..')
 const basePath = join(repoRoot, 'src-tauri', 'tauri.bundle.windows.nsis.base.template')
 const targetPath = join(repoRoot, 'src-tauri', 'tauri.bundle.windows.nsis.template')
+const tauriConfigPath = join(repoRoot, 'src-tauri', 'tauri.conf.json')
 
 function replaceOnce(source, search, replacement, label) {
   const index = source.search(search)
@@ -24,20 +25,31 @@ function extractDefine(template, name) {
   return m?.[1] ?? null
 }
 
-function preserveBuildSubstitutions(base, current) {
+function nsisBuildVersion(version) {
+  const core = String(version ?? '').split('-', 1)[0]
+  const parts = core.split('.').map((part) => Number.parseInt(part, 10))
+  if (parts.length < 1 || parts.some((part) => !Number.isInteger(part) || part < 0)) {
+    throw new Error(`Cannot convert Tauri version "${version}" to an NSIS file version`)
+  }
+  return [...parts.slice(0, 4), 0, 0, 0, 0].slice(0, 4).join('.')
+}
+
+function preserveBuildSubstitutions(base, current, defaults = {}) {
   // Release workflows substitute these values before the regular build starts.
-  // Read them back before regenerating so the custom-page transform never
-  // discards a release version, product name, binary name or workspace path.
+  // Prefer those values when present; a normal local build has the literal
+  // jan_* placeholders, so fall back to the canonical Tauri config instead.
   const replacements = [
-    ['jan_productname', extractDefine(current, 'PRODUCTNAME')],
-    ['jan_version', extractDefine(current, 'VERSION')],
-    ['jan_build', extractDefine(current, 'VERSIONWITHBUILD')],
-    ['jan_mainbinaryname', extractDefine(current, 'MAINBINARYNAME')],
-    ['jan_bundleid', extractDefine(current, 'BUNDLEID')],
+    ['jan_productname', 'PRODUCTNAME', defaults.productName],
+    ['jan_version', 'VERSION', defaults.version],
+    ['jan_build', 'VERSIONWITHBUILD', defaults.versionWithBuild],
+    ['jan_mainbinaryname', 'MAINBINARYNAME', defaults.mainBinaryName],
+    ['jan_bundleid', 'BUNDLEID', defaults.bundleId],
   ]
   let out = base
-  for (const [placeholder, value] of replacements) {
-    if (value && value !== placeholder) out = out.split(placeholder).join(value)
+  for (const [placeholder, defineName, fallback] of replacements) {
+    const currentValue = extractDefine(current, defineName)
+    const value = currentValue && currentValue !== placeholder ? currentValue : fallback
+    if (value) out = out.split(placeholder).join(String(value))
   }
 
   // The ARM64 workflow retargets the rendered NSIS template before Tauri runs.
@@ -64,12 +76,16 @@ function preserveBuildSubstitutions(base, current) {
   return out
 }
 
-export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate = baseTemplate) {
+export function transformWindowsInstallerTemplate(
+  baseTemplate,
+  currentTemplate = baseTemplate,
+  defaults = {}
+) {
   // Git may check the template out as CRLF on Windows. Keep the transformer
   // deterministic and make every guarded match independent of autocrlf.
   const base = baseTemplate.replace(/\r\n/g, '\n')
   const current = currentTemplate.replace(/\r\n/g, '\n')
-  let out = preserveBuildSubstitutions(base, current)
+  let out = preserveBuildSubstitutions(base, current, defaults)
 
   out = replaceOnce(
     out,
@@ -145,11 +161,20 @@ export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate 
 }
 
 export async function prepareWindowsInstaller({ check = false } = {}) {
-  const [base, current] = await Promise.all([
+  const [base, current, configRaw] = await Promise.all([
     readFile(basePath, 'utf8'),
     readFile(targetPath, 'utf8'),
+    readFile(tauriConfigPath, 'utf8'),
   ])
-  const generated = transformWindowsInstallerTemplate(base, current)
+  const config = JSON.parse(configRaw)
+  const defaults = {
+    productName: config.productName,
+    version: config.version,
+    versionWithBuild: nsisBuildVersion(config.version),
+    mainBinaryName: config.mainBinaryName ?? config.productName,
+    bundleId: config.identifier,
+  }
+  const generated = transformWindowsInstallerTemplate(base, current, defaults)
   if (check) return generated
   if (generated !== current) await writeFile(targetPath, generated)
   return generated
