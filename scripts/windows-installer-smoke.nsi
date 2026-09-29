@@ -10,10 +10,11 @@ ManifestDPIAwareness PerMonitorV2
 !define PRODUCTNAME "Flint"
 !define VERSION "0.9.0"
 !define ALLOWDOWNGRADES "true"
-; makensis resolves includes relative to this script, so the repository root is
-; one level above scripts/ without repeating `${__FILEDIR__}` in the path.
-!define FLINT_WORKSPACE ".."
-!define MUI_ICON "${FLINT_WORKSPACE}\src-tauri\icons\icon.ico"
+!ifndef FLINT_SMOKE_ROOT
+  !define FLINT_SMOKE_ROOT ".."
+!endif
+!define FLINT_WORKSPACE "${FLINT_SMOKE_ROOT}"
+!define MUI_ICON "${FLINT_SMOKE_ROOT}\src-tauri\icons\icon.ico"
 
 Name "Flint Installer UI Smoke"
 OutFile "flint-installer-ui-smoke.exe"
@@ -23,7 +24,7 @@ RequestExecutionLevel user
 Var PassiveMode
 Var DeleteAppDataCheckboxState
 
-!include "${FLINT_WORKSPACE}\src-tauri\installer\windows\flint-ui.nsh"
+!include "${FLINT_SMOKE_ROOT}\src-tauri\installer\windows\flint-ui.nsh"
 
 !insertmacro FLINT_WELCOME_PAGE
 !insertmacro FLINT_OPTIONS_PAGE
