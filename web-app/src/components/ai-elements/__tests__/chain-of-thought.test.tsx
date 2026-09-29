@@ -89,6 +89,61 @@ describe('ChainOfThought', () => {
     expect(screen.queryByText('Content here')).not.toBeInTheDocument()
   })
 
+  it('stays collapsed after a manual toggle even when shouldCollapse flips back to false', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <ChainOfThought shouldCollapse={false}>
+        <ChainOfThoughtHeader />
+        <ChainOfThoughtContent>
+          <p>Content here</p>
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    )
+    expect(screen.getByText('Content here')).toBeInTheDocument()
+
+    // User manually collapses the trace.
+    await user.click(screen.getByRole('button'))
+    expect(screen.queryByText('Content here')).not.toBeInTheDocument()
+
+    // shouldCollapse flips back to false (e.g. a new tool call starts).
+    // The trace must stay collapsed — it was the user's choice.
+    rerender(
+      <ChainOfThought shouldCollapse={false}>
+        <ChainOfThoughtHeader />
+        <ChainOfThoughtContent>
+          <p>Content here</p>
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    )
+    expect(screen.queryByText('Content here')).not.toBeInTheDocument()
+  })
+
+  it('forceOpen overrides a manual collapse (tool awaiting approval)', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <ChainOfThought shouldCollapse={false}>
+        <ChainOfThoughtHeader />
+        <ChainOfThoughtContent>
+          <p>Content here</p>
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    )
+    // User manually collapses the trace.
+    await user.click(screen.getByRole('button'))
+    expect(screen.queryByText('Content here')).not.toBeInTheDocument()
+
+    // A tool starts awaiting approval: forceOpen pins it open.
+    rerender(
+      <ChainOfThought shouldCollapse={false} forceOpen={true}>
+        <ChainOfThoughtHeader />
+        <ChainOfThoughtContent>
+          <p>Content here</p>
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    )
+    expect(screen.getByText('Content here')).toBeInTheDocument()
+  })
+
   it('calls onOpenChange when toggled', async () => {
     const user = userEvent.setup()
     const onOpenChange = vi.fn()

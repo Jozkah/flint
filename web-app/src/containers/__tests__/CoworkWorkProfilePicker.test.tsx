@@ -22,7 +22,7 @@ describe('CoworkWorkProfilePicker', () => {
       />
     )
     const trigger = screen.getByTestId('work-profile-picker')
-    expect(trigger).toHaveTextContent('common:jev.profilesAuto · Debug')
+    expect(trigger).toHaveTextContent('Debug')
     await userEvent.click(trigger)
     const items = screen.getAllByRole('menuitemradio')
     expect(items).toHaveLength(WORK_PROFILES.length + 1)

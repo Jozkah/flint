@@ -886,14 +886,14 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       <PopoverContent
         className={cn(
           // Use auto width to fit long model names; keep a sensible minimum.
-          'w-[360px] max-w-[calc(100vw-24px)] p-1.5',
+          // Cap height so the popover never overflows the viewport even when
+          // it cannot flip to the other side.
+          'w-[360px] max-w-[calc(100vw-24px)] max-h-[calc(100vh-16px)] p-1.5',
           searchValue.length === 0 && 'h-[26rem]'
         )}
         align="end"
-        // sideOffset={16}
-        // alignOffset={-10}
         side="bottom"
-        avoidCollisions={searchValue.length === 0 ? true : false}
+        avoidCollisions
       >
         <div className="flex flex-col size-full">
           {/* Search input */}

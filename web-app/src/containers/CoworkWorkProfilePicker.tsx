@@ -89,12 +89,9 @@ export function CoworkWorkProfilePicker({
             <span>{picked ? picked.label : label}</span>
           ) : (
             <>
-              {/* Icon only when the Cowork header row is tight, like Mode. */}
+              {/* Auto: the wand icon plus the profile it picked. Manual: the profile's own icon and label. */}
               <span className="@max-2xl/ctx:sr-only">
-                {label}
-                {!manual && picked ? (
-                  <span className="font-normal text-muted-foreground"> · {picked.label}</span>
-                ) : null}
+                {manual ? label : picked ? picked.label : label}
               </span>
               <ChevronDown aria-hidden className="size-3 shrink-0 text-muted-foreground" />
             </>
