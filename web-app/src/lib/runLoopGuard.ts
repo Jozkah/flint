@@ -32,12 +32,14 @@ export const NO_PROGRESS_LIMIT = 2
 export const DELEGATION_DEPTH_LIMIT = 3
 
 /**
- * Four adjacent reads of the same file in <= 32-line windows is not useful
- * pagination. It is the transcript failure where a model reads 200-204,
- * 205-209, 210-214, ... instead of taking a useful chunk or searching first.
+ * Four adjacent tiny reads, or four reads that keep the same start and reveal
+ * only a few more lines each time, is not useful pagination. Both patterns were
+ * observed in real transcripts and can consume dozens of turns while rereading
+ * almost all of the same text.
  */
 export const PROGRESSIVE_READ_LIMIT = 4
 export const TINY_READ_MAX_LINES = 32
+export const READ_EXPANSION_MAX_STEP = 32
 
 const SHELL_TOOL = 'bash'
 const DENIED =
@@ -178,45 +180,64 @@ function readWindow(call: ObservedCall): ReadWindow | null {
     input.offset < 0 ||
     typeof input.limit !== 'number' ||
     !Number.isInteger(input.limit) ||
-    input.limit <= 0 ||
-    input.limit > TINY_READ_MAX_LINES
+    input.limit <= 0
   ) {
     return null
   }
   return { path: input.path.trim(), offset: input.offset, limit: input.limit }
 }
 
-/** Detect adjacent tiny pages through the same file before they consume a run. */
+/** Detect tiny adjacent pages and same-start windows that expand a few lines at a time. */
 function progressiveReadLoop(calls: ObservedCall[]): LoopVerdict | null {
   let previous: ReadWindow | null = null
-  let streak = 0
+  let adjacentStreak = 0
+  let expandingStreak = 0
 
   for (const call of calls) {
     const current = readWindow(call)
     if (!current) {
       previous = null
-      streak = 0
+      adjacentStreak = 0
+      expandingStreak = 0
       continue
     }
 
-    if (
+    const sameFile = previous?.path === current.path
+    const adjacentTiny = Boolean(
       previous &&
-      current.path === previous.path &&
-      current.offset === previous.offset + previous.limit
-    ) {
-      streak += 1
-    } else {
-      streak = 1
-    }
+        sameFile &&
+        previous.limit <= TINY_READ_MAX_LINES &&
+        current.limit <= TINY_READ_MAX_LINES &&
+        current.offset === previous.offset + previous.limit
+    )
+    const creepingExpansion = Boolean(
+      previous &&
+        sameFile &&
+        current.offset === previous.offset &&
+        current.limit > previous.limit &&
+        current.limit - previous.limit <= READ_EXPANSION_MAX_STEP
+    )
+
+    adjacentStreak = adjacentTiny ? adjacentStreak + 1 : 1
+    expandingStreak = creepingExpansion ? expandingStreak + 1 : 1
     previous = current
 
-    if (streak >= PROGRESSIVE_READ_LIMIT) {
+    if (adjacentStreak >= PROGRESSIVE_READ_LIMIT) {
       return {
         tripped: true,
         reason: 'progressive-read',
         detail:
-          `read paged through ${current.path} in ${streak} consecutive tiny windows; ` +
+          `read paged through ${current.path} in ${adjacentStreak} consecutive tiny windows; ` +
           'search first or read one larger range instead',
+      }
+    }
+    if (expandingStreak >= PROGRESSIVE_READ_LIMIT) {
+      return {
+        tripped: true,
+        reason: 'progressive-read',
+        detail:
+          `read repeatedly reopened ${current.path} at line ${current.offset} while increasing the limit only slightly; ` +
+          'advance past what was already read or request one useful range instead',
       }
     }
   }
