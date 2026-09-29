@@ -47,6 +47,12 @@ export function CoworkWorkflowCard({
 }) {
   const { t } = useTranslation()
   const { workflow, progress, status, tasks } = view
+
+  // This card is a live "background activity" notice, not permanent transcript
+  // chrome. Completed/failed/cancelled work remains available in Activity, but
+  // once nothing is queued or running the notice should get out of the way.
+  if (status !== 'running' && status !== 'queued') return null
+
   // One line saying how long, how much, and what is happening right now:
   // "50m 10s · 11.4k tokens · 1 running task · Running tools…".
   const started = tasks.length ? Math.min(...tasks.map((task) => task.startedAt)) : null
