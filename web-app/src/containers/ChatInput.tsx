@@ -815,7 +815,20 @@ const ChatInput = memo(function ChatInput({
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')
 
+  // The composer's explicit choice, if any: set by the user picking in the
+  // switcher (the home screen's local state, and the global store it now
+  // mirrors). While it is set, the reset below must not overwrite it, or a
+  // `loading` flip or project change silently reverts the user's pick to the
+  // global current assistant. A project pin (projectAssistantId) always wins
+  // over a local pick: it is the project's own binding, not a draft.
+  const explicitAssistantPick = useRef<string | null>(null)
+  const setSelectedAssistant = useCallback((id: string) => {
+    explicitAssistantPick.current = id
+    setSelectedAssistantId(id)
+  }, [])
+
   useEffect(() => {
+    if (explicitAssistantPick.current !== null && !projectAssistantId) return
     setSelectedAssistantId(projectAssistantId || currentAssistant?.id || '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, projectAssistantId])
@@ -3076,7 +3089,7 @@ const ChatInput = memo(function ChatInput({
                   assistants={assistants}
                   currentThread={currentThread}
                   selectedAssistantId={selectedAssistantId}
-                  setSelectedAssistantId={setSelectedAssistantId}
+                  setSelectedAssistantId={setSelectedAssistant}
                         updateCurrentThreadAssistant={
                           updateCurrentThreadAssistant
                         }
@@ -3088,7 +3101,7 @@ const ChatInput = memo(function ChatInput({
                     assistants,
                     currentThread,
                     selectedAssistantId,
-                    setSelectedAssistantId,
+                    setSelectedAssistantId: setSelectedAssistant,
                     updateCurrentThreadAssistant,
                   }}
                 />
@@ -3558,11 +3571,7 @@ const ChatInput = memo(function ChatInput({
                   return (
                     <ComposerOptionsMenu
                       label={t('common:composerOptions')}
-                      active={
-                        webSearchEnabled && !effectiveAgentMode
-                          ? [t('common:web_search')]
-                          : []
-                      }
+                      active={[]}
                     >
                       {options}
                     </ComposerOptionsMenu>
