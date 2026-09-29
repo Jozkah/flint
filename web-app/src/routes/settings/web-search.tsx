@@ -16,14 +16,14 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Input } from '@/components/ui/input'
-import { EyeOff, Eye } from 'lucide-react'
+import { EyeOff, Eye, Search } from 'lucide-react'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import {
   useWebSearchConfig,
   WEB_SEARCH_PROVIDERS,
   getProviderMeta,
-  providerInitial,
+  type WebSearchProviderMeta,
 } from '@/hooks/useWebSearchConfig'
 import { Icon } from '@/components/ui/icon'
 
@@ -32,11 +32,34 @@ export const Route = createFileRoute(route.settings.web_search as any)({
   component: WebSearchContent,
 })
 
-const ProviderFavicon = ({ initial }: { initial: string }) => (
-  <span aria-hidden className="size-4 shrink-0 inline-flex items-center justify-center rounded-full border border-border-strong bg-muted text-[0.5rem] font-medium uppercase text-fg-2">
-    {initial}
-  </span>
-)
+/**
+ * Use each provider's own favicon instead of an unrelated initial badge. The
+ * request goes directly to the provider whose mark is being shown (never to a
+ * favicon aggregation/tracking service); a blocked or missing favicon falls
+ * back to a neutral search glyph rather than a fake brand mark.
+ */
+const ProviderFavicon = ({ provider }: { provider: WebSearchProviderMeta }) => {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <span
+        aria-hidden
+        className="size-4 shrink-0 inline-flex items-center justify-center rounded-sm bg-muted text-fg-2"
+      >
+        <Search className="size-3" />
+      </span>
+    )
+  }
+  return (
+    <img
+      aria-hidden
+      alt=""
+      src={`https://${provider.homepage}/favicon.ico`}
+      className="size-4 shrink-0 rounded-sm object-contain"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 function WebSearchContent() {
   const { t } = useTranslation()
@@ -86,7 +109,7 @@ function WebSearchContent() {
                     variant="outline"
                     className="max-w-full justify-between gap-2 pointer-coarse:h-11"
                   >
-                    <ProviderFavicon initial={providerInitial(provider)} />
+                    <ProviderFavicon provider={provider} />
                     <span className="truncate">{provider.label}</span>
                     <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
                   </Button>
@@ -101,7 +124,7 @@ function WebSearchContent() {
                       )}
                       onClick={() => setSearchProvider(p.id)}
                     >
-                      <ProviderFavicon initial={providerInitial(p)} />
+                      <ProviderFavicon provider={p} />
                       <span className="truncate">{p.label}</span>
                     </DropdownMenuItem>
                   ))}

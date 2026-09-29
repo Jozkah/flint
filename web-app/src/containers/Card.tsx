@@ -135,7 +135,7 @@ export function CardItem({
           <div
             data-slot="setting-control"
             className={cn(
-              'flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:max-w-[58%] sm:justify-end',
+              'flex w-full min-w-0 max-w-full shrink-0 flex-wrap items-center gap-2 text-[13px] text-fg-2 sm:w-auto sm:max-w-[58%] sm:justify-end',
               classNameWrapperAction,
               column && 'w-full sm:max-w-none sm:justify-start'
             )}

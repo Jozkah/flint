@@ -77,9 +77,11 @@ export const useWorkProfiles = create<WorkProfilesState>()(
 )
 
 /**
- * Pick the profile for a session's first message. After that the profile is
- * kept, whether chosen here or by hand. Otherwise Jev decides when `askJev` is given (it returns
- * a profile id or null), falling back to the keyword match; Jev gets at most
+ * Pick the profile for this message. A profile the user chose manually stays
+ * pinned; an automatic choice is deliberately re-evaluated for every new
+ * message so a session can move from e.g. Execute to Review or Debug as the
+ * work changes. Otherwise Jev decides when `askJev` is given (it returns a
+ * profile id or null), falling back to the keyword match; Jev gets at most
  * `timeoutMs`, so a slow answer never holds up the run.
  */
 export async function chooseWorkProfile(
@@ -90,11 +92,13 @@ export async function chooseWorkProfile(
 ): Promise<WorkProfileId | undefined> {
   const store = useWorkProfiles.getState()
   if (!store.enabled || !message.trim()) return undefined
-  // Chosen once per session. Changing the system prompt mid-session makes a
-  // local model re-read the whole conversation, so later messages keep the
-  // profile; the user can switch it by hand from the header.
+
+  // Only a user-picked profile is sticky. Automatic choices are per-message:
+  // keeping the first auto choice for the whole session made one early
+  // `execute` fallback appear to be Jev choosing Execute forever.
   const current = store.sessions[sessionId]
-  if (current) return current.id
+  if (current?.manual) return current.id
+
   let id: WorkProfileId = classifyLocally(message)
   if (askJev) {
     const options = WORK_PROFILES.map((p) => ({ name: p.id, description: p.description }))

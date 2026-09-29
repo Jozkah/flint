@@ -275,6 +275,41 @@ type AgentToolResult = {
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
+/** The longest model-requested wait for a bash call before it must finish. */
+export const MAX_BASH_TIMEOUT_SECS = 120
+
+/**
+ * Defense in depth behind the JSON Schema. Some providers have emitted calls
+ * that violate numeric schema bounds, and waiting on Rust to discover that
+ * would recreate the exact long-running loop this guard is meant to prevent.
+ */
+export function agentToolInputError(
+  toolName: string,
+  input: unknown
+): string | null {
+  if (
+    toolName !== 'bash' ||
+    !input ||
+    typeof input !== 'object' ||
+    Array.isArray(input)
+  ) {
+    return null
+  }
+  const timeout = (input as Record<string, unknown>).timeout
+  if (
+    typeof timeout !== 'number' ||
+    !Number.isFinite(timeout) ||
+    timeout <= MAX_BASH_TIMEOUT_SECS
+  ) {
+    return null
+  }
+  return (
+    `bash timeout ${timeout}s exceeds the ${MAX_BASH_TIMEOUT_SECS}s foreground limit. ` +
+    `Use timeout <= ${MAX_BASH_TIMEOUT_SECS}, or set background: true and omit ` +
+    'timeout for longer work. Do not retry with a larger timeout.'
+  )
+}
+
 /**
  * Execute one built-in agent tool.
  *
@@ -365,6 +400,9 @@ export async function executeAgentTool(
   options: AgentToolOptions = {}
 ): Promise<AgentToolResult> {
   try {
+    const inputError = agentToolInputError(toolName, input)
+    if (inputError) return { error: inputError }
+
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return { error: 'Flint data folder is unavailable' }
     // Answered here, where the user and Flint's plugin state are reachable.

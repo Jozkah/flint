@@ -32,6 +32,17 @@
   background: color-mix(in oklab, var(--tk) 4%, transparent);
 }
 
+/* Tool/reasoning disclosure should never animate the height of a potentially
+   huge timeline. With dozens of calls, the old enter/exit transform made the
+   transcript appear to reveal/collapse progressively and tied interaction
+   latency to the amount of rendered content. Keep only a very short opacity
+   response and remove translation/scale from these collapsible bodies. */
+.not-prose.min-w-0 > [data-state='open'],
+.not-prose.min-w-0 > [data-state='closed'] {
+  animation-duration: 70ms !important;
+  transform: none !important;
+}
+
 /* ---- Timeline action (Style B) ----
    Everywhere (timeline, condensed view; Chat, Cowork, Rooms) a tool call is a compact row: its dot on the rail already
    carries the kind colour, so the row drops the card chrome (border, bar,

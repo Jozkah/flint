@@ -60,12 +60,31 @@ fn example_of(name: &str, schema: &Value) -> Value {
 /// placeholder values. `None` for a tool that is not built in, or that takes
 /// no required arguments.
 pub fn example(tool: &str) -> Option<String> {
+    // `bash` is intentionally multi-mode: run a command, collect/inspect/cancel
+    // one job, or list jobs. Its schema therefore has no globally-required key,
+    // which used to make the generic repair return no example at all. Give the
+    // most common valid shape here; `multi_mode_hint` below lists the rest.
+    if tool == "bash" {
+        return Some(r#"{"command":"<command>"}"#.to_string());
+    }
+
     let schema = schema_of(tool)?;
     let ex = example_of(tool, &schema);
     if ex.as_object().is_some_and(|o| o.is_empty()) {
         return None;
     }
     serde_json::to_string(&ex).ok()
+}
+
+/// Extra valid shapes for tools whose contract is a union rather than one set
+/// of globally-required arguments.
+fn multi_mode_hint(tool: &str) -> &'static str {
+    match tool {
+        "bash" => {
+            " Valid `bash` forms: {\"command\":\"...\"}; {\"action\":\"list\"}; {\"job_id\":\"ID\"}; {\"job_id\":\"ID\",\"action\":\"status\"}; or {\"job_id\":\"ID\",\"action\":\"cancel\"}. Do not send an empty object."
+        }
+        _ => "",
+    }
 }
 
 /// Whether a tool's output is a refusal of its arguments (as opposed to a
@@ -116,6 +135,20 @@ fn alias_hint(tool: &str, sent: &[&str]) -> Option<String> {
 /// `output` with the expected shape appended, when it is a refusal of the
 /// call's arguments; otherwise `output` unchanged.
 pub fn explain(tool: &str, args: &Value, output: String) -> String {
+    // `grep`'s pattern is a regex by default. "invalid pattern" used to leave
+    // the model guessing at another regex spelling, even when it was searching
+    // for punctuation that should simply have been literal. Keep the regex
+    // error, but give the one repair that cannot change the intended text.
+    if tool == "grep"
+        && output.trim_start().starts_with("ERROR: invalid pattern:")
+        && args.get("literal").and_then(Value::as_bool) != Some(true)
+    {
+        return format!(
+            "{}\n`grep.pattern` is a regular expression by default. If you meant the text literally, retry the same pattern with `literal: true`; otherwise fix the regex before retrying.",
+            output.trim_end()
+        );
+    }
+
     if !is_argument_refusal(&output) || output.contains("Expected call shape:") {
         return output;
     }
@@ -132,8 +165,9 @@ pub fn explain(tool: &str, args: &Value, output: String) -> String {
         sent.iter().map(|k| format!("`{k}`")).collect::<Vec<_>>().join(", ")
     };
     let hint = alias_hint(tool, &sent).unwrap_or_default();
+    let modes = multi_mode_hint(tool);
     format!(
-        "{}\nExpected call shape: {example} (required arguments; see the tool's schema for the optional ones). You sent: {sent_text}.{hint}",
+        "{}\nExpected call shape: {example} (required arguments; see the tool's schema for the optional ones). You sent: {sent_text}.{hint}{modes}",
         output.trim_end()
     )
 }
@@ -209,6 +243,40 @@ mod tests {
     fn write_names_both_of_its_arguments() {
         let ex = example("write").unwrap();
         assert!(ex.contains("\"path\"") && ex.contains("\"content\""), "{ex}");
+    }
+
+    #[test]
+    fn bash_argument_refusal_shows_every_valid_mode() {
+        let out = explain(
+            "bash",
+            &json!({}),
+            "ERROR: bash is not a valid call without a command, job_id or list action".into(),
+        );
+        assert!(out.contains(r#"{"command":"<command>"}"#), "{out}");
+        assert!(out.contains(r#"{"action":"list"}"#), "{out}");
+        assert!(out.contains(r#"{"job_id":"ID"}"#), "{out}");
+        assert!(out.contains("Do not send an empty object"), "{out}");
+    }
+
+    #[test]
+    fn invalid_grep_regex_points_to_literal_mode() {
+        let out = explain(
+            "grep",
+            &json!({"pattern": "("}),
+            "ERROR: invalid pattern: unclosed group".into(),
+        );
+        assert!(out.contains("`literal: true`"), "{out}");
+        assert!(out.contains("fix the regex before retrying"), "{out}");
+    }
+
+    #[test]
+    fn invalid_literal_grep_does_not_repeat_literal_advice() {
+        let out = explain(
+            "grep",
+            &json!({"pattern": "(", "literal": true}),
+            "ERROR: invalid pattern: unexpected failure".into(),
+        );
+        assert_eq!(out, "ERROR: invalid pattern: unexpected failure");
     }
 
     #[test]

@@ -6,6 +6,7 @@ import { BrowserVerifyEvidence } from '@/containers/BrowserVerifyPanel'
 import type { VerifyReport } from '@/lib/browserVerify'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ChangeDestination, CompletionSummary } from '@/lib/coworkOrigins'
+import { unresolvedForSummary } from '@/lib/coworkUnresolvedPresentation'
 import {
   checkVerdict,
   deriveRunOutcome,
@@ -302,6 +303,7 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
       },
     })
   const { changes, resultLocation } = outcome
+  const visibleUnresolved = unresolvedForSummary(outcome)
 
   const openable = (path: string) =>
     Boolean(props.onOpenPath) && (props.canOpenPath?.(path) ?? true)
@@ -634,11 +636,11 @@ export function CoworkRunSummary(props: CoworkRunSummaryProps) {
             ) : null}
           </div>
 
-          {outcome.unresolved.length > 0 ? (
+          {visibleUnresolved.length > 0 ? (
             <div className="flex flex-col gap-1 shadow-[inset_3px_0_0_var(--warning)]">
               {heading(t('results:sections.unresolved'))}
               <ul className="flex list-disc flex-col gap-0.5 pl-4">
-                {outcome.unresolved.map((item, index) => (
+                {visibleUnresolved.map((item, index) => (
                   <li key={index} className="break-words text-foreground">
                     {unresolvedText(t, item)}
                   </li>

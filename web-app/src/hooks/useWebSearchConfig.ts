@@ -123,6 +123,10 @@ export const useWebSearchConfig = create<WebSearchConfigState>()(
       onRehydrateStorage: () => (state) => {
         if (!state) return
         for (const provider of WEB_SEARCH_PROVIDERS) {
+          // Endpoint-only providers such as SearXNG have no secret to restore.
+          // Calling the keyring with an empty key is both meaningless and can
+          // surface platform-specific keyring errors during settings hydration.
+          if (!provider.secretKey) continue
           getServiceHub()
             .core()
             .invoke<string | null>('get_secret', { key: provider.secretKey })

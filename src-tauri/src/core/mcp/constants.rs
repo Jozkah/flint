@@ -39,6 +39,20 @@ pub const DEFAULT_MCP_CONFIG: &str = r#"{
       "env": {},
       "active": false
     },
+    "duckduckgo": {
+      "command": "uvx",
+      "args": [
+        "duckduckgo-mcp-server",
+        "--transport",
+        "streamable-http",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "env": {},
+      "active": false
+    },
     "serper": {
       "command": "npx",
       "args": ["-y", "serper-search-scrape-mcp-server"],

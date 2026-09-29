@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-import { Zap, CircleDashed, HelpCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   cacheReusePercent,
@@ -15,17 +13,12 @@ const TEXT: Record<CacheStatus, string> = {
   'not-reported': 'Not reported',
 }
 
-/** "97.3%" -- one decimal below 10%, whole numbers above. */
 export const formatPercent = (pct: number): string =>
   pct > 0 && pct < 10 ? `${pct.toFixed(1)}%` : `${Math.round(pct)}%`
 
 /**
- * Whether a request (or a turn, or a session) read from the provider's prompt
- * cache, as the provider reported it.
- *
- * Never colour alone: the state is in words, the icon differs per state, and
- * the accessible label and tooltip carry the exact Input, Cached, Uncached,
- * Output and Total values.
+ * Prompt-cache usage rendered in the same quiet text treatment as token usage.
+ * Exact counts remain available through the accessible label and tooltip.
  */
 export function CacheReuseBadge({
   usage,
@@ -34,7 +27,6 @@ export function CacheReuseBadge({
   testId = 'cache-status',
 }: {
   usage: TokenUsage | undefined
-  /** Draw nothing when the provider did not report the cache (compact rows). */
   hideUnreported?: boolean
   className?: string
   testId?: string
@@ -57,26 +49,21 @@ export function CacheReuseBadge({
       ? ' Not every request reported its cached count, so no cached total is shown.'
       : ''
   const detail = `${TEXT[status]}. ${exactUsageText(usage)}.${counts}${partial}`
-  const Icon =
-    status === 'reused' ? Zap : status === 'none' ? CircleDashed : HelpCircle
+
   return (
     <span
-      role="img"
       aria-label={detail}
       title={detail}
       data-testid={testId}
       data-cache-status={status}
       data-cache-percent={pct !== undefined ? pct.toFixed(2) : undefined}
       className={cn(
-        'inline-flex items-center gap-1 rounded border px-1 py-px text-[10px] leading-tight',
-        status === 'reused' && 'border-emerald-600/50 text-emerald-700 dark:text-emerald-400',
-        status === 'none' && 'border-border text-muted-foreground',
-        status === 'not-reported' && 'border-dashed border-border text-muted-foreground italic',
+        'inline-flex items-center text-xs font-normal tabular-nums text-muted-foreground',
+        status === 'not-reported' && 'italic',
         className
       )}
     >
-      <Icon className="size-3 shrink-0" aria-hidden="true" />
-      <span>{shown}</span>
+      {shown}
     </span>
   )
 }

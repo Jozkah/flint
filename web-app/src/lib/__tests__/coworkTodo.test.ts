@@ -29,6 +29,28 @@ describe('init', () => {
     expect(active(l)).toBe('x')
   })
 
+  it('recovers a target-shaped single-task init instead of failing', () => {
+    const r = applyTodoOp(undefined, {
+      op: 'init',
+      phase: 'Fix',
+      task: 'repair the bug',
+    })
+    expect(r.error).toBeUndefined()
+    expect(r.list.phases).toEqual([
+      {
+        name: 'Fix',
+        tasks: [{ content: 'repair the bug', status: 'in_progress' }],
+      },
+    ])
+  })
+
+  it('returns actionable examples for a truly empty init', () => {
+    const r = applyTodoOp(undefined, { op: 'init' })
+    expect(r.error).toContain('init requires `list` or `items`')
+    expect(r.error).toContain('{"op":"init","items"')
+    expect(r.list).toEqual({ phases: [] })
+  })
+
   it('rejects duplicate phases, duplicate tasks, and cross-phase duplicates', () => {
     for (const list of [
       [

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   canonicalKey,
+  classifyStableFailure,
   detectLoop,
   loopStopMessage,
   loopStopNotice,
@@ -23,6 +24,43 @@ it('lets ordinary work through', () => {
       call({ tool: 'bash', input: { command: 'npm test' } }),
     ])
   ).toEqual({ tripped: false })
+})
+
+it('stops tiny sequential reads instead of inching through one file forever', () => {
+  const page = (offset: number) =>
+    call({ input: { path: 'ChatInput.tsx', offset, limit: 5 } })
+
+  expect(detectLoop([page(200), page(205), page(210)])).toEqual({ tripped: false })
+  expect(detectLoop([page(200), page(205), page(210), page(215)])).toMatchObject({
+    tripped: true,
+    reason: 'progressive-read',
+  })
+})
+
+it('stops the real transcript pattern that reopens the same offset for five more lines', () => {
+  const page = (limit: number) =>
+    call({ input: { path: 'ChatInput.tsx', offset: 3560, limit } })
+
+  expect(detectLoop([page(200), page(205), page(210)])).toEqual({ tripped: false })
+  expect(detectLoop([page(200), page(205), page(210), page(215)])).toMatchObject({
+    tripped: true,
+    reason: 'progressive-read',
+  })
+})
+
+it('allows useful read windows and deliberate large expansions', () => {
+  const page = (offset: number, limit: number) =>
+    call({ input: { path: 'a.ts', offset, limit } })
+
+  expect(detectLoop([page(1, 200), page(201, 200), page(401, 200), page(601, 200)])).toEqual({
+    tripped: false,
+  })
+  expect(detectLoop([page(10, 5), page(80, 5), page(160, 5), page(250, 5)])).toEqual({
+    tripped: false,
+  })
+  expect(detectLoop([page(1, 100), page(1, 250), page(1, 500), page(1, 900)])).toEqual({
+    tripped: false,
+  })
 })
 
 it('stops the second failure after the shell said not to retry', () => {
@@ -57,15 +95,182 @@ it('does not count a NUL refusal, which is offered as an unsandboxed retry', () 
       tool: 'bash',
       input: { command: `go build ./... ${n}` },
       failed: true,
-      error: `open NUL: Access is denied ${n}
-[device_path_sandbox_refused: ... Do not retry the same command inside the sandbox.]`,
+      error: `open NUL: Access is denied ${n}\n[device_path_sandbox_refused: ... Do not retry the same command inside the sandbox.]`,
     })
   expect(detectLoop([refused(1), call(), refused(2)])).toEqual({ tripped: false })
 })
 
+describe('non-transient blockers', () => {
+  const dirty = (subcommand: 'checkout' | 'switch'): ObservedCall => ({
+    tool: 'git',
+    input: { args: [subcommand, 'feature'] },
+    failed: true,
+    error:
+      `ERROR: git ${subcommand} feature exited with 1\n` +
+      'error: Your local changes would be overwritten by checkout:\n\ta.ts\n' +
+      'Please commit your changes or stash them before you switch branches.\nAborting',
+  })
+
+  it('recognises a dirty worktree as stable rather than a transient git failure', () => {
+    expect(classifyStableFailure('git', dirty('checkout').error)).toBe(
+      'dirty git worktree'
+    )
+    expect(detectLoop([dirty('checkout')])).toEqual({ tripped: false })
+    expect(detectLoop([dirty('checkout'), dirty('switch')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops a second sandbox retry when Flint explicitly said access must change first', () => {
+    const blocked = (command: string): ObservedCall => ({
+      tool: 'bash',
+      input: { command },
+      failed: true,
+      error:
+        "EPERM: operation not permitted, lstat 'C:\\\\'\n" +
+        '[sandbox: files under your home directory are not readable. ' +
+        'Call request_access with the narrowest required path. ' +
+        'Do not retry the same command before it is granted.]',
+    })
+    expect(classifyStableFailure('bash', blocked('npm install').error)).toBe(
+      'access must change before retrying'
+    )
+    expect(detectLoop([blocked('npm install')])).toEqual({ tripped: false })
+    expect(
+      detectLoop([
+        blocked('npm install'),
+        call(),
+        blocked('node npm-cli.js install'),
+      ])
+    ).toMatchObject({ tripped: true, reason: 'failing-shell' })
+  })
+
+  it('stops repeated PR creation when the remote base has to be refreshed', () => {
+    const moved = (base: string): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--base', base] },
+      failed: true,
+      error:
+        `ERROR: pull request not opened: base ${base} has moved; ` +
+        "fetch the target repository's current base branch before opening the pull request",
+    })
+    expect(classifyStableFailure('git', moved('main').error)).toBe(
+      'pull request base changed'
+    )
+    expect(detectLoop([moved('main'), moved('main')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops repeated PR creation until the head branch is actually pushed', () => {
+    const missing = (head: string): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--head', head] },
+      failed: true,
+      error:
+        `ERROR: pull request not opened: could not read pushed head ${head} ` +
+        'from https://github.com/Jozkah/flint.git; push the branch first',
+    })
+    expect(classifyStableFailure('git', missing('fix/x').error)).toBe(
+      'pull request head is not pushed'
+    )
+    expect(detectLoop([missing('fix/x'), missing('fix/x')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops repeated PR creation while merge conflicts remain unresolved', () => {
+    const conflict = (): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--head', 'fix/x'] },
+      failed: true,
+      error:
+        'ERROR: pull request not opened: the proposed pull request does not merge cleanly, ' +
+        'or its merge could not be verified: ERROR: `git merge-tree --write-tree abc def` exited with 1',
+    })
+    expect(classifyStableFailure('git', conflict().error)).toBe(
+      'pull request has conflicts'
+    )
+    expect(detectLoop([conflict(), conflict()])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops calling a tool again after the harness said it is unavailable', () => {
+    const missingTool = (input: unknown): ObservedCall => ({
+      tool: 'bash',
+      input,
+      failed: true,
+      error:
+        "not a valid call: Model tried to call unavailable tool 'bash'. Available tools: read, grep, git",
+    })
+    expect(classifyStableFailure('bash', missingTool({ command: 'x' }).error)).toBe(
+      'tool is unavailable'
+    )
+    expect(
+      detectLoop([
+        missingTool({ command: 'x' }),
+        missingTool({ command: 'y' }),
+      ])
+    ).toMatchObject({ tripped: true, reason: 'failing-shell' })
+  })
+
+  it('stops retrying git mutations in a read-only or unrelated checkout', () => {
+    const blocked = (cwd: string, error: string): ObservedCall => ({
+      tool: 'git',
+      input: { cwd, args: ['checkout', 'feature'] },
+      failed: true,
+      error,
+    })
+    const readOnly = blocked(
+      'C:/Users/Jozkah/Desktop/Coding/jan',
+      "ERROR: git: `C:\\Users\\Jozkah\\Desktop\\Coding\\jan` is attached read-only, so `git checkout feature` cannot run there."
+    )
+    const outside = blocked(
+      'C:/tmp/other',
+      "ERROR: git: `C:\\tmp\\other` is outside the project folder, worktree and session workspace; git runs only there"
+    )
+    expect(classifyStableFailure('git', readOnly.error)).toBe(
+      'git target cannot be changed here'
+    )
+    expect(detectLoop([readOnly, readOnly])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+    // A different cwd is a different strategy and is not conflated with the first.
+    expect(detectLoop([readOnly, outside])).toEqual({ tripped: false })
+  })
+
+  it('stops redispatching the same subagent after its run is already exhausted', () => {
+    const exhausted = (description: string, error: string): ObservedCall => ({
+      tool: 'task',
+      input: { subagent_name: 'tester', description },
+      failed: true,
+      error,
+    })
+    const first = exhausted(
+      'run tests',
+      "The subagent 'tester' stopped at its 30-step budget without finishing."
+    )
+    const second = exhausted(
+      'try the same tests another way',
+      "The subagent 'tester' stopped at a repeating loop it could not get out of without finishing."
+    )
+    expect(classifyStableFailure('task', first.error)).toBe(
+      'subagent exhausted its run'
+    )
+    expect(detectLoop([first, second])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+})
+
 it('stops the same call made over and over', () => {
-  // Three is ordinary -- re-reading a file after editing it, running the same
-  // test twice while fixing it. Five is a model going in circles.
   expect(detectLoop([call(), call(), call()])).toEqual({ tripped: false })
   const verdict = detectLoop([call(), call(), call(), call(), call()])
   expect(verdict).toMatchObject({ tripped: true, reason: 'repeated-call' })
@@ -178,6 +383,6 @@ describe('policy refusals', () => {
       failed: true,
       error: `[sandbox: blocked write ${n}]`,
     })
-    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).tripped).toBe(false)
+    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).toEqual({ tripped: false })
   })
 })

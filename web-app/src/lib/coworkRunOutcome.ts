@@ -277,7 +277,6 @@ type Rule = { kind: CheckKind; pattern: RegExp }
  * per-folder scan, so the command shapes are matched here directly.
  */
 const RULES: Rule[] = [
-  // Tests.
   {
     kind: 'test',
     pattern:
@@ -293,7 +292,6 @@ const RULES: Rule[] = [
     pattern:
       /^(?:cargo\s+(?:test|nextest)|go\s+test|dotnet\s+test|swift\s+test|deno\s+test|mix\s+test|rake\s+(?:test|spec)|(?:mvn|mvnw|\.\/mvnw)\s+(?:\S+\s+)*(?:test|verify)|(?:gradle|gradlew|\.\/gradlew)\s+(?:\S+\s+)*(?:test|check)|make\s+(?:test|check)|flutter\s+test)(?:\s|$)/i,
   },
-  // Static checks.
   {
     kind: 'lint',
     pattern:
@@ -304,7 +302,6 @@ const RULES: Rule[] = [
     pattern:
       /^(?:eslint|oxlint|biome\s+(?:check|lint)|prettier\s+(?:\S+\s+)*--check|ruff(?:\s+check)?|flake8|pylint|mypy|pyright|black\s+(?:\S+\s+)*--check|rubocop|golangci-lint|go\s+vet|staticcheck|cargo\s+(?:check|clippy|fmt\s+(?:\S+\s+)*--check)|clippy-driver|tsc\s+(?:\S+\s+)*--noEmit|dotnet\s+format\s+(?:\S+\s+)*--verify-no-changes|shellcheck|stylelint)(?:\s|$)/i,
   },
-  // Builds.
   {
     kind: 'build',
     pattern:
@@ -315,7 +312,6 @@ const RULES: Rule[] = [
     pattern:
       /^(?:tsc|vite\s+build|next\s+build|webpack|rollup|esbuild|cargo\s+build|go\s+build|dotnet\s+build|swift\s+build|(?:mvn|mvnw|\.\/mvnw)\s+(?:\S+\s+)*(?:compile|package|install)|(?:gradle|gradlew|\.\/gradlew)\s+(?:\S+\s+)*(?:build|assemble)|make|cmake\s+--build|ninja|msbuild|tauri\s+build|flutter\s+build)(?:\s|$)/i,
   },
-  // Project scripts that are checks by name but not a known runner.
   {
     kind: 'command',
     pattern:
@@ -325,11 +321,8 @@ const RULES: Rule[] = [
 
 const PRIORITY: CheckKind[] = ['test', 'build', 'lint', 'command']
 
-/** One simple command, with environment and wrappers removed. */
 function normalizeSegment(segment: string): string {
   let s = segment.trim().replace(/^\(+|\)+$/g, '').trim()
-  // Assignments and wrappers can be stacked (`CI=1 npx vitest`), so strip
-  // until nothing changes.
   for (let i = 0; i < 6; i++) {
     const next = s.replace(ENV_ASSIGNMENT, '').replace(WRAPPERS, '').trim()
     if (next === s) break
@@ -338,13 +331,6 @@ function normalizeSegment(segment: string): string {
   return s
 }
 
-/**
- * What kind of check a shell command is, or null when it is not one.
- *
- * A compound command (`cd web-app && npx vitest run`) is split on its
- * operators and classified by the most significant check it contains, so a
- * build followed by the tests reads as the tests.
- */
 export function classifyCommand(command: string): CheckKind | null {
   const segments = command.split(/&&|\|\||;|\||\n/)
   let best: CheckKind | null = null
@@ -353,23 +339,11 @@ export function classifyCommand(command: string): CheckKind | null {
     if (!segment || /^cd\s/i.test(segment)) continue
     const rule = RULES.find((one) => one.pattern.test(segment))
     if (!rule) continue
-    if (!best || PRIORITY.indexOf(rule.kind) < PRIORITY.indexOf(best)) {
-      best = rule.kind
-    }
+    if (!best || PRIORITY.indexOf(rule.kind) < PRIORITY.indexOf(best)) best = rule.kind
   }
   return best
 }
 
-// ---------------------------------------------------------------------------
-// Transcript reading
-// ---------------------------------------------------------------------------
-
-/**
- * The turns of the most recent run.
- *
- * A run starts at a user row. A steered row was typed into a run already
- * going, so it does not start a new one.
- */
 export function lastRunTurns(turns: readonly CoworkTurn[]): CoworkTurn[] {
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i]
@@ -400,7 +374,6 @@ const targetOf = (turn: CoworkTurn): string => {
   return ''
 }
 
-/** Tools whose failure means a requested change was not made. */
 const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'write',
   'edit',
@@ -409,13 +382,6 @@ const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'notebook_edit',
 ])
 
-/**
- * A change tool the run was never given.
- *
- * Only a read-only turn withholds these (review mode, or an opening turn that
- * only looks at the project), so a call to one ends as "unavailable tool" /
- * `tool-not-offered` before any permission gate sees it.
- */
 function withheldAsReadOnly(turn: CoworkTurn): boolean {
   if (!PLAN_DENIED_TOOLS.has(turn.name ?? '')) return false
   const text = `${turn.result ?? ''} ${turn.content ?? ''}`
@@ -424,7 +390,6 @@ function withheldAsReadOnly(turn: CoworkTurn): boolean {
 
 type ToolPhase = NonNullable<CoworkTurn['toolState']> | 'done-ok' | 'done-error'
 
-/** What became of a tool row, reading the newer state before the older one. */
 function phaseOf(turn: CoworkTurn): ToolPhase {
   const refusedByGate =
     turn.permission === 'denied' || turn.permission === 'prompted-denied'
@@ -435,18 +400,11 @@ function phaseOf(turn: CoworkTurn): ToolPhase {
 }
 
 const isUnfinished = (phase: ToolPhase) =>
-  phase === 'requested' ||
-  phase === 'awaiting-permission' ||
-  phase === 'running'
+  phase === 'requested' || phase === 'awaiting-permission' || phase === 'running'
 
-/** The exit status a command reported, from the row or its output. */
 function exitCodeOf(turn: CoworkTurn): { code: number | null; signaled: boolean } {
-  if (typeof turn.exitCode === 'number') {
-    return { code: turn.exitCode, signaled: false }
-  }
-  if (typeof turn.result !== 'string' || !turn.result) {
-    return { code: null, signaled: false }
-  }
+  if (typeof turn.exitCode === 'number') return { code: turn.exitCode, signaled: false }
+  if (typeof turn.result !== 'string' || !turn.result) return { code: null, signaled: false }
   const parsed = parseBashOutput(turn.result)
   return { code: parsed.exit ?? null, signaled: parsed.signaled }
 }
@@ -465,7 +423,6 @@ function completionOf(
   return 'completed'
 }
 
-/** Test selectors that run part of a suite rather than all of it. */
 const SUBSET_SELECTOR =
   /(?:^|\s)(?:-t|--testNamePattern|--test-name-pattern|-k|--filter|--grep|-g|--only)(?:[\s=]|$)|\S+\.(?:test|spec)\.[cm]?[jt]sx?(?:\s|$)|\b(?:cargo\s+test|go\s+test)\s+(?!-)[\w:./-]+/i
 
@@ -509,24 +466,18 @@ function commandFromTurn(turn: CoworkTurn, runEnded: boolean): CommandRecord | n
 function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | null {
   if (turn.role !== 'tool' || turn.name !== 'bash') return null
   const command = argsOf(turn).command
-  // Polling a background job is not running anything.
   if (typeof command !== 'string' || !command.trim()) return null
   const kind = classifyCommand(command)
   if (!kind) return null
-
   const phase = phaseOf(turn)
   const { code, signaled } = exitCodeOf(turn)
   let outcome: CheckOutcome
   if (phase === 'refused') outcome = 'not-run'
   else if (isUnfinished(phase)) outcome = 'unknown'
-  // Killed or timed out: an exit status recorded on the way down is not a
-  // verdict, so neither a pass nor a failure (checkVerdict: did not finish).
   else if (phase === 'timed-out' || phase === 'cancelled' || phase === 'stale')
     outcome = code !== null || signaled ? 'unknown' : 'not-run'
   else if (code === 0 && !signaled) outcome = 'passed'
   else if (code !== null || signaled) outcome = 'failed'
-  // Finished without an exit status — an error before the command ran, or a
-  // tool that reported nothing. Neither proves a pass or a failure.
   else outcome = 'unknown'
 
   return {
@@ -543,10 +494,6 @@ function checkFromTurn(turn: CoworkTurn, runEnded: boolean): ObservedCheck | nul
   }
 }
 
-// ---------------------------------------------------------------------------
-// Claims
-// ---------------------------------------------------------------------------
-
 const CLAIM_SUBJECT: { kind: CheckClaim['kind']; pattern: RegExp }[] = [
   { kind: 'test', pattern: /\b(?:tests?|test suite|specs?)\b/i },
   { kind: 'lint', pattern: /\b(?:lint(?:er|ing)?|type-?check(?:s|ing|er)?|typecheck)\b/i },
@@ -554,29 +501,18 @@ const CLAIM_SUBJECT: { kind: CheckClaim['kind']; pattern: RegExp }[] = [
 ]
 const CLAIM_SUCCESS =
   /\b(?:pass(?:es|ed|ing)?|succeed(?:s|ed)?|successful(?:ly)?|green|clean(?:ly)?|all good|no (?:errors|failures))\b/i
-/** A hedge or negation: not a claim of success, and not ours to reinterpret. */
 const CLAIM_HEDGE =
   /\b(?:not|never|no longer|didn'?t|doesn'?t|couldn'?t|can'?t|cannot|unable|should|would|could|might|may|if|once|after you|try|run the|please|failed|failing|fails)\b/i
 
 const MAX_CLAIMS = 3
 const MAX_CLAIM_LENGTH = 200
 
-/**
- * Sentences in the final assistant message asserting that a check succeeded.
- *
- * Deliberately narrow: a sentence has to name a check and assert success
- * without hedging. Missing a claim costs nothing — nothing is upgraded from
- * it — while inventing one would put words in the model's mouth.
- */
 export function claimsFromText(text: string): CheckClaim[] {
   const claims: CheckClaim[] = []
-  const sentences = text
-    .replace(/```[\s\S]*?```/g, ' ')
-    .split(/(?<=[.!?])\s+|\n+/)
+  const sentences = text.replace(/```[\s\S]*?```/g, ' ').split(/(?<=[.!?])\s+|\n+/)
   for (const raw of sentences) {
     const sentence = raw.replace(/^[\s*>#-]+/, '').trim()
-    if (!sentence || !CLAIM_SUCCESS.test(sentence) || CLAIM_HEDGE.test(sentence))
-      continue
+    if (!sentence || !CLAIM_SUCCESS.test(sentence) || CLAIM_HEDGE.test(sentence)) continue
     const subject = CLAIM_SUBJECT.find((one) => one.pattern.test(sentence))
     if (!subject) continue
     claims.push({
@@ -592,10 +528,6 @@ export function claimsFromText(text: string): CheckClaim[] {
   }
   return claims
 }
-
-// ---------------------------------------------------------------------------
-// Derivation
-// ---------------------------------------------------------------------------
 
 const treeKindOf = (destination: ChangeDestination | null): TreeKind => {
   switch (destination) {
@@ -652,16 +584,15 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     const phase = phaseOf(turn)
     const tool = turn.name ?? ''
     const target = targetOf(turn)
-    if (withheldAsReadOnly(turn) && (phase === 'refused' || phase === 'failed' || phase === 'done-error'))
+    if (
+      withheldAsReadOnly(turn) &&
+      (phase === 'refused' || phase === 'failed' || phase === 'done-error')
+    )
       unresolved.push({ kind: 'refused', tool, target, readOnly: true })
     else if (phase === 'refused') unresolved.push({ kind: 'refused', tool, target })
     else if (phase === 'cancelled' && !checkCalls.has(turn))
       unresolved.push({ kind: 'cancelled', tool, target })
-    else if (
-      !input.running &&
-      isUnfinished(phase) &&
-      !checkCalls.has(turn)
-    )
+    else if (!input.running && isUnfinished(phase) && !checkCalls.has(turn))
       unresolved.push({ kind: 'interrupted', tool, target })
     else if (
       (phase === 'failed' || phase === 'timed-out' || phase === 'done-error') &&
@@ -697,11 +628,6 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
     })
 
   const failedChecks = checks.some((check) => check.outcome === 'failed')
-  /**
-   * A normal finish that still left part of the request undone: a write that
-   * was refused or failed, a check that failed or never ran, or the run's own
-   * plan with items open. Reported as partly done, never as completed.
-   */
   const incomplete =
     failedChecks ||
     checks.some((check) => check.outcome === 'not-run') ||
@@ -711,9 +637,6 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
       const phase = phaseOf(turn)
       return phase === 'failed' || phase === 'done-error'
     }) ||
-    // A command the sandbox could not run at all -- a missing runtime, no
-    // network -- is work the user still has to do, whether or not the
-    // command reads as a test or build. "Completed" would hide that.
     toolTurns.some(
       (turn) =>
         turn.name === 'bash' &&
@@ -755,8 +678,7 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
   const observed = summary?.observed ?? []
   const nextActions: NextAction[] = []
   if (status !== 'running') {
-    if (input.handlers.openResult && paths.length > 0)
-      nextActions.push('open-result')
+    if (input.handlers.openResult && paths.length > 0) nextActions.push('open-result')
     if (input.handlers.reviewChanges && paths.length + observed.length > 0)
       nextActions.push('review-changes')
     if (input.handlers.retry && stopReason && RETRYABLE_STOPS.has(stopReason))
@@ -806,14 +728,6 @@ export function deriveRunOutcome(input: RunOutcomeInput): RunOutcome {
   }
 }
 
-/**
- * Whether the outcome has anything worth a panel.
- *
- * A clean finish that wrote nothing, ran no checks and left nothing behind is
- * an ordinary answer, and a panel under it would be noise. Anything that did
- * not finish cleanly is always shown, because its preserved progress and its
- * loose ends are exactly what someone needs to see.
- */
 export function shouldShowRunOutcome(outcome: RunOutcome): boolean {
   if (outcome.status === 'running') return false
   if (outcome.status !== 'completed') return true
@@ -825,21 +739,14 @@ export function shouldShowRunOutcome(outcome: RunOutcome): boolean {
   )
 }
 
-/** Checks that actually produced a verdict. */
 export const verifiedChecks = (outcome: RunOutcome): ObservedCheck[] =>
   outcome.checks.filter(
     (check) => check.outcome === 'passed' || check.outcome === 'failed'
   )
 
-// ---------------------------------------------------------------------------
-// Verification summary
-// ---------------------------------------------------------------------------
-
-/** Runners that drive a browser or compare rendered output. */
 const VISUAL_RULE =
   /^(?:playwright\s+test|cypress\s+run|wdio|testcafe|nightwatch|backstop(?:js)?\s+test|chromatic|percy\s+exec|loki\s+test)(?:\s|$)|^(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test:)?(?:e2e|visual|playwright|cypress)(?::\S+)?(?:\s|$)/i
 
-/** Whether a command runs end-to-end or visual checks. */
 export function isVisualCheck(command: string): boolean {
   return command
     .split(/&&|\|\||;|\||\n/)
@@ -847,14 +754,6 @@ export function isVisualCheck(command: string): boolean {
     .some((segment) => segment && VISUAL_RULE.test(segment))
 }
 
-/**
- * What can honestly be said about one check, from its completion and exit
- * status alone.
- *
- * `passed` needs both: the command ran to completion *and* reported exit 0. A
- * check cancelled or timed out after printing an exit code did not finish, and
- * one with no recorded exit status is unknown, whatever its output says.
- */
 export type CheckVerdict =
   | 'passed'
   | 'failed'
@@ -888,28 +787,13 @@ export type VerificationSummary = {
   notRun: number
   running: number
   unknown: number
-  /** Every check completed with exit 0. False when there are no checks. */
   allPassed: boolean
-  /** Of the passed checks, whether any ran tests (not only a build or lint). */
   testsPassed: boolean
-  /** The failed checks, each with the exit code it reported, if any. */
   failures: { command: string; exitCode: number | null }[]
-  /**
-   * Say that visual and end-to-end behaviour were not checked: something
-   * passed, and nothing looked at what was built.
-   */
   visualNotChecked: boolean
-  /** Shell commands that were not verification checks. */
   otherCommands: number
 }
 
-/**
- * The evidence-based sentences a run summary is built from.
- *
- * Counts only recorded results. Nothing is reported as passed without a
- * completed run and exit status 0, and ordinary commands are counted apart
- * from checks, so "a command ran" never reads as "a check passed".
- */
 export function summarizeVerification(outcome: RunOutcome): VerificationSummary {
   const verdicts = outcome.checks.map((check) => ({
     check,
@@ -939,10 +823,7 @@ export function summarizeVerification(outcome: RunOutcome): VerificationSummary 
     ),
     failures: verdicts
       .filter((one) => one.verdict === 'failed')
-      .map((one) => ({
-        command: one.check.command,
-        exitCode: one.check.exitCode,
-      })),
+      .map((one) => ({ command: one.check.command, exitCode: one.check.exitCode })),
     visualNotChecked: passed > 0 && !visualEvidence,
     otherCommands: (outcome.commands ?? []).filter(
       (command) => command.verification === null
@@ -950,41 +831,68 @@ export function summarizeVerification(outcome: RunOutcome): VerificationSummary 
   }
 }
 
+const MAX_CONTINUE_BLOCKERS = 4
+const MAX_CONTINUE_TARGET = 180
+
+function compactContinueTarget(value: string): string {
+  const clean = value.replace(/\s+/g, ' ').trim()
+  return clean.length > MAX_CONTINUE_TARGET
+    ? `${clean.slice(0, MAX_CONTINUE_TARGET - 1)}…`
+    : clean
+}
+
 /**
  * The request the result card's "Continue" sends.
  *
- * A new run, under whatever mode the session is in now, asked to finish what
- * the last one left open. The unresolved items are named so the model retries
- * them rather than re-deciding the task; a run with nothing listed is simply
- * asked to carry on.
+ * The full failure history stays in Activity. Continue carries only the latest
+ * meaningful blocker for each tool (plus one failed check), because replaying
+ * every failed attempt teaches the next run to repeat dead strategies.
  */
 export function continueRequest(unresolved: readonly UnresolvedItem[]): string {
-  const lines: string[] = []
-  for (const item of unresolved) {
-    switch (item.kind) {
-      case 'refused':
-      case 'cancelled':
-      case 'failed':
-      case 'interrupted':
-        lines.push(
-          `- ${item.tool}${item.target ? ` ${item.target}` : ''} (${
-            item.kind === 'refused' && item.readOnly
-              ? 'not offered: the last turn was read-only'
-              : item.kind
-          })`
-        )
-        break
-      case 'check-failed':
-        lines.push(`- check did not pass: ${item.command}`)
-        break
-      case 'stop':
-        lines.push(`- the run stopped early (${item.reason})`)
-        break
+  if (unresolved.length === 0) return 'Continue.'
+
+  const stop = unresolved.find(
+    (item): item is Extract<UnresolvedItem, { kind: 'stop' }> =>
+      item.kind === 'stop'
+  )
+  const selected: UnresolvedItem[] = []
+  const seenTools = new Set<string>()
+  let keptCheck = false
+
+  for (let i = unresolved.length - 1; i >= 0; i -= 1) {
+    const item = unresolved[i]
+    if (item.kind === 'stop') continue
+    if (item.kind === 'check-failed') {
+      if (keptCheck) continue
+      keptCheck = true
+      selected.push(item)
+    } else {
+      if (seenTools.has(item.tool)) continue
+      seenTools.add(item.tool)
+      selected.push(item)
     }
+    if (selected.length >= MAX_CONTINUE_BLOCKERS) break
   }
-  if (lines.length === 0) return 'Continue.'
+  selected.reverse()
+
+  const lines: string[] = []
+  if (stop) lines.push(`- previous run stopped early (${stop.reason})`)
+  for (const item of selected) {
+    if (item.kind === 'check-failed') {
+      lines.push(`- latest failed check: ${compactContinueTarget(item.command)}`)
+      continue
+    }
+    const target = compactContinueTarget(item.target)
+    const detail =
+      item.kind === 'refused' && item.readOnly
+        ? 'not offered because the last run was read-only'
+        : item.kind
+    lines.push(`- latest ${item.tool} blocker${target ? `: ${target}` : ''} (${detail})`)
+  }
+
   return [
-    'Continue with the previous request. These steps did not complete last time; retry them with the tools this turn has:',
-    ...lines,
+    'Continue with the previous request and finish whatever still remains.',
+    'Do not blindly replay failed calls from the previous run. If a failure is non-transient (permission/policy, unavailable tool or dependency, no network, dirty worktree, inaccessible path, or timeout), change strategy or report the blocker instead of retrying equivalent commands.',
+    ...(lines.length ? ['Carry forward only these latest blockers:', ...lines] : []),
   ].join('\n')
 }
