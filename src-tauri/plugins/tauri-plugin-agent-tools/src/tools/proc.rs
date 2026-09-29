@@ -808,12 +808,14 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
             let nested = NESTED_SHELL;
             let web = POWERSHELL_WEB_DEFAULTS;
             let cd = POWERSHELL_WORKSPACE_CD;
+            let shims = POWERSHELL_CMD_SHIMS;
             format!(
                 "$null = New-PSDrive -Name JanWorkspace -PSProvider FileSystem -Root '{ws}' -Scope Global; \
                  Set-Location JanWorkspace:\\; [Environment]::CurrentDirectory = '{ws}'; \
                  $env:JAN_WORKSPACE = '{ws}'; $global:__JanOk = $true; $global:__JanErrors = $Error.Count\n\
                  {web}\n\
                  {cd}\n\
+                 {shims}\n\
                  {nested}\n\
                  . ([scriptblock]::Create('{body}'))\n\
                  $global:__JanThrown = @($Error | Select-Object -First ([Math]::Max(0, $Error.Count - $global:__JanErrors)) | \
@@ -856,6 +858,13 @@ pub(crate) const POWERSHELL_WEB_DEFAULTS: &str = "if (Get-Command curl.exe -Comm
      { Remove-Item Alias:curl -Force -ErrorAction SilentlyContinue }; \
      $global:ProgressPreference = 'SilentlyContinue'; \
      $global:PSDefaultParameterValues['Invoke-WebRequest:UseBasicParsing'] = $true";
+
+/// PowerShell prefers npm.ps1/npx.ps1 over their .cmd launchers. AppContainer
+/// rejects those scripts during AuthorizationManager checks; the .cmd launchers
+/// invoke the same Node CLI without PowerShell's script policy.
+pub(crate) const POWERSHELL_CMD_SHIMS: &str = "foreach ($__jn in 'npm','npx','corepack') { \
+     if (Get-Command ($__jn + '.cmd') -CommandType Application -ErrorAction SilentlyContinue) { \
+     Set-Item -Path ('Function:global:' + $__jn) -Value ([scriptblock]::Create('& ' + $__jn + '.cmd @args')) } }";
 
 /// A canonicalized Windows path without its verbatim `\\?\` prefix.
 ///

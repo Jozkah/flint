@@ -96,6 +96,9 @@ export function getSandboxStatus(): Promise<SandboxStatus> {
   statusCache ??= sandboxStatus()
     .catch((e) => {
       console.warn('[agentTools] Failed to read sandbox status:', messageOf(e))
+      // A transient startup failure must not hide the shell for the lifetime
+      // of this renderer. Retry on the next tool discovery.
+      statusCache = null
       return { backend: 'none', enforces: false }
     })
     .then((s) => {
@@ -210,7 +213,7 @@ export async function getAgentToolSchemas(
     (reported ?? []).map((r) => `${r.component}:${r.state}`),
     scope ?? 'thread',
   ])
-  if (schemaCache && schemaCacheKey === key) return schemaCache
+  if (schemaCache && schemaCacheKey === key && statusCache) return schemaCache
   const [advertised] = await Promise.all([
     advertisedFor(projectRoot, reported, scope).catch((e) => {
       console.warn('[agentTools] Failed to read readiness:', messageOf(e))

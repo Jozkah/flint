@@ -57,6 +57,18 @@ describe('autoIsolateAction', () => {
     expect(autoIsolateAction({ ...input, enabled: false })).toBe('resume')
   })
 
+  it('re-attaches a manually selected managed worktree after a restart', () => {
+    const input = {
+      ...base,
+      enabled: false,
+      access: 'managed-worktree',
+      turns: 5,
+    }
+    expect(autoIsolateAction(input)).toBe('resume')
+    expect(autoIsolateAction({ ...input, hasWorktree: true })).toBe('none')
+    expect(autoIsolateAction({ ...input, busy: true })).toBe('none')
+  })
+
   it('gives each of many sessions on one folder its own decision', () => {
     const decisions = ['a', 'b', 'c'].map((id) =>
       autoIsolateAction({ ...base, sessionId: id })

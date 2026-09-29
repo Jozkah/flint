@@ -46,6 +46,10 @@ export function autoIsolateAction(
   if (!input.sessionId || !input.folder || input.busy) return 'none'
   if (!input.capabilityKnown || !input.capable) return 'none'
   if (input.hasWorktree) return 'none'
+  // A persisted Managed worktree choice is still the session's destination
+  // after a restart. Re-resolve its checkout and issue a fresh process-local
+  // grant before the next run, including sessions isolated manually.
+  if (input.access === 'managed-worktree' && input.mark !== 'copy') return 'resume'
   if (input.mark === 'worktree' || input.mark === 'copy') {
     return input.access === 'managed-worktree' ? 'resume' : 'none'
   }

@@ -298,6 +298,25 @@ describe('agentTools', () => {
     expect(sandboxEnforces()).toBe(false)
   })
 
+  it('retries tool discovery after a transient sandbox status failure', async () => {
+    sandboxStatus
+      .mockRejectedValueOnce(new Error('startup race'))
+      .mockResolvedValue({ backend: 'appcontainer', enforces: true })
+    advertisedToolSchemas
+      .mockResolvedValueOnce(advertising(['read']))
+      .mockResolvedValue(advertising(['read', 'bash']))
+    const { getAgentToolSchemas, sandboxEnforces } = await import('../agentTools')
+
+    expect((await getAgentToolSchemas()).map((s) => s.function.name)).toEqual(['read'])
+    expect(sandboxEnforces()).toBe(false)
+    expect((await getAgentToolSchemas()).map((s) => s.function.name)).toEqual([
+      'read',
+      'bash',
+    ])
+    expect(sandboxEnforces()).toBe(true)
+    expect(sandboxStatus).toHaveBeenCalledTimes(2)
+  })
+
   /// AH-202: the run id is what the backend journals a turn's file changes
   /// under. Dropped here, nothing could ever be undone.
   it('forwards the run a call belongs to, for undo', async () => {

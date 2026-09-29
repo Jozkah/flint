@@ -34,8 +34,8 @@ type Input = {
  * A new session (no turns yet, still on the default access mode) attached to a
  * Git folder gets a managed worktree and branch -- `flint/<title>-<id>` -- and
  * a grant for it, exactly as choosing "Managed worktree" by hand would. The
- * branch is renamed once the session has a real title. A session the default
- * isolated earlier re-attaches its own worktree after a restart. A plain folder
+ * branch is renamed once the session has a real title. Any session still set
+ * to Managed worktree re-attaches its own checkout after a restart. A plain folder
  * is not copied automatically; the bar offers "Work on a copy" instead.
  *
  * Returns whether the folder is a Git repository (null while unknown) and the
