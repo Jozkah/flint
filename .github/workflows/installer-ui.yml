@@ -43,3 +43,74 @@ jobs:
           $root = (Resolve-Path .).Path
           & "C:\Program Files (x86)\NSIS\makensis.exe" /WX "/DFLINT_SMOKE_ROOT=$root" scripts\windows-installer-smoke.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  windows-package:
+    name: Release-grade Windows build
+    needs: windows-installer
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      CARGO_TERM_COLOR: always
+      NODE_OPTIONS: '--max-old-space-size=4096'
+      RUSTFLAGS: '-D warnings'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Provision make
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make --yes --no-progress
+            Add-Content $env:GITHUB_PATH 'C:\ProgramData\chocolatey\bin'
+          }
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20
+
+      - name: Configure Yarn
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+          yarn --version
+          yarn config set -H enableImmutableInstalls false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: stable
+
+      - name: Set up the release engine toolchain
+        uses: ./.github/actions/setup-engine-toolchain
+        with:
+          variant: vulkan
+
+      - name: Build Flint and Windows bundles
+        shell: bash
+        run: |
+          set -o pipefail
+          make build 2>&1 | tee windows-build.log
+
+      - name: Verify Windows bundles were produced
+        shell: bash
+        run: |
+          find src-tauri/target -path '*/release/bundle/*' -type f \
+            \( -name '*-setup.exe' -o -name '*.msi' \) -print | tee windows-bundles.txt
+          test -s windows-bundles.txt
+
+      - name: Report ccache statistics
+        if: success() || failure()
+        shell: bash
+        run: |
+          if command -v ccache >/dev/null 2>&1; then ccache -s; else echo "ccache not available"; fi
+
+      - name: Keep the build log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: flint-installer-pr-windows-build-log
+          path: windows-build.log
+          if-no-files-found: warn
