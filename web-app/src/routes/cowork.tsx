@@ -678,6 +678,10 @@ export function CoworkPage() {
     folder: string | null
   }>({ sessionId: null, folder: null })
   bindingRef.current = { sessionId: session?.id ?? null, folder }
+  // The run's transport, so a Settings toggle can be pushed to it in place
+  // (web tools added or removed) rather than letting the next step rebuild
+  // the advertised set and discard the prompt prefix.
+  const transportRef = useRef<CoworkChatTransport | null>(null)
 
   // A confirmation is about one folder in one session. If either changes while
   // it is open, the question no longer means what it said.
@@ -960,6 +964,13 @@ export function CoworkPage() {
   const workspacePath = useSessionWorkspacePath(session?.id)
   const webSearchEnabled = useWebSearchConfig((s) => s.webSearchEnabled)
   const hasTurns = (session?.turns?.length ?? 0) > 0
+  // A Settings toggle applies at the next run, like a mode change: the run's
+  // advertised set is frozen for its lifetime, so the toggle is pushed to the
+  // transport in place (web tools added or removed) rather than letting the
+  // next step rebuild the set and discard the prompt prefix.
+  useEffect(() => {
+    transportRef.current?.setWebSearch(webSearchEnabled)
+  }, [webSearchEnabled])
   /**
    * What a run started now would send, before one has.
    *
@@ -2518,6 +2529,14 @@ export function CoworkPage() {
       toast.error(t('common:modelNoTools', { model: selectedModel.id }))
       return
     }
+    // A restored session may remember Managed worktree while its process-local
+    // grant is still being reissued. Do not start a Review run against the
+    // source folder: history would point at a worktree the run cannot read.
+    if (access === 'managed-worktree' && effective.destination !== 'managed') {
+      const key = effectiveDowngradeKey(effective)
+      if (key) toast.error(t(key))
+      return
+    }
     // Another session's message is not what this session is about.
     if (text && !from && !hidden && current?.title === 'New session') {
       // The prompt, cut short, until the model's own title arrives.
@@ -3057,6 +3076,7 @@ export function CoworkPage() {
       networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
       mcpServers: [],
     })
+    transportRef.current = transport
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
     // a session with no folder has no project memory at all. Never temporary.
@@ -5092,17 +5112,6 @@ export function CoworkPage() {
           else void returnToReviewOnly()
         }}
       />
-      {session?.id &&
-        (pendingFolder[session.id] || pendingAccess[session.id]) && (
-          <span role="status" className="text-xs text-muted-foreground">
-            {t('common:coworkAccess.pendingNextRun')}
-          </span>
-        )}
-      {running && (
-        <span className="text-xs text-muted-foreground">
-          {t('common:coworkAccess.currentRunUnchanged')}
-        </span>
-      )}
       {workProfilesOn && session?.id && (
         <CoworkWorkProfilePicker
           variant={variant}
@@ -5117,7 +5126,7 @@ export function CoworkPage() {
   const sessionControls = (
     <>
       {workspacePill}
-      {runControls('pill')}
+      {runControls(paneChrome ? 'quiet' : 'pill')}
     </>
   )
 
