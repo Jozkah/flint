@@ -37,9 +37,21 @@ describe('chooseWorkProfile', () => {
     expect(await chooseWorkProfile('c', 'review this', async () => 'nonsense')).toBe('review')
   })
 
-  it('keeps the first choice for the rest of the session', async () => {
-    expect(await chooseWorkProfile('s', 'review this diff')).toBe('review')
-    expect(await chooseWorkProfile('s', 'refactor the loader')).toBe('review')
+  it('reclassifies automatic choices on every new message', async () => {
+    expect(await chooseWorkProfile('s', 'add a settings toggle')).toBe('execute')
+    expect(await chooseWorkProfile('s', 'review this diff for bugs')).toBe('review')
+    expect(await chooseWorkProfile('s', 'why does this crash?')).toBe('debug')
+  })
+
+  it('re-asks Jev for each automatic message instead of freezing its first answer', async () => {
+    const askJev = vi
+      .fn<(...args: any[]) => Promise<string | null>>()
+      .mockResolvedValueOnce('execute')
+      .mockResolvedValueOnce('review')
+
+    expect(await chooseWorkProfile('s', 'first request', askJev)).toBe('execute')
+    expect(await chooseWorkProfile('s', 'second request', askJev)).toBe('review')
+    expect(askJev).toHaveBeenCalledTimes(2)
   })
 
   it('keeps a profile the user picked by hand', async () => {
@@ -53,4 +65,3 @@ describe('chooseWorkProfile', () => {
     expect(useWorkProfiles.getState().blockFor('s')).toContain('Only list security issues.')
   })
 })
-
