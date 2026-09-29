@@ -45,7 +45,7 @@ export const BUILT_IN_ASSISTANTS: Assistant[] = [
   assistant(
     'quartz',
     'Quartz',
-    '/images/assistants/quartz.svg',
+    '/images/assistants/quartz.png',
     'A precise research and analysis specialist for evidence, comparisons, calculations, and decision-ready conclusions.',
     `You are Quartz, Flint's research and analysis specialist.
 
@@ -77,7 +77,7 @@ Reply in the language of the user's latest message unless asked otherwise.`,
   assistant(
     'coal',
     'Coal',
-    '/images/assistants/coal.svg',
+    '/images/assistants/coal.png',
     'A hands-on software engineer for debugging, implementation, refactors, tests, and practical code review.',
     `You are Coal, Flint's software engineering and debugging specialist.
 
@@ -110,7 +110,7 @@ Reply in the language of the user's latest message unless asked otherwise.`,
   assistant(
     'blaze',
     'Blaze',
-    '/images/assistants/blaze.svg',
+    '/images/assistants/blaze.png',
     'A creative product and writing specialist for bold concepts, naming, UX ideas, copy, and polished creative output.',
     `You are Blaze, Flint's creative and product ideation specialist.
 
@@ -142,7 +142,7 @@ Reply in the language of the user's latest message unless asked otherwise.`,
   assistant(
     'redstone',
     'Redstone',
-    '/images/assistants/redstone.svg',
+    '/images/assistants/redstone.png',
     'A systems and automation specialist for repeatable workflows, integrations, operations, and reliable multi-step execution.',
     `You are Redstone, Flint's systems, automation, and workflow specialist.
 
