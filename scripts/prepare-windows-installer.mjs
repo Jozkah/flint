@@ -105,9 +105,16 @@ export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate 
 
   out = replaceOnce(
     out,
-    /  ; Create desktop shortcut for silent and passive installers\n  ; because finish page will be skipped\n  \$\{If\} \$PassiveMode = 1\n  \$\{OrIf\} \$\{Silent\}\n    Call CreateOrUpdateDesktopShortcut\n  \$\{EndIf\}/,
+    /  ; Create desktop shortcut for silent and passive installers\n  ; because finish page will be skipped\n  \$\{If\} \$PassiveMode = 1\n  \$\{OrIf} \$\{Silent\}\n    Call CreateOrUpdateDesktopShortcut\n  \$\{EndIf\}/,
     `  ; Passive/silent installs keep their existing shortcut behaviour. The\n  ; interactive installer follows the switch on Flint's options page.\n  \${If} $PassiveMode = 1\n  \${OrIf} \${Silent}\n    Call CreateOrUpdateDesktopShortcut\n  \${ElseIf} $FlintDesktopShortcutState = 1\n    Call CreateOrUpdateDesktopShortcut\n  \${EndIf}`,
     'desktop shortcut behaviour'
+  )
+
+  out = replaceOnce(
+    out,
+    /  ; Auto close this page for passive mode\n  \$\{If\} \$PassiveMode = 1\n    SetAutoClose true\n  \$\{EndIf\}\nSectionEnd/,
+    `  ; Auto close passive installs. Interactive installs honor the Launch\n  ; Flint switch as soon as the install section has completed successfully.\n  \${If} $PassiveMode = 1\n    SetAutoClose true\n  \${ElseIf} $FlintLaunchState = 1\n    Call RunMainBinary\n    StrCpy $FlintLaunchState 0\n  \${EndIf}\nSectionEnd`,
+    'interactive launch behaviour'
   )
 
   out = replaceOnce(
