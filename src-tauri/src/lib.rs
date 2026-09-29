@@ -183,6 +183,7 @@ macro_rules! invoke_commands_with_extras {
         core::browser_verify::commands::browser_verify_detect,
         core::browser_verify::commands::browser_verify_run,
         core::browser_verify::commands::browser_verify_cancel,
+        core::browser_verify::commands::browser_verify_set_browser,
         core::jev::commands::jev_key_set,
         core::jev::commands::jev_key_clear,
         core::jev::commands::jev_status,

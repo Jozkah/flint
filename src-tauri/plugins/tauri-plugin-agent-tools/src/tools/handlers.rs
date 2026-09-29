@@ -3118,76 +3118,12 @@ fn remove_spill_file(path: &Path) {
 const SCREENSHOT_MAX_PNG_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
 
 fn chrome_binary() -> Option<PathBuf> {
-    if let Ok(env) = std::env::var("CHROME_PATH") {
-        if !env.is_empty() {
-            return Some(PathBuf::from(env));
-        }
-    }
-    const CANDIDATES: &[&str] = &[
-        // macOS (bundled browsers)
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-        // Linux
-        "/usr/bin/google-chrome",
-        "/usr/bin/chromium",
-        "/usr/bin/chromium-browser",
-    ];
-    if let Some(found) = CANDIDATES
-        .iter()
-        .find(|p| Path::new(p).exists())
-        .map(PathBuf::from)
-    {
-        return Some(found);
-    }
-    #[cfg(windows)]
-    {
-        let var = |name: &str| std::env::var_os(name).map(PathBuf::from);
-        let candidates = windows_chrome_candidates(
-            var("ProgramFiles").as_deref(),
-            var("ProgramFiles(x86)").as_deref(),
-            var("LOCALAPPDATA").as_deref(),
-        );
-        return candidates.into_iter().find(|p| p.is_file());
-    }
-    #[cfg(not(windows))]
-    None
-}
-
-/// Default Chrome/Edge install locations on Windows (Jozkah/jan#242), built
-/// from the `ProgramFiles`, `ProgramFiles(x86)` and `LOCALAPPDATA` directories.
-///
-/// Only absolute roots are used: a relative or empty value would resolve
-/// against the current directory, which could be the workspace, and let a
-/// planted `Google\Chrome\Application\chrome.exe` there be launched. PATH
-/// and the current directory are never searched, for the same reason.
-/// Machine-wide installs come before per-user ones, Chrome before Edge.
-#[cfg_attr(not(windows), allow(dead_code))]
-fn windows_chrome_candidates(
-    program_files: Option<&Path>,
-    program_files_x86: Option<&Path>,
-    local_app_data: Option<&Path>,
-) -> Vec<PathBuf> {
-    const SUFFIXES: &[&[&str]] = &[
-        &["Google", "Chrome", "Application", "chrome.exe"],
-        &["Microsoft", "Edge", "Application", "msedge.exe"],
-    ];
-    let mut out = Vec::new();
-    for root in [program_files, program_files_x86, local_app_data]
-        .into_iter()
-        .flatten()
-        .filter(|r| r.is_absolute())
-    {
-        for suffix in SUFFIXES {
-            let mut p = root.to_path_buf();
-            p.extend(suffix.iter());
-            if !out.contains(&p) {
-                out.push(p);
-            }
-        }
-    }
-    out
+    // The shared discovery (Chrome, Edge, Brave, Opera, Vivaldi, Arc,
+    // Chromium, plus FLINT_BROWSER_PATH / CHROME_PATH) lives in
+    // `core::browser_verify`, so the screenshot tool and "Verify in browser"
+    // agree on which browser is installed.
+    let info = crate::core::browser_verify::find_browser();
+    info.path.map(PathBuf::from)
 }
 
 /// Content-Security-Policy put in front of every page `screenshot` renders
@@ -8367,49 +8303,17 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&outside);
     }
 
-    /// Jozkah/jan#242: the default Windows install paths of Chrome and Edge
-    /// are found without CHROME_PATH, machine-wide before per-user.
-    #[cfg(windows)]
+    /// `chrome_binary` delegates to the shared discovery in
+    /// `core::browser_verify`: a named executable (CHROME_PATH) is used as-is,
+    /// and the default install locations are searched when none is named.
     #[test]
-    fn windows_chrome_candidates_cover_default_installs() {
-        let pf = Path::new(r"C:\Program Files");
-        let pf86 = Path::new(r"C:\Program Files (x86)");
-        let local = Path::new(r"C:\Users\u\AppData\Local");
-        let c = windows_chrome_candidates(Some(pf), Some(pf86), Some(local));
-        assert_eq!(
-            c.first().unwrap(),
-            Path::new(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-        );
-        assert!(c.contains(&PathBuf::from(
-            r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-        )));
-        assert!(c.contains(&PathBuf::from(
-            r"C:\Users\u\AppData\Local\Google\Chrome\Application\chrome.exe"
-        )));
-        assert_eq!(c.len(), 6);
-    }
-
-    /// A relative or missing root is skipped rather than resolved against the
-    /// current directory, so a planted chrome.exe there is never picked.
-    #[cfg(windows)]
-    #[test]
-    fn windows_chrome_candidates_ignore_relative_roots() {
-        let c = windows_chrome_candidates(Some(Path::new("rel")), None, Some(Path::new("")));
-        assert!(c.is_empty(), "{c:?}");
-    }
-
-    /// The candidate list resolves to a real file laid out like a default
-    /// install, which is what chrome_binary() then picks.
-    #[cfg(windows)]
-    #[test]
-    fn windows_chrome_candidates_find_a_stand_in_install() {
+    fn chrome_binary_uses_the_shared_discovery() {
         let root = unique_root();
-        let exe = root.join(r"Microsoft\Edge\Application\msedge.exe");
-        std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
-        std::fs::write(&exe, b"stand-in").unwrap();
-        let found = windows_chrome_candidates(None, None, Some(&root))
-            .into_iter()
-            .find(|p| p.is_file());
+        let exe = root.join("chrome");
+        std::fs::write(&exe, b"x").unwrap();
+        std::env::set_var("CHROME_PATH", &exe);
+        let found = chrome_binary();
+        std::env::remove_var("CHROME_PATH");
         assert_eq!(found.as_deref(), Some(exe.as_path()));
         let _ = std::fs::remove_dir_all(&root);
     }

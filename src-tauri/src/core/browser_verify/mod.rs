@@ -1,5 +1,6 @@
-//! "Verify in browser": drive a separate, throwaway Chrome or Edge against a
-//! local app the user is previewing, and bring back evidence.
+//! "Verify in browser": drive a separate, throwaway Chromium-based browser
+//! (Chrome, Edge, Brave, Opera, Vivaldi, Arc or Chromium) against a local app
+//! the user is previewing, and bring back evidence.
 //!
 //! What this is not: Flint's own webview. The browser is a separate process
 //! with a fresh temporary profile (no cookies, storage or extensions from
@@ -19,8 +20,10 @@
 //!   normally sends loopback traffic around a proxy; that implicit bypass is
 //!   removed (`<-loopback>`), so another port on this machine is refused too.
 //!
-//! No browser is ever downloaded: an installed Chrome, Edge or Chromium is
-//! used, or the caller gets a setup message saying none was found.
+//! No browser is ever downloaded: an installed Chromium-based browser is used
+//! (the default install locations, `FLINT_BROWSER_PATH`/`CHROME_PATH`, or a
+//! user-chosen executable), or the caller gets a setup message saying none
+//! was found.
 
 pub mod cdp;
 pub mod runner;
@@ -308,8 +311,16 @@ pub struct BrowserInfo {
 
 fn browser_name(path: &Path) -> String {
     let p = path.to_string_lossy().to_ascii_lowercase();
-    if p.contains("edge") || p.contains("msedge") {
+    if p.contains("msedge") || p.contains("microsoft edge") || p.contains("edge") {
         "Microsoft Edge".into()
+    } else if p.contains("brave") {
+        "Brave".into()
+    } else if p.contains("opera") {
+        "Opera".into()
+    } else if p.contains("vivaldi") {
+        "Vivaldi".into()
+    } else if p.contains("arc") {
+        "Arc".into()
     } else if p.contains("chromium") {
         "Chromium".into()
     } else {
@@ -324,6 +335,10 @@ fn candidates() -> Vec<PathBuf> {
     let mut out: Vec<PathBuf> = [
         "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
         "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Opera.app/Contents/MacOS/Opera",
+        "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+        "/Applications/Arc.app/Contents/MacOS/Arc",
         "/Applications/Chromium.app/Contents/MacOS/Chromium",
         "/usr/bin/google-chrome",
         "/usr/bin/google-chrome-stable",
@@ -331,6 +346,12 @@ fn candidates() -> Vec<PathBuf> {
         "/usr/bin/microsoft-edge",
         "/usr/bin/microsoft-edge-stable",
         "/opt/microsoft/msedge/msedge",
+        "/usr/bin/brave-browser",
+        "/usr/bin/brave-browser-stable",
+        "/usr/bin/opera",
+        "/usr/bin/opera-stable",
+        "/usr/bin/vivaldi",
+        "/usr/bin/arc",
         "/usr/bin/chromium",
         "/usr/bin/chromium-browser",
     ]
@@ -344,18 +365,36 @@ fn candidates() -> Vec<PathBuf> {
     {
         out.push(root.join("Google").join("Chrome").join("Application").join("chrome.exe"));
         out.push(root.join("Microsoft").join("Edge").join("Application").join("msedge.exe"));
+        out.push(root.join("BraveSoftware").join("Brave-Browser").join("Application").join("brave.exe"));
+        out.push(root.join("Opera").join("launcher.exe"));
+        for n in 1..=20 {
+            out.push(root.join("Vivaldi").join(format!("app-{n}")).join("vivaldi.exe"));
+        }
     }
     out
 }
 
-/// An installed Chrome, Edge or Chromium. `FLINT_BROWSER_PATH` (or
-/// `CHROME_PATH`, which the screenshot tool reads) names one explicitly.
+/// An installed Chrome, Edge, Brave, Opera, Vivaldi, Arc or Chromium.
+/// `FLINT_BROWSER_PATH` (or `CHROME_PATH`, which the screenshot tool reads)
+/// names one explicitly.
 pub fn find_browser() -> BrowserInfo {
-    let explicit = ["FLINT_BROWSER_PATH", "CHROME_PATH"]
-        .iter()
-        .filter_map(std::env::var_os)
+    find_browser_with_override(None)
+}
+
+/// Like [`find_browser`], but `override_path` (a user-chosen executable, e.g.
+/// from the "Choose" button in the Verify panel) wins over the environment
+/// variables and the default install locations.
+pub fn find_browser_with_override(override_path: Option<&str>) -> BrowserInfo {
+    let explicit = override_path
         .map(PathBuf::from)
-        .find(|p| p.is_absolute() && p.is_file());
+        .filter(|p| p.is_absolute() && p.is_file())
+        .or_else(|| {
+            ["FLINT_BROWSER_PATH", "CHROME_PATH"]
+                .iter()
+                .filter_map(std::env::var_os)
+                .map(PathBuf::from)
+                .find(|p| p.is_absolute() && p.is_file())
+        });
     match explicit.or_else(|| candidates().into_iter().find(|p| p.is_file())) {
         Some(path) => BrowserInfo {
             found: true,
@@ -368,9 +407,9 @@ pub fn find_browser() -> BrowserInfo {
             path: None,
             name: None,
             hint: Some(
-                "No Chrome, Edge or Chromium was found. Install Google Chrome or Microsoft Edge, \
-                 or set FLINT_BROWSER_PATH to the browser's executable. Flint does not download \
-                 a browser."
+                "No Chrome, Edge, Brave, Opera, Vivaldi, Arc or Chromium was found. Install one \
+                 (any Chromium-based browser works), choose its executable, or set \
+                 FLINT_BROWSER_PATH. Flint does not download a browser."
                     .to_string(),
             ),
         },
@@ -462,18 +501,56 @@ pub mod commands {
     static RUNS: LazyLock<Mutex<HashMap<String, watch::Sender<bool>>>> =
         LazyLock::new(|| Mutex::new(HashMap::new()));
 
+    /// The browser executable the user chose this session, if any.
+    static CHOSEN_BROWSER: LazyLock<Mutex<Option<String>>> =
+        LazyLock::new(|| Mutex::new(None));
+
     #[derive(Clone, Serialize)]
     struct Progress<'a> {
         id: &'a str,
         step: &'a StepRecord,
     }
 
-    /// Which browser a run would use, or how to get one.
+    /// Which browser a run would use, or how to get one. A browser the user
+    /// chose with `browser_verify_set_browser` wins over the installed ones.
     #[tauri::command]
     pub async fn browser_verify_detect() -> BrowserInfo {
-        tokio::task::spawn_blocking(find_browser)
+        let chosen = chosen_browser();
+        tokio::task::spawn_blocking(move || find_browser_with_override(chosen.as_deref()))
             .await
             .unwrap_or(BrowserInfo { found: false, path: None, name: None, hint: None })
+    }
+
+    /// Name a browser executable to use (e.g. Brave, Opera, Vivaldi, Arc or a
+    /// custom build). The path is validated: it must be an absolute path to an
+    /// existing file, so a relative or missing path is refused rather than
+    /// launched. The choice is kept for this process only (not written to disk
+    /// or the environment), so the next launch of Flint starts from the
+    /// installed browsers again.
+    #[tauri::command]
+    pub async fn browser_verify_set_browser(path: String) -> Result<BrowserInfo, String> {
+        let path = path.trim().to_string();
+        let p = PathBuf::from(&path);
+        if !p.is_absolute() {
+            return Err("the browser path must be absolute".to_string());
+        }
+        if !p.is_file() {
+            return Err(format!("no file at {path}"));
+        }
+        CHOSEN_BROWSER
+            .lock()
+            .ok()
+            .map(|mut g| *g = Some(path.clone()));
+        tokio::task::spawn_blocking(move || find_browser_with_override(Some(&path)))
+            .await
+            .map_err(|e| format!("could not check the browser: {e}"))
+    }
+
+    /// The executable the user chose in this process, if any. Wins over the
+    /// environment variables and the default install locations, so a run
+    /// started after the "Choose" click uses the browser the user picked.
+    pub(crate) fn chosen_browser() -> Option<String> {
+        CHOSEN_BROWSER.lock().ok().and_then(|g| g.clone())
     }
 
     /// Run one verification to its end (or cancellation) and return the
@@ -491,9 +568,15 @@ pub mod commands {
             }
         }
         let emit_id = id.clone();
-        let report = runner::run(request, find_browser(), rx, move |step| {
-            let _ = app.emit(EVENT_PROGRESS, Progress { id: &emit_id, step });
-        })
+        let chosen = chosen_browser();
+        let report = runner::run(
+            request,
+            find_browser_with_override(chosen.as_deref()),
+            rx,
+            move |step| {
+                let _ = app.emit(EVENT_PROGRESS, Progress { id: &emit_id, step });
+            },
+        )
         .await;
         if let Ok(mut runs) = RUNS.lock() {
             runs.remove(&id);
@@ -577,6 +660,76 @@ mod tests {
             "http://localhost:3000/cb"
         );
         assert_eq!(display_url("data:text/html,<script>"), "data:…");
+    }
+
+    #[test]
+    fn browser_name_recognises_the_alternative_browsers() {
+        assert_eq!(browser_name(Path::new("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")), "Brave");
+        assert_eq!(browser_name(Path::new("/usr/bin/brave-browser")), "Brave");
+        assert_eq!(browser_name(Path::new(r"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe")), "Brave");
+        assert_eq!(browser_name(Path::new("/Applications/Opera.app/Contents/MacOS/Opera")), "Opera");
+        assert_eq!(browser_name(Path::new(r"C:\Program Files\Opera\launcher.exe")), "Opera");
+        assert_eq!(browser_name(Path::new("/usr/bin/vivaldi")), "Vivaldi");
+        assert_eq!(browser_name(Path::new(r"C:\Users\u\AppData\Local\Vivaldi\app-1\vivaldi.exe")), "Vivaldi");
+        assert_eq!(browser_name(Path::new("/Applications/Arc.app/Contents/MacOS/Arc")), "Arc");
+        assert_eq!(browser_name(Path::new("/usr/bin/arc")), "Arc");
+        // The defaults are unchanged.
+        assert_eq!(browser_name(Path::new("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")), "Google Chrome");
+        assert_eq!(browser_name(Path::new(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe")), "Microsoft Edge");
+        assert_eq!(browser_name(Path::new("/usr/bin/chromium")), "Chromium");
+    }
+
+    #[test]
+    fn the_candidate_list_covers_the_alternative_browsers() {
+        let c = candidates();
+        assert!(c.contains(&PathBuf::from("/Applications/Brave Browser.app/Contents/MacOS/Brave Browser")));
+        assert!(c.contains(&PathBuf::from("/Applications/Opera.app/Contents/MacOS/Opera")));
+        assert!(c.contains(&PathBuf::from("/Applications/Vivaldi.app/Contents/MacOS/Vivaldi")));
+        assert!(c.contains(&PathBuf::from("/Applications/Arc.app/Contents/MacOS/Arc")));
+        assert!(c.contains(&PathBuf::from("/usr/bin/brave-browser")));
+        assert!(c.contains(&PathBuf::from("/usr/bin/opera")));
+        assert!(c.contains(&PathBuf::from("/usr/bin/vivaldi")));
+        assert!(c.contains(&PathBuf::from("/usr/bin/arc")));
+        // The original candidates are still there.
+        assert!(c.contains(&PathBuf::from("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")));
+        assert!(c.contains(&PathBuf::from("/usr/bin/chromium")));
+    }
+
+    #[test]
+    fn a_user_chosen_browser_wins_over_the_default_locations() {
+        let tmp = tempfile::Builder::new().prefix("flint-browser-test-").tempdir().unwrap();
+        let exe = tmp.path().join("my-browser");
+        std::fs::write(&exe, b"x").unwrap();
+        let info = find_browser_with_override(Some(exe.to_str().unwrap()));
+        assert!(info.found);
+        assert_eq!(info.path.as_deref(), Some(exe.to_str().unwrap()));
+        assert_eq!(info.name.as_deref(), Some("Google Chrome"), "an unrecognised name falls back to Chrome");
+    }
+
+    #[test]
+    fn a_missing_or_relative_override_is_ignored() {
+        let info = find_browser_with_override(Some("relative/path"));
+        // A relative override is not used; the result is whatever the machine has.
+        // If the machine has a browser, `found` is true and the path is not the relative one.
+        if info.found {
+            assert_ne!(info.path.as_deref(), Some("relative/path"));
+        }
+        let info = find_browser_with_override(Some("/nonexistent/browser-xyz"));
+        if info.found {
+            assert_ne!(info.path.as_deref(), Some("/nonexistent/browser-xyz"));
+        }
+    }
+
+    #[cfg(not(feature = "cli"))]
+    #[test]
+    fn a_chosen_browser_is_remembered_for_the_session() {
+        use commands::CHOSEN_BROWSER;
+        let before = commands::chosen_browser();
+        let r = CHOSEN_BROWSER.lock().unwrap().insert("/usr/bin/brave-browser".to_string());
+        assert_eq!(r, before);
+        assert_eq!(commands::chosen_browser().as_deref(), Some("/usr/bin/brave-browser"));
+        // Restore whatever was there before this test.
+        *CHOSEN_BROWSER.lock().unwrap() = before;
     }
 
     #[test]
