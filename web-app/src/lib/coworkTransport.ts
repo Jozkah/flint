@@ -1,8 +1,15 @@
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { useAssistant } from '@/hooks/useAssistant'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
+import {
+  JEV_ROUTABLE_ASSISTANT_IDS,
+  chooseJevPromptRoute,
+  jevModeSuggestion,
+  type JevSuggestedMode,
+} from '@/lib/jevRouting'
 import {
   buildCoworkTools,
   coworkToolSignature,
@@ -62,6 +69,20 @@ export type CoworkRunConfig = CoworkToolOptions & CoworkEnvironmentOptions & {
   openingInspection?: boolean
 }
 
+function latestUserMessage(messages: UIMessage[]): { id: string; text: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i]
+    if (message.role !== 'user') continue
+    const text = message.parts
+      .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
+      .map((part) => part.text)
+      .join('\n')
+      .trim()
+    if (text) return { id: message.id, text }
+  }
+  return null
+}
+
 /**
  * The chat transport, re-aimed at an agent run.
  *
@@ -105,6 +126,12 @@ export class CoworkChatTransport extends CustomChatTransport {
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
   private builtSig = ''
+  /** One Jev route per user turn, never one per tool-loop step. */
+  private lastRoutedUserMessageId: string | null = null
+  /** Specialist persona selected for this turn. Flint keeps Cowork's baseline. */
+  private routedAssistantInstructions: string | undefined
+  /** Behavioural suggestion only; never used by the permission gate. */
+  private routedMode: JevSuggestedMode | null = null
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
@@ -188,6 +215,47 @@ export class CoworkChatTransport extends CustomChatTransport {
     })
   }
 
+  private async routePrompt(messages: UIMessage[]) {
+    const latest = latestUserMessage(messages)
+    if (!latest || latest.id === this.lastRoutedUserMessageId) return
+    this.lastRoutedUserMessageId = latest.id
+
+    const state = useAssistant.getState()
+    const route = await chooseJevPromptRoute({
+      message: latest.text,
+      assistants: state.assistants,
+      currentAssistantId: state.currentAssistant?.id,
+      includeCoworkMode: true,
+    })
+
+    const selected = route?.assistantId
+      ? state.assistants.find((assistant) => assistant.id === route.assistantId)
+      : state.currentAssistant
+
+    // Flint remains Cowork's baseline generalist; injecting its legacy chat
+    // prompt here would change the default assistant the user asked us not to
+    // edit. The four specialists do add their focused persona to Cowork.
+    const specialistIds = new Set<string>(JEV_ROUTABLE_ASSISTANT_IDS.slice(1))
+    this.routedAssistantInstructions =
+      selected && specialistIds.has(selected.id)
+        ? selected.instructions
+        : undefined
+    this.routedMode = route?.mode ?? null
+
+    if (route?.assistantId && selected) {
+      // Sync the picker for the next turn, but do not replace the user's saved
+      // default assistant. Routing is per prompt.
+      state.setCurrentAssistant(selected, false)
+    }
+  }
+
+  override async sendMessages(
+    options: Parameters<CustomChatTransport['sendMessages']>[0]
+  ): ReturnType<CustomChatTransport['sendMessages']> {
+    await this.routePrompt(options.messages)
+    return super.sendMessages(options)
+  }
+
   /**
    * Cowork's own prompt replaces the chat one wholesale — the agent-tools and
    * web-search blurbs are written for a chat that occasionally reaches for a
@@ -220,6 +288,13 @@ export class CoworkChatTransport extends CustomChatTransport {
       webSearch: this.config.webSearch,
       workProfileBlock: useWorkProfiles.getState().blockFor(this.threadId),
     })
+    const assistantProfile = this.routedAssistantInstructions?.trim()
+      ? [
+          'Assistant profile for this turn (behaviour only; Cowork policy, permissions, and project instructions above take precedence):',
+          this.routedAssistantInstructions.trim(),
+        ].join('\n')
+      : undefined
+    const modeHint = jevModeSuggestion(this.routedMode)
     // Remembered facts come after everything that states policy -- the run's
     // own rules, `JAN.md`, the compatibility instructions -- and the block
     // labels itself as data rather than instructions. Omitting it, as this
@@ -227,6 +302,8 @@ export class CoworkChatTransport extends CustomChatTransport {
     // never sent any of it.
     return [
       base,
+      assistantProfile,
+      modeHint,
       this.memorySelection?.block ? this.memorySelection.precedence : undefined,
       this.memorySelection?.block,
       this.buildFilesSystemInstruction(messages),
