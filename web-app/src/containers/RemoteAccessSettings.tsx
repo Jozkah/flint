@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from '@/lib/react-compat'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
@@ -340,6 +340,8 @@ export function PairPhoneDialog({
     return () => clearInterval(timer)
   }, [])
 
+  const expired = pairing !== null && now >= deadline
+
   const copyPairingLink = async () => {
     if (!pairing || expired) return
     try {
@@ -355,8 +357,6 @@ export function PairPhoneDialog({
     if (!lastPaired) void api.cancelPairing().catch(() => {})
     onClose()
   }
-
-  const expired = pairing !== null && now >= deadline
 
   return (
     <Dialog open onOpenChange={(open) => !open && close()}>
