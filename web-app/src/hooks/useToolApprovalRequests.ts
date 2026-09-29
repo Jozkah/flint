@@ -7,6 +7,7 @@ import { resolveServerFingerprint } from '@/lib/mcpServerIdentity'
 import { ALWAYS_ASK_TOOLS } from '@/lib/sessionMessagingTools'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
+import { GIT_TOOL_NAME, planGitTool } from '@/lib/gitTool'
 import {
   autoApprovePauseReason,
   noteAutoApproved,
@@ -39,8 +40,8 @@ export type ApprovalRequestContext = {
    * The approved scope the destructive-command check compares paths against:
    * every folder the call may delete inside without being asked. Takes
    * precedence over `workspaceLabel`. Left out, the label is used when it is
-   * an absolute path, and otherwise the scope is unknown (every absolute path
-   * counts as outside, so the call is asked about).
+   * an absolute path (a display label is ignored); otherwise the scope is
+   * unknown (every absolute path counts as outside, so the call is asked about).
    */
   workspaceRoots?: readonly string[]
   /**
@@ -110,9 +111,9 @@ export type PendingApproval = {
   workspaceLabel?: string
   threadIsEphemeral?: boolean
   /**
-   * Asked every time: no answer to this prompt records a grant, and the
-   * prompt offers only "Allow once" (a push, a destructive command, a tool
-   * that approves commands itself).
+   * Asked every time: no ordinary standing grant answers this prompt. The
+   * temporary Git grant below is the one deliberate exception for ordinary
+   * non-destructive remote Git/GitHub operations in this conversation.
    */
   alwaysAsk?: boolean
   conversationProgram?: string
@@ -125,10 +126,13 @@ export type PendingApproval = {
 /**
  * Scope of the grant. `allow-always` trusts the tool's whole server when it has
  * one, since trusting a server tool-by-tool is the same decision repeated.
+ * `allow-git-temporary` is deliberately renderer-memory only and expires with
+ * the app session; it never becomes a standing persisted grant.
  */
 export type ApprovalDecision =
   | 'allow-once'
   | 'allow-thread'
+  | 'allow-git-temporary'
   | 'allow-always'
   | 'deny'
 
@@ -179,6 +183,11 @@ type ToolApprovalRequestsState = {
    * request by itself.
    */
   allowedOnceCommands: Record<string, string[]>
+  /**
+   * Conversation-scoped, in-memory permission for ordinary remote Git/GitHub
+   * actions. It never covers destructive plans and is never persisted.
+   */
+  temporaryGitThreads: Record<string, true>
 
   requestApproval: (
     toolCallId: string,
@@ -236,6 +245,26 @@ function bashDestructiveReason(
       ? [label]
       : [])
   return destructiveCommandReason(command, roots)
+}
+
+/**
+ * Whether this Git request may be covered by the temporary conversation-wide
+ * Git grant. Remote is intentional: local Git already has the ordinary
+ * per-tool conversation scope. Anything capable of losing work or rewriting
+ * shared history remains prompt-only.
+ */
+export function canTemporarilyAllowGit(
+  toolName: string,
+  input: unknown,
+  threadIsEphemeral = false
+): boolean {
+  if (threadIsEphemeral || toolName !== GIT_TOOL_NAME) return false
+  const planned = planGitTool(input)
+  return (
+    planned.ok &&
+    planned.plan.class === 'remote' &&
+    planned.plan.destructive === undefined
+  )
 }
 
 let nextRequest = 0
@@ -299,6 +328,7 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
     approvedFingerprints: {},
     answeredByPrompt: {},
     allowedOnceCommands: {},
+    temporaryGitThreads: {},
 
     requestApproval: (toolCallId, toolName, threadId, serverName, context) => {
       // An MCP call is approved for one definition of its server, so the
@@ -367,6 +397,23 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             : selfApproval
               ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
               : undefined)
+
+        // Explicitly temporary Git/GitHub trust is the one exception to the
+        // ordinary "always ask" treatment of remote Git. The classifier above
+        // refuses destructive plans and ephemeral thread ids, so this cannot
+        // cover a force-push/reset/history rewrite or leak into the next temp chat.
+        if (
+          get().temporaryGitThreads[threadId] &&
+          canTemporarilyAllowGit(
+            toolName,
+            context?.input,
+            context?.threadIsEphemeral === true
+          )
+        ) {
+          approve()
+          return
+        }
+
         // A call a standing grant would answer counts toward the limit on
         // consecutive unasked calls; past it, this one is put to the user.
         const streakKey = context?.autoApproveStreak
@@ -472,13 +519,25 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
       entry.onDecision?.(decision)
       const approval = useToolApproval.getState()
       const { serverName, serverFingerprint } = entry
-      if (
+      const temporaryGit =
+        decision === 'allow-git-temporary' &&
+        canTemporarilyAllowGit(
+          entry.toolName,
+          entry.input,
+          entry.threadIsEphemeral === true
+        )
+
+      if (temporaryGit) {
+        // Intentionally no persisted grant. The transient map is updated in
+        // the state transaction below and future safe remote Git calls in this
+        // conversation resolve before a prompt is created.
+      } else if (
         ALWAYS_ASK_TOOLS.has(entry.toolName) ||
         (serverName && isSelfApprovalTool(entry.toolName)) ||
         entry.alwaysAsk
       ) {
-        // Allowed this once whatever was clicked: no grant is ever recorded
-        // for a tool that must be asked about every time.
+        // Allowed this once whatever was clicked: no ordinary grant is ever
+        // recorded for a tool that must be asked about every time.
       } else if (decision === 'allow-thread') {
         if (!serverName) {
           approval.approveToolForThread(entry.threadId, entry.toolName)
@@ -521,6 +580,13 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           : null
       set((s) => ({
         ...without(s, entry),
+        ...(temporaryGit
+          ? {
+              temporaryGitThreads: remember(s.temporaryGitThreads, [
+                [entry.threadId, true as const],
+              ]),
+            }
+          : {}),
         ...(onceKey
           ? {
               allowedOnceCommands: {
