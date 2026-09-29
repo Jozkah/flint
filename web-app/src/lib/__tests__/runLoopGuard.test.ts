@@ -37,7 +37,18 @@ it('stops tiny sequential reads instead of inching through one file forever', ()
   })
 })
 
-it('allows useful read windows and non-sequential targeted reads', () => {
+it('stops the real transcript pattern that reopens the same offset for five more lines', () => {
+  const page = (limit: number) =>
+    call({ input: { path: 'ChatInput.tsx', offset: 3560, limit } })
+
+  expect(detectLoop([page(200), page(205), page(210)])).toEqual({ tripped: false })
+  expect(detectLoop([page(200), page(205), page(210), page(215)])).toMatchObject({
+    tripped: true,
+    reason: 'progressive-read',
+  })
+})
+
+it('allows useful read windows and deliberate large expansions', () => {
   const page = (offset: number, limit: number) =>
     call({ input: { path: 'a.ts', offset, limit } })
 
@@ -45,6 +56,9 @@ it('allows useful read windows and non-sequential targeted reads', () => {
     tripped: false,
   })
   expect(detectLoop([page(10, 5), page(80, 5), page(160, 5), page(250, 5)])).toEqual({
+    tripped: false,
+  })
+  expect(detectLoop([page(1, 100), page(1, 250), page(1, 500), page(1, 900)])).toEqual({
     tripped: false,
   })
 })
