@@ -47,6 +47,24 @@ test('installer template transformation creates the complete Flint wizard', asyn
   assert.match(generated, /SetAutoClose false/)
 })
 
+test('template preparation preserves Windows ARM64 retargeting', async () => {
+  const base = await readFile(basePath, 'utf8')
+  const armCurrent = base
+    .replace('!define ARCH "x64"', '!define ARCH "arm64"')
+    .replaceAll('\\nsis\\x64\\', '\\nsis\\arm64\\')
+    .replaceAll('x86_64-pc-windows-msvc', 'aarch64-pc-windows-msvc')
+    .replaceAll('\\VC\\Runtimes\\x64', '\\VC\\Runtimes\\arm64')
+    .replaceAll('VC_RuntimeMinimumVSU_amd64', 'VC_RuntimeMinimumVSU_arm64')
+
+  const generated = transformWindowsInstallerTemplate(base, armCurrent)
+  assert.match(generated, /!define ARCH "arm64"/)
+  assert.match(generated, /\\nsis\\arm64\\/)
+  assert.match(generated, /aarch64-pc-windows-msvc/)
+  assert.match(generated, /\\VC\\Runtimes\\arm64/)
+  assert.match(generated, /VC_RuntimeMinimumVSU_arm64/)
+  assert.doesNotMatch(generated, /x86_64-pc-windows-msvc/)
+})
+
 test('Flint UI uses the real app icon, Inter and the expected page copy', async () => {
   const ui = await readInstallerUi()
   assert.match(ui, /Resource 103 is produced from src-tauri\/icons\/icon\.ico/)
@@ -58,6 +76,8 @@ test('Flint UI uses the real app icon, Inter and the expected page copy', async 
   assert.match(ui, /Install Flint/)
   assert.match(ui, /Choose installation options/)
   assert.match(ui, /Flint is ready/)
+  assert.match(ui, /\$FlintLaunchState = 1[\s\S]*"Launch Flint" FlintFinishLaunch/)
+  assert.match(ui, /"Finish" FlintFinishClose/)
 })
 
 test('every bitmap used by the custom UI exists at every theme and DPI', async () => {
