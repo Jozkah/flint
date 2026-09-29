@@ -40,6 +40,18 @@ function preserveBuildSubstitutions(base, current) {
     if (value && value !== placeholder) out = out.split(placeholder).join(value)
   }
 
+  // The ARM64 workflow retargets the rendered NSIS template before Tauri runs.
+  // beforeBuildCommand runs this generator afterwards, so preserve that target
+  // rather than regenerating the x64 base over it.
+  const arch = extractDefine(current, 'ARCH')
+  if (arch === 'arm64') {
+    out = out.replace('!define ARCH "x64"', '!define ARCH "arm64"')
+    out = out.split('\\nsis\\x64\\').join('\\nsis\\arm64\\')
+    out = out.split('x86_64-pc-windows-msvc').join('aarch64-pc-windows-msvc')
+    out = out.split('\\VC\\Runtimes\\x64').join('\\VC\\Runtimes\\arm64')
+    out = out.split('VC_RuntimeMinimumVSU_amd64').join('VC_RuntimeMinimumVSU_arm64')
+  }
+
   // Release CI may already have replaced this placeholder. For ordinary local
   // builds it has not, so materialize the real checkout root here. This is why
   // the custom template can now live permanently in tauri.windows.conf.json.
