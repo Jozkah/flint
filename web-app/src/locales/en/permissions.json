@@ -43,7 +43,7 @@
     "stopSession": "That session's current run stops at once, as if its Stop button were pressed. Its transcript records that this session stopped it and why. Flint asks every time.",
     "unknown": "Flint cannot tell what this tool does. Check the technical details before allowing it.",
     "gitLocal": "It changes this repository's files, branches or history on this computer.",
-    "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time.",
+    "gitRemote": "It sends changes to a remote repository that other people can see. Flint asks every time unless you temporarily allow ordinary remote Git actions for this conversation.",
     "gitDestructive": "What it removes or overwrites may not be recoverable."
   },
   "repeat": {
@@ -53,6 +53,9 @@
     "deny": "Deny",
     "allowOnce": "Allow once",
     "allowThread": "Allow in this conversation",
+    "allowGitTemporary": "Allow all temporarily",
+    "allowGitTemporaryExplanation": "Allow ordinary non-destructive Git and GitHub remote actions for this conversation only. Destructive operations still ask.",
+    "noBroaderOptions": "No broader safe approval is available for this request.",
     "allowAlwaysServer": "Always allow {{server}}",
     "allowAlwaysTool": "Always allow {{tool}}",
     "onceExplanation": "Only this request. Flint asks again next time.",

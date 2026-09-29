@@ -18,7 +18,21 @@ const approvalState: {
 const resolveApproval = vi.fn()
 vi.mock('@/hooks/useToolApprovalRequests', async () => {
   const { repeatCommandKey } = await import('@/lib/repeatedCommand')
+  const { planGitTool } = await import('@/lib/gitTool')
   return {
+    canTemporarilyAllowGit: (
+      toolName: string,
+      input: unknown,
+      threadIsEphemeral = false
+    ) => {
+      if (threadIsEphemeral || toolName !== 'git') return false
+      const planned = planGitTool(input)
+      return (
+        planned.ok &&
+        planned.plan.class === 'remote' &&
+        planned.plan.destructive === undefined
+      )
+    },
     wasCommandAllowedOnce: (
       s: { allowedOnceCommands: Record<string, string[]> },
       threadId: string,
@@ -226,6 +240,31 @@ describe('ToolApprovalActions', () => {
     ])
   })
 
+  it('offers temporary all-git approval for a non-destructive remote git call', () => {
+    renderApproval({
+      tc1: {
+        requestId: 'r1',
+        toolCallId: 'tc1',
+        toolName: 'git',
+        threadId: 't1',
+        alwaysAsk: true,
+        input: { args: ['push', 'origin', 'main'] },
+      },
+    })
+    fireEvent.click(screen.getByTestId('approval-more-options'))
+    const temporary = screen
+      .getByText('permissions:scope.allowGitTemporary')
+      .closest('button')!
+    expect(temporary).toHaveAttribute('data-scope', 'allow-git-temporary')
+    expect(screen.getByText('permissions:scope.allowGitTemporaryExplanation')).toBeInTheDocument()
+    fireEvent.click(temporary)
+    expect(resolveApproval).toHaveBeenCalledWith(
+      'tc1',
+      'allow-git-temporary',
+      'r1'
+    )
+  })
+
   // A reflexive Enter must never widen a permission.
   it('starts focus on Deny, not on the broadest grant', () => {
     renderApproval({
@@ -301,7 +340,7 @@ describe('ToolApprovalActions', () => {
     expect(resolveApproval).not.toHaveBeenCalled()
   })
 
-  it('shows the permission details on request', () => {
+  it('shows permission details on request', () => {
     renderApproval({
       tc1: {
         toolCallId: 'tc1',
@@ -315,11 +354,16 @@ describe('ToolApprovalActions', () => {
     expect(screen.getByText('permissions:request.technicalDetails')).toBeInTheDocument()
   })
 
-  it('offers no broader options when only this request can be allowed', () => {
+  it('keeps More options visible even when only this request can be allowed', () => {
     renderApproval({
       tc1: { toolCallId: 'tc1', toolName: 'bash', threadId: 't1', alwaysAsk: true },
     })
-    expect(screen.queryByTestId('approval-more-options')).not.toBeInTheDocument()
+    const more = screen.getByTestId('approval-more-options')
+    expect(more).toBeInTheDocument()
+    fireEvent.click(more)
+    expect(screen.getByTestId('approval-no-broader-options')).toHaveTextContent(
+      'permissions:scope.noBroaderOptions'
+    )
     fireEvent.click(screen.getByText('permissions:scope.allowOnce'))
     expect(resolveApproval).toHaveBeenCalledWith('tc1', 'allow-once', undefined)
   })
