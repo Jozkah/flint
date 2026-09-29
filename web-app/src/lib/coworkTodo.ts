@@ -73,6 +73,9 @@ function parseTarget(args: TodoArgs): Target | string {
   return 'target requires exactly one of: task, phase, all'
 }
 
+const INIT_USAGE =
+  'init requires `list` or `items`. Use {"op":"init","items":["do X","do Y"]} or {"op":"init","list":[{"phase":"Setup","items":["do X","do Y"]}]}'
+
 function phasesFromArgs(args: TodoArgs): TodoPhase[] | string {
   if (Array.isArray(args.list)) {
     return args.list.map((entry) => ({
@@ -95,7 +98,19 @@ function phasesFromArgs(args: TodoArgs): TodoPhase[] | string {
       },
     ]
   }
-  return 'init requires `list` or `items`'
+  // Older/smaller models sometimes follow the target-shaped fields shown for
+  // the other todo operations and emit init as {phase, task}. The intent is
+  // unambiguous for a single task, so normalize it instead of wasting a turn on
+  // an avoidable tool error. The advertised schema still teaches list/items.
+  if (typeof args.task === 'string' && args.task.trim()) {
+    return [
+      {
+        name: typeof args.phase === 'string' ? args.phase : '',
+        tasks: [{ content: args.task, status: 'pending' as const }],
+      },
+    ]
+  }
+  return INIT_USAGE
 }
 
 function validateInit(phases: TodoPhase[]): string | null {
