@@ -3118,12 +3118,52 @@ fn remove_spill_file(path: &Path) {
 const SCREENSHOT_MAX_PNG_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
 
 fn chrome_binary() -> Option<PathBuf> {
-    // The shared discovery (Chrome, Edge, Brave, Opera, Vivaldi, Arc,
-    // Chromium, plus FLINT_BROWSER_PATH / CHROME_PATH) lives in
-    // `core::browser_verify`, so the screenshot tool and "Verify in browser"
-    // agree on which browser is installed.
-    let info = crate::core::browser_verify::find_browser();
-    info.path.map(PathBuf::from)
+    for name in ["FLINT_BROWSER_PATH", "CHROME_PATH"] {
+        if let Some(path) = std::env::var_os(name).map(PathBuf::from) {
+            if path.is_absolute() && path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    const CANDIDATES: &[&str] = &[
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+        "/Applications/Opera.app/Contents/MacOS/Opera",
+        "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
+        "/Applications/Arc.app/Contents/MacOS/Arc",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
+        "/opt/google/chrome/chrome", "/usr/bin/microsoft-edge",
+        "/usr/bin/microsoft-edge-stable", "/opt/microsoft/msedge/msedge",
+        "/usr/bin/brave-browser", "/usr/bin/brave-browser-stable",
+        "/usr/bin/opera", "/usr/bin/opera-stable", "/usr/bin/vivaldi",
+        "/usr/bin/arc", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+    ];
+    if let Some(path) = CANDIDATES.iter().map(PathBuf::from).find(|p| p.is_file()) {
+        return Some(path);
+    }
+    #[cfg(windows)]
+    {
+        for name in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
+            if let Some(root) = std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute()) {
+                for suffix in [
+                    "Google/Chrome/Application/chrome.exe",
+                    "Microsoft/Edge/Application/msedge.exe",
+                    "BraveSoftware/Brave-Browser/Application/brave.exe",
+                    "Opera/launcher.exe",
+                ] {
+                    let path = root.join(suffix);
+                    if path.is_file() { return Some(path); }
+                }
+                for version in 1..=20 {
+                    let path = root.join("Vivaldi").join(format!("app-{version}")).join("vivaldi.exe");
+                    if path.is_file() { return Some(path); }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Content-Security-Policy put in front of every page `screenshot` renders
@@ -8303,11 +8343,10 @@ on_failure = \"warn\"
         let _ = std::fs::remove_dir_all(&outside);
     }
 
-    /// `chrome_binary` delegates to the shared discovery in
-    /// `core::browser_verify`: a named executable (CHROME_PATH) is used as-is,
-    /// and the default install locations are searched when none is named.
+    /// A named executable (CHROME_PATH) is used as-is, and default install
+    /// locations are searched when none is named.
     #[test]
-    fn chrome_binary_uses_the_shared_discovery() {
+    fn chrome_binary_uses_explicit_path() {
         let root = unique_root();
         let exe = root.join("chrome");
         std::fs::write(&exe, b"x").unwrap();
