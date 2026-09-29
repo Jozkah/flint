@@ -17,18 +17,25 @@ const participantId = (p: Props) => str(p.participant)
 function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
   return <><Grab /><h3>{children}</h3>{sub && <p className="sh">{sub}</p>}</>
 }
-
 function DesktopOnly({ title, sub = 'Available on the computer.' }: { title: ReactNode; sub?: ReactNode }) {
   return <div className="opt" aria-disabled="true"><I n="monitor" /><span className="tx"><b>{title}</b><small>{sub}</small></span></div>
 }
-
 function Action({ icon, label, run, danger = false, sub }: { icon: IconId; label: string; run: () => void; danger?: boolean; sub?: ReactNode }) {
   return <button type="button" className={`opt${danger ? ' dang' : ''}`} onClick={() => { closeSheet(); run() }}><I n={icon} /><span className="tx"><b>{label}</b>{sub && <small>{sub}</small>}</span></button>
 }
 
 async function mobileMutation(raw: Record<string, unknown>, ok?: string) {
   try {
-    const result = await client().rpc('settings.set', raw as never) as unknown as Record<string, unknown>
+    let result: Record<string, unknown>
+    if (raw.mobileOp === 'room.create') {
+      result = await client().rpc('room.create', raw.input as never) as unknown as Record<string, unknown>
+    } else if (raw.mobileOp === 'room.update') {
+      result = await client().rpc('room.update', { id: raw.id, patch: raw.patch } as never) as unknown as Record<string, unknown>
+    } else if (raw.mobileOp === 'room.delete') {
+      result = await client().rpc('room.delete', { id: raw.id } as never) as unknown as Record<string, unknown>
+    } else {
+      result = await client().rpc('settings.set', raw as never) as unknown as Record<string, unknown>
+    }
     if (ok) toast(ok)
     invalidate(['sessions.list', 'rooms.get', 'cowork.get'])
     return result
@@ -66,19 +73,14 @@ function ReasonSheet({ props }: { props: Props }) {
   const id = str(props.id)
   const participant = participantId(props)
   const composer = useApp((s) => s.composer)
+  const current = str(props.reason) ?? (target === 'home' ? composer.reason : undefined)
   const setReason = (reason: 'auto' | 'on' | 'off', label: string) => {
-    if (target === 'home') {
-      app.set((s) => ({ composer: { ...s.composer, reason } })); closeSheet(); toast(label); return
-    }
-    if (target === 'chat' && id) {
-      closeSheet(); void act('settings.set', { scope: 'chat', id, reasoning: reason }, label); return
-    }
-    if (target === 'room' && id && participant) {
-      closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, reasoning: { mode: reason } }] } }, label)
-    }
+    if (target === 'home') { app.set((s) => ({ composer: { ...s.composer, reason } })); closeSheet(); toast(label); return }
+    if (target === 'chat' && id) { closeSheet(); void act('settings.set', { scope: 'chat', id, reasoning: reason }, label); return }
+    if (target === 'room' && id && participant) { closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, reasoning: { mode: reason } }] } }, label) }
   }
-  if (target === 'cowork') return <><Title sub="This Cowork session">Reasoning</Title><DesktopOnly title="Reasoning mode" sub="Cowork reasoning is bound to the desktop session/model settings and is read-only on the phone." /></>
-  return <><Title>Reasoning</Title>{([['auto','Auto',"Use the model's default."],['on','On','Force reasoning on.'],['off','Off','Disable reasoning.']] as const).map(([v,t,s]) => <Opt key={v} title={t} sub={s} selected={target === 'home' && composer.reason === v} onClick={() => setReason(v, `Reasoning: ${t}`)} />)}<div className="ssec" /><DesktopOnly title="Reasoning effort / thinking budget" sub="Provider-specific effort and context budgets stay with the persisted desktop model settings." /></>
+  if (target === 'cowork') return <><Title sub="This Cowork session">Reasoning</Title><DesktopOnly title="Reasoning mode" sub="Cowork reasoning is bound to the persisted desktop session/model settings and is read-only on the phone." /></>
+  return <><Title>Reasoning</Title>{([['auto','Auto',"Use the model's default."],['on','On','Force reasoning on.'],['off','Off','Disable reasoning.']] as const).map(([v,t,s]) => <Opt key={v} title={t} sub={s} selected={current === v} onClick={() => setReason(v, `Reasoning: ${t}`)} />)}<div className="ssec" /><DesktopOnly title="Reasoning effort / thinking budget" sub="Provider-specific effort and context budgets stay with the persisted desktop model settings." /></>
 }
 
 function ModeSheet({ props }: { props: Props }) {
@@ -161,42 +163,26 @@ function RoomNewSheet({ props }: { props: Props }) {
     const id = result && typeof result.id === 'string' ? result.id : null
     if (id) go({ name: 'room', id })
   }
-  return <><Title sub={template ? `Template: ${template}` : 'Configure the room before creating it.'}>New room</Title><label className="field">Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Radar cache TTL" /></label><label className="field">Objective<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="What should participants discuss or decide?" /></label><button type="button" className="btn pri big" disabled={!models.data || (models.data.models?.length ?? 0) < 2} onClick={() => void create()}>Create room</button></>
+  return <><Title sub={template ? `Template: ${template}` : 'Configure the room before creating it.'}>New room</Title><label className="field">Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Radar cache TTL" /></label><label className="field">Objective<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="What should participants discuss or decide?" /></label><button type="button" className="btn pri big" disabled={!models.data || models.data.models.length < 2} onClick={() => void create()}>Create room</button></>
 }
 
 function copyId(props: Props) {
   const id = str(props.id); if (!id) return
   void navigator.clipboard?.writeText(id).then(() => toast('ID copied'), () => toast('Copy failed'))
 }
-
 function ThreadMenu({ props }: { props: Props }) {
   const id = str(props.id)
   const rename = () => { if (!id) return; const title = window.prompt('Chat name', str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'thread.rename', id, title: title.trim() }, 'Renamed.') }
   const remove = () => { if (id && window.confirm('Delete this chat?')) void mobileMutation({ mobileOp: 'thread.delete', id }, 'Chat deleted.').then(() => go({ name: 'home' })) }
   return <><Title>{str(props.title) ?? 'Chat'}</Title><Action icon="edit" label="Rename" run={rename} /><Action icon="pin" label="Pin / unpin" run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, 'Updated.') }} /><DesktopOnly title="Move to group" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><Action icon="trash" label="Delete" danger run={remove} /></>
 }
-
 function SessionMenu({ props }: { props: Props }) {
   const id = str(props.id)
   return <><Title>{str(props.title) ?? 'Cowork session'}</Title><Action icon="branch" label="Fork this session" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /><DesktopOnly title="Export session" /><DesktopOnly title="File activity" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><Action icon="trash" label="Delete session" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></>
 }
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
-  model: ModelSheet,
-  reason: ReasonSheet,
-  mode: ModeSheet,
-  access: AccessSheet,
-  stop: StopSheet,
-  permdetails: PermDetailsSheet,
-  vote: VoteSheet,
-  runs: RunsSheet,
-  conn: ConnSheet,
-  palette: PaletteSheet,
-  notifset: NotifSetSheet,
-  tools: ToolsSheet,
-  roomnew: RoomNewSheet,
-  threadmenu: ThreadMenu,
-  sessmenu: SessionMenu,
+  model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu,
   roommenu: ({ props }) => <><Title>{str(props.title) ?? 'Room'}</Title><Action icon="pause" label="Pause" run={() => roomAct(props, 'pause', 'Paused.')} /><Action icon="play" label="Resume" run={() => roomAct(props, 'resume', 'Resumed.')} /><Action icon="vote" label="Call vote" run={() => openSheet('vote', props)} /><Action icon="file" label="Synthesize" run={() => roomAct(props, 'synthesize', 'Asked for a synthesis.')} /><Action icon="sq" label="Stop room" run={() => roomAct(props, 'stop', 'Stopped.')} /><Action icon="trash" label="Delete room" danger run={() => { const id = str(props.id); if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></>,
   cwoptions: ({ props }) => <><Title>This Cowork session</Title><DesktopOnly title="Assistant" /><DesktopOnly title="Sampling / parameters" /><DesktopOnly title="Reasoning" sub="Cowork reasoning follows persisted desktop session/model settings." /><DesktopOnly title="Commands & skills" /><Opt title="Tools" lead={<I n="wrench" />} onClick={() => openSheet('tools', props)} /></>,
   attach: () => <><Title>Add to this message</Title><DesktopOnly title="Attachments" sub="Attach files/images from the computer; phone attachment transfer is not enabled." /></>,
@@ -206,13 +192,12 @@ const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   msgmenu: () => <><Title>Message actions</Title><DesktopOnly title="Additional message actions" sub="Copy is available directly on each assistant message. Edit/regenerate/branch/delete are not exposed remotely." /></>,
   coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,
   chatfilter: () => <><Title>Show</Title><Opt title="All" selected onClick={closeSheet} /><DesktopOnly title="Active filter" /></>,
-  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing the workspace of an existing session requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void navigator.clipboard?.writeText(str(props.folder)!).then(() => toast('Path copied'), () => toast('Copy failed'))} />}</>,
+  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing an existing session workspace requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void navigator.clipboard?.writeText(str(props.folder)!).then(() => toast('Path copied'), () => toast('Copy failed'))} />}</>,
   temp: () => <><Title>Temporary chat</Title><DesktopOnly title="Temporary chat" sub="Temporary history is not exposed by the current remote protocol." /></>,
   profile: () => <><Title>Work profile</Title><DesktopOnly title="Work profile" sub="Persisted Cowork profiles are selected on the computer." /></>,
   worktree: ({ props }) => <><Title>Session worktree</Title><Kv k="Branch" v={str(props.branch) ?? 'Working copy'} /><Kv k="Path" v={str(props.path) ?? '—'} /><DesktopOnly title="Apply / merge changes" sub="Applying changes to the attached folder requires desktop confirmation." /></>,
   tokens: ({ props }) => <><Title>Token usage</Title><Kv k="Last run" v={typeof props.used === 'number' ? `${props.used.toLocaleString()} tokens` : 'Not reported'} /></>,
 }
-
 export function SheetBody({ name, props }: { name: string; props: Props }) {
   const Cmp = SHEETS[name]
   return Cmp ? <Cmp props={props} /> : null
