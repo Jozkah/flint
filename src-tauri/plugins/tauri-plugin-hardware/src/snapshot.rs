@@ -130,6 +130,7 @@ fn sensor_kind(label: &str) -> &'static str {
 ///
 /// Only labels in the PMU family are folded; anything else (an Intel Mac's
 /// named sensors, an external reading) passes through untouched.
+#[cfg(any(target_os = "macos", test))]
 fn condense_apple_sensors(raw: Vec<SensorDetails>) -> Vec<SensorDetails> {
     if !raw.iter().any(|s| s.label.starts_with("PMU ")) {
         return raw;
@@ -186,6 +187,7 @@ fn condense_apple_sensors(raw: Vec<SensorDetails>) -> Vec<SensorDetails> {
 /// `/System/Volumes/{VM,Preboot,Update,xarts,...}` are internal volumes the
 /// user never touches. Show the container once, at `/`, plus anything under
 /// `/Volumes` (external and secondary drives).
+#[cfg(any(target_os = "macos", test))]
 fn hide_apple_system_volumes(disks: Vec<DiskDetails>) -> Vec<DiskDetails> {
     disks
         .into_iter()
