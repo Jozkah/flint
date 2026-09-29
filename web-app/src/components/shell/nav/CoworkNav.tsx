@@ -453,7 +453,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       running: Boolean(
         store.currentId && useCoworkRun.getState().runs[store.currentId]
       ),
-      hasDraft: false,
+      draft: usePrompt.getState().prompt,
     })
     store.selectSession(id)
     if (groupId)

@@ -265,7 +265,7 @@ type CoworkSessionsState = {
    * as held input and the composer is cleared, so the new session opens
    * blank. Returns the session to show.
    */
-  startSession: (input: { running: boolean; hasDraft: boolean }) => string
+  startSession: (input: { running: boolean; draft?: string }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   /**
@@ -364,7 +364,6 @@ import { defaultModeFor, type CoworkMode } from '@/lib/coworkMode'
 import type { AccessMode, EditConsent } from '@/lib/coworkAccess'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
-import { usePrompt } from '@/hooks/usePrompt'
 import type { QueuedMessageSender } from '@/stores/message-queue-store'
 import {
   checkBundle,
@@ -423,7 +422,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return id
       },
 
-      startSession: ({ running, hasDraft }) => {
+      startSession: ({ running, draft }) => {
         const state = get()
         const current = state.sessions.find((s) => s.id === state.currentId)
         // Asked here rather than at each call site so every entry point to
@@ -432,38 +431,27 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ? useFileActivity.getState().eventsFor(current.id).length > 0
           : false
         if (
+          !draft?.trim() &&
           decideSessionStart({
             current,
             running,
-            hasDraft,
             hasFileActivity,
           }) === 'reuse' &&
           current
         ) {
           return current.id
         }
-        // The draft is the user's, and it was typed for the session they are
-        // leaving. Park it there as held input (shown with Send and Discard,
-        // janhq/jan#8864) so the new session opens blank instead of
-        // inheriting it. The text comes from the prompt store, not the
-        // caller's report: `hasDraft` is a stale check, the store is the
-        // source of truth, so a stale report can only skip a park, never
-        // park a blank. The composer itself is cleared by the entry point
-        // that knows which composer this is (the main one, or a pane's
-        // scoped one).
-        if (current) {
-          const prompt = usePrompt.getState().prompt
-          if (prompt.trim()) {
-            const existing = current.pendingInput ?? []
-            get().setPendingInput(current.id, [
-              ...existing,
-              {
-                id: crypto.randomUUID(),
-                text: prompt,
-                createdAt: Date.now(),
-              },
-            ])
-          }
+        // The caller supplies the draft from the composer it owns.
+        if (current && draft?.trim()) {
+          const existing = current.pendingInput ?? []
+          get().setPendingInput(current.id, [
+            ...existing,
+            {
+              id: crypto.randomUUID(),
+              text: draft,
+              createdAt: Date.now(),
+            },
+          ])
         }
         return get().createSession()
       },
@@ -1131,7 +1119,7 @@ export function ensureCurrentSession(paneSessionId?: string | null): string {
  */
 export function startPaneSession(
   paneSessionId: string,
-  input: { running: boolean; hasDraft: boolean }
+  input: { running: boolean; draft?: string }
 ): string {
   const state = useCoworkSessions.getState()
   const current = state.sessions.find((s) => s.id === paneSessionId)
@@ -1140,9 +1128,20 @@ export function startPaneSession(
     : false
   if (
     current &&
-    decideSessionStart({ current, ...input, hasFileActivity }) === 'reuse'
+    !input.draft?.trim() &&
+    decideSessionStart({
+      current,
+      running: input.running,
+      hasFileActivity,
+    }) === 'reuse'
   ) {
     return current.id
+  }
+  if (current && input.draft?.trim()) {
+    state.setPendingInput(current.id, [
+      ...(current.pendingInput ?? []),
+      { id: crypto.randomUUID(), text: input.draft, createdAt: Date.now() },
+    ])
   }
   const id = crypto.randomUUID()
   const session: CoworkSession = {

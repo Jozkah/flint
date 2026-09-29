@@ -4594,14 +4594,14 @@ export function CoworkPage() {
           if (paneId && paneSid) {
             // Typed in a pane beside the main one: the new session opens in
             // that pane, and the main pane keeps what it shows.
-            const id = startPaneSession(paneSid, { running, hasDraft: false })
+            const id = startPaneSession(paneSid, { running })
             useSplitConversation
               .getState()
               .setPaneTarget(paneId, { kind: 'cowork', refId: id })
             return
           }
           const store = useCoworkSessions.getState()
-          const id = store.startSession({ running, hasDraft: false })
+          const id = store.startSession({ running })
           store.selectSession(id)
         },
       },
@@ -5722,7 +5722,7 @@ export function CoworkPage() {
                         void compactNow({ thenContinue: true })
                       }
                       compacting={compacting}
-                        onNewSession={() => {
+                      onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session. An unsent draft is parked on
                         // the session being left (held input), so the new one
@@ -5730,7 +5730,7 @@ export function CoworkPage() {
                         const store = useCoworkSessions.getState()
                         const id = store.startSession({
                           running,
-                          hasDraft: false,
+                          draft: usePrompt.getState().prompt,
                         })
                         store.selectSession(id)
                         // The draft is parked on the session being left, so

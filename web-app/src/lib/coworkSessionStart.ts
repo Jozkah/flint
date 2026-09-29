@@ -42,14 +42,6 @@ export type SessionStartInput = {
   /** A run is in flight. Work in progress is content, even before it lands. */
   running: boolean
   /**
-   * Unsent composer text, or attachments waiting to be sent.
-   *
-   * Reported, not a veto: the store parks the draft on the session it was
-   * typed in (held input, janhq/jan#8864) and starts the new one blank.
-   * The decision itself no longer reads it.
-   */
-  hasDraft: boolean
-  /**
    * The session already has recorded file activity.
    *
    * Activity is recorded per settled operation, as a run proceeds, while turns
