@@ -5,7 +5,6 @@ import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
-  JEV_ROUTABLE_ASSISTANT_IDS,
   chooseJevPromptRoute,
   jevModeSuggestion,
   type JevSuggestedMode,
@@ -74,8 +73,8 @@ function latestUserMessage(messages: UIMessage[]): { id: string; text: string } 
     const message = messages[i]
     if (message.role !== 'user') continue
     const text = message.parts
-      .filter((part): part is Extract<typeof part, { type: 'text' }> => part.type === 'text')
-      .map((part) => part.text)
+      .map((part) => (part.type === 'text' ? part.text : ''))
+      .filter(Boolean)
       .join('\n')
       .trim()
     if (text) return { id: message.id, text }
@@ -128,7 +127,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   private builtSig = ''
   /** One Jev route per user turn, never one per tool-loop step. */
   private lastRoutedUserMessageId: string | null = null
-  /** Specialist persona selected for this turn. Flint keeps Cowork's baseline. */
+  /** Persona selected for this turn. Flint keeps Cowork's existing baseline. */
   private routedAssistantInstructions: string | undefined
   /** Behavioural suggestion only; never used by the permission gate. */
   private routedMode: JevSuggestedMode | null = null
@@ -232,14 +231,13 @@ export class CoworkChatTransport extends CustomChatTransport {
       ? state.assistants.find((assistant) => assistant.id === route.assistantId)
       : state.currentAssistant
 
-    // Flint remains Cowork's baseline generalist; injecting its legacy chat
-    // prompt here would change the default assistant the user asked us not to
-    // edit. The four specialists do add their focused persona to Cowork.
-    const specialistIds = new Set<string>(JEV_ROUTABLE_ASSISTANT_IDS.slice(1))
+    // Flint remains Cowork's baseline generalist; injecting its existing chat
+    // prompt here would change the default behaviour the user asked us not to
+    // edit. Any non-Flint assistant that is selected intentionally — including
+    // a custom/project assistant that Jev is not allowed to route away from —
+    // contributes its persona beneath Cowork's policy.
     this.routedAssistantInstructions =
-      selected && specialistIds.has(selected.id)
-        ? selected.instructions
-        : undefined
+      selected && selected.id !== 'jan' ? selected.instructions : undefined
     this.routedMode = route?.mode ?? null
 
     if (route?.assistantId && selected) {
@@ -251,7 +249,7 @@ export class CoworkChatTransport extends CustomChatTransport {
 
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
-  ): ReturnType<CustomChatTransport['sendMessages']> {
+  ) {
     await this.routePrompt(options.messages)
     return super.sendMessages(options)
   }
