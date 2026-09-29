@@ -373,6 +373,7 @@ const ThreadItem = memo(
                     {groupChoices.length + 1}
                   </DropdownMenuShortcut>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => setNewGroupOpen(true)}>
                   <span>
                     {groupChoices.length === 0
