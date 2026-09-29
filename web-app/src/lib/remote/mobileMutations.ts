@@ -9,10 +9,11 @@ const rec = (v: unknown): Record<string, unknown> =>
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
 
 /**
- * Extra mobile mutations that deliberately reuse the desktop stores/controllers.
- * These travel through `settings.set` so the wire protocol does not gain a
- * second mutation transport. Security-sensitive Cowork grants are intentionally
- * absent: they still require the desktop consent UI.
+ * Phone mutations reuse the desktop's existing stores/controllers rather than
+ * maintaining a second implementation. Room mutations are exposed as typed
+ * room.create/update/delete RPCs; the small chat/Cowork menu mutations still
+ * use the legacy settings.set mobile operation path. Permission-widening Cowork
+ * actions are intentionally absent and continue to require desktop consent.
  */
 export async function handleMobileMutation(
   raw: unknown
