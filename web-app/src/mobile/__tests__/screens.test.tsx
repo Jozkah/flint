@@ -57,7 +57,8 @@ describe('phone screens (mocked RPC)', () => {
     show({ name: 'chat', id: 'c1' })
     expect(await screen.findByText('System context', {}, T)).toBeInTheDocument()
     expect(screen.getByText('Tool output')).toBeInTheDocument()
-    client.rpc.mockImplementationOnce(async (method, params) => {
+    const previous = client.rpc.getMockImplementation()
+    client.rpc.mockImplementation(async (method, params) => {
       if (method === 'thread.messages' && (params as { before?: number }).before === 2) {
         return {
           messages: [
@@ -68,6 +69,7 @@ describe('phone screens (mocked RPC)', () => {
           total: 4,
         } as never
       }
+      if (previous) return previous(method, params)
       throw new Error(`Unexpected ${method}`)
     })
     fireEvent.click(screen.getByRole('button', { name: /Load 2 earlier messages/ }))
