@@ -48,7 +48,11 @@ function preserveReleaseSubstitutions(base, current) {
 }
 
 export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate = baseTemplate) {
-  let out = preserveReleaseSubstitutions(baseTemplate, currentTemplate)
+  // Git may check the template out as CRLF on Windows. Keep the transformer
+  // deterministic and make every guarded match independent of autocrlf.
+  const base = baseTemplate.replace(/\r\n/g, '\n')
+  const current = currentTemplate.replace(/\r\n/g, '\n')
+  let out = preserveReleaseSubstitutions(base, current)
 
   out = replaceOnce(
     out,
