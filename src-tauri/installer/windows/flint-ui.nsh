@@ -2,8 +2,8 @@
 ;
 ; The interactive installer is a real Flint-styled wizard instead of the stock
 ; MUI pages. It uses the app's actual executable icon, Inter, app colours,
-; spacing, switches and pre-rendered button surfaces. Silent/passive installs
-; keep their existing no-UI behaviour. The uninstaller uses the same shell.
+; spacing and custom controls. Silent/passive installs keep their existing
+; no-UI behaviour. The uninstaller uses the same shell.
 
 !include nsDialogs.nsh
 !include WinMessages.nsh
@@ -20,35 +20,33 @@
 !define FLINT_W 720
 !define FLINT_H 440
 !define FLINT_LEFT 232
-!define FLINT_PAD 32
 !define FLINT_RIGHT_X 264
 !define FLINT_RIGHT_W 424
 
-; App tokens (web-app/src/index.css). These are compile-time because
-; SetCtlColors does not accept a runtime colour value.
+; Exact default app tokens from web-app/src/styles/tokens.css. The installer
+; follows Windows light/dark mode; user-selected in-app accents are unavailable
+; before first launch, so it uses Flint's neutral default accent.
 !define FLINT_LIGHT_NONE ""
 !define FLINT_LIGHT_BG "F8F8F8"
-!define FLINT_LIGHT_PANEL "EEF2F7"
+!define FLINT_LIGHT_PANEL "F6F6F6"
 !define FLINT_LIGHT_CARD "FFFFFF"
 !define FLINT_LIGHT_FG "1F2937"
 !define FLINT_LIGHT_FG2 "374151"
 !define FLINT_LIGHT_MUTED "6B7280"
 !define FLINT_LIGHT_BORDER "E5E7EB"
-!define FLINT_LIGHT_SUCCESS "15803D"
+!define FLINT_LIGHT_SUCCESS "059669"
 !define FLINT_LIGHT_ACCENT "1F2937"
-!define FLINT_LIGHT_ACCENT_TOP "37475D"
 !define FLINT_LIGHT_ONACCENT "FFFFFF"
 !define FLINT_DARK_NONE ""
 !define FLINT_DARK_BG "0A0B0D"
-!define FLINT_DARK_PANEL "111821"
+!define FLINT_DARK_PANEL "0F1114"
 !define FLINT_DARK_CARD "131519"
-!define FLINT_DARK_FG "F3F4F6"
+!define FLINT_DARK_FG "E6E8EB"
 !define FLINT_DARK_FG2 "C9CED6"
 !define FLINT_DARK_MUTED "8A909A"
-!define FLINT_DARK_BORDER "30343B"
-!define FLINT_DARK_SUCCESS "6EE7A0"
-!define FLINT_DARK_ACCENT "A8C8F4"
-!define FLINT_DARK_ACCENT_TOP "6F8FBE"
+!define FLINT_DARK_BORDER "23262C"
+!define FLINT_DARK_SUCCESS "34D399"
+!define FLINT_DARK_ACCENT "E6E8EB"
 !define FLINT_DARK_ONACCENT "111318"
 
 !define MUI_CUSTOMFUNCTION_GUIINIT FlintGuiInit
@@ -84,7 +82,6 @@ Var FlintLaunchSwitch
 Var FlintLaunchSwitchImg
 Var FlintDeleteSwitch
 Var FlintDeleteSwitchImg
-Var FlintFinishLaunchState
 Var ReinstallPageCheck
 
 !macro _FlintPx out px
@@ -112,14 +109,6 @@ Var ReinstallPageCheck
   ${EndIf}
 !macroend
 
-!macro _FlintCtlTransparent hwnd fg
-  ${If} $FlintDark = 1
-    SetCtlColors ${hwnd} "${FLINT_DARK_${fg}}" transparent
-  ${Else}
-    SetCtlColors ${hwnd} "${FLINT_LIGHT_${fg}}" transparent
-  ${EndIf}
-!macroend
-
 !macro _FlintHide parent id
   GetDlgItem $0 ${parent} ${id}
   ShowWindow $0 ${SW_HIDE}
@@ -132,6 +121,13 @@ Var ReinstallPageCheck
   !insertmacro _FlintCtl ${hwnd} NONE BG
 !macroend
 
+; Round a control using a real Win32 region. SetWindowRgn owns the region on
+; success, so it must not be deleted afterwards.
+!macro _FlintRound hwnd width height radius
+  System::Call 'gdi32::CreateRoundRectRgn(i 0, i 0, i ${width}, i ${height}, i ${radius}, i ${radius}) p .r9'
+  System::Call 'user32::SetWindowRgn(p ${hwnd}, p r9, i 1) i .r9'
+!macroend
+
 !macro _FlintExtract theme scale
   CreateDirectory "$PLUGINSDIR\flint\${theme}\${scale}"
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\btn-uninstall.bmp" "${FLINT_UI}\${theme}\${scale}\btn-uninstall.bmp"
@@ -140,30 +136,20 @@ Var ReinstallPageCheck
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\switch-off.bmp" "${FLINT_UI}\${theme}\${scale}\switch-off.bmp"
 !macroend
 
-; App-style buttons are built from ordinary Win32 statics so the label always
-; uses the privately loaded Inter face. The primary uses two accent bands to
-; reproduce Flint's subtle vertical gradient without shipping per-label bitmaps.
+; Custom Flint buttons: no stock Windows button chrome. Primary is the app's
+; default --primary surface; secondary is a rounded one-pixel --border shell
+; around a --card inner surface. Both use the bundled Inter face.
 !macro _FlintPrimaryButton x y label callback
   ${FlintPx} $0 ${x}
   ${FlintPx} $1 ${y}
   ${FlintPx} $2 132
   ${FlintPx} $3 40
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000100, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
-  !insertmacro _FlintCtl $4 NONE ACCENT
+  ${FlintPx} $5 8
+  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
+  !insertmacro _FlintRound $4 $2 $3 $5
+  SendMessage $4 ${WM_SETFONT} $FlintFontBodyMedium 1
+  !insertmacro _FlintCtl $4 ONACCENT ACCENT
   ${NSD_OnClick} $4 ${callback}
-  IntOp $5 $3 / 2
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000000, i r0, i r1, i r2, i r5, p $FlintPage, p 0, p 0, p 0) p .r6'
-  !insertmacro _FlintCtl $6 NONE ACCENT_TOP
-  ${NSD_OnClick} $6 ${callback}
-  IntOp $7 $1 + $5
-  IntOp $8 $3 - $5
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000000, i r0, i r7, i r2, i r8, p $FlintPage, p 0, p 0, p 0) p .r6'
-  !insertmacro _FlintCtl $6 NONE ACCENT
-  ${NSD_OnClick} $6 ${callback}
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r6'
-  SendMessage $6 ${WM_SETFONT} $FlintFontBodyMedium 1
-  !insertmacro _FlintCtlTransparent $6 ONACCENT
-  ${NSD_OnClick} $6 ${callback}
 !macroend
 
 !macro _FlintSecondaryButton x y label callback
@@ -171,23 +157,20 @@ Var ReinstallPageCheck
   ${FlintPx} $1 ${y}
   ${FlintPx} $2 132
   ${FlintPx} $3 40
+  ${FlintPx} $5 8
   System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000100, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
+  !insertmacro _FlintRound $4 $2 $3 $5
   !insertmacro _FlintCtl $4 NONE BORDER
-  ${NSD_OnClick} $4 ${callback}
-  IntOp $0 $0 + 1
-  IntOp $1 $1 + 1
-  IntOp $2 $2 - 2
-  IntOp $3 $3 - 2
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000100, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
-  !insertmacro _FlintCtl $4 NONE CARD
-  ${NSD_OnClick} $4 ${callback}
-  IntOp $0 $0 - 1
-  IntOp $1 $1 - 1
-  IntOp $2 $2 + 2
-  IntOp $3 $3 + 2
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r6'
+  ${FlintPx} $6 1
+  IntOp $7 $2 - $6
+  IntOp $7 $7 - $6
+  IntOp $8 $3 - $6
+  IntOp $8 $8 - $6
+  ${FlintPx} $5 7
+  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r6, i r6, i r7, i r8, p r4, p 0, p 0, p 0) p .r6'
+  !insertmacro _FlintRound $6 $7 $8 $5
   SendMessage $6 ${WM_SETFONT} $FlintFontBodyMedium 1
-  !insertmacro _FlintCtlTransparent $6 FG
+  !insertmacro _FlintCtl $6 FG CARD
   ${NSD_OnClick} $6 ${callback}
 !macroend
 
@@ -207,7 +190,6 @@ Var ReinstallPageCheck
   IntOp $3 $3 - $8
   System::Call 'user32::SetWindowPos(p r0, p 0, i r6, i r3, i 0, i 0, i 0x51)'
 !macroend
-
 
 !include "${FLINT_UI}\flint-ui-runtime.nsh"
 !include "${FLINT_UI}\flint-ui-pages.nsh"
