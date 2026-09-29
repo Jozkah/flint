@@ -24,12 +24,12 @@ const session = (over: Partial<CoworkSession> = {}): CoworkSession =>
 const decide = (over: {
   current?: CoworkSession | undefined
   running?: boolean
-  hasDraft?: boolean
+  hasFileActivity?: boolean
 }) =>
   decideSessionStart({
     current: 'current' in over ? over.current : session(),
     running: over.running ?? false,
-    hasDraft: over.hasDraft ?? false,
+    hasFileActivity: over.hasFileActivity ?? false,
   })
 
 describe('what counts as an empty session', () => {
@@ -107,23 +107,5 @@ describe('pressing New session', () => {
 
   it('creates one while a run is in flight, which is content too', () => {
     expect(decide({ running: true })).toBe('create')
-  })
-})
-
-describe('an unsent draft', () => {
-  it('keeps the user where they are, blank session or not', () => {
-    // The composer is shared between sessions: starting a new one would
-    // either strand the text or carry it somewhere it was not typed.
-    expect(decide({ hasDraft: true })).toBe('reuse')
-  })
-
-  it('outranks a session that has content', () => {
-    expect(
-      decide({ current: session({ turns: [{}] as never }), hasDraft: true })
-    ).toBe('reuse')
-  })
-
-  it('outranks a run in flight', () => {
-    expect(decide({ running: true, hasDraft: true })).toBe('reuse')
   })
 })

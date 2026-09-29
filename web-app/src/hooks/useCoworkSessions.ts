@@ -261,9 +261,11 @@ type CoworkSessionsState = {
   createSession: () => string
   /**
    * What "New session" does: create one, or stay put when this session is
-   * already blank or holds an unsent draft. Returns the session to show.
+   * already blank. An unsent draft is parked on the session it was typed in
+   * as held input and the composer is cleared, so the new session opens
+   * blank. Returns the session to show.
    */
-  startSession: (input: { running: boolean; hasDraft: boolean }) => string
+  startSession: (input: { running: boolean; draft?: string }) => string
   selectSession: (id: string) => void
   deleteSession: (id: string) => void
   /**
@@ -420,7 +422,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return id
       },
 
-      startSession: ({ running, hasDraft }) => {
+      startSession: ({ running, draft }) => {
         const state = get()
         const current = state.sessions.find((s) => s.id === state.currentId)
         // Asked here rather than at each call site so every entry point to
@@ -429,15 +431,27 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           ? useFileActivity.getState().eventsFor(current.id).length > 0
           : false
         if (
+          !draft?.trim() &&
           decideSessionStart({
             current,
             running,
-            hasDraft,
             hasFileActivity,
           }) === 'reuse' &&
           current
         ) {
           return current.id
+        }
+        // The caller supplies the draft from the composer it owns.
+        if (current && draft?.trim()) {
+          const existing = current.pendingInput ?? []
+          get().setPendingInput(current.id, [
+            ...existing,
+            {
+              id: crypto.randomUUID(),
+              text: draft,
+              createdAt: Date.now(),
+            },
+          ])
         }
         return get().createSession()
       },
@@ -1105,7 +1119,7 @@ export function ensureCurrentSession(paneSessionId?: string | null): string {
  */
 export function startPaneSession(
   paneSessionId: string,
-  input: { running: boolean; hasDraft: boolean }
+  input: { running: boolean; draft?: string }
 ): string {
   const state = useCoworkSessions.getState()
   const current = state.sessions.find((s) => s.id === paneSessionId)
@@ -1114,9 +1128,20 @@ export function startPaneSession(
     : false
   if (
     current &&
-    decideSessionStart({ current, ...input, hasFileActivity }) === 'reuse'
+    !input.draft?.trim() &&
+    decideSessionStart({
+      current,
+      running: input.running,
+      hasFileActivity,
+    }) === 'reuse'
   ) {
     return current.id
+  }
+  if (current && input.draft?.trim()) {
+    state.setPendingInput(current.id, [
+      ...(current.pendingInput ?? []),
+      { id: crypto.randomUUID(), text: input.draft, createdAt: Date.now() },
+    ])
   }
   const id = crypto.randomUUID()
   const session: CoworkSession = {

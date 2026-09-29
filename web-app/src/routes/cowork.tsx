@@ -4587,20 +4587,21 @@ export function CoworkPage() {
         description: t('slash:builtin.newSession'),
         run: () => {
           // Same rule as the sidebar's entry point: one press, at most one
-          // session. The draft is the `/new` being consumed, so it is no draft.
+          // session. The composer's text is the `/new` being consumed, so it
+          // is no draft.
           const paneId = sidePaneIdRef.current
           const paneSid = paneSessionIdRef.current
           if (paneId && paneSid) {
             // Typed in a pane beside the main one: the new session opens in
             // that pane, and the main pane keeps what it shows.
-            const id = startPaneSession(paneSid, { running, hasDraft: false })
+            const id = startPaneSession(paneSid, { running })
             useSplitConversation
               .getState()
               .setPaneTarget(paneId, { kind: 'cowork', refId: id })
             return
           }
           const store = useCoworkSessions.getState()
-          const id = store.startSession({ running, hasDraft: false })
+          const id = store.startSession({ running })
           store.selectSession(id)
         },
       },
@@ -5723,14 +5724,20 @@ export function CoworkPage() {
                       compacting={compacting}
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
-                        // at most one session.
+                        // at most one session. An unsent draft is parked on
+                        // the session being left (held input), so the new one
+                        // opens blank.
                         const store = useCoworkSessions.getState()
                         const id = store.startSession({
                           running,
-                          hasDraft:
-                            usePrompt.getState().prompt.trim().length > 0,
+                          draft: usePrompt.getState().prompt,
                         })
                         store.selectSession(id)
+                        // The draft is parked on the session being left, so
+                        // the composer clears here, not in the store: the
+                        // store is the session layer, the composer is the
+                        // surface's.
+                        usePrompt.getState().resetPrompt()
                       }}
                     />
                   )}

@@ -1,4 +1,5 @@
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { usePrompt } from '@/hooks/usePrompt'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/lib/backendStorage', () => ({
@@ -9,7 +10,7 @@ vi.mock('@/lib/backendStorage', () => ({
   },
 }))
 
-import { useCoworkSessions } from '../useCoworkSessions'
+import { startPaneSession, useCoworkSessions } from '../useCoworkSessions'
 import { useFileActivity } from '../useFileActivity'
 
 /**
@@ -18,11 +19,17 @@ import { useFileActivity } from '../useFileActivity'
  */
 
 const store = () => useCoworkSessions.getState()
-const idle = { running: false, hasDraft: false }
+const idle = { running: false }
 
 beforeEach(() => {
   useCoworkSessions.setState({ sessions: [], currentId: null })
   useFileActivity.setState({ byConversation: {} })
+  usePrompt.setState({
+    prompt: '',
+    historyIndex: -1,
+    draftPrompt: '',
+    scoped: {},
+  })
 })
 
 describe('starting a session', () => {
@@ -58,7 +65,6 @@ describe('starting a session', () => {
   it('creates exactly one more once the session has content', () => {
     const first = store().startSession(idle)
     store().setMessages(first, [{ id: 'm1' } as never])
-
     const second = store().startSession(idle)
 
     expect(second).not.toBe(first)
@@ -77,21 +83,87 @@ describe('starting a session', () => {
     expect(store().sessions).toHaveLength(2)
   })
 
-  it('stays put rather than stranding an unsent draft', () => {
+  it('parks an unsent draft on the session it was typed in', () => {
     const first = store().startSession(idle)
     store().setMessages(first, [{ id: 'm1' } as never])
 
-    const again = store().startSession({ running: false, hasDraft: true })
 
-    expect(again).toBe(first)
-    expect(store().sessions).toHaveLength(1)
+    const again = store().startSession({ running: false, draft: 'draft text' })
+
+    expect(again).not.toBe(first)
+    expect(store().sessions).toHaveLength(2)
+    expect(store().currentId).toBe(again)
+    // The draft survives, held on the old session for the user to send or
+    // discard.
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'draft text' }),
+    ])
+  })
+
+  it('parks a draft on a blank session too', () => {
+    const first = store().startSession(idle)
+
+    const again = store().startSession({ running: false, draft: 'draft text' })
+
+    expect(again).not.toBe(first)
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'draft text' }),
+    ])
+  })
+
+  it('does not park a whitespace-only draft', () => {
+    const first = store().startSession(idle)
+    store().setMessages(first, [{ id: 'm1' } as never])
+
+    const again = store().startSession({ running: false, draft: '   ' })
+
+    expect(again).not.toBe(first)
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toBeUndefined()
+  })
+
+  it('keeps existing held input when parking a draft', () => {
+    const first = store().startSession(idle)
+    store().setMessages(first, [{ id: 'm1' } as never])
+    store().setPendingInput(first, [
+      { id: 'held-1', text: 'already held', createdAt: 1 },
+    ])
+
+    store().startSession({ running: false, draft: 'new draft' })
+
+    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
+      { id: 'held-1', text: 'already held', createdAt: 1 },
+      expect.objectContaining({ text: 'new draft' }),
+    ])
   })
 
   it('starts a fresh session when a run is in flight', () => {
     const first = store().startSession(idle)
-    const second = store().startSession({ running: true, hasDraft: false })
+    const second = store().startSession({ running: true })
 
     expect(second).not.toBe(first)
+  })
+
+  it('parks only the scoped pane draft, leaving the main composer alone', () => {
+    const main = store().startSession(idle)
+    const pane = store().createSession()
+    store().setMessages(pane, [{ id: 'pane-message' } as never])
+    store().selectSession(main)
+    usePrompt.getState().setPrompt('main draft')
+    usePrompt.getState().setScopedPrompt('split:secondary', 'pane draft')
+
+    const next = startPaneSession(pane, {
+      running: false,
+      draft: usePrompt.getState().scoped['split:secondary'].prompt,
+    })
+
+    expect(next).not.toBe(pane)
+    expect(store().sessions.find((s) => s.id === pane)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'pane draft' }),
+    ])
+    expect(
+      store().sessions.find((s) => s.id === main)?.pendingInput
+    ).toBeUndefined()
+    expect(usePrompt.getState().prompt).toBe('main draft')
   })
 })
 
@@ -167,7 +239,7 @@ describe('Cowork session restoration', () => {
     // be reused. `startSession` creates a fresh one and leaves the running one.
     const running = store().createSession()
     useCoworkRun.getState().startRun(running, 'run-1')
-    const fresh = store().startSession({ running: true, hasDraft: false })
+    const fresh = store().startSession({ running: true })
     expect(fresh).not.toBe(running)
     expect(store().sessions.some((s) => s.id === running)).toBe(true)
   })
@@ -175,7 +247,7 @@ describe('Cowork session restoration', () => {
   it('an explicit new session survives a surface switch', () => {
     const previous = store().createSession()
     store().commitTurns(previous, [{ role: 'user', content: 'old' }], [], [])
-    const fresh = store().startSession({ running: false, hasDraft: false })
+    const fresh = store().startSession({ running: false })
     expect(store().currentId).toBe(fresh)
     store().selectSession(fresh) // returning from Chat
     expect(store().currentId).toBe(fresh)
