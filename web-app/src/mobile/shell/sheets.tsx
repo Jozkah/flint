@@ -1,361 +1,115 @@
-// Every menu is a bottom sheet. Each sheet reads what it shows from the
-// computer; anything that would change the computer goes through `act`, so
-// a refusal (a setting that stays on the computer) is shown rather than faked.
 import { useMemo, useState, type ReactNode } from 'react'
 import type { NotificationPrefs, RemoteApproval, RemoteModel, SessionKind } from '@/lib/remote/protocol'
-import { Avatar, Grab, Kv, Opt, Sw, FlintMark } from '../ui/bits'
+import { Avatar, Empty, FlintMark, Grab, Kv, Opt, Sw } from '../ui/bits'
 import { I, type IconId } from '../ui/icons'
-import {
-  act,
-  app,
-  closeSheet,
-  go,
-  notYet,
-  openSheet,
-  toast,
-  useApp,
-  type AppState,
-} from '../state/app'
+import { act, app, client, closeSheet, go, openSheet, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel, useSessions } from '../state/sessions'
 import { respond } from '../ui/respond'
 import { usePhonePermissions } from '../ui/hooks'
 import { DEFAULT_NOTIFY, roomAct } from '../state/controls'
-import { COWORK_MODES, ACCESS_MODES, LEVELS } from './labels'
+import { ACCESS_MODES, COWORK_MODES } from './labels'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
+const participantId = (p: Props) => str(p.participant)
 
 function Title({ children, sub }: { children: ReactNode; sub?: ReactNode }) {
-  return (
-    <>
-      <Grab />
-      <h3>{children}</h3>
-      {sub && <p className="sh">{sub}</p>}
-    </>
-  )
+  return <><Grab /><h3>{children}</h3>{sub && <p className="sh">{sub}</p>}</>
 }
 
-function Actions({ items }: { items: [IconId, string, (() => void)?][] }) {
-  return (
-    <>
-      {items.map(([icon, label, fn]) => (
-        <button
-          key={label}
-          type="button"
-          className={`opt${icon === 'trash' ? ' dang' : ''}`}
-          onClick={() => {
-            closeSheet()
-            if (fn) fn()
-            else notYet(label)
-          }}
-        >
-          <I n={icon} />
-          <span className="tx">
-            <b>{label}</b>
-          </span>
-        </button>
-      ))}
-    </>
-  )
+function DesktopOnly({ title, sub = 'Available on the computer.' }: { title: ReactNode; sub?: ReactNode }) {
+  return <div className="opt" aria-disabled="true"><I n="monitor" /><span className="tx"><b>{title}</b><small>{sub}</small></span></div>
 }
 
-// ---------------------------------------------------------------------------
+function Action({ icon, label, run, danger = false, sub }: { icon: IconId; label: string; run: () => void; danger?: boolean; sub?: ReactNode }) {
+  return <button type="button" className={`opt${danger ? ' dang' : ''}`} onClick={() => { closeSheet(); run() }}><I n={icon} /><span className="tx"><b>{label}</b>{sub && <small>{sub}</small>}</span></button>
+}
+
+async function mobileMutation(raw: Record<string, unknown>, ok?: string) {
+  try {
+    const result = await client().rpc('settings.set', raw as never) as unknown as Record<string, unknown>
+    if (ok) toast(ok)
+    invalidate(['sessions.list', 'rooms.get', 'cowork.get'])
+    return result
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'The action failed')
+    return null
+  }
+}
 
 function ModelSheet({ props }: { props: Props }) {
   const target = str(props.for) ?? 'home'
   const { data, loading } = useRpc('models.list', {})
   const current = useApp((s) => s.composer.model)
   const [q, setQ] = useState('')
-  const models = (data?.models ?? []).filter(
-    (m) => !q || `${m.name} ${m.id} ${m.provider}`.toLowerCase().includes(q.toLowerCase())
-  )
-  const favorites = models.filter((m) => m.favorite)
-  const local = models.filter((m) => m.local && !m.favorite)
-  const cloud = models.filter((m) => !m.local && !m.favorite)
+  const models = (data?.models ?? []).filter((m) => !q || `${m.name} ${m.id} ${m.provider}`.toLowerCase().includes(q.toLowerCase()))
   const pick = (m: RemoteModel) => {
+    const id = str(props.id)
+    const participant = participantId(props)
     if (target === 'home') {
       app.set((s) => ({ composer: { ...s.composer, model: { id: m.id, provider: m.provider, name: m.name } } }))
-      closeSheet()
-      toast(`Switched to ${m.name}`)
-    } else {
-      closeSheet()
-      const id = str(props.id)
-      if ((target === 'chat' || target === 'cowork') && id) {
-        void act('settings.set', { scope: target, id, model: { id: m.id, provider: m.provider } }, `Switched to ${m.name}`).then(
-          () => invalidate(['cowork.get', 'sessions.list'])
-        )
-      } else notYet('Changing a participant’s model')
+      closeSheet(); toast(`Switched to ${m.name}`); return
+    }
+    if ((target === 'chat' || target === 'cowork') && id) {
+      closeSheet(); void act('settings.set', { scope: target, id, model: { id: m.id, provider: m.provider } }, `Switched to ${m.name}`).then(() => invalidate(['cowork.get', 'sessions.list'])); return
+    }
+    if (target === 'room' && id && participant) {
+      closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, model: { id: m.id, provider: m.provider } }] } }, `Switched to ${m.name}`)
     }
   }
-  const row = (m: RemoteModel) => (
-    <Opt
-      key={`${m.provider}/${m.id}`}
-      title={m.name}
-      sub={`${m.providerName ?? m.provider}${m.local ? ' · Runs on this computer' : ''}${m.loaded ? ' · Loaded' : ''}`}
-      selected={current?.id === m.id && current.provider === m.provider}
-      lead={<Avatar id={m.id} name={m.name} provider={m.provider} size={28} square />}
-      onClick={() => pick(m)}
-    />
-  )
-  return (
-    <>
-      <Title>Model</Title>
-      <div className="sin">
-        <I n="search" />
-        <input placeholder="Search models..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search models" />
-      </div>
-      {loading && !data && <p className="sh">Loading models…</p>}
-      {favorites.length > 0 && (
-        <div className="ssec" style={{ justifyContent: 'flex-start', gap: 4 }}>
-          Favorites <I n="star" size={12} />
-        </div>
-      )}
-      {favorites.map(row)}
-      {local.length > 0 && <div className="ssec">On this computer or your network</div>}
-      {local.map(row)}
-      {cloud.length > 0 && (
-        <div className="ssec">
-          Cloud providers <em>messages leave this computer</em>
-        </div>
-      )}
-      {cloud.map(row)}
-      {data && models.length === 0 && <p className="sh">No models match.</p>}
-      <div className="ssec" />
-      <Opt
-        title="Parameters"
-        sub="Output, context, compaction, sampling"
-        lead={<I n="sliders" />}
-        trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />}
-        onClick={() => openSheet('params', props)}
-      />
-    </>
-  )
+  return <><Title>Model</Title><div className="sin"><I n="search" /><input placeholder="Search models..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search models" /></div>{loading && !data && <p className="sh">Loading models…</p>}{models.map((m) => <Opt key={`${m.provider}/${m.id}`} title={m.name} sub={`${m.providerName ?? m.provider}${m.local ? ' · Runs on this computer' : ''}${m.loaded ? ' · Loaded' : ''}`} selected={target === 'home' && current?.id === m.id && current.provider === m.provider} lead={<Avatar id={m.id} name={m.name} provider={m.provider} size={28} square />} onClick={() => pick(m)} />)}{data && models.length === 0 && <p className="sh">No models match.</p>}<div className="ssec" /><DesktopOnly title="Parameters" sub="Output, context, compaction and sampling are configured on the computer." /></>
 }
 
 function ReasonSheet({ props }: { props: Props }) {
   const target = str(props.for) ?? 'home'
+  const id = str(props.id)
+  const participant = participantId(props)
   const composer = useApp((s) => s.composer)
-  const local = props.local === true || (target === 'home' && Boolean(composer.model && isLocalProvider(composer.model.provider)))
-  const where = target === 'cowork' ? 'this Cowork session' : target === 'room' ? 'this participant' : 'this chat'
-  const set = (patch: Partial<AppState['composer']>, label: string) => {
+  const setReason = (reason: 'auto' | 'on' | 'off', label: string) => {
     if (target === 'home') {
-      app.set((s) => ({ composer: { ...s.composer, ...patch } }))
-      closeSheet()
-      toast(label)
-    } else {
-      closeSheet()
-      const id = str(props.id)
-      if (target === 'chat' && id && patch.reason) {
-        void act('settings.set', { scope: 'chat', id, reasoning: patch.reason }, label)
-        app.set((s) => ({ composer: { ...s.composer, reason: patch.reason ?? s.composer.reason } }))
-      } else notYet(`${label.split(':')[0]} for ${where}`)
+      app.set((s) => ({ composer: { ...s.composer, reason } })); closeSheet(); toast(label); return
+    }
+    if (target === 'chat' && id) {
+      closeSheet(); void act('settings.set', { scope: 'chat', id, reasoning: reason }, label); return
+    }
+    if (target === 'room' && id && participant) {
+      closeSheet(); void mobileMutation({ mobileOp: 'room.update', id, patch: { participants: [{ id: participant, reasoning: { mode: reason } }] } }, label)
     }
   }
-  return (
-    <>
-      <Title sub={<>for {where}</>}>Reasoning</Title>
-      {(
-        [
-          ['auto', 'Auto', "Reasoning uses the model's default."],
-          ['on', 'On', 'Reasoning forced on for every request.'],
-          ['off', 'Off', 'Reasoning disabled for every request.'],
-        ] as const
-      ).map(([id, t, s]) => (
-        <Opt key={id} title={t} sub={s} selected={composer.reason === id} onClick={() => set({ reason: id }, `Reasoning: ${t}`)} />
-      ))}
-      {local ? (
-        <>
-          <div className="ssec">
-            Thinking Budget <em>llama.cpp · share of the context</em>
-          </div>
-          <div className="lvl" style={{ padding: 0 }}>
-            {LEVELS.map(([l, hint]) => (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={composer.budget === l}
-                onClick={() => set({ budget: l }, `Thinking Budget: ${l}`)}
-              >
-                {l}
-                <small>{hint}</small>
-              </button>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="ssec">
-            Reasoning effort <em>Set for {where}</em>
-          </div>
-          <div className="lvl" style={{ padding: 0 }}>
-            {(['Low', 'Medium', 'High'] as const).map((l) => (
-              <button key={l} type="button" aria-pressed={false} onClick={() => set({}, `Reasoning effort: ${l}`)}>
-                {l}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-      <div className="kv" style={{ marginTop: 6 }}>
-        <span>Model default</span>
-        <button type="button" className="btn sm ghost" onClick={() => set({ reason: 'auto', budget: 'Unlimited' }, 'Reset to global')}>
-          Reset to global
-        </button>
-      </div>
-    </>
-  )
+  if (target === 'cowork') return <><Title sub="This Cowork session">Reasoning</Title><DesktopOnly title="Reasoning mode" sub="Cowork reasoning is bound to the desktop session/model settings and is read-only on the phone." /></>
+  return <><Title>Reasoning</Title>{([['auto','Auto',"Use the model's default."],['on','On','Force reasoning on.'],['off','Off','Disable reasoning.']] as const).map(([v,t,s]) => <Opt key={v} title={t} sub={s} selected={target === 'home' && composer.reason === v} onClick={() => setReason(v, `Reasoning: ${t}`)} />)}<div className="ssec" /><DesktopOnly title="Reasoning effort / thinking budget" sub="Provider-specific effort and context budgets stay with the persisted desktop model settings." /></>
 }
-
-const isLocalProvider = (p: string) => p === 'llamacpp' || p === 'mlx' || p === 'ollama'
 
 function ModeSheet({ props }: { props: Props }) {
   const current = str(props.value) ?? app.get().composer.cwMode
   const id = str(props.id)
-  return (
-    <>
-      <Title>What Flint may do</Title>
-      {COWORK_MODES.map((m) => (
-        <Opt
-          key={m.id}
-          title={m.label}
-          sub={m.sub}
-          selected={current === m.id}
-          onClick={() => {
-            closeSheet()
-            if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } }))
-            else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get']))
-          }}
-        />
-      ))}
-    </>
-  )
+  return <><Title>What Flint may do</Title>{COWORK_MODES.map((m) => <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, cwMode: m.id } })); else void act('settings.set', { scope: 'cowork', id, mode: m.id }, m.label).then(() => invalidate(['cowork.get'])) }} />)}</>
 }
 
 function AccessSheet({ props }: { props: Props }) {
   const current = str(props.value) ?? app.get().composer.access
   const id = str(props.id)
-  return (
-    <>
-      <Title>Where changes go</Title>
-      {ACCESS_MODES.map((m) => (
-        <Opt
-          key={m.id}
-          title={m.label}
-          sub={m.sub}
-          selected={current === m.id}
-          onClick={() => {
-            closeSheet()
-            if (m.id !== 'review-only') toast('Choose this on the computer: it asks before Flint may write there')
-            else if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } }))
-            else void act('settings.set', { scope: 'cowork', id, access: m.id }, 'Review only').then(() => invalidate(['cowork.get']))
-          }}
-        />
-      ))}
-    </>
-  )
+  return <><Title sub="Write access requires confirmation on the computer.">Where changes go</Title>{ACCESS_MODES.map((m) => m.id === 'review-only' ? <Opt key={m.id} title={m.label} sub={m.sub} selected={current === m.id} onClick={() => { closeSheet(); if (!id) app.set((s) => ({ composer: { ...s.composer, access: m.id } })); else void act('settings.set', { scope: 'cowork', id, access: m.id }, 'Review only').then(() => invalidate(['cowork.get'])) }} /> : <DesktopOnly key={m.id} title={m.label} sub={`${m.sub} Computer confirmation required.`} />)}</>
 }
 
 function StopSheet({ props }: { props: Props }) {
   const kind = str(props.kind) as SessionKind | undefined
   const id = str(props.id)
-  return (
-    <>
-      <Title>Stop…</Title>
-      <Opt
-        title="Stop current task"
-        sub="Ends this response and everything under it. Other sessions keep running."
-        lead={<I n="sq" />}
-        onClick={() => {
-          closeSheet()
-          if (kind && id) void act('run.stop', { kind, id }, 'Stopped.')
-        }}
-      />
-      <Opt
-        danger
-        title="Stop all activity"
-        sub="Ends every run, tool, command and agent everywhere in Flint."
-        lead={<I n="alert" />}
-        onClick={() => {
-          closeSheet()
-          void act('run.stop', { all: true }, 'Stopped everything.')
-        }}
-      />
-    </>
-  )
+  return <><Title>Stop…</Title><Action icon="sq" label="Stop current task" run={() => { if (kind && id) void act('run.stop', { kind, id }, 'Stopped.') }} /><Action icon="alert" label="Stop all activity" danger run={() => void act('run.stop', { all: true }, 'Stopped everything.')} /></>
 }
 
 function PermDetailsSheet({ props }: { props: Props }) {
   const a = props.approval as RemoteApproval | undefined
   const perms = usePhonePermissions()
   if (!a) return <Title>Permission details</Title>
-  return (
-    <>
-      <Title sub="Choose how far this permission goes">Permission details</Title>
-      <div className="scopes">
-        {a.scopes.filter((s) => s.scope !== 'always' || perms.alwaysAllow).map((s, i) => (
-          <button
-            key={s.scope}
-            type="button"
-            className={`scope${i === 0 ? ' sug' : ''}`}
-            onClick={() => {
-              closeSheet()
-              if (!perms.approvals) {
-                toast('Answer this on the computer')
-                return
-              }
-              void respond(a, 'allow', s.scope, s.label)
-            }}
-          >
-            <b>
-              {s.label}
-              {s.broader && (
-                <span className="broader">● Broader</span>
-              )}
-            </b>
-            <small>{s.explanation}</small>
-          </button>
-        ))}
-      </div>
-      <div className="ssec">Technical details</div>
-      <Kv k="Tool" v={<span className="mono">{a.toolName}</span>} />
-      <Kv k="Server" v={a.serverName ?? 'Built in'} />
-      <div className="cmd">{a.argumentsJson}</div>
-      <p className="sh" style={{ margin: 0 }}>
-        You can review and revoke permissions in Settings › Permissions.
-      </p>
-    </>
-  )
+  return <><Title sub="Choose how far this permission goes">Permission details</Title><div className="scopes">{a.scopes.filter((s) => s.scope !== 'always' || perms.alwaysAllow).map((s, i) => <button key={s.scope} type="button" className={`scope${i === 0 ? ' sug' : ''}`} disabled={!perms.approvals} onClick={() => { closeSheet(); void respond(a, 'allow', s.scope, s.label) }}><b>{s.label}{s.broader && <span className="broader">● Broader</span>}</b><small>{perms.approvals ? s.explanation : 'Approvals from phones are disabled on the computer.'}</small></button>)}</div><div className="ssec">Technical details</div><Kv k="Tool" v={<span className="mono">{a.toolName}</span>} /><Kv k="Server" v={a.serverName ?? 'Built in'} /><div className="cmd">{a.argumentsJson}</div></>
 }
 
 function RunsSheet() {
   const { data } = useRpc('status', {})
   const { sessions } = useSessions()
-  const runs = data?.runs ?? []
-  return (
-    <>
-      <Title>Runs in progress</Title>
-      {runs.length === 0 && <p className="sh">Nothing is running.</p>}
-      {runs.map((r) => {
-        const s = sessions.find((x) => x.id === r.id)
-        return (
-          <Opt
-            key={`${r.kind}:${r.id}`}
-            title={s?.title ?? 'Untitled'}
-            sub={s?.status === 'waiting' ? 'Waiting for approval' : `${r.kind === 'room' ? 'Room' : r.kind === 'cowork' ? 'Cowork' : 'Chat'} · running`}
-            lead={<FlintMark size={28} />}
-            trail={
-              <span className="chip warn live">
-                <span className="d" />
-                Running
-              </span>
-            }
-            onClick={() => go({ name: r.kind, id: r.id })}
-          />
-        )
-      })}
-    </>
-  )
+  return <><Title>Runs in progress</Title>{(data?.runs ?? []).length === 0 && <p className="sh">Nothing is running.</p>}{(data?.runs ?? []).map((r) => { const s = sessions.find((x) => x.id === r.id); return <Opt key={`${r.kind}:${r.id}`} title={s?.title ?? 'Untitled'} sub={`${r.kind === 'room' ? 'Room' : r.kind === 'cowork' ? 'Cowork' : 'Chat'} · running`} lead={<FlintMark size={28} />} onClick={() => go({ name: r.kind, id: r.id })} /> })}</>
 }
 
 function ConnSheet() {
@@ -363,267 +117,68 @@ function ConnSheet() {
   const conn = useApp((s) => s.conn)
   const status = useRpc('status', {})
   const sys = useRpc('system.info', {})
-  const loaded = status.data?.modelsLoaded ?? 0
-  return (
-    <>
-      <Title>Computers</Title>
-      <Opt
-        title={computer}
-        sub={`${conn === 'connected' ? 'Connected' : conn === 'connecting' ? 'Connecting' : 'Offline'} · ${reachLabel()} · ${loaded} ${loaded === 1 ? 'model' : 'models'} loaded`}
-        selected
-        lead={
-          <span className="logo sq" style={{ width: 30, height: 30, borderRadius: 8 }}>
-            <I n="monitor" />
-          </span>
-        }
-      />
-      <div className="ssec">{computer}</div>
-      <Kv k="Route" v={<span className="mono" style={{ fontSize: 11.5 }}>{location.host}</span>} />
-      <Kv k="Reachable through" v={reachLabel()} />
-      <Kv
-        k="Local API"
-        v={
-          sys.data ? (
-            <span style={{ color: sys.data.localApi.running ? 'var(--success)' : undefined }}>
-              {sys.data.localApi.running ? 'On' : 'Off'}
-            </span>
-          ) : (
-            '—'
-          )
-        }
-      />
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 4 }}>
-        <button type="button" className="btn" onClick={() => go({ name: 'system' })}>
-          System Monitor
-        </button>
-        <button type="button" className="btn" onClick={() => go({ name: 'remote' })}>
-          Remote access
-        </button>
-        <button
-          type="button"
-          className="btn"
-          style={{ gridColumn: '1/-1' }}
-          onClick={() => toast('Scan the QR code in Settings › Remote access on the other computer')}
-        >
-          <I n="qr" size={14} />
-          Pair another computer
-        </button>
-      </div>
-    </>
-  )
+  return <><Title>Computers</Title><Opt title={computer} sub={`${conn} · ${reachLabel()} · ${status.data?.modelsLoaded ?? 0} models loaded`} selected lead={<I n="monitor" />} /><Kv k="Route" v={<span className="mono">{location.host}</span>} /><Kv k="Local API" v={sys.data ? (sys.data.localApi.running ? 'On' : 'Off') : '—'} /><Action icon="monitor" label="System Monitor" run={() => go({ name: 'system' })} /><Action icon="settings" label="Remote access" run={() => go({ name: 'remote' })} /></>
 }
 
 function PaletteSheet() {
   const [q, setQ] = useState('')
   const { sessions } = useSessions()
-  const hits = useMemo(
-    () => (q ? sessions.filter((s) => s.title.toLowerCase().includes(q.toLowerCase())) : sessions).slice(0, 12),
-    [q, sessions]
-  )
-  const actions: [IconId, string, () => void][] = [
-    ['pen', 'New chat', () => go({ name: 'home', mode: 'chat' })],
-    ['cowork', 'New Cowork session', () => go({ name: 'home', mode: 'cowork' })],
-    ['rooms', 'Rooms', () => go({ name: 'rooms' })],
-    ['book', 'Open artifacts', () => go({ name: 'library' })],
-    ['monitor', 'Open system monitor', () => go({ name: 'system' })],
-  ]
-  const shownActions = actions.filter(([, l]) => !q || l.toLowerCase().includes(q.toLowerCase()))
-  return (
-    <>
-      <Grab />
-      <div className="sin">
-        <I n="search" />
-        <input
-          placeholder="Type a command, a page or a conversation…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          aria-label="Search"
-          autoFocus
-        />
-      </div>
-      {shownActions.length > 0 && <div className="ssec">Actions</div>}
-      {shownActions.map(([icon, label, fn]) => (
-        <Opt key={label} title={label} lead={<I n={icon} />} onClick={fn} />
-      ))}
-      <div className="ssec">Conversations</div>
-      {hits.length === 0 && <p className="sh">Nothing matches “{q}”.</p>}
-      {hits.map((s) => (
-        <Opt
-          key={s.id}
-          title={s.title || 'Untitled'}
-          sub={s.group}
-          lead={<I n={s.kind === 'chat' ? 'pen' : s.kind === 'cowork' ? 'cowork' : 'rooms'} />}
-          onClick={() => go({ name: s.kind, id: s.id })}
-        />
-      ))}
-    </>
-  )
-}
-
-function TokensSheet({ props }: { props: Props }) {
-  const used = typeof props.used === 'number' ? props.used : null
-  return (
-    <>
-      <Title>Token usage</Title>
-      {used === null ? (
-        <p className="sh">Token counts for this conversation aren't sent to the phone yet.</p>
-      ) : (
-        <Kv k="Last run" v={`${used.toLocaleString()} tokens`} />
-      )}
-    </>
-  )
-}
-
-function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <button type="button" className={`row${on ? ' on' : ''}`} onClick={onClick}>
-      <span className="tx">
-        <b>{label}</b>
-      </span>
-      <Sw on={on} />
-    </button>
-  )
+  const hits = useMemo(() => (q ? sessions.filter((s) => s.title.toLowerCase().includes(q.toLowerCase())) : sessions).slice(0, 12), [q, sessions])
+  return <><Grab /><div className="sin"><I n="search" /><input placeholder="Type a command, page or conversation…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus /></div><Opt title="New chat" lead={<I n="pen" />} onClick={() => go({ name: 'home', mode: 'chat' })} /><Opt title="New Cowork session" lead={<I n="cowork" />} onClick={() => go({ name: 'home', mode: 'cowork' })} /><Opt title="Rooms" lead={<I n="rooms" />} onClick={() => go({ name: 'rooms' })} /><div className="ssec">Conversations</div>{hits.map((s) => <Opt key={s.id} title={s.title || 'Untitled'} sub={s.group} onClick={() => go({ name: s.kind, id: s.id })} />)}</>
 }
 
 function VoteSheet({ props }: { props: Props }) {
   const [proposal, setProposal] = useState('')
   const id = str(props.id)
-  return (
-    <>
-      <Title sub="Every participant answers yes or no, with a reason.">Call a vote</Title>
-      <label className="field">
-        Proposal
-        <input value={proposal} onChange={(e) => setProposal(e.target.value)} placeholder="Ship the 5-minute TTL" />
-      </label>
-      <button
-        type="button"
-        className="btn pri big"
-        disabled={!proposal.trim() || !id}
-        onClick={() => {
-          closeSheet()
-          if (id) void act('room.control', { id, action: 'vote', proposal: proposal.trim() }, 'Vote called.')
-        }}
-      >
-        Call vote
-      </button>
-    </>
-  )
+  return <><Title sub="Every participant answers yes or no, with a reason.">Call a vote</Title><label className="field">Proposal<input value={proposal} onChange={(e) => setProposal(e.target.value)} /></label><button type="button" className="btn pri big" disabled={!proposal.trim() || !id} onClick={() => { closeSheet(); if (id) void act('room.control', { id, action: 'vote', proposal: proposal.trim() }, 'Vote called.') }}>Call vote</button></>
 }
 
-const NOTIFY_ROWS: [keyof NotificationPrefs, string][] = [
-  ['approvals', 'An approval is waiting'],
-  ['runFinished', 'A run finishes'],
-  ['errors', 'A run fails or stops'],
-  ['roomTurns', 'A Room is waiting for you'],
-]
-
-
+const NOTIFY_ROWS: [keyof NotificationPrefs, string][] = [['approvals','An approval is waiting'],['runFinished','A run finishes'],['errors','A run fails or stops'],['roomTurns','A Room is waiting for you']]
 function NotifSetSheet() {
   const { data } = useRpc('settings.get', {})
   const prefs = data?.notifications ?? DEFAULT_NOTIFY
-  const flip = (k: keyof NotificationPrefs) =>
-    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
-  return (
-    <>
-      <Title sub="Push notifications arrive in a later update. Until then, alerts show while Flint is open on this phone.">
-        Notify me when
-      </Title>
-      {NOTIFY_ROWS.map(([k, label]) => (
-        <Toggle key={k} label={label} on={prefs[k]} onClick={() => flip(k)} />
-      ))}
-    </>
-  )
-}
-
-function CwOptionsSheet({ props }: { props: Props }) {
-  const web = useApp((s) => s.composer.web)
-  return (
-    <>
-      <Title sub="This Cowork session">Options</Title>
-      <Opt title="Assistant" sub="Flint" lead={<FlintMark size={26} />} trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />} onClick={() => openSheet('assistant', props)} />
-      <Opt title="Sampling" sub="Output, context and compaction" lead={<I n="sliders" />} trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />} onClick={() => openSheet('params', props)} />
-      <Opt title="Tools" lead={<I n="wrench" />} trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />} onClick={() => openSheet('tools', props)} />
-      <button
-        type="button"
-        className={`row${web ? ' on' : ''}`}
-        style={{ padding: '9px 10px' }}
-        onClick={() => app.set((s) => ({ composer: { ...s.composer, web: !s.composer.web } }))}
-      >
-        <I n="globe" />
-        <span className="tx">
-          <b>Web search</b>
-        </span>
-        <Sw on={web} />
-      </button>
-      <Opt title="Reasoning" lead={<I n="bulb" />} trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />} onClick={() => openSheet('reason', { ...props, for: 'cowork' })} />
-      <Opt title="Commands & skills" lead={<I n="slash" />} trail={<I n="chevr" style={{ color: 'var(--subtle-foreground)' }} />} onClick={() => openSheet('skills')} />
-    </>
-  )
+  return <><Title>Notify me when</Title>{NOTIFY_ROWS.map(([k,label]) => <button key={k} type="button" className={`row${prefs[k] ? ' on' : ''}`} onClick={() => void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))}><span className="tx"><b>{label}</b></span><Sw on={prefs[k]} /></button>)}</>
 }
 
 function ToolsSheet() {
   const { data } = useRpc('tools.list', {})
-  const servers = data?.servers ?? []
-  return (
-    <>
-      <Title sub={`${servers.filter((s) => s.active).length} MCP servers on`}>Available tools</Title>
-      {servers.map((s) => (
-        <Toggle key={s.name} label={s.name} on={s.active} onClick={() => toast('MCP servers are turned on and off on the computer')} />
-      ))}
-      {data && servers.length === 0 && <p className="sh">No MCP servers are set up on the computer.</p>}
-    </>
-  )
+  return <><Title>Available tools</Title>{(data?.servers ?? []).map((s) => <div key={s.name} className="opt" aria-disabled="true"><I n="wrench" /><span className="tx"><b>{s.name}</b><small>{s.active ? 'On' : 'Off'} · managed on the computer</small></span></div>)}{data && data.servers.length === 0 && <Empty>No MCP servers are set up.</Empty>}</>
 }
 
-function ProfileSheet() {
-  const profiles: [IconId, string, string][] = [
-    ['hammer', 'Execute', 'Build, add or change something: implement a feature, fix a known bug, make the requested edit.'],
-    ['scan', 'Review', 'Review, audit or check existing code or a diff for bugs, risks and quality. No changes expected.'],
-    ['map', 'Plan', 'Design or plan work before doing it: an approach, architecture, steps, trade-offs, estimates.'],
-    ['shuffle', 'Refactor', 'Restructure, clean up, rename, split or simplify code without changing what it does.'],
-    ['bug', 'Debug', 'Find out why something fails, crashes or behaves wrongly, and fix the cause.'],
-    ['micro', 'Reverse engineer', 'Work out how unfamiliar or undocumented code, binaries, formats or protocols work.'],
-    ['book', 'Explain', 'Answer a question or explain how something works; no changes expected.'],
-  ]
-  const pick = () => {
+function RoomNewSheet({ props }: { props: Props }) {
+  const models = useRpc('models.list', {})
+  const template = str(props.template)
+  const [title, setTitle] = useState(template ?? '')
+  const [objective, setObjective] = useState('')
+  const create = async () => {
+    const choices = models.data?.models ?? []
+    if (choices.length < 2) { toast('Set up at least two models on the computer first.'); return }
+    const count = template === 'Cross-check' || template === 'Debate' ? 2 : Math.min(3, choices.length)
+    const picked = choices.slice(0, count)
+    const moderator = template === 'Architecture review' || template === 'Debate'
     closeSheet()
-    notYet('Choosing a work profile')
+    const result = await mobileMutation({ mobileOp: 'room.create', input: { title: title.trim() || template || 'New room', objective: objective.trim(), mode: 'round-robin', participants: picked.map((m,i) => ({ name: m.name || `Participant ${i+1}`, role: i === 0 ? 'proposer' : i === 1 ? 'reviewer' : 'cross-checker', model: { id: m.id, provider: m.provider }, toolAccess: 'none' })), moderator: { enabled: moderator, ...(moderator ? { model: { id: picked[0].id, provider: picked[0].provider } } : {}) } } })
+    const id = result && typeof result.id === 'string' ? result.id : null
+    if (id) go({ name: 'room', id })
   }
-  return (
-    <>
-      <Title sub="Adds a short block to the system prompt for the kind of work this session asks for.">Work profile</Title>
-      <Opt title="Auto" sub="Jev or a keyword match picks from the first message." selected lead={<span className="pico"><I n="wand" /></span>} onClick={closeSheet} />
-      {profiles.map(([icon, t, s]) => (
-        <Opt key={t} title={t} sub={s} selected={false} lead={<span className="pico"><I n={icon} /></span>} onClick={pick} />
-      ))}
-    </>
-  )
+  return <><Title sub={template ? `Template: ${template}` : 'Configure the room before creating it.'}>New room</Title><label className="field">Title<input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Radar cache TTL" /></label><label className="field">Objective<input value={objective} onChange={(e) => setObjective(e.target.value)} placeholder="What should participants discuss or decide?" /></label><button type="button" className="btn pri big" disabled={!models.data || (models.data.models?.length ?? 0) < 2} onClick={() => void create()}>Create room</button></>
 }
 
-function RoomNewSheet() {
-  return (
-    <>
-      <Title sub="Rooms are set up on the computer for now.">New room</Title>
-      <label className="field">
-        Title
-        <input placeholder="Radar cache TTL" />
-      </label>
-      <label className="field">
-        Objective
-        <input placeholder="What should the participants discuss or decide?" />
-      </label>
-      <button
-        type="button"
-        className="btn pri big"
-        onClick={() => {
-          closeSheet()
-          notYet('Creating a room')
-        }}
-      >
-        Create room
-      </button>
-    </>
-  )
+function copyId(props: Props) {
+  const id = str(props.id); if (!id) return
+  void navigator.clipboard?.writeText(id).then(() => toast('ID copied'), () => toast('Copy failed'))
+}
+
+function ThreadMenu({ props }: { props: Props }) {
+  const id = str(props.id)
+  const rename = () => { if (!id) return; const title = window.prompt('Chat name', str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'thread.rename', id, title: title.trim() }, 'Renamed.') }
+  const remove = () => { if (id && window.confirm('Delete this chat?')) void mobileMutation({ mobileOp: 'thread.delete', id }, 'Chat deleted.').then(() => go({ name: 'home' })) }
+  return <><Title>{str(props.title) ?? 'Chat'}</Title><Action icon="edit" label="Rename" run={rename} /><Action icon="pin" label="Pin / unpin" run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, 'Updated.') }} /><DesktopOnly title="Move to group" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><Action icon="trash" label="Delete" danger run={remove} /></>
+}
+
+function SessionMenu({ props }: { props: Props }) {
+  const id = str(props.id)
+  return <><Title>{str(props.title) ?? 'Cowork session'}</Title><Action icon="branch" label="Fork this session" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /><DesktopOnly title="Export session" /><DesktopOnly title="File activity" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><Action icon="trash" label="Delete session" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></>
 }
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
@@ -634,151 +189,28 @@ const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   stop: StopSheet,
   permdetails: PermDetailsSheet,
   vote: VoteSheet,
-  worktree: ({ props }) => (
-    <>
-      <Title sub="Merging and removing it happen on the computer.">Session worktree</Title>
-      <Kv k="Branch" v={<span className="mono">{str(props.branch) ?? 'Working copy'}</span>} />
-      <Kv k="Path" v={<span className="mono">{str(props.path) ?? '—'}</span>} />
-    </>
-  ),
   runs: RunsSheet,
   conn: ConnSheet,
   palette: PaletteSheet,
-  tokens: TokensSheet,
   notifset: NotifSetSheet,
-  cwoptions: CwOptionsSheet,
   tools: ToolsSheet,
-  profile: ProfileSheet,
   roomnew: RoomNewSheet,
-  attach: () => (
-    <>
-      <Title>Add to this message</Title>
-      <Actions
-        items={[
-          ['image', 'Photo library'],
-          ['file', 'Add files or images'],
-          ['folder', 'Files on the computer'],
-          ['at', 'Reference a file (@)'],
-        ]}
-      />
-    </>
-  ),
-  assistant: () => (
-    <>
-      <Title>Assistant</Title>
-      <Opt title="Flint" sub="Default" selected lead={<FlintMark size={26} />} onClick={closeSheet} />
-      <Opt title="Choose another assistant" sub="Assistants are set up on the computer" lead={<I n="users" />} onClick={() => notYet('Switching assistants')} />
-    </>
-  ),
-  params: () => (
-    <>
-      <Title sub="Applies to this conversation">Parameters</Title>
-      <p className="sh">Max output, context size, compaction and sampling are set on the computer for now.</p>
-    </>
-  ),
-  skills: () => (
-    <>
-      <Title sub="Tap to insert">Commands &amp; skills</Title>
-      {[
-        ['/help', 'List available commands'],
-        ['/new', 'Start a new conversation'],
-        ['/compact', 'Summarize older messages to free the context window'],
-      ].map(([c, d]) => (
-        <Opt key={c} title={<span className="mono">{c} <span className="bdg">built-in</span></span>} sub={d} onClick={() => notYet('Commands')} />
-      ))}
-    </>
-  ),
-  msgmenu: () => (
-    <>
-      <Title>Message actions</Title>
-      <Actions items={[['copy', 'Copy'], ['refresh', 'Regenerate response'], ['edit', 'Edit Message'], ['branch', 'Branch from here'], ['trash', 'Delete']]} />
-    </>
-  ),
-  threadmenu: ({ props }) => (
-    <>
-      <Title>{str(props.title) ?? 'Chat'}</Title>
-      <Actions items={[['edit', 'Rename'], ['pin', 'Pin'], ['group', 'Move to group'], ['copy', 'Copy ID', () => copyId(props)], ['trash', 'Delete']]} />
-    </>
-  ),
-  sessmenu: ({ props }) => (
-    <>
-      <Title>{str(props.title) ?? 'Cowork session'}</Title>
-      <Actions items={[['branch', 'Fork this session'], ['upl', 'Export session…'], ['file', 'File activity…'], ['copy', 'Copy ID', () => copyId(props)], ['trash', 'Delete session']]} />
-    </>
-  ),
-  roommenu: ({ props }) => (
-    <>
-      <Title>{str(props.title) ?? 'Room'}</Title>
-      <Actions
-        items={[
-          ['pause', 'Pause', () => roomAct(props, 'pause', 'Paused.')],
-          ['play', 'Resume', () => roomAct(props, 'resume', 'Resumed.')],
-          ['vote', 'Call vote', () => openSheet('vote', props)],
-          ['file', 'Synthesize', () => roomAct(props, 'synthesize', 'Asked for a synthesis.')],
-          ['sq', 'Stop room', () => roomAct(props, 'stop', 'Stopped.')],
-          ['trash', 'Delete'],
-        ]}
-      />
-    </>
-  ),
-  coworkmenu: () => (
-    <>
-      <Title sub="Also opens with a long press on the Cowork row.">Cowork</Title>
-      <Actions items={[['group', 'New group'], ['plus', 'New session', () => go({ name: 'home', mode: 'cowork' })], ['upl', 'Import session…']]} />
-    </>
-  ),
-  chatfilter: () => (
-    <>
-      <Title>Show</Title>
-      <Opt title="All" selected onClick={closeSheet} />
-      <Opt title="Active" selected={false} onClick={() => notYet('Filtering')} />
-    </>
-  ),
-  workspace: ({ props }) => (
-    <>
-      <Title>Workspace</Title>
-      <div className="ssec">Reads from</div>
-      <div className="opt">
-        <I n="folder" />
-        <span className="tx">
-          <b>{str(props.group) ?? 'No folder'}</b>
-          {str(props.folder) && <small className="mono">{str(props.folder)}</small>}
-        </span>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
-        <button type="button" className="btn" onClick={() => notYet('Changing the folder')}>
-          Change folder
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => {
-            const f = str(props.folder)
-            if (f) void navigator.clipboard?.writeText(f).then(() => toast('Path copied'), () => toast('Copy failed'))
-          }}
-        >
-          Copy path
-        </button>
-      </div>
-    </>
-  ),
-  temp: () => (
-    <>
-      <Title sub="Temporary chat — won't be saved. Nothing is written to history on the computer.">Temporary chat</Title>
-      <button type="button" className="btn pri big" onClick={() => notYet('Temporary chat')}>
-        Start temporary chat
-      </button>
-    </>
-  ),
-}
-
-function copyId(props: Props) {
-  const id = str(props.id)
-  if (!id) return
-  void navigator.clipboard?.writeText(id).then(
-    () => toast('ID copied'),
-    () => toast('Copy failed')
-  )
+  threadmenu: ThreadMenu,
+  sessmenu: SessionMenu,
+  roommenu: ({ props }) => <><Title>{str(props.title) ?? 'Room'}</Title><Action icon="pause" label="Pause" run={() => roomAct(props, 'pause', 'Paused.')} /><Action icon="play" label="Resume" run={() => roomAct(props, 'resume', 'Resumed.')} /><Action icon="vote" label="Call vote" run={() => openSheet('vote', props)} /><Action icon="file" label="Synthesize" run={() => roomAct(props, 'synthesize', 'Asked for a synthesis.')} /><Action icon="sq" label="Stop room" run={() => roomAct(props, 'stop', 'Stopped.')} /><Action icon="trash" label="Delete room" danger run={() => { const id = str(props.id); if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></>,
+  cwoptions: ({ props }) => <><Title>This Cowork session</Title><DesktopOnly title="Assistant" /><DesktopOnly title="Sampling / parameters" /><DesktopOnly title="Reasoning" sub="Cowork reasoning follows persisted desktop session/model settings." /><DesktopOnly title="Commands & skills" /><Opt title="Tools" lead={<I n="wrench" />} onClick={() => openSheet('tools', props)} /></>,
+  attach: () => <><Title>Add to this message</Title><DesktopOnly title="Attachments" sub="Attach files/images from the computer; phone attachment transfer is not enabled." /></>,
+  assistant: () => <><Title>Assistant</Title><Opt title="Flint" sub="Default" selected lead={<FlintMark size={26} />} onClick={closeSheet} /><DesktopOnly title="Choose another assistant" /></>,
+  params: () => <><Title>Parameters</Title><DesktopOnly title="Output, context, compaction and sampling" /></>,
+  skills: () => <><Title>Commands & skills</Title><DesktopOnly title="Commands & skills" sub="Run or configure these on the computer." /></>,
+  msgmenu: () => <><Title>Message actions</Title><DesktopOnly title="Additional message actions" sub="Copy is available directly on each assistant message. Edit/regenerate/branch/delete are not exposed remotely." /></>,
+  coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,
+  chatfilter: () => <><Title>Show</Title><Opt title="All" selected onClick={closeSheet} /><DesktopOnly title="Active filter" /></>,
+  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing the workspace of an existing session requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void navigator.clipboard?.writeText(str(props.folder)!).then(() => toast('Path copied'), () => toast('Copy failed'))} />}</>,
+  temp: () => <><Title>Temporary chat</Title><DesktopOnly title="Temporary chat" sub="Temporary history is not exposed by the current remote protocol." /></>,
+  profile: () => <><Title>Work profile</Title><DesktopOnly title="Work profile" sub="Persisted Cowork profiles are selected on the computer." /></>,
+  worktree: ({ props }) => <><Title>Session worktree</Title><Kv k="Branch" v={str(props.branch) ?? 'Working copy'} /><Kv k="Path" v={str(props.path) ?? '—'} /><DesktopOnly title="Apply / merge changes" sub="Applying changes to the attached folder requires desktop confirmation." /></>,
+  tokens: ({ props }) => <><Title>Token usage</Title><Kv k="Last run" v={typeof props.used === 'number' ? `${props.used.toLocaleString()} tokens` : 'Not reported'} /></>,
 }
 
 export function SheetBody({ name, props }: { name: string; props: Props }) {
