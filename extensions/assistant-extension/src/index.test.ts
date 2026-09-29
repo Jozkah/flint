@@ -160,7 +160,7 @@ describe('onLoad', () => {
   it('records the current migration version', async () => {
     const ext = makeExt()
     await ext.onLoad()
-    expect(files.get(`${ROOT}/.migration_version`)).toBe('3')
+    expect(files.get(`${ROOT}/.migration_version`)).toBe('4')
   })
 
   it('seeds the default assistant with parameters when none are persisted', async () => {
@@ -176,11 +176,35 @@ describe('onLoad', () => {
     })
   })
 
+  it('seeds all four specialized built-in assistants', async () => {
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(
+      ['quartz', 'coal', 'blaze', 'redstone'].map(
+        (id) => readAssistant(id).name
+      )
+    ).toEqual(['Quartz', 'Coal', 'Blaze', 'Redstone'])
+  })
+
   it('does not overwrite an existing persisted assistant on load', async () => {
     seedAssistant('jan', { id: 'jan', name: 'Custom', instructions: 'mine' })
     const ext = makeExt()
     await ext.onLoad()
     expect(readAssistant('jan').name).toBe('Custom')
+  })
+
+  it('does not overwrite a user assistant that already uses a built-in id', async () => {
+    seedAssistant('quartz', {
+      id: 'quartz',
+      name: 'My Quartz',
+      instructions: 'custom',
+    })
+    const ext = makeExt()
+    await ext.onLoad()
+    expect(readAssistant('quartz')).toMatchObject({
+      name: 'My Quartz',
+      instructions: 'custom',
+    })
   })
 })
 
@@ -243,7 +267,7 @@ describe('migrations', () => {
 
   it('does not re-run migrations when already at the current version', async () => {
     dirs.add(ROOT)
-    files.set(`${ROOT}/.migration_version`, '3')
+    files.set(`${ROOT}/.migration_version`, '4')
     seedAssistant('e', {
       id: 'e',
       instructions: 'You are a helpful AI assistant. legacy',
@@ -260,6 +284,6 @@ describe('migrations', () => {
     files.set(`${ROOT}/.migration_version`, 'garbage')
     const ext = makeExt()
     await ext.onLoad()
-    expect(getVersion()).toBe('3')
+    expect(getVersion()).toBe('4')
   })
 })
