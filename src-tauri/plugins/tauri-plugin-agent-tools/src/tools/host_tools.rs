@@ -120,6 +120,54 @@ pub fn locate_real_on_host(name: &str, host_path: &OsString, avoid: &[PathBuf]) 
     None
 }
 
+/// Rustup puts proxy executables in `.cargo\\bin`. Those proxies need
+/// RUSTUP_HOME, which the confined shell intentionally does not inherit.
+/// Grant the installed toolchain's real bin directory instead.
+pub fn grant_executable(name: &str, host_path: &OsString, avoid: &[PathBuf]) -> Option<PathBuf> {
+    let found = locate_real_on_host(name, host_path, avoid)?;
+    if name != "cargo" || !is_rustup_proxy(&found) {
+        return Some(found);
+    }
+    let rustup = std::env::var_os("RUSTUP_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".rustup")))?;
+    rustup_toolchain_cargo(&rustup)
+}
+
+fn is_rustup_proxy(exe: &Path) -> bool {
+    exe.parent().is_some_and(|bin| {
+        bin.file_name().is_some_and(|n| n.eq_ignore_ascii_case("bin"))
+            && bin.parent().is_some_and(|cargo| {
+                cargo.file_name().is_some_and(|n| n.eq_ignore_ascii_case(".cargo"))
+            })
+    })
+}
+
+/// A previously granted rustup proxy must not shadow a granted real toolchain.
+pub fn preferred_rustup_bin(granted: &[PathBuf]) -> Option<PathBuf> {
+    let rustup = std::env::var_os("RUSTUP_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".rustup")))?;
+    let cargo = rustup_toolchain_cargo(&rustup)?;
+    let bin = cargo.parent()?.to_path_buf();
+    granted.iter().any(|g| g == &bin).then_some(bin)
+}
+
+fn rustup_toolchain_cargo(rustup: &Path) -> Option<PathBuf> {
+    let settings = std::fs::read_to_string(rustup.join("settings.toml")).ok()?;
+    let toolchain = settings.lines().find_map(|line| {
+        let (key, value) = line.split_once('=')?;
+        (key.trim() == "default_toolchain")
+            .then(|| value.trim().trim_matches('"').to_string())
+    })?;
+    if toolchain.is_empty() || Path::new(&toolchain).components().count() != 1 {
+        return None;
+    }
+    let bin = rustup.join("toolchains").join(toolchain).join("bin");
+    let cargo = bin.join("cargo.exe");
+    (cargo.is_file() && bin.join("rustc.exe").is_file()).then_some(cargo)
+}
+
 /// The command that grants `folder` to the sandbox from an elevated terminal,
 /// for a folder the user cannot change the permissions of.
 pub fn admin_grant_command(folder: &Path) -> String {
@@ -499,7 +547,7 @@ pub fn grant_candidates(
 ) -> Vec<GrantCandidate> {
     let mut out: Vec<GrantCandidate> = Vec::new();
     for name in unavailable {
-        let Some(exe) = locate_real_on_host(name, host_path, avoid) else {
+        let Some(exe) = grant_executable(name, host_path, avoid) else {
             continue;
         };
         let Some(folder) = exe.parent().map(Path::to_path_buf) else {
@@ -537,7 +585,9 @@ pub fn classify_programs(
     for name in names {
         let runnable = locate_on_host(name, sandbox_path, pathext).is_some_and(|found| {
             let dir = found.parent().unwrap_or(&found);
-            !is_msys_install(dir) && can_execute(dir) == Some(true)
+            !(name == &"cargo" && is_rustup_proxy(&found))
+                && !is_msys_install(dir)
+                && can_execute(dir) == Some(true)
         });
         if runnable {
             report.runnable.push(name.to_string());
@@ -611,6 +661,9 @@ fn compute_toolchains() -> Option<ToolchainReport> {
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let mut dirs = system_dirs();
     let granted = crate::tools::toolchain_grants::granted_folders();
+    if let Some(bin) = preferred_rustup_bin(&granted) {
+        dirs.push(bin);
+    }
     let extra = usable_host_dirs(
         &host,
         profile.as_deref(),
@@ -1042,6 +1095,36 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn rustup_grants_installed_cargo_instead_of_proxy() {
+        let home = TempDir::new("rustup");
+        let bin = home.path().join("toolchains").join("stable-test").join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join("cargo.exe"), "").unwrap();
+        std::fs::write(bin.join("rustc.exe"), "").unwrap();
+        std::fs::write(home.path().join("settings.toml"), "default_toolchain = \"stable-test\"\n").unwrap();
+        assert_eq!(rustup_toolchain_cargo(home.path()), Some(bin.join("cargo.exe")));
+        std::fs::write(home.path().join("settings.toml"), "default_toolchain = \"..\\\\outside\"\n").unwrap();
+        assert_eq!(rustup_toolchain_cargo(home.path()), None);
+    }
+
+    #[test]
+    fn rustup_proxy_is_not_reported_as_runnable_cargo() {
+        let home = TempDir::new("rustup-proxy");
+        let proxy_bin = home.path().join(".cargo").join("bin");
+        let real_bin = home.path().join(".rustup").join("toolchains").join("stable").join("bin");
+        std::fs::create_dir_all(&proxy_bin).unwrap();
+        std::fs::create_dir_all(&real_bin).unwrap();
+        std::fs::write(proxy_bin.join("cargo.exe"), "").unwrap();
+        std::fs::write(real_bin.join("cargo.exe"), "").unwrap();
+        let host = std::env::join_paths([proxy_bin.clone()]).unwrap();
+        let before = classify_programs(&["cargo"], &host, &host, ".EXE", |_| Some(true));
+        assert_eq!(before.unavailable, vec!["cargo"]);
+        let sandbox = std::env::join_paths([real_bin, proxy_bin]).unwrap();
+        let after = classify_programs(&["cargo"], &sandbox, &host, ".EXE", |_| Some(true));
+        assert_eq!(after.runnable, vec!["cargo"]);
     }
 
     #[test]

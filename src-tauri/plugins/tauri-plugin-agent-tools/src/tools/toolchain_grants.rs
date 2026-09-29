@@ -254,7 +254,7 @@ pub fn grant(program: &str) -> Result<ToolchainGrant, String> {
         ));
     }
     let host = std::env::var_os("PATH").unwrap_or_default();
-    let exe = host_tools::locate_real_on_host(program, &host, &host_tools::transient_dirs())
+    let exe = host_tools::grant_executable(program, &host, &host_tools::transient_dirs())
         .ok_or_else(|| format!("`{program}` is not on the PATH"))?;
     let profile = std::env::var_os("USERPROFILE").map(PathBuf::from);
     let made = grant_at(&store, program, &exe, profile.as_deref(), &SystemAcl)?;

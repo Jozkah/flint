@@ -2519,6 +2519,14 @@ export function CoworkPage() {
       toast.error(t('common:modelNoTools', { model: selectedModel.id }))
       return
     }
+    // A restored session may remember Managed worktree while its process-local
+    // grant is still being reissued. Do not start a Review run against the
+    // source folder: history would point at a worktree the run cannot read.
+    if (access === 'managed-worktree' && effective.destination !== 'managed') {
+      const key = effectiveDowngradeKey(effective)
+      if (key) toast.error(t(key))
+      return
+    }
     // Another session's message is not what this session is about.
     if (text && !from && !hidden && current?.title === 'New session') {
       // The prompt, cut short, until the model's own title arrives.

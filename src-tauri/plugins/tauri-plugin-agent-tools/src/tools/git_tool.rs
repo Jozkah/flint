@@ -1502,6 +1502,65 @@ fn sha_in(output: &str) -> Option<String> {
     ).map(str::to_string)
 }
 
+fn remote_identity(url: &str) -> Option<(&str, &str)> {
+    let url = url.trim();
+    let (host, path) = if let Some(rest) = url.strip_prefix("https://") {
+        rest.split_once('/')?
+    } else if let Some(rest) = url.strip_prefix("git@") {
+        rest.split_once(':')?
+    } else {
+        return None;
+    };
+    let host = host.rsplit('@').next()?;
+    let path = path.trim_end_matches(".git");
+    let (owner, repo) = path.split_once('/')?;
+    (!host.is_empty() && !owner.is_empty() && !repo.is_empty() && !repo.contains('/'))
+        .then_some((host, owner))
+}
+
+fn matching_head_urls(remotes: Vec<String>, expected_url: &str) -> Result<Vec<String>, String> {
+    let expected = remote_identity(expected_url).ok_or("invalid pull request head repository")?;
+    let mut urls = Vec::new();
+    for url in remotes {
+        if remote_identity(&url).is_some_and(|id| id.0.eq_ignore_ascii_case(expected.0)
+            && id.1.eq_ignore_ascii_case(expected.1)) && !urls.contains(&url) {
+            urls.push(url);
+        }
+    }
+    if !urls.iter().any(|url| url == expected_url) {
+        urls.push(expected_url.to_string());
+    }
+    Ok(urls)
+}
+
+async fn pushed_head(
+    git: &Path,
+    cwd: &Path,
+    expected_url: &str,
+    branch: &str,
+) -> Result<(String, String), String> {
+    let mut remotes_urls = Vec::new();
+    if let Some(remotes) = quiet_output(git, &["remote"], cwd).await {
+        for name in remotes.lines().map(str::trim).filter(|n| !n.is_empty()) {
+            if let Some(url) = quiet_output(git, &["remote", "get-url", "--push", name], cwd)
+                .await.and_then(|o| o.lines().next().map(str::trim).map(str::to_string))
+            {
+                remotes_urls.push(url);
+            }
+        }
+    }
+    let urls = matching_head_urls(remotes_urls, expected_url)?;
+    for url in &urls {
+        let plan = self::plan("git", &["ls-remote".into(), url.clone(), format!("refs/heads/{branch}")])?;
+        let output = Box::pin(execute(&plan, cwd)).await;
+        if let Some(sha) = sha_in(&output) {
+            return Ok((url.clone(), sha));
+        }
+    }
+    let owner = remote_identity(expected_url).map(|id| id.1).unwrap_or("");
+    Err(format!("could not read pushed head {branch} from any push remote owned by {owner} (checked {} candidate repositories); push the branch first", urls.len()))
+}
+
 async fn pr_preflight(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
     let (base_url, base, head_url, head) = pr_preflight_target(&plan.args)?;
     let git = crate::tools::git_native::discover_git().ok_or("Git is needed to check pull request conflicts")?;
@@ -1510,8 +1569,7 @@ async fn pr_preflight(plan: &GitPlan, cwd: &Path) -> Result<(), String> {
     };
     let base_remote = Box::pin(execute(&remote_sha(&base_url, &base)?, cwd)).await;
     let base_sha = sha_in(&base_remote).ok_or_else(|| format!("could not read current base {base} from {base_url}: {base_remote}"))?;
-    let head_remote = Box::pin(execute(&remote_sha(&head_url, &head)?, cwd)).await;
-    let head_sha = sha_in(&head_remote).ok_or_else(|| format!("could not read pushed head {head} from {head_url}: {head_remote}"))?;
+    let (_, head_sha) = pushed_head(&git, cwd, &head_url, &head).await?;
     let local_head = quiet_output(&git, &["rev-parse", "--verify", &format!("{head}^{{commit}}")], cwd)
         .await.and_then(|o| sha_in(&o));
     if local_head.as_deref() != Some(head_sha.as_str()) {
@@ -1777,6 +1835,23 @@ mod tests {
             "https://github.com/contributor/project.git".into(),
             "fix/issue".into(),
         ));
+    }
+
+    #[test]
+    fn pull_request_head_uses_pushed_fork_even_when_repo_was_renamed() {
+        let urls = matching_head_urls(
+            vec![
+                "https://github.com/menloresearch/jan.git".into(),
+                "https://github.com/Jozkah/flint.git".into(),
+            ],
+            "https://github.com/Jozkah/jan.git",
+        ).unwrap();
+        assert_eq!(urls, vec![
+            "https://github.com/Jozkah/flint.git",
+            "https://github.com/Jozkah/jan.git",
+        ]);
+        assert_eq!(remote_identity("git@github.com:Jozkah/flint.git"), Some(("github.com", "Jozkah")));
+        assert_eq!(remote_identity("https://user:token@github.com/Jozkah/flint.git"), Some(("github.com", "Jozkah")));
     }
 
     #[test]

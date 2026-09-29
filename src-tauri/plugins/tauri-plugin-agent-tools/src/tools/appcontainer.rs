@@ -845,6 +845,11 @@ pub fn build_sandbox_path(
             dirs.push(dir);
         }
     }
+    if let Some(bin) = crate::tools::host_tools::preferred_rustup_bin(granted) {
+        if !dirs.contains(&bin) {
+            dirs.push(bin);
+        }
+    }
     let host = host_path.unwrap_or_default();
     let extra = crate::tools::host_tools::usable_host_dirs(
         &host,
