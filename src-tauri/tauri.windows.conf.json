@@ -41,7 +41,8 @@
         "dialogImagePath": "./installer/wix/dialog.bmp"
       },
       "nsis": {
-        "installerIcon": "icons/icon.ico"
+        "installerIcon": "icons/icon.ico",
+        "template": "tauri.bundle.windows.nsis.template"
       },
       "webviewInstallMode": {
         "silent": true,
