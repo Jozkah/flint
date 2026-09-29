@@ -208,6 +208,7 @@ export function RemoteAccessSettings({
               checked={cfg.allowApprovals}
               onCheckedChange={(allowApprovals) =>
                 void save(
+                  // Turning approvals off takes "Always allow" with it.
                   allowApprovals ? { allowApprovals } : { allowApprovals, allowAlwaysAllow: false }
                 )
               }
@@ -314,11 +315,13 @@ export function PairPhoneDialog({
   const [deadline, setDeadline] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
+  const [copyError, setCopyError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const lastPaired = useRemoteAccess((s) => s.lastPaired)
 
   const start = useCallback(async () => {
     setError(null)
+    setCopyError(null)
     setCopied(false)
     useRemoteAccess.getState().setLastPaired(null)
     try {
@@ -346,10 +349,12 @@ export function PairPhoneDialog({
     if (!pairing || expired) return
     try {
       await navigator.clipboard.writeText(pairing.url)
+      setCopyError(null)
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1800)
     } catch {
-      setError('Could not copy the pairing link. Select the link below and copy it manually.')
+      setCopied(false)
+      setCopyError('Could not copy the pairing link. Select the link below and copy it manually.')
     }
   }
 
@@ -401,6 +406,11 @@ export function PairPhoneDialog({
                   onFocus={(e) => e.currentTarget.select()}
                   className="w-full rounded border border-border bg-card px-2 py-2 font-mono text-[11px]"
                 />
+                {copyError && (
+                  <span className="text-[11px] text-destructive" role="status">
+                    {copyError}
+                  </span>
+                )}
                 <span className="text-[11px] text-muted-foreground">
                   Open this exact link on the phone you want to connect. You will still confirm the matching number on this computer.
                 </span>
