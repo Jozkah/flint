@@ -10,7 +10,9 @@ ManifestDPIAwareness PerMonitorV2
 !define PRODUCTNAME "Flint"
 !define VERSION "0.9.0"
 !define ALLOWDOWNGRADES "true"
-!define FLINT_WORKSPACE "${__FILEDIR__}\.."
+; makensis resolves includes relative to this script, so the repository root is
+; one level above scripts/ without repeating `${__FILEDIR__}` in the path.
+!define FLINT_WORKSPACE ".."
 !define MUI_ICON "${FLINT_WORKSPACE}\src-tauri\icons\icon.ico"
 
 Name "Flint Installer UI Smoke"
