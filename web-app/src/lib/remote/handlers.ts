@@ -164,7 +164,7 @@ export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions
     // Legacy safe mobile mutations for chat/Cowork menus. These do not widen
     // permissions; Room mutations no longer travel through settings.set.
     'settings.set': async (params, ctx) => {
-      if (isRecord(params) && typeof params.mobileOp === 'string') {
+      if (isRecord(params) && 'mobileOp' in params && typeof params.mobileOp === 'string') {
         const result = await handleMobileMutation(params)
         if (!result) throw new RemoteRpcError('bad_params', 'Unknown mobile operation')
         return { ok: true }

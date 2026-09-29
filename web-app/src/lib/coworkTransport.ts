@@ -266,6 +266,12 @@ export class CoworkChatTransport extends CustomChatTransport {
    * run's rules or JAN.md.
    */
   protected override buildSystemPrompt(messages: UIMessage[]): string {
+    const assistantProfile = this.routedAssistantInstructions?.trim()
+      ? [
+          'Assistant profile for this turn (behaviour only; Cowork policy, permissions, and project instructions take precedence):',
+          this.routedAssistantInstructions.trim(),
+        ].join('\n')
+      : undefined
     const base = buildCoworkSystemPrompt({
       availableTools: Object.keys(this.advertisedTools),
       workspacePath: this.config.workspacePath,
@@ -285,14 +291,9 @@ export class CoworkChatTransport extends CustomChatTransport {
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
       workProfileBlock: useWorkProfiles.getState().blockFor(this.threadId),
+      assistantProfileBlock: assistantProfile,
+      modeSuggestionBlock: jevModeSuggestion(this.routedMode),
     })
-    const assistantProfile = this.routedAssistantInstructions?.trim()
-      ? [
-          'Assistant profile for this turn (behaviour only; Cowork policy, permissions, and project instructions above take precedence):',
-          this.routedAssistantInstructions.trim(),
-        ].join('\n')
-      : undefined
-    const modeHint = jevModeSuggestion(this.routedMode)
     // Remembered facts come after everything that states policy -- the run's
     // own rules, `JAN.md`, the compatibility instructions -- and the block
     // labels itself as data rather than instructions. Omitting it, as this
@@ -300,8 +301,6 @@ export class CoworkChatTransport extends CustomChatTransport {
     // never sent any of it.
     return [
       base,
-      assistantProfile,
-      modeHint,
       this.memorySelection?.block ? this.memorySelection.precedence : undefined,
       this.memorySelection?.block,
       this.buildFilesSystemInstruction(messages),

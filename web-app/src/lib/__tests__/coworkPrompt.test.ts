@@ -624,3 +624,29 @@ describe('the work-profile block', () => {
     ).not.toContain(block)
   })
 })
+
+describe('assistant routing guidance', () => {
+  it('puts persona and mode before project instructions', () => {
+    const prompt = buildCoworkSystemPrompt({
+      ...opts(),
+      assistantProfileBlock: 'Quartz persona',
+      modeSuggestionBlock: 'Jev suggests REVIEW',
+      projectInstructions: 'Project rules',
+    })
+    expect(prompt.indexOf('Quartz persona')).toBeGreaterThan(prompt.indexOf('# Workspace'))
+    expect(prompt.indexOf('Jev suggests REVIEW')).toBeGreaterThan(prompt.indexOf('Quartz persona'))
+    expect(prompt.indexOf('Project rules')).toBeGreaterThan(prompt.indexOf('Jev suggests REVIEW'))
+  })
+
+  it('omits routing guidance during restricted plan and opening runs', () => {
+    for (const restricted of [{ planMode: true }, { openingInspection: true }]) {
+      const prompt = buildCoworkSystemPrompt({
+        ...opts(), ...restricted,
+        assistantProfileBlock: 'Coal persona',
+        modeSuggestionBlock: 'Jev suggests AUTO',
+      })
+      expect(prompt).not.toContain('Coal persona')
+      expect(prompt).not.toContain('Jev suggests AUTO')
+    }
+  })
+})

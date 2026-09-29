@@ -130,6 +130,19 @@ describe('CoworkChatTransport', () => {
     expect(prompt).not.toContain('# Remembered')
   })
 
+  it('injects a specialist persona and advisory mode before project rules', () => {
+    const t = new CoworkChatTransport('s1', config({ projectInstructions: 'Use yarn.' }))
+    ;(t as unknown as { routedAssistantInstructions: string }).routedAssistantInstructions =
+      'You are Quartz.'
+    ;(t as unknown as { routedMode: string }).routedMode = 'review'
+    const prompt = (t as unknown as { buildSystemPrompt: (m: unknown[]) => string })
+      .buildSystemPrompt([])
+    expect(prompt).toContain('You are Quartz.')
+    expect(prompt).toContain('Jev suggests REVIEW')
+    expect(prompt.indexOf('You are Quartz.')).toBeLessThan(prompt.indexOf('Use yarn.'))
+    expect(prompt.indexOf('Jev suggests REVIEW')).toBeLessThan(prompt.indexOf('Use yarn.'))
+  })
+
   it('hands retrieval the FLINT.md and compatibility text above memory (AH-084)', () => {
     const t = new CoworkChatTransport(
       's1',
