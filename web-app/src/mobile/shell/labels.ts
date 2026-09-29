@@ -10,7 +10,7 @@ export const COWORK_MODES = [
 export const ACCESS_MODES = [
   { id: 'review-only', label: 'Review only', short: 'Review', sub: 'Nothing is written anywhere.' },
   { id: 'managed-worktree', label: 'Managed worktree', short: 'Worktree', sub: 'A separate branch and folder Flint manages. Your checkout is untouched.' },
-  { id: 'edit-folder', label: 'Edit this folder', short: 'Edits', sub: 'Changes land directly in the attached folder.' },
+  { id: 'edit-folder', label: 'Edit this folder', short: 'Edit', sub: 'Changes land directly in the attached folder.' },
 ] as const
 
 export const LEVELS = [
