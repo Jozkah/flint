@@ -135,6 +135,15 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 export const detectBrowser = () => invoke<BrowserInfo>('browser_verify_detect')
 
+/**
+ * Name a browser executable to use (e.g. Brave, Opera, Vivaldi, Arc or a
+ * custom build). The path is validated on the backend: it must be an
+ * absolute path to an existing file. The choice is kept for this process
+ * only, so the next launch of Flint starts from the installed browsers again.
+ */
+export const setBrowserPath = (path: string) =>
+  invoke<BrowserInfo>('browser_verify_set_browser', { path })
+
 export const runBrowserVerify = (request: {
   id: string
   url: string

@@ -5,6 +5,14 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
 }))
 
+vi.mock('@/hooks/useServiceHub', () => ({
+  getServiceHub: () => ({
+    dialog: () => ({
+      open: async () => '/usr/bin/brave-browser',
+    }),
+  }),
+}))
+
 import { BrowserVerifyPanel, BrowserVerifyEvidence } from '../BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -14,15 +22,29 @@ const found = async () => ({ found: true, path: '/usr/bin/chromium', name: 'Chro
 describe('BrowserVerifyPanel', () => {
   beforeEach(() => useBrowserVerify.setState({ running: {}, reports: {}, draftUrl: null }))
 
-  it('explains a missing browser instead of offering to download one', async () => {
+  it('explains a missing browser and offers to choose one', async () => {
     render(
       <BrowserVerifyPanel
         sessionId="s1"
-        detect={async () => ({ found: false, path: null, name: null, hint: 'Install Chrome or Edge.' })}
+        detect={async () => ({ found: false, path: null, name: null, hint: 'Install a Chromium-based browser.' })}
       />
     )
-    expect((await screen.findByTestId('bv-no-browser')).textContent).toBe('Install Chrome or Edge.')
+    expect((await screen.findByTestId('bv-no-browser')).textContent).toContain(
+      'Install a Chromium-based browser.'
+    )
+    expect(screen.getByTestId('bv-choose-browser')).toBeTruthy()
     expect((screen.getByTestId('bv-run') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('offers a Choose button when no browser is found', async () => {
+    render(
+      <BrowserVerifyPanel
+        sessionId="s1"
+        detect={async () => ({ found: false, path: null, name: null, hint: 'No browser found.' })}
+      />
+    )
+    await screen.findByTestId('bv-no-browser')
+    expect(screen.getByTestId('bv-choose-browser')).toBeTruthy()
   })
 
   it('will not run against a URL that is not on this machine', async () => {

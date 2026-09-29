@@ -1463,8 +1463,6 @@
   },
   "coworkAccess": {
     "label": "Where changes go",
-    "pendingNextRun": "Pending until current activity finishes",
-    "currentRunUnchanged": "Changes to these controls apply to the next run.",
     "review-only": {
       "label": "Review only",
       "short": "Sandbox",
@@ -1477,7 +1475,7 @@
     },
     "edit-folder": {
       "label": "Edit this folder",
-      "short": "Edits",
+      "short": "Edit",
       "description": "Flint can modify files in this exact folder."
     },
     "notBuiltYet": "Not available yet",
@@ -1913,14 +1911,15 @@
   },
   "browserVerify": {
     "title": "Verify in browser",
-    "explain": "Opens your local app in a separate, temporary Chrome or Edge profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",
+    "explain": "Opens your local app in a separate, temporary browser profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",
     "url": "Local app URL",
     "notLocal": "Only an app on this machine (localhost, 127.0.0.1) can be verified.",
     "steps": "Steps (optional): open, click, type, expect, wait, screenshot — one per line",
     "run": "Verify",
     "cancel": "Stop",
     "using": "Using {{browser}}",
-    "noBrowser": "No Chrome or Edge found. Install one; Flint does not download a browser.",
+    "noBrowser": "No Chromium-based browser found. Install one; Flint does not download a browser.",
+    "chooseBrowser": "Choose a browser…",
     "meta": "{{origin}} · {{browser}} · {{date}} · {{ms}} ms",
     "consoleErrors_one": "{{count}} console error",
     "consoleErrors_other": "{{count}} console errors",

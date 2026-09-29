@@ -809,7 +809,7 @@ async fn wait_cancel(mut rx: watch::Receiver<bool>) {
 #[cfg(test)]
 mod tests {
     //! These drive a real browser against a real local server. They run when
-    //! Chrome, Edge or Chromium is installed (or `FLINT_BROWSER_PATH` names
+    //! a Chromium-based browser is installed (or `FLINT_BROWSER_PATH` names
     //! one) and are skipped, saying so, otherwise.
     use super::*;
     use std::io::{Read, Write};
@@ -884,7 +884,7 @@ mod tests {
     fn browser_or_skip() -> Option<BrowserInfo> {
         let b = find_browser();
         if !b.found {
-            eprintln!("skipped: no Chrome/Edge/Chromium installed (set FLINT_BROWSER_PATH)");
+            eprintln!("skipped: no Chromium-based browser installed (set FLINT_BROWSER_PATH)");
             return None;
         }
         Some(b)

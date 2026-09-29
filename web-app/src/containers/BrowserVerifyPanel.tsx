@@ -3,10 +3,12 @@ import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
+import { getServiceHub } from '@/hooks/useServiceHub'
 import {
   detectBrowser,
   isLocalAppUrl,
   parseSteps,
+  setBrowserPath,
   type BrowserInfo,
   type StepRecord,
   type VerifyReport,
@@ -184,9 +186,29 @@ export function BrowserVerifyPanel({
       </label>
       {parsed.error && <span className="text-destructive">{parsed.error}</span>}
       {browser && !browser.found && (
-        <span data-testid="bv-no-browser" className="text-destructive">
-          {browser.hint ?? t('common:browserVerify.noBrowser')}
-        </span>
+        <div data-testid="bv-no-browser" className="flex flex-col gap-1.5">
+          <span className="text-destructive">{browser.hint ?? t('common:browserVerify.noBrowser')}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            data-testid="bv-choose-browser"
+            onClick={async () => {
+              try {
+                const picked = await getServiceHub().dialog().open({
+                  multiple: false,
+                  directory: false,
+                })
+                if (typeof picked !== 'string' || !picked) return
+                const info = await setBrowserPath(picked)
+                setBrowser(info)
+              } catch {
+                // The dialog was cancelled, or the path was refused.
+              }
+            }}
+          >
+            {t('common:browserVerify.chooseBrowser')}
+          </Button>
+        </div>
       )}
       <div className="flex items-center gap-2">
         {running ? (
