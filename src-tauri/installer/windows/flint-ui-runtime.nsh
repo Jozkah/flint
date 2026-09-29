@@ -208,3 +208,4 @@ Function ${UN}FlintShell
   SendMessage $4 ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $4 MUTED BG
 FunctionEnd
+!macroend
