@@ -1,10 +1,18 @@
 # Jev decision support (TypeSafe)
 
-Flint can ask TypeSafe's **Jev** model (`jev-1.13.0`, pinned) for two narrow
-decisions. Both are **optional, separate, and off by default** (Settings →
-General → *Jev decision support*). Flint stays authoritative:
+Flint can ask TypeSafe's **Jev** model (`jev-1.13.0`, pinned) for bounded
+decisions. They are **optional and off by default** (Settings → General →
+*Jev decision support*). Flint stays authoritative:
 
 - Jev never approves, denies or gates a tool, and is not a security control.
+- **Prompt routing** reuses the Skill suggestion opt-in and the same bounded
+  choice endpoint. At the start of a new user turn, Jev may choose among the
+  built-in Flint family: Flint, Quartz, Coal, Blaze and Redstone, plus a Review /
+  Ask / Auto **work-style suggestion** for the chosen assistant. The mode is
+  inserted as behavioural guidance only. In Cowork it never changes the actual
+  permission mode, folder authority or approval requirements; in Chat it never
+  changes tool approval rules. Custom/project assistants are pinned and are
+  never automatically routed away from.
 - **Skill suggestion** shows a chip ("Jev suggests /skill-name") above the
   Cowork composer. Nothing happens until you click *Use*, which writes the same
   `/skill` command you could type. The `/` menu, skills the model loads itself,
@@ -18,28 +26,57 @@ General → *Jev decision support*). Flint stays authoritative:
 
 | Opt-in | Sent to `api.typesafe.ai` | Not sent |
 | --- | --- | --- |
-| Skill suggestion | the message you are typing in Cowork (first 2,000 chars, after a 1.2 s pause) and the names + descriptions of that surface's skills | file contents, paths, history, anything once a message starts with `/` |
+| Skill suggestion / prompt routing | for skill chips: the message you are typing in Cowork (first 2,000 chars, after a 1.2 s pause) plus skill names/descriptions. For routing: the submitted prompt (first 2,000 chars) plus the bounded 5-assistant × 3-advisory-mode catalog (15 choices) | file contents, paths, history, custom assistant prompts, tool grants, permission state, anything once a message starts with `/` |
 | Reranking | the retrieval query (first 1,000 chars) and up to 20 shortlisted passages (1,200 chars each) | file names, paths, citation ids (positions are sent instead) |
 
-**Off means no request.** The backend (`src-tauri/src/core/jev`) reads the
-opt-ins itself on every call and returns before touching the network or the key.
+**Off means no request.** Prompt routing deliberately uses the existing Skill
+suggestion opt-in so there is still one backend-controlled network gate for
+that TypeSafe choice channel. `shadow` records the decision without changing
+the selected assistant or adding a mode hint; `on` uses it.
+
+## Routing behaviour
+
+- **Flint** is the generalist/default: mixed everyday requests and the fallback
+  whenever active routing has no confident specialist choice.
+- **Quartz** specializes in research, evidence, comparisons and calculations.
+- **Coal** specializes in software engineering, implementation and debugging.
+- **Blaze** specializes in creative/product ideation, naming, UX and copy.
+- **Redstone** specializes in automation, integrations and repeatable systems.
+- Chat routes once per new user-message id. The selected assistant and advisory
+  mode stay fixed through that turn's tool follow-ups; regeneration does not
+  make another Jev routing call for the same user message.
+- Cowork also routes once per new user-message id. The selected specialist's
+  persona is added below Cowork's own policy so it cannot supersede folder
+  access, approvals or project instructions. Flint keeps Cowork's existing
+  baseline prompt unchanged. The Review / Ask / Auto recommendation describes
+  how the assistant should approach the turn; it does not change Cowork's real
+  access mode.
+- A custom/project assistant is an explicit user/project choice, so it is never
+  replaced automatically.
+- With the opt-in `off`, Flint's existing behaviour is untouched. In `shadow`,
+  Jev's route is recorded but not applied. In active `on` mode, an abstention or
+  invalid choice falls back to Flint rather than carrying the previous
+  specialist into an unrelated prompt.
 
 ## Modes, bounds, fallback
 
 - `off` — no request. `shadow` — request made and its decision recorded, but
   Flint behaves as if Jev were off. `on` — the decision is used.
-- Timeouts 1.5 s (skills) / 2.5 s (rerank); ≤ 12,000 estimated input tokens a
-  request; 2,000,000 input tokens a day (~$0.08 at $0.042/M); responses over
-  256 KB are not read; redirects are refused so the key only goes to TypeSafe.
-- Timeout, HTTP error, bad answer, abstention (skill probability < 0.7, or no
+- Timeouts 1.5 s (choice decisions) / 2.5 s (rerank); ≤ 12,000 estimated input
+  tokens a request; 2,000,000 input tokens a day (~$0.08 at $0.042/M);
+  responses over 256 KB are not read; redirects are refused so the key only
+  goes to TypeSafe.
+- Timeout, HTTP error, bad answer, abstention (choice probability < 0.7, or no
   passage ≥ 0.1 relevance), no key, over budget, or `off` → Flint's existing
-  behaviour, with the reason recorded.
+  behaviour, with the reason recorded. For an active routing decision that
+  returns no confident assistant, the turn uses Flint as the generalist.
 - The key is stored with `provider_secrets` (OS keyring or the encrypted file)
   and is write-only from the UI; it is registered for log redaction when loaded.
 - Receipts (Settings card, and the app log) record time, feature, mode, the
-  model version TypeSafe reports, the decision (a skill name, or how the
-  top-k moved), latency, input/output tokens, cost and fallback reason —
-  never the key, the message or passage text.
+  model version TypeSafe reports, the validated choice (including a routing
+  token such as `jev-route:coal:ask`) or how the top-k moved, latency,
+  input/output tokens, cost and fallback reason — never the key, message or
+  passage text.
 
 ## Gate before enabling by default
 

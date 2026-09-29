@@ -117,6 +117,10 @@ export type CoworkPromptOptions = {
   availableTools?: readonly string[]
   /** The work-profile add-on for this request, when work profiles are on. */
   workProfileBlock?: string
+  /** Selected assistant's persona, subordinate to Cowork and project rules. */
+  assistantProfileBlock?: string
+  /** Jev's work-style advice for this turn, never a permission change. */
+  modeSuggestionBlock?: string
   /** The sandbox directory: the only writable location. */
   workspacePath: string | null
   /**
@@ -553,6 +557,10 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   // contract and tool limits, and a profile would contradict them.
   if (opts.workProfileBlock?.trim() && !opts.planMode && !opts.openingInspection) {
     blocks.push(opts.workProfileBlock.trim())
+  }
+  if (!opts.planMode && !opts.openingInspection) {
+    if (opts.assistantProfileBlock?.trim()) blocks.push(opts.assistantProfileBlock.trim())
+    if (opts.modeSuggestionBlock?.trim()) blocks.push(opts.modeSuggestionBlock.trim())
   }
   if (opts.projectInstructions?.trim() || compat.length > 0) {
     blocks.push(

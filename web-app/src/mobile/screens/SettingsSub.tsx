@@ -16,7 +16,7 @@ function NotifyRows() {
   const { data } = useRpc('settings.get', {})
   const prefs = data?.notifications ?? DEFAULT_NOTIFY
   const flip = (k: keyof NotificationPrefs) => () =>
-    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] }).then(() => invalidate(['settings.get']))
+    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
   return <Grp cap="Notify me when">
     <IRow label="An approval is waiting" sw={prefs.approvals} onClick={flip('approvals')} />
     <IRow label="A run finishes" sw={prefs.runFinished} onClick={flip('runFinished')} />
