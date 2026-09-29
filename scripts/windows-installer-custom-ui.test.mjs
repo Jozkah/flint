@@ -37,7 +37,9 @@ test('installer template transformation creates the complete Flint wizard', asyn
   }
   assert.match(generated, /Call FlintMaintenance/)
   assert.doesNotMatch(generated, /always run in passive mode/)
+  assert.doesNotMatch(generated, /flint_workspace/)
   assert.match(generated, /\$FlintDesktopShortcutState = 1/)
+  assert.match(generated, /\$FlintLaunchState = 1[\s\S]*Call RunMainBinary/)
   assert.match(generated, /SetAutoClose false/)
 })
 
