@@ -24,11 +24,15 @@ const config = (over = {}) => ({
   ...over,
 })
 
+// Reaching in on purpose: these are protected seams whose whole job is to be
+// different from the parent's, and both fail silently in production.
 const slotParamsOf = (t: CoworkChatTransport, id: string) =>
   (t as unknown as {
     slotParams: (s?: string) => Record<string, unknown>
   }).slotParams(id)
 
+// janhq/jan#8905: a run is sent with the model its session chose when the run
+// started -- not whatever the global picker says by the time a step goes out.
 describe('the model a Cowork run is sent with', () => {
   const selectionOf = (t: CoworkChatTransport) =>
     (t as unknown as {
@@ -86,6 +90,9 @@ describe('CoworkChatTransport', () => {
     sandboxEnforces.mockReturnValue(true)
   })
 
+  // Sharing slot 0 would have each of an agent turn's many prefills evict the
+  // viewed chat thread's KV cache, and vice versa. Nothing surfaces that but a
+  // slowdown, so it is asserted.
   it('pins to the Cowork slot, not the chat slot', () => {
     const t = new CoworkChatTransport('s1', config())
     const params = slotParamsOf(t, 's1')
@@ -94,6 +101,8 @@ describe('CoworkChatTransport', () => {
     expect(params.thread_id).toBe('cowork:s1')
   })
 
+  // Cowork retrieved memory on every turn and then left the block out of its
+  // own prompt, so nothing remembered ever reached an agent run.
   it('sends the remembered block, after the run instructions, labelled as data', () => {
     const t = new CoworkChatTransport('s1', config({ projectInstructions: 'Use yarn.' }))
     ;(t as unknown as { memorySelection: unknown }).memorySelection = {
@@ -168,6 +177,8 @@ describe('CoworkChatTransport', () => {
     expect(buildCoworkTools).toHaveBeenCalledTimes(1)
   })
 
+  // A config change must not take effect mid-run: it would change the tool JSON
+  // and throw away the prompt prefix on the very next step.
   it('ignores a config change until the freeze is lifted', async () => {
     const t = new CoworkChatTransport('s1', config())
     await t.refreshTools()
@@ -193,6 +204,9 @@ describe('CoworkChatTransport', () => {
     expect(buildCoworkTools).toHaveBeenCalledTimes(2)
   })
 
+  // A Settings toggle is queued while the run is frozen. Neither its tool JSON
+  // nor its system prompt changes until the boundary, so the current run keeps
+  // one stable prefix and the next run gets the new setting.
   it('keeps a web-search toggle out of the active run and applies it at the next boundary', async () => {
     const t = new CoworkChatTransport('s1', config({ webSearch: true }))
     buildCoworkTools.mockResolvedValue({ read: {}, web_search: {}, web_fetch: {} })
@@ -218,6 +232,9 @@ describe('CoworkChatTransport', () => {
     )
   })
 
+  // The parent throws when a window has no user turn. That is right for chat,
+  // where it means eviction ate the question, and wrong for a long agent run
+  // whose recent traffic is all tool results.
   it('does not abort a window whose recent traffic is all tool results', () => {
     const t = new CoworkChatTransport('s1', config())
     expect(() =>
@@ -235,6 +252,8 @@ describe('CoworkChatTransport.advertisedTools', () => {
     sandboxEnforces.mockReturnValue(true)
   })
 
+  // A subagent's allowlist intersects with this, so plan mode and a withheld
+  // `bash` reach children without a second policy check.
   it('reports the set frozen for the run', async () => {
     const t = new CoworkChatTransport('s1', config())
     await t.refreshTools()
@@ -257,6 +276,9 @@ describe('what the run reports it is sending', () => {
   const message = (text: string) =>
     ({ id: 'm', role: 'user', parts: [{ type: 'text', text }] }) as never
 
+  // The reason measurement lives on the transport at all. If the card built its
+  // own idea of the payload, the two would drift and the card would describe a
+  // run that is not happening.
   it('measures the prompt the transport itself would send', () => {
     const t = new CoworkChatTransport('s1', config({ readOnlyFolder: '/repo' }))
     const sent = (
@@ -266,6 +288,7 @@ describe('what the run reports it is sending', () => {
 
     const instructions = measured.categories.instructions
     expect(instructions.known).toBe('estimated')
+    // Same text, so same size: derived from the payload, not reconstructed.
     const expected = Math.round(new TextEncoder().encode(sent).length / 4)
     expect(
       instructions.known !== false ? instructions.tokens : null
@@ -285,6 +308,9 @@ describe('what the run reports it is sending', () => {
   })
 
   it('measures the frozen tool set, not a rebuilt one', async () => {
+    // A run's advertised set is frozen so the KV prefix survives. The reported
+    // tool cost has to follow that same frozen set, or the card would report a
+    // payload the model never received.
     const t = new CoworkChatTransport('s1', config())
     await t.refreshTools()
     const before = t.measureContext([])
