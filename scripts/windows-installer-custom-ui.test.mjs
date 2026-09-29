@@ -5,6 +5,7 @@ import { transformWindowsInstallerTemplate } from './prepare-windows-installer.m
 
 const basePath = new URL('../src-tauri/tauri.bundle.windows.nsis.base.template', import.meta.url)
 const windowsConfigPath = new URL('../src-tauri/tauri.windows.conf.json', import.meta.url)
+const tauriConfigPath = new URL('../src-tauri/tauri.conf.json', import.meta.url)
 const uiPaths = [
   'flint-ui.nsh',
   'flint-ui-runtime.nsh',
@@ -16,6 +17,18 @@ async function readInstallerUi() {
   return (await Promise.all(uiPaths.map((path) => readFile(path, 'utf8')))).join('\n')
 }
 
+async function localTemplateDefaults() {
+  const config = JSON.parse(await readFile(tauriConfigPath, 'utf8'))
+  const parts = String(config.version).split('-', 1)[0].split('.')
+  return {
+    productName: config.productName,
+    version: config.version,
+    versionWithBuild: [...parts, '0', '0', '0', '0'].slice(0, 4).join('.'),
+    mainBinaryName: config.mainBinaryName ?? config.productName,
+    bundleId: config.identifier,
+  }
+}
+
 test('Windows NSIS build is permanently wired to the Flint template', async () => {
   const config = JSON.parse(await readFile(windowsConfigPath, 'utf8'))
   assert.equal(config.bundle.windows.nsis.template, 'tauri.bundle.windows.nsis.template')
@@ -24,7 +37,7 @@ test('Windows NSIS build is permanently wired to the Flint template', async () =
 
 test('installer template transformation creates the complete Flint wizard', async () => {
   const base = await readFile(basePath, 'utf8')
-  const generated = transformWindowsInstallerTemplate(base, base)
+  const generated = transformWindowsInstallerTemplate(base, base, await localTemplateDefaults())
 
   for (const macro of [
     'FLINT_WELCOME_PAGE',
@@ -38,6 +51,12 @@ test('installer template transformation creates the complete Flint wizard', asyn
   assert.match(generated, /Call FlintMaintenance/)
   assert.doesNotMatch(generated, /always run in passive mode/)
   assert.doesNotMatch(generated, /flint_workspace/)
+  assert.doesNotMatch(generated, /jan_(?:productname|version|build|mainbinaryname|bundleid)/)
+  assert.match(generated, /!define PRODUCTNAME "Flint"/)
+  assert.match(generated, /!define MAINBINARYNAME "Flint-Desktop"/)
+  assert.match(generated, /!define VERSION "0\.9\.0"/)
+  assert.match(generated, /!define VERSIONWITHBUILD "0\.9\.0\.0"/)
+  assert.match(generated, /!define BUNDLEID "jan\.ai\.app"/)
   assert.match(generated, /\$FlintDesktopShortcutState = 1/)
   assert.match(generated, /Interactive installs always[\s\S]*completion page, which exclusively owns app launch/)
   assert.doesNotMatch(
@@ -56,7 +75,11 @@ test('template preparation preserves Windows ARM64 retargeting', async () => {
     .replaceAll('\\VC\\Runtimes\\x64', '\\VC\\Runtimes\\arm64')
     .replaceAll('VC_RuntimeMinimumVSU_amd64', 'VC_RuntimeMinimumVSU_arm64')
 
-  const generated = transformWindowsInstallerTemplate(base, armCurrent)
+  const generated = transformWindowsInstallerTemplate(
+    base,
+    armCurrent,
+    await localTemplateDefaults()
+  )
   assert.match(generated, /!define ARCH "arm64"/)
   assert.match(generated, /\\nsis\\arm64\\/)
   assert.match(generated, /aarch64-pc-windows-msvc/)
