@@ -4,6 +4,7 @@ import { CustomChatTransport } from '@/lib/custom-chat-transport'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
+  applyWebSearchToTools,
   buildCoworkTools,
   coworkToolSignature,
   type CoworkToolOptions,
@@ -150,6 +151,23 @@ export class CoworkChatTransport extends CustomChatTransport {
   /** Applied at the next run: changing it mid-run would invalidate the prefix. */
   setConfig(config: CoworkRunConfig) {
     this.config = config
+  }
+
+  /**
+   * A Settings toggle (web search) mid-run.
+   *
+   * Settings apply at the next run, like a mode change: the advertised set is
+   * frozen for a run's lifetime, so the toggle must not rebuild it. The web
+   * tools are the only part of the set a Settings toggle touches, so they are
+   * added to or removed from the frozen record in place, and the next run
+   * re-reads the setting from scratch.
+   */
+  setWebSearch(webSearch: boolean) {
+    this.config = { ...this.config, webSearch }
+    if (this.frozenTools) {
+      this.frozenTools = applyWebSearchToTools(this.frozenTools, webSearch)
+      this.tools = this.frozenTools
+    }
   }
 
   /** Drop the freeze so the next run re-reads the config. */
