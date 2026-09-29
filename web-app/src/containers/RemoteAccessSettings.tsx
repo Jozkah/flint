@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from '@/lib/react-compat'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { Segmented } from '@/components/ui/segmented'
@@ -208,7 +208,6 @@ export function RemoteAccessSettings({
               checked={cfg.allowApprovals}
               onCheckedChange={(allowApprovals) =>
                 void save(
-                  // Turning approvals off takes "Always allow" with it.
                   allowApprovals ? { allowApprovals } : { allowApprovals, allowAlwaysAllow: false }
                 )
               }
@@ -315,10 +314,12 @@ export function PairPhoneDialog({
   const [deadline, setDeadline] = useState(0)
   const [now, setNow] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
   const lastPaired = useRemoteAccess((s) => s.lastPaired)
 
   const start = useCallback(async () => {
     setError(null)
+    setCopied(false)
     useRemoteAccess.getState().setLastPaired(null)
     try {
       const p = await api.startPairing()
@@ -339,6 +340,17 @@ export function PairPhoneDialog({
     return () => clearInterval(timer)
   }, [])
 
+  const copyPairingLink = async () => {
+    if (!pairing || expired) return
+    try {
+      await navigator.clipboard.writeText(pairing.url)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      setError('Could not copy the pairing link. Select the link below and copy it manually.')
+    }
+  }
+
   const close = () => {
     if (!lastPaired) void api.cancelPairing().catch(() => {})
     onClose()
@@ -351,7 +363,9 @@ export function PairPhoneDialog({
       <DialogContent data-testid="remote-pair-dialog">
         <DialogHeader>
           <DialogTitle>{t('remote:pairTitle')}</DialogTitle>
-          <DialogDescription>{t('remote:pairScan')}</DialogDescription>
+          <DialogDescription>
+            Scan the QR code with your phone, or copy the pairing link and open it there.
+          </DialogDescription>
         </DialogHeader>
         {lastPaired ? (
           <p className="text-sm" data-testid="remote-pair-done">
@@ -360,11 +374,37 @@ export function PairPhoneDialog({
         ) : error ? (
           <p className="text-sm text-destructive">{error}</p>
         ) : pairing ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-4">
             {expired ? (
               <p className="text-sm text-muted-foreground">{t('remote:pairExpired')}</p>
             ) : (
               <QrCode value={pairing.url} label={t('remote:pairTitle')} />
+            )}
+            {!expired && (
+              <div className="flex w-full flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium">Pairing link</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    data-testid="remote-copy-pair-link"
+                    onClick={() => void copyPairingLink()}
+                  >
+                    {copied ? 'Copied' : 'Copy link'}
+                  </Button>
+                </div>
+                <input
+                  readOnly
+                  aria-label="Pairing link"
+                  value={pairing.url}
+                  onFocus={(e) => e.currentTarget.select()}
+                  className="w-full rounded border border-border bg-card px-2 py-2 font-mono text-[11px]"
+                />
+                <span className="text-[11px] text-muted-foreground">
+                  Open this exact link on the phone you want to connect. You will still confirm the matching number on this computer.
+                </span>
+              </div>
             )}
             <div className="flex flex-col items-center">
               <span className="text-xs text-muted-foreground">{t('remote:pairCode')}</span>
