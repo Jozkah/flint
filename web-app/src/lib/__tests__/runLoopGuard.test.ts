@@ -26,6 +26,29 @@ it('lets ordinary work through', () => {
   ).toEqual({ tripped: false })
 })
 
+it('stops tiny sequential reads instead of inching through one file forever', () => {
+  const page = (offset: number) =>
+    call({ input: { path: 'ChatInput.tsx', offset, limit: 5 } })
+
+  expect(detectLoop([page(200), page(205), page(210)])).toEqual({ tripped: false })
+  expect(detectLoop([page(200), page(205), page(210), page(215)])).toMatchObject({
+    tripped: true,
+    reason: 'progressive-read',
+  })
+})
+
+it('allows useful read windows and non-sequential targeted reads', () => {
+  const page = (offset: number, limit: number) =>
+    call({ input: { path: 'a.ts', offset, limit } })
+
+  expect(detectLoop([page(1, 200), page(201, 200), page(401, 200), page(601, 200)])).toEqual({
+    tripped: false,
+  })
+  expect(detectLoop([page(10, 5), page(80, 5), page(160, 5), page(250, 5)])).toEqual({
+    tripped: false,
+  })
+})
+
 it('stops the second failure after the shell said not to retry', () => {
   const nul = (n: number) =>
     call({
@@ -111,8 +134,6 @@ describe('non-transient blockers', () => {
 })
 
 it('stops the same call made over and over', () => {
-  // Three is ordinary -- re-reading a file after editing it, running the same
-  // test twice while fixing it. Five is a model going in circles.
   expect(detectLoop([call(), call(), call()])).toEqual({ tripped: false })
   const verdict = detectLoop([call(), call(), call(), call(), call()])
   expect(verdict).toMatchObject({ tripped: true, reason: 'repeated-call' })
@@ -225,6 +246,6 @@ describe('policy refusals', () => {
       failed: true,
       error: `[sandbox: blocked write ${n}]`,
     })
-    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).tripped).toBe(false)
+    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).toEqual({ tripped: false })
   })
 })
