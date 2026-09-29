@@ -1,70 +1,32 @@
-// Settings sub-pages. Values are read from the computer (`settings.get`,
-// `system.info`, `/me`); changing one asks the computer (`settings.set`),
-// which says so when it cannot yet. Phone-only choices (theme) apply here.
+// Phone settings. Only settings with an established safe remote setter are
+// interactive; desktop-only/security-sensitive rows are visibly read-only.
 import type { ReactNode } from 'react'
 import type { NotificationPrefs, SettingsSnapshot } from '@/lib/remote/protocol'
 import { DEFAULT_NOTIFY } from '../state/controls'
 import { I } from '../ui/icons'
 import { Empty, FlintMark, TypeSafeMark } from '../ui/bits'
 import { Grp, IRow } from '../ui/ios'
-import { LEVELS } from '../shell/labels'
-import { act, app, back, client, go, notYet, openSheet, setTheme, toast, useApp } from '../state/app'
+import { act, app, client, go, openSheet, setTheme, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
 
-/** Settings the phone may change are the ones with a plain desktop setter;
- * the rest say where they are changed. */
-const set = (key: string, value: unknown) => () => {
-  if (key === 'webSearch.enabled') {
-    void act('settings.set', { key: 'webSearch', value: Boolean(value) }, value ? 'Web search on' : 'Web search off').then(() =>
-      invalidate(['settings.get'])
-    )
-    return
-  }
-  toast(
-    key.startsWith('remote.')
-      ? 'What phones may do is set on the computer, in Settings › Remote access'
-      : 'This setting is changed on the computer'
-  )
-}
-/** Kept on the computer for this phone, for the push notifications to come. */
+const readOnly = (label: ReactNode, val?: ReactNode, sub = 'Change on the computer') => <IRow label={label} val={val} sub={sub} />
+
 function NotifyRows() {
   const { data } = useRpc('settings.get', {})
   const prefs = data?.notifications ?? DEFAULT_NOTIFY
   const flip = (k: keyof NotificationPrefs) => () =>
-    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
-  return (
-    <Grp cap="Notify me when">
-      <IRow label="An approval is waiting" sw={prefs.approvals} onClick={flip('approvals')} />
-      <IRow label="A run finishes" sw={prefs.runFinished} onClick={flip('runFinished')} />
-      <IRow label="A run fails or stops" sw={prefs.errors} onClick={flip('errors')} />
-      <IRow label="A Room is waiting for you" sw={prefs.roomTurns} onClick={flip('roomTurns')} />
-    </Grp>
-  )
+    void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] }).then(() => invalidate(['settings.get']))
+  return <Grp cap="Notify me when">
+    <IRow label="An approval is waiting" sw={prefs.approvals} onClick={flip('approvals')} />
+    <IRow label="A run finishes" sw={prefs.runFinished} onClick={flip('runFinished')} />
+    <IRow label="A run fails or stops" sw={prefs.errors} onClick={flip('errors')} />
+    <IRow label="A Room is waiting for you" sw={prefs.roomTurns} onClick={flip('roomTurns')} />
+  </Grp>
 }
 
-const later = (what: string) => () => notYet(what)
-const cap = (v?: string) => (v ? v.charAt(0).toUpperCase() + v.slice(1) : '—')
-
-function Lvl({ value, onPick }: { value: string; onPick: (l: string) => void }) {
-  return (
-    <div className="lvl">
-      {LEVELS.map(([l, hint]) => (
-        <button key={l} type="button" aria-pressed={l === value} onClick={() => onPick(l)}>
-          {l}
-          <small>{hint}</small>
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function OnComputer({ what }: { what: string }) {
-  return (
-    <Grp>
-      <Empty icon={<I n="monitor" size={18} />}>{what} are managed on the computer for now.</Empty>
-    </Grp>
-  )
+function OnComputer({ what, children }: { what: string; children?: ReactNode }) {
+  return <><Grp><Empty icon={<I n="monitor" size={18} />}>{what} are managed on the computer.</Empty></Grp>{children}</>
 }
 
 type Page = [title: string, body: (s: SettingsSnapshot | undefined) => ReactNode]
@@ -72,75 +34,37 @@ type Page = [title: string, body: (s: SettingsSnapshot | undefined) => ReactNode
 function RemotePage({ s }: { s: SettingsSnapshot | undefined }) {
   const me = useApp((st) => st.me)
   const unpair = async () => {
-    try {
-      await client().unpair()
-    } catch {
-      // Forgotten here either way.
-    }
+    try { await client().unpair() } catch { /* local forget still proceeds */ }
     app.set({ auth: 'unpaired' })
     toast('This phone is no longer paired')
   }
-  return (
-    <>
-      <Grp foot="Paired phones can use Flint on the computer while it runs.">
-        <IRow label="Remote access" sw onClick={later('Turning remote access off')} />
-      </Grp>
-      <Grp cap="This phone">
-        <IRow label="Name" val={me?.name ?? '—'} onClick={later('Renaming this phone')} />
-        <IRow label="Paired" val={me ? new Date(me.pairedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'} />
-        <IRow label="Reachable through" val={reachLabel()} />
-      </Grp>
-      <Grp
-        cap="Approvals"
-        foot={
-          s?.remote
-            ? s.remote.allowApprovals
-              ? s.remote.allowAlwaysAllow
-                ? 'You can approve any action from here, including standing grants.'
-                : 'You can allow or deny actions from here, but not grant "Always allow".'
-              : 'Approvals from phones are turned off on the computer.'
-            : 'Set on the computer, in Settings › Remote access.'
-        }
-      >
-        <IRow label="Allow approvals from this phone" sw={s?.remote?.allowApprovals ?? false} onClick={set('remote.allowApprovals', !s?.remote?.allowApprovals)} />
-        <IRow label='Allow "Always allow" from this phone' sw={s?.remote?.allowAlwaysAllow ?? false} onClick={set('remote.allowAlwaysAllow', !s?.remote?.allowAlwaysAllow)} />
-      </Grp>
-      <Grp foot="The computer forgets this phone. Pair again with a new QR code.">
-        <IRow label={<span style={{ color: 'var(--destructive)' }}>Unpair this phone</span>} onClick={() => void unpair()} testId="unpair" />
-      </Grp>
-    </>
-  )
+  return <>
+    <Grp cap="Remote access" foot="Listening, network interface and phone approval policy are security settings and stay on the computer.">
+      {readOnly('Remote access', 'On', 'Managed on the computer')}
+      {readOnly('Allow approvals from phones', s?.remote?.allowApprovals ? 'On' : 'Off', 'Managed on the computer')}
+      {readOnly('Allow “Always allow” from phones', s?.remote?.allowAlwaysAllow ? 'On' : 'Off', 'Managed on the computer')}
+    </Grp>
+    <Grp cap="This phone" foot="The paired-device name is owned by the computer’s pairing record; renaming it is not exposed remotely.">
+      {readOnly('Name', me?.name ?? '—', 'Read-only on this phone')}
+      <IRow label="Paired" val={me ? new Date(me.pairedAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : '—'} />
+      <IRow label="Reachable through" val={reachLabel()} />
+    </Grp>
+    <Grp foot="The computer forgets this phone. Pair again with a new QR code.">
+      <IRow label={<span style={{ color: 'var(--destructive)' }}>Unpair this phone</span>} onClick={() => void unpair()} testId="unpair" />
+    </Grp>
+  </>
 }
 
 function HardwarePage() {
   const { data } = useRpc('system.info', {})
   if (!data) return <Empty>Loading…</Empty>
   const gb = (mb: number) => `${Math.round(mb / 1024)} GB`
-  return (
-    <>
-      <Grp cap="Operating System">
-        <IRow label="Name" val={data.os || '—'} />
-      </Grp>
-      <Grp cap="CPU">
-        <IRow label="Model" val={data.cpu.name || '—'} />
-        <IRow label="Architecture" val={data.cpu.arch || '—'} />
-        <IRow label="Cores" val={String(data.cpu.cores || '—')} />
-        {data.cpu.extensions.length > 0 && (
-          <IRow label="Instructions" val={data.cpu.extensions.filter((e) => /avx|neon|sve/i.test(e)).slice(0, 3).join(', ') || data.cpu.extensions.slice(0, 3).join(', ')} />
-        )}
-      </Grp>
-      {data.gpus.length > 0 && (
-        <Grp cap="GPU">
-          {data.gpus.map((g) => (
-            <IRow key={g.name} label={g.name} val={`${gb(g.vram)}${g.driver ? ` · ${g.driver}` : ''}`} />
-          ))}
-        </Grp>
-      )}
-      <Grp cap="Memory">
-        <IRow label="RAM" val={data.ram.total ? gb(data.ram.total) : '—'} />
-      </Grp>
-    </>
-  )
+  return <>
+    <Grp cap="Operating System"><IRow label="Name" val={data.os || '—'} /></Grp>
+    <Grp cap="CPU"><IRow label="Model" val={data.cpu.name || '—'} /><IRow label="Architecture" val={data.cpu.arch || '—'} /><IRow label="Cores" val={String(data.cpu.cores || '—')} /></Grp>
+    {data.gpus.length > 0 && <Grp cap="GPU">{data.gpus.map((g) => <IRow key={g.name} label={g.name} val={`${gb(g.vram)}${g.driver ? ` · ${g.driver}` : ''}`} />)}</Grp>}
+    <Grp cap="Memory"><IRow label="RAM" val={data.ram.total ? gb(data.ram.total) : '—'} /></Grp>
+  </>
 }
 
 function ComputerPage() {
@@ -148,246 +72,57 @@ function ComputerPage() {
   const status = useRpc('status', {})
   const sys = useRpc('system.info', {})
   const conn = useApp((st) => st.conn)
-  return (
-    <>
-      <Grp cap="Status">
-        <IRow label="Connection" val={`${reachLabel()} · ${conn === 'connected' ? 'connected' : conn}`} />
-        <IRow label="Address" val={location.host} />
-        <IRow label="Models loaded" val={String(status.data?.modelsLoaded ?? '—')} />
-        <IRow label="Local API" val={sys.data ? (sys.data.localApi.running ? 'On' : 'Off') : '—'} />
-      </Grp>
-      <Grp>
-        <IRow icon="x-monitor" label="System Monitor" onClick={() => go({ name: 'system' })} />
-        <IRow icon="x-refresh" label="Switch computer" onClick={() => openSheet('conn')} />
-        <IRow icon="x-plus" label="Pair another computer" onClick={() => toast('Scan the QR code in Settings › Remote access on the other computer')} />
-      </Grp>
-      <p className="muted" style={{ fontSize: 12, padding: '0 16px', margin: 0 }}>
-        {computer}
-      </p>
-    </>
-  )
+  return <>
+    <Grp cap="Status"><IRow label="Connection" val={`${reachLabel()} · ${conn === 'connected' ? 'connected' : conn}`} /><IRow label="Address" val={location.host} /><IRow label="Models loaded" val={String(status.data?.modelsLoaded ?? '—')} /><IRow label="Local API" val={sys.data ? (sys.data.localApi.running ? 'On' : 'Off') : '—'} /></Grp>
+    <Grp><IRow icon="x-monitor" label="System Monitor" onClick={() => go({ name: 'system' })} /><IRow icon="x-refresh" label="Connection details" onClick={() => openSheet('conn')} /></Grp>
+    <p className="muted" style={{ fontSize: 12, padding: '0 16px', margin: 0 }}>{computer}</p>
+  </>
 }
 
 function AppearancePage() {
   const theme = useApp((st) => st.theme)
-  return (
-    <>
-      <Grp cap="Theme" foot="Applies to this phone. The accent colour follows the computer.">
-        <IRow label="Match phone" val={theme === 'system' ? '✓' : undefined} onClick={() => setTheme('system')} />
-        <IRow label="Dark" val={theme === 'dark' ? '✓' : undefined} onClick={() => setTheme('dark')} />
-        <IRow label="Light" val={theme === 'light' ? '✓' : undefined} onClick={() => setTheme('light')} />
-      </Grp>
-    </>
-  )
+  return <Grp cap="Theme" foot="Applies to this phone. The accent colour follows the computer.">
+    <IRow label="Match phone" val={theme === 'system' ? '✓' : undefined} onClick={() => setTheme('system')} />
+    <IRow label="Dark" val={theme === 'dark' ? '✓' : undefined} onClick={() => setTheme('dark')} />
+    <IRow label="Light" val={theme === 'light' ? '✓' : undefined} onClick={() => setTheme('light')} />
+  </Grp>
 }
 
 function ReasoningPage() {
-  const budget = useApp((st) => st.composer.budget)
   const reason = useApp((st) => st.composer.reason)
-  const pick = (l: string) => app.set((st) => ({ composer: { ...st.composer, budget: l } }))
-  return (
-    <>
-      <Grp cap="New chats from this phone">
-        <IRow label="Reasoning" val={reason === 'auto' ? 'Auto' : reason === 'on' ? 'On' : 'Off'} onClick={() => openSheet('reason', { for: 'home' })} />
-      </Grp>
-      <div className="igrp">
-        <div className="cap">Thinking budget · llama.cpp</div>
-        <div className="ilist">
-          <Lvl value={budget} onPick={pick} />
-        </div>
-        <div className="foot2">A share of the model's live context window. Chat, Cowork and Rooms defaults are set on the computer.</div>
-      </div>
-    </>
-  )
+  return <>
+    <Grp cap="New chats from this phone"><IRow label="Reasoning" val={reason === 'auto' ? 'Auto' : reason === 'on' ? 'On' : 'Off'} onClick={() => openSheet('reason', { for: 'home' })} /></Grp>
+    <Grp foot="Per-model thinking budgets and provider-specific reasoning effort are persisted by the desktop model settings and are not duplicated as phone-only state.">{readOnly('Thinking budget / effort', 'Desktop model setting', 'Read-only on this phone')}</Grp>
+  </>
 }
 
 const PAGES: Record<string, Page> = {
-  general: [
-    'General',
-    (s) => (
-      <>
-        <Grp cap="Data folder" foot="Location for messages, downloaded models and other data.">
-          <IRow label="App Data" sub="On the computer" onClick={later('Changing the data folder')} />
-          <IRow label="App Logs" sub="View detailed logs of the App." onClick={() => go({ name: 'system' })} />
-        </Grp>
-        <Grp>
-          <IRow label="Spell Check" sw={s?.spellCheck ?? false} onClick={set('general.spellCheck', !s?.spellCheck)} />
-          <IRow label="Language" val={s?.language ?? '—'} onClick={later('Changing the language')} />
-        </Grp>
-        <Grp foot="Restores Flint to its initial state, erasing all models and chat history. Only from the computer.">
-          <IRow label="Reset To Factory Settings" onClick={later('Resetting Flint')} />
-        </Grp>
-      </>
-    ),
-  ],
+  general: ['General', (s) => <><Grp cap="Computer settings">{readOnly('App Data', 'On the computer')}{readOnly('Spell Check', s?.spellCheck ? 'On' : 'Off')}{readOnly('Language', s?.language ?? '—')}{readOnly('Reset To Factory Settings', undefined, 'Computer only')}</Grp></>],
   assistants: ['Assistants', () => <OnComputer what="Assistants" />],
   attachments: ['Attachments', () => <OnComputer what="Attachment settings" />],
   memory: ['Memory', () => <OnComputer what="Memories" />],
   perms: ['Permissions', () => <OnComputer what="Standing grants and default modes" />],
-  shortcuts: [
-    'Shortcuts',
-    () => (
-      <Grp foot="Keyboard shortcuts on the computer.">
-        <IRow label="Command Palette" val="Ctrl K" />
-        <IRow label="New Chat" val="Ctrl N" />
-        <IRow label="Toggle sidebar" val="Ctrl B" />
-        <IRow label="Stop generating" val="Esc" />
-      </Grp>
-    ),
-  ],
-  websearch: [
-    'Web Search',
-    (s) => (
-      <>
-        <Grp foot="Advertise the web_search and web_fetch tools to models that support tool use.">
-          <IRow label="Enable Web Search" sw={s?.webSearch.enabled ?? false} onClick={set('webSearch.enabled', !s?.webSearch.enabled)} />
-        </Grp>
-        <Grp cap="Search Provider" foot="Choose the backend that answers web_search and web_fetch.">
-          <IRow label="Provider" val={s?.webSearch.provider ?? 'Default'} onClick={later('Changing the search provider')} />
-        </Grp>
-      </>
-    ),
-  ],
+  shortcuts: ['Shortcuts', () => <Grp foot="Keyboard shortcuts on the computer."><IRow label="Command Palette" val="Ctrl K" /><IRow label="New Chat" val="Ctrl N" /><IRow label="Toggle sidebar" val="Ctrl B" /><IRow label="Stop generating" val="Esc" /></Grp>],
+  websearch: ['Web Search', (s) => <><Grp foot="Advertise web tools to models that support tool use."><IRow label="Enable Web Search" sw={s?.webSearch.enabled ?? false} onClick={() => void act('settings.set', { key: 'webSearch', value: !s?.webSearch.enabled }, !s?.webSearch.enabled ? 'Web search on' : 'Web search off').then(() => invalidate(['settings.get']))} /></Grp><Grp cap="Search Provider">{readOnly('Provider', s?.webSearch.provider ?? 'Default')}</Grp></>],
   claudecode: ['Claude Code', () => <OnComputer what="Claude Code models and configuration" />],
-  jev: [
-    'Jev',
-    (s) => (
-      <>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '4px 0 2px' }}>
-          <TypeSafeMark size={52} />
-          <b style={{ fontSize: 17 }}>Jev decision support</b>
-          <span className="muted" style={{ fontSize: 12.5 }}>
-            by TypeSafe
-          </span>
-        </div>
-        <div className="igrp">
-          <div className="foot2" style={{ fontSize: 13 }}>
-            Optional decision support from TypeSafe's Jev model. Off by default; Flint's own behaviour stays in charge. Jev never approves a tool.
-          </div>
-        </div>
-        <Grp cap="Connection" foot="The key is kept on the computer and never sent to the phone.">
-          <IRow icon="x-key" label="TypeSafe API key" val="On the computer" onClick={later('Setting the API key')} />
-        </Grp>
-        <Grp cap="Features">
-          <IRow label="Skill suggestions" val={cap(s?.jev?.skills)} onClick={set('jev.skills', null)} />
-          <IRow label="Rerank retrieved sources" val={cap(s?.jev?.rerank)} onClick={set('jev.rerank', null)} />
-        </Grp>
-      </>
-    ),
-  ],
+  jev: ['Jev', (s) => <><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '4px 0 2px' }}><TypeSafeMark size={52} /><b style={{ fontSize: 17 }}>Jev decision support</b><span className="muted" style={{ fontSize: 12.5 }}>by TypeSafe</span></div><Grp cap="Connection">{readOnly('TypeSafe API key', 'On the computer')}</Grp><Grp cap="Features">{readOnly('Skill suggestions', s?.jev?.skills ?? '—')}{readOnly('Rerank retrieved sources', s?.jev?.rerank ?? '—')}</Grp></>],
   extensions: ['Extensions', () => <OnComputer what="Plugins and extensions" />],
-  localapi: [
-    'Local API Server',
-    (s) => (
-      <>
-        <Grp foot="Run an OpenAI-compatible server locally on the computer.">
-          <IRow label="Local API Server" sw={s?.localApi.enabled ?? false} onClick={set('localApi.enabled', !s?.localApi.enabled)} />
-        </Grp>
-        <Grp cap="Server">
-          <IRow label="Host" val={s?.localApi.host ?? '—'} />
-          <IRow label="Port" val={s ? String(s.localApi.port) : '—'} />
-          <IRow label="API prefix" val={s?.localApi.prefix ?? '—'} />
-          <IRow label="CORS" sw={s?.localApi.cors ?? false} onClick={set('localApi.cors', !s?.localApi.cors)} />
-          <IRow label="API key" val={s ? (s.localApi.hasKey ? 'Set' : 'Not set') : '—'} />
-        </Grp>
-      </>
-    ),
-  ],
-  proxy: [
-    'HTTPS Proxy',
-    (s) => (
-      <>
-        <Grp>
-          <IRow label="Proxy" sw={s?.proxy.enabled ?? false} onClick={set('proxy.enabled', !s?.proxy.enabled)} />
-        </Grp>
-        <Grp cap="Proxy URL" foot="The URL and port of your proxy server.">
-          <IRow label={s?.proxy.url || 'Not set'} onClick={later('Editing the proxy')} />
-        </Grp>
-        <Grp>
-          <IRow label="Verify SSL certificates" sw={s?.proxy.verifySsl ?? true} onClick={set('proxy.verifySsl', !s?.proxy.verifySsl)} />
-          <IRow label="No proxy for" val={s?.proxy.noProxy || '—'} />
-        </Grp>
-      </>
-    ),
-  ],
+  localapi: ['Local API Server', (s) => <><Grp cap="Status">{readOnly('Local API Server', s?.localApi.enabled ? 'On' : 'Off', 'Managed on the computer')}</Grp><Grp cap="Server"><IRow label="Host" val={s?.localApi.host ?? '—'} /><IRow label="Port" val={s ? String(s.localApi.port) : '—'} /><IRow label="API prefix" val={s?.localApi.prefix ?? '—'} /><IRow label="CORS" val={s?.localApi.cors ? 'On' : 'Off'} /><IRow label="API key" val={s ? (s.localApi.hasKey ? 'Set' : 'Not set') : '—'} /></Grp></>],
+  proxy: ['HTTPS Proxy', (s) => <Grp cap="Proxy" foot="Proxy changes stay on the computer because they affect all providers and network traffic.">{readOnly('Enabled', s?.proxy.enabled ? 'On' : 'Off')}{readOnly('Proxy URL', s?.proxy.url || 'Not set')}{readOnly('Verify SSL certificates', s?.proxy.verifySsl ? 'On' : 'Off')}<IRow label="No proxy for" val={s?.proxy.noProxy || '—'} /></Grp>],
   hardware: ['Hardware', () => <HardwarePage />],
-  agenttools: [
-    'Agent Tools',
-    (s) => (
-      <Grp foot="Give models a private scratch workspace for each conversation, plus memories and skills kept in your Flint data folder.">
-        <IRow label="Enable Agent Tools" sw={s?.agentTools ?? false} onClick={set('agentTools.enabled', !s?.agentTools)} />
-      </Grp>
-    ),
-  ],
-  help: [
-    'Help & feedback',
-    () => (
-      <Grp>
-        <IRow icon="headset" label="Report a problem" onClick={() => toast('Report problems from Help on the computer')} />
-        <IRow icon="news" label="What's new" onClick={later("What's new")} />
-      </Grp>
-    ),
-  ],
-  about: [
-    'About Flint',
-    (s) => (
-      <>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}>
-          <FlintMark size={72} />
-          <b style={{ fontSize: 20 }}>Flint</b>
-          <span className="muted">Version {s?.version ?? VERSION}</span>
-        </div>
-        <Grp>
-          <IRow label="Phone app" val={VERSION} />
-          <IRow label="Fork of Jan" val="janhq/jan" />
-        </Grp>
-      </>
-    ),
-  ],
+  agenttools: ['Agent Tools', (s) => <Grp foot="Agent Tools grants workspace capabilities and is managed on the computer.">{readOnly('Enable Agent Tools', s?.agentTools ? 'On' : 'Off', 'Computer only')}</Grp>],
+  help: ['Help & feedback', () => <OnComputer what="Problem reports and release notes" />],
+  about: ['About Flint', (s) => <><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}><FlintMark size={72} /><b style={{ fontSize: 20 }}>Flint</b><span className="muted">Version {s?.version ?? VERSION}</span></div><Grp><IRow label="Phone app" val={VERSION} /><IRow label="Fork of Jan" val="janhq/jan" /></Grp></>],
   computer: ['Computer', () => <ComputerPage />],
   remote: ['Remote access', (s) => <RemotePage s={s} />],
-  notifs: [
-    'Notifications',
-    () => (
-      <>
-        <Grp foot="Push notifications, even with Flint closed on this phone, come in a later update.">
-          <IRow label="Show alerts while Flint is open" sw onClick={later('Turning alerts off')} />
-        </Grp>
-        <NotifyRows />
-      </>
-    ),
-  ],
+  notifs: ['Notifications', () => <><NotifyRows /><Grp foot="Push notifications while the PWA is closed are not enabled yet.">{readOnly('Background push', 'Not available', 'No inactive control')}</Grp></>],
   appearance: ['Appearance', () => <AppearancePage />],
-  sound: [
-    'Sound & haptics',
-    () => (
-      <Grp foot="Sounds and haptics for alerts on this phone arrive with push notifications, in a later update.">
-        <IRow label="Haptics" sw={false} onClick={later('Haptics')} />
-      </Grp>
-    ),
-  ],
+  sound: ['Sound & haptics', () => <OnComputer what="Sounds and haptics" />],
   reasoning: ['Reasoning & thinking', () => <ReasoningPage />],
 }
 
 export default function SettingsSub({ sub }: { sub: string }) {
   const { data } = useRpc('settings.get', {})
   const page = PAGES[sub]
-  return (
-    <>
-      <div className="top">
-        <button type="button" className="navback" onClick={back}>
-          <I n="chevl" />
-          Settings
-        </button>
-        <div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}>
-          <b>{page?.[0] ?? 'Settings'}</b>
-        </div>
-      </div>
-      <div className="scroll" style={{ padding: 0 }}>
-        <div className="ios" style={{ paddingTop: 8 }}>
-          {page ? page[1](data) : <Empty>Nothing here.</Empty>}
-        </div>
-      </div>
-    </>
-  )
+  return <><div className="top"><button type="button" className="navback" onClick={() => history.length > 1 ? history.back() : go({ name: 'settings' })}><I n="chevl" />Settings</button><div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}><b>{page?.[0] ?? 'Settings'}</b></div></div><div className="scroll" style={{ padding: 0 }}><div className="ios" style={{ paddingTop: 8 }}>{page ? page[1](data) : <Empty>Nothing here.</Empty>}</div></div></>
 }

@@ -1,0 +1,90 @@
+/* Mobile UX corrections layered after mobile.css.
+ * Keep these overrides small and explicit so the phone surface has one
+ * consistent content gutter without disturbing the desktop design tokens. */
+
+:root {
+  --mobile-gutter: clamp(18px, 4.8vw, 22px);
+  --mobile-gutter-tight: clamp(16px, 4.2vw, 20px);
+}
+
+/* The original draft used 8–14px in several primary surfaces. Give text and
+ * controls breathing room while the .app safe-area padding continues to keep
+ * us clear of notches/rounded landscape corners. */
+.top {
+  min-height: 54px;
+  padding: 6px var(--mobile-gutter-tight);
+  gap: 4px;
+}
+
+.crumb {
+  padding-left: 0;
+}
+
+.subbar {
+  padding-left: var(--mobile-gutter);
+  padding-right: var(--mobile-gutter);
+  padding-bottom: 10px;
+}
+
+.scroll {
+  padding: 10px var(--mobile-gutter) 20px;
+}
+
+.composer {
+  padding-left: var(--mobile-gutter-tight);
+  padding-right: var(--mobile-gutter-tight);
+  padding-bottom: calc(12px + var(--sab));
+}
+
+.cbox {
+  border-radius: 18px;
+  padding-left: 14px;
+  padding-right: 10px;
+}
+
+/* Loaded history should be stable when a thread opens. The previous generic
+ * .msg animation replayed for every historical message and made a populated
+ * chat look like it was blinking/repainting. New streamed content already has
+ * its own live affordances, so history does not need an entrance animation. */
+.msg {
+  animation: none;
+}
+
+/* Comfortable targets on touch devices. */
+.ib {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+
+.macts .ib {
+  width: 36px;
+  height: 36px;
+}
+
+.btn {
+  min-height: 36px;
+}
+
+/* Pairing is a full-screen first-run flow: cap line length but retain generous
+ * side spacing on small phones. */
+.pair {
+  width: min(100%, 480px);
+  margin: 0 auto;
+  padding: 32px max(24px, var(--mobile-gutter));
+  gap: 18px;
+}
+
+.pair .field input {
+  min-height: 24px;
+  padding: 12px 14px;
+}
+
+/* Avoid motion-heavy UI for users who explicitly request reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

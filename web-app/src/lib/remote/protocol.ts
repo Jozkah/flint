@@ -137,6 +137,8 @@ export type RoomParticipant = {
   model: string
   provider: string
   toolAccess: 'none' | 'read' | 'edit'
+  /** Persisted participant reasoning override when one exists. */
+  reasoning?: { mode?: ReasoningMode; level?: string }
 }
 
 export type RoomDetail = {
@@ -148,7 +150,7 @@ export type RoomDetail = {
   roomStatus: string
   mode: 'round-robin' | 'user-selected' | 'moderator-selected'
   participants: RoomParticipant[]
-  moderator: { enabled: boolean; name: string; model: string | null }
+  moderator: { enabled: boolean; name: string; model: string | null; provider?: string }
   nextSpeakerId: string | null
   round: number
   folder: string | null
@@ -256,6 +258,33 @@ export type ModelRef = { id: string; provider: string }
 export type ReasoningMode = 'auto' | 'on' | 'off'
 export type CoworkModeId = CoworkDetail['mode']
 export type CoworkAccessId = CoworkDetail['access']
+
+export type RoomCreateParticipant = {
+  name: string
+  role: string
+  model: ModelRef
+  toolAccess: 'none' | 'read' | 'edit'
+  reasoning?: { mode?: ReasoningMode; level?: string }
+}
+export type RoomCreateParams = {
+  title: string
+  objective?: string
+  mode?: RoomDetail['mode']
+  participants: RoomCreateParticipant[]
+  moderator?: { enabled: boolean; name?: string; model?: ModelRef }
+}
+export type RoomUpdateParams = {
+  id: string
+  patch: {
+    title?: string
+    objective?: string
+    mode?: RoomDetail['mode']
+    participants?: Array<{ id: string; model?: ModelRef; reasoning?: { mode?: ReasoningMode; level?: string } }>
+    moderator?: { enabled?: boolean; name?: string; model?: ModelRef }
+    limits?: Partial<RoomDetail['limits']>
+  }
+}
+export type RoomMutationResult = { ok: true; id: string }
 
 /** Every send carries a `clientId` the phone makes once per message: a retry
  * after a dropped connection sends the same one, and the computer answers it
@@ -445,6 +474,9 @@ export type RemoteMethods = {
   'run.stop': { params: RunStopParams; result: RunStopResult }
   'room.send': { params: RoomSendParams; result: SendResult }
   'room.control': { params: RoomControlParams; result: { ok: true } }
+  'room.create': { params: RoomCreateParams; result: RoomMutationResult }
+  'room.update': { params: RoomUpdateParams; result: RoomMutationResult }
+  'room.delete': { params: IdParams; result: { ok: true } }
   'settings.set': { params: SettingsSetParams; result: { ok: true } }
   /** `scope: 'always'` needs "Allow 'Always allow' from phones" (checked by the server too). */
   'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }

@@ -51,8 +51,7 @@ export function toolStepsOf(
     const part = raw as ToolLikePart
     const isTool = part.type === 'dynamic-tool' || part.type.startsWith('tool-')
     if (!isTool) continue
-    const name =
-      part.type === 'dynamic-tool' ? (part.toolName ?? 'tool') : part.type.slice('tool-'.length)
+    const name = part.type === 'dynamic-tool' ? (part.toolName ?? 'tool') : part.type.slice('tool-'.length)
     const id = part.toolCallId ?? `${message.id}:${out.length}`
     const isAwaiting = awaiting.has(id)
     const failed =
@@ -70,11 +69,7 @@ export function toolStepsOf(
     out.push({
       id,
       name,
-      kind: toolKind({
-        name,
-        state: failed ? 'output-error' : part.state,
-        awaitingApproval: isAwaiting,
-      }),
+      kind: toolKind({ name, state: failed ? 'output-error' : part.state, awaitingApproval: isAwaiting }),
       status,
       ...(arg ? { arg } : {}),
       origin: toolOrigin(name),
@@ -85,15 +80,10 @@ export function toolStepsOf(
 
 export function todosOf(list: TodoList | undefined): CoworkTodo[] {
   if (!list) return []
-  return list.phases.flatMap((phase) =>
-    phase.tasks.map((task) => ({
-      text: task.content,
-      status:
-        task.status === 'completed' || task.status === 'in_progress'
-          ? task.status
-          : 'pending',
-    }))
-  )
+  return list.phases.flatMap((phase) => phase.tasks.map((task) => ({
+    text: task.content,
+    status: task.status === 'completed' || task.status === 'in_progress' ? task.status : 'pending',
+  })))
 }
 
 export function coworkDetailOf(session: {
@@ -114,17 +104,12 @@ export function coworkDetailOf(session: {
     status: 'idle',
     folder: session.folder,
     ...(group ? { group } : {}),
-    // As lib/coworkMode `modeOf`: sessions from before modes read planMode.
     mode: session.mode ?? (session.planMode ? 'review' : 'auto'),
-    // Silence from an older session is not permission (lib/coworkAccess).
     access: session.access ?? 'review-only',
     model: session.model ? { id: session.model.id, provider: session.model.provider } : null,
     todos: todosOf(session.todos),
     usage: session.lastUsage
-      ? {
-          inputTokens: session.lastUsage.prompt_tokens ?? 0,
-          outputTokens: session.lastUsage.completion_tokens ?? 0,
-        }
+      ? { inputTokens: session.lastUsage.prompt_tokens ?? 0, outputTokens: session.lastUsage.completion_tokens ?? 0 }
       : null,
   }
 }
@@ -147,11 +132,13 @@ export function roomDetailOf(room: Room): RoomDetail {
         model: p.model.id,
         provider: p.model.provider,
         toolAccess: p.toolAccess,
+        ...(p.reasoning ? { reasoning: p.reasoning } : {}),
       })),
     moderator: {
       enabled: room.moderator.enabled,
       name: room.moderator.name,
       model: room.moderator.model?.id ?? null,
+      ...(room.moderator.model?.provider ? { provider: room.moderator.model.provider } : {}),
     },
     nextSpeakerId: room.nextSpeakerId,
     round: room.round,
@@ -213,9 +200,7 @@ export function approvalOf(
     consequences: req.consequences.map(say),
     scopes: req.scopesOffered.flatMap((scope) => {
       const e = req.scopeExplanations[scope]
-      return e
-        ? [{ scope: SCOPE_WIRE[scope], label: say(e.label), explanation: say(e.explanation), broader: e.broader }]
-        : []
+      return e ? [{ scope: SCOPE_WIRE[scope], label: say(e.label), explanation: say(e.explanation), broader: e.broader }] : []
     }),
     argumentsJson: req.technicalDetails.argumentsJson,
     ...(pending.requestedAt ? { requestedAt: pending.requestedAt } : {}),

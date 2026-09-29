@@ -3,6 +3,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './mobile.css'
+import './mobile-polish.css'
 import { App } from './App'
 import { checkPairing } from './state/pairing'
 import { RemoteClient } from './api/client'

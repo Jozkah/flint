@@ -5,6 +5,7 @@
 import type { UIMessage } from 'ai'
 import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
 import { createActionHandlers, type RemoteActions } from './actions'
+import { handleMobileMutation } from './mobileMutations'
 import type {
   AppearanceResult,
   CoworkActivity,
@@ -75,7 +76,6 @@ export type RemoteSources = {
   mcpServers: () => McpServerInfo[]
   settings: () => Promise<SettingsSnapshot>
   appearance: () => AppearanceResult
-  // Phase 3 reads; a missing one answers `not_implemented`.
   streamSnapshot?: (kind: SessionKind, id: string) => StreamSnapshot | null
   queue?: (id: string) => QueuedItem[]
   coworkChanges?: (id: string) => CoworkChanges | null
@@ -89,21 +89,15 @@ export const DEFAULT_PAGE = 50
 export const MAX_PAGE = 200
 
 const toMs = (t: number) => (t < 1e12 ? Math.round(t * 1000) : t)
-
 const basename = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p
 
 export function roomStatus(s: string): SessionStatus {
   switch (s) {
-    case 'running':
-      return 'running'
-    case 'awaiting-user':
-      return 'waiting'
-    case 'paused':
-      return 'paused'
-    case 'draft':
-      return 'idle'
-    default:
-      return 'done'
+    case 'running': return 'running'
+    case 'awaiting-user': return 'waiting'
+    case 'paused': return 'paused'
+    case 'draft': return 'idle'
+    default: return 'done'
   }
 }
 
@@ -124,14 +118,12 @@ function requireId(params: unknown): string {
   return id
 }
 
-/** A page of `all`, ending before index `before` (default: the end). */
 export function pageOf<T>(all: T[], before: number | undefined, limit: number) {
   const end = before === undefined ? all.length : Math.min(Math.max(0, before), all.length)
   const start = Math.max(0, end - limit)
   return { items: all.slice(start, end), start, total: all.length }
 }
 
-/** Plain text of a Cowork UI message: its text parts, joined. */
 export function uiMessageText(m: UIMessage): string {
   return (m.parts ?? [])
     .map((p) => (p.type === 'text' ? p.text : ''))
@@ -145,9 +137,41 @@ function need<T>(fn: T | undefined, what: string): T {
 }
 
 export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions): RemoteHandlers {
+  const actionHandlers = actions ? createActionHandlers(actions) : undefined
   return {
     ...plannedHandlers,
-    ...(actions ? createActionHandlers(actions) : {}),
+    ...(actionHandlers ?? {}),
+
+    // First-class Room mutations. These deliberately reuse the exact Room
+    // controller/persistence path used by the desktop and do not grant any
+    // filesystem permissions.
+    'room.create': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.create', input: params })
+      if (!result || typeof result.id !== 'string') throw new RemoteRpcError('internal', 'Room could not be created')
+      return { ok: true, id: result.id }
+    },
+    'room.update': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.update', id: params.id, patch: params.patch })
+      if (!result || typeof result.id !== 'string') throw new RemoteRpcError('internal', 'Room could not be updated')
+      return { ok: true, id: result.id }
+    },
+    'room.delete': async (params) => {
+      const result = await handleMobileMutation({ mobileOp: 'room.delete', id: params.id })
+      if (!result) throw new RemoteRpcError('internal', 'Room could not be deleted')
+      return { ok: true }
+    },
+
+    // Legacy safe mobile mutations for chat/Cowork menus. These do not widen
+    // permissions; Room mutations no longer travel through settings.set.
+    'settings.set': async (params, ctx) => {
+      if (isRecord(params) && typeof params.mobileOp === 'string') {
+        const result = await handleMobileMutation(params)
+        if (!result) throw new RemoteRpcError('bad_params', 'Unknown mobile operation')
+        return { ok: true }
+      }
+      if (!actionHandlers) throw new RemoteRpcError('not_implemented', 'Changing settings is not available from phones yet')
+      return actionHandlers['settings.set'](params, ctx)
+    },
 
     'stream.get': (params) => {
       const p = (isRecord(params) ? params : {}) as { kind?: unknown; id?: unknown }
@@ -274,9 +298,7 @@ export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions
     },
 
     'approvals.list': () => ({ approvals: src.approvalDetails() }),
-
     'system.info': () => src.systemInfo(),
-
     'tools.list': () => ({ servers: src.mcpServers() }),
 
     'settings.get': async (_params, ctx) => {

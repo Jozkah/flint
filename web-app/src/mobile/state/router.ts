@@ -49,8 +49,19 @@ export function routeToHash(r: Route): string {
   }
 }
 
+function safeDecode(part: string): string | null {
+  try {
+    return decodeURIComponent(part)
+  } catch {
+    return null
+  }
+}
+
 export function hashToRoute(hash: string): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean).map(decodeURIComponent)
+  const raw = hash.replace(/^#\/?/, '').split('/').filter(Boolean)
+  const decoded = raw.map(safeDecode)
+  if (decoded.some((part) => part === null)) return { name: 'home' }
+  const parts = decoded as string[]
   const [head, arg] = parts
   if (!head) return { name: 'home' }
   if (head === 'new' && (arg === 'cowork' || arg === 'room' || arg === 'chat')) return { name: 'home', mode: arg }
@@ -64,11 +75,15 @@ export const sessionRoute = (kind: SessionKind, id: string): Route => ({ name: k
 
 /** Reads `#pair=<code>&name=<computer>` from a pairing link. */
 export function readPairingFragment(hash: string): { code: string; computer?: string } | null {
-  const m = hash.replace(/^#/, '')
-  if (!m.startsWith('pair=')) return null
-  const params = new URLSearchParams(m)
-  const code = params.get('pair')?.trim()
-  if (!code) return null
-  const computer = params.get('name')?.trim()
-  return computer ? { code, computer } : { code }
+  try {
+    const m = hash.replace(/^#/, '')
+    if (!m.startsWith('pair=')) return null
+    const params = new URLSearchParams(m)
+    const code = params.get('pair')?.trim()
+    if (!code) return null
+    const computer = params.get('name')?.trim()
+    return computer ? { code, computer } : { code }
+  } catch {
+    return null
+  }
 }

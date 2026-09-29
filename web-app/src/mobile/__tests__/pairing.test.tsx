@@ -71,6 +71,12 @@ describe('routes and the pairing link', () => {
     expect(hashToRoute('#/nonsense')).toEqual({ name: 'home' })
   })
 
+  it('falls back to home for malformed percent-encoded routes', () => {
+    expect(() => hashToRoute('#/chat/%E0%A4%A')).not.toThrow()
+    expect(hashToRoute('#/chat/%E0%A4%A')).toEqual({ name: 'home' })
+    expect(hashToRoute('#/settings/%')).toEqual({ name: 'home' })
+  })
+
   it('guesses a readable phone name', () => {
     expect(guessDeviceName('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)')).toBe('iPhone')
     expect(guessDeviceName('Mozilla/5.0 (Linux; Android 15; Pixel 9 Build/AP3A)')).toBe('Pixel 9')
