@@ -30,7 +30,7 @@ fn bash_description() -> String {
     )
 }
 
-const BASH_DESCRIPTION_REST: &str = "Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30), not milliseconds. Returns combined stdout and stderr, then a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by text on stderr: many commands (e.g. `git push`) write normal status there. The output is COMPLETE and verbatim; do not re-run a command to double-check. Past 2000 lines or 64KB it ends with an explicit `[output truncated ...]` notice naming a temp file with the full output, and the LAST lines are kept. A command still running after `timeout` is terminated, unless `background` is true: then this call returns a job_id and the command keeps running (with no timeout it is backgrounded at once). When a background job finishes you are told at the start of your next turn, so there is no need to poll it. Manage jobs without `command`: {\"action\": \"list\"}; {\"job_id\": ID} waits and collects its output (once); {\"job_id\": ID, \"action\": \"status\"} peeks without collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.";
+const BASH_DESCRIPTION_REST: &str = "Reach for a dedicated tool first when one fits — `read`, `ls`, `find`, `grep`, `write`, `edit` are sandbox-checked and give structured output; use `bash` for builds, tests, git, package managers, and anything without a dedicated tool. `timeout` is in SECONDS (default 30, maximum 120), not milliseconds. Foreground commands must finish within 120 seconds because the tool lifecycle watchdog stops them after that; for longer work use `background: true` with no timeout, continue working, then collect the returned job_id. Returns combined stdout and stderr, then a final `[exit N]` line (or `[terminated by signal]`). Judge success by that exit code, not by text on stderr: many commands (e.g. `git push`) write normal status there. The output is COMPLETE and verbatim; do not re-run a command to double-check. Past 2000 lines or 64KB it ends with an explicit `[output truncated ...]` notice naming a temp file with the full output, and the LAST lines are kept. A command still running after `timeout` is terminated, unless `background` is true: then this call returns a job_id and the command keeps running (with no timeout it is backgrounded at once). When a background job finishes you are told at the start of your next turn, so there is no need to poll it. Manage jobs without `command`: {\"action\": \"list\"}; {\"job_id\": ID} waits and collects its output (once); {\"job_id\": ID, \"action\": \"status\"} peeks without collecting; {\"job_id\": ID, \"action\": \"cancel\"} stops it and everything it started.";
 
 /// OpenAI function schemas for the built-in tools, in `BUILTIN_TOOLS` order.
 pub fn builtin_tool_schemas() -> Vec<Value> {
@@ -169,7 +169,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "command": { "type": "string", "description": "Shell command to run. Omit when managing a background command." },
-                        "timeout": { "type": "integer", "description": "Seconds to wait for the command. Without background it is terminated after this (default 30); with background it is backgrounded after this (default 0: at once)." },
+                        "timeout": { "type": "integer", "minimum": 1, "maximum": 120, "description": "Seconds to wait for a foreground command (default 30, maximum 120). For work that may take longer than 120 seconds, set `background: true` and omit `timeout`; collect the returned job_id later." },
                         "background": { "type": "boolean", "description": "Keep the command running in the background and return a job_id, so you can continue working and collect it later." },
                         "job_id": { "type": "string", "description": "A background command's job_id, to collect, inspect or cancel it instead of running a new command." },
                         "action": { "type": "string", "enum": ["await", "status", "cancel", "list"], "description": "What to do with background commands when no command is given. Default with a job_id: await." }
@@ -268,7 +268,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Optional text to match, case-insensitively, against each skill's name and summary."
+                            "description": "Optional text to match, case-insensitively, against each skill's name or summary."
                         }
                     },
                     "required": []
@@ -576,6 +576,17 @@ mod tests {
                 .unwrap();
             assert!(required.is_empty(), "{name} should take no required args");
         }
+    }
+
+    #[test]
+    fn bash_timeout_matches_lifecycle_watchdog() {
+        let s = builtin_tool_schemas();
+        let timeout = &tool(&s, "bash")["function"]["parameters"]["properties"]["timeout"];
+        assert_eq!(timeout["minimum"], 1);
+        assert_eq!(timeout["maximum"], 120);
+        let desc = tool(&s, "bash")["function"]["description"].as_str().unwrap();
+        assert!(desc.contains("maximum 120"), "{desc}");
+        assert!(desc.contains("background: true"), "{desc}");
     }
 
     /// The `edit` schema exposes the optional per-replacement `replace_all`
