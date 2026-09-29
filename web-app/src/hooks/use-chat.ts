@@ -2,6 +2,7 @@ import {
   CustomChatTransport,
   type ContinuationContent,
 } from '@/lib/custom-chat-transport'
+import { RoutedChatTransport } from '@/lib/routed-chat-transport'
 import {
   Chat,
   type UIMessage,
@@ -73,7 +74,7 @@ export function useChat(
   }
   if (!transportRef.current) {
     transportRef.current =
-      existingSessionTransport ?? new CustomChatTransport(systemMessage, sessionId)
+      existingSessionTransport ?? new RoutedChatTransport(systemMessage, sessionId)
     // A temporary chat neither reads nor records memory. Chats have no project
     // folder, so project memory never applies here; session and user memory do.
     transportRef.current.setMemoryBinding({
