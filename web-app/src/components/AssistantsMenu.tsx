@@ -1,6 +1,7 @@
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { User } from 'lucide-react'
+import { useAssistant } from '@/hooks/useAssistant'
 
 type AssistantMenuProps = {
   selectedAssistant: string | undefined
@@ -17,6 +18,7 @@ export function AssistantsMenu({
   updateCurrentThreadAssistant,
   assistants,
 }: AssistantMenuProps) {
+  const setCurrentAssistant = useAssistant((s) => s.setCurrentAssistant)
   const threadAssistant = currentThread?.assistants?.[0]
   const deletedAssistant =
     threadAssistant &&
@@ -54,6 +56,10 @@ export function AssistantsMenu({
           setSelectedAssistant('')
           if (currentThread) {
             updateCurrentThreadAssistant(undefined as unknown as Assistant)
+          } else {
+            // Keep the global store in sync with the composer's local choice,
+            // or the next reset (loading flip, project change) clobbers it.
+            setCurrentAssistant(undefined, false)
           }
         }}
       >
@@ -78,6 +84,11 @@ export function AssistantsMenu({
                   updateCurrentThreadAssistant(assistant)
                 } else {
                   setSelectedAssistant(assistant ? assistant.id : '')
+                  // Keep the global store in sync with the composer's local
+                  // choice, or the next reset (loading flip, project change)
+                  // clobbers it. Don't persist: picking in the composer is a
+                  // draft, not the "last used" assistant.
+                  setCurrentAssistant(assistant, false)
                 }
               }}
             >
