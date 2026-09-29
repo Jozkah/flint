@@ -20,15 +20,18 @@ describe('phone screens (mocked RPC)', () => {
     client = useFixtures()
   })
 
-  it('Home shows what is waiting and starts a chat through chat.send', async () => {
+  it('Home shows what is waiting and starts a chat through chat.send without guessing a model', async () => {
     show({ name: 'home' })
     expect(await screen.findByText('1 approval waiting', {}, T)).toBeInTheDocument()
     expect(screen.getByText('Changelog wording is waiting for you')).toBeInTheDocument()
     expect(await screen.findByTestId('approvals-pill')).toHaveTextContent('1')
     fireEvent.click(screen.getByText('Explain this error message'))
     fireEvent.click(screen.getByRole('button', { name: 'Send Message' }))
-    // A desktop that does not take it says so; nothing is faked.
     expect(await screen.findByText('Sending from the phone comes in a later update', {}, T)).toBeInTheDocument()
+    expect(client.rpc).toHaveBeenCalledWith(
+      'chat.send',
+      expect.not.objectContaining({ model: expect.anything() })
+    )
     expect(client.rpc).toHaveBeenCalledWith('chat.send', expect.objectContaining({ text: 'Explain this error message', new: true }))
   })
 
@@ -36,6 +39,41 @@ describe('phone screens (mocked RPC)', () => {
     show({ name: 'chat', id: 'c1' })
     expect(await screen.findByText(/The cache key is built from the region only/, {}, T)).toBeInTheDocument()
     expect(screen.getByText('Do the build ID one. Just show me the diff.')).toBeInTheDocument()
+  })
+
+  it('Chat renders system/tool messages and can load older history', async () => {
+    client = useFixtures({
+      'thread.messages': {
+        c1: {
+          messages: [
+            { id: 's1', role: 'system', text: 'System context', createdAt: 3 },
+            { id: 't1', role: 'tool', text: 'Tool output', createdAt: 4 },
+          ],
+          start: 2,
+          total: 4,
+        },
+      },
+    })
+    show({ name: 'chat', id: 'c1' })
+    expect(await screen.findByText('System context', {}, T)).toBeInTheDocument()
+    expect(screen.getByText('Tool output')).toBeInTheDocument()
+    client.rpc.mockImplementationOnce(async (method, params) => {
+      if (method === 'thread.messages' && (params as { before?: number }).before === 2) {
+        return {
+          messages: [
+            { id: 'u0', role: 'user', text: 'Old question', createdAt: 1 },
+            { id: 'a0', role: 'assistant', text: 'Old answer', createdAt: 2 },
+          ],
+          start: 0,
+          total: 4,
+        } as never
+      }
+      throw new Error(`Unexpected ${method}`)
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Load 2 earlier messages/ }))
+    expect(await screen.findByText('Old question', {}, T)).toBeInTheDocument()
+    expect(screen.getByText('Old answer')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /earlier message/ })).toBeNull()
   })
 
   it('Cowork shows the tool timeline, the approval card and the plan', async () => {
