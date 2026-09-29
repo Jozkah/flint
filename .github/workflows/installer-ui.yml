@@ -39,4 +39,11 @@ jobs:
 
       - name: Compile custom installer UI with warnings as errors
         shell: pwsh
-        run: '& "C:\Program Files (x86)\NSIS\makensis.exe" /WX scripts\windows-installer-smoke.nsi'
+        run: |
+          Push-Location scripts
+          try {
+            & "C:\Program Files (x86)\NSIS\makensis.exe" /WX windows-installer-smoke.nsi
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
