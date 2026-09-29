@@ -218,6 +218,56 @@ describe('non-transient blockers', () => {
       ])
     ).toMatchObject({ tripped: true, reason: 'failing-shell' })
   })
+
+  it('stops retrying git mutations in a read-only or unrelated checkout', () => {
+    const blocked = (cwd: string, error: string): ObservedCall => ({
+      tool: 'git',
+      input: { cwd, args: ['checkout', 'feature'] },
+      failed: true,
+      error,
+    })
+    const readOnly = blocked(
+      'C:/Users/Jozkah/Desktop/Coding/jan',
+      "ERROR: git: `C:\\Users\\Jozkah\\Desktop\\Coding\\jan` is attached read-only, so `git checkout feature` cannot run there."
+    )
+    const outside = blocked(
+      'C:/tmp/other',
+      "ERROR: git: `C:\\tmp\\other` is outside the project folder, worktree and session workspace; git runs only there"
+    )
+    expect(classifyStableFailure('git', readOnly.error)).toBe(
+      'git target cannot be changed here'
+    )
+    expect(detectLoop([readOnly, readOnly])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+    // A different cwd is a different strategy and is not conflated with the first.
+    expect(detectLoop([readOnly, outside])).toEqual({ tripped: false })
+  })
+
+  it('stops redispatching the same subagent after its run is already exhausted', () => {
+    const exhausted = (description: string, error: string): ObservedCall => ({
+      tool: 'task',
+      input: { subagent_name: 'tester', description },
+      failed: true,
+      error,
+    })
+    const first = exhausted(
+      'run tests',
+      "The subagent 'tester' stopped at its 30-step budget without finishing."
+    )
+    const second = exhausted(
+      'try the same tests another way',
+      "The subagent 'tester' stopped at a repeating loop it could not get out of without finishing."
+    )
+    expect(classifyStableFailure('task', first.error)).toBe(
+      'subagent exhausted its run'
+    )
+    expect(detectLoop([first, second])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
 })
 
 it('stops the same call made over and over', () => {
