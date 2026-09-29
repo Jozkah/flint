@@ -82,6 +82,9 @@ export type StableFailureClass =
   | 'pull request head is not pushed'
   | 'pull request has conflicts'
   | 'tool is unavailable'
+  | 'toolchain unavailable in sandbox'
+  | 'network disabled for this run'
+  | 'bash timeout exceeds limit'
   | 'subagent exhausted its run'
 
 /**
@@ -140,11 +143,38 @@ export function classifyStableFailure(
   }
   if (
     tool === 'task' &&
-    /subagent .* stopped at its \d+-step budget without finishing|subagent .* stopped at a repeating loop .* without finishing/i.test(
+    /subagent .* stopped at (?:its \d+-step budget|the session token budget|the run time limit|a model stream that stopped responding|a repeating loop it could not get out of) without finishing/i.test(
       error
     )
   ) {
     return 'subagent exhausted its run'
+  }
+  if (
+    tool === SHELL_TOOL &&
+    /bash timeout \d+(?:\.\d+)?s exceeds the \d+s foreground limit[\s\S]*do not retry with a larger timeout/i.test(
+      error
+    )
+  ) {
+    return 'bash timeout exceeds limit'
+  }
+  if (
+    tool === SHELL_TOOL &&
+    /\[sandbox: the shell has no network access; do not retry downloads\.\]/i.test(
+      error
+    )
+  ) {
+    return 'network disabled for this run'
+  }
+  if (
+    tool === SHELL_TOOL &&
+    (/\[sandbox: `[^`]+` is installed at [\s\S]*but this sandbox cannot run it:/i.test(
+      error
+    ) ||
+      /\[sandbox: `[^`]+` is not available in this sandbox\.[\s\S]*do not retry/i.test(
+        error
+      ))
+  ) {
+    return 'toolchain unavailable in sandbox'
   }
   if (
     /model tried to call unavailable tool|tool ['`][^'`]+['`] is not available to this run|tool ['`][^'`]+['`] is disabled/i.test(
@@ -166,8 +196,10 @@ export function classifyStableFailure(
   return null
 }
 
-const TOLD_NOT_TO_RETRY =
-  /\[device_path:|cannot open it on this platform|reported exit 0, but|is installed at/i
+// Keep this for platform-level refusals that are not already represented by a
+// stable semantic class above. In particular, a PowerShell "reported exit 0,
+// but ..." note is repairable command syntax and must not count as permanent.
+const TOLD_NOT_TO_RETRY = /\[device_path:|cannot open it on this platform/i
 const NULL_DEVICE_REFUSED = /\[device_path_sandbox_refused:/i
 
 export type ObservedCall = {
@@ -263,6 +295,13 @@ function stableFailureScope(
   }
   if (stable === 'subagent exhausted its run') {
     return inputString(call, 'subagent_name') || inputString(call, 'name')
+  }
+  if (stable === 'toolchain unavailable in sandbox') {
+    return (
+      call.error
+        ?.match(/\[sandbox: `([^`]+)` (?:is installed at|is not available)/i)?.[1]
+        ?.toLowerCase() ?? ''
+    )
   }
   return ''
 }
