@@ -40,6 +40,28 @@ pub mod stdio;
 #[cfg(test)]
 mod tests;
 
+/// The longest foreground wait the tool contract advertises for `bash`.
+///
+/// MCP clients are external programs and are not guaranteed to validate calls
+/// against the JSON Schema before sending them, so dispatch enforces the same
+/// ceiling the desktop adapter and advertised schema use.
+const MAX_BASH_TIMEOUT_SECS: u64 = 120;
+
+fn invalid_tool_input(name: &str, args: &serde_json::Value) -> Option<String> {
+    if name != "bash" {
+        return None;
+    }
+    let timeout = args.get("timeout")?.as_u64()?;
+    if timeout <= MAX_BASH_TIMEOUT_SECS {
+        return None;
+    }
+    Some(format!(
+        "bash timeout {timeout}s exceeds the {MAX_BASH_TIMEOUT_SECS}s foreground limit. \
+         Use timeout <= {MAX_BASH_TIMEOUT_SECS}, or set background: true and omit timeout \
+         for longer work. Do not retry with a larger timeout."
+    ))
+}
+
 /// Which built-in tools this server offers.
 ///
 /// The default is the read/search/memory/skill/web set. The two classes that can
@@ -228,6 +250,9 @@ impl JanToolServer {
                 Vec::new(),
             );
         }
+        if let Some(error) = invalid_tool_input(name, args) {
+            return (format!("ERROR [invalid_input]: {error}"), Vec::new());
+        }
         let decision = resolve_decision(
             tool,
             args,
@@ -321,6 +346,28 @@ impl JanToolServer {
             .collect();
         (content, blocks)
     }
+}
+
+#[cfg(test)]
+#[tokio::test]
+async fn oversized_bash_timeout_is_refused_before_execution() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let mut opts = ServeOptions::new(dir.path().to_path_buf());
+    opts.sandbox = false;
+    opts.served.allow_exec = true;
+    let server = JanToolServer::new(opts);
+    let (content, _) = server
+        .dispatch(
+            "bash",
+            &serde_json::json!({
+                "command": "this-command-must-never-run",
+                "timeout": MAX_BASH_TIMEOUT_SECS + 1,
+            }),
+        )
+        .await;
+    assert!(content.starts_with("ERROR [invalid_input]"), "{content}");
+    assert!(content.contains("120s foreground limit"), "{content}");
+    assert!(content.contains("background: true"), "{content}");
 }
 
 /// Split a `data:<mime>;base64,<payload>` URL into an MCP image block. Returns
