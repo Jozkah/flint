@@ -11,20 +11,12 @@ export const WEB_TOOL_NAMES = new Set(['web_search', 'web_fetch'])
  * -- and it must get that server's approval prompt and run on that server. The
  * name alone used to decide, so an MCP server's `web_search` skipped approval
  * and was sent to Flint's native adapter instead (janhq/jan#8777).
- *
- * `advertised` is the run's own tool set, not the global setting: a Settings
- * toggle applies at the next run, so a run that started with web search on keeps
- * its native tools for the rest of the run, and a run that started with it off
- * keeps routing `web_search` to an MCP server even if the setting is turned on
- * mid-run.
  */
-export function isNativeWebTool(
-  toolName: string,
-  advertised?: Record<string, unknown>
-): boolean {
-  if (!WEB_TOOL_NAMES.has(toolName)) return false
-  if (advertised !== undefined) return 'web_search' in advertised
-  return useWebSearchConfig.getState().webSearchEnabled
+export function isNativeWebTool(toolName: string): boolean {
+  return (
+    WEB_TOOL_NAMES.has(toolName) &&
+    useWebSearchConfig.getState().webSearchEnabled
+  )
 }
 
 export const WEB_SEARCH_DESCRIPTION =
