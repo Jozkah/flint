@@ -229,7 +229,9 @@ Function FlintMaintenance
   nsDialogs::Show
 FunctionEnd
 
-; MUI installation/uninstallation progress page.
+; MUI installation/uninstallation progress functions are instantiated once for
+; the installer and once with the `un.` prefix by FLINT_UI_FUNCTIONS.
+!macro FLINT_PROGRESS_FUNCTIONS UN
 Function ${UN}FlintInstFilesShow
   FindWindow $FlintPage "#32770" "" $HWNDPARENT
   !insertmacro _FlintFitPage $FlintPage
