@@ -24,7 +24,7 @@ function extractDefine(template, name) {
   return m?.[1] ?? null
 }
 
-function preserveReleaseSubstitutions(base, current) {
+function preserveBuildSubstitutions(base, current) {
   // Release workflows substitute these values before the regular build starts.
   // Read them back before regenerating so the custom-page transform never
   // discards a release version, product name, binary name or workspace path.
@@ -40,10 +40,15 @@ function preserveReleaseSubstitutions(base, current) {
     if (value && value !== placeholder) out = out.split(placeholder).join(value)
   }
 
-  const workspace = extractDefine(current, 'FLINT_WORKSPACE')
-  if (workspace && workspace !== 'flint_workspace') {
-    out = out.split('flint_workspace').join(workspace)
-  }
+  // Release CI may already have replaced this placeholder. For ordinary local
+  // builds it has not, so materialize the real checkout root here. This is why
+  // the custom template can now live permanently in tauri.windows.conf.json.
+  const currentWorkspace = extractDefine(current, 'FLINT_WORKSPACE')
+  const workspace =
+    currentWorkspace && currentWorkspace !== 'flint_workspace'
+      ? currentWorkspace
+      : repoRoot
+  out = out.split('flint_workspace').join(workspace)
   return out
 }
 
@@ -52,7 +57,7 @@ export function transformWindowsInstallerTemplate(baseTemplate, currentTemplate 
   // deterministic and make every guarded match independent of autocrlf.
   const base = baseTemplate.replace(/\r\n/g, '\n')
   const current = currentTemplate.replace(/\r\n/g, '\n')
-  let out = preserveReleaseSubstitutions(base, current)
+  let out = preserveBuildSubstitutions(base, current)
 
   out = replaceOnce(
     out,
