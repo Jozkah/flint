@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { D } from '../ui/bits'
 import { I } from '../ui/icons'
-import { back, go, openDrawer, openSheet, useApp } from '../state/app'
+import { go, openDrawer, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 
 /** Runs in flight and approvals waiting, from the computer's status. */
@@ -112,11 +112,19 @@ export function TopThread({
   )
 }
 
+function browserBack() {
+  // The URL hash is the source of truth for mobile navigation. Let the
+  // browser own its stack so hardware/gesture Back and this button cannot
+  // drift apart. A direct/deep-linked page has no useful in-app predecessor.
+  if (history.length > 1) history.back()
+  else go({ name: 'home' })
+}
+
 /** A pushed page's bar: back, title, an optional action. */
 export function TopBack({ crumb, title, action }: { crumb?: ReactNode; title: ReactNode; action?: ReactNode }) {
   return (
     <div className="top">
-      <button type="button" className="ib" onClick={back} aria-label="Back">
+      <button type="button" className="ib" onClick={browserBack} aria-label="Back">
         <I n="back" />
       </button>
       <div className="crumb">
