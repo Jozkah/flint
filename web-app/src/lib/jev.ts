@@ -8,6 +8,7 @@
  * makes no request.
  */
 import type { SlashCatalogEntry } from '@/lib/slashCommands'
+import { isWorkProfileId, WORK_PROFILE_IDS } from '@/lib/workProfiles'
 
 export type JevMode = 'off' | 'shadow' | 'on'
 
@@ -55,6 +56,12 @@ export type SkillDecision = {
   model: string | null
 }
 
+type RerankDecision = {
+  order: string[] | null
+  fallback: JevFallback | null
+  model: string | null
+}
+
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   const { invoke } = await import('@tauri-apps/api/core')
   return invoke<T>(cmd, args)
@@ -76,10 +83,56 @@ export function eligibleSkills(catalog: SlashCatalogEntry[]) {
     }))
 }
 
+function isWorkProfileCatalog(
+  options: { name: string; description: string }[]
+): boolean {
+  if (options.length !== WORK_PROFILE_IDS.length) return false
+  const names = new Set(options.map((option) => option.name))
+  return WORK_PROFILE_IDS.every((id) => names.has(id))
+}
+
+/**
+ * Work profiles are choices, not skills.
+ *
+ * The Cowork auto-profile path historically reused `jev_suggest_skill`, which
+ * asks Jev "which skill should be invoked?" and therefore made abstention and
+ * invalid answers common. Those then fell through to the local default
+ * (`execute`), making Auto look permanently stuck on Execute.
+ *
+ * Reuse Jev's choice-shaped reranker instead: rank the complete profile
+ * catalog against the user's request and take the first valid id. When rerank
+ * is disabled/shadowed/unavailable this returns no choice and the caller keeps
+ * its existing local classifier fallback; it never silently turns a Jev
+ * failure into Execute here.
+ */
+async function jevChooseWorkProfile(
+  message: string,
+  profiles: { name: string; description: string }[]
+): Promise<SkillDecision> {
+  const decision = await invoke<RerankDecision>('jev_rerank', {
+    query: message,
+    candidates: profiles.map((profile) => ({
+      id: profile.name,
+      text: `${profile.name}: ${profile.description}`,
+    })),
+    k: profiles.length,
+  })
+  const first = decision.order?.[0]
+  return {
+    skill: isWorkProfileId(first) ? first : null,
+    probability: null,
+    fallback: decision.fallback,
+    model: decision.model,
+  }
+}
+
 export const jevSuggestSkill = (
   message: string,
   skills: { name: string; description: string }[]
-) => invoke<SkillDecision>('jev_suggest_skill', { message, skills })
+) =>
+  isWorkProfileCatalog(skills)
+    ? jevChooseWorkProfile(message, skills)
+    : invoke<SkillDecision>('jev_suggest_skill', { message, skills })
 
 /** Worth asking about: long enough to mean something, not already a command. */
 export function shouldAskForSkill(text: string): boolean {
