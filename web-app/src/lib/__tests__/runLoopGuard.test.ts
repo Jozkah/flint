@@ -145,6 +145,79 @@ describe('non-transient blockers', () => {
       ])
     ).toMatchObject({ tripped: true, reason: 'failing-shell' })
   })
+
+  it('stops repeated PR creation when the remote base has to be refreshed', () => {
+    const moved = (base: string): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--base', base] },
+      failed: true,
+      error:
+        `ERROR: pull request not opened: base ${base} has moved; ` +
+        "fetch the target repository's current base branch before opening the pull request",
+    })
+    expect(classifyStableFailure('git', moved('main').error)).toBe(
+      'pull request base changed'
+    )
+    expect(detectLoop([moved('main'), moved('main')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops repeated PR creation until the head branch is actually pushed', () => {
+    const missing = (head: string): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--head', head] },
+      failed: true,
+      error:
+        `ERROR: pull request not opened: could not read pushed head ${head} ` +
+        'from https://github.com/Jozkah/flint.git; push the branch first',
+    })
+    expect(classifyStableFailure('git', missing('fix/x').error)).toBe(
+      'pull request head is not pushed'
+    )
+    expect(detectLoop([missing('fix/x'), missing('fix/x')])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops repeated PR creation while merge conflicts remain unresolved', () => {
+    const conflict = (): ObservedCall => ({
+      tool: 'git',
+      input: { program: 'gh', args: ['pr', 'create', '--head', 'fix/x'] },
+      failed: true,
+      error:
+        'ERROR: pull request not opened: the proposed pull request does not merge cleanly, ' +
+        'or its merge could not be verified: ERROR: `git merge-tree --write-tree abc def` exited with 1',
+    })
+    expect(classifyStableFailure('git', conflict().error)).toBe(
+      'pull request has conflicts'
+    )
+    expect(detectLoop([conflict(), conflict()])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('stops calling a tool again after the harness said it is unavailable', () => {
+    const missingTool = (input: unknown): ObservedCall => ({
+      tool: 'bash',
+      input,
+      failed: true,
+      error:
+        "not a valid call: Model tried to call unavailable tool 'bash'. Available tools: read, grep, git",
+    })
+    expect(classifyStableFailure('bash', missingTool({ command: 'x' }).error)).toBe(
+      'tool is unavailable'
+    )
+    expect(
+      detectLoop([
+        missingTool({ command: 'x' }),
+        missingTool({ command: 'y' }),
+      ])
+    ).toMatchObject({ tripped: true, reason: 'failing-shell' })
+  })
 })
 
 it('stops the same call made over and over', () => {
