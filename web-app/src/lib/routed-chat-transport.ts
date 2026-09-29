@@ -1,5 +1,10 @@
+import type { UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
-import { chooseJevPromptRoute } from '@/lib/jevRouting'
+import {
+  chooseJevPromptRoute,
+  jevModeSuggestion,
+  type JevSuggestedMode,
+} from '@/lib/jevRouting'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
 import { renderInstructions } from '@/lib/instructionTemplate'
@@ -22,12 +27,14 @@ function latestUserMessage(
 
 /**
  * Ordinary Chat transport with one extra pre-dispatch step: when a new user
- * turn appears, Jev may select Flint/Quartz/Coal/Blaze/Redstone for that turn.
- * Tool follow-ups and regenerations keep the same selection because their
- * latest user-message id has not changed.
+ * turn appears, Jev may select Flint/Quartz/Coal/Blaze/Redstone and an
+ * advisory Review/Ask/Auto work style for that turn. Tool follow-ups and
+ * regenerations keep the same selection because their latest user-message id
+ * has not changed.
  */
 export class RoutedChatTransport extends CustomChatTransport {
   private lastRoutedUserMessageId: string | null = null
+  private routedMode: JevSuggestedMode | null = null
 
   private async routeAssistant(
     messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
@@ -35,6 +42,9 @@ export class RoutedChatTransport extends CustomChatTransport {
     const latest = latestUserMessage(messages)
     if (!latest || latest.id === this.lastRoutedUserMessageId) return
     this.lastRoutedUserMessageId = latest.id
+    // A previous turn's advice must never leak when routing is now disabled,
+    // shadowed, unavailable, or a custom assistant has been pinned.
+    this.routedMode = null
 
     const assistantState = useAssistant.getState()
     const thread = this.threadId
@@ -46,7 +56,9 @@ export class RoutedChatTransport extends CustomChatTransport {
       message: latest.text,
       assistants: assistantState.assistants,
       currentAssistantId: currentAssistant?.id,
+      includeCoworkMode: true,
     })
+    this.routedMode = route?.mode ?? null
     if (!route?.assistantId) return
 
     const assistant = assistantState.assistants.find(
@@ -72,6 +84,14 @@ export class RoutedChatTransport extends CustomChatTransport {
     // remembered default assistant. A custom/project assistant never reaches
     // this branch; jevRouting deliberately leaves those pinned.
     assistantState.setCurrentAssistant(assistant, false)
+  }
+
+  protected override buildSystemPrompt(messages: UIMessage[]): string | undefined {
+    const base = super.buildSystemPrompt(messages)
+    const modeHint = jevModeSuggestion(this.routedMode)
+    return [base, modeHint]
+      .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+      .join('\n\n') || undefined
   }
 
   override async sendMessages(
