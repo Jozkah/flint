@@ -48,6 +48,13 @@ Page custom FlintMaintenance
 !insertmacro FLINT_UI_FUNCTIONS "un."
 !insertmacro MUI_LANGUAGE "English"
 
+Function .onInit
+  ; Production initializes this from /P. The smoke build models a normal
+  ; interactive launch so /WX can catch real warnings without reporting an
+  ; intentionally uninitialized harness-only variable.
+  StrCpy $PassiveMode 0
+FunctionEnd
+
 Function RunMainBinary
 FunctionEnd
 
