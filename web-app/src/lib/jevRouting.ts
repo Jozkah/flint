@@ -121,6 +121,7 @@ export async function chooseJevPromptRoute(args: {
     Boolean(args.includeCoworkMode)
   )
   if (options.length <= 1) return null
+  const flintAvailable = args.assistants.some((assistant) => assistant.id === 'jan')
 
   try {
     const decision = await jevSuggestSkill(message, options)
@@ -129,7 +130,6 @@ export async function chooseJevPromptRoute(args: {
       // In active routing, every unconfident/failed choice returns to the
       // generalist rather than accidentally carrying the previous specialist
       // into an unrelated prompt. Shadow mode must not change behaviour.
-      const flintAvailable = args.assistants.some((assistant) => assistant.id === 'jan')
       return {
         assistantId: jevMode === 'on' && flintAvailable ? 'jan' : null,
         mode: null,
@@ -145,8 +145,12 @@ export async function chooseJevPromptRoute(args: {
     }
   } catch (error) {
     // Routing is decision support, never a reason to fail the user's prompt.
+    // When active, return to the generalist rather than leaking the previous
+    // turn's specialist through a renderer/Tauri transport failure.
     console.debug('[Jev] prompt routing unavailable:', error)
-    return null
+    return jevMode === 'on' && flintAvailable
+      ? { assistantId: 'jan', mode: null, probability: null, fallback: null }
+      : null
   }
 }
 
