@@ -59,26 +59,34 @@ const todoTool: Tool = {
       },
       list: {
         type: 'array',
+        minItems: 1,
         description: 'For init: [{phase, items}]',
         items: {
           type: 'object',
           properties: {
             phase: { type: 'string' },
-            items: { type: 'array', items: { type: 'string' } },
+            items: {
+              type: 'array',
+              minItems: 1,
+              items: { type: 'string', minLength: 1 },
+            },
           },
           required: ['phase', 'items'],
+          additionalProperties: false,
         },
       },
       items: {
         type: 'array',
+        minItems: 1,
         description: 'For init (flat, single unnamed phase) or append.',
-        items: { type: 'string' },
+        items: { type: 'string', minLength: 1 },
       },
-      task: { type: 'string' },
-      phase: { type: 'string' },
+      task: { type: 'string', minLength: 1 },
+      phase: { type: 'string', minLength: 1 },
       all: { type: 'boolean' },
     },
     required: ['op'],
+    additionalProperties: false,
   }),
 } as Tool
 
@@ -111,11 +119,13 @@ const askTool: Tool = {
           properties: {
             id: {
               type: 'string',
+              minLength: 1,
               description:
                 'Short stable key for this question, unique in the call (e.g. "db"). The answer comes back under it.',
             },
             question: {
               type: 'string',
+              minLength: 1,
               description: 'The full question, one decision, ending with a question mark.',
             },
             options: {
@@ -127,7 +137,11 @@ const askTool: Tool = {
               items: {
                 type: 'object',
                 properties: {
-                  label: { type: 'string', description: 'A few words naming the choice.' },
+                  label: {
+                    type: 'string',
+                    minLength: 1,
+                    description: 'A few words naming the choice.',
+                  },
                   description: {
                     type: 'string',
                     description: 'One short line: what this choice means or its trade-off.',
@@ -144,6 +158,7 @@ const askTool: Tool = {
             recommended: {
               type: 'integer',
               minimum: 0,
+              maximum: 4,
               description: '0-based index of the option you recommend; it is marked in the UI.',
             },
           },
@@ -199,32 +214,34 @@ function teamTool(subagentNames: string[]): Tool {
             properties: {
               id: {
                 type: 'string',
+                minLength: 1,
                 description: 'Short, unique in this team.',
               },
               description: {
                 type: 'string',
+                minLength: 1,
                 description: 'The whole brief; the child sees nothing else.',
               },
-              subagent_name: { type: 'string' },
+              subagent_name: { type: 'string', minLength: 1 },
               depends_on: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1 },
                 description: 'Task ids that must complete before this starts.',
               },
               writes: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1 },
                 description:
                   'Files or folders this task expects to change, relative to the project.',
               },
               reads: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1 },
                 description: 'Paths this task only reads. Never a conflict.',
               },
               deletes: {
                 type: 'array',
-                items: { type: 'string' },
+                items: { type: 'string', minLength: 1 },
                 description: 'Files or folders this task expects to delete.',
               },
               renames: {
@@ -232,15 +249,18 @@ function teamTool(subagentNames: string[]): Tool {
                 items: {
                   type: 'object',
                   properties: {
-                    from: { type: 'string' },
-                    to: { type: 'string' },
+                    from: { type: 'string', minLength: 1 },
+                    to: { type: 'string', minLength: 1 },
                   },
                   required: ['from', 'to'],
+                  additionalProperties: false,
                 },
                 description: 'Moves this task expects to make.',
               },
               retries: {
-                type: 'number',
+                type: 'integer',
+                minimum: 0,
+                maximum: 2,
                 description:
                   'Extra attempts if this task fails, at most 2. Only worth ' +
                   'setting for work that can fail transiently; a refusal fails ' +
@@ -256,10 +276,12 @@ function teamTool(subagentNames: string[]): Tool {
               },
             },
             required: ['id', 'description'],
+            additionalProperties: false,
           },
         },
       },
       required: ['tasks'],
+      additionalProperties: false,
     }),
   } as Tool
 }
@@ -275,13 +297,17 @@ function taskTool(subagentNames: string[]): Tool {
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
-        subagent_name: { type: 'string' },
-        description: { type: 'string' },
+        subagent_name: { type: 'string', minLength: 1 },
+        description: { type: 'string', minLength: 1 },
         system_prompt: {
           type: 'string',
+          minLength: 1,
           description: 'For a one-off subagent with no saved definition.',
         },
-        allowed_tools: { type: 'array', items: { type: 'string' } },
+        allowed_tools: {
+          type: 'array',
+          items: { type: 'string', minLength: 1 },
+        },
       },
       required: ['subagent_name', 'description'],
       additionalProperties: false,
