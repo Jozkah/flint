@@ -404,6 +404,46 @@ export async function buildCoworkTools(
 }
 
 /**
+ * Cowork's outer tool lifecycle currently hard-stops one foreground `bash`
+ * call at 120 seconds. The backend schema historically allowed any integer,
+ * so the model could request 300/600/900 seconds and still be killed at 120.
+ * Make the advertised contract match the execution contract. Long work should
+ * be started as a background job (background:true, omit timeout), which returns
+ * a job id immediately instead of burning the run's wall-clock budget.
+ */
+export const COWORK_BASH_FOREGROUND_TIMEOUT_MAX = 120
+
+function coworkBuiltinSchema(s: ToolSchema): {
+  description: string
+  parameters: Record<string, unknown>
+} {
+  if (s.function.name !== 'bash') {
+    return {
+      description: s.function.description,
+      parameters: s.function.parameters as Record<string, unknown>,
+    }
+  }
+
+  const parameters = JSON.parse(
+    JSON.stringify(s.function.parameters)
+  ) as Record<string, unknown>
+  const properties = parameters.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined
+  if (properties?.timeout) {
+    properties.timeout.maximum = COWORK_BASH_FOREGROUND_TIMEOUT_MAX
+    properties.timeout.description =
+      'Seconds to wait, at most 120. For work that may take longer, set background:true and omit timeout so the call returns a job_id immediately.'
+  }
+  return {
+    description:
+      s.function.description +
+      ' A foreground call may wait at most 120 seconds. For longer commands use background:true and omit timeout; collect the returned job_id later instead of increasing timeout.',
+    parameters,
+  }
+}
+
+/**
  * The advertised tool set from the backend's schemas, with no I/O.
  *
  * Split from `buildCoworkTools` so the session details can measure the tool
@@ -425,9 +465,10 @@ export function coworkToolsFromSchemas(
     // Review (plan) mode changes nothing, and stopping another session's run
     // is a change. Withheld here and refused by the dispatcher too.
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) continue
+    const schema = coworkBuiltinSchema(s)
     tools[name] = {
-      description: s.function.description,
-      inputSchema: jsonSchema(s.function.parameters as Record<string, unknown>),
+      description: schema.description,
+      inputSchema: jsonSchema(schema.parameters),
     } as Tool
   }
 
