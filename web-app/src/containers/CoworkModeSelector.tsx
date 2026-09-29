@@ -26,7 +26,7 @@ const ICONS: Record<CoworkMode, typeof Diamond> = {
 type Props = {
   mode: CoworkMode
   onChange: (mode: CoworkMode) => void
-  /** `pill` in a header row; `quiet` under the composer: text only, one word. */
+  /** `pill` in a split-pane composer row; `quiet` under the composer. */
   variant?: 'pill' | 'quiet'
 }
 
@@ -52,12 +52,12 @@ export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) 
             variant={quiet ? 'ghost' : 'outline'}
             size="xs"
             aria-label={t('common:coworkMode.label')}
-            title={quiet ? t(modeLabelKey(mode)) : undefined}
+            title={t(modeLabelKey(mode))}
             data-testid="cowork-mode-selector"
             className={cn(
               quiet
                 ? 'h-7 shrink-0 gap-1.5 px-2 text-xs font-medium pointer-coarse:h-11'
-                : // 30px, the height of every context control in the top header.
+                : // 30px, the height of every context control in the split pane.
                   'h-[30px] shrink-0 gap-1.5 px-2.5 text-xs font-medium pointer-coarse:h-11',
               // Autonomous is the mode that can change things without asking,
               // so it is the one that does not sit quietly in the row. Warning,
@@ -72,18 +72,12 @@ export function CoworkModeSelector({ mode, onChange, variant = 'pill' }: Props) 
             )}
           >
             <Icon aria-hidden className="size-3.5 shrink-0" />
-            {quiet ? (
-              <span>{t(modeShortLabelKey(mode))}</span>
-            ) : (
-              <>
-                {/* Icon only when the Cowork header row is tight (@container/ctx);
-                    the button keeps its aria-label either way. */}
-                <span className="@max-2xl/ctx:sr-only">{t(modeLabelKey(mode))}</span>
-                <ChevronDown
-                  aria-hidden
-                  className="size-3 shrink-0 text-muted-foreground"
-                />
-              </>
+            <span>{t(modeShortLabelKey(mode))}</span>
+            {!quiet && (
+              <ChevronDown
+                aria-hidden
+                className="size-3 shrink-0 text-muted-foreground"
+              />
             )}
           </Button>
         </DropdownMenuTrigger>
