@@ -5,8 +5,6 @@ import { createRemoteHandlers, pageOf, type RemoteSources } from '../handlers'
 import { diffIds, watchIds } from '../events'
 import type { RemoteRpcRequest } from '../protocol'
 
-// The events module imports the app's stores; the watchers under test here
-// take their store as an argument, so the real ones are never touched.
 vi.mock('@/hooks/useAppState', () => ({ useAppState: {} }))
 vi.mock('@/hooks/useCoworkRun', () => ({ useCoworkRun: {} }))
 vi.mock('@/hooks/useToolApprovalRequests', () => ({
@@ -14,6 +12,14 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
   allApprovalRequests: () => [],
 }))
 vi.mock('@/lib/rooms/store', () => ({ useRoomsStore: {} }))
+vi.mock('../mobileMutations', () => ({
+  handleMobileMutation: vi.fn(async (raw: Record<string, unknown>) => {
+    if (raw.mobileOp === 'room.create') return { ok: true, id: 'new-room' }
+    if (raw.mobileOp === 'room.update') return { ok: true, id: String(raw.id) }
+    if (raw.mobileOp === 'room.delete') return { ok: true }
+    return null
+  }),
+}))
 
 const device = { id: 'd1', name: 'Pixel' }
 const req = (method: string, params: unknown = {}): RemoteRpcRequest => ({
@@ -49,13 +55,9 @@ function sources(over: Partial<RemoteSources> = {}): RemoteSources {
     roomDetail: async () => null,
     coworkDetail: () => null,
     approvalDetails: () => [],
-    systemInfo: async () => {
-      throw new Error('unused')
-    },
+    systemInfo: async () => { throw new Error('unused') },
     mcpServers: () => [],
-    settings: async () => {
-      throw new Error('unused')
-    },
+    settings: async () => { throw new Error('unused') },
     appearance: () => ({ vars: { light: {}, dark: {} } }),
     ...over,
   }
@@ -68,7 +70,6 @@ describe('dispatchRemoteRpc', () => {
     expect(await dispatchRemoteRpc(req('nope'), handlers)).toEqual({
       error: { code: 'unknown_method', message: 'Unknown method nope' },
     })
-    // Inherited object keys are not methods.
     const r = await dispatchRemoteRpc(req('toString'), handlers)
     expect('error' in r && r.error.code).toBe('unknown_method')
   })
@@ -84,12 +85,8 @@ describe('dispatchRemoteRpc', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const failing = {
       ...handlers,
-      status: () => {
-        throw new Error('secret path /home/u')
-      },
-      'models.list': () => {
-        throw new RemoteRpcError('bad_params', 'nope')
-      },
+      status: () => { throw new Error('secret path /home/u') },
+      'models.list': () => { throw new RemoteRpcError('bad_params', 'nope') },
     } as RemoteHandlers
     expect(await dispatchRemoteRpc(req('status'), failing)).toEqual({
       error: { code: 'internal', message: 'Flint could not do that' },
@@ -114,6 +111,20 @@ describe('handlers', () => {
     if ('error' in r) throw new Error(r.error.message)
     return r.result as never
   }
+
+  it('exposes first-class room create/update/delete mutations', async () => {
+    expect(await call('room.create', {
+      title: 'Review',
+      objective: 'Pick an approach',
+      mode: 'round-robin',
+      participants: [
+        { name: 'A', role: 'proposer', model: { id: 'qwen', provider: 'llamacpp' }, toolAccess: 'none' },
+        { name: 'B', role: 'reviewer', model: { id: 'claude', provider: 'anthropic' }, toolAccess: 'none' },
+      ],
+    })).toEqual({ ok: true, id: 'new-room' })
+    expect(await call('room.update', { id: 'new-room', patch: { mode: 'user-selected' } })).toEqual({ ok: true, id: 'new-room' })
+    expect(await call('room.delete', { id: 'new-room' })).toEqual({ ok: true })
+  })
 
   it('sessions.list merges kinds, newest first, with status and group', async () => {
     const { sessions } = await call('sessions.list')
@@ -157,11 +168,7 @@ describe('handlers', () => {
   })
 
   it('status counts loaded models, runs and approvals', async () => {
-    expect(await call('status')).toEqual({
-      modelsLoaded: 1,
-      runs: [{ kind: 'chat', id: 'c2' }],
-      approvalsWaiting: 1,
-    })
+    expect(await call('status')).toEqual({ modelsLoaded: 1, runs: [{ kind: 'chat', id: 'c2' }], approvalsWaiting: 1 })
   })
 
   it('pageOf clamps before to the range', () => {
