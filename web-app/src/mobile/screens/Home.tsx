@@ -1,6 +1,6 @@
 // New chat: the Chat / Cowork / Room switch, what is waiting for you, and a
 // composer that starts the conversation on the computer.
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { HomeMode } from '../state/router'
 import { TopMain } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
@@ -96,15 +96,10 @@ function Suggestions({ items, onPick, label }: { items: string[]; onPick: (s: st
 export default function Home() {
   const mode = useApp((s) => s.homeMode)
   const composer = useApp((s) => s.composer)
-  const models = useRpc('models.list', {})
 
-  // Start with a loaded model, else the first one, as the desktop does.
-  useEffect(() => {
-    if (composer.model || !models.data?.models.length) return
-    const m = models.data.models.find((x) => x.loaded) ?? models.data.models[0]
-    app.set((s) => ({ composer: { ...s.composer, model: { id: m.id, provider: m.provider, name: m.name } } }))
-  }, [composer.model, models.data])
-
+  // Do not guess the desktop's selected model from the model list. When the
+  // phone has not explicitly picked a model, omit it and let the desktop's
+  // normal new-chat/new-Cowork path use its real current selection.
   const setMode = (m: HomeMode) => app.set({ homeMode: m })
   const [seed, setSeed] = useState<{ text: string; n: number }>()
   const fill = (text: string) => setSeed((s) => ({ text, n: (s?.n ?? 0) + 1 }))
@@ -125,7 +120,6 @@ export default function Home() {
             mode: composer.cwMode,
             ...(composer.access === 'review-only' ? { access: composer.access } : {}),
           })
-    // The computer opened the new conversation; so does the phone.
     if (r) go({ name: r.kind, id: r.id })
     return r !== undefined
   }
