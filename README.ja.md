@@ -21,7 +21,7 @@
   <a href="https://jan.ai/docs/desktop">はじめに</a>
   - <a href="https://discord.gg/Exe46xPMbK">コミュニティ</a>
   - <a href="https://jan.ai/changelog">変更履歴</a>
-  - <a href="https://github.com/janhq/jan/issues">バグ報告</a>
+  - <a href="https://github.com/Jozkah/flint/issues">バグ報告</a>
 </p>
 
 Janはオープンソースの優れたAIを使いやすい製品として提供します。LLMをダウンロードして、**完全なコントロール**と**プライバシー**を保ちながら実行できます。
@@ -84,7 +84,7 @@ Janはオープンソースの優れたAIを使いやすい製品として提供
   </tr>
 </table>
 
-[jan.ai](https://jan.ai/) または [GitHubリリース](https://github.com/janhq/jan/releases)からダウンロードできます。
+[jan.ai](https://jan.ai/) または [GitHubリリース](https://github.com/Jozkah/flint/releases)からダウンロードできます。
 
 ## 機能
 
@@ -110,8 +110,8 @@ Janはオープンソースの優れたAIを使いやすい製品として提供
 ### Makeで実行
 
 ```bash
-git clone https://github.com/janhq/jan
-cd jan
+git clone https://github.com/Jozkah/flint
+cd flint
 make dev
 ```
 
@@ -162,7 +162,7 @@ yarn dev
 
 ## お問い合わせ
 
-- **バグ**: [GitHub Issues](https://github.com/janhq/jan/issues)
+- **バグ**: [GitHub Issues](https://github.com/Jozkah/flint/issues)
 - **ビジネス**: hello@jan.ai
 - **採用**: hr@jan.ai
 - **一般的な議論**: [Discord](https://discord.gg/FTk2MvZwJH)
