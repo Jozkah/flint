@@ -79,7 +79,25 @@ fn write_config(data_folder: &std::path::Path, cfg: &Value) -> Result<(), String
 
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body).map_err(|e| e.to_string())?;
+    // MCP env/header fields can hold keys entered during plugin setup, so the
+    // file is owner-only on Unix from the moment it exists.
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(&tmp).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // `mode` only applies on creation; a stale tmp file keeps its old bits.
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+    }
+    std::io::Write::write_all(&mut file, body.as_bytes()).map_err(|e| e.to_string())?;
+    drop(file);
     std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -945,6 +963,21 @@ mod tests {
         let doc: serde_json::Value = serde_json::from_str(&raw).unwrap();
         assert!(doc.get("mcpServers").is_some());
         assert!(doc.get("mcpSettings").is_some());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_config_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let data = temp_data();
+        let folder = data.path();
+        // A stale tmp file with loose bits must not leak into the result.
+        let tmp = config_path(folder).with_extension("json.tmp");
+        std::fs::write(&tmp, "x").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_config(folder, &serde_json::json!({ "mcpServers": {} })).unwrap();
+        let mode = std::fs::metadata(config_path(folder)).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     #[test]
