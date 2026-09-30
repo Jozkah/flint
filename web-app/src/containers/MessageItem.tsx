@@ -874,7 +874,7 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && (
-            <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-2 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
+            <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-0.5 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
               {/* The time is on the header line above. */}
               <div
                 className={cn(
@@ -961,7 +961,7 @@ export const MessageItem = memo(
                 type="button"
                 data-testid="skills-used"
                 aria-label={t('common:skillsUsedLabel')}
-                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
+                className="ml-2 inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
               >
                 <Sparkles className="size-3.5" aria-hidden />
                 {t('common:skillsUsedCount', { count: usedSkills.length })}

@@ -20,10 +20,10 @@ export const CopyButton = ({ text }: { text: string }) => {
     >
       {copied ? (
         <>
-          <CopyCheck className="size-4 text-primary" />
+          <CopyCheck className="size-[15px] text-primary" />
         </>
       ) : (
-        <Copy className="size-4" />
+        <Copy className="size-[15px]" />
       )}
     </Button>
   )

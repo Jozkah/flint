@@ -144,7 +144,7 @@ export const TokenSpeedIndicator = memo(
           data-testid="message-token-trigger"
           className="inline-grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground pointer-coarse:size-11"
         >
-          <Gauge className="size-4" />
+          <Gauge className="size-[15px]" />
         </button>
       </PopoverTrigger>
     )
@@ -156,7 +156,7 @@ export const TokenSpeedIndicator = memo(
 
     if (showTokenSpeed) {
       return (
-        <div className="flex min-w-0 items-center gap-2 whitespace-nowrap text-muted-foreground text-xs">
+        <div className="flex min-w-0 items-center gap-x-1 whitespace-nowrap text-muted-foreground text-xs">
           <Popover>
             {trigger}
             {details}
