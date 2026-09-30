@@ -23,7 +23,7 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://jan.ai"
-Repository = "https://github.com/janhq/jan"
+Repository = "https://github.com/Jozkah/flint"
 
 [tool.setuptools]
 packages = ["jan_agent_sdk"]
