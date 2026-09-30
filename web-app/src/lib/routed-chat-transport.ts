@@ -41,6 +41,21 @@ function latestUserMessage(
  * regenerations keep the same selection because their latest user-message id
  * has not changed.
  */
+/**
+ * What a reply shows of the assistant that answered it. Flint keeps the Flint
+ * mark, so it carries no avatar.
+ */
+const answeringOf = (
+  a: { id?: string; name?: string; avatar?: string } | undefined
+): { name: string; avatar?: string } | undefined =>
+  a?.name
+    ? {
+        name: a.name,
+        avatar:
+          a.id !== 'jan' && typeof a.avatar === 'string' ? a.avatar : undefined,
+      }
+    : undefined
+
 export class RoutedChatTransport extends CustomChatTransport {
   private lastRoutedUserMessageId: string | null = null
   private routedMode: JevSuggestedMode | null = null
@@ -100,7 +115,7 @@ export class RoutedChatTransport extends CustomChatTransport {
     // A regenerate after a restart: this message was already routed, so keep
     // what that decided instead of asking again and possibly picking another.
     if (thread?.metadata?.jevRoutedMessageId === latest.id) {
-      this.answeringAssistantName = thread.assistants?.[0]?.name
+      this.answeringAssistant = answeringOf(thread.assistants?.[0])
       return
     }
 
@@ -135,7 +150,7 @@ export class RoutedChatTransport extends CustomChatTransport {
         )
       : undefined
     // Named on the reply: the one just routed to, else the one in charge.
-    this.answeringAssistantName = (assistant ?? current)?.name
+    this.answeringAssistant = answeringOf(assistant ?? current)
     if (assistant && assistant.id !== current?.id) {
       // The transport must see the routed prompt immediately. Waiting for the
       // Zustand update + React effect would send this turn with the old persona.

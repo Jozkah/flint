@@ -828,8 +828,8 @@ function prependContinuationToUIStream(
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
-  /** The assistant answering the turn in flight, named on the reply. */
-  protected answeringAssistantName: string | undefined
+  /** The assistant answering the turn in flight, shown on the reply. */
+  protected answeringAssistant: { name: string; avatar?: string } | undefined
   /**
    * Record each request as part of a Chat turn (`run.started`/`run.ended`
    * with `source: chat`). Cowork records its own run around every step it
@@ -2264,12 +2264,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           const compacted = part.type === 'start' ? announced : null
           // Who answered, so the reply's header can name the assistant that
           // was in charge of it rather than always saying Flint.
-          const assistantName = part.type === 'start' ? this.answeringAssistantName : undefined
-          return compacted || assistantName
+          const answering = part.type === 'start' ? this.answeringAssistant : undefined
+          return compacted || answering
             ? {
                 ...(attribution ?? {}),
                 ...(compacted ? { compaction: compacted } : {}),
-                ...(assistantName ? { assistantName } : {}),
+                ...(answering
+                  ? { assistantName: answering.name, assistantAvatar: answering.avatar }
+                  : {}),
               }
             : attribution
         }

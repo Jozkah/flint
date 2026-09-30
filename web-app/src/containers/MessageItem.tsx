@@ -77,6 +77,7 @@ import { WebSourcesRow } from '@/components/WebSourcesRow'
 import { fetchedUrlOf } from '@/lib/webSources'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
+import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { FlintMark } from '@/components/shell/FlintMark'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
@@ -728,7 +729,15 @@ export const MessageItem = memo(
               aria-hidden
               className="grid size-[22px] shrink-0 place-items-center rounded-md bg-accent p-[3px] shadow-[inset_0_0_0_0.8px_var(--border)]"
             >
-              <FlintMark className="size-full" />
+              {typeof metadata?.assistantAvatar === 'string' && metadata.assistantAvatar ? (
+                <AvatarEmoji
+                  avatar={metadata.assistantAvatar}
+                  imageClassName="size-full object-contain"
+                  textClassName="text-xs leading-none"
+                />
+              ) : (
+                <FlintMark className="size-full" />
+              )}
             </span>
             <span className="shrink-0 font-semibold text-foreground">
               {(metadata?.assistantName as string | undefined) || 'Flint'}
