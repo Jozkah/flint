@@ -80,10 +80,10 @@ export function ContextWindowCard({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full items-center justify-between gap-3 px-3 pt-3 text-left"
+        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 pt-3 text-left"
       >
-        <span className="font-medium text-foreground">Context window</span>
-        <span className="flex items-center gap-1 tabular-nums text-muted-foreground">
+        <span className="shrink-0 whitespace-nowrap font-medium text-foreground">Context window</span>
+        <span className="ml-auto flex items-center gap-1 whitespace-nowrap tabular-nums text-muted-foreground">
           {hasWindow
             ? `${formatTokenCount(usedTokens)} / ${formatTokenCount(windowTokens)} (${usedPct!.toFixed(0)}%)`
             : `${formatTokenCount(usedTokens)} tokens`}
@@ -121,8 +121,8 @@ export function ContextWindowCard({
       </div>
 
       {(untilCompact !== null || onCompact) && (
-        <div className="flex items-center justify-between gap-3 px-3 pt-2 text-muted-foreground">
-          <span data-testid="until-compact">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 pt-3 text-muted-foreground">
+          <span data-testid="until-compact" className="min-w-0">
             {untilCompact !== null
               ? `${formatTokenCount(untilCompact)} until auto-compact`
               : autoCompactOn === false
@@ -133,7 +133,7 @@ export function ContextWindowCard({
             <button
               type="button"
               onClick={onCompact}
-              className="rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
+              className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-muted px-2 py-1 text-[11px] font-medium text-foreground transition-colors hover:bg-accent"
             >
               Compact session
             </button>
