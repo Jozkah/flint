@@ -38,6 +38,20 @@ export default function Chat({ id }: { id: string }) {
   const [older, setOlder] = useState<RemoteMessage[]>([])
   const [olderStart, setOlderStart] = useState<number | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  // The window is the newest PAGE messages, so a new message pushes the oldest
+  // one out of it. Indexes are stable (history only appends), so carry what the
+  // previous window held below the new start into `older`; otherwise it is lost.
+  const [seen, setSeen] = useState<{ id: string; start: number; messages: RemoteMessage[] } | null>(null)
+  if (data && seen?.id === id && seen.messages !== data.messages && data.start > seen.start) {
+    const dropped = seen.messages.slice(0, data.start - seen.start)
+    setOlder((current) => {
+      const have = new Set(current.map((m) => m.id))
+      return [...current, ...dropped.filter((m) => !have.has(m.id))]
+    })
+  }
+  if (data && (seen?.id !== id || seen.messages !== data.messages)) {
+    setSeen({ id, start: data.start, messages: data.messages })
+  }
   const messages = data?.messages ?? []
   const allMessages = [...older, ...messages.filter((m) => !older.some((o) => o.id === m.id))]
   const pending = pendingFor(pendingAll, id, allMessages)
