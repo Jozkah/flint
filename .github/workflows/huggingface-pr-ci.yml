@@ -1,0 +1,46 @@
+name: Hugging Face Hub PR CI
+
+on:
+  push:
+    branches:
+      - feat/huggingface-model-downloads
+
+concurrency:
+  group: huggingface-hub-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - name: Enable Yarn
+        run: |
+          corepack enable
+          corepack prepare yarn@4.10.3 --activate
+      - name: Install dependencies
+        run: yarn install --immutable
+      - name: Build Tauri plugin APIs
+        run: yarn build:tauri:plugin:api
+      - name: Build core
+        run: yarn workspace @janhq/core build
+      - name: Typecheck web app
+        run: yarn typecheck
+      - name: Test Hub and privacy guards
+        run: yarn vitest run --project @janhq/web-app web-app/src/lib/__tests__/huggingface.test.ts web-app/src/__tests__/localOnly.test.ts
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check desktop crate
+        run: cargo check --manifest-path src-tauri/Cargo.toml --lib
