@@ -7,4 +7,4 @@
  * margins let its paper background and hairline span the dialog's padding.
  */
 export const STICKY_DIALOG_FOOTER =
-  'sticky bottom-0 z-10 -mx-5 -mb-5 border-t border-border bg-card px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5'
+  'sticky -bottom-5 z-10 -mx-5 -mb-5 border-t border-border bg-card px-5 pt-3 pb-[calc(1.25rem+env(safe-area-inset-bottom))] sm:pb-5'

@@ -6,6 +6,9 @@ import {
 } from '@/hooks/useGeneralSetting'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useEffect, useRef } from 'react'
+import { useNavigate } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
+import { repoFromDeepLink } from '@/lib/huggingface'
 import { useMCPServers, DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
@@ -204,6 +207,7 @@ const syncModelParamDefaults = () => {
 }
 
 export function DataProvider() {
+  const navigate = useNavigate()
   const { setProviders, getProviderByName } =
     useModelProvider()
 
@@ -488,13 +492,15 @@ export function DataProvider() {
   }, [serviceHub])
 
   /**
-   * Deep links used to open a model's page in the Hub so it could be
-   * downloaded. With no Hub and no downloader there is nothing to open, so a
-   * link is noted and otherwise ignored rather than silently navigating.
+   * A model link opens that model's page in Discover. Opening the page is the
+   * only thing it does: Hugging Face is contacted when the page loads, and a
+   * download still needs the user's own click. Anything that is not a plain
+   * owner/name model link is ignored.
    */
   const handleDeepLink = (urls: string[] | null) => {
-    if (!urls?.length) return
-    console.log('Ignoring deeplink; this build has no model hub:', urls)
+    const repo = urls?.length ? repoFromDeepLink(urls[0]) : null
+    if (!repo) return
+    navigate({ to: route.hub.model, params: { modelId: repo }, search: { repo } })
   }
 
   return null

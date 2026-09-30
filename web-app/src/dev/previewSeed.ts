@@ -34,6 +34,7 @@ import { projectKeyOf } from '@/lib/coworkCode'
 import { answer } from './previewTauri'
 import { seedRooms } from './previewRooms'
 import { seedEngine } from './previewSeedEngine'
+import { seedHuggingFacePreview } from './previewHuggingFace'
 import {
   PREVIEW_DATA_FOLDER,
   patchSettingsServices,
@@ -1122,6 +1123,7 @@ export function seedPreview() {
   seedCowork()
   seedRooms()
   seedEngine()
+  seedHuggingFacePreview()
   seedSettingsPreview()
   // Folders live in a store the hook reads through the projects service; the
   // hook's own setter is reached from its module.

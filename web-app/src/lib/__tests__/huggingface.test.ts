@@ -5,6 +5,7 @@ import {
   cleanHuggingFaceRepo,
   groupHuggingFaceFiles,
   quantizationFromFilename,
+  repoFromDeepLink,
   splitInfo,
   type HuggingFaceFile,
 } from '@/lib/huggingface'
@@ -53,6 +54,22 @@ describe('GGUF variant grouping', () => {
     expect(chooseMmproj(groups)?.primary.name).toBe('mmproj-F16.gguf')
     expect(chooseDraft(groups, groups.find((group) => group.kind === 'model')!)?.primary.name)
       .toBe('model-Q4_K_M-mtp.gguf')
+  })
+})
+
+describe('deep links', () => {
+  it('opens a plain owner/name repository', () => {
+    expect(repoFromDeepLink('flint://models/huggingface/unsloth/Qwen3-GGUF')).toBe(
+      'unsloth/Qwen3-GGUF'
+    )
+    expect(repoFromDeepLink('jan://models/owner/repo')).toBe('owner/repo')
+  })
+
+  it('ignores anything else', () => {
+    expect(repoFromDeepLink('flint://settings/huggingface/a/b')).toBeNull()
+    expect(repoFromDeepLink('flint://models/huggingface/a/b/c')).toBeNull()
+    expect(repoFromDeepLink('flint://models/huggingface/..%2Fetc/x')).toBeNull()
+    expect(repoFromDeepLink('not a url')).toBeNull()
   })
 })
 

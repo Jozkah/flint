@@ -700,6 +700,14 @@ function SetupScreen({ onFinished }: SetupScreenProps = {}) {
                       >
                         {t('setup:finishImport')}
                       </Button>
+                      <Button
+                        variant="link"
+                        className="pointer-coarse:h-11"
+                        data-testid="setup-finish-discover"
+                        onClick={() => navigate({ to: route.hub.index })}
+                      >
+                        {t('setup:exploreHub')}
+                      </Button>
                     </div>
                   </div>
                 )}

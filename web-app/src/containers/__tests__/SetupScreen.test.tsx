@@ -489,7 +489,7 @@ describe('SetupScreen', () => {
   })
 
   describe('finish page', () => {
-    it('says the app fetches nothing', async () => {
+    it('says when the app reaches the network', async () => {
       await renderPastSetup()
 
       expect(currentPage()).toBe('finish')
@@ -501,7 +501,12 @@ describe('SetupScreen', () => {
 
       expect(screen.queryByTestId('setup-model-card')).not.toBeInTheDocument()
       expect(screen.queryByText('setup:download')).not.toBeInTheDocument()
-      expect(screen.queryByText('setup:exploreHub')).not.toBeInTheDocument()
+    })
+
+    it('links to Discover without starting a download', async () => {
+      await renderPastSetup()
+
+      expect(screen.getByTestId('setup-finish-discover')).toBeInTheDocument()
     })
 
     it('lists the models already on disk', async () => {

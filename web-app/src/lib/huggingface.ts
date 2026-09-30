@@ -103,6 +103,27 @@ export function cleanHuggingFaceRepo(value: string): string {
   return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : text
 }
 
+/**
+ * The repository a `flint://models/huggingface/<owner>/<repo>` (or legacy
+ * `jan://`) link names, or null when it names none. Strict on purpose: a link
+ * arrives from outside the app, so anything that is not a plain owner/name
+ * pair is ignored rather than passed on.
+ */
+export function repoFromDeepLink(link: string): string | null {
+  let url: URL
+  try {
+    url = new URL(link)
+  } catch {
+    return null
+  }
+  if (url.hostname !== 'models') return null
+  const parts = url.pathname.split('/').filter(Boolean)
+  if (parts[0] === 'huggingface') parts.shift()
+  if (parts.length !== 2) return null
+  const repo = parts.map(decodeURIComponent).join('/')
+  return /^[A-Za-z0-9][\w.-]*\/[A-Za-z0-9][\w.-]*$/.test(repo) ? repo : null
+}
+
 export function quantizationFromFilename(filename: string): string | null {
   const upper = filename.toUpperCase()
   const known = [
