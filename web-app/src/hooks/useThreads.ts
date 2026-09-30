@@ -10,6 +10,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
@@ -98,6 +99,8 @@ const cleanupThreadArtifacts = (threadId: string) => {
   cleanupVectorDB(threadId)
   cleanupThreadCache(threadId)
   cleanupThreadWorkspace(threadId)
+  // "Allow all temporarily" lasts only as long as its conversation.
+  useToolApprovalRequests.getState().forgetTemporaryGit(threadId)
 }
 
 export const useThreads = create<ThreadState>()((set, get) => ({
