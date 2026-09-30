@@ -52,6 +52,7 @@ const REVEAL_ACTIONS =
 const ACTION_BUTTON =
   'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { shouldAnimateEntry } from '@/lib/messageEntry'
 import {
   CHAT_STATUS,
   CONTENT_TYPE,
@@ -160,6 +161,8 @@ export const MessageItem = memo(
     )
     const updateProvider = useModelProvider((state) => state.updateProvider)
     const [enableToolsOpen, setEnableToolsOpen] = useState(false)
+    // Decided once, as the message mounts: history is not animated in.
+    const [animateIn] = useState(shouldAnimateEntry)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
@@ -716,7 +719,8 @@ export const MessageItem = memo(
       <div
         data-role={message.role}
         className={cn(
-          'group/message mb-[18px] w-full motion-safe:animate-msg-in',
+          'group/message mb-[18px] w-full',
+          animateIn && 'motion-safe:animate-msg-in',
           message.role === 'user' && !isFirstMessage && 'mt-2'
         )}
         onContextMenu={openContextMenu}

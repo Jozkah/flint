@@ -1,4 +1,5 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
@@ -300,6 +301,12 @@ export function ThreadConversation({
   paneControls,
 }: ThreadConversationProps) {
   const serviceHub = useServiceHub()
+  // Opening a chat draws its history at once; see lib/messageEntry.
+  const openedThreadRef = useRef<string | null>(null)
+  if (openedThreadRef.current !== threadId) {
+    openedThreadRef.current = threadId
+    markConversationOpened()
+  }
   // Which pane this is. With the split closed there is one pane, always active.
   const pane = useConversationPane()
   const isSplit = Boolean(pane?.isSplit)

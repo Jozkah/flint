@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
@@ -649,6 +650,12 @@ export function CoworkPage() {
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
   )
+  // Opening a session draws its history at once; see lib/messageEntry.
+  const openedSessionRef = useRef<string | null>(null)
+  if (openedSessionRef.current !== (session?.id ?? null)) {
+    openedSessionRef.current = session?.id ?? null
+    markConversationOpened()
+  }
   const folder = session?.folder ?? null
   // Folders attached beside the primary, like a multi-root workspace.
   const sessionExtraFolders = session?.extraFolders
