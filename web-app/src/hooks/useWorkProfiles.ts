@@ -12,7 +12,7 @@ import {
 
 /**
  * The work-profile opt-in and the user's edited profile texts, persisted;
- * each session's current profile, in memory. With the opt-in off no profile
+ * each session's current profile, persisted so a restart keeps it. With the opt-in off no profile
  * is ever chosen and every run gets the global prompt alone.
  */
 type SessionChoice = { id: WorkProfileId; manual: boolean }
@@ -71,7 +71,13 @@ export const useWorkProfiles = create<WorkProfilesState>()(
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
       partialize: (s) =>
-        ({ enabled: s.enabled, overrides: s.overrides }) as unknown as WorkProfilesState,
+        ({
+          enabled: s.enabled,
+          overrides: s.overrides,
+          // A restarted session keeps its profile until its next fresh send
+          // picks again; a manual choice stays pinned.
+          sessions: s.sessions,
+        }) as unknown as WorkProfilesState,
     }
   )
 )

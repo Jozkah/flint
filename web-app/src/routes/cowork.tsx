@@ -486,7 +486,7 @@ import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
-import { jevSuggestSkill } from '@/lib/jev'
+import { workProfileAsker } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 
@@ -2538,14 +2538,10 @@ export function CoworkPage() {
     // picks how the run approaches it -- Jev decides when its suggestions are
     // on, a keyword match otherwise, and a profile picked by hand is kept.
     if (text && !from && !hidden) {
-      const jevOn = useJevSettings.getState().skillMode === 'on'
       await chooseWorkProfile(
         sid,
         text,
-        jevOn
-          ? (message, options) =>
-              jevSuggestSkill(message, options).then((d) => d.skill)
-          : undefined
+        workProfileAsker(useJevSettings.getState().rerankMode)
       )
     }
 
@@ -2571,6 +2567,10 @@ export function CoworkPage() {
         return
       }
     }
+
+    // The guard at the top ran before the profile choice and the worktree check
+    // awaited: a second send in that window passed it too. Only one may claim.
+    if (useCoworkRun.getState().runs[sid]) return
 
     // Claimed before the first await (janhq/jan#8905): the run id, its
     // cancellation handle and the session's running state all exist from
