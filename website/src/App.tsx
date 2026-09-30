@@ -14,7 +14,7 @@ export default function App({ path }: { path: string }) {
       <a className="skip" href="#main">
         Skip to content
       </a>
-      <Nav home={home} />
+      <Nav home={home} current={page.path} />
       <main id="main">
         <Page />
       </main>

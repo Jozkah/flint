@@ -17,11 +17,11 @@ function Card({ href, title, children, external = true }: { href: string; title:
     </>
   )
   return external ? (
-    <ExternalLink href={href} className="dcard">
+    <ExternalLink href={href} className="dcard tilt">
       {inner}
     </ExternalLink>
   ) : (
-    <a href={href} className="dcard">
+    <a href={href} className="dcard tilt">
       {inner}
     </a>
   )

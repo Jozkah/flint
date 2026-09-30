@@ -185,7 +185,7 @@ export function Bento() {
           A desktop app, built like one.
         </h2>
         <div className="bento">
-          <article className="tile t1">
+          <article className="tile tilt t1">
             <div className="txt">
               <h3 className="h3">Steer a run while it works</h3>
               <p>Queue the next instruction, or redirect the current one, without stopping the agent.</p>
@@ -196,7 +196,7 @@ export function Bento() {
               </Frame>
             </div>
           </article>
-          <article className="tile t2">
+          <article className="tile tilt t2">
             <div className="txt">
               <h3 className="h3">Tools and MCP servers</h3>
               <p>See which servers are connected, how often they are called, and which ones ask first.</p>
@@ -207,7 +207,7 @@ export function Bento() {
               </Frame>
             </div>
           </article>
-          <article className="tile t3">
+          <article className="tile tilt t3">
             <div className="txt">
               <h3 className="h3">A library of what runs produce</h3>
               <p>Documents, code, pages and media from Cowork sessions, with a link back to the session.</p>
@@ -218,7 +218,7 @@ export function Bento() {
               </Frame>
             </div>
           </article>
-          <article className="tile t4">
+          <article className="tile tilt t4">
             <div className="txt">
               <h3 className="h3">Dark and light</h3>
               <p>The same workspace in either theme, with the Code panel, blame and change markers.</p>

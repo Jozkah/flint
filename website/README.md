@@ -26,6 +26,10 @@ Each page is a React component registered in `src/pages/registry.tsx` (path, tit
 - Legal and policy pages live in `src/pages/legal.tsx`: `/privacy/`, `/terms/`, `/license/`, `/security-policy/` (mirrors `SECURITY.md`) and `/accessibility/`. Their wording was drafted from what the repository's code, README and feature list say. Have the project owner review it, and update `UPDATED` in that file whenever it changes.
 - `npm test` fails if a page lacks a unique title, description or canonical URL, if a legal page stops matching `LICENSE`, `NOTICE` or `SECURITY.md`, or if any page links to something missing.
 
+## Motion
+
+Hero word reveal and stage entrance, scroll reveals and wipes, scrubbed manifesto text, the sticky Cowork stage, pointer spotlight, magnetic hero buttons, 3D tilt on tiles, gallery items and doc cards, a sliding nav indicator, pulsing annotation pins, slow embers, and page-to-page view transitions (Chromium and Safari; other browsers get a short fade-in). Pointer effects apply only to fine pointers, and `prefers-reduced-motion` turns everything off. Effects live in `src/lib/effects.ts` and `src/styles.css`.
+
 ## Where things come from
 
 - **Product screenshots** are the real captures in [`docs/screenshots`](../docs/screenshots). `scripts/assets.mjs` derives AVIF and WebP widths from them into `public/shots` (git-ignored). The page only frames and crops them; no pixel is redrawn. Crops are CSS regions of the same image (`Shot` with `region`).

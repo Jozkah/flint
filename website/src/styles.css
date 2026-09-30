@@ -99,7 +99,8 @@ ul, ol { padding: 0; list-style: none; }
   display: inline-flex; align-items: center; justify-content: center; gap: 10px;
   height: 46px; padding: 0 20px; border-radius: 10px; font-weight: 600; font-size: 15px; white-space: nowrap;
   border: 1px solid var(--border-strong); background: var(--secondary); color: var(--foreground);
-  transition: transform 0.4s var(--expo), background 0.25s, border-color 0.25s, box-shadow 0.4s var(--expo);
+  translate: var(--tx, 0px) var(--ty, 0px);
+  transition: transform 0.4s var(--expo), translate 0.35s var(--expo), background 0.25s, border-color 0.25s, box-shadow 0.4s var(--expo);
 }
 .btn:hover { background: var(--acc-soft); border-color: #464c56; transform: translateY(-1px); }
 .btn:active { transform: translateY(0) scale(0.985); transition-duration: 0.1s; }
@@ -150,7 +151,9 @@ ul, ol { padding: 0; list-style: none; }
 .nav-links a { position: relative; padding: 8px 12px; font-size: 14px; color: var(--muted-foreground); border-radius: 8px; transition: color .2s, background .2s; }
 .nav-links a:hover { color: var(--foreground); background: rgba(255,255,255,.045); }
 .nav-links a[aria-current='true'] { color: var(--foreground); }
-.nav-links a[aria-current='true']::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 1px; background: var(--foreground); }
+.nav-links { position: relative; }
+.nav-links a[aria-current] { color: var(--foreground); }
+.nav-ind { position: absolute; left: 0; bottom: 3px; height: 1px; width: 0; opacity: 0; background: var(--foreground); pointer-events: none; transition: transform .55s var(--expo), width .55s var(--expo), opacity .3s; }
 .nav-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .nav-gh { display: none; }
 .menu-btn { width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; border: 1px solid var(--border-strong); background: var(--secondary); }
@@ -315,7 +318,7 @@ html:not(.js) .scrub .sw { opacity: 1; }
 /* ---- bento ---- */
 .bento { display: grid; gap: 16px; margin-top: clamp(36px, 5vw, 64px); }
 .tile { position: relative; border: 1px solid var(--border); background: var(--card); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; transition: border-color .4s var(--expo), transform .6s var(--expo); }
-.tile:hover { border-color: var(--border-strong); transform: translateY(-3px); }
+.tile:hover { border-color: var(--border-strong); --lift: -3px; }
 .tile .txt { padding: 22px 24px 18px; }
 .tile .txt p { margin-top: 6px; color: var(--muted-foreground); font-size: 15px; max-width: 42ch; }
 .tile .pic { margin-top: auto; padding: 0 0 0 24px; }
@@ -355,7 +358,7 @@ html:not(.js) .scrub .sw { opacity: 1; }
 /* ---- gallery ---- */
 .gal { display: grid; gap: 14px; margin-top: clamp(32px, 5vw, 56px); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .gal-item { position: relative; display: block; text-align: left; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--card); transition: border-color .4s var(--expo), transform .6s var(--expo); }
-.gal-item:hover { border-color: #4a505a; transform: translateY(-3px); }
+.gal-item:hover { border-color: #4a505a; --lift: -3px; }
 .gal-item .cap { position: absolute; inset: auto 0 0 0; padding: 36px 14px 12px; font-size: 13px; font-weight: 500; background: linear-gradient(transparent, rgba(10,11,13,.92)); opacity: 0; transition: opacity .35s var(--expo); }
 .gal-item:hover .cap, .gal-item:focus-visible .cap { opacity: 1; }
 @media (hover: none) { .gal-item .cap { opacity: 1; } }
@@ -477,7 +480,7 @@ html:not(.js) .scrub .sw { opacity: 1; }
 .doc-h2 { font-size: clamp(22px, 2.4vw, 28px); letter-spacing: -0.03em; font-weight: 600; margin: clamp(40px, 5vw, 64px) 0 18px; }
 .dgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
 .dcard { display: flex; flex-direction: column; gap: 6px; padding: 18px 20px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); transition: border-color .3s, background .3s, transform .5s var(--expo); }
-.dcard:hover { border-color: var(--border-strong); background: var(--popover); transform: translateY(-2px); }
+.dcard:hover { border-color: var(--border-strong); background: var(--popover); --lift: -2px; }
 .card-t { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-weight: 600; }
 .card-t svg { width: 16px; height: 16px; color: var(--muted-foreground); transition: transform .4s var(--expo), color .2s; }
 .dcard:hover .card-t svg { transform: translateX(3px); color: var(--foreground); }
@@ -495,3 +498,26 @@ html:not(.js) .scrub .sw { opacity: 1; }
 @media print { .nav, .footer, .toc, .skip { display: none; } body { background: #fff; color: #000; } }
 .doc-grid > *, .prose, .prose-wide { min-width: 0; }
 .prose .brand-grid + p { margin-top: 16px; }
+
+/* ---- 3D tilt (pointer-driven, set in lib/effects.ts) ---- */
+.tilt { transform: perspective(1100px) translateY(var(--lift, 0px)) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)); transition: transform .7s var(--expo), border-color .4s var(--expo), background .3s; will-change: transform; }
+.tilt:hover { transition: transform .22s ease-out, border-color .4s var(--expo), background .3s; }
+
+/* ---- page transitions: cross-document view transitions where supported, a soft fade-in elsewhere ---- */
+@view-transition { navigation: auto; }
+.nav { view-transition-name: site-nav; }
+::view-transition-old(root) { animation: vt-out .3s var(--expo) both; }
+::view-transition-new(root) { animation: vt-in .6s var(--expo) both; }
+@keyframes vt-out { to { opacity: 0; transform: translateY(-10px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(18px); } }
+@supports not selector(::view-transition) {
+  .doc { animation: doc-in .6s var(--expo) both; }
+  @keyframes doc-in { from { opacity: 0; transform: translateY(14px); } }
+}
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+  .tilt, .tilt:hover { transition: none; transform: none; }
+  .btn { translate: none; }
+  .nav-ind { transition: none; }
+  .doc { animation: none; }
+}

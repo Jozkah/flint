@@ -95,7 +95,7 @@ export function Gallery() {
         </div>
         <ul className="gal">
           {ITEMS.map((it, i) => (
-            <li key={it.id} className={`gal-item ${it.span}`} style={{ listStyle: 'none' }}>
+            <li key={it.id} className={`gal-item tilt ${it.span}`} style={{ listStyle: 'none' }}>
               <button
                 style={{ display: 'block', width: '100%', textAlign: 'left' }}
                 aria-label={`Open screenshot: ${it.caption}`}
