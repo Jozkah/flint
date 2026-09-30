@@ -1,4 +1,5 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
@@ -1472,9 +1473,8 @@ export function ThreadConversation({
       return
     }
 
-    serviceHub
-      .messages()
-      .fetchMessages(threadId)
+    // The read may already have started when the pointer reached the row.
+    loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
       .then((fetchedMessages) => {
         if (fetchedMessages && fetchedMessages.length > 0) {
           const currentLocalMessages = useMessages

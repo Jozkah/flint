@@ -58,6 +58,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
+import { prefetchThreadMessages } from '@/lib/threadPrefetch'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
@@ -294,7 +295,16 @@ const ThreadItem = memo(
           >
             <HoverCardTrigger asChild>
               <NavButton asChild size="sm" isActive={isSelected}>
-                <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
+                <Link
+                  to="/threads/$threadId"
+                  params={{ threadId: thread.id }}
+                  data-testid="thread-nav-item"
+                  onPointerEnter={() =>
+                    prefetchThreadMessages(thread.id, (id) =>
+                      serviceHub.messages().fetchMessages(id)
+                    )
+                  }
+                >
                   <ThreadStatusMark status={status} />
                   <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
                 </Link>
