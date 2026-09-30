@@ -1,13 +1,17 @@
 name: Tauri Builder - Tag
 
 on:
-  push:
-    tags:
-      - 'v*'
+  # Manual only. Tag pushes are owned by flint-release.yml, which attaches
+  # unsigned bundles to a hand-made release; running both per tag would build
+  # everything twice and this workflow edits/creates the release.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to build and upload to (e.g. v0.9.0). Must be explicit.'
+        required: true
 
 concurrency:
-  group: tauri-tag-${{ github.ref }}
+  group: tauri-tag-${{ inputs.tag }}
   cancel-in-progress: true
 
 jobs:
@@ -15,41 +19,11 @@ jobs:
   get-update-version:
     uses: ./.github/workflows/template-get-update-version.yml
 
-  # Create a draft release when a tag is pushed for the first time.
-  # When re-pushing an existing tag (or dispatching manually), the release
-  # already exists, so this job is skipped and resolve-release-url picks it up.
-  create-draft-release:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    permissions:
-      contents: write
-    steps:
-      - name: Extract tag name without v prefix
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV && echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
-        env:
-          GITHUB_REF: ${{ github.ref }}
-      - name: Create Draft Release
-        id: create_release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: "${{ env.VERSION }}"
-          draft: true
-          prerelease: false
-          generate_release_notes: true
-
-  # When a tag is force-pushed or the workflow is dispatched manually, the
-  # release already exists.  Look it up by tag and delete stale assets so
-  # the build jobs can re-upload them.
+  # Single owner of the release: find it by tag (drafts included) or create a
+  # draft, then remove stale assets so re-uploads do not 422. Published
+  # releases are never touched.
   resolve-release-url:
     runs-on: ubuntu-latest
-    needs: [create-draft-release]
-    if: always()
     outputs:
       upload_url: ${{ steps.resolve.outputs.upload_url }}
     permissions:
@@ -59,35 +33,37 @@ jobs:
         id: resolve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
-          # Prefer the URL from create-draft-release; fall back to the
-          # existing release for the current tag.
-          UPLOAD_URL="${{ needs.create-draft-release.outputs.upload_url }}"
-          if [ -z "$UPLOAD_URL" ]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            # workflow_dispatch may not set a tag ref; derive from branch
-            if [ -z "$TAG" ] || [ "$TAG" = "$GITHUB_REF" ]; then
-              TAG=$(gh api repos/${{ github.repository }}/releases --jq '.[0].tag_name' 2>/dev/null || true)
-            fi
-            echo "Looking up existing release for tag $TAG"
-            RELEASE_JSON=$(gh api "repos/${{ github.repository }}/releases/tags/$TAG" 2>/dev/null || true)
-            UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url // empty')
-            RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id // empty')
-
-            # Delete existing build assets so re-upload doesn't 422
-            if [ -n "$RELEASE_ID" ]; then
-              echo "Deleting stale assets from release $RELEASE_ID"
-              gh api "repos/${{ github.repository }}/releases/$RELEASE_ID/assets" --jq '.[].id' | while read -r ASSET_ID; do
-                echo "  Deleting asset $ASSET_ID"
-                gh api -X DELETE "repos/${{ github.repository }}/releases/$RELEASE_ID/assets/$ASSET_ID" || true
-              done
-            fi
-          fi
-
-          if [ -z "$UPLOAD_URL" ]; then
-            echo "::error::Could not resolve an upload URL for this tag."
+          set -euo pipefail
+          if [ -z "$TAG" ]; then
+            echo "::error::An explicit tag input is required."
             exit 1
           fi
+
+          # /releases/tags/<tag> 404s for drafts, so list and select by tag_name.
+          RELEASE_JSON=$(gh api --paginate "repos/$REPO/releases?per_page=100"             | jq -s --arg tag "$TAG" 'add | map(select(.tag_name == $tag)) | .[0] // empty')
+
+          if [ -z "$RELEASE_JSON" ]; then
+            echo "No release for $TAG; creating a draft"
+            RELEASE_JSON=$(gh api -X POST "repos/$REPO/releases"               -f tag_name="$TAG" -f name="${TAG#v}"               -F draft=true -F prerelease=false -F generate_release_notes=true)
+          fi
+
+          RELEASE_ID=$(echo "$RELEASE_JSON" | jq -r '.id')
+          IS_DRAFT=$(echo "$RELEASE_JSON" | jq -r '.draft')
+          UPLOAD_URL=$(echo "$RELEASE_JSON" | jq -r '.upload_url')
+
+          if [ "$IS_DRAFT" != "true" ]; then
+            echo "::error::Release $TAG is published; refusing to delete its assets. Convert it to a draft first."
+            exit 1
+          fi
+
+          echo "Deleting stale assets from release $RELEASE_ID"
+          gh api --paginate "repos/$REPO/releases/$RELEASE_ID/assets" --jq '.[].id' | while read -r ASSET_ID; do
+            echo "  Deleting asset $ASSET_ID"
+            gh api -X DELETE "repos/$REPO/releases/assets/$ASSET_ID"
+          done
 
           echo "upload_url=$UPLOAD_URL" >> "$GITHUB_OUTPUT"
           echo "Resolved upload URL: $UPLOAD_URL"
@@ -97,7 +73,7 @@ jobs:
     secrets: inherit
     needs: [get-update-version, resolve-release-url]
     with:
-      ref: ${{ github.ref }}
+      ref: refs/tags/${{ inputs.tag }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
@@ -108,7 +84,7 @@ jobs:
     secrets: inherit
     needs: [get-update-version, resolve-release-url]
     with:
-      ref: ${{ github.ref }}
+      ref: refs/tags/${{ inputs.tag }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
@@ -119,7 +95,7 @@ jobs:
     secrets: inherit
     needs: [get-update-version, resolve-release-url]
     with:
-      ref: ${{ github.ref }}
+      ref: refs/tags/${{ inputs.tag }}
       public_provider: github
       channel: stable
       new_version: ${{ needs.get-update-version.outputs.new_version }}
