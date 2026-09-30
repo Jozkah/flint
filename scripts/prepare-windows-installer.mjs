@@ -87,6 +87,17 @@ export function transformWindowsInstallerTemplate(
   const current = currentTemplate.replace(/\r\n/g, '\n')
   let out = preserveBuildSubstitutions(base, current, defaults)
 
+  // Tauri downloads nsis_tauri_utils.dll into its own NSIS cache and injects
+  // that compiler plugin directory when it renders a custom template. Never
+  // freeze a path captured from an earlier generated installer: the cache path
+  // is host-specific and is not the project's target/release/nsis directory.
+  out = replaceOnce(
+    out,
+    /^!define ADDITIONALPLUGINSPATH "[^"]*"$/m,
+    '!define ADDITIONALPLUGINSPATH "{{additional_plugins_path}}"',
+    'Tauri additional plugin path'
+  )
+
   out = replaceOnce(
     out,
     /; 1\. Welcome Page\n!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive\n!insertmacro MUI_PAGE_WELCOME/,
