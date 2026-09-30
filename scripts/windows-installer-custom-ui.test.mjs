@@ -129,3 +129,36 @@ test('every bitmap used by the custom UI exists at every theme and DPI', async (
   await Promise.all(files.map((file) => access(file)))
   assert.equal(files.length, 32)
 })
+
+test('reinstall version state survives the custom page helpers', async () => {
+  const base = (await readFile(basePath, 'utf8')).replace(/\r\n/g, '\n')
+  const ui = (await readInstallerUi()).replace(/\r\n/g, '\n')
+  // The compare result lives in a dedicated Var, not in $R0.
+  assert.match(ui, /^Var ReinstallVersionState$/m)
+  assert.match(base, /Pop \$R0\n\s*StrCpy \$ReinstallVersionState \$R0/)
+  const leave = base.slice(base.indexOf('Function PageLeaveReinstall'))
+  const leaveBody = leave.slice(0, leave.indexOf('\nFunctionEnd'))
+  assert.doesNotMatch(leaveBody, /\$R0/)
+  assert.match(leaveBody, /\$ReinstallVersionState = 1/)
+  const early = base.slice(base.indexOf('Section EarlyChecks'))
+  assert.doesNotMatch(early.slice(0, early.indexOf('SectionEnd')), /\$R0/)
+  // The shared page shell must preserve the registers the template pages use.
+  const start = ui.indexOf('!macro _FlintFitPage')
+  const fit = ui.slice(start, ui.indexOf('!macroend', start))
+  assert.match(fit, /Push \$R0\n\s*Push \$R1/)
+  assert.match(fit, /Pop \$R1\n\s*Pop \$R0/)
+  // FlintMaintenance must not branch on $R0 after calling the shell.
+  const maint = ui.slice(ui.indexOf('Function FlintMaintenance'))
+  assert.doesNotMatch(maint.slice(0, maint.indexOf('\nFunctionEnd')), /\$R0/)
+})
+
+test('install location cannot be a drive root or a folder without an app directory', async () => {
+  const ui = (await readInstallerUi()).replace(/\r\n/g, '\n')
+  const browse = ui.slice(ui.indexOf('Function FlintBrowse'))
+  assert.match(browse.slice(0, browse.indexOf('\nFunctionEnd')), /\\\$\{PRODUCTNAME\}/)
+  const leave = ui.slice(ui.indexOf('Function FlintOptionsLeave'))
+  const body = leave.slice(0, leave.indexOf('\nFunctionEnd'))
+  assert.match(body, /drive root/)
+  assert.match(body, /full install path/)
+  assert.ok(body.indexOf('Abort') < body.indexOf('GetFullPathName $INSTDIR'))
+})

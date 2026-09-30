@@ -83,6 +83,9 @@ Var FlintLaunchSwitchImg
 Var FlintDeleteSwitch
 Var FlintDeleteSwitchImg
 Var ReinstallPageCheck
+; Version compare result of the reinstall page: same(0)/upgrading(1)/
+; downgrading(-1). Deliberately not $R0, which page helpers may clobber.
+Var ReinstallVersionState
 
 !macro _FlintPx out px
   IntOp ${out} ${px} * $FlintScale
@@ -114,11 +117,16 @@ Var ReinstallPageCheck
   ShowWindow $0 ${SW_HIDE}
 !macroend
 
+; Preserves $R0/$R1: the template's reinstall page keeps state in them.
 !macro _FlintFitPage hwnd
+  Push $R0
+  Push $R1
   ${FlintPx} $R0 ${FLINT_W}
   ${FlintPx} $R1 ${FLINT_H}
   System::Call 'user32::SetWindowPos(p ${hwnd}, p 0, i 0, i 0, i R0, i R1, i 0x14)'
   !insertmacro _FlintCtl ${hwnd} NONE BG
+  Pop $R1
+  Pop $R0
 !macroend
 
 ; Round a control using a real Win32 region. SetWindowRgn owns the region on

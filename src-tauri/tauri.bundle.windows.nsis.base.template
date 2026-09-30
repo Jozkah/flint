@@ -398,6 +398,7 @@ Function PageReinstall
 
   nsis_tauri_utils::SemverCompare "${VERSION}" $R0
   Pop $R0
+  StrCpy $ReinstallVersionState $R0
   ; Reinstalling the same version
   ${If} $R0 = 0
     StrCpy $R1 "$(alreadyInstalledLong)"
@@ -448,7 +449,7 @@ Function PageReinstall
     Pop $R3
     ; Disable this radio button if downgrading and downgrades are disabled
     !if "${ALLOWDOWNGRADES}" == "false"
-      ${IfThen} $R0 = -1 ${|} EnableWindow $R3 0 ${|}
+      ${IfThen} $ReinstallVersionState = -1 ${|} EnableWindow $R3 0 ${|}
     !endif
     ${NSD_OnClick} $R3 PageReinstallUpdateSelection
 
@@ -476,7 +477,7 @@ FunctionEnd
 Function PageLeaveReinstall
   ; In passive mode, always uninstall when upgrading
   ${If} $PassiveMode = 1
-  ${AndIf} $R0 = 1  ; Upgrading
+  ${AndIf} $ReinstallVersionState = 1  ; Upgrading
     Goto reinst_uninstall
   ${EndIf}
 
@@ -492,23 +493,23 @@ Function PageLeaveReinstall
     Goto reinst_done
   ${EndIf}
 
-  ; $R0 holds whether same(0)/upgrading(1)/downgrading(-1) version
+  ; $ReinstallVersionState holds whether same(0)/upgrading(1)/downgrading(-1) version
   ; $R1 holds the radio buttons state:
   ;   1 => first choice was selected
   ;   0 => second choice was selected
-  ${If} $R0 = 0 ; Same version, proceed
+  ${If} $ReinstallVersionState = 0 ; Same version, proceed
     ${If} $R1 = 1              ; User chose to add/reinstall
       Goto reinst_done
     ${Else}                    ; User chose to uninstall
       Goto reinst_uninstall
     ${EndIf}
-  ${ElseIf} $R0 = 1 ; Upgrading
+  ${ElseIf} $ReinstallVersionState = 1 ; Upgrading
     ${If} $R1 = 1              ; User chose to uninstall
       Goto reinst_uninstall
     ${Else}
       Goto reinst_done         ; User chose NOT to uninstall
     ${EndIf}
-  ${ElseIf} $R0 = -1 ; Downgrading
+  ${ElseIf} $ReinstallVersionState = -1 ; Downgrading
     ${If} $R1 = 1              ; User chose to uninstall
       Goto reinst_uninstall
     ${Else}
@@ -676,7 +677,7 @@ Section EarlyChecks
   !if "${ALLOWDOWNGRADES}" == "false"
   ${If} ${Silent}
     ; If downgrading
-    ${If} $R0 = -1
+    ${If} $ReinstallVersionState = -1
       System::Call 'kernel32::AttachConsole(i -1)i.r0'
       ${If} $0 <> 0
         System::Call 'kernel32::GetStdHandle(i -11)i.r0'

@@ -168,6 +168,8 @@ type ToolApprovalRequestsState = {
     options?: { notify?: boolean }
   ) => void
   withdrawApproval: (requestId: string) => void
+  /** Drop "Allow all temporarily" for a conversation that is gone. */
+  forgetTemporaryGit: (threadId: string) => void
   takeRefusal: (toolCallId: string) => ApprovalRefusal | undefined
   takeApprovedFingerprint: (toolCallId: string) => string | undefined
 }
@@ -189,6 +191,18 @@ function bashDestructiveReason(
   return destructiveCommandReason(command, roots)
 }
 
+/** A configured remote's name, not a URL or a path (`.`, `..`, `a/b`, `host:x`). */
+const REMOTE_NAME = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/
+const PUSH_TARGET_OPTIONS = ['--repo', '--receive-pack', '--exec']
+
+/**
+ * Whether "Allow all temporarily" may cover this call. It is for routine
+ * publishing to a remote the repository already has: a push to a configured
+ * remote NAME (never a URL or path, which could send the work anywhere), or a
+ * `gh` call that acts on an existing repository. Anything that creates,
+ * reconfigures, or merges on GitHub (`gh repo *`, `gh pr merge`, `gh release
+ * *`) keeps prompting, and so does everything destructive.
+ */
 export function canTemporarilyAllowGit(
   toolName: string,
   input: unknown,
@@ -196,11 +210,20 @@ export function canTemporarilyAllowGit(
 ): boolean {
   if (threadIsEphemeral || toolName !== GIT_TOOL_NAME) return false
   const planned = planGitTool(input)
-  return (
-    planned.ok &&
-    planned.plan.class === 'remote' &&
-    planned.plan.destructive === undefined
+  if (!planned.ok) return false
+  const { plan } = planned
+  if (plan.class !== 'remote' || plan.destructive !== undefined) return false
+  if (plan.program === 'gh') {
+    const [group, action] = plan.args
+    if (group === 'repo' || group === 'release') return false
+    if (group === 'pr' && action === 'merge') return false
+    return true
+  }
+  const retargeted = plan.args.some((a) =>
+    PUSH_TARGET_OPTIONS.some((o) => a === o || a.startsWith(`${o}=`))
   )
+  if (retargeted) return false
+  return plan.remote === undefined || REMOTE_NAME.test(plan.remote)
 }
 
 let nextRequest = 0
@@ -313,7 +336,17 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
               ? `${toolName} approves commands on ${serverName} itself. Only you can approve them, so it is asked about every time.`
               : undefined)
 
+        // A caller forces the prompt for every remote Git call, and this grant
+        // exists to skip exactly that one. It never skips the prompts that are
+        // about the tool itself (always-ask tools, self-approval, a destructive
+        // command), and it counts toward the unattended-run limit under its
+        // own key, because Cowork resets its own streak on every forced prompt.
+        const temporaryGitKey =
+          context?.autoApproveStreak ?? `git-temporary:${threadId}`
         const temporaryGitApproved =
+          !ALWAYS_ASK_TOOLS.has(toolName) &&
+          !selfApproval &&
+          destructive === null &&
           !!get().temporaryGitThreads[threadId] &&
           canTemporarilyAllowGit(
             toolName,
@@ -321,18 +354,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
             context?.threadIsEphemeral === true
           )
         if (temporaryGitApproved) {
-          const streakKey = context?.autoApproveStreak
-          if (streakKey === undefined) {
-            approve()
-            return
-          }
           const limit = useAutoApproveLimit.getState().limit
-          if (!noteAutoApproved(streakKey, limit)) {
+          if (!noteAutoApproved(temporaryGitKey, limit)) {
             approve()
             return
           }
           alwaysAsk = true
           taskContext = autoApprovePauseReason(limit)
+          resetAutoApproveStreak(temporaryGitKey)
         }
 
         const streakKey = context?.autoApproveStreak
@@ -404,6 +433,16 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           () => get().withdrawApproval(entry.requestId),
           { once: true }
         )
+      })
+    },
+
+    forgetTemporaryGit: (threadId) => {
+      resetAutoApproveStreak(`git-temporary:${threadId}`)
+      if (!get().temporaryGitThreads[threadId]) return
+      set((s) => {
+        const next = { ...s.temporaryGitThreads }
+        delete next[threadId]
+        return { temporaryGitThreads: next }
       })
     },
 

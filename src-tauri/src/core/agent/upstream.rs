@@ -1627,7 +1627,11 @@ pub(crate) fn is_context_overflow_body(body: &str) -> bool {
         || b.contains("context length")
         || b.contains("maximum context")
         || b.contains("exceeds the context")
-        || b.contains("too many tokens")
+        // Bare "too many tokens" is also how Bedrock words throttling ("Too many
+        // tokens, please wait before trying again"), so it counts only next to
+        // a word that says the prompt/context is what is too big.
+        || (b.contains("too many tokens")
+            && ["context", "prompt", "input", "maximum"].iter().any(|w| b.contains(w)))
 }
 
 /// True when an error string carries the [`CONTEXT_OVERFLOW_MARKER`].
@@ -3852,6 +3856,13 @@ mod tests {
         ));
         assert!(!is_context_overflow_body("invalid api key"));
         assert!(!is_context_overflow_body("rate limit exceeded"));
+        // Throttling worded with "too many tokens" is not an overflow.
+        assert!(!is_context_overflow_body(
+            "Too many tokens, please wait before trying again."
+        ));
+        assert!(is_context_overflow_body(
+            "Too many tokens in the prompt: 210000 > 200000"
+        ));
     }
 
     #[test]

@@ -535,6 +535,7 @@
     "steeringHint": "會在代理的下一步送達；如果執行先結束，則作為下一則訊息傳送"
   },
   "coworkOrigins": {
+    "showAll": "顯示全部 {{formattedCount}} 項",
     "baseline": {
       "clean": "此執行開始時，附加資料夾的 Git 工作樹中沒有未提交的變更。"
     },
@@ -696,5 +697,8 @@
   },
   "decisionScopeShowFull": "顯示全部",
   "decisionScopeHide": "收合",
-  "decisionScopeCopy": "複製"
+  "decisionScopeCopy": "複製",
+  "browserVerify": {
+    "chooseDifferentBrowser": "選擇其他瀏覽器…"
+  }
 }

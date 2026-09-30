@@ -131,6 +131,11 @@ export class CoworkChatTransport extends CustomChatTransport {
   private routedAssistantInstructions: string | undefined
   /** Behavioural suggestion only; never used by the permission gate. */
   private routedMode: JevSuggestedMode | null = null
+  /** The assistant the session started with (per session, not per app). */
+  private sessionAssistant: Assistant | undefined
+  private sessionAssistantCaptured = false
+  /** The assistant Jev applied to this session, kept across turns that abstain. */
+  private routedAssistant: Assistant | undefined
 
   constructor(sessionId: string, config: CoworkRunConfig) {
     super(undefined, sessionId)
@@ -214,43 +219,57 @@ export class CoworkChatTransport extends CustomChatTransport {
     })
   }
 
-  private async routePrompt(messages: UIMessage[]) {
+  private async routePrompt(messages: UIMessage[], signal?: AbortSignal) {
     const latest = latestUserMessage(messages)
     if (!latest || latest.id === this.lastRoutedUserMessageId) return
     this.lastRoutedUserMessageId = latest.id
 
     const state = useAssistant.getState()
+    // This session's own assistant: what the picker held when the session
+    // first sent, not whatever any other chat sets later.
+    if (!this.sessionAssistantCaptured) {
+      this.sessionAssistant = state.currentAssistant
+      this.sessionAssistantCaptured = true
+    }
+    const base = this.sessionAssistant
+    // Only a session on the default Flint is routed; a picked assistant (or
+    // "None") stays.
     const route = await chooseJevPromptRoute({
       message: latest.text,
       assistants: state.assistants,
-      currentAssistantId: state.currentAssistant?.id,
+      currentAssistantId: base?.id,
       includeCoworkMode: true,
+      pinned: !base || base.id !== 'jan',
+      temporary: false,
+      signal,
     })
 
-    const selected = route?.assistantId
-      ? state.assistants.find((assistant) => assistant.id === route.assistantId)
-      : state.currentAssistant
+    if (route?.assistantId) {
+      this.routedAssistant = state.assistants.find(
+        (assistant) => assistant.id === route.assistantId
+      )
+    }
+    // On abstention or an unavailable Jev the assistant this session already
+    // has (routed earlier, else its own) is kept.
+    const selected = this.routedAssistant ?? base
 
     // Flint remains Cowork's baseline generalist; injecting its existing chat
     // prompt here would change the default behaviour the user asked us not to
-    // edit. Any non-Flint assistant that is selected intentionally — including
-    // a custom/project assistant that Jev is not allowed to route away from —
+    // edit. Any non-Flint assistant that is selected intentionally -- including
+    // a custom/project assistant that Jev is not allowed to route away from --
     // contributes its persona beneath Cowork's policy.
     this.routedAssistantInstructions =
       selected && selected.id !== 'jan' ? selected.instructions : undefined
     this.routedMode = route?.mode ?? null
-
-    if (route?.assistantId && selected) {
-      // Sync the picker for the next turn, but do not replace the user's saved
-      // default assistant. Routing is per prompt.
-      state.setCurrentAssistant(selected, false)
-    }
+    // The global assistant store is deliberately not touched: routing is per
+    // session, and mirroring it there would leak into other conversations and
+    // be saved as the user's "last used" assistant.
   }
 
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
-    await this.routePrompt(options.messages)
+    await this.routePrompt(options.messages, options.abortSignal)
     return super.sendMessages(options)
   }
 

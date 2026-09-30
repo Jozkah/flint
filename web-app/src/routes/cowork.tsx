@@ -71,6 +71,7 @@ import {
   useCoworkSessions,
   ensureCurrentSession,
   startPaneSession,
+  startPaneSessionParked,
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
@@ -118,6 +119,7 @@ import {
   agentAttribution,
   drainIdleSession,
   takeClaimed,
+  hasLiveSteering,
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -486,7 +488,7 @@ import { CoworkWorkProfilePicker } from '@/containers/CoworkWorkProfilePicker'
 import { CoworkBarStack } from '@/containers/CoworkBarStack'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useJevSettings } from '@/hooks/useJevSettings'
-import { jevSuggestSkill } from '@/lib/jev'
+import { workProfileAsker } from '@/lib/jev'
 import { MemoryProposalList } from '@/containers/MemoryProposalCard'
 import { useMemoryProposals } from '@/hooks/useMemoryProposals'
 
@@ -2538,14 +2540,10 @@ export function CoworkPage() {
     // picks how the run approaches it -- Jev decides when its suggestions are
     // on, a keyword match otherwise, and a profile picked by hand is kept.
     if (text && !from && !hidden) {
-      const jevOn = useJevSettings.getState().skillMode === 'on'
       await chooseWorkProfile(
         sid,
         text,
-        jevOn
-          ? (message, options) =>
-              jevSuggestSkill(message, options).then((d) => d.skill)
-          : undefined
+        workProfileAsker(useJevSettings.getState().rerankMode)
       )
     }
 
@@ -2571,6 +2569,10 @@ export function CoworkPage() {
         return
       }
     }
+
+    // The guard at the top ran before the profile choice and the worktree check
+    // awaited: a second send in that window passed it too. Only one may claim.
+    if (useCoworkRun.getState().runs[sid]) return
 
     // Claimed before the first await (janhq/jan#8905): the run id, its
     // cancellation handle and the session's running state all exist from
@@ -4367,10 +4369,7 @@ export function CoworkPage() {
           // session's queue: input typed in another session never reaches
           // this run, whichever session is in view. Shown in the transcript
           // where it entered the conversation, marked as steering.
-          hasSteering: () =>
-            useMessageQueue.getState().getQueue(sid).some((m) =>
-              !m.held && (m.steer === true || !!m.from)
-            ),
+          hasSteering: () => hasLiveSteering(sid),
           takeSteering: async () => {
             // Mail a tool already consumed (wait_for_reply, read_messages)
             // is dropped here, so it is never injected a second time.
@@ -5102,17 +5101,6 @@ export function CoworkPage() {
           else void returnToReviewOnly()
         }}
       />
-      {session?.id &&
-        (pendingFolder[session.id] || pendingAccess[session.id]) && (
-          <span role="status" className="text-xs text-muted-foreground">
-            {t('common:coworkAccess.pendingNextRun')}
-          </span>
-        )}
-      {running && (
-        <span className="text-xs text-muted-foreground">
-          {t('common:coworkAccess.currentRunUnchanged')}
-        </span>
-      )}
       {workProfilesOn && session?.id && (
         <CoworkWorkProfilePicker
           variant={variant}
@@ -5734,19 +5722,34 @@ export function CoworkPage() {
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session. An unsent draft is parked on
-                        // the session being left (held input), so the new one
-                        // opens blank.
+                        // the session being left (held input) when it has
+                        // content, so the new one opens blank.
+                        const paneId = sidePaneIdRef.current
+                        const paneSid = paneSessionIdRef.current
+                        const prompts = usePrompt.getState()
+                        const scope = coworkPane?.draftScope
+                        if (paneId && paneSid && scope) {
+                          // From a pane beside the main one: judged on that
+                          // pane's session and draft, opened in that pane.
+                          const { id, parked } = startPaneSessionParked(paneSid, {
+                            running,
+                            draft: prompts.scoped[scope]?.prompt,
+                          })
+                          useSplitConversation
+                            .getState()
+                            .setPaneTarget(paneId, { kind: 'cowork', refId: id })
+                          if (parked) prompts.setScopedPrompt(scope, '')
+                          return
+                        }
                         const store = useCoworkSessions.getState()
-                        const id = store.startSession({
+                        const { id, parked } = store.startSessionParked({
                           running,
-                          draft: usePrompt.getState().prompt,
+                          draft: prompts.prompt,
                         })
                         store.selectSession(id)
-                        // The draft is parked on the session being left, so
-                        // the composer clears here, not in the store: the
-                        // store is the session layer, the composer is the
-                        // surface's.
-                        usePrompt.getState().resetPrompt()
+                        // Cleared here, not in the store, and only when parked:
+                        // otherwise the draft would be lost.
+                        if (parked) prompts.resetPrompt()
                       }}
                     />
                   )}

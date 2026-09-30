@@ -425,7 +425,8 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
           (onCowork && session.id === currentId) ||
           !isSessionEmpty(session) ||
           session.title !== DEFAULT_SESSION_TITLE ||
-          Boolean(runs?.[session.id])
+          Boolean(runs?.[session.id]) ||
+          (session.pendingInput?.length ?? 0) > 0
       ),
     [allSessions, onCowork, currentId, runs]
   )
@@ -445,23 +446,25 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSession = (groupId?: string) => {
     // Idempotent: on a blank session this returns the same one, so a second
-    // press cannot leave a trail of empty sessions behind. An unsent draft is
-    // parked on the session being left (held input), so the new one opens
-    // blank.
+    // press cannot leave a trail of empty sessions behind. A draft is the
+    // Cowork composer's only when this is the Cowork route: pressed from Chat
+    // the composer holds a chat message, which must stay where it is. On
+    // Cowork an unsent draft is parked on the session being left (held input)
+    // when that session has content, so the new one opens blank.
     const store = useCoworkSessions.getState()
-    const id = store.startSession({
+    const { id, parked } = store.startSessionParked({
       running: Boolean(
         store.currentId && useCoworkRun.getState().runs[store.currentId]
       ),
-      draft: usePrompt.getState().prompt,
+      draft: onCowork ? usePrompt.getState().prompt : undefined,
     })
     store.selectSession(id)
     if (groupId)
       void addNewItemToGroup('cowork', id, groupId, coworkFolderAdapter)
-    // The draft is parked on the session being left, so the composer clears
-    // here, not in the store: the store is the session layer, the composer is
-    // the surface's.
-    usePrompt.getState().resetPrompt()
+    // Cleared here, not in the store (the store is the session layer, the
+    // composer is the surface's), and only when the draft was parked: cleared
+    // otherwise it would be lost.
+    if (parked) usePrompt.getState().resetPrompt()
     goCowork()
   }
   const selectSession = useCallback(

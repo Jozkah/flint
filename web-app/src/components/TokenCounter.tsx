@@ -157,12 +157,13 @@ export const TokenCounter = memo(function TokenCounter({
       : tier === 'warn'
         ? 'text-warning'
         : 'text-foreground'
+  // Theme tokens, so the ring follows light and dark mode.
   const ringColors =
     tier === 'over'
-      ? ['#f97316', '#ef4444']
+      ? ['var(--warning)', 'var(--destructive)']
       : tier === 'warn'
-        ? ['#eab308', '#f97316']
-        : ['#22c55e', '#06b6d4']
+        ? ['var(--warning)', 'var(--warning)']
+        : ['var(--success)', 'var(--success)']
   const barCls =
     tier === 'over'
       ? 'bg-destructive'
@@ -206,8 +207,8 @@ export const TokenCounter = memo(function TokenCounter({
               >
                 <defs>
                   <linearGradient id={ringGradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
-                    <stop stopColor={ringColors[0]} />
-                    <stop offset="1" stopColor={ringColors[1]} />
+                    <stop style={{ stopColor: ringColors[0] }} />
+                    <stop offset="1" style={{ stopColor: ringColors[1] }} />
                   </linearGradient>
                 </defs>
                 <circle

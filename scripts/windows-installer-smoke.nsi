@@ -54,6 +54,7 @@ Function .onInit
   ; maintenance state so /WX only reports genuine installer warnings.
   StrCpy $PassiveMode 0
   StrCpy $ReinstallPageCheck 0
+  StrCpy $ReinstallVersionState 0
 FunctionEnd
 
 Function RunMainBinary

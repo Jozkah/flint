@@ -1,14 +1,16 @@
 import type { Assistant } from '@janhq/core'
 import { useJevSettings } from '@/hooks/useJevSettings'
-import { jevSuggestSkill, type JevFallback } from '@/lib/jev'
+import { jevSuggestSkill, shouldAskForSkill, type JevFallback } from '@/lib/jev'
 
 /**
  * The built-ins Jev is allowed to route between automatically.
  *
  * Custom/project assistants are intentionally excluded: choosing one is an
  * explicit user/project decision and routing away from it could discard custom
- * instructions. Flint (`jan`) is the generalist fallback; the other four are
- * specialists.
+ * instructions. The same goes for a built-in the user picked themselves, or
+ * "None": callers report those as `pinned`, and only a conversation still on
+ * the default is routed. Flint (`jan`) is the generalist default; the other
+ * four are specialists.
  */
 export const JEV_ROUTABLE_ASSISTANT_IDS = [
   'jan',
@@ -87,6 +89,26 @@ export function buildJevRouteOptions(
   )
 }
 
+/** Resolves to `null` if `signal` aborts first; a stopped turn must not wait on Jev. */
+function raceAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T | null> {
+  if (!signal) return work
+  if (signal.aborted) return Promise.resolve(null)
+  return new Promise<T | null>((resolve, reject) => {
+    const onAbort = () => resolve(null)
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
 /**
  * Ask Jev which built-in should handle this prompt and, when requested, which
  * mode it recommends to that assistant. The mode is advisory only: callers may
@@ -97,15 +119,26 @@ export function buildJevRouteOptions(
  * API key, opt-in (`skillMode`), budgets, timeout, probability threshold,
  * receipts and fail-closed fallback in the Rust backend instead of creating a
  * second network path in the renderer.
+ *
+ * Nothing is sent for a temporary chat, a prompt too short to mean anything,
+ * or a conversation whose assistant the user chose (`pinned`). When Jev
+ * abstains or is unavailable the current assistant is kept.
  */
 export async function chooseJevPromptRoute(args: {
   message: string
   assistants: readonly Pick<Assistant, 'id' | 'name' | 'description'>[]
   currentAssistantId?: string
   includeCoworkMode?: boolean
+  /** The user explicitly chose this conversation's assistant (or "None"). */
+  pinned?: boolean
+  /** A temporary chat: its prompts are not sent anywhere for routing. */
+  temporary?: boolean
+  /** Stopping the turn stops waiting for Jev. */
+  signal?: AbortSignal
 }): Promise<JevPromptRoute | null> {
   const message = args.message.trim()
-  if (!message || message.startsWith('/')) return null
+  if (!shouldAskForSkill(message)) return null
+  if (args.temporary || args.pinned) return null
 
   // A custom/project assistant is pinned intentionally. Jev only orchestrates
   // the built-in Flint family.
@@ -121,17 +154,16 @@ export async function chooseJevPromptRoute(args: {
     Boolean(args.includeCoworkMode)
   )
   if (options.length <= 1) return null
-  const flintAvailable = args.assistants.some((assistant) => assistant.id === 'jan')
 
   try {
-    const decision = await jevSuggestSkill(message, options)
+    const decision = await raceAbort(jevSuggestSkill(message, options), args.signal)
+    if (!decision) return null
     const parsed = parseJevRouteChoice(decision.skill)
     if (!parsed) {
-      // In active routing, every unconfident/failed choice returns to the
-      // generalist rather than accidentally carrying the previous specialist
-      // into an unrelated prompt. Shadow mode must not change behaviour.
+      // Abstained or unconfident: keep whatever assistant the conversation
+      // has rather than resetting it (or the applied one) to Flint.
       return {
-        assistantId: jevMode === 'on' && flintAvailable ? 'jan' : null,
+        assistantId: null,
         mode: null,
         probability: decision.probability,
         fallback: decision.fallback,
@@ -145,12 +177,8 @@ export async function chooseJevPromptRoute(args: {
     }
   } catch (error) {
     // Routing is decision support, never a reason to fail the user's prompt.
-    // When active, return to the generalist rather than leaking the previous
-    // turn's specialist through a renderer/Tauri transport failure.
     console.debug('[Jev] prompt routing unavailable:', error)
-    return jevMode === 'on' && flintAvailable
-      ? { assistantId: 'jan', mode: null, probability: null, fallback: null }
-      : null
+    return null
   }
 }
 

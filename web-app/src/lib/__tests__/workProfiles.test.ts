@@ -59,6 +59,15 @@ describe('chooseWorkProfile', () => {
     expect(await chooseWorkProfile('s', 'review this')).toBe('debug')
   })
 
+  it('persists each session profile so a restart keeps it', async () => {
+    await chooseWorkProfile('s', 'review this diff for bugs')
+    useWorkProfiles.getState().choose('m', 'debug', true)
+    const saved = useWorkProfiles.persist.getOptions().partialize?.(useWorkProfiles.getState())
+    expect(saved).toMatchObject({
+      sessions: { s: { id: 'review', manual: false }, m: { id: 'debug', manual: true } },
+    })
+  })
+
   it('puts the edited text in the prompt block', async () => {
     useWorkProfiles.getState().setOverride('review', 'Only list security issues.')
     await chooseWorkProfile('s', 'review this')

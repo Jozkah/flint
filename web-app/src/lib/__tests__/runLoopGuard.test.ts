@@ -82,7 +82,7 @@ it('stops the second failure after the toolchain note said the program cannot ru
       tool: 'bash',
       input: { command: `node --version ${n}` },
       failed: true,
-      error: `node : The term 'node' is not recognized as the name of a cmdlet\n[sandbox: node is installed at C:\\Program Files\\nodejs\\node.exe but this sandbox cannot run it: its folder does not grant ALL APPLICATION PACKAGES read and execute, so the sandbox is not allowed to run it. Tell the user that node is not available in the sandbox until they run icacls in an elevated terminal and restart the app.]`,
+      error: `node : The term 'node' is not recognized as the name of a cmdlet\n[sandbox: \`node\` is installed at C:\\Program Files\\nodejs\\node.exe but this sandbox cannot run it: its folder does not grant ALL APPLICATION PACKAGES read and execute, so the sandbox is not allowed to run it. Tell the user that node is not available in the sandbox until they run icacls in an elevated terminal and restart the app.]`,
     })
   expect(detectLoop([blocked(1)])).toEqual({ tripped: false })
   const verdict = detectLoop([blocked(1), call(), blocked(2)])
@@ -383,6 +383,69 @@ describe('policy refusals', () => {
       failed: true,
       error: `[sandbox: blocked write ${n}]`,
     })
-    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied)).toEqual({ tripped: false })
+    expect(detectLoop([1, 2, 3, 4, 5].map(shellDenied))).toEqual({ tripped: false })
+  })
+
+  it('stop a run that keeps probing different blocked paths', () => {
+    const probes = Array.from({ length: 15 }, (_, n) =>
+      call({
+        tool: n % 2 ? 'bash' : 'read',
+        input: n % 2 ? { command: `cat /x${n}` } : { path: `/x${n}` },
+        failed: true,
+        error: `[sandbox: blocked access to /x${n}]`,
+      })
+    )
+    expect(detectLoop(probes.slice(0, 14))).toEqual({ tripped: false })
+    expect(detectLoop(probes)).toMatchObject({
+      tripped: true,
+      reason: 'denial-budget',
+    })
+  })
+})
+
+describe('stable failure counts', () => {
+  const dirty = (cwd = '/repo'): ObservedCall => ({
+    tool: 'git',
+    input: { cwd, args: ['checkout', 'main'] },
+    failed: true,
+    error:
+      'error: Your local changes to the following files would be overwritten by checkout',
+  })
+  const gitOk = (cwd = '/repo', args = ['stash']): ObservedCall => ({
+    tool: 'git',
+    input: { cwd, args },
+    failed: false,
+  })
+
+  it('still trips on two blockers with nothing succeeding between them', () => {
+    expect(detectLoop([dirty(), dirty()])).toMatchObject({
+      tripped: true,
+      reason: 'failing-tool',
+    })
+  })
+
+  it('does not blame a later blocker on one a success cleared', () => {
+    expect(detectLoop([dirty(), gitOk(), dirty()])).toEqual({ tripped: false })
+  })
+
+  it('keeps counting when the success was in a different checkout', () => {
+    expect(detectLoop([dirty('/a'), gitOk('/b'), dirty('/a')])).toMatchObject({
+      tripped: true,
+    })
+  })
+
+  it('scopes tool-unavailable by the tool the error names', () => {
+    const missing = (name: string): ObservedCall => ({
+      tool: 'invalid',
+      input: { name },
+      failed: true,
+      error: `not a valid call: Model tried to call unavailable tool '${name}'. Available tools: read`,
+    })
+    expect(detectLoop([missing('bash'), missing('git')])).toEqual({
+      tripped: false,
+    })
+    expect(detectLoop([missing('bash'), missing('bash')])).toMatchObject({
+      tripped: true,
+    })
   })
 })

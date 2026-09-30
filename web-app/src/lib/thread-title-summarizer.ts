@@ -15,20 +15,32 @@ function buildSummarizePrompt(transcript: string): string {
   return `Summarize the following conversation into a concise title of at most ${MAX_TITLE_WORDS} words. Capture the overall topic, not just the latest turn. Output the title only, no quotes, no explanation.\n\nConversation:\n${truncated}`
 }
 
+/**
+ * Clean a model-generated title: strip reasoning tags, special characters,
+ * quotes, and enforce a word limit. Returns null if the result is unusable.
+ */
 export function cleanTitle(raw: string): string | null {
   let text = raw.trim()
+  // Strip complete reasoning blocks like <think>...</think> (any tag name)
   text = text
     .replace(/<(think|thinking|reasoning|analysis)[^>]*>[\s\S]*?<\/\1>/gi, '')
     .trim()
+  // If a reasoning opener remains without a close, the output is all reasoning -- unusable
   if (/<(think|thinking|reasoning|analysis)[^>]*>/i.test(text)) return null
+  // If only a closing tag is present, take what's after the last one
   const lastClose = text.match(
     /<\/(?:think|thinking|reasoning|analysis)>\s*([\s\S]*)$/i
   )
   if (lastClose) text = lastClose[1].trim()
+  // Remove leftover XML-like tags
   text = text.replace(/<[^>]+>/g, '').trim()
+  // Collapse whitespace and newlines into single spaces
   text = text.replace(/\s+/g, ' ').trim()
+  // Remove surrounding quotes
   text = text.replace(/^["']+|["']+$/g, '').trim()
+  // Keep only letters, numbers, and spaces (unicode-aware)
   text = text.replace(/[^\p{L}\p{N}\s]/gu, '').trim()
+  // Enforce word limit
   text = text.split(/\s+/).slice(0, MAX_TITLE_WORDS).join(' ')
   return !text || text.length < 2 ? null : text
 }
@@ -36,6 +48,11 @@ export function cleanTitle(raw: string): string | null {
 const FALLBACK_TITLE_WORDS = 6
 const FALLBACK_TITLE_CHARS = 60
 
+/**
+ * A short title cut from the user's own text, for when the model gives none:
+ * the first few words, at most 60 characters, so a whole pasted prompt never
+ * becomes the chat's title.
+ */
 export function fallbackTitle(source: string): string | null {
   const words = source
     .replace(/\s+/g, ' ')
@@ -51,18 +68,34 @@ export function fallbackTitle(source: string): string | null {
   return text.length >= 2 ? text : null
 }
 
+/**
+ * Title runs per chat, keyed by chat and the first message the title comes
+ * from. Guarded here, at the one call that reaches the model, so no caller
+ * can title the same chat twice at once or again once it is done -- the audit
+ * saw the helper run 51 times for one thread in under four minutes.
+ */
 const titleInFlight = new Map<string, Promise<string | null>>()
 const titleDone = new Set<string>()
 
+/** Forget every guard (tests). */
 export function resetTitleGuards(): void {
   titleInFlight.clear()
   titleDone.clear()
 }
 
+/**
+ * Generate a summarized thread title from the user's first message.
+ * Uses the currently selected model via a non-streaming generateText call.
+ * Returns null when aborted, when this chat and source were already titled,
+ * or when there is nothing to title from; a model that returns nothing usable
+ * yields a short title cut from `source` instead.
+ */
 export function generateThreadTitle(
   transcript: string,
   abortSignal: AbortSignal,
+  /** The conversation being titled, for the utility-agent record. */
   session = '',
+  /** The first user message the title is for; defaults to the transcript. */
   source = transcript
 ): Promise<string | null> {
   const key = session ? `${session}\u0000${source}` : ''
@@ -106,6 +139,7 @@ async function requestTitle(
       return null
     }
 
+    // MLX models often emit reasoning that can't be reliably suppressed; fall back to default title.
     if (selectedProvider === 'mlx') return null
 
     const provider = getProviderByName(selectedProvider)
@@ -114,6 +148,12 @@ async function requestTitle(
       return null
     }
 
+    // Pin to the reserved background slot so this call can never evict a chat
+    // request's KV cache. It is a fixed index, not one derived from the
+    // "Parallel Sequences" setting: upstream wraps an out-of-range id_slot
+    // modulo the slot count instead of rejecting it, so a pin computed from the
+    // provider-level value silently landed back on slot 0 whenever the emitted
+    // count disagreed -- which a per-model `parallel` override does.
     const params: Record<string, unknown> = {}
     if (selectedProvider === 'llamacpp') {
       params.chat_template_kwargs = { enable_thinking: false }
@@ -125,6 +165,9 @@ async function requestTitle(
       params
     )
 
+    // A hidden utility agent (AH-208): no tools, not shown, always recorded.
+    // Neither the transcript nor the title is logged -- both are the user's
+    // conversation, and the webview console is written to the app log.
     const text = await runUtilityAgent({
       kind: 'title',
       session,
@@ -136,6 +179,7 @@ async function requestTitle(
     })
     return cleanTitle(text)
   } catch (error) {
+    // Silently swallow abort errors -- this is expected when the user sends a new message
     if ((error as Error).name === 'AbortError') return ABORTED
     console.error(
       '[ThreadTitle] Failed to generate title:',

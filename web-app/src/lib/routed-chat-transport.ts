@@ -7,6 +7,7 @@ import {
 } from '@/lib/jevRouting'
 import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
+import { useJevSettings } from '@/hooks/useJevSettings'
 import { renderInstructions } from '@/lib/instructionTemplate'
 
 function latestUserMessage(
@@ -37,7 +38,8 @@ export class RoutedChatTransport extends CustomChatTransport {
   private routedMode: JevSuggestedMode | null = null
 
   private async routeAssistant(
-    messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
+    messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages'],
+    signal?: AbortSignal
   ) {
     const latest = latestUserMessage(messages)
     if (!latest || latest.id === this.lastRoutedUserMessageId) return
@@ -50,40 +52,60 @@ export class RoutedChatTransport extends CustomChatTransport {
     const thread = this.threadId
       ? useThreads.getState().threads[this.threadId]
       : undefined
-    const currentAssistant = thread?.assistants?.[0] ?? assistantState.currentAssistant
+    // A regenerate after a restart: this message was already routed, so keep
+    // what that decided instead of asking again and possibly picking another.
+    if (thread?.metadata?.jevRoutedMessageId === latest.id) return
+
+    // Only a conversation still on the default is auto-routed. An assistant the
+    // user set (Coal, Quartz, a custom one) or "None" stays. The one built-in
+    // that is not the user's choice is the one Jev itself applied earlier.
+    const routedId = thread?.metadata?.jevRoutedAssistantId
+    const current =
+      thread?.assistants?.[0] ??
+      (thread?.assistants ? undefined : assistantState.currentAssistant)
+    const pinned = !current || (current.id !== 'jan' && current.id !== routedId)
 
     const route = await chooseJevPromptRoute({
       message: latest.text,
       assistants: assistantState.assistants,
-      currentAssistantId: currentAssistant?.id,
+      currentAssistantId: current?.id,
       includeCoworkMode: true,
+      pinned,
+      temporary: this.temporary,
+      signal,
     })
     this.routedMode = route?.mode ?? null
-    if (!route?.assistantId) return
 
-    const assistant = assistantState.assistants.find(
-      (candidate) => candidate.id === route.assistantId
-    )
-    if (!assistant) return
-
-    // The transport must see the routed prompt immediately. Waiting for the
-    // Zustand update + React effect would send this turn with the old persona.
-    this.updateSystemMessage(
-      assistant.instructions
-        ? renderInstructions(assistant.instructions)
-        : undefined
-    )
-
-    if (this.threadId && thread) {
-      useThreads.getState().updateThread(this.threadId, {
-        assistants: [{ ...assistant, model: thread.model }],
-      })
+    const assistant = route?.assistantId
+      ? assistantState.assistants.find(
+          (candidate) => candidate.id === route.assistantId
+        )
+      : undefined
+    if (assistant && assistant.id !== current?.id) {
+      // The transport must see the routed prompt immediately. Waiting for the
+      // Zustand update + React effect would send this turn with the old persona.
+      this.updateSystemMessage(
+        assistant.instructions
+          ? renderInstructions(assistant.instructions)
+          : undefined
+      )
     }
 
-    // Keep the switcher/default state in sync without changing the user's
-    // remembered default assistant. A custom/project assistant never reaches
-    // this branch; jevRouting deliberately leaves those pinned.
-    assistantState.setCurrentAssistant(assistant, false)
+    // Remember the message, so a regenerate never re-routes it. The global
+    // assistant store is left alone: routing is per conversation, and mirroring
+    // it there would leak into other chats and be saved as "last used".
+    if (this.threadId && thread && useJevSettings.getState().skillMode !== 'off') {
+      useThreads.getState().updateThread(this.threadId, {
+        ...(assistant && assistant.id !== current?.id
+          ? { assistants: [{ ...assistant, model: thread.model }] }
+          : {}),
+        metadata: {
+          ...thread.metadata,
+          jevRoutedMessageId: latest.id,
+          ...(assistant ? { jevRoutedAssistantId: assistant.id } : {}),
+        },
+      })
+    }
   }
 
   protected override buildSystemPrompt(messages: UIMessage[]): string | undefined {
@@ -97,7 +119,7 @@ export class RoutedChatTransport extends CustomChatTransport {
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
-    await this.routeAssistant(options.messages)
+    await this.routeAssistant(options.messages, options.abortSignal)
     return super.sendMessages(options)
   }
 }

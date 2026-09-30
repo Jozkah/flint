@@ -535,6 +535,7 @@
     "steeringHint": "Đến tác tử ở bước tiếp theo; nếu lần chạy kết thúc trước, nó được gửi làm tin nhắn tiếp theo"
   },
   "coworkOrigins": {
+    "showAll": "Hiện tất cả {{formattedCount}}",
     "baseline": {
       "clean": "Cây làm việc Git của thư mục đính kèm không có thay đổi chưa commit khi lần chạy này bắt đầu."
     },
@@ -696,5 +697,8 @@
   },
   "decisionScopeShowFull": "Hiện đầy đủ",
   "decisionScopeHide": "Ẩn",
-  "decisionScopeCopy": "Sao chép"
+  "decisionScopeCopy": "Sao chép",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Chọn trình duyệt khác…"
+  }
 }

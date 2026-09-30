@@ -331,6 +331,9 @@ pub async fn sleep_unless_stopped(delay: Duration) -> Option<StopReason> {
 pub struct Timeouts {
     pub default_secs: u64,
     pub bash_secs: u64,
+    /// `git` and `git_clone`: their model-facing text promises 120s, and unlike
+    /// `bash` they have no inner deadline that stops a call earlier.
+    pub git_secs: u64,
     pub net_secs: u64,
     pub filesystem_secs: u64,
     pub mcp_secs: u64,
@@ -345,6 +348,7 @@ impl Default for Timeouts {
             // 120s). This is the outer emergency bound, so it must leave room
             // for sandbox startup plus process-tree termination/output drain.
             bash_secs: 150,
+            git_secs: 120,
             // A network round trip that has not answered in a minute will not.
             net_secs: 60,
             // MCP servers do real work, but not unbounded work.
@@ -359,8 +363,10 @@ impl Timeouts {
     /// than no limit: an unbounded tool is how a run hangs forever.
     pub fn for_tool(&self, tool: &str) -> Duration {
         let secs = match tool {
-            // A clone is a long network operation, like a shell command.
-            "bash" | "git_clone" | "git" => self.bash_secs,
+            "bash" => self.bash_secs,
+            // A clone is a long network operation, but the limit is the
+            // documented 120s, not bash's longer outer bound.
+            "git_clone" | "git" => self.git_secs,
             "web_search" | "web_fetch" => self.net_secs,
             "read" | "ls" | "find" | "grep" | "write" | "edit" => self.filesystem_secs,
             name if name.starts_with("mcp") || name.contains('.') => self.mcp_secs,
@@ -373,6 +379,7 @@ impl Timeouts {
     pub fn with_tool_override(mut self, tool: &str, secs: u64) -> Self {
         match tool {
             "bash" => self.bash_secs = secs,
+            "git_clone" | "git" => self.git_secs = secs,
             "web_search" | "web_fetch" => self.net_secs = secs,
             "read" | "ls" | "find" | "grep" | "write" | "edit" => self.filesystem_secs = secs,
             _ => self.default_secs = secs,
@@ -638,6 +645,8 @@ mod tests {
     fn every_tool_has_a_limit_including_ones_we_have_not_met() {
         let t = Timeouts::default();
         assert_eq!(t.for_tool("bash"), Duration::from_secs(150));
+        assert_eq!(t.for_tool("git"), Duration::from_secs(120));
+        assert_eq!(t.for_tool("git_clone"), Duration::from_secs(120));
         assert_eq!(t.for_tool("read"), Duration::from_secs(30));
         assert_eq!(t.for_tool("web_fetch"), Duration::from_secs(60));
         assert_eq!(t.for_tool("some.mcp.tool"), Duration::from_secs(120));
