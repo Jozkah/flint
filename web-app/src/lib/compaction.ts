@@ -83,7 +83,21 @@ export function shouldCompact(
 
 /** Whether a failure is the provider refusing a request for its length. */
 const LENGTH_TEXT =
-  /(context (length|window)|maximum context|too many tokens|prompt is too long|exceeds? the (model'?s )?(context|maximum)|context_length_exceeded)/i
+  /(context (length|window)|maximum context|prompt is too long|exceeds? the (model'?s )?(context|maximum)|context_length_exceeded)/i
+
+/**
+ * "Too many tokens" alone is also how providers word throttling ("too many
+ * tokens per minute"), which compaction cannot help. It counts as a length
+ * refusal only next to the thing that is too long, and never beside rate words.
+ */
+const TOO_MANY_TOKENS_LENGTH =
+  /(?:(?:context|prompt|input|request|conversation)\b[^.\n]{0,40}too many tokens|too many tokens[^.\n]{0,40}\b(?:context|prompt|input|conversation))/i
+const THROTTLING =
+  /\b(?:per (?:minute|second|day|hour)|rate[- ]?limit|tpm|rpm|throttl|quota|retry (?:after|in))/i
+
+function isTooManyTokensLength(message: string): boolean {
+  return TOO_MANY_TOKENS_LENGTH.test(message) && !THROTTLING.test(message)
+}
 
 export function isContextLengthError(error: unknown): boolean {
   if (!error) return false
@@ -94,7 +108,7 @@ export function isContextLengthError(error: unknown): boolean {
       : typeof error === 'string'
         ? error
         : String((error as { message?: unknown })?.message ?? '')
-  if (LENGTH_TEXT.test(message)) return true
+  if (LENGTH_TEXT.test(message) || isTooManyTokensLength(message)) return true
   try {
     return (
       parseServerContextLimit(

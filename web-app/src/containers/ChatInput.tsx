@@ -803,7 +803,7 @@ const ChatInput = memo(function ChatInput({
 
   const tokenCounterVisible =
     !hideTokenCounter &&
-    ((!!tokenSource?.threadId && !!selectedModel) || shouldShowTokenCounter({
+    shouldShowTokenCounter({
       hasSelectedModel: !!selectedModel,
       isAgentMode: effectiveAgentMode,
       isInitialMessage: !!initialMessage,
@@ -811,7 +811,7 @@ const ChatInput = memo(function ChatInput({
       hasPromptText: prompt.trim().length > 0,
       hasReportedUsage:
         (tokenSource?.usage?.totalTokens ?? 0) > 0 || !!tokenSource?.contextError,
-    }))
+    })
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')

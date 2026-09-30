@@ -117,6 +117,10 @@ describe('TokenCounter', () => {
     expect(mocks.calculateTokens).toHaveBeenCalledTimes(1)
   })
 
+  // Theme tokens, not hex: the ring has to follow light and dark mode.
+  const stopColor = (container: Element) =>
+    (container.querySelector('linearGradient stop') as SVGStopElement | null)?.style.stopColor
+
   it('renders the SVG progress ring', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000 })
     const { container } = render(<TokenCounter />)
@@ -124,17 +128,21 @@ describe('TokenCounter', () => {
     expect(svg).toBeTruthy()
     const circles = container.querySelectorAll('circle')
     expect(circles.length).toBe(2)
-    expect(container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#22c55e')
+    expect(stopColor(container)).toBe('var(--success)')
   })
 
   it('changes ring gradient as context fills', () => {
     mockTokens({ tokenCount: 900, maxTokens: 1000 })
     const { container, unmount } = render(<TokenCounter />)
-    expect(container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#eab308')
+    expect(stopColor(container)).toBe('var(--warning)')
     unmount()
     mockTokens({ tokenCount: 1100, maxTokens: 1000 })
     const full = render(<TokenCounter />)
-    expect(full.container.querySelector('linearGradient stop')?.getAttribute('stop-color')).toBe('#f97316')
+    expect(stopColor(full.container)).toBe('var(--warning)')
+    // The far end of the ring is the destructive token, not a fixed hex.
+    expect(
+      (full.container.querySelectorAll('linearGradient stop')[1] as SVGStopElement).style.stopColor
+    ).toBe('var(--destructive)')
   })
 
   it('renders nothing when maxTokens is unavailable', () => {
