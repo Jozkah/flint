@@ -47,7 +47,6 @@ import {
   DEFAULT_CTX_LENGTH,
   type FitVerdict,
 } from '@/lib/modelCompatibility'
-import { cn } from '@/lib/utils'
 
 export const Route = createFileRoute(route.hub.index as any)({
   component: ModelDiscoverRoute,
