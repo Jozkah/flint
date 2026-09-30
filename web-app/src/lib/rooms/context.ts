@@ -12,6 +12,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
+import { pinnedReplyLanguage, replyLanguageLine } from '@/lib/replyLanguage'
 import type { Participant, Room, RoomMessage } from './types'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
@@ -107,7 +108,8 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
     )
   }
   lines.push(
-    "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
+    replyLanguageLine() ||
+      "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
     ADDRESSING_RULES,
     FRAMING_NOTICE,
     UNTRUSTED_NOTICE
@@ -246,6 +248,8 @@ const CJK = /[぀-ヿ㐀-鿿가-힯]/
  * messages are in the history; the last message is the one it follows.
  */
 export function languageCue(room: Room): string {
+  const pinned = pinnedReplyLanguage()
+  if (pinned) return `Reply in ${pinned}.`
   const text = `${room.objective ?? ''} ${room.title ?? ''}`
   return CJK.test(text)
     ? 'Reply in the language of the objective.'
