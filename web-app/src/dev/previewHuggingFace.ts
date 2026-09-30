@@ -30,11 +30,17 @@ const model = (
 })
 
 const MODELS: HuggingFaceModel[] = [
-  model('acme-labs/Aurora-8B-Instruct-GGUF', 1_284_000, 3120, [
-    ['Aurora-8B-Instruct-Q4_K_M.gguf', 4.9],
-    ['Aurora-8B-Instruct-Q5_K_M.gguf', 5.7],
-    ['Aurora-8B-Instruct-Q8_0.gguf', 8.5],
-  ]),
+  model(
+    'acme-labs/Aurora-8B-Instruct-GGUF',
+    1_284_000,
+    3120,
+    [
+      ['Aurora-8B-Instruct-Q4_K_M.gguf', 4.9],
+      ['Aurora-8B-Instruct-Q5_K_M.gguf', 5.7],
+      ['Aurora-8B-Instruct-Q8_0.gguf', 8.5],
+    ],
+    { tags: ['gguf', 'text-generation', 'tool-use', 'llama'] }
+  ),
   model(
     'acme-labs/Aurora-VL-12B-GGUF',
     402_000,
@@ -60,6 +66,20 @@ const MODELS: HuggingFaceModel[] = [
     ['Ember-3B-Q4_K_M.gguf', 1.9],
     ['Ember-3B-Q8_0.gguf', 3.3],
   ]),
+  model(
+    'lumen/Glow-Embed-335M-GGUF',
+    611_000,
+    420,
+    [['Glow-Embed-335M-Q8_0.gguf', 0.36]],
+    { pipelineTag: 'feature-extraction', tags: ['gguf', 'embedding'] }
+  ),
+  model(
+    'lumen/Whisper-Turbo-GGUF',
+    150_000,
+    301,
+    [['Whisper-Turbo-Q5_0.gguf', 0.57]],
+    { pipelineTag: 'automatic-speech-recognition', tags: ['gguf', 'audio', 'speech'] }
+  ),
 ]
 
 export function seedHuggingFacePreview() {
