@@ -10,6 +10,10 @@ export const route = {
   projectDetail: '/project/$projectId',
   rooms: '/rooms',
   roomDetail: '/rooms/$roomId',
+  hub: {
+    index: '/hub/',
+    model: '/hub/$modelId',
+  },
   settings: {
     index: '/settings',
     model_providers: '/settings/providers',
