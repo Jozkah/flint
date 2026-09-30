@@ -21,6 +21,10 @@
     <Property Id="ErrorDialog" Value="FlintErrorDlg" />
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
 
+    <!-- Browse opens the standard Windows folder picker (flint-browse.js). -->
+    <Binary Id="FlintBrowseScript" SourceFile="$(sys.SOURCEFILEDIR)flint-browse.js" />
+    <CustomAction Id="FlintBrowseFolder" BinaryKey="FlintBrowseScript" JScriptCall="FlintBrowse" Return="ignore" />
+
     <UI Id="WixUI_Flint">
       <!-- The app fg-2 token. Windows Installer text can only use the system face. -->
       <TextStyle Id="FlintText" FaceName="Segoe UI" Size="9" Red="55" Green="65" Blue="81" />

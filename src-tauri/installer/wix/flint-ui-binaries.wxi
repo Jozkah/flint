@@ -28,5 +28,6 @@
   <Binary Id="Btn_outline_no" SourceFile="$(sys.SOURCEFILEDIR)flint\light\btn-outline-no.bmp" />
   <Binary Id="Btn_outline_ignore" SourceFile="$(sys.SOURCEFILEDIR)flint\light\btn-outline-ignore.bmp" />
   <Binary Id="Btn_outline_exit" SourceFile="$(sys.SOURCEFILEDIR)flint\light\btn-outline-exit.bmp" />
+  <Binary Id="Btn_outline_browse" SourceFile="$(sys.SOURCEFILEDIR)flint\light\btn-outline-browse.bmp" />
   <Binary Id="Btn_destructive_uninstall" SourceFile="$(sys.SOURCEFILEDIR)flint\light\btn-destructive-uninstall.bmp" />
 </Include>

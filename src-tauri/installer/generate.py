@@ -441,7 +441,7 @@ MSI_PAGES = {
 
 # The small modal dialogs (cancel confirmation, errors) have no rail.
 MSI_SMALL = {
-    "cancel": dict(w=347, h=140, title="Cancel setup?", body="Are you sure you want to cancel the installation?"),
+    "cancel": dict(w=352, h=140, title="Cancel setup?", body="Are you sure you want to cancel the installation?"),
 }
 
 MSI_BUTTONS = (
@@ -460,8 +460,10 @@ MSI_BUTTONS = (
     ("outline", "no", "No"),
     ("outline", "ignore", "Ignore"),
     ("outline", "exit", "Exit"),
+    ("outline", "browse", "Browse"),
     ("destructive", "uninstall", "Uninstall"),
 )
+MSI_SMALL_SLUGS = {"browse"}  # the app default button size, 32px tall
 
 
 def wrap(text, weight, px, width):
@@ -537,22 +539,29 @@ def msi_small(theme, name):
     return img
 
 
-def msi_button_w(label):
+def msi_button_w(label, small=False):
     """Visual width of an MSI button: the app width rounded up to a multiple of 4 px,
     so that every edge lands on a whole dialog unit (1 DU = 4/3 px)."""
-    return (button_width(label) + 3) // 4 * 4
+    return (button_width(label, small) + 3) // 4 * 4
+
+
+def msi_button_h(small=False):
+    return 32 if small else 36
 
 
 def msi_button(theme, variant, label):
-    """The app Button at 1x, inside a 2px margin of page colour.
+    """The app Button at 1x, centred in a 4px margin of page colour.
 
-    Windows Installer draws its own 2px frame around a push button and draws a
-    button bitmap at its own size (unlike a page bitmap it is not scaled). The
-    control is therefore 4px larger than this art on every side, and page-coloured
-    strips cover the frame plus this margin, see msi_dialogs()."""
-    w = msi_button_w(dict((sl, lb) for _, sl, lb in MSI_BUTTONS)[slug_of(variant, label)])
-    art = Image.new("RGB", (w + 4, 40), rgb(THEMES[theme]["background"]))
-    art.paste(button(theme, variant, label, 100, width=w), (2, 2))
+    Windows Installer stretches a button bitmap to the WHOLE control, and draws its
+    own 2px frame over the edge of it. So the control is the button plus 4px on
+    every side, this art is exactly that size (a smaller one would be resampled and
+    look blurry), and page-coloured strips over the margin hide the frame, see
+    msi_dialogs()."""
+    slug = slug_of(variant, label)
+    small = slug in MSI_SMALL_SLUGS
+    w, h = msi_button_w(label, small), msi_button_h(small)
+    art = Image.new("RGB", (w + 8, h + 8), rgb(THEMES[theme]["background"]))
+    art.paste(button(theme, variant, label, 100, width=w, small=small), (4, 4))
     return art
 
 
@@ -582,12 +591,15 @@ def msi_dialogs():
 
     def push(cid, variant, slug, vx, vy, events, extra=None):
         """A bitmap button whose visual box is at (vx, vy) px, framed by page-coloured strips."""
-        w = msi_button_w(dict((sl, lb) for _, sl, lb in MSI_BUTTONS)[slug])
-        cx, cy, cw, ch = vx - 4, vy - 4, w + 8, 44
+        label = dict((sl, lb) for _, sl, lb in MSI_BUTTONS)[slug]
+        small = slug in MSI_SMALL_SLUGS
+        w = msi_button_w(label, small)
+        cx, cy, cw, ch = vx - 4, vy - 4, w + 8, msi_button_h(small) + 8
         lines = [f'        <Control Id="{cid}" Type="PushButton" X="{du(cx)}" Y="{du(cy)}" Width="{du(cw)}" Height="{du(ch)}" Bitmap="yes" Text="Btn_{variant}_{slug}">{cond(extra)}']
         for ev, val, order, c in events:
             o = f' Order="{order}"' if order else ""
-            lines.append(f'          <Publish Event="{ev}" Value="{val}"{o}>{c}</Publish>')
+            what = f'Property="{ev[5:]}"' if ev.startswith("prop:") else f'Event="{ev}"'
+            lines.append(f'          <Publish {what} Value="{val}"{o}>{c}</Publish>')
         lines.append('        </Control>')
         for tag, x, y, sw, sh in (("t", cx, cy, cw, 4), ("b", cx, cy + ch - 4, cw, 4), ("l", cx, cy, 4, ch), ("r", cx + cw - 4, cy, 4, ch)):
             lines.append(f'        <Control Id="{cid}_{tag}" Type="Bitmap" X="{du(x)}" Y="{du(y)}" Width="{du(sw)}" Height="{du(sh)}" TabSkip="no" Text="Solid">{cond(extra)}\n        </Control>')
@@ -613,11 +625,13 @@ def msi_dialogs():
     dialog("FlintWelcomeDlg", 370, 270, "Page_welcome", [
         ("Cancel", "outline", "cancel", RIGHT - 88 - 8 - 88, Y, cancel, None),
         ("Next", "primary", "continue", RIGHT - 88, Y, NEXT, None)])
+    browse_w = msi_button_w("Browse", True)
     dialog("FlintInstallDirDlg", 370, 270, "Page_installdir", [
         ("Back", "outline", "back", RIGHT - 3 * 88 - 16, Y, [("NewDialog", "FlintWelcomeDlg", "", "1")], None),
         ("Cancel", "outline", "cancel", RIGHT - 88 - 8 - 88, Y, cancel, None),
-        ("Install", "primary", "install", RIGHT - 88, Y, [("SetTargetPath", "[WIXUI_INSTALLDIR]", 1, "1"), ("EndDialog", "Return", 2, "1")], None)],
-        native='        <Control Id="FolderEdit" Type="PathEdit" X="137" Y="100" Width="215" Height="15" Property="WIXUI_INSTALLDIR" Indirect="yes" />')
+        ("Install", "primary", "install", RIGHT - 88, Y, [("SetTargetPath", "[WIXUI_INSTALLDIR]", 1, "1"), ("EndDialog", "Return", 2, "1")], None),
+        ("Browse", "outline", "browse", RIGHT - browse_w, 132, [("DoAction", "FlintBrowseFolder", "", "1")], None)],
+        native=f'        <Control Id="FolderEdit" Type="PathEdit" X="137" Y="104" Width="{(RIGHT - browse_w - 8 - 182) * 3 // 4}" Height="15" Property="WIXUI_INSTALLDIR" Indirect="yes" />')
     for did, page in (("Flint_progress_Dlg", "Page_progress"), ("Flint_removing_Dlg", "Page_removing")):
         dialog(did, 370, 270, page, [("Cancel", "outline", "cancel", RIGHT - 88, Y, cancel, None)], modeless=True, native=
                '        <Control Id="ActionText" Type="Text" X="137" Y="112" Width="215" Height="10" Transparent="yes" NoPrefix="yes" Text="Starting">\n'
@@ -640,9 +654,9 @@ def msi_dialogs():
     dialog("FlintRemoveDlg", 370, 270, "Page_remove", [
         ("Cancel", "outline", "cancel", RIGHT - 88 - 8 - 88, Y, cancel, None),
         ("Remove", "destructive", "uninstall", RIGHT - 88, Y, [("Remove", "All", 1, "1"), ("EndDialog", "Return", 2, "1")], None)])
-    dialog("FlintCancelDlg", 260, 105, "Dlg_cancel", [
-        ("Yes", "outline", "yes", 148, 84, [("EndDialog", "Exit", "", "1")], None),
-        ("No", "primary", "no", 244, 84, [("EndDialog", "Return", "", "1")], None)])
+    dialog("FlintCancelDlg", 264, 105, "Dlg_cancel", [
+        ("Yes", "outline", "yes", 152, 84, [("EndDialog", "Exit", "", "1")], None),
+        ("No", "primary", "no", 248, 84, [("EndDialog", "Return", "", "1")], None)])
     dialog("FilesInUse", 370, 270, "Page_filesinuse", [
         ("Exit", "outline", "exit", RIGHT - 3 * 88 - 16, Y, [("EndDialog", "Exit", "", "1")], None),
         ("Ignore", "outline", "ignore", RIGHT - 88 - 8 - 88, Y, [("EndDialog", "Ignore", "", "1")], None),

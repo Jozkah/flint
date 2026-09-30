@@ -71,6 +71,22 @@ test('the standard dialogs and sequences that ICE20 requires are all present', a
   }
 })
 
+test('Browse opens the Windows folder picker and keeps the install in its own subfolder', async () => {
+  const dialogs = await read('installer/wix/flint-ui-dialogs.wxi')
+  const install = dialogs.slice(dialogs.indexOf('<Dialog Id="FlintInstallDirDlg"'), dialogs.indexOf('</Dialog>', dialogs.indexOf('<Dialog Id="FlintInstallDirDlg"')))
+  assert.match(install, /<Publish Event="DoAction" Value="FlintBrowseFolder"/)
+  // Windows Installer's own folder list cannot be styled, so there is no dialog for it.
+  assert.doesNotMatch(dialogs, /DirectoryList|FlintBrowseDlg/)
+  const ui = await read('installer/wix/flint-ui.wxs')
+  assert.match(ui, /<CustomAction Id="FlintBrowseFolder" BinaryKey="FlintBrowseScript" JScriptCall="FlintBrowse"/)
+  assert.match(ui, /<Binary Id="FlintBrowseScript" SourceFile="\$\(sys\.SOURCEFILEDIR\)flint-browse\.js"/)
+  const script = await read('installer/wix/flint-browse.js')
+  assert.match(script, /BrowseForFolder\(/)
+  // A bare folder or drive root must never become the install directory: it gets its own subfolder.
+  assert.match(script, /path \+ "\\\\" \+ name \+ "\\\\"/)
+  assert.match(script, /path\.length > 2/)
+})
+
 test('WiX does not see duplicate ids and ICE17 finds no button without an event', async () => {
   const dialogs = await read('installer/wix/flint-ui-dialogs.wxi')
   for (const dialog of dialogs.matchAll(/<Dialog Id="([^"]+)"[\s\S]*?<\/Dialog>/g)) {
@@ -93,7 +109,7 @@ test('every button sits on whole dialog units and its strips cover the native fr
     for (const [, id, x, y, w, h] of buttons) {
       const strips = [...dialog[0].matchAll(new RegExp(`<Control Id="${id}_([tblr])" Type="Bitmap"`, 'g'))].map((m) => m[1]).sort().join('')
       assert.equal(strips, 'blrt', `${dialog[1]}/${id} needs four page-coloured strips over Windows' button frame`)
-      assert.ok(Number(w) >= 66 && Number(h) === 33, `${dialog[1]}/${id} is ${w}x${h} DU`)
+      assert.ok(Number(w) >= 30 && [30, 33].includes(Number(h)), `${dialog[1]}/${id} is ${w}x${h} DU`)
       assert.ok(Number.isInteger(Number(x)) && Number.isInteger(Number(y)))
     }
   }
