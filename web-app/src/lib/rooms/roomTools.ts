@@ -222,6 +222,19 @@ export async function buildRoomTools(
     if (!tools[name]) tools[name] = tool
   }
 
+  // Say when each call starts, so the room can show what a participant is doing
+  // and not only what it has done.
+  for (const [name, tool] of Object.entries(tools)) {
+    const exec = (tool as { execute?: (i: unknown, o: unknown) => unknown }).execute
+    if (!exec) continue
+    tools[name] = {
+      ...tool,
+      execute: (input: unknown, options: unknown) => {
+        onActivity?.({ name, ok: true, args: input, running: true })
+        return exec(input, options)
+      },
+    } as Tool
+  }
   return tools
 }
 

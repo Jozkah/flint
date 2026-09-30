@@ -282,6 +282,11 @@ export type RoomToolActivity = {
   output?: string
   /** The tool came from an MCP server (colours the chip like Cowork's). */
   mcp?: boolean
+  /**
+   * The call has started and not yet returned. Reported while a turn is live
+   * so the room can say what a participant is doing; never stored on a message.
+   */
+  running?: boolean
 }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
@@ -350,4 +355,8 @@ export type LiveTurn = {
   /** The turn is pausing to compact (summarise) earlier messages that no longer
    * fit the model's context window, before it speaks. */
   compacting?: boolean
+  /** The calls this turn has finished so far, shown while it is still going. */
+  tools?: RoomToolActivity[]
+  /** The call running right now, if any. */
+  activity?: { name: string; args?: unknown }
 }

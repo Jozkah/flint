@@ -147,7 +147,9 @@ export async function streamParticipantReply(
   let tools: Record<string, Tool> | undefined
   if (input.toolContext) {
     tools = await buildRoomTools({ ...input.toolContext, signal: input.signal }, (a) => {
-      toolActivity.push(a)
+      // A call that has only started is reported for the live view, and is
+      // kept only once it returns.
+      if (!a.running) toolActivity.push(a)
       input.onToolActivity?.(a)
     })
     if (Object.keys(tools).length === 0) tools = undefined

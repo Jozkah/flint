@@ -13,6 +13,8 @@ import type {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { liveStatus } from '@/lib/rooms/liveStatus'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
   addressLabel,
@@ -470,6 +472,21 @@ type RoomTranscriptProps = {
  */
 const NEAR_BOTTOM_PX = 64
 
+function liveStatusLabel(status: ReturnType<typeof liveStatus>, t: T): string {
+  switch (status.kind) {
+    case 'compacting':
+      return t('rooms:transcript.compacting')
+    case 'approval':
+      return t('rooms:transcript.waitingApproval', { tool: status.tool })
+    case 'tool':
+      return `${status.text}…`
+    case 'writing':
+      return t('rooms:transcript.writing')
+    default:
+      return t('rooms:transcript.thinking')
+  }
+}
+
 export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps) {
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
@@ -478,6 +495,10 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
   // same color as that participant's name. Rebuilt only when the roster changes.
   const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
+  const approvalTool = useToolApprovalRequests((s) => {
+    for (const p of Object.values(s.pending ?? {})) if (p.threadId === room.id) return p.toolName
+    return null
+  })
 
   const scrollRef = useRef<HTMLDivElement>(null)
   // Whether new content should pull the viewport down. True only while the user
@@ -654,19 +675,20 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           <header className="flex flex-wrap items-center gap-1.5 text-xs">
             <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
-              {t(live.compacting ? 'rooms:transcript.compacting' : 'rooms:transcript.streaming')}
+              {liveStatusLabel(liveStatus(live, approvalTool), t)}
             </span>
           </header>
+          {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
           {live.compacting ? (
             <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
-          ) : (
+          ) : live.text ? (
             <RoomMessageText
               text={stripConclusion(live.text).text}
               mentionColors={mentionColors}
               isStreaming
               className="text-[13.5px] leading-[1.6] text-fg-2"
             />
-          )}
+          ) : null}
         </article>
       )}
       </div>

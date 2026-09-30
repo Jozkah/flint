@@ -565,6 +565,8 @@ class RoomRun {
         this.calls++
         attempt++
         live.text = ''
+        live.tools = undefined
+        live.activity = undefined
         // Time spent actually writing: the gaps between streamed pieces of text,
         // not the waits for a tool or an approval in between.
         let lastDeltaAt = 0
@@ -590,6 +592,15 @@ class RoomRun {
               this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
             },
             ...(toolContext ? { toolContext } : {}),
+            onToolActivity: (a) => {
+              if (a.running) {
+                live.activity = { name: a.name, args: a.args }
+              } else {
+                live.activity = undefined
+                live.tools = [...(live.tools ?? []), a]
+              }
+              this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
+            },
           })
           if (this.signal.aborted) throw new RunAborted()
           const raw = typeof res.text === 'string' ? res.text : live.text
