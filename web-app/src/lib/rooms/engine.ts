@@ -524,6 +524,7 @@ class RoomRun {
           ? {
               roomId: this.roomId,
               folder: this.room.folder ?? null,
+              extraFolders: this.room.extraFolders ?? [],
               access: args.participant.toolAccess,
             }
           : undefined

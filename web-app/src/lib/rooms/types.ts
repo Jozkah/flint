@@ -187,6 +187,8 @@ export type Room = {
    * `null`/absent when no folder is attached. Persisted with the room.
    */
   folder?: string | null
+  /** More folders beside `folder`, under the same access. */
+  extraFolders?: string[]
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */

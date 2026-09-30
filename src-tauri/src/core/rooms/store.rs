@@ -319,6 +319,10 @@ pub struct Room {
     /// have not attached one (serde default keeps those loading unchanged).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// More folders beside `folder`, reachable the same way and covered by the
+    /// same access. Absent on rooms saved before this existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_folders: Vec<String>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,

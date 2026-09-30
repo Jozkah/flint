@@ -83,7 +83,12 @@ function webResultText(content: unknown): string {
   return content == null ? '' : String(content)
 }
 
-type ExecOptions = { readOnlyProject?: string; writeGrant?: string; scope: 'thread' }
+type ExecOptions = {
+  readOnlyProject?: string
+  extraProjects?: string[]
+  writeGrant?: string
+  scope: 'thread'
+}
 
 export async function buildRoomTools(
   ctx: RoomToolContext,
@@ -113,20 +118,27 @@ export async function buildRoomTools(
   // File tools only make sense against an attached folder. With `edit` access,
   // mint a write grant confined to that folder so write/edit can be offered.
   if (ctx.folder) {
+    const extras = ctx.extraFolders ?? []
     let writeGrant: string | undefined
     if (ctx.access === 'edit') {
       try {
         const dataFolder = await getServiceHub().app().getJanDataFolder()
         if (dataFolder) {
-          writeGrant = await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder)
+          writeGrant = extras.length
+            ? await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder, extras)
+            : await directEditAuthorize(dataFolder, ctx.roomId, ctx.folder)
         }
       } catch {
         // No grant -> no write tools; reads still work.
       }
     }
-    const readOptions: ExecOptions = { readOnlyProject: ctx.folder, scope: 'thread' }
+    const readOptions: ExecOptions = {
+      readOnlyProject: ctx.folder,
+      ...(extras.length ? { extraProjects: extras } : {}),
+      scope: 'thread',
+    }
     const writeOptions: ExecOptions | undefined = writeGrant
-      ? { readOnlyProject: ctx.folder, writeGrant, scope: 'thread' }
+      ? { ...readOptions, writeGrant }
       : undefined
 
     const allow = new Set<string>(ROOM_READ_TOOLS)

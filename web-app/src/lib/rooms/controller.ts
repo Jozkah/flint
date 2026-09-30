@@ -100,6 +100,8 @@ export type RoomSettingsPatch = {
   participants?: ParticipantPatch[]
   /** The working folder, or `null` to detach it. */
   folder?: string | null
+  /** More folders beside the main one; the list replaces the old one. */
+  extraFolders?: string[]
 }
 
 export interface RoomEditor {
@@ -173,6 +175,22 @@ type RoomSlot = {
   run: { controller: AbortController; intent: AbortIntent | null } | null
   override: string | null
   userQueue: Array<{ text: string; to: Address }>
+}
+
+/** Most folders a room may have beside its main one. */
+export const MAX_EXTRA_FOLDERS = 8
+
+/** The extra folders as stored: trimmed, no repeats, none that is the main one, capped. */
+export function cleanExtraFolders(
+  folders: readonly string[],
+  main: string | null
+): string[] {
+  const out: string[] = []
+  for (const raw of folders) {
+    const f = typeof raw === 'string' ? raw.trim() : ''
+    if (f && f !== main && !out.includes(f)) out.push(f)
+  }
+  return out.slice(0, MAX_EXTRA_FOLDERS)
 }
 
 export function createRoomController(deps: ControllerDeps = {}): RoomControllerApi {
@@ -658,6 +676,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           moderator: patch.moderator ? normaliseModerator(patch.moderator, room.moderator) : room.moderator,
           folder:
             patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
+          extraFolders: cleanExtraFolders(
+            patch.extraFolders !== undefined ? patch.extraFolders : (room.extraFolders ?? []),
+            patch.folder !== undefined ? patch.folder || null : (room.folder ?? null)
+          ),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           // Raising a limit that stopped the room clears the stop, so a message
           // resumes it instead of being stranded by a limit that no longer binds.

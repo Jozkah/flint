@@ -137,12 +137,18 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
     return `No working folder is attached, so file tools are unavailable.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')
+  const extras = room.extraFolders ?? []
   const verbs =
     access === 'edit'
-      ? 'read, list, write and edit files in your working folder'
-      : 'read and list files in your working folder (read-only)'
+      ? `read, list, write and edit files in your working ${extras.length ? 'folders' : 'folder'}`
+      : `read and list files in your working ${extras.length ? 'folders' : 'folder'} (read-only)`
   return [
     `You can ${verbs}. The working folder is: ${room.folder}`,
+    ...(extras.length
+      ? [
+          `Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`,
+        ]
+      : []),
     `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
     'Do not invent file contents: if a read fails, say so instead of guessing.',
     ...(access === 'edit'

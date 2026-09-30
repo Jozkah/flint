@@ -12,6 +12,7 @@ import type {
   ToolAccess,
 } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
 import type { WorkProfileId } from '@/lib/workProfiles'
 import { ParticipantPersonaFields } from './ParticipantPersonaFields'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -508,7 +509,32 @@ export function RoomEditor({ room }: { room: Room }) {
   const detachFolder = async () => {
     setError(null)
     try {
-      await api.updateRoomSettings(room, { folder: null })
+      // The next folder, if there is one, becomes the main one.
+      const [next, ...rest] = room.extraFolders ?? []
+      await api.updateRoomSettings(room, { folder: next ?? null, extraFolders: rest })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const addExtraFolder = async () => {
+    setError(null)
+    try {
+      const picked = await serviceHub.dialog().open({ directory: true })
+      const path = Array.isArray(picked) ? picked[0] : picked
+      if (!path) return
+      const current = room.extraFolders ?? []
+      if (path === room.folder || current.includes(path)) return
+      await api.updateRoomSettings(room, { extraFolders: [...current, path] })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const removeExtraFolder = async (path: string) => {
+    setError(null)
+    try {
+      await api.updateRoomSettings(room, {
+        extraFolders: (room.extraFolders ?? []).filter((f) => f !== path),
+      })
     } catch (err) {
       setError(normalizeError(err))
     }
@@ -897,6 +923,33 @@ export function RoomEditor({ room }: { room: Room }) {
                     onClick={() => void attachFolder()}
                   >
                     {t('rooms:editor.attachFolder')}
+                  </Button>
+                )}
+                {(room.extraFolders ?? []).map((f) => (
+                  <div key={f} className="flex flex-wrap items-center gap-1.5">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11.5px]">
+                      {f}
+                    </code>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => void removeExtraFolder(f)}
+                    >
+                      {t('rooms:editor.detachFolder')}
+                    </Button>
+                  </div>
+                ))}
+                {room.folder && (room.extraFolders ?? []).length < MAX_EXTRA_FOLDERS && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="self-start"
+                    onClick={() => void addExtraFolder()}
+                  >
+                    <Plus className="size-3.5" aria-hidden />
+                    {t('rooms:editor.addFolder')}
                   </Button>
                 )}
                 <p className="text-xs text-muted-foreground">{t('rooms:editor.workingFolderHint')}</p>

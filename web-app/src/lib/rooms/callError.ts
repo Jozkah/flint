@@ -31,6 +31,8 @@ export type RoomToolContext = {
   roomId: string
   /** The folder file-read tools resolve against, or null for none. */
   folder: string | null
+  /** More folders beside `folder`, reachable the same way. */
+  extraFolders?: string[]
   access: ToolAccess
 }
 
