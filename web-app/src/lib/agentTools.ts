@@ -31,6 +31,7 @@ import { errorText } from '@/lib/errorText'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
+import { runOpenInBrowser } from '@/lib/browserOpen'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -67,6 +68,7 @@ export const AGENT_TOOL_NAMES = new Set([
   // Flint's own plugin state. See `executeAgentTool`.
   'request_access',
   'list_plugins',
+  'open_in_browser',
   // The host's git and gh, outside the sandbox (tools/git_tool.rs). Reads run
   // without asking; everything else is put to the user by the dispatcher
   // (see `gitApproval`), and a push or pull request every time.
@@ -430,6 +432,7 @@ export async function executeAgentTool(
         }),
       }
     }
+    if (toolName === 'open_in_browser') return runOpenInBrowser(input)
     if (toolName === 'list_plugins') {
       return { content: await listPluginsForModel(options.readOnlyProject) }
     }

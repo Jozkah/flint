@@ -20,6 +20,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
+import { summarizeTrace, summaryPhrases } from '@/lib/traceSummary'
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
@@ -98,6 +99,13 @@ const CompactTrace = ({
     />
   )
   const working = groupIsStreaming && pinned.length === 0
+  // Once the run is over, the folded toggle says what it did, not just how
+  // many steps it took.
+  const summary = summarizeTrace(steps.map((e) => e.part))
+  const phrases = working ? [] : summaryPhrases(summary)
+  const summaryText = phrases
+    .map((p) => t(`chat:transcriptView.summary.${p.key}`, { count: p.count }))
+    .join(', ')
   return (
     <div data-transcript-view={mode} className="mb-2.5 w-full text-muted-foreground">
       {reasoning.length > 0 && (
@@ -125,7 +133,21 @@ const CompactTrace = ({
                 open && 'rotate-90'
               )}
             />
-            {t('chat:transcriptView.steps', { count: steps.length })}
+            {summaryText ? (
+              <>
+                <span data-testid="transcript-summary">
+                  {summaryText.charAt(0).toUpperCase() + summaryText.slice(1)}
+                </span>
+                {(summary.added > 0 || summary.removed > 0) && (
+                  <span className="ml-1 font-mono tabular-nums">
+                    <span className="text-emerald-600 dark:text-emerald-400">+{summary.added}</span>{' '}
+                    <span className="text-red-600 dark:text-red-400">−{summary.removed}</span>
+                  </span>
+                )}
+              </>
+            ) : (
+              t('chat:transcriptView.steps', { count: steps.length })
+            )}
             {working && (
               <span className="motion-safe:animate-pulse">
                 {' · '}

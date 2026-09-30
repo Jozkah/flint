@@ -27,6 +27,8 @@ import { RagToolWidget } from './RagToolWidget'
 import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
+import { BrowserOpenedCard } from './BrowserOpenedCard'
+import { parseBrowserTarget } from '@/lib/browserOpen'
 import {
   lineOfToolInput,
   toolChangesFile,
@@ -145,6 +147,12 @@ export const ToolCallCard = memo(
         ? Boolean(s.pending[part.toolCallId] && !s.pending[part.toolCallId].origin)
         : false
     )
+
+    // A page shown to the user is a card of its own, not a tool step.
+    const browserTarget =
+      toolName === 'open_in_browser' && part.state === 'output-available'
+        ? parseBrowserTarget(part.input)
+        : null
 
     // Native families get a fixed label; MCP names its server.
     const originLabel =
@@ -319,6 +327,14 @@ export const ToolCallCard = memo(
         />
       </ResultSection>
     )
+
+    if (browserTarget) {
+      return (
+        <div className={className}>
+          <BrowserOpenedCard target={browserTarget} />
+        </div>
+      )
+    }
 
     // Waiting for the user: one expanded action panel, with no tool card
     // around it. It says what the call would do in full; the parameters table

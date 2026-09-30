@@ -663,6 +663,12 @@ pub(crate) async fn execute_text(
                             cannot see it. Ask the user, or check the Plugins panel.",
             }),
         ),
+        "open_in_browser" => crate::access::result_json(
+            "unavailable",
+            serde_json::json!({
+                "message": "The browser is opened by the Flint desktop app; this surface                             cannot open one. Give the user the address instead.",
+            }),
+        ),
         other => format!("ERROR: unknown built-in tool '{other}'"),
     }
 }
