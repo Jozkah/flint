@@ -1,5 +1,6 @@
 import type { Assistant } from '@janhq/core'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { jevSuggestSkill, shouldAskForSkill, type JevFallback } from '@/lib/jev'
 
 /**
@@ -139,6 +140,8 @@ export async function chooseJevPromptRoute(args: {
   const message = args.message.trim()
   if (!shouldAskForSkill(message)) return null
   if (args.temporary || args.pinned) return null
+  // The user turned automatic assistant routing off.
+  if (!useAutomationSettings.getState().routeAssistants) return null
 
   // A custom/project assistant is pinned intentionally. Jev only orchestrates
   // the built-in Flint family.

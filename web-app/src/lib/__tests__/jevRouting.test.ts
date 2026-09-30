@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { jevSuggestSkill } from '@/lib/jev'
 import {
   buildJevRouteOptions,
@@ -93,6 +94,18 @@ describe('Jev prompt routing', () => {
   it('keeps the current assistant on a transport error', async () => {
     suggest.mockRejectedValue(new Error('unavailable'))
     expect(await chooseJevPromptRoute({ message: 'A brand new task for you', assistants })).toBeNull()
+  })
+
+  it('sends nothing when the user turned automatic routing off', async () => {
+    useAutomationSettings.setState({ routeAssistants: false })
+    try {
+      expect(
+        await chooseJevPromptRoute({ message: 'Fix this bug in the parser please', assistants })
+      ).toBeNull()
+      expect(suggest).not.toHaveBeenCalled()
+    } finally {
+      useAutomationSettings.setState({ routeAssistants: true })
+    }
   })
 
   it('sends nothing for a pinned conversation, a temporary chat, or a short prompt', async () => {

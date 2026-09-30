@@ -35,6 +35,7 @@ import { useProjectInitDrafts } from '@/lib/projectInit'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { useModelDoctor } from '@/hooks/useModelDoctor'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { useImageDescription } from '@/hooks/useImageDescription'
@@ -89,6 +90,7 @@ const secondaryStores = [
   useModelEvidence,
   useModelDoctor,
   useJevSettings,
+  useAutomationSettings,
   useWorkProfiles,
   useSkillActivation,
   useImageDescription,

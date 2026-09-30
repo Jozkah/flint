@@ -1943,6 +1943,11 @@
     }
   },
   "jev": {
+    "automationTitle": "Automatic choices",
+    "routeToggle": "Route to the right assistant",
+    "routeExplained": "When Skill suggestion is On, Jev may move a conversation that is still on Flint to Quartz, Coal, Blaze or Redstone for each new message. Off, the assistant you picked stays for every message. An assistant you chose yourself is never changed either way.",
+    "activateToggle": "Apply skills automatically",
+    "activateExplained": "Skills that are always-active, that match a trigger phrase, or that Jev picks are added to the prompt without you asking. Off, none is added for you; the model can still read a skill it sees in the catalogue, and you can still invoke one with /.",
     "profilesTitle": "Work profiles",
     "profilesToggle": "Independent system prompt per type of work",
     "profilesExplained": "Adds a short block to the system prompt for the kind of work each message asks for: review, planning, executing, refactoring, debugging, reverse engineering or explaining. Jev picks the profile from a session's first message when skill suggestions are On; otherwise a keyword match picks it. The profile stays for the session; change it from the picker in the Cowork header. Off, every run uses the global prompt alone. Edit each profile below.",

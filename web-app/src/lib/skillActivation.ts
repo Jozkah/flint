@@ -1,4 +1,5 @@
 import { projectScope, readSkill, storeScope } from '@/lib/skillStore'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { getCachedSkills, type CatalogSkill } from '@/lib/skillCatalog'
 import { isAlwaysActive, isTrustedSkill } from '@/hooks/useSkillActivation'
 import { useJevSettings } from '@/hooks/useJevSettings'
@@ -174,6 +175,9 @@ export async function resolveSkillActivation(args: {
   /** The attached project folder, whose own skills are considered too. */
   folder?: string | null
 }): Promise<ActivatedSkill[]> {
+  // The user turned automatic skills off: nothing applies on its own, though
+  // the model can still read a skill it sees in the catalogue.
+  if (!useAutomationSettings.getState().activateSkills) return []
   const skills = (args.skills ?? getCachedSkills(args.folder)).filter((s) => s.model_invocable !== false)
   if (skills.length === 0) return []
   const picked: { name: string; why: string }[] = []
