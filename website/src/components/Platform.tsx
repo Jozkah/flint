@@ -348,7 +348,7 @@ export function OpenSource() {
                   {Icon.github}
                   Jozkah/flint
                 </span>
-                <p>A private, local-first AI workspace for your desktop.</p>
+                <p>A local-first AI workspace for your desktop.</p>
                 <span className="tags">
                   <span className="pill plain">Apache License 2.0</span>
                   <span className="pill plain">Tauri + React</span>

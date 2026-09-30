@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const site = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const dist = path.join(site, 'dist')
 const base = (process.env.SITE_BASE ?? '/flint/').replace(/\/?$/, '/')
+const flat = process.env.VITE_FLAT === '1'
 const siteUrl = (process.env.SITE_URL ?? 'https://jozkah.github.io/flint/').replace(/\/?$/, '/')
 
 const { render, pages } = await import(pathToFileURL(path.join(site, 'dist-ssr/entry-server.js')).href)
@@ -20,7 +21,7 @@ const jsonLd = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
   name: 'Flint',
-  description: 'A private, local-first AI workspace for your desktop: chat with local or remote models, let Cowork agents work on real projects, and review every change before it applies.',
+  description: 'A local-first AI workspace for your desktop: chat with local or remote models, let Cowork agents work on real projects, and review every change before it applies.',
   applicationCategory: 'DeveloperApplication',
   operatingSystem: 'Windows, macOS, Linux',
   url: siteUrl,
@@ -62,7 +63,8 @@ for (const page of pages) {
   let html = isHome ? template : meta(template, page)
   const extra = isHome ? headTags : is404 ? '<meta name="robots" content="noindex" />' : ''
   html = html.replace('<div id="root">', `<div id="root" data-page="${page.path}">`).replace('<!--app-html-->', render(is404 ? '__not-found__' : page.path)).replace('<!--head-tags-->', extra)
-  const file = is404 ? path.join(dist, '404.html') : path.join(dist, page.path, 'index.html')
+  if (flat) html = html.replace('<!--head-tags-->', '').replace('</head>', `<script>window.__FLINT_PAGE__=${JSON.stringify(is404 ? '404' : page.path)}</script></head>`)
+  const file = is404 ? path.join(dist, '404.html') : flat ? path.join(dist, `${page.path || 'index'}.html`) : path.join(dist, page.path, 'index.html')
   fs.mkdirSync(path.dirname(file), { recursive: true })
   fs.writeFileSync(file, html)
   written.push(`${page.path || '/'} (${html.length})`)

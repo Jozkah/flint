@@ -128,7 +128,7 @@ export function FinalCta() {
           <h2 className="h2" id="final-h">
             Your machine. Your models. Your rules.
           </h2>
-          <p className="lede">A private, local-first AI workspace for real work.</p>
+          <p className="lede">A local-first AI workspace for real work.</p>
           <div className="hero-cta">
             <DownloadButton />
             <ExternalLink href={LINKS.build} className="btn">
@@ -159,7 +159,7 @@ export function Footer({ home }: { home: boolean }) {
               <img src={asset('brand/icon-64.png')} width="30" height="30" alt="" />
               Flint
             </a>
-            <p>A private, local-first AI workspace for your desktop.</p>
+            <p>A local-first AI workspace for your desktop.</p>
           </div>
           {cols(home).map(([h, links]) => (
             <nav key={h} aria-label={h}>

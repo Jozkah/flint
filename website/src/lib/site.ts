@@ -7,9 +7,14 @@ export const BASE: string = import.meta.env.BASE_URL
 export const asset = (path: string) => `${BASE}${path.replace(/^\//, '')}`
 
 /** Internal page URL: '' is the homepage, 'privacy' is /privacy/. */
-export const pageHref = (path: string) => (path ? `${BASE}${path.replace(/^\/|\/$/g, '')}/` : BASE)
+export const FLAT = import.meta.env.VITE_FLAT === '1'
+export const pageHref = (path: string) => {
+  const p = path.replace(/^\/|\/$/g, '')
+  if (FLAT) return `${BASE}${p || 'index'}.html`
+  return p ? `${BASE}${p}/` : BASE
+}
 /** Section link that works from any page. */
-export const sectionHref = (id: string, home: boolean) => (home ? `#${id}` : `${BASE}#${id}`)
+export const sectionHref = (id: string, home: boolean) => (home ? `#${id}` : `${pageHref('')}#${id}`)
 /** Path relative to the site base, without slashes ('' for home). */
 export const pathFromLocation = (pathname: string) =>
   (pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname.replace(/^\//, '')).replace(/\/+$/, '').replace(/\/index\.html$/, '')

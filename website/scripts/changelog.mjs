@@ -10,7 +10,7 @@ const plain = (s) => s.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/`([^`]+)
 const title = plain((src.match(/^# (.+)$/m) ?? [, 'Changelog'])[1])
 const intro = plain(src.split('\n').slice(1).join('\n').split(/\n## /)[0].split('\n\n').find((p) => p.trim() && !p.startsWith('#')) ?? '')
 const hl = (src.split(/\n## Highlights\n/)[1] ?? '').split(/\n## /)[0]
-const highlights = [...hl.matchAll(/^- \*\*(.+?)\*\*\s*(.+)$/gm)].map((m) => ({ title: plain(m[1]).replace(/\.$/, ''), text: plain(m[2]) }))
+const highlights = [...hl.matchAll(/^- \*\*(.+?)\*\*\s*(.+)$/gm)].map((m) => ({ title: plain(m[1]).replace(/\.$/, '').replace(/ and private$/i, ''), text: plain(m[2]) }))
 const additions = (src.split(/\n## Final 0\.9\.0 additions\n/)[1] ?? '').split(/\n## /)[0]
 const finals = [...additions.matchAll(/^### (.+)$/gm)].map((m) => plain(m[1]))
 

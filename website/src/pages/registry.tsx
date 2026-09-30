@@ -7,7 +7,7 @@ export type PageDef = { path: string; title: string; description: string; Compon
 
 /** Every prerendered page. `path` is relative to the site base; '' is the homepage. */
 export const PAGES: PageDef[] = [
-  { path: '', title: 'Flint: a private, local-first AI workspace for your desktop', description: 'Flint is an open source AI workspace for Windows, macOS and Linux. Chat with local or remote models, let Cowork agents work on real projects, and review every command, diff and decision before it reaches your files.', Component: Home },
+  { path: '', title: 'Flint: a local-first AI workspace for your desktop', description: 'Flint is an open source AI workspace for Windows, macOS and Linux. Chat with local or remote models, let Cowork agents work on real projects, and review every command, diff and decision before it reaches your files.', Component: Home },
   { path: 'docs', title: 'Documentation · Flint', description: 'Guides for installing Flint, using the Cowork agent, permissions, MCP, skills, providers, the SDK and building from source.', Component: Docs },
   { path: 'install', title: 'Install Flint', description: 'Download Flint for Windows, macOS or Linux, open the unsigned installer, bring your first model and migrate from Jan.', Component: Install },
   { path: 'faq', title: 'FAQ · Flint', description: 'Answers about Flint: privacy, local and remote models, Cowork permissions, installing, and how it relates to Jan.', Component: Faq },

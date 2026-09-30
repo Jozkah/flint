@@ -18,7 +18,7 @@ export function Hero() {
           <div>
             <p className="eyebrow rise" style={{ ['--d' as string]: '0ms' }}>
               <span className="dot" />
-              Private · Local-first · Open source
+              Local-first · Open source · Bring your own models
             </p>
             <h1 className="h1">
               <Words text="AI that works where your files already live." />

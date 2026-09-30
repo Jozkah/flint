@@ -6,7 +6,8 @@ import { pathFromLocation } from './lib/site'
 import { findPage, NOT_FOUND } from './pages/registry'
 
 const root = document.getElementById('root')!
-const path = pathFromLocation(window.location.pathname)
+const forced = (window as unknown as { __FLINT_PAGE__?: string }).__FLINT_PAGE__
+const path = forced ?? pathFromLocation(window.location.pathname)
 const app = (
   <StrictMode>
     <App path={path} />

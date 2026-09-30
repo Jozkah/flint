@@ -239,7 +239,7 @@ export function Faq() {
       title: 'The basics',
       body: (
         <>
-          {q('What is Flint?', <p>A private, local-first AI workspace for your desktop. You can chat with local or remote models, hand real work to a Cowork agent, and put several models in one Discussion Room. It runs on Windows, macOS and Linux.</p>)}
+          {q('What is Flint?', <p>A local-first AI workspace for your desktop. You can chat with local or remote models, hand real work to a Cowork agent, and put several models in one Discussion Room. It runs on Windows, macOS and Linux.</p>)}
           {q('Is Flint free?', <p>Yes. It is open source under the Apache License 2.0, and you can read, build and change the code.</p>)}
           {q('How is Flint related to Jan?', <p>Flint is an independent fork of Jan with its own design and features. It keeps Jan’s attribution and can migrate your existing Jan data.</p>)}
           {q('Does Flint have a command line?', <p>Yes. There is a command line for headless agent runs, with a JSON-lines API and background jobs, and there are JavaScript and Python SDKs. See the <a href={pageHref('docs')}>docs</a>.</p>)}

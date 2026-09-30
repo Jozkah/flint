@@ -3,6 +3,24 @@ export function startEffects(): () => void {
   const cleanups: Array<() => void> = []
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
+  // 0. In-page links scroll explicitly (works in sandboxed frames where fragment navigation can be blocked).
+  const onLink = (ev: MouseEvent) => {
+    const a = (ev.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]')
+    if (!a || ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return
+    const id = decodeURIComponent(a.getAttribute('href')!.slice(1))
+    const el = id ? document.getElementById(id) : document.body
+    if (!el) return
+    ev.preventDefault()
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    try {
+      history.replaceState(null, '', id ? `#${id}` : location.pathname + location.search)
+    } catch {
+      // Some sandboxes forbid history changes; scrolling already worked.
+    }
+  }
+  document.addEventListener('click', onLink)
+  cleanups.push(() => document.removeEventListener('click', onLink))
+
   // 1. Reveal on scroll.
   const reveals = Array.from(document.querySelectorAll<HTMLElement>('.reveal, .reveal-mask'))
   if (!('IntersectionObserver' in window) || reduce) {
