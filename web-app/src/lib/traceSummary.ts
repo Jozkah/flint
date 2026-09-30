@@ -120,6 +120,15 @@ export function summaryLabel(
   return `${text.charAt(0).toUpperCase()}${text.slice(1)}${failed}${diff}`
 }
 
+/** The same line in two parts, so the line counts can be coloured. */
+export function summaryLabelParts(
+  s: TraceSummary,
+  t: (key: string, options?: Record<string, unknown>) => string
+): { text: string; added: number; removed: number } | undefined {
+  const full = summaryLabel({ ...s, added: 0, removed: 0 }, t)
+  return full ? { text: full, added: s.added, removed: s.removed } : undefined
+}
+
 /** The summary's phrases in reading order, each a translation key and count. */
 export function summaryPhrases(
   s: TraceSummary

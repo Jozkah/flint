@@ -185,10 +185,11 @@ export const ChainOfThought = memo(
 
 // ── ChainOfThoughtHeader ───────────────────────────────────────────────────
 
-export type ChainOfThoughtHeaderProps = ComponentProps<
-  typeof CollapsibleTrigger
+export type ChainOfThoughtHeaderProps = Omit<
+  ComponentProps<typeof CollapsibleTrigger>,
+  'title'
 > & {
-  title?: string
+  title?: ReactNode
   /** Label shown while streaming, e.g. "Working...". Defaults to "Reasoning...". */
   streamingLabel?: string
   /** Which past-tense phrasing to use once the trace is complete. */

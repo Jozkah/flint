@@ -20,7 +20,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
-import { summarizeTrace, summaryLabel, summaryPhrases } from '@/lib/traceSummary'
+import { summarizeTrace, summaryLabelParts, summaryPhrases } from '@/lib/traceSummary'
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
@@ -449,10 +449,28 @@ export const ChainOfThoughtGroup = memo(
           title={
             groupIsStreaming
               ? undefined
-              : summaryLabel(
-                  summarizeTrace(entries.map((e) => e.part)),
-                  t as never
-                )
+              : (() => {
+                  const parts = summaryLabelParts(
+                    summarizeTrace(entries.map((e) => e.part)),
+                    t as never
+                  )
+                  if (!parts) return undefined
+                  return (
+                    <>
+                      {parts.text}
+                      {(parts.added > 0 || parts.removed > 0) && (
+                        <span className="ml-1 font-mono tabular-nums">
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            +{parts.added}
+                          </span>{' '}
+                          <span className="text-red-600 dark:text-red-400">
+                            −{parts.removed}
+                          </span>
+                        </span>
+                      )}
+                    </>
+                  )
+                })()
           }
           streamingLabel={
             currentStepIsTool
