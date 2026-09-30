@@ -411,12 +411,16 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     set((state) => {
       if (!state.currentThreadId) return { ...state }
       const currentThread = state.getCurrentThread()
+      // A pick by the user means the assistant is no longer Jev's to change.
+      const rest = { ...(currentThread?.metadata ?? {}) }
+      delete rest.jevRoutedAssistantId
       if (currentThread)
         getServiceHub()
           .threads()
           .updateThread({
             ...currentThread,
             assistants: assistant ? [{ ...assistant, model: currentThread.model }] : [],
+            metadata: rest,
           })
       return {
         threads: {
@@ -426,6 +430,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
             assistants: assistant
               ? [{ ...assistant, model: currentThread?.model }]
               : [],
+            metadata: rest,
             updated: Date.now() / 1000,
           },
         },
