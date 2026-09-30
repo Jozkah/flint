@@ -1,0 +1,57 @@
+name: One-shot Hub changelog refresh
+
+on:
+  push:
+    branches:
+      - feat/huggingface-model-downloads
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/huggingface-model-downloads
+      - name: Refresh v0.9.0 model Hub wording
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+
+          old = "- **Local-first and private.** Telemetry, update checks, model discovery and catalogue fetches are removed and the whole repo is guarded against phoning home; web search no longer reports back what it returned. Flint runs against your own models and providers, and nothing leaves the machine unless you send it."
+          new = "- **Local-first and private.** Telemetry, automatic update checks and hidden background catalogue traffic are disabled and the repo is guarded against phoning home; web search no longer reports back what it returned. Hugging Face discovery and downloads are available through Flint's explicit **Discover** experience and contact the service only when you open or use it."
+          if old not in text:
+              raise SystemExit('top local-first release wording was not found')
+          text = text.replace(old, new, 1)
+
+          anchor = new + "\n"
+          hub = "- **A rebuilt Hugging Face model Hub.** Discover keeps the full model-browsing and download workflow — search, filters and sorting, GGUF/MLX variants, model details and README, inline progress, installed state and New Chat — rebuilt in Flint's UI with hardware-aware recommendations, multipart GGUF/MMProj/speculative companion handling, gated-model tokens, resumable/cancellable downloads, size/SHA verification and update provenance.\n"
+          text = text.replace(anchor, anchor + hub, 1)
+
+          old_local = "- feat(app): local-only build — no telemetry, no catalog, no downloads (#10)\n- feat(local-only): finish removing telemetry, update checking and model discovery, and guard the whole repo"
+          new_local = "- feat(app): local-first build — no telemetry, automatic model bootstrap or hidden background catalogue traffic; external model discovery/downloads run only from explicit user actions (#10)\n- feat(models): rebuild Hugging Face discovery and downloads as Flint's Discover experience, preserving search, filters, model details and progress while adding verified resumable downloads and hardware-aware model guidance"
+          if old_local not in text:
+              raise SystemExit('local-first changelog entries were not found')
+          text = text.replace(old_local, new_local, 1)
+
+          models_anchor = "### Models, providers and inference\n"
+          models_line = "- feat(models): a Flint-native Hugging Face Hub with GGUF/MLX discovery, quantization variants, multipart/MMProj/draft pairing, gated access, shared download progress, pause/resume/cancel/retry, verification, install/update state and model details\n"
+          if models_anchor not in text:
+              raise SystemExit('models section was not found')
+          text = text.replace(models_anchor, models_anchor + models_line, 1)
+
+          path.write_text(text, encoding='utf-8')
+      - name: Commit changelog
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git diff --cached --check
+          git commit -m "docs(changelog): describe improved Hugging Face Hub"
+          git push origin HEAD:feat/huggingface-model-downloads
