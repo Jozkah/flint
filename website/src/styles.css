@@ -132,7 +132,7 @@ ul, ol { padding: 0; list-style: none; }
 .shot.cam img { position: absolute; max-width: none; height: auto; }
 .shot:not(.cam) img { width: 100%; height: auto; }
 /* pointer spotlight */
-.spot::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s var(--expo); background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.07), transparent 60%); mix-blend-mode: screen; }
+.spot::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .5s var(--expo); background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.07), transparent 60%); }
 .spot:hover::after { opacity: 1; }
 .caption { font-size: 13px; color: var(--muted-foreground); }
 /* annotation pins, placed over a real screenshot */
@@ -186,7 +186,7 @@ ul, ol { padding: 0; list-style: none; }
 .rise { opacity: 0; transform: translateY(14px); animation: rise-in .9s var(--expo) forwards; animation-delay: var(--d, 0ms); }
 @keyframes rise-in { to { opacity: 1; transform: none; } }
 .hero-stage { position: relative; margin-top: clamp(32px, 4vw, 56px); perspective: 2200px; padding-bottom: 8px; }
-.hero-stage .frame.main { transform-origin: 50% 100%; -webkit-mask-image: linear-gradient(#000 78%, transparent 100%); mask-image: linear-gradient(#000 78%, transparent 100%); animation: stage-in 1.4s var(--expo) .5s backwards; }
+.hero-stage .frame.main { transform-origin: 50% 100%; -webkit-mask-image: linear-gradient(#000 78%, transparent 100%); mask-image: linear-gradient(#000 78%, transparent 100%); animation: stage-in 1s var(--expo) .05s backwards; }
 @keyframes stage-in { from { opacity: 0; transform: rotateX(14deg) translateY(60px) scale(.96); } }
 .hero-float { position: absolute; z-index: 3; right: clamp(-10px, -1vw, 0px); bottom: 9%; width: min(38%, 560px); display: none; animation: float-in 1.2s var(--expo) 1.1s backwards; }
 @keyframes float-in { from { opacity: 0; transform: translateY(40px); } }
@@ -520,3 +520,6 @@ html:not(.js) .scrub .sw { opacity: 1; }
   .nav-ind { transition: none; }
   .doc { animation: none; }
 }
+
+/* Far-off sections are not rendered until they approach the viewport. */
+.footer, #gallery { content-visibility: auto; contain-intrinsic-size: auto 900px; }

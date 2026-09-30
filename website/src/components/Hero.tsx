@@ -54,7 +54,7 @@ export function Hero() {
       <div className="wrap-wide">
         <div className="hero-stage">
           <Frame className="main">
-            <Shot id="01-overview" alt="Flint's Overview screen: tokens generated, generation speed, tool call success, token throughput by day, latest activity and a table of agent runs." eager sizes={[1480, 92]} />
+            <Shot id="01-overview" alt="Flint's Overview screen: tokens generated, generation speed, tool call success, token throughput by day, latest activity and a table of agent runs." eager sizesAttr="(min-width: 960px) 1480px, (min-width: 700px) 92vw, 185vw" />
           </Frame>
           <div className="hero-float">
             <Frame flat>

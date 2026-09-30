@@ -15,7 +15,9 @@ const iconSrc = path.join(repo, 'src-tauri/icons/icon.png')
 const shotsOut = path.join(site, 'public/shots')
 const brandOut = path.join(site, 'public/brand')
 const genOut = path.join(site, 'src/generated')
-const WIDTHS = [800, 1280, 1920, 2560, 3200]
+const WIDTHS = [800, 1024, 1280, 1600, 1920, 2560, 3200]
+// WebP is only the fallback for browsers without AVIF, so it needs fewer steps.
+const WEBP_WIDTHS = [800, 1280, 1920, 2560]
 
 for (const d of [shotsOut, brandOut, genOut]) fs.mkdirSync(d, { recursive: true })
 
@@ -29,11 +31,14 @@ for (const f of files) {
   const meta = await sharp(src).metadata()
   const widths = WIDTHS.filter((w) => w <= meta.width)
   if (!widths.includes(meta.width) && meta.width < WIDTHS[0]) widths.push(meta.width)
-  manifest[id] = { width: meta.width, height: meta.height, widths }
+  const webpWidths = WEBP_WIDTHS.filter((w) => w <= meta.width)
+  manifest[id] = { width: meta.width, height: meta.height, widths, webp: webpWidths }
   for (const w of widths) {
     const avif = path.join(shotsOut, `${id}-${w}.avif`)
+    if (!fresh(avif, src)) await sharp(src).resize({ width: w }).avif({ quality: 66, effort: 5, chromaSubsampling: '4:4:4' }).toFile(avif)
+  }
+  for (const w of webpWidths) {
     const webp = path.join(shotsOut, `${id}-${w}.webp`)
-    if (!fresh(avif, src)) await sharp(src).resize({ width: w }).avif({ quality: 72, effort: 4, chromaSubsampling: '4:4:4' }).toFile(avif)
     if (!fresh(webp, src)) await sharp(src).resize({ width: w }).webp({ quality: 90, effort: 5, smartSubsample: true }).toFile(webp)
   }
 }

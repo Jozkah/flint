@@ -15,7 +15,7 @@ const release = JSON.parse(fs.readFileSync(path.join(site, 'src/generated/releas
 
 const hero = shots['01-overview']
 const srcset = hero.widths.map((w) => `${base}shots/01-overview-${w}.avif ${w}w`).join(', ')
-const preload = `<link rel="preload" as="image" type="image/avif" imagesrcset="${srcset}" imagesizes="(min-width: 960px) 1480px, 92vw" fetchpriority="high" />`
+const preload = `<link rel="preload" as="image" type="image/avif" imagesrcset="${srcset}" imagesizes="(min-width: 960px) 1480px, (min-width: 700px) 92vw, 185vw" fetchpriority="high" />`
 
 const jsonLd = {
   '@context': 'https://schema.org',

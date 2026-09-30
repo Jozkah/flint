@@ -170,7 +170,16 @@ const STEPS: Step[] = [
 
 export function CoworkStory() {
   const [active, setActive] = useState(0)
+  const [seen, setSeen] = useState<ReadonlySet<number>>(() => new Set([0, 1]))
   const refs = useRef<Array<HTMLElement | null>>([])
+
+  useEffect(() => {
+    setSeen((s) => {
+      const next = new Set(s)
+      for (const i of [active - 1, active, active + 1]) if (i >= 0 && i < STEPS.length) next.add(i)
+      return next.size === s.size ? s : next
+    })
+  }, [active])
 
   useEffect(() => {
     if (!('IntersectionObserver' in window)) return
@@ -201,7 +210,7 @@ export function CoworkStory() {
             <div className="frame spot">
               {STEPS.map((s, i) => (
                 <div key={i} className={`lay ${i === active ? 'on' : ''}`} style={{ position: 'absolute', inset: 0 }} aria-hidden={i !== active}>
-                  <Shot id={s.shot} region={s.region} alt={s.alt} sizes={[760, 92]} eager={i === 0} style={{ height: '100%' }} />
+                  {seen.has(i) && <Shot id={s.shot} region={s.region} alt={s.alt} sizes={[760, 92]} eager={i === 0} style={{ height: '100%' }} />}
                 </div>
               ))}
               <div style={{ aspectRatio: '16 / 10' }} />

@@ -26,6 +26,14 @@ Each page is a React component registered in `src/pages/registry.tsx` (path, tit
 - Legal and policy pages live in `src/pages/legal.tsx`: `/privacy/`, `/terms/`, `/license/`, `/security-policy/` (mirrors `SECURITY.md`) and `/accessibility/`. Their wording was drafted from what the repository's code, README and feature list say. Have the project owner review it, and update `UPDATED` in that file whenever it changes.
 - `npm test` fails if a page lacks a unique title, description or canonical URL, if a legal page stops matching `LICENSE`, `NOTICE` or `SECURITY.md`, or if any page links to something missing.
 
+## Preview in a sandboxed host
+
+`VITE_FLAT=1 SITE_BASE=./ npm run build` produces a flat build (every page is `<name>.html`, relative paths, pages switch in place), and `node scripts/artifact.mjs <dir>` packages it with CSS, JavaScript and fonts inlined for hosts that only allow inline code. The normal build is unaffected.
+
+## Performance notes
+
+Screenshots are served as AVIF (4:4:4 chroma, so coloured UI text stays sharp) in seven widths with a WebP fallback, sized to what the layout actually needs; the hero is preloaded and the Cowork story only fetches the screenshots next to the active step. Decoding is async, far-off sections use `content-visibility`, and the hero rests flat so its text is rasterised crisply.
+
 ## Motion
 
 Hero word reveal and stage entrance, scroll reveals and wipes, scrubbed manifesto text, the sticky Cowork stage, pointer spotlight, magnetic hero buttons, 3D tilt on tiles, gallery items and doc cards, a sliding nav indicator, pulsing annotation pins, slow embers, and page-to-page view transitions (Chromium and Safari; other browsers get a short fade-in). Pointer effects apply only to fine pointers, and `prefers-reduced-motion` turns everything off. Effects live in `src/lib/effects.ts` and `src/styles.css`.
