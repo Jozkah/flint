@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { getLocalPropsExtension } from '@/lib/llamacppRouterProps'
 import { reportedDefaults } from '@/lib/modelReportedDefaults'
+import { fetchRemoteSamplingDefaults } from '@/lib/remoteSamplingDefaults'
+import { useModelProvider } from '@/hooks/useModelProvider'
 
 /**
- * What the model in use reports as its own sampling defaults, when it runs
- * locally and is loaded. Empty for a remote provider, which has no runtime to
- * ask, and before the model is up; the UI then simply shows nothing.
+ * What the model in use reports as its own sampling defaults: a local model
+ * through its runtime, a self-hosted server on the user's network through its
+ * render endpoint. Empty for a hosted provider, and before the model is up; the
+ * UI then simply shows nothing.
  */
 export function useModelReportedDefaults(
   providerId?: string,
@@ -16,9 +19,17 @@ export function useModelReportedDefaults(
   useEffect(() => {
     setReported({})
     if (!providerId || !modelId) return
-    const extension = getLocalPropsExtension(providerId)
-    if (!extension?.getModelProps) return
     let current = true
+    const extension = getLocalPropsExtension(providerId)
+    if (!extension?.getModelProps) {
+      const provider = useModelProvider.getState().getProviderByName(providerId)
+      void fetchRemoteSamplingDefaults(provider, modelId).then((values) => {
+        if (current) setReported(values)
+      })
+      return () => {
+        current = false
+      }
+    }
     extension
       .getModelProps(modelId)
       .then((props) => {
