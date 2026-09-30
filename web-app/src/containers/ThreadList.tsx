@@ -9,6 +9,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
@@ -57,6 +58,7 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
+import { regenerateTitle } from '@/lib/regenerateTitle'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
@@ -343,6 +345,22 @@ const ThreadItem = memo(
             <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              data-testid="regenerate-title"
+              onSelect={() => {
+                const pending = toast.loading(t('chat:regenerateTitle.working'))
+                void regenerateTitle(thread.id).then((result) => {
+                  toast.dismiss(pending)
+                  if (result === 'done') toast.success(t('chat:regenerateTitle.done'))
+                  else if (result === 'empty')
+                    toast.info(t('chat:regenerateTitle.empty'))
+                  else toast.error(t('chat:regenerateTitle.failed'))
+                })
+              }}
+            >
+              <Sparkles className="size-4" />
+              <span>{t('chat:regenerateTitle.menu')}</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               data-testid="fork-chat"

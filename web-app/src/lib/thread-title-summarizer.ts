@@ -117,6 +117,21 @@ export function generateThreadTitle(
   })
 }
 
+/**
+ * A fresh title on the user's request: the same model call as the automatic
+ * one, without its once-per-chat guards, and without the cut-from-the-message
+ * fallback, since a title the user asked for that is only their first words
+ * would be no answer. Null when aborted or the model gave nothing usable.
+ */
+export async function regenerateThreadTitle(
+  transcript: string,
+  abortSignal: AbortSignal,
+  session: string
+): Promise<string | null> {
+  const title = await requestTitle(transcript, abortSignal, session)
+  return title === ABORTED || abortSignal.aborted ? null : title
+}
+
 const ABORTED = Symbol('aborted')
 
 async function requestTitle(
