@@ -90,6 +90,32 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The title bar and brand mark use the **real Flint application icon** generated from the app's canonical icon source.
 - The installer exposes install location, desktop shortcut and launch-after-install choices while retaining Tauri's packaging/update engine underneath.
 - NSIS UI compilation runs with `/WX`, treating every NSIS warning as a CI failure before the release-grade Windows bundle build is allowed to run.
+- The MSI installer gets the same treatment as the NSIS one: a custom Flint wizard in place of the stock WiX dialogs, with full-page artwork from the app's tokens, Inter, bitmap buttons and native install-path and progress controls.
+- The MSI install-location page opens the standard Windows folder picker, and the wizard is compiled and validated in CI on a throwaway product.
+
+### Skills that get used
+
+- `skill_read` can read the files a skill bundles (templates, themes, scripts) and lists them at the end of the skill, so a skill's own relative paths work in chat and Cowork instead of being refused as outside the workspace. Installed skill and plugin folders are readable by the file tools, read-only; credential files and the project's deny rules still apply.
+- Cowork and chat prompts list the installed skills (global, plugin and the attached folder's own) with a read-it-first instruction; Rooms participants with tools get the same wording.
+- Skills can apply themselves: `always: true` in the frontmatter (or **Always active** in the skills manager), `triggers:` phrases, or an optional JEV pick. An activated skill's instructions are placed in that turn's prompt, within a size budget.
+- Skills from plugins or from an opened repository are never trusted into the system prompt by their own frontmatter: a trigger only tells the model to read the skill, and always-active needs the user's opt-in, kept per folder for project skills.
+- Work profiles apply to normal chat as well as Cowork, with the same picker, and run alongside skill activation and assistant routing rather than one after another.
+
+### Context, speed and models in chat
+
+- The composer's token counter is a circle. Hovering shows a context card: a bar with a colour per kind (messages, system tools, MCP tools, skills, memory, system prompt), the tokens left before auto-compact, a **Compact session** button, and an expandable per-kind breakdown that opens onto each MCP server and tool. Cowork shows the same circle, and providers that report no window size get an empty ring with the same card.
+- The hover card also shows the latest reply's generation speed and the conversation's average.
+- Naming a configured MCP server that is off offers to enable it, instead of the model silently going without its tools.
+- The model picker searches by the remote a model sits behind and labels each row with it when the same model is offered by more than one remote.
+
+### Hugging Face Discover
+
+- The Models page has a **Browse Hugging Face** button, and Discover is reachable from onboarding, from an empty local provider, and from `flint://` and `jan://` model links; the sidebar row counts active downloads.
+- Discover shows model avatars and Hugging Face author pictures, capability chips, fit badges with MLX fit, a sturdier memory estimate and a highlighted recommendation for the device.
+
+### Web search
+
+- DuckDuckGo is available as a native search provider that needs no API key, account or instance URL. Its results page is read in order with ads and repeated links dropped, and a bot check is reported as an error that names the way out rather than as an empty result list.
 
 ## Core Flint capabilities
 
@@ -184,6 +210,7 @@ These are kept because they fix behavior inherited from the Jan base rather than
 - Preserve thread/message integrity across deletes and concurrent saves, including safe handling of unreadable thread metadata.
 - Keep provider/model selection consistent when providers are added, removed or temporarily unreachable.
 - Keep the model selector's search popup inside the window while typing instead of letting it slide off-screen.
+- Keep the composer's assistant, sampling, tools and web-search controls usable while a reply streams; they apply to the next message.
 - Harden archive extraction, secret storage, proxy forwarding and Local API Server request handling inherited from the base application.
 
 ---
