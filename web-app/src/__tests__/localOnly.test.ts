@@ -55,9 +55,15 @@ describe('privacy baseline', () => {
 
   it('ships no updater plugin or update feed', () => {
     const cargo = read(resolve(REPO, 'src-tauri/Cargo.toml'))
-    const tauri = read(resolve(REPO, 'src-tauri/tauri.conf.json'))
+    const tauriText = read(resolve(REPO, 'src-tauri/tauri.conf.json'))
+    const tauri = JSON.parse(tauriText) as {
+      plugins?: Record<string, unknown>
+      bundle?: { createUpdaterArtifacts?: boolean }
+    }
     expect(cargo).not.toMatch(/tauri-plugin-updater/)
-    expect(tauri).not.toMatch(/update-check|plugins[\s\S]*updater/i)
+    expect(tauri.plugins?.updater).toBeUndefined()
+    expect(tauri.bundle?.createUpdaterArtifacts).toBe(false)
+    expect(tauriText).not.toMatch(/update-check/i)
   })
 
   it('keeps vendor model catalogues removed', () => {
