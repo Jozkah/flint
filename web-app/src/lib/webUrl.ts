@@ -43,6 +43,27 @@ const SECOND_LEVEL: ReadonlySet<string> = new Set([
  * favicon service, which would see every domain a search returned). Null for
  * anything that is not http(s).
  */
+/**
+ * The addresses a site's icon is tried at, in order, all on its own origin.
+ * `/favicon.ico` is the convention, but many sites serve an SVG or PNG instead.
+ */
+export const FAVICON_PATHS = [
+  '/favicon.ico',
+  '/favicon.svg',
+  '/favicon.png',
+  '/apple-touch-icon.png',
+] as const
+
+export const faviconCandidates = (url: string): string[] => {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return []
+    return FAVICON_PATHS.map((p) => `${u.origin}${p}`)
+  } catch {
+    return []
+  }
+}
+
 export const faviconUrl = (url: string): string | null => {
   try {
     const u = new URL(url)
