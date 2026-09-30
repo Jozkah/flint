@@ -1,4 +1,5 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
@@ -2831,6 +2832,7 @@ export function ThreadConversation({
                       message={message}
                       isFirstMessage={isFirstMessage}
                       isLastMessage={isLastMessage}
+                      switchedFrom={switchedFromOf(chatMessages, index)}
                       status={effectiveStatus}
                       reasoningContainerRef={reasoningContainerRef}
                       isReasoningAtBottom={isReasoningAtBottom}
