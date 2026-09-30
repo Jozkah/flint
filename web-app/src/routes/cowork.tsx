@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { TRANSCRIPT_WINDOW, transcriptWindowStart } from '@/lib/transcriptWindow'
+import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
@@ -1851,12 +1851,16 @@ export function CoworkPage() {
   // A long session is drawn from its newest messages, the rest on request.
   // Drawing every message and tool card at once is what made opening a long
   // session slow; what is above the window is still in the session.
-  const [earlierShown, setEarlierShown] = useState<{ sid: string | null; extra: number }>({
+  const [earlierShown, setEarlierShown] = useState<{ sid: string | null; pages: number }>({
     sid: null,
-    extra: 0,
+    pages: 0,
   })
-  const extraEarlier = earlierShown.sid === (session?.id ?? null) ? earlierShown.extra : 0
-  const windowStart = transcriptWindowStart(uiMessages.length, extraEarlier)
+  const earlierPages = earlierShown.sid === (session?.id ?? null) ? earlierShown.pages : 0
+  const messageWeights = useMemo(
+    () => uiMessages.map((m) => messageWeight(m.parts as { type: string }[])),
+    [uiMessages]
+  )
+  const windowStart = transcriptWindowStart(messageWeights, earlierPages)
 
   // The plan each run left, by the prompt it follows.
   const snapshotByAnchor = useMemo(
@@ -5489,12 +5493,14 @@ export function CoworkPage() {
                           onClick={() =>
                             setEarlierShown({
                               sid: session?.id ?? null,
-                              extra: extraEarlier + TRANSCRIPT_WINDOW,
+                              pages: earlierPages + 1,
                             })
                           }
                         >
                           {t('common:coworkShowEarlier', {
-                            count: Math.min(windowStart, TRANSCRIPT_WINDOW),
+                            count:
+                              windowStart -
+                              transcriptWindowStart(messageWeights, earlierPages + 1),
                           })}
                         </Button>
                       </div>
