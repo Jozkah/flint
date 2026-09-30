@@ -11,6 +11,8 @@ export type WebSearchProviderMeta = {
   secretKey: string
   homepage: string
   requiresEndpoint?: boolean
+  /** Nothing to configure: no API key, no instance URL, no account. */
+  noSetup?: boolean
 }
 
 export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
@@ -57,6 +59,16 @@ export const WEB_SEARCH_PROVIDERS: WebSearchProviderMeta[] = [
     keyless: true,
     secretKey: 'you-api-key',
     homepage: 'you.com',
+  },
+  {
+    // Reads DuckDuckGo's HTML results page: there is no API and nothing to
+    // configure, so no secret and no endpoint.
+    id: 'duckduckgo',
+    label: 'DuckDuckGo',
+    keyless: true,
+    secretKey: '',
+    homepage: 'duckduckgo.com',
+    noSetup: true,
   },
 ]
 

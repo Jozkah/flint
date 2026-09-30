@@ -92,6 +92,26 @@ describe('Web Search settings route', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('DuckDuckGo needs no setup: no key field, no instance URL, just a note', () => {
+    searchProvider = 'duckduckgo'
+    render(<Page />)
+
+    expect(
+      screen.getByText('settings:webSearch.noSetup:DuckDuckGo')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('settings:webSearch.apiKey:DuckDuckGo')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('settings:webSearch.endpoint:DuckDuckGo')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByPlaceholderText('settings:webSearch.apiKeyPlaceholder:DuckDuckGo')
+    ).not.toBeInTheDocument()
+    // The note carries the same anchor as the key and URL controls.
+    expect(anchorEl(WEB_SEARCH_PROVIDER_CONFIG_ANCHOR)).toBeInTheDocument()
+  })
+
   // The regression this file exists for. Before the fix the endpoint and the
   // API key each carried their own anchor, so whichever control the current
   // provider did not render was unreachable: the result navigated here and
@@ -99,6 +119,7 @@ describe('Web Search settings route', () => {
   for (const [provider, other] of [
     ['exa', 'settings-web-search-endpoint'],
     ['searxng', 'settings-web-search-api-key'],
+    ['duckduckgo', 'settings-web-search-api-key'],
   ] as const) {
     it(`reveals the group for every credential result under ${provider}`, async () => {
       searchProvider = provider

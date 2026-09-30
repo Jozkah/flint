@@ -206,8 +206,9 @@ export type SettingsPageId = (typeof SETTINGS_PAGES)[number]['id']
 /**
  * Anchor for the web-search provider configuration group.
  *
- * A provider takes an instance URL (SearXNG) or an API key (Exa, Tavily),
- * never both, so the page renders one control or the other. Anchoring each
+ * A provider takes an instance URL (SearXNG), an API key (Exa, Tavily) or
+ * nothing at all (DuckDuckGo), never more than one, so the page renders one
+ * control or a note. Anchoring each
  * entry to its own control would leave whichever is unmounted navigating to a
  * page where nothing scrolls or highlights, so both point here instead — at
  * the group that wraps the conditional and is therefore always rendered.
@@ -331,7 +332,7 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   // Web search
   item('web-search', 'enable', 'settings:webSearch.enable', {
     descriptionKey: 'settings:webSearch.enableDesc',
-    keywords: ['web search', 'internet access'],
+    keywords: ['web search', 'internet access', 'duckduckgo'],
   }),
   // Two names for one conditional slot: both stay separately searchable, and
   // both land on the group. See WEB_SEARCH_PROVIDER_CONFIG_ANCHOR.

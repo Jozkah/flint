@@ -240,6 +240,8 @@
     "endpoint": "{{provider}} Instance URL",
     "endpointDesc": "Required. The base URL of your {{provider}} instance, with the JSON API enabled.",
     "endpointPlaceholder": "https://searx.example.com",
+    "noSetup": "{{provider}} needs no setup",
+    "noSetupDesc": "Searches {{provider}} directly, with no API key or account. After many searches in a short time {{provider}} can ask for a bot check; wait a minute, or pick Exa or You.com, which also need no key.",
     "apiKeySearch": "Web search API key",
     "endpointSearch": "Web search instance URL",
     "endpointSearchDesc": "The base URL of your self-hosted search instance."
