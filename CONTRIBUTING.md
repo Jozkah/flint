@@ -123,6 +123,7 @@ flint/
 │   └── vector-db-extension/
 ├── packages/agent-sdk/   # Agent SDK
 ├── docs/                 # Build guide, feature list, screenshots
+├── website/              # Marketing site (Vite + React, separate npm project)
 ├── e2e/, autoqa/         # End-to-end and automated testing
 ├── scripts/              # Build utilities
 │

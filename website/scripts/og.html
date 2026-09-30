@@ -1,0 +1,26 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: 'Inter'; font-weight: 500; src: url('../public/fonts/inter-500.woff2') format('woff2'); }
+  @font-face { font-family: 'Inter'; font-weight: 600; src: url('../public/fonts/inter-600.woff2') format('woff2'); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; background: #0a0b0d; font-family: 'Inter', system-ui, sans-serif; color: #e6e8eb; }
+  .glow { position: absolute; inset: 0; background: radial-gradient(50% 70% at 82% 0%, rgba(255,255,255,.06), transparent 70%), radial-gradient(30% 40% at 92% 6%, rgba(251,191,36,.08), transparent 70%); }
+  .brand { position: absolute; left: 64px; top: 56px; display: flex; align-items: center; gap: 16px; font-size: 34px; font-weight: 600; letter-spacing: -0.02em; }
+  .brand img { width: 64px; height: 64px; }
+  h1 { position: absolute; left: 64px; top: 190px; width: 520px; font-size: 62px; line-height: 1.02; letter-spacing: -0.045em; font-weight: 600; }
+  p { position: absolute; left: 64px; bottom: 60px; width: 470px; font-size: 22px; line-height: 1.4; color: #8a909a; font-weight: 500; }
+  .frame { position: absolute; left: 600px; top: 120px; width: 960px; border-radius: 14px; overflow: hidden; border: 1px solid #353a42; box-shadow: 0 40px 80px -20px rgba(0,0,0,.8); }
+  .frame img { display: block; width: 100%; }
+</style>
+</head>
+<body>
+  <div class="glow"></div>
+  <div class="brand"><img src="../public/brand/icon-256.png" alt="">Flint</div>
+  <h1>AI that works where your files already live.</h1>
+  <p>A private, local-first AI workspace for your desktop.</p>
+  <div class="frame"><img src="../../docs/screenshots/01-overview.png" alt=""></div>
+</body>
+</html>

@@ -23,15 +23,15 @@ export function Models() {
             <Reveal delay={100}>
               <div className="opts">
                 <div className="opt">
-                  <h4>GGUF, through the bundled llama.cpp engine</h4>
+                  <h3>GGUF, through the bundled llama.cpp engine</h3>
                   <p>You bring the model files. Nothing is downloaded for you.</p>
                 </div>
                 <div className="opt">
-                  <h4>MLX on Apple silicon</h4>
+                  <h3>MLX on Apple silicon</h3>
                   <p>Local models on macOS need an M1 or later. Intel Macs can use cloud providers.</p>
                 </div>
                 <div className="opt">
-                  <h4>OpenAI-compatible and Anthropic-compatible providers</h4>
+                  <h3>OpenAI-compatible and Anthropic-compatible providers</h3>
                   <p>Or point Flint at a server on your network. Keys are kept in the OS keyring.</p>
                 </div>
               </div>

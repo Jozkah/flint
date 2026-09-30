@@ -8,21 +8,18 @@ export function Trust() {
       <div className="wrap-wide">
         <div className="trust">
           <Reveal>
-            <h3>
-              {Icon.shield}Local by default
-            </h3>
+            <h2>{Icon.shield}Local by default
+            </h2>
             <p>Your data stays on your machine.</p>
           </Reveal>
           <Reveal delay={90}>
-            <h3>
-              {Icon.cube}Bring your own models
-            </h3>
+            <h2>{Icon.cube}Bring your own models
+            </h2>
             <p>Use local or remote models.</p>
           </Reveal>
           <Reveal delay={180}>
-            <h3>
-              {Icon.diff}Review before changes
-            </h3>
+            <h2>{Icon.diff}Review before changes
+            </h2>
             <p>See commands, diffs and decisions before they apply.</p>
           </Reveal>
         </div>
@@ -48,7 +45,7 @@ export function Ways() {
   return (
     <section className="section" id="product" style={{ paddingTop: 0 }}>
       <div className="wrap-wide">
-        <div className="wrap" style={{ padding: 0 }}>
+        <div>
           <p className="eyebrow">
             <span className="dot" />
             Product
@@ -133,7 +130,7 @@ const STEPS: Step[] = [
   },
   {
     shot: '04-approval',
-    region: R16(340, 265, 760),
+    region: R16(340, 278, 760),
     title: 'Commands without a grant wait for you',
     body: 'The run stops at git push and asks. Allow once, allow in this conversation, or deny. Each option says how long it lasts.',
     pill: ['warn', 'Awaiting approval'],
@@ -209,10 +206,11 @@ export function CoworkStory() {
               <div style={{ aspectRatio: '16 / 10' }} />
             </div>
           </div>
-          <ol className="steps">
+          <div className="steps">
             <div className="story-rail" aria-hidden="true">
               <i />
             </div>
+            <ol>
             {STEPS.map((s, i) => (
               <li
                 key={i}
@@ -228,7 +226,8 @@ export function CoworkStory() {
                 <p>{s.body}</p>
               </li>
             ))}
-          </ol>
+            </ol>
+          </div>
         </div>
       </div>
     </section>
@@ -256,21 +255,21 @@ export function Approvals() {
             <Reveal delay={100}>
               <div className="opts">
                 <div className="opt">
-                  <h4>
+                  <h3>
                     Allow once <span className="pill plain">Not saved</span>
-                  </h4>
+                  </h3>
                   <p>Only this request. Flint asks again next time.</p>
                 </div>
                 <div className="opt">
-                  <h4>
+                  <h3>
                     Allow in this conversation <span className="pill plain">Until you revoke it</span>
-                  </h4>
+                  </h3>
                   <p>This tool, in this conversation.</p>
                 </div>
                 <div className="opt">
-                  <h4>
+                  <h3>
                     Always allow <span className="pill warn">Broader</span>
-                  </h4>
+                  </h3>
                   <p>In every conversation, until you revoke it.</p>
                 </div>
               </div>
@@ -336,13 +335,13 @@ export function WhatChanged() {
             <Reveal delay={100}>
               <ul className="opts" style={{ listStyle: 'none' }}>
                 <li className="opt">
-                  <h4>
+                  <h3>
                     <span className="pill ok">Passed</span> Judged by exit status
-                  </h4>
+                  </h3>
                   <p>Flint says when only part of a test suite ran.</p>
                 </li>
                 <li className="opt">
-                  <h4>Mentioned by the assistant, not verified by Flint</h4>
+                  <h3>Mentioned by the assistant, not verified by Flint</h3>
                   <p>What the model claims is labelled as a claim, apart from what ran.</p>
                 </li>
               </ul>

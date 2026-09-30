@@ -162,7 +162,7 @@ export function Footer() {
           </div>
           {COLS.map(([h, links]) => (
             <nav key={h} aria-label={h}>
-              <h4>{h}</h4>
+              <h2>{h}</h2>
               <ul>
                 {links.map(([label, href, ext]) => (
                   <li key={label}>
