@@ -1,3 +1,4 @@
+import { offerToEnableMentionedServers } from '@/lib/mcpMention'
 import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
@@ -998,6 +999,8 @@ const ChatInput = memo(function ChatInput({
 
     setMessage('')
     addToHistory(slash.kind === 'message' ? typed : effectivePrompt)
+    // Names an MCP server that is off? Offer to turn it on. Never blocks the send.
+    void offerToEnableMentionedServers(prompt)
 
     // Use onSubmit prop if available (AI SDK), otherwise create thread and navigate
     if (onSubmit) {
@@ -2982,12 +2985,12 @@ const ChatInput = memo(function ChatInput({
         >
           <div className="flex justify-between items-center w-full">
             <div className="flex flex-wrap items-center gap-x-1 gap-y-1 flex-1 min-w-0">
-              <div
-                className={cn(
-                  'flex items-center gap-1',
-                  isStreaming && 'opacity-50 pointer-events-none'
-                )}
-              >
+              {/* Assistant, sampling, tools, web search and reasoning stay
+                  live while a reply streams: they configure the *next*
+                  message (each request reads them when it is sent), so
+                  freezing them only made the user wait. Attachments are the
+                  exception: a message queued behind a run carries text only. */}
+              <div className="flex items-center gap-1">
                 {/* Dropdown for attachments — hidden in agent mode */}
                 {!effectiveAgentMode && (
                 <DropdownMenu>
@@ -2996,6 +2999,7 @@ const ChatInput = memo(function ChatInput({
                       variant="outline"
                       size="icon-sm"
                       aria-label={t('common:attachments')}
+                      disabled={isStreaming}
                       className="mr-0.5 size-7 rounded-[7px] text-secondary-foreground pointer-coarse:size-11"
                     >
                       <PlusIcon className="size-[15px]" />

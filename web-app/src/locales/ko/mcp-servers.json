@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "모델 검색…",
     "routerModelEmptyList": "사용 가능한 경량 모델이 없습니다. 더 작은 모델을 추가하거나 모델에서 API 키를 설정하세요.",
     "routerModelEmptySearch": "「{{query}}」에 일치하는 항목이 없습니다."
+  },
+  "mention": {
+    "offTitle": "{{serverName}}이(가) 꺼져 있습니다",
+    "offDesc": "언급하셨지만 실행 중이 아니므로 이번 답변에서는 도구를 사용할 수 없습니다.",
+    "enable": "켜기",
+    "enabled": "{{serverName}}이(가) 켜졌습니다. 도구를 사용하려면 요청을 다시 보내세요.",
+    "failed": "{{serverName}}을(를) 켜지 못했습니다: {{error}}"
   }
 }

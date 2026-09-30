@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Szukaj modeli…",
     "routerModelEmptyList": "Brak lekkich modeli. Dodaj mniejszy model lub skonfiguruj klucze API w sekcji Modele.",
     "routerModelEmptySearch": "Brak wyników dla „{{query}}”."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} jest wyłączony",
+    "offDesc": "Wspomniałeś o nim, ale nie działa, więc jego narzędzia nie są dostępne w tej odpowiedzi.",
+    "enable": "Włącz",
+    "enabled": "{{serverName}} jest włączony. Wyślij prośbę ponownie, aby użyć jego narzędzi.",
+    "failed": "Nie udało się włączyć {{serverName}}: {{error}}"
   }
 }

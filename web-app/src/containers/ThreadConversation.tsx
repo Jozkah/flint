@@ -21,6 +21,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
+import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
 
@@ -300,6 +302,7 @@ export function ThreadConversation({
   // Which pane this is. With the split closed there is one pane, always active.
   const pane = useConversationPane()
   const isSplit = Boolean(pane?.isSplit)
+  const workProfilesOn = useWorkProfiles((s) => s.enabled)
   const isActive = !pane?.isSplit || pane.isActive
   const paneId = pane?.paneId ?? 'primary'
   // Read from callbacks the AI SDK captured when the session's Chat was made.
@@ -3020,6 +3023,11 @@ export function ThreadConversation({
             threadId={threadId}
             draftScope={paneDraftScope(paneId)}
             takeFocus={isActive}
+            surfaceControls={
+              workProfilesOn ? (
+                <ChatWorkProfilePicker threadId={threadId} />
+              ) : undefined
+            }
           />
         </div>
           </FrameBody>

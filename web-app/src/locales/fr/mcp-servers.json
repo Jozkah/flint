@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Rechercher des modèles…",
     "routerModelEmptyList": "Aucun modèle léger disponible. Ajoutez un modèle plus petit ou configurez les clés API dans Modèles.",
     "routerModelEmptySearch": "Aucun résultat pour « {{query}} »."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} est désactivé",
+    "offDesc": "Vous l'avez mentionné, mais il n'est pas en cours d'exécution ; ses outils ne sont donc pas disponibles pour cette réponse.",
+    "enable": "Activer",
+    "enabled": "{{serverName}} est activé. Renvoyez votre demande pour utiliser ses outils.",
+    "failed": "Impossible d'activer {{serverName}} : {{error}}"
   }
 }

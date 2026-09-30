@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Buscar modelos…",
     "routerModelEmptyList": "No hay modelos ligeros disponibles. Añada un modelo más pequeño o configure las claves API en Modelos.",
     "routerModelEmptySearch": "No hay coincidencias para «{{query}}»."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} está desactivado",
+    "offDesc": "Lo mencionaste, pero no se está ejecutando, así que sus herramientas no están disponibles para esta respuesta.",
+    "enable": "Activar",
+    "enabled": "{{serverName}} está activado. Vuelve a enviar tu solicitud para usar sus herramientas.",
+    "failed": "No se pudo activar {{serverName}}: {{error}}"
   }
 }

@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "搜尋模型…",
     "routerModelEmptyList": "沒有可用的輕量模型。請新增較小的模型，或在「模型」中設定 API 金鑰。",
     "routerModelEmptySearch": "沒有與「{{query}}」相符的結果。"
+  },
+  "mention": {
+    "offTitle": "{{serverName}} 已關閉",
+    "offDesc": "你提到了它，但它沒有在執行，所以這次回覆無法使用它的工具。",
+    "enable": "啟用",
+    "enabled": "{{serverName}} 已開啟。請重新傳送請求以使用其工具。",
+    "failed": "無法啟用 {{serverName}}：{{error}}"
   }
 }

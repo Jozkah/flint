@@ -97,5 +97,12 @@
     "clearFailed": "无法清除 {{serverName}} 的凭据",
     "renew": "续期会话",
     "expiredAgo": "{{duration}} 前已过期"
+  },
+  "mention": {
+    "offTitle": "{{serverName}} 已关闭",
+    "offDesc": "你提到了它，但它没有运行，所以本次回复无法使用它的工具。",
+    "enable": "启用",
+    "enabled": "{{serverName}} 已开启。请重新发送请求以使用其工具。",
+    "failed": "无法启用 {{serverName}}：{{error}}"
   }
 }

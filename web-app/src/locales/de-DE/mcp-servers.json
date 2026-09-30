@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Modelle durchsuchen…",
     "routerModelEmptyList": "Keine leichtgewichtigen Modelle verfügbar. Fügen Sie ein kleineres Modell hinzu oder konfigurieren Sie API-Schlüssel unter Modelle.",
     "routerModelEmptySearch": "Keine Treffer für „{{query}}“."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} ist aus",
+    "offDesc": "Sie haben ihn erwähnt, aber er läuft nicht, daher stehen seine Tools für diese Antwort nicht zur Verfügung.",
+    "enable": "Aktivieren",
+    "enabled": "{{serverName}} ist an. Senden Sie Ihre Anfrage erneut, um seine Tools zu nutzen.",
+    "failed": "{{serverName}} konnte nicht aktiviert werden: {{error}}"
   }
 }

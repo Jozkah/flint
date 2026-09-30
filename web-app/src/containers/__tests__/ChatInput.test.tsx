@@ -1000,15 +1000,30 @@ describe('ChatInput', () => {
     })
 
     // They configure the next message, not the run in flight, so streaming
-    // must not disable them the way it dims the tool icons.
+    // must not disable them.
     it('keeps them live while streaming', () => {
       renderInput({
         surfaceControls: <button>plan</button>,
         chatStatus: 'streaming',
       })
-      const dimmed = document.querySelector('.pointer-events-none')
-      expect(dimmed).toBeTruthy()
-      expect(dimmed!.contains(screen.getByText('plan'))).toBe(false)
+      expect(screen.getByText('plan')).toBeEnabled()
+    })
+  })
+
+  describe('options while a reply streams', () => {
+    // Assistant, sampling, tools and web search apply to the next request, so
+    // they are never dimmed or made inert mid-reply.
+    it('does not freeze the control row', () => {
+      renderInput({ chatStatus: 'streaming' })
+      expect(document.querySelector('.pointer-events-none')).toBeNull()
+    })
+
+    // A message queued behind a run carries text only, so attaching is the one
+    // control that has to wait.
+    it('disables attachments only', () => {
+      renderInput({ chatStatus: 'streaming' })
+      const attach = screen.queryByRole('button', { name: /attachments/i })
+      if (attach) expect(attach).toBeDisabled()
     })
   })
 
