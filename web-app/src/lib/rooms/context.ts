@@ -237,6 +237,21 @@ export function projectHistory(
   return out
 }
 
+const CJK = /[぀-ヿ㐀-鿿가-힯]/
+
+/**
+ * The language reminder, in the last message the model reads. A line in the
+ * system prompt is far from the end of a long turn full of tool results, and a
+ * model that once slipped into Chinese continues in it because its own earlier
+ * messages are in the history; the last message is the one it follows.
+ */
+export function languageCue(room: Room): string {
+  const text = `${room.objective ?? ''} ${room.title ?? ''}`
+  return CJK.test(text)
+    ? 'Reply in the language of the objective.'
+    : 'Reply in the language of the objective, even if earlier messages or files are in Chinese or another language.'
+}
+
 export function turnCue(
   room: Room,
   speaker: SpeakerIdentity,
@@ -246,7 +261,7 @@ export function turnCue(
     speaker.kind === 'participant'
       ? speaker.participant.name
       : room.moderator.name || 'moderator'
-  const base = `[Room to ${who}]: It is your turn, ${who}.`
+  const base = `[Room to ${who}]: It is your turn, ${who}. ${languageCue(room)}`
   return instruction ? `${base}\n${instruction}` : base
 }
 

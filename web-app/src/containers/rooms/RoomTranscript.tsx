@@ -613,15 +613,6 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
             >
               <header className="flex flex-wrap items-center gap-1.5 text-xs">
                 <AuthorName author={m.author} room={room} t={t} />
-                {m.usage?.tokensPerSecond ? (
-                  <span
-                    data-testid="message-speed"
-                    title={t('rooms:transcript.speedTitle')}
-                    className="tabular-nums text-muted-foreground"
-                  >
-                    {t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })}
-                  </span>
-                ) : null}
                 {chip && (
                   <span
                     data-testid="message-to"
@@ -655,6 +646,27 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                     {t('rooms:transcript.addressedToYou')}
                   </span>
                 )}
+                {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
+                  <span
+                    data-testid="message-speed"
+                    title={t('rooms:transcript.speedTitle')}
+                    className="ml-auto tabular-nums text-muted-foreground"
+                  >
+                    {[
+                      m.usage?.outputTokens
+                        ? t('rooms:transcript.tokensOut', {
+                            count: m.usage.outputTokens,
+                            approx: m.usage.estimated ? '~' : '',
+                          })
+                        : null,
+                      m.usage?.tokensPerSecond
+                        ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                ) : null}
               </header>
               <MessageBody
                 message={m}

@@ -192,7 +192,7 @@ describe('context projection', () => {
     expect(built.messages[0].role).toBe('user')
     expect(built.messages[built.messages.length - 1]).toEqual({
       role: 'user',
-      content: '[Room to Alice]: It is your turn, Alice.\nPlease be brief.',
+      content: expect.stringMatching(/^\[Room to Alice\]: It is your turn, Alice\. Reply in the language of the objective[^\n]*\nPlease be brief\.$/),
     })
     expect(built.trimmed).toBeNull()
   })
@@ -326,5 +326,13 @@ describe('context projection', () => {
     const built = await buildPrompt({ room, messages, speaker: bob, contextWindow: null, maxOutputTokens: 1024 })
     expect(built.trimmed?.kind).toBe('dropped')
     expect(built.promptText.length / 3.5).toBeLessThan(8192)
+  })
+})
+
+describe('languageCue', () => {
+  it('names Chinese as a thing not to drift into when the objective is not Chinese', async () => {
+    const { languageCue } = await import('../context')
+    expect(languageCue({ objective: 'Fix the tests' } as never)).toContain('Chinese')
+    expect(languageCue({ objective: '修复测试' } as never)).not.toContain('Chinese')
   })
 })
