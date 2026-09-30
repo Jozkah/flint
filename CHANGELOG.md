@@ -6,7 +6,8 @@ This changelog is release-oriented: it lists shipped features, additions and mea
 
 ## Highlights
 
-- **Local-first and private.** Telemetry, catalogue/model-discovery fetches and update checks were removed from the Flint build. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes.
+- **Local-first and private.** Telemetry and automatic update checks stay disabled, while model discovery is intentionally user-initiated through Hugging Face **Discover** instead of hidden background catalogue traffic. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes.
+- **Hugging Face Discover.** Search Hugging Face, inspect model details and README, and download the exact GGUF quantization (or MLX repository on Apple silicon) you choose, with hardware-aware recommendations, gated-model token support, resumable/cancellable downloads and size/SHA-256 verification. Nothing is contacted until you open Discover, search, or click Download.
 - **Jan → Flint migration.** Existing Jan data is detected on first launch with Copy, Reuse, Move and Start fresh modes, per-category selection, conflict handling, backup/rollback and resumable migration.
 - **Cowork.** A full agentic coding workspace with managed worktrees, proposals, hunk review, Code/Preview/Changes/Activity panels, checkpoints, subagents, multiple attached folders, PR state/checks and browser verification.
 - **Discussion Rooms.** Multi-model rooms with per-participant models, tools, folder access, MCP, web research, reasoning controls, limits, pausing/resuming and automatic context compaction.

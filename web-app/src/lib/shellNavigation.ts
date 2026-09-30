@@ -27,6 +27,7 @@ export function areaForPath(pathname: string): ShellArea {
   if (within(path, route.rooms)) return 'rooms'
   if (within(path, route.artifacts)) return 'library'
   if (within(path, route.extensions)) return 'extensions'
+  if (within(path, route.hub.index.replace(/\/$/, ''))) return 'models'
   if (within(path, route.settings.model_providers)) return 'models'
   if (within(path, route.settings.mcp_servers)) return 'tools'
   if (systemPages.some((p) => within(path, p))) return 'system'
