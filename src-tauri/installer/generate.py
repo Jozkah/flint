@@ -92,10 +92,10 @@ def rounded_mask(size, radius):
 
 
 # ---------------------------------------------------------------------------
-# Text. Labels baked into bitmaps are rasterised by Windows GDI with the font's
-# own hinting (grayscale, so no colour fringes are baked in), like the live text
-# in the wizard, so they are crisp. Pillow's unhinted text looks soft next to
-# it. Off Windows this falls back to Pillow.
+# Text. Labels baked into bitmaps are rasterised by Windows GDI with ClearType
+# and the font's own hinting, exactly like the live text in the wizard, so they
+# look the same next to it. (Pillow's grayscale, unhinted text looks soft beside
+# it, and so does GDI's own grayscale mode.) Off Windows this falls back to Pillow.
 # ---------------------------------------------------------------------------
 import ctypes
 import sys
@@ -170,7 +170,7 @@ def draw_text(img, xy, text, weight, px, fill, center=False):
     _load_faces()
     face, w = FACES[weight]
     hdc = g.CreateCompatibleDC(None)
-    hf = g.CreateFontW(-px, 0, 0, 0, w, 0, 0, 0, 1, 0, 0, 4, 0, face)  # ANTIALIASED_QUALITY: hinted grayscale, no colour fringes to bake in
+    hf = g.CreateFontW(-px, 0, 0, 0, w, 0, 0, 0, 1, 0, 0, 5, 0, face)  # CLEARTYPE_QUALITY
     old = g.SelectObject(hdc, hf)
     size = _Size()
     g.GetTextExtentPoint32W(hdc, text, len(text), ctypes.byref(size))
@@ -185,7 +185,7 @@ def draw_text(img, xy, text, weight, px, fill, center=False):
     g.SetTextColor(hdc, 0xFFFFFF)
     g.TextOutW(hdc, pad, pad, text, len(text))
     raw = ctypes.string_at(bits, tw * th * 4)
-    cover = Image.frombuffer("RGB", (tw, th), raw, "raw", "BGRX", 0, 1).getchannel(1)  # grayscale coverage
+    cover = Image.frombuffer("RGB", (tw, th), raw, "raw", "BGRX", 0, 1)  # per-channel ClearType coverage
     g.SelectObject(hdc, old_bm)
     g.DeleteObject(hbm)
     g.SelectObject(hdc, old)
@@ -195,16 +195,28 @@ def draw_text(img, xy, text, weight, px, fill, center=False):
     if center:
         x, y = x - size.cx / 2, y - size.cy / 2
     x, y = round(x) - pad, round(y) - pad
-    img.paste(Image.new("RGB", (tw, th), fill), (x, y), cover)
+    region = img.crop((x, y, x + tw, y + th))
+    # Blend each channel with its own coverage: that is what ClearType does on screen.
+    chans = [Image.composite(Image.new("L", (tw, th), fill[i]), region.getchannel(i), cover.getchannel(i)) for i in range(3)]
+    img.paste(Image.merge("RGB", chans), (x, y))
 
 
-def button_width(label):
-    """The 1x width of a `size="lg"` button: label plus 14px padding, at least 88px."""
+# Buttons that sit beside an input use the app's default size (32px, 12px text)
+# so they are as tall as the input; every other button is `size="lg"`.
+SMALL_BUTTONS = {"browse"}
+
+
+def button_width(label, small=False):
+    """The 1x width of a button: `size="lg"` is the label plus 14px padding, at least 88px;
+    the default size is the label plus 10px padding."""
+    if small:
+        return (text_width(label, "Medium", 12) + 20 + 1) // 2 * 2
     return max(88, text_width(label, "Medium", 13) + 28)
 
 
-def button(theme, variant, label, scale, width=None):
+def button(theme, variant, label, scale, width=None, small=False):
     """A `size="lg"` Flint button: 36px tall, 14px padding, 13px medium, 8px radius.
+    With `small`, the default size: 32px tall, 12px medium.
 
     `width` (1x px) pins the width so every scale of one button has the same
     proportions; without it the width follows the label, as in the app.
@@ -216,7 +228,7 @@ def button(theme, variant, label, scale, width=None):
     w = max(round(88 * s), tw + round(28 * s))
     if width is not None:
         w = round(((width * scale + 50) // 100) * SS)
-    h = round(36 * s)
+    h = round((32 if small else 36) * s)
     r = round(8 * s)
     bw = max(1, round(0.8 * s)) if variant != "primary" else max(1, round(1 * s))
 
@@ -235,7 +247,7 @@ def button(theme, variant, label, scale, width=None):
     out = img.resize((int(w / SS + 0.5), int(h / SS + 0.5)), Image.LANCZOS)
     # The label is drawn after the shrink, at its real pixel size, so the
     # hinted outlines land on whole pixels: text shrunk from 4x looks soft.
-    draw_text(out, (out.width / 2, out.height / 2), label, "Medium", max(1, round(13 * scale / 100)), rgb(fg), center=True)
+    draw_text(out, (out.width / 2, out.height / 2), label, "Medium", max(1, round((12 if small else 13) * scale / 100)), rgb(fg), center=True)
     return out
 
 
@@ -286,7 +298,10 @@ WIZARD_BUTTONS = (
     ("outline", "close", "Close"),
 )
 
-INPUT_W = 328  # install-location field; the Browse button and an 8px gap fill the rest of the 424px column
+def input_w():
+    """Install-location field: the 424px column minus the Browse button and an 8px gap."""
+    return 424 - 8 - button_width("Browse", small=True)
+
 INPUT_H = 32
 
 
@@ -330,8 +345,10 @@ def wizard_assets():
         "",
     ]
     for variant, slug, label in WIZARD_BUTTONS:
-        lines.append(f"!define FLINT_BTN_W_{variant}_{slug} {button_width(label)}")
-    lines += [f"!define FLINT_FIELD_W {INPUT_W}", f"!define FLINT_FIELD_H {INPUT_H}", "", "!macro _FlintExtractWizard theme scale"]
+        small = slug in SMALL_BUTTONS
+        lines.append(f"!define FLINT_BTN_W_{variant}_{slug} {button_width(label, small)}")
+        lines.append(f"!define FLINT_BTN_H_{variant}_{slug} {32 if small else 36}")
+    lines += [f"!define FLINT_FIELD_W {input_w()}", f"!define FLINT_FIELD_H {INPUT_H}", f"!define FLINT_EDIT_W {input_w() - 22}", "", "!macro _FlintExtractWizard theme scale"]
     bs = "\\"
     names = [f"btn-{variant}-{slug}" for variant, slug, _ in WIZARD_BUTTONS] + ["field", "radio-on", "radio-off"]
     for name in names:
@@ -345,8 +362,9 @@ def wizard_assets():
             d = out / theme / str(scale)
             d.mkdir(parents=True, exist_ok=True)
             for variant, slug, label in WIZARD_BUTTONS:
-                button(theme, variant, label, scale, width=button_width(label)).save(d / f"btn-{variant}-{slug}.bmp")
-            field(theme, INPUT_W, scale).save(d / "field.bmp")
+                small = slug in SMALL_BUTTONS
+                button(theme, variant, label, scale, width=button_width(label, small), small=small).save(d / f"btn-{variant}-{slug}.bmp")
+            field(theme, input_w(), scale).save(d / "field.bmp")
             radio(theme, True, scale).save(d / "radio-on.bmp")
             radio(theme, False, scale).save(d / "radio-off.bmp")
 
@@ -423,7 +441,7 @@ MSI_PAGES = {
 
 # The small modal dialogs (cancel confirmation, errors) have no rail.
 MSI_SMALL = {
-    "cancel": dict(w=347, h=113, title="Cancel setup?", body="Are you sure you want to cancel the installation?"),
+    "cancel": dict(w=347, h=140, title="Cancel setup?", body="Are you sure you want to cancel the installation?"),
 }
 
 MSI_BUTTONS = (
@@ -490,14 +508,14 @@ def msi_page(theme, name):
     spec = MSI_PAGES[name]
     img, d, t = msi_canvas(theme, MSI_W, MSI_H)
     msi_rail(img, d, t)
-    y = msi_text(img, (MSI_X, 40), spec["title"], "SemiBold", 22, rgb(t["foreground"]), MSI_COL, 1.2)
-    y = msi_text(img, (MSI_X, y + 6), spec["sub"], "Regular", 12, rgb(t["muted_fg"]), MSI_COL)
+    y = msi_text(img, (MSI_X, 40), spec["title"], "SemiBold", 24, rgb(t["foreground"]), MSI_COL, 1.2)
+    y = msi_text(img, (MSI_X, y + 6), spec["sub"], "Regular", 13, rgb(t["muted_fg"]), MSI_COL)
     if "label" in spec:
-        msi_text(img, (MSI_X, 112), spec["label"], "Medium", 12, rgb(t["foreground"]))
-        msi_text(img, (MSI_X, 190), spec["note"], "Regular", 11, rgb(t["muted_fg"]), MSI_COL)
+        msi_text(img, (MSI_X, 112), spec["label"], "Medium", 13, rgb(t["foreground"]))
+        msi_text(img, (MSI_X, 190), spec["note"], "Regular", 12, rgb(t["muted_fg"]), MSI_COL)
     by = y + 26
     for para in spec.get("body", []):
-        by = msi_text(img, (MSI_X, by), para, "Regular", 12, rgb(t["fg2"]), MSI_COL) + 8
+        by = msi_text(img, (MSI_X, by), para, "Regular", 13, rgb(t["fg2"]), MSI_COL) + 8
     if "bullets" in spec:
         by += 10
         for b in spec["bullets"]:
@@ -505,7 +523,7 @@ def msi_page(theme, name):
             ImageDraw.Draw(dot).ellipse((8, 8, 8 * 7 - 1, 8 * 7 - 1), fill=255)
             dot = dot.resize((8, 8), Image.LANCZOS)
             img.paste(Image.new("RGB", (8, 8), rgb(t["foreground"])), (MSI_X - 1, round(by + 3)), dot)
-            msi_text(img, (MSI_X + 18, by), b, "Medium", 12, rgb(t["foreground"]))
+            msi_text(img, (MSI_X + 18, by), b, "Medium", 13, rgb(t["foreground"]))
             by += 24
     return img.resize((MSI_W * MSI_S, MSI_H * MSI_S), Image.LANCZOS)
 
@@ -515,7 +533,7 @@ def msi_small(theme, name):
     img, d, t = msi_canvas(theme, spec["w"], spec["h"])
     msi_text(img, (24, 20), spec["title"], "SemiBold", 15, rgb(t["foreground"]))
     if spec["body"]:
-        msi_text(img, (24, 50), spec["body"], "Regular", 12, rgb(t["fg2"]), spec["w"] - 48)
+        msi_text(img, (24, 52), spec["body"], "Regular", 13, rgb(t["fg2"]), spec["w"] - 48)
     return img
 
 
@@ -622,9 +640,9 @@ def msi_dialogs():
     dialog("FlintRemoveDlg", 370, 270, "Page_remove", [
         ("Cancel", "outline", "cancel", RIGHT - 88 - 8 - 88, Y, cancel, None),
         ("Remove", "destructive", "uninstall", RIGHT - 88, Y, [("Remove", "All", 1, "1"), ("EndDialog", "Return", 2, "1")], None)])
-    dialog("FlintCancelDlg", 260, 85, "Dlg_cancel", [
-        ("Yes", "outline", "yes", 148, 64, [("EndDialog", "Exit", "", "1")], None),
-        ("No", "primary", "no", 244, 64, [("EndDialog", "Return", "", "1")], None)])
+    dialog("FlintCancelDlg", 260, 105, "Dlg_cancel", [
+        ("Yes", "outline", "yes", 148, 84, [("EndDialog", "Exit", "", "1")], None),
+        ("No", "primary", "no", 244, 84, [("EndDialog", "Return", "", "1")], None)])
     dialog("FilesInUse", 370, 270, "Page_filesinuse", [
         ("Exit", "outline", "exit", RIGHT - 3 * 88 - 16, Y, [("EndDialog", "Exit", "", "1")], None),
         ("Ignore", "outline", "ignore", RIGHT - 88 - 8 - 88, Y, [("EndDialog", "Ignore", "", "1")], None),

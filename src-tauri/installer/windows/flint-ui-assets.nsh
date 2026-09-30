@@ -2,16 +2,26 @@
 ; 1x pixel sizes of the wizard bitmaps, and the macro that embeds them.
 
 !define FLINT_BTN_W_primary_continue 88
+!define FLINT_BTN_H_primary_continue 36
 !define FLINT_BTN_W_primary_install 88
+!define FLINT_BTN_H_primary_install 36
 !define FLINT_BTN_W_primary_launch 102
+!define FLINT_BTN_H_primary_launch 36
 !define FLINT_BTN_W_primary_finish 88
+!define FLINT_BTN_H_primary_finish 36
 !define FLINT_BTN_W_primary_close 88
+!define FLINT_BTN_H_primary_close 36
 !define FLINT_BTN_W_outline_cancel 88
+!define FLINT_BTN_H_outline_cancel 36
 !define FLINT_BTN_W_outline_back 88
-!define FLINT_BTN_W_outline_browse 88
+!define FLINT_BTN_H_outline_back 36
+!define FLINT_BTN_W_outline_browse 64
+!define FLINT_BTN_H_outline_browse 32
 !define FLINT_BTN_W_outline_close 88
-!define FLINT_FIELD_W 328
+!define FLINT_BTN_H_outline_close 36
+!define FLINT_FIELD_W 352
 !define FLINT_FIELD_H 32
+!define FLINT_EDIT_W 330
 
 !macro _FlintExtractWizard theme scale
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\btn-primary-continue.bmp" "${FLINT_UI}\${theme}\${scale}\btn-primary-continue.bmp"

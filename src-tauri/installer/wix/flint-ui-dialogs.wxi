@@ -252,32 +252,32 @@
         </Control>
       </Dialog>
 
-      <Dialog Id="FlintCancelDlg" Width="260" Height="85" Title="Flint Setup" NoMinimize="yes">
+      <Dialog Id="FlintCancelDlg" Width="260" Height="105" Title="Flint Setup" NoMinimize="yes">
         <!-- Takes the initial focus so no button starts with a focus frame. Sits outside the dialog. -->
         <Control Id="FocusSink" Type="Edit" X="290" Y="0" Width="1" Height="1" Property="FLINT_FOCUS_SINK" TabSkip="no" />
-        <Control Id="Bg" Type="Bitmap" X="0" Y="0" Width="260" Height="85" TabSkip="no" Text="Dlg_cancel">
+        <Control Id="Bg" Type="Bitmap" X="0" Y="0" Width="260" Height="105" TabSkip="no" Text="Dlg_cancel">
         </Control>
-        <Control Id="Yes" Type="PushButton" X="108" Y="45" Width="72" Height="33" Bitmap="yes" Text="Btn_outline_yes">
+        <Control Id="Yes" Type="PushButton" X="108" Y="60" Width="72" Height="33" Bitmap="yes" Text="Btn_outline_yes">
           <Publish Event="EndDialog" Value="Exit">1</Publish>
         </Control>
-        <Control Id="Yes_t" Type="Bitmap" X="108" Y="45" Width="72" Height="3" TabSkip="no" Text="Solid">
+        <Control Id="Yes_t" Type="Bitmap" X="108" Y="60" Width="72" Height="3" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="Yes_b" Type="Bitmap" X="108" Y="75" Width="72" Height="3" TabSkip="no" Text="Solid">
+        <Control Id="Yes_b" Type="Bitmap" X="108" Y="90" Width="72" Height="3" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="Yes_l" Type="Bitmap" X="108" Y="45" Width="3" Height="33" TabSkip="no" Text="Solid">
+        <Control Id="Yes_l" Type="Bitmap" X="108" Y="60" Width="3" Height="33" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="Yes_r" Type="Bitmap" X="177" Y="45" Width="3" Height="33" TabSkip="no" Text="Solid">
+        <Control Id="Yes_r" Type="Bitmap" X="177" Y="60" Width="3" Height="33" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="No" Type="PushButton" X="180" Y="45" Width="72" Height="33" Bitmap="yes" Text="Btn_primary_no">
+        <Control Id="No" Type="PushButton" X="180" Y="60" Width="72" Height="33" Bitmap="yes" Text="Btn_primary_no">
           <Publish Event="EndDialog" Value="Return">1</Publish>
         </Control>
-        <Control Id="No_t" Type="Bitmap" X="180" Y="45" Width="72" Height="3" TabSkip="no" Text="Solid">
+        <Control Id="No_t" Type="Bitmap" X="180" Y="60" Width="72" Height="3" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="No_b" Type="Bitmap" X="180" Y="75" Width="72" Height="3" TabSkip="no" Text="Solid">
+        <Control Id="No_b" Type="Bitmap" X="180" Y="90" Width="72" Height="3" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="No_l" Type="Bitmap" X="180" Y="45" Width="3" Height="33" TabSkip="no" Text="Solid">
+        <Control Id="No_l" Type="Bitmap" X="180" Y="60" Width="3" Height="33" TabSkip="no" Text="Solid">
         </Control>
-        <Control Id="No_r" Type="Bitmap" X="249" Y="45" Width="3" Height="33" TabSkip="no" Text="Solid">
+        <Control Id="No_r" Type="Bitmap" X="249" Y="60" Width="3" Height="33" TabSkip="no" Text="Solid">
         </Control>
       </Dialog>
 

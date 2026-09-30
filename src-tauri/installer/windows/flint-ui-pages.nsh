@@ -122,7 +122,7 @@ Function FlintOptions
   ${NSD_SetImage} $4 "$FlintAssets\field.bmp" $5
   ${FlintPx} $0 275
   ${FlintPx} $1 184
-  ${FlintPx} $2 306
+  ${FlintPx} $2 ${FLINT_EDIT_W}
   ${FlintPx} $3 16
   ; No WS_BORDER / client-edge styles, so nothing but the bitmap draws a frame.
   nsDialogs::CreateControl EDIT "${DEFAULT_STYLES}|${WS_TABSTOP}|${ES_AUTOHSCROLL}" 0 $0 $1 $2 $3 "$INSTDIR"
@@ -132,7 +132,7 @@ Function FlintOptions
   SendMessage $FlintPathEdit ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $FlintPathEdit FG CARD
 
-  !insertmacro _FlintButton outline browse 688 174 FlintBrowse
+  !insertmacro _FlintButton outline browse 688 176 FlintBrowse
 
   ${FlintPx} $0 ${FLINT_RIGHT_X}
   ${FlintPx} $1 236

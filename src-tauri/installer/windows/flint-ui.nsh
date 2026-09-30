@@ -166,7 +166,7 @@ Var ReinstallVersionState
   ${FlintPx} $0 ${_FlintBtnX}
   ${FlintPx} $1 ${y}
   ${FlintPx} $2 ${FLINT_BTN_W_${variant}_${slug}}
-  ${FlintPx} $3 36
+  ${FlintPx} $3 ${FLINT_BTN_H_${variant}_${slug}}
   ${NSD_CreateBitmap} $0 $1 $2 $3 ""
   Pop $4
   ${NSD_OnClick} $4 ${callback}
