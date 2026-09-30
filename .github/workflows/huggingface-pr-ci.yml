@@ -5,6 +5,8 @@ on:
     branches:
       - feat/huggingface-model-downloads
 
+# Final gate for the explicit-only Discover surface: web behavior/privacy plus
+# the real desktop Rust crate must both stay buildable on every branch update.
 concurrency:
   group: huggingface-hub-pr-${{ github.ref }}
   cancel-in-progress: true
