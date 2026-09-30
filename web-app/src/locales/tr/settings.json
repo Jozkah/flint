@@ -380,5 +380,16 @@
     }
   },
   "backendInstallSuccess": "Arka uç başarıyla kuruldu!",
-  "backendInstallError": "Arka uç kurulamadı"
+  "backendInstallError": "Arka uç kurulamadı",
+  "imageDescription": {
+    "title": "Görseller ve yalnızca metin modelleri",
+    "enabled": "Göremeyen modeller için görselleri betimle",
+    "enabledDesc": "Görme yeteneği olmayan bir model, eklenen her görselin yerine, görebilen bir modelin yazdığı betimlemeyi alır. Kapalıyken görselle ilgili hiçbir şey almaz.",
+    "model": "Betimleme modeli",
+    "modelDesc": "Betimlemeleri yazan model. Yerel model yalnızca burada seçerseniz kullanılır.",
+    "modelAuto": "Otomatik (görebilen ilk uzak model)",
+    "noVisionModel": "Görebilen bir model yok. Bir tane ekleyin veya bir modeli görme destekli olarak işaretleyin.",
+    "embed": "Eklenen görselleri aranabilir yap",
+    "embedDesc": "Her görselin betimlemesini sohbetin belgeleriyle birlikte de saklar, böylece sonra aranabilir. Eklenen her görsel betimleme modeline gönderilir."
+  }
 }

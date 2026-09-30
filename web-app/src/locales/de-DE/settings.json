@@ -287,5 +287,16 @@
     }
   },
   "backendInstallSuccess": "Backend erfolgreich installiert",
-  "backendInstallError": "Backend-Installation fehlgeschlagen"
+  "backendInstallError": "Backend-Installation fehlgeschlagen",
+  "imageDescription": {
+    "title": "Bilder und reine Textmodelle",
+    "enabled": "Bilder für Modelle beschreiben, die nichts sehen",
+    "enabledDesc": "Ein Modell ohne Bildverständnis erhält anstelle jedes angehängten Bildes eine geschriebene Beschreibung von einem Modell, das sehen kann. Aus: Es erhält nichts zum Bild.",
+    "model": "Beschreibungsmodell",
+    "modelDesc": "Das Modell, das die Beschreibungen schreibt. Ein lokales Modell wird nur verwendet, wenn Sie es hier wählen.",
+    "modelAuto": "Automatisch (erstes Remote-Modell mit Bildverständnis)",
+    "noVisionModel": "Es ist kein Modell mit Bildverständnis verfügbar. Fügen Sie eines hinzu oder markieren Sie ein Modell als bildfähig.",
+    "embed": "Angehängte Bilder durchsuchbar machen",
+    "embedDesc": "Speichert die Beschreibung jedes Bildes zusätzlich bei den Dokumenten des Chats, damit sie später durchsucht werden kann. Dabei wird jedes angehängte Bild an das Beschreibungsmodell gesendet."
+  }
 }

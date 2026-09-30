@@ -287,5 +287,16 @@
     }
   },
   "backendInstallSuccess": "後端安裝成功",
-  "backendInstallError": "後端安裝失敗"
+  "backendInstallError": "後端安裝失敗",
+  "imageDescription": {
+    "title": "圖片與純文字模型",
+    "enabled": "為看不見圖片的模型描述圖片",
+    "enabledDesc": "沒有視覺能力的模型會收到由能看圖的模型寫成的文字描述，以取代每張附加的圖片。關閉後，它對圖片一無所知。",
+    "model": "描述模型",
+    "modelDesc": "負責撰寫描述的模型。只有在你於此選擇時才會使用本機模型。",
+    "modelAuto": "自動（第一個能看圖的遠端模型）",
+    "noVisionModel": "沒有可用的能看圖的模型。請新增一個，或將某個模型標記為支援視覺。",
+    "embed": "讓附加的圖片可被搜尋",
+    "embedDesc": "同時把每張圖片的描述與聊天文件一併儲存，以便日後搜尋。這會把每張附加圖片傳送給描述模型。"
+  }
 }

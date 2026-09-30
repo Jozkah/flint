@@ -287,5 +287,16 @@
     }
   },
   "backendInstallSuccess": "Backend đã được cài đặt thành công",
-  "backendInstallError": "Không thể cài đặt backend"
+  "backendInstallError": "Không thể cài đặt backend",
+  "imageDescription": {
+    "title": "Hình ảnh và mô hình chỉ văn bản",
+    "enabled": "Mô tả hình ảnh cho mô hình không nhìn được",
+    "enabledDesc": "Mô hình không có khả năng nhìn nhận được bản mô tả bằng văn bản của từng hình ảnh đính kèm, do một mô hình nhìn được viết, thay cho hình ảnh. Khi tắt, nó không nhận được gì về hình ảnh.",
+    "model": "Mô hình mô tả",
+    "modelDesc": "Mô hình viết các bản mô tả. Mô hình cục bộ chỉ được dùng nếu bạn chọn ở đây.",
+    "modelAuto": "Tự động (mô hình từ xa đầu tiên nhìn được)",
+    "noVisionModel": "Không có mô hình nào nhìn được. Hãy thêm một mô hình hoặc đánh dấu một mô hình có khả năng nhìn.",
+    "embed": "Cho phép tìm kiếm hình ảnh đính kèm",
+    "embedDesc": "Lưu thêm bản mô tả của mỗi hình ảnh cùng tài liệu của cuộc trò chuyện để tìm kiếm sau. Việc này gửi mọi hình ảnh đính kèm tới mô hình mô tả."
+  }
 }
