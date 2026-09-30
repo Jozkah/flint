@@ -169,6 +169,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "command": { "type": "string", "description": "Shell command to run. Omit when managing a background command." },
+                        "description": { "type": "string", "description": "A few words, in the past tense, saying what this command does for the user, e.g. \"Listed project patch files\" or \"Ran the type check\". Shown as the line for this step once the run is folded away." },
                         "timeout": { "type": "integer", "minimum": 1, "maximum": 120, "description": "Seconds to wait for a foreground command (default 30, maximum 120). For work that may take longer than 120 seconds, set `background: true` and omit `timeout`; collect the returned job_id later." },
                         "background": { "type": "boolean", "description": "Keep the command running in the background and return a job_id, so you can continue working and collect it later." },
                         "job_id": { "type": "string", "description": "A background command's job_id, to collect, inspect or cancel it instead of running a new command." },
@@ -472,6 +473,21 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 "parameters": { "type": "object", "properties": {}, "required": [] }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "open_in_browser",
+                "description": "Open a web page in the user's own browser and show it in the conversation as an \"Opened in Browser\" card. Use it when the user asks to see, open or try something you built or started (a dev server on localhost, a generated page) or when showing the page is the point. Only http and https URLs. A page on this computer (localhost, 127.0.0.1) opens at once; any other site is shown as a card with an Open button and the user chooses. Start the server first: this does not run anything. Do not use it to research (use web_fetch or web_search).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "The http:// or https:// address to open, e.g. http://localhost:5173/." },
+                        "title": { "type": "string", "description": "Optional short name for the page, shown on the card." }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
     ]
 }
 
@@ -486,7 +502,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 29);
+        assert_eq!(schemas.len(), 30);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

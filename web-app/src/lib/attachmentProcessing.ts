@@ -1,6 +1,7 @@
 import { ServiceHub } from '@/services'
 import { Attachment } from '@/types/attachment'
 import { toast } from 'sonner'
+import { embedImageDescriptions } from '@/lib/imageDescription'
 
 type AttachmentProcessingStatus = 'processing' | 'done' | 'error' | 'clear_all'
 
@@ -160,6 +161,16 @@ export const processAttachmentsForSend = async (
         toast.error('Failed to ingest image attachment', { description: desc })
         throw err instanceof Error ? err : new Error(desc)
       }
+    }
+  }
+
+  // Descriptions of the images, stored as documents so the conversation can
+  // search them (off unless the user turned it on).
+  if (images.length > 0) {
+    const described = await embedImageDescriptions({ images, threadId, projectId, serviceHub })
+    if (described.length > 0) {
+      processedAttachments.push(...described)
+      hasEmbeddedDocuments = true
     }
   }
 

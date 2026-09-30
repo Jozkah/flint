@@ -692,12 +692,19 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Opens a web page in the user's own browser. The desktop does it: the
+    // tool core has no browser and reads or writes no file.
+    BuiltinTool {
+        name: "open_in_browser",
+        capability: Capability::Read,
+        path_args: &[],
+    },
 ];
 
 /// Tools the desktop answers itself (a prompt, or a store only the app can
 /// read). Auto-allowed by the gate like the workspace tools.
 pub fn is_host_tool(name: &str) -> bool {
-    matches!(name, "request_access" | "list_plugins")
+    matches!(name, "request_access" | "list_plugins" | "open_in_browser")
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -766,10 +773,10 @@ mod tests {
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        // + request_access and list_plugins, which the desktop answers itself.
+        // + request_access, list_plugins and open_in_browser, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + git, the host's git and gh with per-call classification.
-        assert_eq!(BUILTIN_TOOLS.len(), 29);
+        assert_eq!(BUILTIN_TOOLS.len(), 30);
     }
 
     #[test]

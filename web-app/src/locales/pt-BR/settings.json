@@ -321,5 +321,16 @@
     "transcriptViewThinkingDesc": "Adiciona o raciocínio do modelo. Chamadas de ferramentas continuam recolhidas.",
     "transcriptViewVerbose": "Detalhada",
     "transcriptViewVerboseDesc": "Tudo: raciocínio completo e cada chamada de ferramenta aberta com parâmetros e saída."
+  },
+  "imageDescription": {
+    "title": "Imagens e modelos só de texto",
+    "enabled": "Descrever imagens para modelos que não enxergam",
+    "enabledDesc": "Um modelo sem visão recebe, no lugar de cada imagem anexada, uma descrição escrita por um modelo que enxerga. Desativado, ele não recebe nada da imagem.",
+    "model": "Modelo de descrição",
+    "modelDesc": "O modelo que escreve as descrições. Um modelo local só é usado se você o escolher aqui.",
+    "modelAuto": "Automático (primeiro modelo remoto que enxerga)",
+    "noVisionModel": "Nenhum modelo que enxerga está disponível. Adicione um ou marque um modelo como capaz de ver.",
+    "embed": "Tornar as imagens anexadas pesquisáveis",
+    "embedDesc": "Guarda também a descrição de cada imagem com os documentos do chat para poder pesquisá-la depois. Isso envia cada imagem anexada ao modelo de descrição."
   }
 }

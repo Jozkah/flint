@@ -327,5 +327,16 @@
     }
   },
   "backendInstallSuccess": "El backend s’ha instal·lat correctament",
-  "backendInstallError": "No s’ha pogut instal·lar el backend"
+  "backendInstallError": "No s’ha pogut instal·lar el backend",
+  "imageDescription": {
+    "title": "Imatges i models només de text",
+    "enabled": "Descriu les imatges per als models que no hi veuen",
+    "enabledDesc": "Un model sense visió rep una descripció escrita de cada imatge adjunta, feta per un model que hi veu, en lloc de la imatge. Desactivat, no rep res de la imatge.",
+    "model": "Model de descripció",
+    "modelDesc": "El model que escriu les descripcions. Un model local només s'usa si el trieu aquí.",
+    "modelAuto": "Automàtic (primer model remot que hi veu)",
+    "noVisionModel": "No hi ha cap model que hi vegi. Afegiu-ne un o marqueu un model com a capaç de veure.",
+    "embed": "Fes que les imatges adjuntes es puguin cercar",
+    "embedDesc": "Desa també la descripció de cada imatge amb els documents del xat per poder-la cercar. Envia cada imatge adjunta al model de descripció."
+  }
 }

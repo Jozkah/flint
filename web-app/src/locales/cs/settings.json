@@ -317,5 +317,16 @@
     }
   },
   "backendInstallSuccess": "Backend úspěšně nainstalován",
-  "backendInstallError": "Nepodařilo se nainstalovat backend"
+  "backendInstallError": "Nepodařilo se nainstalovat backend",
+  "imageDescription": {
+    "title": "Obrázky a textové modely",
+    "enabled": "Popisovat obrázky pro modely, které nevidí",
+    "enabledDesc": "Model bez zraku dostane místo každého přiloženého obrázku textový popis od modelu, který vidí. Vypnuto: k obrázku nedostane nic.",
+    "model": "Model pro popisy",
+    "modelDesc": "Model, který popisy píše. Místní model se použije jen tehdy, když jej zde vyberete.",
+    "modelAuto": "Automaticky (první vzdálený model, který vidí)",
+    "noVisionModel": "Není k dispozici žádný model, který vidí. Přidejte jej nebo označte model jako schopný vidět.",
+    "embed": "Umožnit vyhledávání v přiložených obrázcích",
+    "embedDesc": "Uloží popis každého obrázku k dokumentům chatu, aby šel později vyhledat. Každý přiložený obrázek se odešle modelu pro popisy."
+  }
 }

@@ -82,7 +82,16 @@ describe('prepareCoworkAttachments', () => {
     const out = await prepareCoworkAttachments({ docs: [], files }, ctx)
     expect(processed.fn).not.toHaveBeenCalled()
     expect(out.parts).toEqual(files)
+    // An image is shown as itself in the transcript, not named in the line.
+    expect(out.shownNote).toBe('')
+    expect(out.keptImages).toEqual([files[0].url])
+  })
+
+  it('names media that is not an image in the line', async () => {
+    const files = [{ type: 'file', mediaType: 'audio/wav', url: 'data:audio/wav;base64,AAAA' }]
+    const out = await prepareCoworkAttachments({ docs: [], files }, ctx)
     expect(out.shownNote).toContain('1 media file')
+    expect(out.keptImages).toEqual([])
   })
 
   it('reports a document it could not read instead of dropping it silently', async () => {

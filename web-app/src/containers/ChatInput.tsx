@@ -1,4 +1,6 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { currentDescriber } from '@/lib/imageDescription'
+import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
@@ -453,6 +455,8 @@ const ChatInput = memo(function ChatInput({
   const setWebSearchEnabled = useWebSearchConfig((s) => s.setWebSearchEnabled)
 
   const [filePickerOpen, setFilePickerOpen] = useState(false)
+  // The image viewer over the composer's attachments: which image is open.
+  const [viewerAt, setViewerAt] = useState<number | null>(null)
   const [filePickerQuery, setFilePickerQuery] = useState('')
   const [filePickerEntries, setFilePickerEntries] = useState<ReferenceEntry[]>(
     []
@@ -958,6 +962,26 @@ const ChatInput = memo(function ChatInput({
           !selectedModel.capabilities?.includes(capability)
         ) {
           missing.push(capability)
+        }
+      }
+      // A model that cannot see still gets its images, described by one that
+      // can, so a missing vision capability is no reason to hold the message.
+      // A local model that might see with its mmproj is still offered that.
+      const describer = missing.includes('vision') ? currentDescriber() : null
+      if (describer) {
+        let mightSee = false
+        if (selectedProvider === 'llamacpp') {
+          try {
+            mightSee = await serviceHub.models().checkMmprojExists(selectedModel.id)
+          } catch {
+            mightSee = false
+          }
+        }
+        if (!mightSee) {
+          missing.splice(missing.indexOf('vision'), 1)
+          toast.info(
+            `${selectedModel.name ?? selectedModel.id} cannot see images, so ${describer.modelId} will describe them first.`
+          )
         }
       }
       if (missing.length > 0) {
@@ -2607,6 +2631,10 @@ const ChatInput = memo(function ChatInput({
     console.log('No image data found in clipboard, allowing normal text paste')
   }
 
+  const composerImages = attachments
+    .filter((a) => a.type === 'image' && a.dataUrl)
+    .map((a) => ({ url: a.dataUrl as string, name: a.name }))
+
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
 
   return (
@@ -2656,6 +2684,47 @@ const ChatInput = memo(function ChatInput({
                               .toString()
                               .padStart(2, '0')}`
                           : undefined
+                      // An image is a preview big enough to see, which opens
+                      // in the viewer; other attachments stay chips.
+                      if (isImage && att.dataUrl) {
+                        const at = composerImages.findIndex((i) => i.url === att.dataUrl)
+                        return (
+                          <div
+                            key={`${att.type}-${idx}-${att.name}`}
+                            data-testid="composer-image-preview"
+                            className="group/thumb relative size-16 shrink-0 overflow-hidden rounded-lg border-[0.8px] border-border bg-muted pointer-coarse:size-20"
+                          >
+                            <button
+                              type="button"
+                              aria-label={`Open ${att.name}`}
+                              title={att.name}
+                              className="size-full focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                              onClick={() => setViewerAt(Math.max(0, at))}
+                            >
+                              <img
+                                className="size-full object-cover"
+                                src={att.dataUrl}
+                                alt={att.name}
+                                draggable={false}
+                              />
+                            </button>
+                            {att.processing ? (
+                              <span className="absolute inset-0 grid place-items-center bg-black/40">
+                                <Loader2 className="size-4 motion-safe:animate-spin text-white" />
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`${t('common:dismiss')} ${att.name}`}
+                                className="absolute right-1 top-1 grid size-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 focus-visible:opacity-100 group-hover/thumb:opacity-100 pointer-coarse:size-8 pointer-coarse:opacity-100"
+                                onClick={() => handleRemoveAttachment(idx)}
+                              >
+                                <X className="size-3" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      }
                       return (
                         <div
                           key={`${att.type}-${idx}-${att.name}`}
@@ -3746,6 +3815,15 @@ const ChatInput = memo(function ChatInput({
             onCompact={compactFromCounter}
           />
         </div>
+      )}
+
+      {viewerAt !== null && composerImages.length > 0 && (
+        <ImageViewer
+          images={composerImages}
+          index={Math.min(viewerAt, composerImages.length - 1)}
+          onIndexChange={setViewerAt}
+          onClose={() => setViewerAt(null)}
+        />
       )}
 
       <input

@@ -1,6 +1,7 @@
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
+import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { type UIMessage } from '@ai-sdk/react'
@@ -2076,13 +2077,27 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false
+    let withInlineAttachments = this.mapUserInlineAttachments(effectiveMessages)
+    // A model that cannot see gets a written description of each image, made by
+    // one that can, in the image's place. With no such model (or the feature
+    // off) the images are stripped below, as before.
+    if (!modelSupportsVision) {
+      const describer = currentDescriber()
+      if (describer) {
+        withInlineAttachments = await describeImagesInMessages(
+          withInlineAttachments,
+          describer,
+          { session: threadId, signal: options.abortSignal }
+        )
+      }
+    }
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(
           this.encodeVideoAttachments(
             this.encodeAudioAttachments(
               stripUnsupportedImageParts(
-                this.mapUserInlineAttachments(effectiveMessages),
+                withInlineAttachments,
                 modelSupportsVision
               )
             )

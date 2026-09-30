@@ -1,6 +1,7 @@
 import type { ServiceHub } from '@/services'
 import type { Attachment } from '@/types/attachment'
 import { processAttachmentsForSend } from '@/lib/attachmentProcessing'
+import { shrinkImageDataUrl } from '@/lib/imageResize'
 
 /**
  * Files attached to a Cowork message.
@@ -32,6 +33,8 @@ export type PreparedAttachments = {
   shownNote: string
   /** Media parts for the model message. */
   parts: SubmittedFile[]
+  /** Copies of the images small enough to keep in the saved transcript. */
+  keptImages: string[]
   /** Documents that could not be read, with why. */
   failed: { name: string; error: string }[]
   /** Documents cut to fit the budget. */
@@ -123,13 +126,18 @@ export async function prepareCoworkAttachments(
     doc = inlineDocumentsText(readable)
   }
 
-  const media = parts.length
-  if (media > 0) names.push(media === 1 ? '1 media file' : `${media} media files`)
+  // Images are shown in the transcript as themselves; the line names documents,
+  // and any media that is not an image.
+  const images = parts.filter((p) => p.mediaType.startsWith('image/'))
+  const otherMedia = parts.length - images.length
+  if (otherMedia > 0) names.push(otherMedia === 1 ? '1 media file' : `${otherMedia} media files`)
+  const keptImages = await Promise.all(images.map((p) => shrinkImageDataUrl(p.url)))
 
   return {
     modelSuffix: doc.text,
     shownNote: names.length ? `\n\nAttached: ${names.join(', ')}` : '',
     parts: [...parts],
+    keptImages,
     failed,
     truncated: doc.truncated,
   }

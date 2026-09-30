@@ -27,6 +27,9 @@ import { RagToolWidget } from './RagToolWidget'
 import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
+import { BrowserOpenedCard } from './BrowserOpenedCard'
+import { parseBrowserTarget } from '@/lib/browserOpen'
+import { toolSentence } from '@/lib/traceSummary'
 import {
   lineOfToolInput,
   toolChangesFile,
@@ -46,6 +49,8 @@ export type ToolCallCardProps = {
    * (Thinking view's failed rows). Unset: open while running, on failure or
    * with a diff. */
   expanded?: boolean
+  /** A row of a folded run: one sentence in the header, closed until clicked. */
+  sentence?: boolean
 }
 
 /** The one argument a native call is about, for the card's header. */
@@ -119,6 +124,18 @@ const DiffBlocks = ({ add, del }: { add: number; del: number }) => {
   )
 }
 
+/** A step's line, its verb in the call kind's colour: Read blue, Searched purple. */
+const SentenceText = ({ text, tint }: { text: string; tint: boolean }) => {
+  const at = text.indexOf(' ')
+  if (!tint || at < 0) return <>{text}</>
+  return (
+    <>
+      <span className="font-medium text-(--tk)">{text.slice(0, at)}</span>
+      {text.slice(at)}
+    </>
+  )
+}
+
 export const ToolCallCard = memo(
   ({
     part,
@@ -126,6 +143,7 @@ export const ToolCallCard = memo(
     citationOffset = 0,
     className,
     expanded,
+    sentence,
   }: ToolCallCardProps) => {
     const { t } = useTranslation()
     const toolName = part.type.split('-').slice(1).join('-')
@@ -145,6 +163,12 @@ export const ToolCallCard = memo(
         ? Boolean(s.pending[part.toolCallId] && !s.pending[part.toolCallId].origin)
         : false
     )
+
+    // A page shown to the user is a card of its own, not a tool step.
+    const browserTarget =
+      toolName === 'open_in_browser' && part.state === 'output-available'
+        ? parseBrowserTarget(part.input)
+        : null
 
     // Native families get a fixed label; MCP names its server.
     const originLabel =
@@ -320,6 +344,14 @@ export const ToolCallCard = memo(
       </ResultSection>
     )
 
+    if (browserTarget) {
+      return (
+        <div className={className}>
+          <BrowserOpenedCard target={browserTarget} />
+        </div>
+      )
+    }
+
     // Waiting for the user: one expanded action panel, with no tool card
     // around it. It says what the call would do in full; the parameters table
     // and the empty result would only repeat it.
@@ -359,6 +391,29 @@ export const ToolCallCard = memo(
           type={`tool-${toolName}` as `tool-${string}`}
           state={part.state}
           origin={originLabel}
+          sentence={
+            sentence ? (
+              <>
+                {failed && (
+                  <span className="mr-1 font-medium text-destructive">
+                    {t(
+                      toolName === 'bash'
+                        ? 'chat:transcriptView.failedToRun'
+                        : 'chat:transcriptView.failed'
+                    )}
+                  </span>
+                )}
+                <SentenceText
+                  text={
+                    failed && toolName === 'bash'
+                      ? toolSentence(part).replace(/^Ran /, '')
+                      : toolSentence(part)
+                  }
+                  tint={!failed}
+                />
+              </>
+            ) : undefined
+          }
           arg={bar ? shownArg(bar) : undefined}
           argNode={
             // A finished call's path opens in the Code panel from the header,
