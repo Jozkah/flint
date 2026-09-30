@@ -2,7 +2,7 @@
 
 Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into an agentic desktop workspace for local and user-chosen models. This first Flint release combines the rebrand and migration path with Cowork, tool-using Discussion Rooms, an auditable agent runtime, Memory, MCP and Skills, remote access, a redesigned interface, and a fully branded Windows installer.
 
-This changelog is release-oriented: it lists shipped features, additions and meaningful changes versus the Jan base. It intentionally does **not** list follow-up bug fixes whose only purpose was repairing a Flint feature introduced during 0.9.0 development. Bug-fix entries are kept where they apply to inherited/original Jan behavior or an upstream Jan issue.
+This changelog is release-oriented: it lists shipped features, additions and meaningful changes versus the Jan base. The fixes made while finishing 0.9.0 are collected in [Bug fixes in the final 0.9.0 build](#bug-fixes-in-the-final-090-build), and fixes to inherited Jan behavior or upstream Jan issues are listed at the end.
 
 ## Highlights
 
@@ -74,10 +74,17 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.5.0 / b11146**, with matching packages and lockfiles.
 - Active release workflows, package metadata, project links and web-search identification now target `Jozkah/flint` rather than the upstream repository where appropriate.
 
+### Model discovery
+
+- Restored the Hugging Face model Hub as a **Discover** surface: search and direct repo/URL lookup, sorting and filters, GGUF/MLX discovery, expandable quantization variants, a model detail page with README, gated/private access through the existing Hugging Face token, and virtualized results.
+- Hardware-aware quantization recommendations, multipart GGUF grouping, automatic MMProj and speculative-draft companion pairing, resumable downloads with pause/resume/cancel/retry, size and SHA-256 verification, and **Update available** tracking from install provenance.
+- Flint still contacts Hugging Face only after you open Discover, search or start a download; nothing is fetched at startup.
+
 ### Release infrastructure
 
-- Tag pushes matching `v*` now start the tag build pipeline.
-- Moving an existing release tag can rebuild the existing release: the workflow resolves the existing release upload URL and clears stale build assets before uploading replacements.
+- Pushing a `v*` tag starts the Flint release build, which attaches the Windows, macOS and Linux bundles to the existing release for that tag. The release itself, its title and its notes stay hand-written.
+- Moving an existing release tag rebuilds it and replaces the bundles already attached to that release.
+- The legacy tag workflow is manual-only. It needs an explicit tag, refuses to touch a published release, finds draft releases, and clears stale assets before uploading.
 - Reusable release workflows use `$GITHUB_OUTPUT` instead of deprecated `::set-output` handling.
 
 ### Windows installer
@@ -89,6 +96,52 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The title bar and brand mark use the **real Flint application icon** generated from the app's canonical icon source.
 - The installer exposes install location, desktop shortcut and launch-after-install choices while retaining Tauri's packaging/update engine underneath.
 - NSIS UI compilation runs with `/WX`, treating every NSIS warning as a CI failure before the release-grade Windows bundle build is allowed to run.
+
+## Bug fixes in the final 0.9.0 build
+
+### Security and privacy
+
+- The credential scanner no longer blocks code that only reads a property (`sessionTokens: spend.spent`), and it no longer waves through real secrets written as dotted values such as `API_TOKEN=eyJ…` or `DB_PASSWORD=word.word.word`.
+- A paired phone can no longer widen a Room's folder or tool access: room create/update from the phone accepts only an allow-listed set of fields and always starts with no tool access.
+- **Allow all temporarily** no longer covers pushes to a URL or path, `gh repo` create/edit/fork/sync, `gh pr merge` or `gh release`. It counts toward the auto-approve limit, never overrides an always-ask prompt, and is cleared when the conversation is deleted.
+- JEV routing keeps an assistant you picked yourself (including **None**), skips temporary chats and very short prompts, and stops waiting when you cancel.
+
+### Chat, Cowork and interface
+
+- The model selector's search popover stays on screen while you type, and the chat no longer jumps up and down when a tool trace is collapsed.
+- Split panes keep their own model, and chat titles are generated with the conversation's model rather than whichever picker changed last.
+- **New session** keeps an unsent draft only on a session that has content, no longer hides it on a blank session, and no longer takes a draft typed in Chat.
+- Cowork mode, folder and write-destination changes work during a run and apply once the current activity ends; **Stop all** applies to the current chat only.
+- Cowork re-asks for edit-folder access when the attached folder changes, and stale **Background activity** cards clear when a workflow ends.
+- Automatic compaction retries with smaller excerpts when the summary itself overflows, keeps a summary it already has when a later retry fails, keeps completed tool calls with their results, and no longer treats provider throttling as a context overflow. The context ring is back.
+- llama.cpp start failures are shown instead of failing silently, cached-input usage matches the token-usage display, and the Jev button shows only the chosen method.
+- Settings rows and the Local API Server model selector use the correct layout.
+
+### Agent runtime
+
+- Repeated equivalent retries stop: an unavailable sandbox toolchain, disabled network, read-only folder, dirty Git state, stale PR state, unavailable tool, oversized timeout or exhausted subagent ends the run instead of looping. Blockers are scoped to the actual tool or resource and reset once a same-tool call succeeds.
+- Steering is delivered after the current tool call and skips the rest of the batch, without being triggered by mail the agent already read.
+- Malformed tool calls get clearer guidance, raw `<tool_call>` text in a chat reply is explained rather than mistaken for a call, and a web tool refused for bad arguments no longer reports that web access is off.
+- `bash` foreground calls are limited to 120 seconds and longer work goes to background jobs; `git` and `git_clone` document their own 120-second limit.
+- Pull requests are refused unless the base, the pushed head and a clean merge can be verified against current remote refs. Duplicate `--base`/`--head`/`--repo` flags are rejected, and branch names containing `#`, `@` or `+` are accepted.
+- Cowork memory proposals now carry their session, so the proposal card appears in the session that made them.
+
+### Windows
+
+- `bash` now starts directly in an edit folder the Windows sandbox cannot enter (for example a project outside Flint's worktrees) instead of failing with "Access is denied" or `EPERM`.
+- PowerShell command shims (`npm`, `npx`, `corepack`, `pnpm`, `yarn`) and Rust toolchain binaries resolve inside the sandbox, the whole toolchain folder is granted, and a repair script restores the parent-folder access the sandbox needs.
+- Managed worktrees are re-attached and re-granted before agent runs, and PR push-remote checks work for renamed forks.
+- Browser verification and the screenshot tool find Chrome, Edge, Brave, Opera/Opera GX, Vivaldi, Arc and Chromium through one shared resolver, and the browser you choose is the one both use. A refused browser path now shows an error.
+
+### Remote access
+
+- Phone pairing works when browser storage is unavailable, and **Forget this device** stays forgotten across a reload.
+- Each chat, Room and Cowork screen starts clean when you switch: no draft, private recipient or scroll position carries over from the previous one.
+- Loading earlier messages no longer drops a message when new ones arrive, **Back** no longer leaves the app from the first screen, and deleting a thread or Cowork session stops its running work first.
+
+### Installer and release
+
+- Tag builds run once instead of twice, and a manual run can no longer wipe the assets of a published release.
 
 ## Core Flint capabilities
 
