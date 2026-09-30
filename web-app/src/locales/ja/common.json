@@ -649,6 +649,7 @@
     "steeringHint": "エージェントの次のステップで渡されます。先に実行が終わった場合は次のメッセージとして送信されます"
   },
   "coworkOrigins": {
+    "showAll": "{{formattedCount}} 件をすべて表示",
     "baseline": {
       "clean": "この実行の開始時、添付フォルダーの Git 作業ツリーに未コミットの変更はありませんでした。"
     },
@@ -810,5 +811,8 @@
   },
   "decisionScopeShowFull": "すべて表示",
   "decisionScopeHide": "隠す",
-  "decisionScopeCopy": "コピー"
+  "decisionScopeCopy": "コピー",
+  "browserVerify": {
+    "chooseDifferentBrowser": "別のブラウザーを選択…"
+  }
 }

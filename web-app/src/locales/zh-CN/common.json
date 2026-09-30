@@ -819,6 +819,7 @@
     "steeringHint": "将在代理的下一步送达；如果运行先结束，则作为下一条消息发送"
   },
   "coworkOrigins": {
+    "showAll": "显示全部 {{formattedCount}} 项",
     "baseline": {
       "clean": "此运行开始时，附加文件夹的 Git 工作树中没有未提交的更改。"
     },
@@ -979,5 +980,8 @@
   },
   "decisionScopeShowFull": "显示全部",
   "decisionScopeHide": "收起",
-  "decisionScopeCopy": "复制"
+  "decisionScopeCopy": "复制",
+  "browserVerify": {
+    "chooseDifferentBrowser": "选择其他浏览器…"
+  }
 }

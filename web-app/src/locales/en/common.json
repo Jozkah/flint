@@ -1920,6 +1920,7 @@
     "using": "Using {{browser}}",
     "noBrowser": "No Chromium-based browser found. Install one; Flint does not download a browser.",
     "chooseBrowser": "Choose a browser…",
+    "chooseDifferentBrowser": "Choose a different browser…",
     "meta": "{{origin}} · {{browser}} · {{date}} · {{ms}} ms",
     "consoleErrors_one": "{{count}} console error",
     "consoleErrors_other": "{{count}} console errors",

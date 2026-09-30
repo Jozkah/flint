@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -145,6 +146,21 @@ export function BrowserVerifyPanel({
     }
   }, [detect])
 
+  // A cancelled dialog is silent; a path the desktop refuses ("no file at ...",
+  // "must be absolute") is the user's to fix, so say so.
+  const chooseBrowser = async () => {
+    try {
+      const picked = await getServiceHub().dialog().open({
+        multiple: false,
+        directory: false,
+      })
+      if (typeof picked !== 'string' || !picked) return
+      setBrowser(await setBrowserPath(picked))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
   const parsed = parseSteps(stepsText)
   const urlOk = isLocalAppUrl(url)
   const canRun = !!sessionId && !running && urlOk && !parsed.error && browser?.found === true
@@ -192,19 +208,7 @@ export function BrowserVerifyPanel({
             size="sm"
             variant="outline"
             data-testid="bv-choose-browser"
-            onClick={async () => {
-              try {
-                const picked = await getServiceHub().dialog().open({
-                  multiple: false,
-                  directory: false,
-                })
-                if (typeof picked !== 'string' || !picked) return
-                const info = await setBrowserPath(picked)
-                setBrowser(info)
-              } catch {
-                // The dialog was cancelled, or the path was refused.
-              }
-            }}
+            onClick={() => void chooseBrowser()}
           >
             {t('common:browserVerify.chooseBrowser')}
           </Button>
@@ -237,6 +241,17 @@ export function BrowserVerifyPanel({
           <span className="text-subtle-foreground">
             {t('common:browserVerify.using', { browser: browser.name ?? '' })}
           </span>
+        )}
+        {browser?.found && (
+          <Button
+            size="sm"
+            variant="link"
+            className="h-auto p-0 text-xs"
+            data-testid="bv-choose-other-browser"
+            onClick={() => void chooseBrowser()}
+          >
+            {t('common:browserVerify.chooseDifferentBrowser')}
+          </Button>
         )}
       </div>
       {running && <StepList steps={running.steps} />}
