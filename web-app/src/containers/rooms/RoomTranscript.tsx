@@ -338,28 +338,44 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
         )}
       </div>
       {open && expanded && hasDetails && (
-        <div
-          className="mt-1.5 space-y-2.5 rounded-lg bg-muted px-2.5 py-2 motion-safe:animate-dd-in"
-          data-testid="tool-trace-details"
-        >
+        <div className="mt-2 space-y-3 motion-safe:animate-dd-in" data-testid="tool-trace-details">
           {calls.map((c, i) => {
             const tone = TONE_CLASSES[toneFor(c)]
             const Icon = toolIcon(c.name)
+            // Each call is a card of its own: numbered, headed, with room between
+            // what it was given and what came back.
             return (
-              <div key={`${c.name}-detail-${i}`} className="min-w-0 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium">
+              <div
+                key={`${c.name}-detail-${i}`}
+                data-testid="tool-detail"
+                className={cn(
+                  'min-w-0 overflow-hidden rounded-lg border-[0.8px] bg-muted',
+                  c.ok ? 'border-border' : 'border-destructive/40'
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex items-center gap-2 border-b-[0.8px] px-3 py-2 text-xs font-medium',
+                    c.ok ? 'border-border bg-accent/40' : 'border-destructive/30 bg-destructive-tint'
+                  )}
+                >
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-card font-mono text-[10px] tabular-nums text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+                    {i + 1}
+                  </span>
                   <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
-                  <span className="text-foreground">{c.name}</span>
+                  <span className="font-mono text-foreground">{c.name}</span>
                   <span
                     className={cn(
-                      'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                      'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
                       c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                     )}
                   >
                     {c.ok ? t('rooms:transcript.toolOk') : t('rooms:transcript.toolFailed')}
                   </span>
                 </div>
-                <ToolCallBody c={c} t={t} />
+                <div className="space-y-3 p-3">
+                  <ToolCallBody c={c} t={t} />
+                </div>
               </div>
             )
           })}
