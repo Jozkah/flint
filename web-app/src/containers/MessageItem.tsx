@@ -16,6 +16,11 @@ import {
 } from '@/lib/agentActivity'
 import type { SubagentRun } from '@/types/coworkSession'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -24,6 +29,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  Sparkles,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
@@ -44,7 +50,7 @@ const REVEAL_ACTIONS =
 
 /** Icon actions: compact with a mouse, 44px with a finger. */
 const ACTION_BUTTON =
-  'size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-11'
+  'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
 import {
   CHAT_STATUS,
@@ -53,6 +59,7 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
@@ -77,6 +84,7 @@ import { WebSourcesRow } from '@/components/WebSourcesRow'
 import { fetchedUrlOf } from '@/lib/webSources'
 import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
+import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { FlintMark } from '@/components/shell/FlintMark'
 import { CompactionDivider } from '@/containers/CompactionDivider'
 import { AttachedImages } from '@/components/AttachedImages'
@@ -671,7 +679,7 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
@@ -683,7 +691,7 @@ export const MessageItem = memo(
           </span>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"
@@ -728,10 +736,18 @@ export const MessageItem = memo(
               aria-hidden
               className="grid size-[22px] shrink-0 place-items-center rounded-md bg-accent p-[3px] shadow-[inset_0_0_0_0.8px_var(--border)]"
             >
-              <FlintMark className="size-full" />
+              {typeof metadata?.assistantAvatar === 'string' && metadata.assistantAvatar ? (
+                <AvatarEmoji
+                  avatar={metadata.assistantAvatar}
+                  imageClassName="size-full object-contain"
+                  textClassName="text-xs leading-none"
+                />
+              ) : (
+                <FlintMark className="size-full" />
+              )}
             </span>
             <span className="shrink-0 font-semibold text-foreground">
-              Flint
+              {(metadata?.assistantName as string | undefined) || 'Flint'}
             </span>
             {answeredBy && (
               <>
@@ -765,17 +781,6 @@ export const MessageItem = memo(
           !isStreaming &&
           (webCitations.length > 0 || webReads.length > 0) && (
           <WebSourcesRow citations={webCitations} readUrls={webReads} />
-        )}
-
-        {message.role === 'assistant' &&
-          !isStreaming &&
-          usedSkills.length > 0 && (
-          <div
-            aria-label={t('common:skillsUsedLabel')}
-            className="mt-2 inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground"
-          >
-            {t('common:skillsUsed', { skills: usedSkills.join(', ') })}
-          </div>
         )}
 
         {isLastMessage &&
@@ -870,7 +875,7 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+            <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-0.5 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
               {/* The time is on the header line above. */}
               <div
                 className={cn(
@@ -900,16 +905,20 @@ export const MessageItem = memo(
               )}
 
               {onFork && !isStreaming && (
-                <Button
+                <Tooltip>
+<TooltipTrigger asChild>
+<Button
                   variant="ghost"
                   size="icon-xs"
                   className={ACTION_BUTTON}
                   onClick={() => onFork(message.id)}
-                  title={t('chat:actions.fork')}
                   aria-label={t('chat:actions.fork')}
                 >
-                  <GitFork className="size-4" />
+                  <GitFork className="size-3.5" />
                 </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.fork')}</TooltipContent>
+</Tooltip>
               )}
 
                 {selectedModel &&
@@ -917,30 +926,40 @@ export const MessageItem = memo(
                   !isStreaming &&
                   isLastMessage &&
                   canContinue && (
-                    <Button
+                    <Tooltip>
+<TooltipTrigger asChild>
+<Button
                       variant="ghost"
                       size="icon-xs"
                       className={ACTION_BUTTON}
                       onClick={handleContinue}
-                      title={t('chat:actions.continue')}
+                      aria-label={t('chat:actions.continue')}
                     >
-                      <Play className="size-4" />
+                      <Play className="size-3.5" />
                     </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.continue')}</TooltipContent>
+</Tooltip>
                   )}
 
               {selectedModel &&
                 onRegenerate &&
                 !isStreaming &&
                 isLastMessage && (
-                  <Button
+                  <Tooltip>
+<TooltipTrigger asChild>
+<Button
                     variant="ghost"
                     size="icon-xs"
                     className={ACTION_BUTTON}
                     onClick={handleRegenerate}
-                    title={t('chat:actions.regenerate')}
+                    aria-label={t('chat:actions.regenerate')}
                   >
-                    <RefreshCw className="size-4" />
+                    <RefreshCw className="size-3.5" />
                   </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
+</Tooltip>
                 )}
             </div>
 
@@ -950,6 +969,47 @@ export const MessageItem = memo(
                 metadata={metadata}
               />
             )}
+            {!isStreaming && usedSkills.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="skills-used"
+                aria-label={t('common:skillsUsedLabel')}
+                className="ml-2 inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
+              >
+                <Sparkles className="size-3.5" aria-hidden />
+                {t('common:skillsUsedCount', { count: usedSkills.length })}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
+              data-testid="skills-used-list"
+            >
+              <div className="mb-1.5 font-medium text-foreground">
+                {t('common:skillsUsedLabel')}
+              </div>
+              <ul className="flex flex-col gap-1">
+                {usedSkills.map((name) => {
+                  // A plugin's skill is named plugin:skill; the plugin reads
+                  // as context, the skill as the point.
+                  const at = name.indexOf(':')
+                  return (
+                    <li key={name} className="break-all text-foreground">
+                      {at > 0 && (
+                        <span className="text-muted-foreground">
+                          {name.slice(0, at + 1)}
+                        </span>
+                      )}
+                      {at > 0 ? name.slice(at + 1) : name}
+                    </li>
+                  )
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
           </div>
         )}
 

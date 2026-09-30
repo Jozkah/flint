@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // ---- Module mocks ----------------------------------------------------------
@@ -263,7 +263,7 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    const regenBtn = screen.getByTitle('chat:actions.regenerate')
+    const regenBtn = screen.getByLabelText('chat:actions.regenerate')
     fireEvent.click(regenBtn)
     expect(onRegenerate).toHaveBeenCalledWith('msg-1')
   })
@@ -279,7 +279,7 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    expect(screen.queryByTitle('chat:actions.regenerate')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('chat:actions.regenerate')).not.toBeInTheDocument()
   })
 
   it('shows Continue button on a stopped last assistant message', () => {
@@ -295,7 +295,7 @@ describe('MessageItem', () => {
         onContinue={onContinue}
       />
     )
-    const btn = screen.getByTitle('chat:actions.continue')
+    const btn = screen.getByLabelText('chat:actions.continue')
     fireEvent.click(btn)
     expect(onContinue).toHaveBeenCalledWith('msg-1')
   })
@@ -310,7 +310,7 @@ describe('MessageItem', () => {
         onContinue={vi.fn()}
       />
     )
-    expect(screen.queryByTitle('chat:actions.continue')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('chat:actions.continue')).not.toBeInTheDocument()
   })
 
   it('hides Continue button on a stopped message that is not last', () => {
@@ -325,7 +325,7 @@ describe('MessageItem', () => {
         onContinue={vi.fn()}
       />
     )
-    expect(screen.queryByTitle('chat:actions.continue')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('chat:actions.continue')).not.toBeInTheDocument()
   })
 
   it('fires onEdit when edit dialog saves', () => {
@@ -560,7 +560,7 @@ describe('MessageItem', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('shows a persistent badge for a successfully loaded skill', () => {
+  it('shows a persistent badge for a successfully loaded skill', async () => {
     render(
       <MessageItem
         message={
@@ -583,8 +583,12 @@ describe('MessageItem', () => {
       />
     )
 
+    // One line saying how many, and the names in a popover on press.
+    const used = screen.getByTestId('skills-used')
+    expect(used).toHaveTextContent('common:skillsUsedCount')
+    fireEvent.click(used)
     expect(
-      screen.getByText('common:skillsUsed pptx')
+      within(await screen.findByTestId('skills-used-list')).getByText('pptx')
     ).toBeInTheDocument()
     expect(screen.getByText('Used pptx')).toBeInTheDocument()
   })
@@ -756,6 +760,6 @@ describe('MessageItem', () => {
         onRegenerate={onRegenerate}
       />
     )
-    expect(screen.queryByTitle('chat:actions.regenerate')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('chat:actions.regenerate')).not.toBeInTheDocument()
   })
 })

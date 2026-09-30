@@ -41,6 +41,21 @@ function latestUserMessage(
  * regenerations keep the same selection because their latest user-message id
  * has not changed.
  */
+/**
+ * What a reply shows of the assistant that answered it. Flint keeps the Flint
+ * mark, so it carries no avatar.
+ */
+const answeringOf = (
+  a: { id?: string; name?: string; avatar?: string } | undefined
+): { name: string; avatar?: string } | undefined =>
+  a?.name
+    ? {
+        name: a.name,
+        avatar:
+          a.id !== 'jan' && typeof a.avatar === 'string' ? a.avatar : undefined,
+      }
+    : undefined
+
 export class RoutedChatTransport extends CustomChatTransport {
   private lastRoutedUserMessageId: string | null = null
   private routedMode: JevSuggestedMode | null = null
@@ -99,7 +114,10 @@ export class RoutedChatTransport extends CustomChatTransport {
       : undefined
     // A regenerate after a restart: this message was already routed, so keep
     // what that decided instead of asking again and possibly picking another.
-    if (thread?.metadata?.jevRoutedMessageId === latest.id) return
+    if (thread?.metadata?.jevRoutedMessageId === latest.id) {
+      this.answeringAssistant = answeringOf(thread.assistants?.[0])
+      return
+    }
 
     // Only a conversation still on the default is auto-routed. An assistant the
     // user set (Coal, Quartz, a custom one) or "None" stays. The one built-in
@@ -114,7 +132,12 @@ export class RoutedChatTransport extends CustomChatTransport {
       message: latest.text,
       assistants: assistantState.assistants,
       currentAssistantId: current?.id,
-      includeCoworkMode: true,
+      // Five assistants, not fifteen assistant-and-style pairs: Jev answers
+      // with one probability per choice and abstains below 0.7, so splitting
+      // the same prompt three ways left each pair under the bar and Flint was
+      // kept. A chat has no Cowork style to advise anyway; its work profile is
+      // chosen separately.
+      includeCoworkMode: false,
       pinned,
       temporary: this.temporary,
       signal,
@@ -126,6 +149,8 @@ export class RoutedChatTransport extends CustomChatTransport {
           (candidate) => candidate.id === route.assistantId
         )
       : undefined
+    // Named on the reply: the one just routed to, else the one in charge.
+    this.answeringAssistant = answeringOf(assistant ?? current)
     if (assistant && assistant.id !== current?.id) {
       // The transport must see the routed prompt immediately. Waiting for the
       // Zustand update + React effect would send this turn with the old persona.

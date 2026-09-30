@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "버그를 발견하셨나요? GitHub에 이슈를 등록하여 저희를 도와주세요.",
   "reportIssue": "문제 신고",
   "credits": "크레딧",
-  "creditsDesc1": "👋 Jan은 Menlo Research 팀이 ❤️를 담아 만들었습니다.",
+  "creditsDesc1": "👋 Flint는 Jozkah가 ❤️를 담아 만들었습니다.",
   "creditsDesc2": "오픈 소스 종속성(특히 llama.cpp 및 Tauri)과 멋진 AI 커뮤니티에 특별히 감사드립니다.",
   "appVersion": "앱 버전",
   "dataFolder": {
@@ -283,7 +283,7 @@
     "reportAnIssueDesc": "버그를 발견하셨나요? GitHub에 이슈를 등록하여 저희를 도와주세요.",
     "reportIssue": "문제 신고",
     "credits": "크레딧",
-    "creditsDesc1": "👋 Jan은 Menlo Research 팀이 ❤️를 담아 만들었습니다.",
+    "creditsDesc1": "👋 Flint는 Jozkah가 ❤️를 담아 만들었습니다.",
     "creditsDesc2": "오픈 소스 종속성(특히 llama.cpp 및 Tauri)과 멋진 AI 커뮤니티에 특별히 감사드립니다."
   },
   "extensions": {

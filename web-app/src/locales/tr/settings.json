@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Bir hata mı buldunuz? GitHub'da bir sorun kaydederek bize yardımcı olun.",
   "reportIssue": "Sorun Bildir",
   "credits": "Katkılar",
-  "creditsDesc1": "👋 Jan, Menlo Research ekibi tarafından ❤️ ile geliştirilmiştir.",
+  "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
   "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler.",
   "appVersion": "Uygulama Sürümü",
   "dataFolder": {
@@ -331,7 +331,7 @@
     "reportAnIssueDesc": "Bir hata mı buldunuz? GitHub'da bir sorun kaydederek bize yardımcı olun.",
     "reportIssue": "Sorun Bildir",
     "credits": "Katkılar",
-    "creditsDesc1": "👋 Jan, Menlo Research ekibi tarafından ❤️ ile geliştirilmiştir.",
+    "creditsDesc1": "👋 Flint, Jozkah tarafından ❤️ ile geliştirilmiştir.",
     "creditsDesc2": "Açık kaynak bağımlılıklarımıza — özellikle llama.cpp ve Tauri'ye — ve muhteşem yapay zeka topluluğumuza özel teşekkürler."
   },
   "extensions": {

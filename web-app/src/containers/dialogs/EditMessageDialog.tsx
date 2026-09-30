@@ -1,3 +1,8 @@
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
@@ -87,7 +92,7 @@ export function EditMessageDialog({
       tabIndex={0}
       disabled={!selectedModel}
       aria-label={t('common:editMessage')}
-      className="size-7 text-fg-2 hover:text-foreground pointer-coarse:size-11"
+      className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -95,13 +100,20 @@ export function EditMessageDialog({
         }
       }}
     >
-      <Pencil className="size-4" />
+      <Pencil className="size-3.5" />
     </Button>
   )
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{triggerElement || defaultTrigger}</DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            {triggerElement || defaultTrigger}
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t('common:editMessage')}</TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('common:dialogs.editMessage.title')}</DialogTitle>
@@ -138,7 +150,10 @@ export function EditMessageDialog({
                     className="relative border border-border rounded-md px-3 py-2 flex items-center gap-2 bg-muted"
                   >
                     <FileIcon className="size-4 text-muted-foreground" />
-                    <span className="text-sm max-w-32 truncate" title={file.name}>
+                    <span
+                      className="text-sm max-w-32 truncate"
+                      title={file.name}
+                    >
                       {file.name}
                     </span>
                     <button
@@ -179,8 +194,7 @@ export function EditMessageDialog({
                 (draft === initialCleanPrompt &&
                   JSON.stringify(imageUrls || []) ===
                     JSON.stringify(keptImages) &&
-                  JSON.stringify(initialFiles) ===
-                    JSON.stringify(keptFiles)) ||
+                  JSON.stringify(initialFiles) === JSON.stringify(keptFiles)) ||
                 !draft.trim()
               }
               onClick={handleSave}

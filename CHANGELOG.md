@@ -64,6 +64,15 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Clicking an image opens a viewer with arrow-key stepping, zoom by buttons, keys or wheel, drag when zoomed, save under its name and Esc to close.
 - Cowork keeps a resized copy of each attached image in the session, so images open again after a restart.
 
+### Routing, skills and parameters
+
+- Added switches under **Settings → Jev** for **Route to the right assistant** and **Apply skills automatically**, next to the existing work-profile switch, so each automatic choice can be turned off on its own.
+- A reply now names the assistant that answered it, with that assistant's icon, so a turn routed to Quartz, Coal, Blaze or Redstone shows it.
+- A reply shows **Used N skills** on its speed line, and pressing it lists the skills.
+- Hovering a parameter in **Add parameter** shows the value the model reports as its default, read from llama.cpp's `/props` for local models and from a self-hosted vLLM server's render endpoint for a server on your own network.
+- Reply actions show a tooltip each, a dot separates the cache figure from the speed, and the row holds still while hovering.
+- The Windows installer, Flatpak metadata and credits name Jozkah.
+
 ### Run summary and opening pages
 
 - A finished run's folded steps now say what the run did, such as **Ran 20 commands, created 8 files, used 6 tools +645 −0**, instead of a bare step count.

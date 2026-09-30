@@ -28,6 +28,7 @@ import type { CatalogSkill } from '../skillCatalog'
 import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { notifySkillsChanged } from '../skillEvents'
 import { useJevSettings } from '@/hooks/useJevSettings'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 
 const skill = (name: string, extra: Partial<CatalogSkill> = {}) =>
   ({ name, description: `${name} does things`, model_invocable: true, ...extra }) as CatalogSkill
@@ -118,6 +119,18 @@ describe('resolveSkillActivation', () => {
 
     const out = await resolveSkillActivation(args)
     expect(out).toEqual([{ name: 'deploy', body: 'Ship carefully.', why: 'jev', mode: 'body' }])
+  })
+
+  it('applies nothing on its own when the user turned automatic skills off', async () => {
+    bodies.caveman = '---\nalways: true\n---\nTalk terse.'
+    useAutomationSettings.setState({ activateSkills: false })
+    try {
+      expect(
+        await resolveSkillActivation({ text: 'hello', skills: [skill('caveman', { always: true })] })
+      ).toEqual([])
+    } finally {
+      useAutomationSettings.setState({ activateSkills: true })
+    }
   })
 
   it('ignores a Jev answer that names no installed skill, or a failure', async () => {
@@ -216,5 +229,16 @@ describe('latestUserText', () => {
     ]
     expect(latestUserText(messages)).toEqual({ id: '3', text: 'second\nline' })
     expect(latestUserText([])).toBeNull()
+  })
+})
+
+describe('rankCandidates', () => {
+  it('puts a matching plugin skill ahead of unrelated own skills', async () => {
+    const { rankCandidates } = await import('../skillActivation')
+    const own = Array.from({ length: 5 }, (_, i) => skill(`own-${i}`))
+    const brainstorming = { ...skill('superpowers:brainstorming'), plugin: 'superpowers', description: 'Use before any creative work' }
+    const ranked = rankCandidates('brainstorm some ideas for a product name', [...own, brainstorming])
+    expect(ranked[0].name).toBe('superpowers:brainstorming')
+    expect(ranked.slice(1).map((s) => s.name)).toEqual(own.map((s) => s.name))
   })
 })

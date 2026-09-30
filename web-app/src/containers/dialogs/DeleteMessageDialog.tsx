@@ -1,3 +1,8 @@
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useState, useRef } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
@@ -34,7 +39,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
       role="button"
       tabIndex={0}
       aria-label={t('common:deleteMessage')}
-      className="size-7 text-fg-2 hover:text-foreground pointer-coarse:size-11"
+      className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -42,13 +47,18 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
         }
       }}
     >
-      <Trash2 className="size-4" />
+      <Trash2 className="size-3.5" />
     </Button>
   )
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>{trigger}</DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t('common:deleteMessage')}</TooltipContent>
+      </Tooltip>
       <DialogContent
         onOpenAutoFocus={(e) => {
           e.preventDefault()

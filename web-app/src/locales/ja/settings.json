@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "バグを見つけましたか？GitHubで問題を報告して、私たちを助けてください。",
   "reportIssue": "問題を報告",
   "credits": "クレジット",
-  "creditsDesc1": "👋 JanはMenlo Researchチームによって❤️を込めて作られています。",
+  "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
   "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。",
   "appVersion": "アプリのバージョン",
   "dataFolder": {
@@ -301,7 +301,7 @@
     "reportAnIssueDesc": "バグを見つけましたか？GitHubで問題を報告して、私たちを助けてください。",
     "reportIssue": "問題を報告",
     "credits": "クレジット",
-    "creditsDesc1": "👋 JanはMenlo Researchチームによって❤️を込めて作られています。",
+    "creditsDesc1": "👋 FlintはJozkahが❤️を込めて作っています。",
     "creditsDesc2": "オープンソースの依存関係、特にllama.cppとTauri、そして素晴らしいAIコミュニティに感謝します。"
   },
   "extensions": {

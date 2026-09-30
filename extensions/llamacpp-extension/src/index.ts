@@ -942,6 +942,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
   ): Promise<
     | (ModelProps & {
         modalities?: { vision: boolean; video: boolean; audio: boolean }
+        /** The sampling settings the server reports as its own defaults. */
+        generationDefaults?: Record<string, unknown>
       })
     | undefined
   > {
@@ -962,7 +964,10 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       })
       if (!res.ok) return undefined
       const json = (await res.json()) as {
-        default_generation_settings?: { n_ctx?: number }
+        default_generation_settings?: {
+          n_ctx?: number
+          params?: Record<string, unknown>
+        }
         total_slots?: number
         model_alias?: string
         is_sleeping?: boolean
@@ -977,6 +982,7 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
           typeof json.total_slots === 'number' ? json.total_slots : undefined,
         modelAlias: json.model_alias,
         isSleeping: !!json.is_sleeping,
+        generationDefaults: json.default_generation_settings?.params,
         modalities: m
           ? { vision: !!m.vision, video: !!m.video, audio: !!m.audio }
           : undefined,

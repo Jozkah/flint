@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "कोई बग मिला? GitHub पर रिपोर्ट करके हमारी मदद करें।",
   "reportIssue": "समस्या रिपोर्ट करें",
   "credits": "श्रेय",
-  "creditsDesc1": "👋 Flint Menlo Research टीम द्वारा ❤️ के साथ बनाया गया है।",
+  "creditsDesc1": "👋 Flint को Jozkah ने ❤️ के साथ बनाया है।",
   "creditsDesc2": "हमारे ओपन सोर्स डिपेंडेंसीज़ जैसे llama.cpp और Tauri, तथा हमारी शानदार AI समुदाय को विशेष धन्यवाद।",
   "appVersion": "ऐप संस्करण",
   "dataFolder": {
@@ -283,7 +283,7 @@
     "reportAnIssueDesc": "कोई बग मिला? GitHub पर रिपोर्ट करके हमारी मदद करें।",
     "reportIssue": "समस्या रिपोर्ट करें",
     "credits": "श्रेय",
-    "creditsDesc1": "👋 Flint Menlo Research टीम द्वारा ❤️ के साथ बनाया गया है।",
+    "creditsDesc1": "👋 Flint को Jozkah ने ❤️ के साथ बनाया है।",
     "creditsDesc2": "हमारे ओपन सोर्स डिपेंडेंसीज़ जैसे llama.cpp और Tauri, तथा हमारी शानदार AI समुदाय को विशेष धन्यवाद।"
   },
   "extensions": {
