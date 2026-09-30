@@ -4,7 +4,8 @@ Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into
 
 ## Highlights
 
-- **Local-first and private.** Telemetry, update checks, model discovery and catalogue fetches are removed and the whole repo is guarded against phoning home; web search no longer reports back what it returned. Flint runs against your own models and providers, and nothing leaves the machine unless you send it.
+- **Local-first and private.** Telemetry, automatic update checks and hidden background catalogue traffic are disabled and the repo is guarded against phoning home; web search no longer reports back what it returned. Hugging Face discovery and downloads are available through Flint's explicit **Discover** experience and contact the service only when you open or use it.
+- **A rebuilt Hugging Face model Hub.** Discover keeps the full model-browsing and download workflow — search, filters and sorting, GGUF/MLX variants, model details and README, inline progress, installed state and New Chat — rebuilt in Flint's UI with hardware-aware recommendations, multipart GGUF/MMProj/speculative companion handling, gated-model tokens, resumable/cancellable downloads, size/SHA verification and update provenance.
 - **Migrate from Jan in one launch.** Flint keeps Jan's identifier and data path, detects an existing Jan install on first run, and offers to Copy, Reuse, Move or Start fresh — per category, with conflict policies, a recoverable backup, rollback and idempotent resume.
 - **Cowork — an agentic coding workspace.** A workspace with an output rail with a Code panel, a Changes (Git) rail with real diff gutters, an Activity rail, per-chat models and temporary chats. Cowork answers with a **reviewable proposal** you apply hunk-by-hunk, runs on a **managed worktree** with checkpoints and safety-point restores, can **dispatch a team** of coordinated subagents, and reports every change's true origin from recorded evidence. A session can attach **several folders**, and on Windows **Edit this folder** now works through AppContainer grants.
 - **Discussion Rooms that use tools.** Multi-model discussions, with you in control, that now do work rather than only talk. Attach a folder and give each participant **Read-only** or **Read & edit** file tools (`read`/`ls`/`find`/`grep`, and `write`/`edit` confined to that folder by a direct-edit grant), your trusted MCP servers (routed to the exact server, never offered when untrusted), and web research (`web_search`/`web_fetch`) — every call rendered as a colour-coded tool chip, matching the Cowork tab, that expands to its input and result. A participant can conclude early once the objective is met; a room stopped on a rounds/turns/tokens/time/cost limit continues for as many more rounds as you ask; a message to a paused, completed or stopped room resumes it; a discussion past the model's context window compacts automatically with a "Compacting…" note; and a room whose participants are all waiting on you hands back instead of spinning. Each participant has its own colour across `@mentions`, messages render Markdown, and new participants default to read-only tools when their model supports them. Each participant can also set its own Reasoning (Auto, On or Off), effort and llama.cpp Thinking Budget.
@@ -91,8 +92,8 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 ### Local-first and privacy
 - fix(tools): reject malformed MCP and RAG tool names before provider serialization, preventing "Expected 'function.name' to be a string" generation failures
 - perf(inference): keep GPU-capable Vulkan as the default engine build and document throughput tuning for Flash Attention, batching, offload, and parallel sequences
-- feat(app): local-only build — no telemetry, no catalog, no downloads (#10)
-- feat(local-only): finish removing telemetry, update checking and model discovery, and guard the whole repo
+- feat(app): local-first build — no telemetry, automatic model bootstrap or hidden background catalogue traffic; external model discovery/downloads run only from explicit user actions (#10)
+- feat(models): rebuild Hugging Face discovery and downloads as Flint's Discover experience, preserving search, filters, model details and progress while adding verified resumable downloads and hardware-aware model guidance
 - refactor(privacy): remove telemetry build vars, the analytics injection, the catalogue URLs and the update feed
 - refactor(core): remove the updater, the CLI's telemetry, and the mirror
 - fix(privacy): stop telling Google what the web search returned
@@ -340,6 +341,7 @@ Your existing settings, credentials, providers, models, threads, projects, rooms
 - feat(cli): `flint doctor` prints hardware info (`--json`), and `flint cli models list-local|info|delete` manage local models
 
 ### Models, providers and inference
+- feat(models): a Flint-native Hugging Face Hub with GGUF/MLX discovery, quantization variants, multipart/MMProj/draft pairing, gated access, shared download progress, pause/resume/cancel/retry, verification, install/update state and model details
 - feat(models): Model Doctor — "Test this model" probes tool calling through the model's real transport with a synthetic tool (call, exact arguments, continuation, response time), cancellable, with the result dated and tied to the settings it was tested under
 - feat(models): evidence-based model fit, a real compatibility test, and a preferred default
 - feat(models): rename models, and put the list in an order (#5)
