@@ -218,6 +218,12 @@ import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
 import { speedStats } from '@/lib/tokenSpeed'
+import {
+  prepareCoworkAttachments,
+  type CoworkAttachmentInput,
+  type SubmittedFile,
+} from '@/lib/coworkAttachments'
+import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
@@ -2462,11 +2468,31 @@ export function CoworkPage() {
     from?: QueuedMessageSender,
     // Flint's own request (the result card's Continue): sent to the model,
     // not drawn as something the user said.
-    hidden = false
+    hidden = false,
+    // Files attached to this message: documents staged in the composer, and
+    // the media it passed along. Without this they were dropped on send.
+    attachmentInput?: CoworkAttachmentInput
   ) => {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
+    // Read the attached files into the message. Documents go in as text (there
+    // is no retrieval tool here to search them with), media as file parts.
+    const attached =
+      attachmentInput && (attachmentInput.docs.length > 0 || (attachmentInput.files?.length ?? 0) > 0)
+        ? await prepareCoworkAttachments(attachmentInput, {
+            sessionId: sid,
+            serviceHub: serviceHub,
+          })
+        : null
+    if (attached) {
+      for (const f of attached.failed) {
+        toast.error(`Could not read ${f.name}: ${f.error}`)
+      }
+      if (attached.truncated.length > 0) {
+        toast.info(`Only part of ${attached.truncated.join(', ')} fits in one message.`)
+      }
+    }
     const store = useCoworkSessions.getState()
     const current = store.sessions.find((s) => s.id === sid)
     /**
@@ -2632,7 +2658,7 @@ export function CoworkPage() {
       ? [
           {
             role: 'user',
-            content: text,
+            content: attached ? `${text}${attached.shownNote}` : text,
             ...(from ? { from: agentAttribution(from) } : {}),
             ...(hidden ? { hidden: true } : {}),
           },
@@ -3201,7 +3227,7 @@ export function CoworkPage() {
       ? withUserEditNotice(
           expandCodeRefs(text, pendingRefs.current),
           useCoworkUserEdits.getState().takePending(sid)
-        )
+        ) + (attached?.modelSuffix ?? '')
       : text
     pendingRefs.current = []
     /**
@@ -3528,7 +3554,7 @@ export function CoworkPage() {
           {
             id: `${sid}-user-${baseMessages.length}`,
             role: 'user',
-            parts: [{ type: 'text', text: modelText }],
+            parts: [{ type: 'text', text: modelText }, ...(attached?.parts ?? [])],
           } as any,
         ]
       : [...baseMessages]
@@ -4521,7 +4547,20 @@ export function CoworkPage() {
   const runRequestRef = useRef(runRequest)
   runRequestRef.current = runRequest
 
-  const handleSubmit = (text: string) => void runRequest(text)
+  const handleSubmit = (text: string, files?: SubmittedFile[]) => {
+    // Read the staged documents now: the composer clears them as soon as this
+    // returns.
+    const sid = session?.id
+    const docs = sid
+      ? useChatAttachments
+          .getState()
+          .getAttachments(sid)
+          .filter((a) => a.type === 'document')
+      : []
+    const hasFiles = docs.length > 0 || (files?.length ?? 0) > 0
+    const body = text.trim() || !hasFiles ? text : 'Please look at the attached file(s).'
+    void runRequest(body, undefined, false, hasFiles ? { docs, files } : undefined)
+  }
   // A paired phone's message to the session in view takes the same path.
   useRemoteComposer('cowork', session?.id, handleSubmit)
   // Cowork's own `/` built-ins; `/help` is added by the composer.

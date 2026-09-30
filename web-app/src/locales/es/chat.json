@@ -47,5 +47,13 @@
     "steps_many": "{{count}} pasos",
     "steps_other": "{{count}} pasos",
     "working": "Trabajando"
+  },
+  "actions": {
+    "fork": "Bifurcar el chat desde aquí"
+  },
+  "fork": {
+    "chat": "Bifurcar chat",
+    "done": "Bifurcado en un chat nuevo.",
+    "failed": "No se pudo bifurcar este chat."
   }
 }

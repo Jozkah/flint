@@ -46,5 +46,13 @@
     "steps_one": "{{count}} Schritt",
     "steps_other": "{{count}} Schritte",
     "working": "Arbeitet"
+  },
+  "actions": {
+    "fork": "Chat ab hier verzweigen"
+  },
+  "fork": {
+    "chat": "Chat verzweigen",
+    "done": "In einen neuen Chat verzweigt.",
+    "failed": "Dieser Chat konnte nicht verzweigt werden."
   }
 }

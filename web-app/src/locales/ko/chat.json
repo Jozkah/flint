@@ -45,5 +45,13 @@
   "transcriptView": {
     "steps_other": "{{count}}단계",
     "working": "작업 중"
+  },
+  "actions": {
+    "fork": "여기서 채팅 분기"
+  },
+  "fork": {
+    "chat": "채팅 분기",
+    "done": "새 채팅으로 분기했습니다.",
+    "failed": "이 채팅을 분기하지 못했습니다."
   }
 }

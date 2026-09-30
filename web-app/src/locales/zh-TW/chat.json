@@ -45,5 +45,13 @@
   "transcriptView": {
     "steps_other": "{{count}} 個步驟",
     "working": "處理中"
+  },
+  "actions": {
+    "fork": "從此處分岔對話"
+  },
+  "fork": {
+    "chat": "分岔對話",
+    "done": "已分岔為新對話。",
+    "failed": "無法分岔此對話。"
   }
 }

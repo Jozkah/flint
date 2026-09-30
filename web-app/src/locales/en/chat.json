@@ -47,7 +47,8 @@
     "copy": "Copy",
     "regenerate": "Regenerate response",
     "continue": "Continue generating",
-    "delete": "Delete"
+    "delete": "Delete",
+    "fork": "Fork chat from here"
   },
   "done": "Done",
   "webSources": "{{count}} source(s)",
@@ -100,5 +101,10 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "working": "Working"
+  },
+  "fork": {
+    "chat": "Fork chat",
+    "done": "Forked into a new chat.",
+    "failed": "Could not fork this chat."
   }
 }

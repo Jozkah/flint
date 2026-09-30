@@ -49,5 +49,13 @@
   "transcriptView": {
     "steps_other": "{{count}} ステップ",
     "working": "作業中"
+  },
+  "actions": {
+    "fork": "ここからチャットを分岐"
+  },
+  "fork": {
+    "chat": "チャットを分岐",
+    "done": "新しいチャットに分岐しました。",
+    "failed": "このチャットを分岐できませんでした。"
   }
 }

@@ -47,5 +47,13 @@
     "steps_many": "{{count}} passaggi",
     "steps_other": "{{count}} passaggi",
     "working": "In corso"
+  },
+  "actions": {
+    "fork": "Crea una diramazione della chat da qui"
+  },
+  "fork": {
+    "chat": "Crea diramazione della chat",
+    "done": "Diramazione creata in una nuova chat.",
+    "failed": "Impossibile creare una diramazione di questa chat."
   }
 }

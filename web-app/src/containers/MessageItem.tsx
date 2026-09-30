@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  GitFork,
   Loader,
   Paperclip,
   Play,
@@ -90,6 +91,8 @@ export type MessageItemProps = {
   onReasoningScroll?: () => void
   onReasoningScrollToBottom?: () => void
   onRegenerate?: (messageId: string) => void
+  /** Fork the conversation into a new chat that starts at this message. */
+  onFork?: (messageId: string) => void
   onContinue?: (messageId: string) => void
   onEdit?: (messageId: string, newText: string) => void
   onDelete?: (messageId: string) => void
@@ -132,6 +135,7 @@ export const MessageItem = memo(
     onReasoningScroll,
     onReasoningScrollToBottom,
     onRegenerate,
+    onFork,
     onContinue,
     onEdit,
     onDelete,
@@ -885,6 +889,19 @@ export const MessageItem = memo(
 
               {onDelete && !isStreaming && (
                 <DeleteMessageDialog onDelete={handleDelete} />
+              )}
+
+              {onFork && !isStreaming && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className={ACTION_BUTTON}
+                  onClick={() => onFork(message.id)}
+                  title={t('chat:actions.fork')}
+                  aria-label={t('chat:actions.fork')}
+                >
+                  <GitFork className="size-4" />
+                </Button>
               )}
 
                 {selectedModel &&

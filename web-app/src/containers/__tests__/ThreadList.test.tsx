@@ -11,6 +11,7 @@ vi.mock('@tanstack/react-router', () => ({
   ),
   useParams: ({ select }: any = {}) =>
     select ? select({ threadId: undefined }) : { threadId: undefined },
+  useNavigate: () => vi.fn(),
 }))
 
 vi.mock('@/i18n/react-i18next-compat', () => ({

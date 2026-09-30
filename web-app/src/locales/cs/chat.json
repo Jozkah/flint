@@ -48,5 +48,13 @@
     "steps_many": "{{count}} kroku",
     "steps_other": "{{count}} kroků",
     "working": "Pracuji"
+  },
+  "actions": {
+    "fork": "Rozvětvit chat odsud"
+  },
+  "fork": {
+    "chat": "Rozvětvit chat",
+    "done": "Rozvětveno do nového chatu.",
+    "failed": "Tento chat se nepodařilo rozvětvit."
   }
 }

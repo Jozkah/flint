@@ -48,5 +48,13 @@
     "steps_many": "{{count}} kroków",
     "steps_other": "{{count}} kroku",
     "working": "Pracuję"
+  },
+  "actions": {
+    "fork": "Rozgałęź czat od tego miejsca"
+  },
+  "fork": {
+    "chat": "Rozgałęź czat",
+    "done": "Rozgałęziono do nowego czatu.",
+    "failed": "Nie udało się rozgałęzić tego czatu."
   }
 }
