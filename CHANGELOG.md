@@ -64,6 +64,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 ### Search, MCP and interface additions
 
 - Added a DuckDuckGo MCP preset using `uvx duckduckgo-mcp-server`.
+- Added **DuckDuckGo** as a native web-search provider that needs no API key, account or instance URL. Results are read in page order with ads and repeated links dropped, and a bot check is reported as an error that names the way out instead of an empty result list.
+- Naming a configured MCP server that is off now offers to enable it, instead of the model silently going without its tools.
+- The model picker searches by the remote a model sits behind and labels each row with it when more than one remote offers the same model.
 - Native web-search providers can show their real favicon in Flint UI surfaces.
 - Added a **New group** action to the Move to group flow.
 - Compact split-pane labels use **Auto** / **Edit** while retaining full accessible labels.
@@ -90,6 +93,28 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The title bar and brand mark use the **real Flint application icon** generated from the app's canonical icon source.
 - The installer exposes install location, desktop shortcut and launch-after-install choices while retaining Tauri's packaging/update engine underneath.
 - NSIS UI compilation runs with `/WX`, treating every NSIS warning as a CI failure before the release-grade Windows bundle build is allowed to run.
+- Added a custom **Flint MSI wizard** in place of the stock WiX dialogs, with full-page artwork from the app's tokens, Inter, bitmap buttons and native install-path and progress controls.
+- The MSI install-location page opens the standard Windows folder picker, and the wizard is compiled and validated in CI on a throwaway product.
+
+### Skills that apply themselves
+
+- Added **bundled-file reading**: `skill_read` takes a `file` argument for the templates, themes and scripts a skill ships, and lists them at the end of the skill, so a skill's own relative paths work in chat and Cowork instead of being refused as outside the workspace.
+- Installed skill and plugin folders are readable by the file tools, read-only; credential files and the project's deny rules still apply.
+- Cowork and chat prompts now list the installed skills (global, plugin and the attached folder's own) with a read-it-first instruction, and Rooms participants with tools get the same wording.
+- Added **automatic activation**: `always: true` in the frontmatter (or **Always active** in the skills manager), `triggers:` phrases, or an optional JEV pick place a skill's instructions in that turn's prompt, within a size budget.
+- Skills from plugins or an opened repository are never trusted into the system prompt by their own frontmatter. A trigger only tells the model to read the skill, and always-active needs the user's opt-in, kept per folder for project skills.
+- Work profiles now apply to normal chat as well as Cowork, with the same picker, and run alongside skill activation and assistant routing instead of one after another.
+
+### Context and speed in chat
+
+- Added a **context circle** to the composer in Chat and Cowork. Hovering shows a card with a bar coloured by kind (messages, system tools, MCP tools, skills, memory, system prompt), the tokens left before auto-compact, **Compact session**, and an expandable breakdown that opens onto each MCP server and tool.
+- Providers that report no window size get an empty ring with the same card.
+- The hover card shows the latest reply's generation speed and the conversation's average.
+
+### Hugging Face Discover
+
+- Added a **Browse Hugging Face** button to the Models page, and Discover entry points from onboarding, from an empty local provider and from `flint://` and `jan://` model links. The sidebar row counts active downloads.
+- Discover shows model avatars and Hugging Face author pictures, capability chips, fit badges with MLX fit, a sturdier memory estimate and a highlighted recommendation for the device.
 
 ## Core Flint capabilities
 
@@ -184,6 +209,7 @@ These are kept because they fix behavior inherited from the Jan base rather than
 - Preserve thread/message integrity across deletes and concurrent saves, including safe handling of unreadable thread metadata.
 - Keep provider/model selection consistent when providers are added, removed or temporarily unreachable.
 - Keep the model selector's search popup inside the window while typing instead of letting it slide off-screen.
+- Keep the composer's assistant, sampling, tools and web-search controls usable while a reply streams; they apply to the next message.
 - Harden archive extraction, secret storage, proxy forwarding and Local API Server request handling inherited from the base application.
 
 ---
