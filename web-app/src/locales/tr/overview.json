@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "Ort. hız"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

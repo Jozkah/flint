@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn } from '@/lib/utils'
+import { cn, getProviderTitle } from '@/lib/utils'
 import {
   change,
   summarize,
@@ -384,14 +384,50 @@ type RunRow = {
   index: number
   title: string
   model: string
+  /** The remote (provider) the model ran on, so two copies of one model differ. */
+  provider: string | null
   status: 'running' | 'approval' | 'done' | 'idle'
   started: number | null
   tokens: number
+  /** Generated tokens per second, averaged over the run's replies. */
+  speed: number | null
+}
+
+/**
+ * Average generation speed across a session's replies, weighted by the tokens
+ * each produced so a one-line reply does not count as much as a long one.
+ * `null` when no reply reported a speed.
+ */
+function averageTokenSpeed(turns: CoworkSession['turns']): number | null {
+  let weighted = 0
+  let weight = 0
+  for (const tu of turns) {
+    const speed = tu.tokenSpeed?.tokenSpeed
+    if (!speed || !Number.isFinite(speed) || speed <= 0) continue
+    const w = tu.tokenSpeed?.tokenCount ?? tu.usage?.completion_tokens ?? 1
+    weighted += speed * w
+    weight += w
+  }
+  return weight > 0 ? weighted / weight : null
+}
+
+/**
+ * When the run started: the session's own creation time, else the earliest
+ * timestamp a turn carries, else the last time it changed. Sessions saved
+ * before `createdAt` existed have no turn-level start either (only tool calls
+ * carry one), which is why the column used to read "—" for them.
+ */
+function runStartedAt(s: Pick<CoworkSession, 'createdAt' | 'turns' | 'updated'>): number | null {
+  if (s.createdAt) return s.createdAt
+  const stamps = s.turns.map((tu) => tu.startedAt).filter((v): v is number => Boolean(v))
+  if (stamps.length) return Math.min(...stamps)
+  return s.updated || null
 }
 
 function runsFrom(sessions: CoworkSession[], running: Record<string, unknown>): RunRow[] {
   return sessions.map((s, i) => {
-    const started = s.turns.find((tu) => tu.startedAt)?.startedAt ?? null
+    const started = runStartedAt(s)
+    const speed = averageTokenSpeed(s.turns)
     const tokens = s.turns.reduce((n, tu) => n + (tu.usage?.completion_tokens ?? tu.tokenSpeed?.tokenCount ?? 0), 0)
     const asksOpen = s.turns.some((tu) => (tu.asks ?? []).some((a) => !(a as { answer?: unknown }).answer))
     return {
@@ -399,9 +435,11 @@ function runsFrom(sessions: CoworkSession[], running: Record<string, unknown>): 
       index: i,
       title: s.title,
       model: s.model?.id ?? '—',
+      provider: s.model?.provider ? getProviderTitle(s.model.provider) : null,
       status: running[s.id] ? 'running' : asksOpen ? 'approval' : s.turns.length ? 'done' : 'idle',
       started,
       tokens,
+      speed,
     }
   })
 }
@@ -424,7 +462,7 @@ function AgentRuns() {
   const visible = rows.filter(
     (r) =>
       (filter === 'all' || r.status === filter) &&
-      (!q || `${r.title} ${r.model}`.toLowerCase().includes(q.toLowerCase()))
+      (!q || `${r.title} ${r.model} ${r.provider ?? ''}`.toLowerCase().includes(q.toLowerCase()))
   )
   const open = (id: string) => {
     useCoworkSessions.getState().selectSession(id)
@@ -482,14 +520,15 @@ function AgentRuns() {
           <table className="w-full min-w-[720px] border-separate border-spacing-0 text-[0.8125rem]" aria-label={t('overview:runs')}>
             <thead>
               <tr className="text-left text-secondary-foreground">
-                {['run', 'task', 'model', 'status', 'started', 'tokens'].map((c, i, a) => (
+                {['run', 'task', 'model', 'status', 'started', 'speed', 'tokens'].map((c, i, a) => (
                   <th
                     key={c}
                     scope="col"
                     className={cn(
                       'h-9 bg-secondary px-3 font-normal whitespace-nowrap',
                       i === 0 && 'rounded-l-lg',
-                      i === a.length - 1 && 'rounded-r-lg text-right'
+                      i === a.length - 1 && 'rounded-r-lg',
+                      (c === 'speed' || c === 'tokens') && 'text-right'
                     )}
                   >
                     <span className="inline-flex items-center gap-1.5">
@@ -516,6 +555,7 @@ function AgentRuns() {
                       <span className="inline-flex items-center gap-1.5">
                         <BrandMark logo={modelLogo(r.model)} name={r.model} size={16} tone="bare" />
                         {r.model}
+                        {r.provider && <span className="text-subtle-foreground">· {r.provider}</span>}
                       </span>
                     </td>
                     <td className="border-b border-border/60 px-3">
@@ -525,7 +565,21 @@ function AgentRuns() {
                       </span>
                     </td>
                     <td className="border-b border-border/60 px-3 text-cell tabular-nums whitespace-nowrap">
-                      {r.started ? new Date(r.started).toLocaleDateString(i18n.language) : '—'}
+                      {r.started ? (
+                        <time dateTime={new Date(r.started).toISOString()} title={new Date(r.started).toLocaleString(i18n.language)}>
+                          {new Date(r.started).toLocaleString(i18n.language, {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: 'numeric',
+                            minute: '2-digit',
+                          })}
+                        </time>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="border-b border-border/60 px-3 text-right text-cell tabular-nums whitespace-nowrap">
+                      {r.speed ? t('overview:tokensPerSecond', { value: r.speed.toFixed(r.speed >= 100 ? 0 : 1) }) : '—'}
                     </td>
                     <td className="border-b border-border/60 px-3 text-right text-cell tabular-nums">{r.tokens ? compact(r.tokens) : '—'}</td>
                     <td className="border-b border-border/60 px-1 text-right">

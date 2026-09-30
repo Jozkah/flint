@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "Tốc độ TB"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

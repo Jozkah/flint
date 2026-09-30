@@ -215,6 +215,12 @@ export type CoworkSession = {
    */
   handoff?: HandoffRecord
   updated: number
+  /**
+   * When the session was created (epoch millis). Absent on sessions saved
+   * before it existed; the Agent Runs table falls back to the first timestamp
+   * a turn carries, then to `updated`.
+   */
+  createdAt?: number
 }
 
 /**
@@ -422,6 +428,7 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
           turns: [],
           messages: [],
           updated: now(),
+          createdAt: now(),
         }
         // Starting a new one leaves any blank session behind it: a blank
         // holds nothing, so keeping it only lengthens the list.
@@ -1169,6 +1176,7 @@ export function startPaneSessionParked(
     turns: [],
     messages: [],
     updated: Date.now(),
+    createdAt: Date.now(),
   }
   useCoworkSessions.setState((s) => ({ sessions: [session, ...s.sessions] }))
   return { id, parked }
