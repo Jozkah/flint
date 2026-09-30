@@ -1,7 +1,11 @@
 /** Below this many output tokens a tokens/sec figure is noise. */
 export const MIN_SPEED_TOKENS = 8
-/** Below this duration a tokens/sec figure is noise too. */
-export const MIN_SPEED_DURATION_MS = 250
+/**
+ * Below this duration a tokens/sec figure is noise too. The clock starts at
+ * the first output, so a short reply on a fast model really does finish in
+ * well under a quarter of a second; a higher floor hid those replies' speed.
+ */
+export const MIN_SPEED_DURATION_MS = 50
 
 /**
  * Whether a generation speed is worth showing. A 7-token reply timed over a

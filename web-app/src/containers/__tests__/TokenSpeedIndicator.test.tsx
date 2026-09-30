@@ -12,7 +12,7 @@ describe('isMeaningfulSpeed', () => {
   it('rejects tiny replies and very short durations', () => {
     expect(isMeaningfulSpeed(7, 6)).toBe(false)
     expect(isMeaningfulSpeed(7, 5000)).toBe(false)
-    expect(isMeaningfulSpeed(500, 100)).toBe(false)
+    expect(isMeaningfulSpeed(500, 30)).toBe(false)
   })
   it('accepts a real generation', () => {
     expect(isMeaningfulSpeed(1284, 30350)).toBe(true)
@@ -46,6 +46,8 @@ describe('a short reply still gets a speed', () => {
   it('counts a 20-token reply over a quarter second, which used to be hidden', () => {
     expect(isMeaningfulSpeed(20, 300)).toBe(true)
     expect(isMeaningfulSpeed(8, 250)).toBe(true)
+    // A short reply on a fast model: 15 tokens in 110ms is a real speed.
+    expect(isMeaningfulSpeed(15, 110)).toBe(true)
   })
 })
 

@@ -875,10 +875,12 @@ export const MessageItem = memo(
               <div
                 className={cn(
                   'flex items-center gap-0.5',
-                  // The latest reply keeps its actions in view: retrying or
-                  // continuing it is the likely next step.
-                  !isLastMessage && REVEAL_ACTIONS,
-                  (isStreaming || hideActions) && 'hidden'
+                  // Every reply shows only its speed and tokens until hovered;
+                  // the actions then take their room and the figures move
+                  // right. Touch has no hover, so it always shows them.
+                  isStreaming || hideActions
+                    ? 'hidden'
+                    : 'hidden group-hover/message:flex group-focus-within/message:flex pointer-coarse:flex'
                 )}
               >
                 {versionNav}
