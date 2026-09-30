@@ -72,6 +72,10 @@ pub(crate) fn is_compaction_summary(message: &Value) -> bool {
 /// `None` when the tail would leave nothing worth dropping: the summary is
 /// itself a message, so a prefix of one shrinks nothing.
 fn tail_start(rest: &[Value], target: usize) -> Option<usize> {
+    // `keep_recent == 0` puts the target one past the end.
+    if target >= rest.len() {
+        return None;
+    }
     if role(&rest[target]) == "tool" {
         let mut start = target;
         while start > 0 && role(&rest[start]) == "tool" {
@@ -300,7 +304,11 @@ async fn summarize(
     // Character counts are only a rough proxy for tokens. Token-dense tool
     // output can make even the clamped request overflow a small local window.
     // Retry with less transcript, preserving its beginning and end each time.
-    let mut excerpt_chars = SUMMARY_INPUT_CHARS;
+    // A short transcript is sent whole; asking for 48k of it would only repeat
+    // the identical request on each retry.
+    let mut excerpt_chars = SUMMARY_INPUT_CHARS
+        .min(full_transcript.chars().count())
+        .max(MIN_SUMMARY_INPUT_CHARS);
     let mut best_summary: Option<String> = None;
     let mut short_summary_retries = 0;
     loop {
@@ -355,7 +363,8 @@ async fn summarize(
                     }
                     excerpt_chars = (excerpt_chars / 2).max(MIN_SUMMARY_INPUT_CHARS);
                 } else {
-                    return Ok(FALLBACK_NOTE.to_string());
+                    // A summary already in hand beats the canned note.
+                    return Ok(best_summary.unwrap_or_else(|| FALLBACK_NOTE.to_string()));
                 }
             }
         }
@@ -778,6 +787,83 @@ mod tests {
         let compacted = compact_conversation(&input, "m", &model, 4).await.unwrap();
         assert!(compacted[1]["content"].as_str().unwrap().contains("Completed tool actions"));
         assert_eq!(*model.calls.lock().unwrap(), 2);
+    }
+
+    /// Answers briefly once, then fails with an ordinary (non-overflow) error.
+    struct BriefThenBrokenModel {
+        calls: StdMutex<usize>,
+    }
+
+    #[async_trait]
+    impl ModelInvoker for BriefThenBrokenModel {
+        async fn invoke(
+            &self,
+            _request: &Value,
+            _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+        ) -> Result<Value, HarnessError> {
+            let mut calls = self.calls.lock().unwrap();
+            *calls += 1;
+            if *calls == 1 {
+                Ok(json!({ "choices": [{ "message": { "content": "Done." } }] }))
+            } else {
+                Err("boom".to_string().into())
+            }
+        }
+    }
+
+    /// A summary already in hand survives a later, non-overflow failure.
+    #[tokio::test]
+    async fn a_later_ordinary_error_keeps_the_summary_already_obtained() {
+        let model = BriefThenBrokenModel { calls: StdMutex::new(0) };
+        let mut input = convo(20);
+        input[1]["content"] = json!("x".repeat(10_000));
+        let out = compact_conversation(&input, "m", &model, 4).await.unwrap();
+        let text = out[1]["content"].as_str().unwrap();
+        assert!(text.contains("Done."), "{text}");
+        assert!(!text.contains(FALLBACK_NOTE), "{text}");
+        assert_eq!(*model.calls.lock().unwrap(), 2);
+    }
+
+    struct CountingOverflowModel {
+        calls: StdMutex<usize>,
+    }
+
+    #[async_trait]
+    impl ModelInvoker for CountingOverflowModel {
+        async fn invoke(
+            &self,
+            _request: &Value,
+            _events: &mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
+        ) -> Result<Value, HarnessError> {
+            *self.calls.lock().unwrap() += 1;
+            Err(format!(
+                "[{}] prompt is too long",
+                crate::core::agent::upstream::CONTEXT_OVERFLOW_MARKER
+            )
+            .into())
+        }
+    }
+
+    /// A short transcript is already smaller than every retry size, so the
+    /// overflow must surface on the first call rather than repeat it.
+    #[tokio::test]
+    async fn a_short_transcript_is_not_retried_at_identical_sizes() {
+        let model = CountingOverflowModel { calls: StdMutex::new(0) };
+        let input = convo(20);
+        let error = compact_conversation(&input, "m", &model, 4)
+            .await
+            .expect_err("overflow must surface");
+        assert_eq!(error.kind(), ErrorKind::ContextOverflow);
+        assert_eq!(*model.calls.lock().unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn keeping_zero_recent_messages_does_not_panic() {
+        let input = convo(20);
+        let out = compact_conversation(&input, "m", &FailingModel, 0)
+            .await
+            .unwrap();
+        assert_eq!(out, input);
     }
 
     /// One prompt driving a long agentic run is the normal shape here: a single
