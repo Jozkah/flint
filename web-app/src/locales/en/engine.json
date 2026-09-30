@@ -8,6 +8,7 @@
     "title": "Models",
     "description": "Local models run on this machine. Remote providers use your API keys.",
     "importGguf": "Import GGUF",
+    "browseHuggingFace": "Browse Hugging Face",
     "startFailed": "Could not start {{model}}"
   },
   "kpi": {

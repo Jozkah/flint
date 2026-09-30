@@ -311,18 +311,29 @@ function ModelProviders() {
           title={t('engine:models.title')}
           description={t('engine:models.description')}
           actions={
-            llamacpp && (
-              <ImportLlamacppModelDialog
-                provider={llamacpp}
-                onSuccess={() => void refreshProviders()}
-                trigger={
-                  <Button variant="outline" size="sm" className="pointer-coarse:h-11">
-                    <Icon name="x-download" size={14} />
-                    {t('engine:models.importGguf')}
-                  </Button>
-                }
-              />
-            )
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="pointer-coarse:h-11"
+                onClick={() => navigate({ to: route.hub.index })}
+              >
+                <Icon name="search" size={14} />
+                {t('engine:models.browseHuggingFace')}
+              </Button>
+              {llamacpp && (
+                <ImportLlamacppModelDialog
+                  provider={llamacpp}
+                  onSuccess={() => void refreshProviders()}
+                  trigger={
+                    <Button variant="outline" size="sm" className="pointer-coarse:h-11">
+                      <Icon name="x-download" size={14} />
+                      {t('engine:models.importGguf')}
+                    </Button>
+                  }
+                />
+              )}
+            </>
           }
         />
 
