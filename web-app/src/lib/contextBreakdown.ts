@@ -153,8 +153,8 @@ export type ReconciledBreakdown = {
  * Everything except the messages is fixed for a request, so the messages are
  * what the total leaves over: this keeps the bar current as the conversation
  * grows past the request that was measured. A total that leaves less than was
- * measured for the messages is not believed over the measurement. A total
- * that leaves more than the messages can account for is shown as "Unmeasured".
+ * measured for the messages shrinks every part in proportion (the estimate is
+ * blunt, the count is not). A total that leaves more than the messages can account for is shown as "Unmeasured".
  */
 export function reconcileBreakdown(
   breakdown: ContextBreakdown,
@@ -163,7 +163,24 @@ export function reconcileBreakdown(
   const measured = breakdown.segments
   const sum = measured.reduce((n, s) => n + s.tokens, 0)
   const total = totalTokens && totalTokens > 0 ? totalTokens : sum
-  if (total <= sum) return { usedTokens: sum, segments: measured }
+  if (total === sum) return { usedTokens: sum, segments: measured }
+  // The provider counts fewer tokens than the estimates add up to (the
+  // estimate is blunt and runs high on some text): believe the count, and shrink
+  // every part by the same factor so the bar, the rows and the ring agree.
+  if (total < sum) {
+    const k = total / sum
+    const shrink = (n: number) => Math.round(n * k)
+    return {
+      usedTokens: total,
+      segments: measured.map((s) => ({
+        ...s,
+        tokens: shrink(s.tokens),
+        ...(s.children
+          ? { children: s.children.map((c) => ({ ...c, tokens: shrink(c.tokens) })) }
+          : {}),
+      })),
+    }
+  }
   const extra = total - sum
   const messages = measured.find((s) => s.id === 'messages')
   // The conversation grew since the request was measured: that is where the

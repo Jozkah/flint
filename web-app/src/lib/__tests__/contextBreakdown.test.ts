@@ -67,10 +67,18 @@ describe('reconcileBreakdown', () => {
   })
   const sum = (segs: { tokens: number }[]) => segs.reduce((n, s) => n + s.tokens, 0)
 
-  it('keeps the measurement when the total is not larger', () => {
-    const r = reconcileBreakdown(base, 1)
+  it('keeps the measurement when it already adds up to the total', () => {
+    const r = reconcileBreakdown(base, sum(base.segments))
     expect(r.segments).toBe(base.segments)
-    expect(r.usedTokens).toBe(sum(base.segments))
+  })
+
+  it('believes a smaller count over the estimate and shrinks every part to fit it', () => {
+    const total = Math.round(sum(base.segments) / 2)
+    const r = reconcileBreakdown(base, total)
+    expect(r.usedTokens).toBe(total)
+    expect(Math.abs(sum(r.segments) - total)).toBeLessThanOrEqual(r.segments.length)
+    const before = base.segments.find((s) => s.id === 'messages')!.tokens
+    expect(r.segments.find((s) => s.id === 'messages')!.tokens).toBeLessThan(before)
   })
 
   it('gives the growth since the request to the messages, so the parts add up to the total', () => {
