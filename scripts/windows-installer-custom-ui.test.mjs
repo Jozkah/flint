@@ -71,7 +71,10 @@ test('installer template transformation creates the complete Flint wizard', asyn
     generated,
     /\$\{ElseIf\} \$FlintLaunchState = 1[\s\S]{0,120}Call RunMainBinary/
   )
-  assert.match(generated, /SetAutoClose false/)
+  // The progress pages must advance on their own: the native Next button is
+  // parked off-screen, so SetAutoClose false would strand the user on "Completed".
+  assert.doesNotMatch(generated, /SetAutoClose false/)
+  assert.equal(generated.match(/^\s*SetAutoClose true$/gm)?.length, 2)
 })
 
 test('template preparation preserves Windows ARM64 retargeting', async () => {
@@ -111,15 +114,27 @@ test('Flint UI uses the real app icon, Inter and the expected page copy', async 
   assert.match(ui, /Install Flint/)
   assert.match(ui, /Choose installation options/)
   assert.match(ui, /Flint is ready/)
-  assert.match(ui, /\$FlintLaunchState = 1[\s\S]*"Launch Flint" FlintFinishLaunch/)
-  assert.match(ui, /"Finish" FlintFinishClose/)
+  assert.match(ui, /\$FlintLaunchState = 1[\s\S]*_FlintButton primary launch \d+ \$\{FLINT_FOOT_Y\} FlintFinishLaunch/)
+  assert.match(ui, /_FlintButton primary finish \d+ \$\{FLINT_FOOT_Y\} FlintFinishClose/)
 })
+
+const wizardAssets = [
+  'btn-uninstall.bmp',
+  'btn-cancel.bmp',
+  'switch-on.bmp',
+  'switch-off.bmp',
+  'field.bmp',
+  'radio-on.bmp',
+  'radio-off.bmp',
+  ...['continue', 'install', 'launch', 'finish', 'close'].map((slug) => `btn-primary-${slug}.bmp`),
+  ...['cancel', 'back', 'browse', 'close'].map((slug) => `btn-outline-${slug}.bmp`),
+]
 
 test('every bitmap used by the custom UI exists at every theme and DPI', async () => {
   const files = []
   for (const theme of ['light', 'dark']) {
     for (const scale of [100, 125, 150, 200]) {
-      for (const asset of ['btn-uninstall.bmp', 'btn-cancel.bmp', 'switch-on.bmp', 'switch-off.bmp']) {
+      for (const asset of wizardAssets) {
         files.push(
           new URL(`../src-tauri/installer/windows/${theme}/${scale}/${asset}`, import.meta.url)
         )
@@ -127,7 +142,7 @@ test('every bitmap used by the custom UI exists at every theme and DPI', async (
     }
   }
   await Promise.all(files.map((file) => access(file)))
-  assert.equal(files.length, 32)
+  assert.equal(files.length, wizardAssets.length * 8)
 })
 
 test('reinstall version state survives the custom page helpers', async () => {
@@ -160,5 +175,21 @@ test('install location cannot be a drive root or a folder without an app directo
   const body = leave.slice(0, leave.indexOf('\nFunctionEnd'))
   assert.match(body, /drive root/)
   assert.match(body, /full install path/)
-  assert.ok(body.indexOf('Abort') < body.indexOf('GetFullPathName $INSTDIR'))
+  assert.ok(body.indexOf('Abort') < body.indexOf('GetFullPathName $1 $0'))
+  // GetFullPathName gives an empty string for a folder that does not exist
+  // yet (a first install), so $INSTDIR must fall back to the validated path.
+  assert.match(body, /\$\{OrIf\} \$1 == ""\s+StrCpy \$1 \$0/)
+  assert.match(body, /StrCpy \$INSTDIR \$1/)
+})
+
+test('every Flint button is an nsDialogs bitmap, never a raw CreateWindowExW static', async () => {
+  const ui = (await readInstallerUi()).replace(/\r\n/g, '\n')
+  // A STATIC made with CreateWindowExW never reaches ${NSD_OnClick}: the
+  // button would render and do nothing.
+  assert.doesNotMatch(ui, /CreateWindowExW\(i 0, w "STATIC", w "\$\{label\}"/)
+  assert.doesNotMatch(ui, /_FlintPrimaryButton|_FlintSecondaryButton/)
+  const macro = ui.slice(ui.indexOf('!macro _FlintButton'))
+  const body = macro.slice(0, macro.indexOf('!macroend'))
+  assert.match(body, /NSD_CreateBitmap/)
+  assert.match(body, /NSD_OnClick/)
 })
