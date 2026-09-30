@@ -287,5 +287,16 @@
     }
   },
   "backendInstallSuccess": "Backend został pomyślnie zainstalowany",
-  "backendInstallError": "Nie udało się zainstalować backendu"
+  "backendInstallError": "Nie udało się zainstalować backendu",
+  "imageDescription": {
+    "title": "Obrazy i modele tylko tekstowe",
+    "enabled": "Opisuj obrazy dla modeli, które ich nie widzą",
+    "enabledDesc": "Model bez wizji dostaje zamiast każdego załączonego obrazu opis napisany przez model, który widzi. Po wyłączeniu nie dostaje nic o obrazie.",
+    "model": "Model opisujący",
+    "modelDesc": "Model, który pisze opisy. Model lokalny jest używany tylko wtedy, gdy wybierzesz go tutaj.",
+    "modelAuto": "Automatycznie (pierwszy zdalny model, który widzi)",
+    "noVisionModel": "Brak modelu, który widzi. Dodaj go lub oznacz model jako obsługujący obraz.",
+    "embed": "Umożliwij wyszukiwanie w załączonych obrazach",
+    "embedDesc": "Zapisuje też opis każdego obrazu wraz z dokumentami czatu, aby można go było później wyszukać. Każdy załączony obraz jest wysyłany do modelu opisującego."
+  }
 }

@@ -325,5 +325,16 @@
     }
   },
   "backendInstallSuccess": "Backend installé avec succès",
-  "backendInstallError": "Échec de l'installation du backend"
+  "backendInstallError": "Échec de l'installation du backend",
+  "imageDescription": {
+    "title": "Images et modèles texte seul",
+    "enabled": "Décrire les images pour les modèles qui ne voient pas",
+    "enabledDesc": "Un modèle sans vision reçoit, à la place de chaque image jointe, une description écrite par un modèle qui voit. Désactivé, il ne reçoit rien de l'image.",
+    "model": "Modèle de description",
+    "modelDesc": "Le modèle qui écrit les descriptions. Un modèle local n'est utilisé que si vous le choisissez ici.",
+    "modelAuto": "Automatique (premier modèle distant qui voit)",
+    "noVisionModel": "Aucun modèle capable de voir n'est disponible. Ajoutez-en un ou marquez un modèle comme capable de voir.",
+    "embed": "Rendre les images jointes recherchables",
+    "embedDesc": "Stocke aussi la description de chaque image avec les documents du chat pour pouvoir la rechercher. Cela envoie chaque image jointe au modèle de description."
+  }
 }

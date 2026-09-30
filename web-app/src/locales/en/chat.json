@@ -100,7 +100,33 @@
   "transcriptView": {
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
-    "working": "Working"
+    "working": "Working",
+    "failed": "Failed:",
+    "failedToRun": "Failed to run",
+    "summary": {
+      "failed": "{{count}} failed",
+      "commands_one": "ran {{count}} command",
+      "commands_other": "ran {{count}} commands",
+      "created_one": "created {{count}} file",
+      "created_other": "created {{count}} files",
+      "edited_one": "edited {{count}} file",
+      "edited_other": "edited {{count}} files",
+      "read_one": "read {{count}} file",
+      "read_other": "read {{count}} files",
+      "searched_one": "searched {{count}} time",
+      "searched_other": "searched {{count}} times",
+      "tools_one": "used {{count}} tool",
+      "tools_other": "used {{count}} tools"
+    }
+  },
+  "browserCard": {
+    "opened": "Opened in Browser",
+    "ready": "Ready to open",
+    "open": "Open",
+    "more": "More",
+    "copy": "Copy link",
+    "copied": "Link copied.",
+    "failed": "Could not open the browser."
   },
   "fork": {
     "chat": "Fork chat",

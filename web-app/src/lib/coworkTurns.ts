@@ -150,7 +150,16 @@ export function coworkTurnsToUIMessages(
       messages.push({
         id: `${idPrefix}-user-${i}`,
         role: 'user',
-        parts: [{ type: 'text', text: turn.content }],
+        parts: [
+          { type: 'text', text: turn.content },
+          // Images attached to the message, so the transcript can show them.
+          ...(turn.images ?? []).map((url, n) => ({
+            type: 'file',
+            mediaType: /^data:([^;,]+)/.exec(url)?.[1] ?? 'image/png',
+            url,
+            filename: `Image ${n + 1}`,
+          })),
+        ],
         ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       } as any)
       return

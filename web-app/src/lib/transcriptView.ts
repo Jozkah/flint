@@ -51,7 +51,14 @@ export function partitionTrace<E extends TraceEntry>(
       const pending = Boolean(
         part.toolCallId && isAwaitingApproval(part.toolCallId)
       )
-      if (pending || (view === 'thinking' && part.state === 'output-error'))
+      // A page shown to the user stays in view: it is the result, not a step.
+      const shown =
+        part.type === 'tool-open_in_browser' && part.state === 'output-available'
+      if (
+        pending ||
+        shown ||
+        (view === 'thinking' && part.state === 'output-error')
+      )
         out.pinned.push(entry)
       else out.steps.push(entry)
     } else if (view === 'thinking') {

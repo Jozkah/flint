@@ -238,6 +238,11 @@ export type ToolHeaderProps = {
   badge?: ReactNode
   /** The call failed in-band (see `Tool`). */
   failed?: boolean
+  /**
+   * One line saying what the call did, in place of the status word, origin
+   * and argument. Used for the rows of a folded run.
+   */
+  sentence?: ReactNode
 }
 
 type TranslateFn = (key: string, options?: Record<string, unknown>) => string
@@ -283,6 +288,7 @@ export const ToolHeader = memo(
     argNode,
     badge,
     failed = false,
+    sentence,
   }: ToolHeaderProps) => {
     const { t } = useTranslation()
     const { isOpen, toolCallId } = useTool()
@@ -340,6 +346,16 @@ export const ToolHeader = memo(
             running={workState === 'running'}
           />
         </span>
+        {sentence !== undefined ? (
+          <span
+            data-slot="tool-sentence"
+            data-state={workState}
+            className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground group-hover/tool-row:text-foreground"
+          >
+            {sentence}
+          </span>
+        ) : (
+          <>
         <span
           data-state={workState}
           className="min-w-0 shrink-0 truncate font-medium text-(--tk)"
@@ -363,6 +379,8 @@ export const ToolHeader = memo(
           </span>
         ) : (
           <span className="flex-1" />
+        )}
+          </>
         )}
         {badge && (
           <span className="hidden shrink-0 items-center gap-2 sm:inline-flex">
