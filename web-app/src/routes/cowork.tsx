@@ -71,6 +71,7 @@ import {
   useCoworkSessions,
   ensureCurrentSession,
   startPaneSession,
+  startPaneSessionParked,
 } from '@/hooks/useCoworkSessions'
 import { useSessionWorkspacePath } from '@/hooks/useSessionWorkspacePath'
 import { useSplitConversation } from '@/hooks/useSplitConversation'
@@ -5721,19 +5722,34 @@ export function CoworkPage() {
                       onNewSession={() => {
                         // Same rule as the sidebar's entry point: one press,
                         // at most one session. An unsent draft is parked on
-                        // the session being left (held input), so the new one
-                        // opens blank.
+                        // the session being left (held input) when it has
+                        // content, so the new one opens blank.
+                        const paneId = sidePaneIdRef.current
+                        const paneSid = paneSessionIdRef.current
+                        const prompts = usePrompt.getState()
+                        const scope = coworkPane?.draftScope
+                        if (paneId && paneSid && scope) {
+                          // From a pane beside the main one: judged on that
+                          // pane's session and draft, opened in that pane.
+                          const { id, parked } = startPaneSessionParked(paneSid, {
+                            running,
+                            draft: prompts.scoped[scope]?.prompt,
+                          })
+                          useSplitConversation
+                            .getState()
+                            .setPaneTarget(paneId, { kind: 'cowork', refId: id })
+                          if (parked) prompts.setScopedPrompt(scope, '')
+                          return
+                        }
                         const store = useCoworkSessions.getState()
-                        const id = store.startSession({
+                        const { id, parked } = store.startSessionParked({
                           running,
-                          draft: usePrompt.getState().prompt,
+                          draft: prompts.prompt,
                         })
                         store.selectSession(id)
-                        // The draft is parked on the session being left, so
-                        // the composer clears here, not in the store: the
-                        // store is the session layer, the composer is the
-                        // surface's.
-                        usePrompt.getState().resetPrompt()
+                        // Cleared here, not in the store, and only when parked:
+                        // otherwise the draft would be lost.
+                        if (parked) prompts.resetPrompt()
                       }}
                     />
                   )}
