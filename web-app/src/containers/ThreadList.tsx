@@ -362,6 +362,7 @@ const ThreadItem = memo(
               <Sparkles className="size-4" />
               <span>{t('chat:regenerateTitle.menu')}</span>
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               data-testid="fork-chat"
               onSelect={() => {
