@@ -88,13 +88,18 @@ const CompactTrace = ({
   const { reasoning, pinned, steps } = partitionTrace(mode, entries, (id) =>
     Boolean(pending[id])
   )
-  const card = ({ part, index }: PartEntry, expanded?: boolean) => (
+  const card = (
+    { part, index }: PartEntry,
+    expanded?: boolean,
+    sentence?: boolean
+  ) => (
     <ToolCallCard
       key={`${messageId}-t-${index}`}
       part={part}
       messageId={messageId}
       citationOffset={citationOffsets.get(index) ?? 0}
       expanded={expanded}
+      sentence={sentence}
       className="mb-1"
     />
   )
@@ -106,6 +111,10 @@ const CompactTrace = ({
   const summaryText = phrases
     .map((p) => t(`chat:transcriptView.summary.${p.key}`, { count: p.count }))
     .join(', ')
+  const failedText =
+    summaryText && summary.failed > 0
+      ? ` (${t('chat:transcriptView.summary.failed', { count: summary.failed })})`
+      : ''
   return (
     <div data-transcript-view={mode} className="mb-2.5 w-full text-muted-foreground">
       {reasoning.length > 0 && (
@@ -137,6 +146,7 @@ const CompactTrace = ({
               <>
                 <span data-testid="transcript-summary">
                   {summaryText.charAt(0).toUpperCase() + summaryText.slice(1)}
+                  {failedText}
                 </span>
                 {(summary.added > 0 || summary.removed > 0) && (
                   <span className="ml-1 font-mono tabular-nums">
@@ -159,7 +169,7 @@ const CompactTrace = ({
             <ol id={listId} className={cn(TIMELINE_RAIL, 'mt-1')}>
               {steps.map((e, i) => (
                 <StepRow key={`${messageId}-s-${e.index}`} index={i}>
-                  {card(e, true)}
+                  {card(e, false, true)}
                 </StepRow>
               ))}
             </ol>

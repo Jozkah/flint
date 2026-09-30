@@ -169,6 +169,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                     "type": "object",
                     "properties": {
                         "command": { "type": "string", "description": "Shell command to run. Omit when managing a background command." },
+                        "description": { "type": "string", "description": "A few words, in the past tense, saying what this command does for the user, e.g. \"Listed project patch files\" or \"Ran the type check\". Shown as the line for this step once the run is folded away." },
                         "timeout": { "type": "integer", "minimum": 1, "maximum": 120, "description": "Seconds to wait for a foreground command (default 30, maximum 120). For work that may take longer than 120 seconds, set `background: true` and omit `timeout`; collect the returned job_id later." },
                         "background": { "type": "boolean", "description": "Keep the command running in the background and return a job_id, so you can continue working and collect it later." },
                         "job_id": { "type": "string", "description": "A background command's job_id, to collect, inspect or cancel it instead of running a new command." },

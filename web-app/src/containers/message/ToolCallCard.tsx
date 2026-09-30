@@ -29,6 +29,7 @@ import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
 import { BrowserOpenedCard } from './BrowserOpenedCard'
 import { parseBrowserTarget } from '@/lib/browserOpen'
+import { toolSentence } from '@/lib/traceSummary'
 import {
   lineOfToolInput,
   toolChangesFile,
@@ -48,6 +49,8 @@ export type ToolCallCardProps = {
    * (Thinking view's failed rows). Unset: open while running, on failure or
    * with a diff. */
   expanded?: boolean
+  /** A row of a folded run: one sentence in the header, closed until clicked. */
+  sentence?: boolean
 }
 
 /** The one argument a native call is about, for the card's header. */
@@ -128,6 +131,7 @@ export const ToolCallCard = memo(
     citationOffset = 0,
     className,
     expanded,
+    sentence,
   }: ToolCallCardProps) => {
     const { t } = useTranslation()
     const toolName = part.type.split('-').slice(1).join('-')
@@ -375,6 +379,24 @@ export const ToolCallCard = memo(
           type={`tool-${toolName}` as `tool-${string}`}
           state={part.state}
           origin={originLabel}
+          sentence={
+            sentence ? (
+              <>
+                {failed && (
+                  <span className="mr-1 font-medium text-destructive">
+                    {t(
+                      toolName === 'bash'
+                        ? 'chat:transcriptView.failedToRun'
+                        : 'chat:transcriptView.failed'
+                    )}
+                  </span>
+                )}
+                {failed && toolName === 'bash'
+                  ? toolSentence(part).replace(/^Ran /, '')
+                  : toolSentence(part)}
+              </>
+            ) : undefined
+          }
           arg={bar ? shownArg(bar) : undefined}
           argNode={
             // A finished call's path opens in the Code panel from the header,
