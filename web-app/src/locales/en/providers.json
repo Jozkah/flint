@@ -7,6 +7,7 @@
   "engineCommit": "Commit",
   "refreshModelsError": "Provider must have base URL and at least one API key configured to fetch models.",
   "refreshModelsSuccess": "Added {{count}} new model(s) from {{provider}}.",
+  "refreshModelsRemoved": "Removed {{count}} model(s) the server no longer lists.",
   "noNewModels": "No new models found. All available models are already added.",
   "refreshModelsFailed": "Failed to fetch models from {{provider}}. Please check your API key and base URL.",
   "models": "Models",

@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
+import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
@@ -632,6 +634,20 @@ export function CoworkPage() {
       unavailable: resolved.model ? undefined : resolved.unavailable?.id,
     }
   }, [sessionModel, globalProvider, globalModel, modelProviders])
+
+  // A session whose model has gone away asks for another before it runs, rather
+  // than quietly taking whatever the picker holds.
+  const confirmSessionModel = useCallback(() => {
+    const gone = unavailableModels([sessionModel])
+    if (gone.length === 0) return { status: 'ok' as const }
+    return promptReplaceModels(t('common:modelReplace.thisSession'), gone).then((choices) => {
+      const pick = choices?.[modelKey(gone[0])]
+      const sid = coworkPane?.sessionId ?? useCoworkSessions.getState().currentId
+      if (!pick || !sid) return { status: 'stop' as const }
+      useCoworkSessions.getState().setModel(sid, pick)
+      return { status: 'retry' as const, modelId: pick.id }
+    })
+  }, [sessionModel, coworkPane?.sessionId, t])
 
   const sessions = useCoworkSessions((s) => s.sessions)
   const routeCurrentId = useCoworkSessions((s) => s.currentId)
@@ -6016,6 +6032,7 @@ export function CoworkPage() {
                 // The session's own effort, where its transport reads it.
                 modelOverrideScope={session?.id ?? ''}
                 unavailableModel={composerModel.unavailable}
+                confirmModel={confirmSessionModel}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}

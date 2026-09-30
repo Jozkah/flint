@@ -1,4 +1,6 @@
 import { useId, useState, type ReactNode } from 'react'
+import { replaceMissingRoomModels, roomModelRefs } from '@/lib/rooms/ensureModels'
+import { unavailableModels } from '@/lib/modelReplace'
 import {
   ChevronRight,
   CircleCheck,
@@ -192,6 +194,23 @@ export function RoomControls({ room }: { room: Room }) {
     }
   }
 
+  // A model that has gone away is replaced before the room runs, with the
+  // user's say, rather than the room starting and suspending that participant.
+  const startAfterModelCheck = async (go: () => Promise<void>) => {
+    // Nothing missing: go at once, as before.
+    const lookup = (name: string) => providers.find((p) => p.provider === name)
+    if (unavailableModels(roomModelRefs(room), lookup as never).length === 0) return go()
+    const patch = await replaceMissingRoomModels(room, lookup as never)
+    if (patch === null) return
+    if (patch.participants || patch.moderator) {
+      await api.updateRoomSettings(room, {
+        ...(patch.participants ? { participants: patch.participants } : {}),
+        ...(patch.moderator ? { moderator: patch.moderator } : {}),
+      })
+    }
+    await go()
+  }
+
   const speakers = availableParticipants(room)
   const stage = stageFor(room, live, t, (p) => {
     const m = findModel(providers, p.model)
@@ -221,7 +240,7 @@ export function RoomControls({ room }: { room: Room }) {
       <Button
         className="h-[42px] rounded-[10px] text-[13px] font-semibold [&_svg]:size-4"
         disabled={!avail.resume || busy}
-        onClick={() => run(() => c.resume(room.id))}
+        onClick={() => run(() => startAfterModelCheck(() => c.resume(room.id)))}
       >
         <Play fill="currentColor" strokeWidth={0} aria-hidden />
         {t('rooms:controls.resume')}
@@ -230,7 +249,7 @@ export function RoomControls({ room }: { room: Room }) {
       <Button
         className="h-[42px] rounded-[10px] text-[13px] font-semibold [&_svg]:size-4"
         disabled={!avail.start || busy}
-        onClick={() => run(() => c.start(room.id))}
+        onClick={() => run(() => startAfterModelCheck(() => c.start(room.id)))}
       >
         <Play fill="currentColor" strokeWidth={0} aria-hidden />
         {t('rooms:controls.start')}

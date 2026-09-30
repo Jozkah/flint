@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { syncListedModels } from '@/lib/providerModelSync'
 import { CardItem } from '@/containers/Card'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -660,23 +661,35 @@ function ProviderDetail() {
       }))
 
 
-      const existingModelIds = provider.models.map((m) => m.id)
-      const modelsToAdd = newModels.filter(
-        (model) => !existingModelIds.includes(model.id)
+      // What the server lists is the truth: new models come in, and models it
+      // no longer lists go, so the model menu stops offering them.
+      const synced = syncListedModels(
+        provider.models,
+        modelIds,
+        (id) => newModels.find((m) => m.id === id) as Model
       )
+      const modelsToAdd = synced.added
 
-      if (modelsToAdd.length > 0) {
-        const updatedModels = [...provider.models, ...modelsToAdd]
+      if (modelsToAdd.length > 0 || synced.removed.length > 0) {
         updateProvider(providerName, {
           ...provider,
-          models: updatedModels,
+          models: synced.models,
         })
 
         toast.success(t('providers:models'), {
-          description: t('providers:refreshModelsSuccess', {
-            count: modelsToAdd.length,
-            provider: getProviderTitle(provider.provider),
-          }),
+          description: [
+            modelsToAdd.length > 0
+              ? t('providers:refreshModelsSuccess', {
+                  count: modelsToAdd.length,
+                  provider: getProviderTitle(provider.provider),
+                })
+              : null,
+            synced.removed.length > 0
+              ? t('providers:refreshModelsRemoved', { count: synced.removed.length })
+              : null,
+          ]
+            .filter(Boolean)
+            .join(' '),
         })
       } else {
         toast.success(t('providers:models'), {
