@@ -46,10 +46,11 @@ async function compactOrNull(
   deps: Pick<RunDeps, 'compact'>,
   messages: UIMessage[],
   why: 'threshold' | 'context-error',
-  signal: AbortSignal
+  signal: AbortSignal,
+  failure?: unknown
 ): Promise<UIMessage[] | null> {
   try {
-    return (await deps.compact?.([...messages], why, signal)) ?? null
+    return (await deps.compact?.([...messages], why, signal, failure)) ?? null
   } catch (error) {
     if (signal.aborted) throw error
     console.warn('[cowork] compaction failed; continuing without it', error)
@@ -881,7 +882,9 @@ export type RunDeps = {
   compact?: (
     messages: UIMessage[],
     why: 'threshold' | 'context-error',
-    signal: AbortSignal
+    signal: AbortSignal,
+    /** The refusal that asked for this compaction, when it was one. */
+    failure?: unknown
   ) => Promise<UIMessage[] | null>
 }
 
@@ -1066,7 +1069,8 @@ export async function runTurn(opts: {
               deps,
               messages,
               'context-error',
-              signal
+              signal,
+              failure
             )
             if (compacted) {
               spend = creditCompaction(

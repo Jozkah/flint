@@ -18,16 +18,17 @@ export function modelSummarizer(input: {
   session: string
   maxOutputTokens?: number
   /** The window the summary call itself must fit, when known. */
-  window?: number | null
+  window?: number | null | (() => number | null | undefined)
   model?: () => LanguageModel | null | undefined
 }): Summarize {
   return async (full, signal) => {
     const maxOut = input.maxOutputTokens ?? 1024
     // The summary call is a request too: the excerpt is cut to fit the window,
     // keeping the most recent part, which the kept turns follow on from.
+    const window = typeof input.window === 'function' ? input.window() : input.window
     const maxChars =
-      input.window && input.window > 0
-        ? Math.max(4000, Math.floor((input.window - maxOut - 1024) * 3.5 * 0.8))
+      window && window > 0
+        ? Math.max(4000, Math.floor((window - maxOut - 1024) * 3.5 * 0.8))
         : 200_000
     const transcript = full.length > maxChars ? full.slice(-maxChars) : full
     let model = input.model?.() ?? null

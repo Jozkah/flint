@@ -1003,6 +1003,7 @@
     "newSession": "New session"
   },
   "compaction": {
+    "working": "Compacting the conversation…",
     "divider_one": "Context compacted — {{count}} earlier message summarized",
     "divider_other": "Context compacted — {{count}} earlier messages summarized",
     "showSummary": "Show summary",

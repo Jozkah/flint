@@ -128,6 +128,7 @@ import {
 } from '@/lib/mailboxDelivery'
 import { PageHeaderRow } from '@/containers/PageHeaderRow'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { parseServerContextLimit, rememberServerLimit } from '@/lib/contextLimitRecovery'
 import { selectionForThreadModel } from '@/hooks/useConversationPane'
 import { MessageItem } from '@/containers/MessageItem'
 import SkillSelector from '@/containers/SkillSelector'
@@ -297,10 +298,11 @@ import { useCoworkGitStatus } from '@/hooks/useCoworkGitStatus'
 import { collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { CoworkSandboxChip } from '@/containers/CoworkSandboxChip'
 import { CoworkBudgetNotice } from '@/containers/CoworkBudgetNotice'
-import { CompactionDivider } from '@/containers/CompactionDivider'
+import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import type { UIMessage } from 'ai'
 import {
   compactHistory,
+  compactionWindow,
   resolveAutoCompact,
   shouldCompact,
   DEFAULT_KEEP_RECENT,
@@ -3626,31 +3628,63 @@ export function CoworkPage() {
       useAssistant.getState().currentAssistant?.parameters,
       compactionPolicy.auto
     )
+    // A model with no configured window is unmeasurable until a server refuses a
+    // request and names it; that number is used for the rest of this run, and
+    // remembered so the next run plans against it from the start.
+    let learnedWindow: number | null = null
     const summarizeRun = modelSummarizer({
       provider: selectedProvider,
       modelId: selectedModel.id,
       session: sid,
       maxOutputTokens: compactionPolicy.summaryMaxTokens,
-      window: runWindow,
+      window: () => runWindow ?? learnedWindow,
       model: () => transport.model,
     })
     const compactRun = async (
       msgs: UIMessage[],
       why: 'threshold' | 'context-error',
-      signal: AbortSignal
+      signal: AbortSignal,
+      failure?: unknown
     ): Promise<UIMessage[] | null> => {
       if (!autoCompact) return null
+      if (why === 'context-error' && runWindow == null) {
+        const limit = parseServerContextLimit(
+          (failure as { data?: unknown } | null)?.data ?? null,
+          failure instanceof Error ? failure.message : String(failure ?? '')
+        )
+        if (limit) {
+          learnedWindow = limit.contextTokens
+          rememberServerLimit(
+            {
+              provider: selectedProvider ?? '',
+              baseUrl:
+                (useModelProvider.getState().getProviderByName(selectedProvider)
+                  ?.base_url as string) ?? '',
+              model: selectedModel.id,
+            },
+            limit
+          )
+        }
+      }
       if (why === 'threshold') {
-        const now = transport.measureContext(msgs, runWindow)
-        const window = now.budget.known === false ? null : now.budget.tokens
+        const now = transport.measureContext(msgs, runWindow ?? learnedWindow)
+        const window = compactionWindow(
+          now.budget.known === false ? null : now.budget.tokens
+        )
         if (!shouldCompact(accountedTotal(now).tokens, window)) return null
       }
-      const result = await compactHistory(msgs, {
-        summarize: summarizeRun,
-        keepRecent: compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT,
-        reason: why,
-        signal,
-      })
+      setCompacting(true)
+      let result: Awaited<ReturnType<typeof compactHistory>>
+      try {
+        result = await compactHistory(msgs, {
+          summarize: summarizeRun,
+          keepRecent: compactionPolicy.keepRecent || DEFAULT_KEEP_RECENT,
+          reason: why,
+          signal,
+        })
+      } finally {
+        setCompacting(false)
+      }
       if (!result) return null
       pushLive([{ role: 'assistant', content: '', compaction: result.record }])
       void recordLifecycle(
@@ -5872,6 +5906,7 @@ export function CoworkPage() {
                       }}
                     />
                   )}
+                  {compacting && <CompactingIndicator />}
                 </ConversationContent>
                 <ConversationScrollButton />
               </Conversation>

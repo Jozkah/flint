@@ -172,7 +172,13 @@ describe('Cowork run crossing the compaction threshold', () => {
 
     expect(outcome.stoppedBy).toBe('done')
     expect(calls).toBe(2)
-    expect(compact).toHaveBeenCalledWith(expect.any(Array), 'context-error', expect.anything())
+    // The refusal itself comes along, so the window it names can be learned.
+    expect(compact).toHaveBeenCalledWith(
+      expect.any(Array),
+      'context-error',
+      expect.anything(),
+      expect.any(Error)
+    )
   })
 
   it('retries only once: a second refusal ends the run as an error', async () => {

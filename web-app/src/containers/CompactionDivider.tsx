@@ -4,6 +4,28 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { CompactionRecord } from '@/lib/compaction'
 
 /**
+ * Shown in the transcript while a compaction is running, so `/compact` and an
+ * automatic compaction are visible from the start instead of only once done.
+ */
+export function CompactingIndicator() {
+  const { t } = useTranslation()
+  return (
+    <div
+      role="status"
+      data-testid="compacting-indicator"
+      className="my-3 flex items-center gap-2 text-xs text-muted-foreground"
+    >
+      <div className="h-px flex-1 bg-border" />
+      <span className="flex items-center gap-1.5 px-1.5 py-0.5">
+        <Layers size={12} aria-hidden className="shrink-0 motion-safe:animate-pulse" />
+        <span className="motion-safe:animate-pulse">{t('common:compaction.working')}</span>
+      </span>
+      <div className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
+
+/**
  * Where a conversation was compacted: a divider row naming how many earlier
  * messages the summary replaced, expandable to the summary itself. Shared by
  * Chat, Cowork and Rooms, so the event reads the same on every surface.
