@@ -11,11 +11,6 @@ edition = "2021"
 rust-version = "1.88"
 resolver = "2"
 default-run = "Flint-Desktop"
-# Every binary this package ships is declared explicitly below. Cargo otherwise
-# auto-discovers each file in `src/bin/` as a binary of its own, carrying none
-# of the `required-features` a declared target would have -- so a feature-gated
-# helper dropped in there is built unconditionally and fails on the modules it
-# is gated behind. Declaring the targets is the contract; this keeps it honest.
 autobins = false
 
 [lib]
@@ -139,7 +134,6 @@ hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
 tokio-stream = "0.1"
-tokio-util = "0.7.14"
 jan-utils = { path = "./utils" }
 jan-process = { path = "./process" }
 libloading = "0.8.7"
