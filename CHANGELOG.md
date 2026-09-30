@@ -100,6 +100,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 - **Regenerate title** in the sidebar menu of a chat, Cowork session or room rewrites the name from what the conversation is about. The chat, Cowork and Rooms menus are split into groups, and submenu triggers use the same text size as items.
 - Cowork replies and room messages name the assistant that wrote them, and a rule marks where the assistant changes. Messages sit closer together.
+- `/compact` and automatic compaction show a **Compacting the conversation…** row in Chat and Cowork while they run, instead of nothing until the summary appears.
 - Sidebar preview cards show a written summary of the conversation instead of its first prompt, and size to fit it.
 
 ### Fixes to original Jan behavior
