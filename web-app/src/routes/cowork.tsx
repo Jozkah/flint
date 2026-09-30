@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { TRANSCRIPT_WINDOW, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
@@ -1846,6 +1847,16 @@ export function CoworkPage() {
     () => appendLiveMessages(committedMessages, liveMessages),
     [committedMessages, liveMessages]
   )
+
+  // A long session is drawn from its newest messages, the rest on request.
+  // Drawing every message and tool card at once is what made opening a long
+  // session slow; what is above the window is still in the session.
+  const [earlierShown, setEarlierShown] = useState<{ sid: string | null; extra: number }>({
+    sid: null,
+    extra: 0,
+  })
+  const extraEarlier = earlierShown.sid === (session?.id ?? null) ? earlierShown.extra : 0
+  const windowStart = transcriptWindowStart(uiMessages.length, extraEarlier)
 
   // The plan each run left, by the prompt it follows.
   const snapshotByAnchor = useMemo(
@@ -5468,7 +5479,28 @@ export function CoworkPage() {
             openDiff={openToolDiff}
             displayPath={displayToolPath}
           >
-                    {uiMessages.map((whole, i) => {
+                    {windowStart > 0 && (
+                      <div className="flex justify-center pb-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid="show-earlier-messages"
+                          className="text-muted-foreground"
+                          onClick={() =>
+                            setEarlierShown({
+                              sid: session?.id ?? null,
+                              extra: extraEarlier + TRANSCRIPT_WINDOW,
+                            })
+                          }
+                        >
+                          {t('common:coworkShowEarlier', {
+                            count: Math.min(windowStart, TRANSCRIPT_WINDOW),
+                          })}
+                        </Button>
+                      </div>
+                    )}
+                    {uiMessages.slice(windowStart).map((whole, shownAt) => {
+                      const i = shownAt + windowStart
                       // Each model round renders with its own rows beneath
                       // it, so the newest content is always last.
                       const segments = segmentAssistantMessage(whole)
