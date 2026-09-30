@@ -136,3 +136,43 @@ describe('streamParticipantReply', () => {
     ).rejects.toMatchObject({ kind: 'overflow' })
   })
 })
+
+describe('usage of a turn with several model calls', () => {
+  it('charges the conversation once (the widest call), not once per call', async () => {
+    const stream = vi.fn(() => ({
+      fullStream: (async function* () {
+        yield { type: 'text-delta', id: 't', text: 'done' }
+      })(),
+      totalUsage: Promise.resolve({ inputTokens: 90_000, outputTokens: 500 }),
+      steps: Promise.resolve([
+        { usage: { inputTokens: 20_000 } },
+        { usage: { inputTokens: 30_000 } },
+        { usage: { inputTokens: 40_000 } },
+      ]),
+      finishReason: Promise.resolve('stop'),
+    }))
+    const res = await streamParticipantReply(input(), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(res.usage).toEqual({ inputTokens: 40_000, outputTokens: 500 })
+  })
+
+  it('keeps the total when the calls report nothing, or there was only one', async () => {
+    const stream = vi.fn(() => ({
+      fullStream: (async function* () {
+        yield { type: 'text-delta', id: 't', text: 'ok' }
+      })(),
+      totalUsage: Promise.resolve({ inputTokens: 1_000, outputTokens: 10 }),
+      steps: Promise.resolve([{ usage: { inputTokens: 1_000 } }]),
+      finishReason: Promise.resolve('stop'),
+    }))
+    const res = await streamParticipantReply(input(), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(res.usage).toEqual({ inputTokens: 1_000, outputTokens: 10 })
+  })
+})

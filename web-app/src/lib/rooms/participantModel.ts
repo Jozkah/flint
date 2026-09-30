@@ -207,6 +207,24 @@ export async function streamParticipantReply(
     try {
       const u = await result.totalUsage
       usage = { inputTokens: u?.inputTokens, outputTokens: u?.outputTokens }
+      // A turn that uses tools is many model calls, each sent the whole
+      // conversation again, and the total adds that conversation up once per
+      // call: one 39-call turn counted 520,000 input tokens against a 600,000
+      // room budget while writing 4,700. What the room should be charged for is
+      // the conversation as the turn saw it (its largest call) plus all that was
+      // written, so input is the largest single call, not the sum.
+      try {
+        const steps = (await result.steps) ?? []
+        const widest = Math.max(
+          0,
+          ...steps.map((st) => (typeof st.usage?.inputTokens === 'number' ? st.usage.inputTokens : 0))
+        )
+        if (steps.length > 1 && widest > 0 && typeof usage.inputTokens === 'number') {
+          usage = { ...usage, inputTokens: Math.min(usage.inputTokens, widest) }
+        }
+      } catch {
+        // No per-call figures: the total stands.
+      }
     } catch {
       usage = undefined
     }
