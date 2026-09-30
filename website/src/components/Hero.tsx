@@ -60,7 +60,7 @@ export function Hero() {
             <Frame flat>
               <Shot
                 id="04-approval"
-                region={{ x: 340, y: 270, w: 730, h: 350 }}
+                region={{ x: 330, y: 268, w: 750, h: 360 }}
                 alt="An approval card: Flint wants to run git push in the acme-weather worktree, with Deny and Allow once."
                 sizes={[560, 40]}
                 eager

@@ -119,14 +119,14 @@ const R16 = (x: number, y: number, w: number): Region => ({ x, y, w, h: Math.rou
 const STEPS: Step[] = [
   {
     shot: '05-pr-bar',
-    region: R16(270, 70, 560),
+    region: R16(270, 60, 740),
     title: 'Give Flint a task',
     body: 'Describe the work in plain language. Flint keeps a todo list and shows its progress while the run goes on.',
     alt: 'A Cowork session: the task as written, then a progress bar that reads 3 of 4 done.',
   },
   {
     shot: '03-cowork-tools',
-    region: R16(340, 95, 800),
+    region: R16(340, 112, 800),
     title: 'It reads, edits and runs',
     body: 'Every tool call is a card with its input and output. Open one to see exactly what ran and what came back.',
     alt: 'Expanded tool cards: an edit to a test file, then a go test command with its result.',
@@ -281,17 +281,17 @@ export function Approvals() {
               <Frame>
                 <Shot
                   id="04-approval"
-                  region={{ x: 318, y: 262, w: 790, h: 494 }}
+                  region={{ x: 318, y: 268, w: 790, h: 400 }}
                   alt="An approval card for git push: what it affects, why, what allowing it means, and the options Deny, Allow once, Allow in this conversation and Always allow."
                   sizes={[760, 92]}
                 />
               </Frame>
-              <span className="pin" style={{ ['--x' as string]: '24%', ['--y' as string]: '30%' }} aria-hidden="true">1</span>
-              <span className="pin" style={{ ['--x' as string]: '86%', ['--y' as string]: '42%' }} aria-hidden="true">2</span>
-              <span className="pin" style={{ ['--x' as string]: '26%', ['--y' as string]: '62%' }} aria-hidden="true">3</span>
+              <span className="pin" style={{ ['--x' as string]: '1.6%', ['--y' as string]: '36%' }} aria-hidden="true">1</span>
+              <span className="pin" style={{ ['--x' as string]: '1.6%', ['--y' as string]: '50%' }} aria-hidden="true">2</span>
+              <span className="pin" style={{ ['--x' as string]: '1.6%', ['--y' as string]: '74.5%' }} aria-hidden="true">3</span>
             </div>
             <p className="caption" style={{ marginTop: 14 }}>
-              <b style={{ color: 'var(--fg-2)' }}>1</b> Why the command is needed and what allowing it means. <b style={{ color: 'var(--fg-2)' }}>2</b> Deny is one click; Allow once is the default. <b style={{ color: 'var(--fg-2)' }}>3</b> Wider grants are labelled Broader.
+              <b style={{ color: 'var(--fg-2)' }}>1</b> Why Flint needs the command, and what allowing it means. <b style={{ color: 'var(--fg-2)' }}>2</b> Deny and Allow once are one click each. <b style={{ color: 'var(--fg-2)' }}>3</b> Wider grants are labelled Broader.
             </p>
           </Reveal>
         </div>

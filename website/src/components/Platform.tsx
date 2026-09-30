@@ -6,16 +6,7 @@ export function Models() {
   return (
     <section className="section" id="models" style={{ paddingTop: 0 }}>
       <div className="wrap-wide">
-        <div className="split rev" style={{ alignItems: 'end' }}>
-          <Reveal mask className="bleed-l">
-            <Frame>
-              <Shot
-                id="09-models"
-                alt="The Models page: installed, loaded and disk totals, three loaded local models with live speed, provider cards for Llama.cpp, Anthropic, OpenAI, Gemini, OpenRouter, Mistral and Groq, and a custom provider slot."
-                sizes={[1100, 100]}
-              />
-            </Frame>
-          </Reveal>
+        <div className="split textimg" style={{ alignItems: 'center' }}>
           <div className="stack">
             <Reveal>
               <p className="eyebrow">
@@ -46,6 +37,15 @@ export function Models() {
               </div>
             </Reveal>
           </div>
+          <Reveal mask className="bleed-r">
+            <Frame>
+              <Shot
+                id="09-models"
+                alt="The Models page: installed, loaded and disk totals, three loaded local models with live speed, provider cards for Llama.cpp, Anthropic, OpenAI, Gemini, OpenRouter, Mistral and Groq, and a custom provider slot."
+                sizes={[1100, 100]}
+              />
+            </Frame>
+          </Reveal>
         </div>
       </div>
     </section>
