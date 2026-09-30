@@ -76,8 +76,15 @@ export function parseDirective(raw: string): ModeratorDirective | null {
     obj = JSON.parse(json)
   } catch {
     try {
-      // Common slip: trailing commas.
-      obj = JSON.parse(json.replace(/,\s*([}\]])/g, '$1'))
+      // Common slips: trailing commas, and Windows paths written with single
+      // backslashes (C:\tmp\app), which are not valid JSON escapes. A backslash
+      // that does not start a quote, slash, newline or unicode escape is a
+      // literal one, so a path's \t and \r stay characters of the path.
+      obj = JSON.parse(
+        json
+          .replace(/,\s*([}\]])/g, '$1')
+          .replace(/\\(?!["/\\]|n|u[0-9a-fA-F]{4})/g, '\\\\')
+      )
     } catch {
       return null
     }
