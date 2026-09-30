@@ -124,6 +124,18 @@ const DiffBlocks = ({ add, del }: { add: number; del: number }) => {
   )
 }
 
+/** A step's line, its verb in the call kind's colour: Read blue, Searched purple. */
+const SentenceText = ({ text, tint }: { text: string; tint: boolean }) => {
+  const at = text.indexOf(' ')
+  if (!tint || at < 0) return <>{text}</>
+  return (
+    <>
+      <span className="font-medium text-(--tk)">{text.slice(0, at)}</span>
+      {text.slice(at)}
+    </>
+  )
+}
+
 export const ToolCallCard = memo(
   ({
     part,
@@ -391,9 +403,14 @@ export const ToolCallCard = memo(
                     )}
                   </span>
                 )}
-                {failed && toolName === 'bash'
-                  ? toolSentence(part).replace(/^Ran /, '')
-                  : toolSentence(part)}
+                <SentenceText
+                  text={
+                    failed && toolName === 'bash'
+                      ? toolSentence(part).replace(/^Ran /, '')
+                      : toolSentence(part)
+                  }
+                  tint={!failed}
+                />
               </>
             ) : undefined
           }
