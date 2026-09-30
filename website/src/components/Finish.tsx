@@ -101,7 +101,7 @@ export function Download() {
                   {os === 'linux' && <p style={{ marginTop: 8 }}>The AppImage and .deb come from the same release. Choose the one that fits your distribution.</p>}
                 </div>
                 <div className="note">
-                  <b>You bring your own models.</b> Import a GGUF file you already have, use an MLX model on Apple silicon, or add a cloud provider with your own key. Flint does not download models for you.
+                  <b>You choose your models.</b> Import a GGUF file you already have, search Hugging Face in Discover and download the one you pick, use an MLX model on Apple silicon, or add a cloud provider with your own key. Nothing is discovered or downloaded in the background.
                 </div>
               </div>
             </div>

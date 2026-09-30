@@ -175,7 +175,7 @@ export function Install() {
       title: 'Bring your models',
       body: (
         <>
-          <p>Flint does not download models for you. Import a GGUF file you already have (Models → llama.cpp → Import), use an MLX model on Apple silicon, or add a cloud provider with your own key.</p>
+          <p>Open Discover to search Hugging Face and choose the exact GGUF quantization, or the MLX repository on Apple silicon, that you want. Downloads start only when you click Download, and they support pause and resume. You can still import a GGUF file you already have (Models → llama.cpp → Import), or add a cloud provider with your own key.</p>
           <p>The Models page separates what was measured on your device from what is only estimated. An estimate never stops you from trying a model.</p>
         </>
       ),
@@ -251,7 +251,7 @@ export function Faq() {
       title: 'Privacy and data',
       body: (
         <>
-          {q('Does Flint send my data anywhere?', <p>Not by itself. There is no telemetry, analytics or update check. Flint reaches the network only when you add a cloud provider key, connect a remote MCP server, or turn on web search. See the <a href={pageHref('privacy')}>privacy policy</a>.</p>)}
+          {q('Does Flint send my data anywhere?', <p>Not by itself. There is no telemetry, analytics or update check. Flint does not discover or download models in the background. It reaches the network only for features you use: Hugging Face Discover, a cloud provider key, a remote MCP server, or turn on web search. See the <a href={pageHref('privacy')}>privacy policy</a>.</p>)}
           {q('Can I use it offline?', <p>Yes, with local models. GGUF models run through the bundled llama.cpp engine, and MLX models run on Apple silicon, both on your device. Cloud providers need a network connection.</p>)}
           {q('Where are my API keys stored?', <p>In your operating system’s keyring.</p>)}
           {q('Where is my data kept?', <p>On your computer, in Flint’s data folder. You can choose a custom data folder. Flint keeps Jan’s data path so an existing install is detected.</p>)}
@@ -264,7 +264,7 @@ export function Faq() {
       body: (
         <>
           {q('Which models can I use?', <p>GGUF models through the bundled llama.cpp engine, MLX models on Apple silicon, and any OpenAI-compatible or Anthropic-compatible provider with your own key, including a server on your network.</p>)}
-          {q('Does Flint download models for me?', <p>No. You import model files yourself, or connect a provider.</p>)}
+          {q('Does Flint download models for me?', <p>Only when you ask. Open Discover to search Hugging Face and pick a GGUF quantization or an MLX repository, and the download starts when you click Download. Flint does not discover or download models in the background. You can also import files you already have, or connect a provider.</p>)}
           {q('Do local models work on Intel Macs?', <p>No. Local models on macOS need Apple silicon (M1 or later). Intel Macs can still use cloud providers.</p>)}
         </>
       ),

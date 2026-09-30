@@ -23,7 +23,7 @@ export function Models() {
             <div className="opts" style={{ marginTop: 0 }}>
               <div className="opt">
                 <h3>GGUF, through the bundled llama.cpp engine</h3>
-                <p>You bring the model files. Nothing is downloaded for you.</p>
+                <p>Import a file you have, or search Hugging Face in Discover. Downloads start only when you click Download.</p>
               </div>
               <div className="opt">
                 <h3>MLX on Apple silicon</h3>
@@ -248,7 +248,7 @@ export function LocalFirst() {
                 Built for your machine, not ours.
               </h2>
               <p className="lede" style={{ marginTop: 22 }}>
-                Flint only reaches the network when you add a cloud provider key, a remote MCP server, or turn on web search.
+                Flint does not discover or download models in the background. It reaches the network only for features you use: Hugging Face Discover, a cloud provider, a remote MCP server, or web search.
               </p>
             </Reveal>
           </div>

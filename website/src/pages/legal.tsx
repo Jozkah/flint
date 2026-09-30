@@ -12,7 +12,7 @@ export function Privacy() {
         <>
           <ul>
             <li>This website sets no cookies, stores nothing in your browser, runs no analytics and loads no third-party scripts, fonts or trackers.</li>
-            <li>The Flint app has no telemetry, no analytics and no update checks. It only reaches the network when you add a cloud provider key, connect a remote MCP server, or turn on web search.</li>
+            <li>The Flint app has no telemetry, no analytics and no update checks. It does not discover or download models in the background, and it reaches the network only for features you use: Hugging Face Discover, a cloud provider, a remote MCP server, or web search.</li>
             <li>Your chats, files, memory and settings stay on your computer. Provider keys are kept in your operating system’s keyring.</li>
           </ul>
         </>
@@ -43,7 +43,7 @@ export function Privacy() {
             <li>memory, settings, permission grants and usage figures;</li>
             <li>provider API keys and MCP sign-in tokens, stored through the operating system’s keyring.</li>
           </ul>
-          <p>The build has no telemetry, analytics, update checks, model catalogue or model downloader. Flint does not download models for you. A diagnostic bundle, if you create one, is redacted, shown to you first and never uploaded by Flint.</p>
+          <p>The build has no telemetry, analytics or automatic update checks, and it does not discover or download models in the background. Models come from files you import, or from Hugging Face Discover when you use it. A diagnostic bundle, if you create one, is redacted, shown to you first and never uploaded by Flint.</p>
           <p>You can see what left your machine. The request log shows what each model was sent and where every request went, and “What Flint is using” shows what applied to each reply.</p>
         </>
       ),
@@ -61,6 +61,7 @@ export function Privacy() {
               ['A cloud model provider', 'Your messages, included files and tool results for that conversation', 'The provider you added, under your own key and their terms'],
               ['A server on your network', 'The same, for a self-hosted or LAN endpoint you point Flint at', 'That server'],
               ['Remote MCP servers', 'The tool calls and arguments you allow for that server', 'The server you connected'],
+              ['Hugging Face Discover', 'Your searches and requests for model details, and the model files you choose to download', 'Hugging Face'],
               ['Web search', 'The search queries Flint makes when you turn the feature on', 'The search service configured for it'],
               ['Git and GitHub commands', 'Whatever the approved command sends, such as a push', 'The remote the command targets'],
               ['Remote access (preview)', 'Chat, Cowork and Rooms traffic between your phone and your desktop over Tailscale, your LAN or loopback', 'Your own devices. Models, keys and files stay on the desktop'],
