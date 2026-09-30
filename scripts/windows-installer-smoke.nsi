@@ -16,7 +16,7 @@ ManifestDPIAwareness PerMonitorV2
 !define FLINT_WORKSPACE "${FLINT_SMOKE_ROOT}"
 !define MUI_ICON "${FLINT_SMOKE_ROOT}\src-tauri\icons\icon.ico"
 
-Name "Flint Installer UI Smoke"
+Name "Flint"
 OutFile "flint-installer-ui-smoke.exe"
 InstallDir "$TEMP\FlintInstallerSmoke"
 RequestExecutionLevel user
@@ -32,7 +32,7 @@ Var DeleteAppDataCheckboxState
 ; this function from its reinstall/upgrade page; without a corresponding page
 ; in the smoke harness NSIS correctly reports it as dead code (warning 6010),
 ; which /WX then promotes to a CI failure.
-Page custom FlintMaintenance
+Page custom SmokeMaintenance
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW FlintInstFilesShow
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE FlintInstFilesLeave
 !insertmacro MUI_PAGE_INSTFILES
@@ -47,6 +47,14 @@ Page custom FlintMaintenance
 !insertmacro FLINT_UI_FUNCTIONS ""
 !insertmacro FLINT_UI_FUNCTIONS "un."
 !insertmacro MUI_LANGUAGE "English"
+
+; Mirrors what PageReinstall puts in $R1-$R3 before calling the renderer.
+Function SmokeMaintenance
+  StrCpy $R1 "Flint ${VERSION} is already installed. Select the operation you want to perform and click Next to continue."
+  StrCpy $R2 "Add/Reinstall components"
+  StrCpy $R3 "Uninstall Flint"
+  Call FlintMaintenance
+FunctionEnd
 
 Function .onInit
   ; Production initializes these before the maintenance renderer can read them.
@@ -66,9 +74,13 @@ FunctionEnd
 Section "Install"
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\uninstall.exe"
+  ; The template continues to the completion page on its own once files are copied.
+  SetAutoClose true
 SectionEnd
 
 Section "Uninstall"
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
+  ; Same as the base template: the progress page moves on to the completion page.
+  SetAutoClose true
 SectionEnd

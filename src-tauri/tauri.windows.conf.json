@@ -37,6 +37,10 @@
     ],
     "windows": {
       "wix": {
+        "template": "./installer/wix/main.wxs",
+        "fragmentPaths": [
+          "./installer/wix/flint-ui.wxs"
+        ],
         "bannerPath": "./installer/wix/banner.bmp",
         "dialogImagePath": "./installer/wix/dialog.bmp"
       },

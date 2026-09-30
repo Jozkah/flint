@@ -44,15 +44,15 @@ Function un.FlintConfirm
 
   ; Keep the existing, pre-rendered destructive and cancel controls. Their
   ; labels are already rendered with the app's Inter/button tokens.
-  ${FlintPx} $0 456
-  ${FlintPx} $1 368
+  ${FlintPx} $0 504
+  ${FlintPx} $1 370
   ${FlintPx} $2 88
   ${FlintPx} $3 36
   ${NSD_CreateBitmap} $0 $1 $2 $3 ""
   Pop $4
   ${NSD_SetImage} $4 "$FlintAssets\btn-cancel.bmp" $5
   ${NSD_OnClick} $4 un.FlintCancel
-  ${FlintPx} $0 556
+  ${FlintPx} $0 600
   ${NSD_CreateBitmap} $0 $1 $2 $3 ""
   Pop $4
   ${NSD_SetImage} $4 "$FlintAssets\btn-uninstall.bmp" $6
@@ -107,7 +107,7 @@ Function un.FlintFinish
   SendMessage $4 ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $4 FG2 BG
 
-  !insertmacro _FlintPrimaryButton 556 366 "Close" un.FlintFinishClose
+  !insertmacro _FlintButton primary close 688 ${FLINT_FOOT_Y} un.FlintFinishClose
   nsDialogs::Show
 FunctionEnd
 Function un.FlintFinishClose

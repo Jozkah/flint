@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Flint's Windows Installer (MSI) wizard.
+
+  Windows Installer draws its own dialogs and cannot theme them, so each page
+  is a full-size bitmap rendered by src-tauri/installer/generate.py from the
+  app's tokens and Inter face, with native controls only where a page needs
+  live text (the install path, the progress bar and its status line). Buttons
+  are the app's Button rendered to bitmaps. The MSI is light only: a push button
+  always draws Windows' light 3D frame (and, on hover, around every button), which
+  is nearly invisible on a light page and a bright rectangle on a dark one.
+  Regenerate the artwork with generate.py after changing it.
+
+  Dialog units: 370 x 270 DU is 493 x 360 px at 96 dpi (1 DU = 4/3 px).
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <?include flint-ui-binaries.wxi ?>
+
+    <Property Id="DefaultUIFont" Value="FlintText" />
+    <Property Id="ErrorDialog" Value="FlintErrorDlg" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <!-- Browse opens the standard Windows folder picker (flint-browse.js). -->
+    <Binary Id="FlintBrowseScript" SourceFile="$(sys.SOURCEFILEDIR)flint-browse.js" />
+    <CustomAction Id="FlintBrowseFolder" BinaryKey="FlintBrowseScript" JScriptCall="FlintBrowse" Return="ignore" />
+
+    <UI Id="WixUI_Flint">
+      <!-- The app fg-2 token. Windows Installer text can only use the system face. -->
+      <TextStyle Id="FlintText" FaceName="Segoe UI" Size="9" Red="55" Green="65" Blue="81" />
+
+      <UIRef Id="WixUI_ErrorProgressText" />
+
+      <!-- Every dialog but the error one: generated from one spec so the button geometry stays exact. -->
+      <?include flint-ui-dialogs.wxi ?>
+
+      <!-- Errors. Windows Installer requires ErrorText to be the first control of the error dialog, and a control
+           that comes first sits under any page bitmap, so this one keeps the system look (dark text, light face).
+           The buttons shown are picked by their ids: O Y R C N I. -->
+      <Dialog Id="FlintErrorDlg" Width="270" Height="105" Title="Flint Setup" NoMinimize="yes" ErrorDialog="yes">
+        <Control Id="ErrorText" Type="Text" X="18" Y="15" Width="234" Height="50" TabSkip="no" Text="{\FlintText}Error" />
+        <Control Id="Y" Type="PushButton" X="90" Y="76" Width="56" Height="18" TabSkip="no" Text="Yes">
+          <Publish Event="EndDialog" Value="ErrorYes">1</Publish>
+        </Control>
+        <Control Id="O" Type="PushButton" X="146" Y="76" Width="56" Height="18" TabSkip="no" Text="OK">
+          <Publish Event="EndDialog" Value="ErrorOk">1</Publish>
+        </Control>
+        <Control Id="R" Type="PushButton" X="146" Y="76" Width="56" Height="18" TabSkip="no" Text="Retry">
+          <Publish Event="EndDialog" Value="ErrorRetry">1</Publish>
+        </Control>
+        <Control Id="N" Type="PushButton" X="34" Y="76" Width="56" Height="18" TabSkip="no" Text="No">
+          <Publish Event="EndDialog" Value="ErrorNo">1</Publish>
+        </Control>
+        <Control Id="I" Type="PushButton" X="34" Y="76" Width="56" Height="18" TabSkip="no" Text="Ignore">
+          <Publish Event="EndDialog" Value="ErrorIgnore">1</Publish>
+        </Control>
+        <Control Id="A" Type="PushButton" X="202" Y="76" Width="56" Height="18" TabSkip="no" Text="Abort">
+          <Publish Event="EndDialog" Value="ErrorAbort">1</Publish>
+        </Control>
+        <Control Id="C" Type="PushButton" X="202" Y="76" Width="56" Height="18" TabSkip="no" Text="Cancel">
+          <Publish Event="EndDialog" Value="ErrorCancel">1</Publish>
+        </Control>
+      </Dialog>
+
+      <InstallUISequence>
+        <Show Dialog="Flint_fatal_Dlg" OnExit="error" />
+        <Show Dialog="Flint_userexit_Dlg" OnExit="cancel" />
+        <Show Dialog="FlintExitDlg" OnExit="success" />
+        <Show Dialog="FlintWelcomeDlg" Before="Flint_progress_Dlg">NOT Installed</Show>
+        <Show Dialog="FlintRemoveDlg" Before="Flint_removing_Dlg">Installed AND NOT RESUME AND NOT Preselected AND NOT PATCH</Show>
+        <Show Dialog="Flint_progress_Dlg" Before="ExecuteAction">NOT Installed</Show>
+        <Show Dialog="Flint_removing_Dlg" Before="ExecuteAction">Installed</Show>
+      </InstallUISequence>
+
+      <!-- Windows Installer requires the standard dialogs in the admin UI sequence too (ICE20). -->
+      <AdminUISequence>
+        <Show Dialog="Flint_fatal_Dlg" OnExit="error" />
+        <Show Dialog="Flint_userexit_Dlg" OnExit="cancel" />
+        <Show Dialog="FlintExitDlg" OnExit="success" />
+      </AdminUISequence>
+    </UI>
+  </Fragment>
+</Wix>
