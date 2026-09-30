@@ -731,7 +731,7 @@ export const MessageItem = memo(
               <FlintMark className="size-full" />
             </span>
             <span className="shrink-0 font-semibold text-foreground">
-              Flint
+              {(metadata?.assistantName as string | undefined) || 'Flint'}
             </span>
             {answeredBy && (
               <>

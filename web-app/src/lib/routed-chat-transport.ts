@@ -99,7 +99,10 @@ export class RoutedChatTransport extends CustomChatTransport {
       : undefined
     // A regenerate after a restart: this message was already routed, so keep
     // what that decided instead of asking again and possibly picking another.
-    if (thread?.metadata?.jevRoutedMessageId === latest.id) return
+    if (thread?.metadata?.jevRoutedMessageId === latest.id) {
+      this.answeringAssistantName = thread.assistants?.[0]?.name
+      return
+    }
 
     // Only a conversation still on the default is auto-routed. An assistant the
     // user set (Coal, Quartz, a custom one) or "None" stays. The one built-in
@@ -131,6 +134,8 @@ export class RoutedChatTransport extends CustomChatTransport {
           (candidate) => candidate.id === route.assistantId
         )
       : undefined
+    // Named on the reply: the one just routed to, else the one in charge.
+    this.answeringAssistantName = (assistant ?? current)?.name
     if (assistant && assistant.id !== current?.id) {
       // The transport must see the routed prompt immediately. Waiting for the
       // Zustand update + React effect would send this turn with the old persona.
