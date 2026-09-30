@@ -219,7 +219,9 @@
     "toolOutput": "Result",
     "toolError": "Error",
     "toolOk": "ok",
-    "toolFailed": "failed"
+    "toolFailed": "failed",
+    "speed": "{{tps}} tok/s",
+    "speedTitle": "How fast this reply was written"
   },
   "controls": {
     "label": "Room controls",

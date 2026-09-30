@@ -240,3 +240,19 @@ describe('RoomTranscript', () => {
     useInterfaceSettings.setState({ transcriptView: 'normal' })
   })
 })
+
+describe('the header of a message', () => {
+  it('shows how fast the reply was written, and colours the recipient like their own name', () => {
+    const room = makeRoom()
+    const target = room.participants[1]
+    const msg = makeMessage({
+      text: 'Hello.',
+      to: { kind: 'participant', participantId: target.id },
+      usage: { inputTokens: 10, outputTokens: 120, estimated: false, tokensPerSecond: 64.4 },
+    })
+    render(<RoomTranscript room={room} journal={asJournal([msg])} liveTurn={null} />)
+    expect(screen.getByTestId('message-speed')).toHaveTextContent(/64/)
+    const to = screen.getByTestId('message-to')
+    expect(to.getAttribute('style') ?? '').toMatch(/color/)
+  })
+})

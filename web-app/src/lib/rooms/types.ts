@@ -246,7 +246,13 @@ export type RoomMessage = {
   createdAt: number
   status: 'complete' | 'interrupted' | 'failed'
   error?: { code: string; message: string }
-  usage?: { inputTokens: number; outputTokens: number; estimated: boolean }
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    estimated: boolean
+    /** How fast the reply was written, when it could be measured. */
+    tokensPerSecond?: number
+  }
   vote?: { callId: string; choice: VoteChoice; proposal: string }
   /** For synthesis: dissent the engine appended deterministically. */
   dissent?: Array<{ participantId: string; name: string; position: string }>

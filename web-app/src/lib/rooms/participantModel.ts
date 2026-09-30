@@ -6,6 +6,7 @@
  * transport or any tool/approval store, and it advertises no tools. Only text
  * deltas become the reply; reasoning is never collected.
  */
+import { extractModelSamplingDefaults } from '@/lib/custom-chat-transport'
 import {
   streamText,
   stepCountIs,
@@ -115,6 +116,13 @@ export async function streamParticipantReply(
     input.maxOutputTokens
   )
 
+  // The sampling set on the model itself (its sidebar), which a chat with it
+  // sends and a room did not: the floor under the assistant's and the
+  // participant's own.
+  const modelSampling = extractModelSamplingDefaults(
+    provider.models?.find((m) => m.id === input.model.id)
+  )
+
   let languageModel: LanguageModel
   try {
     languageModel = await createModelOrAbort(
@@ -122,9 +130,9 @@ export async function streamParticipantReply(
       provider,
       input.signal,
       deps.createModel,
-      // The assistant's sampling first; the participant's own reasoning
-      // setting wins where they overlap.
-      { ...(input.sampling ?? {}), ...(reasoning.params ?? {}) }
+      // The model's own sampling, then the assistant's; the participant's own
+      // reasoning setting wins where they overlap.
+      { ...modelSampling, ...(input.sampling ?? {}), ...(reasoning.params ?? {}) }
     )
   } catch (e) {
     if (isAbortLike(e, input.signal)) throw toRoomCallError(e, input.signal)

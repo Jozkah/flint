@@ -592,8 +592,33 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
             >
               <header className="flex flex-wrap items-center gap-1.5 text-xs">
                 <AuthorName author={m.author} room={room} t={t} />
+                {m.usage?.tokensPerSecond ? (
+                  <span
+                    data-testid="message-speed"
+                    title={t('rooms:transcript.speedTitle')}
+                    className="tabular-nums text-muted-foreground"
+                  >
+                    {t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })}
+                  </span>
+                ) : null}
                 {chip && (
-                  <span className="rounded-full bg-accent px-[7px] py-px text-[11px] text-muted-foreground">
+                  <span
+                    data-testid="message-to"
+                    // A message to a participant wears that participant's colour,
+                    // like their own name does.
+                    style={
+                      m.to.kind === 'participant'
+                        ? {
+                            color: participantColor(m.to.participantId),
+                            backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      'rounded-full px-[7px] py-px text-[11px]',
+                      m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
+                    )}
+                  >
                     {chip}
                   </span>
                 )}

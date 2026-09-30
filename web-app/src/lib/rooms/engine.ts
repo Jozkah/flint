@@ -9,6 +9,7 @@
  */
 import { participantSampling } from './persona'
 import { estimateTokens } from '@/lib/context-manager'
+import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
 import { parseAddress } from './addressing'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { decideRetry, waitFor } from '@/lib/runRetry'
@@ -159,6 +160,15 @@ type Finalize = (raw: string) => Partial<RoomMessage>
 
 /** Retries for transient and rate-limited errors (3 attempts in total). */
 const MAX_ATTEMPTS = 3
+
+/** A pause longer than this between streamed pieces is a wait, not writing. */
+const STREAM_GAP_MS = 2000
+
+/** Tokens per second for a reply, or undefined when too short or quick to mean anything. */
+export function writingSpeed(tokens: number, streamedMs: number): number | undefined {
+  if (!isMeaningfulSpeed(tokens, streamedMs)) return undefined
+  return Math.round((tokens / (streamedMs / 1000)) * 10) / 10
+}
 const CONTEXT_MIN_EXTRA_TOKENS = 256
 
 function truncate(text: string): string {
@@ -555,6 +565,10 @@ class RoomRun {
         this.calls++
         attempt++
         live.text = ''
+        // Time spent actually writing: the gaps between streamed pieces of text,
+        // not the waits for a tool or an approval in between.
+        let lastDeltaAt = 0
+        let streamedMs = 0
         try {
           const res = await this.deps.streamReply({
             model: args.model,
@@ -569,6 +583,9 @@ class RoomRun {
             maxOutputTokens: this.maxOutputTokens(),
             signal: this.signal,
             onText: (delta) => {
+              const at = this.deps.now()
+              if (lastDeltaAt && at - lastDeltaAt < STREAM_GAP_MS) streamedMs += at - lastDeltaAt
+              lastDeltaAt = at
               live.text += delta
               this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
             },
@@ -584,10 +601,14 @@ class RoomRun {
           this.room = { ...this.room, usage: addCallUsage(this.room.usage, usage, pricing) }
           if (args.participant) this.errorStreaks.set(args.participant.id, 0)
           const extra = args.finalize ? args.finalize(raw) : {}
+          const speed = writingSpeed(
+            res.toolActivity?.length ? estimateTokens(raw) : usage.outputTokens,
+            streamedMs
+          )
           const message = this.message({
             ...base,
             text: raw,
-            usage,
+            usage: speed ? { ...usage, tokensPerSecond: speed } : usage,
             ...extra,
             ...(res.toolActivity ? { toolCalls: res.toolActivity } : {}),
           })

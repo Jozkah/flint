@@ -407,6 +407,10 @@ pub struct RoomMessageUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub estimated: bool,
+    /// How fast the reply was written, in tokens per second, when it could be
+    /// measured. Absent on replies from before it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_per_second: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

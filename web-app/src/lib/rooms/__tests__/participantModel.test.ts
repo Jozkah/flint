@@ -49,6 +49,20 @@ describe('streamParticipantReply', () => {
     expect(createModel).toHaveBeenCalledWith('model-1', expect.objectContaining({ provider: 'provider-a' }), {})
   })
 
+  it("sends the assistant's sampling with the model, under the participant's own reasoning setting", async () => {
+    const createModel = vi.fn(async () => ({}) as LanguageModel)
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(input({ sampling: { temperature: 0.15, top_p: 0.5 } }), {
+      lookup,
+      createModel,
+      streamText: stream as never,
+    })
+    expect(createModel).toHaveBeenCalledWith('model-1', expect.anything(), {
+      temperature: 0.15,
+      top_p: 0.5,
+    })
+  })
+
   it("applies the participant's reasoning: body fields to the model, native options to the stream", async () => {
     const local = providerLookup([
       makeProvider('llamacpp', [{ id: 'qwen', settings: { ctx_len: { controller_props: { value: 40960 } } } as never }]),
