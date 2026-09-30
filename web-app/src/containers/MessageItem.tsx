@@ -59,6 +59,7 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
@@ -904,16 +905,20 @@ export const MessageItem = memo(
               )}
 
               {onFork && !isStreaming && (
-                <Button
+                <Tooltip>
+<TooltipTrigger asChild>
+<Button
                   variant="ghost"
                   size="icon-xs"
                   className={ACTION_BUTTON}
                   onClick={() => onFork(message.id)}
-                  title={t('chat:actions.fork')}
                   aria-label={t('chat:actions.fork')}
                 >
                   <GitFork className="size-4" />
                 </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.fork')}</TooltipContent>
+</Tooltip>
               )}
 
                 {selectedModel &&
@@ -921,30 +926,40 @@ export const MessageItem = memo(
                   !isStreaming &&
                   isLastMessage &&
                   canContinue && (
-                    <Button
+                    <Tooltip>
+<TooltipTrigger asChild>
+<Button
                       variant="ghost"
                       size="icon-xs"
                       className={ACTION_BUTTON}
                       onClick={handleContinue}
-                      title={t('chat:actions.continue')}
+                      aria-label={t('chat:actions.continue')}
                     >
                       <Play className="size-4" />
                     </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.continue')}</TooltipContent>
+</Tooltip>
                   )}
 
               {selectedModel &&
                 onRegenerate &&
                 !isStreaming &&
                 isLastMessage && (
-                  <Button
+                  <Tooltip>
+<TooltipTrigger asChild>
+<Button
                     variant="ghost"
                     size="icon-xs"
                     className={ACTION_BUTTON}
                     onClick={handleRegenerate}
-                    title={t('chat:actions.regenerate')}
+                    aria-label={t('chat:actions.regenerate')}
                   >
                     <RefreshCw className="size-4" />
                   </Button>
+</TooltipTrigger>
+<TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>
+</Tooltip>
                 )}
             </div>
 

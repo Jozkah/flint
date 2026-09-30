@@ -1,3 +1,8 @@
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useState, useRef } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import {
@@ -42,13 +47,18 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
         }
       }}
     >
-      <Trash2 className="size-4" />
+      <Trash2 className="size-[17px]" />
     </Button>
   )
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>{trigger}</DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t('common:deleteMessage')}</TooltipContent>
+      </Tooltip>
       <DialogContent
         onOpenAutoFocus={(e) => {
           e.preventDefault()

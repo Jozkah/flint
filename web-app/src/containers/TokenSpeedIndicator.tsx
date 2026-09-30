@@ -11,6 +11,12 @@ import { readTokenUsage } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
 import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
+import { cacheStatus } from '@/lib/tokenUsage'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface TokenSpeedMeta {
   tokenSpeed: number
@@ -43,19 +49,22 @@ export const TokenSpeedIndicator = memo(
     // This message's own usage, not the thread's latest: an earlier turn's
     // breakdown is shown for that turn.
     const usage = readTokenUsage(metadata?.usage)
-    const hasBreakdown =
-      !!usage && (usage.totalTokens ?? 0) > 0
+    const hasBreakdown = !!usage && (usage.totalTokens ?? 0) > 0
     // Which remembered records this message's request carried (AH-083).
     const memory = metadata?.memory as
       | { injectedIds?: unknown; conflictIds?: unknown }
       | undefined
     const ids = (v: unknown) =>
-      Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+      Array.isArray(v)
+        ? v.filter((x): x is string => typeof x === 'string')
+        : []
     const memoryIds = ids(memory?.injectedIds)
     const withheldIds = ids(memory?.conflictIds)
     const displayTokenCount = usage?.outputTokens ?? persisted?.tokenCount ?? 0
     const durationMs =
-      typeof persisted?.durationMs === 'number' ? persisted.durationMs : undefined
+      typeof persisted?.durationMs === 'number'
+        ? persisted.durationMs
+        : undefined
     const rawSpeed = isMeaningfulSpeed(displayTokenCount, durationMs)
       ? toNumber(persisted?.tokenSpeed ?? 0)
       : 0
@@ -117,10 +126,16 @@ export const TokenSpeedIndicator = memo(
               className="mt-1.5 border-t border-border pt-2"
               data-testid="message-memory"
             >
-              <div className="font-medium text-foreground">Memory in this request</div>
+              <div className="font-medium text-foreground">
+                Memory in this request
+              </div>
               <ul className="mt-1 space-y-0.5" aria-label="Memories sent">
                 {memoryIds.map((id) => (
-                  <li key={id} className="font-mono break-all" data-memory-id={id}>
+                  <li
+                    key={id}
+                    className="font-mono break-all"
+                    data-memory-id={id}
+                  >
                     {id}
                   </li>
                 ))}
@@ -137,21 +152,30 @@ export const TokenSpeedIndicator = memo(
     )
 
     const trigger = (
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="Token usage for this message"
-          data-testid="message-token-trigger"
-          className="inline-grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground pointer-coarse:size-11"
-        >
-          <Gauge className="size-[15px]" />
-        </button>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              aria-label="Token usage for this message"
+              data-testid="message-token-trigger"
+              className="inline-grid size-7 shrink-0 cursor-pointer place-items-center rounded-md text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground pointer-coarse:size-11"
+            >
+              <Gauge className="size-3.5" />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Token usage</TooltipContent>
+      </Tooltip>
     )
     // Beside the trigger, not inside it: a per-message flag readable without
     // opening anything, only when the provider reported the cache.
     const cacheFlag = usage ? (
-      <CacheReuseBadge usage={usage} hideUnreported testId="message-cache-status" />
+      <CacheReuseBadge
+        usage={usage}
+        hideUnreported
+        testId="message-cache-status"
+      />
     ) : null
 
     if (showTokenSpeed) {
@@ -162,6 +186,9 @@ export const TokenSpeedIndicator = memo(
             {details}
           </Popover>
           {cacheFlag}
+          {cacheFlag &&
+            cacheStatus(usage) !== 'not-reported' &&
+            displaySpeed > 0 && <span aria-hidden>·</span>}
           {displaySpeed > 0 && <span>{displaySpeed} tokens/sec</span>}
           {displayTokenCount > 0 && (
             <span className="text-muted-foreground">

@@ -1,8 +1,15 @@
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Copy, CopyCheck } from 'lucide-react'
 import { useState } from 'react'
 
 export const CopyButton = ({ text }: { text: string }) => {
+  const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
   const handleCopy = () => {
@@ -12,19 +19,24 @@ export const CopyButton = ({ text }: { text: string }) => {
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className="size-7 text-fg-2 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
-      onClick={handleCopy}
-    >
-      {copied ? (
-        <>
-          <CopyCheck className="size-[15px] text-primary" />
-        </>
-      ) : (
-        <Copy className="size-[15px]" />
-      )}
-    </Button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="size-7 text-fg-2 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
+          onClick={handleCopy}
+        >
+          {copied ? (
+            <>
+              <CopyCheck className="size-[15px] text-primary" />
+            </>
+          ) : (
+            <Copy className="size-[15px]" />
+          )}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{t('chat:actions.copy')}</TooltipContent>
+    </Tooltip>
   )
 }
