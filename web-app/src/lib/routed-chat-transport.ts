@@ -114,7 +114,12 @@ export class RoutedChatTransport extends CustomChatTransport {
       message: latest.text,
       assistants: assistantState.assistants,
       currentAssistantId: current?.id,
-      includeCoworkMode: true,
+      // Five assistants, not fifteen assistant-and-style pairs: Jev answers
+      // with one probability per choice and abstains below 0.7, so splitting
+      // the same prompt three ways left each pair under the bar and Flint was
+      // kept. A chat has no Cowork style to advise anyway; its work profile is
+      // chosen separately.
+      includeCoworkMode: false,
       pinned,
       temporary: this.temporary,
       signal,
