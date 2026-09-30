@@ -106,7 +106,12 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
       `When the objective is fully met and further turns would only repeat what has been said, end your message with a final line containing exactly ${CONCLUDE_SIGNAL}. This closes the discussion, so use it only at genuine consensus or once the task is done — not to end a live disagreement.`
     )
   }
-  lines.push(ADDRESSING_RULES, FRAMING_NOTICE, UNTRUSTED_NOTICE)
+  lines.push(
+    "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
+    ADDRESSING_RULES,
+    FRAMING_NOTICE,
+    UNTRUSTED_NOTICE
+  )
   return lines.join('\n')
 }
 

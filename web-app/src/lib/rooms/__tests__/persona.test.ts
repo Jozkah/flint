@@ -31,3 +31,23 @@ describe('participantPersona', () => {
     expect(out[0]).toContain('(Plan)')
   })
 })
+
+describe('participantSampling', () => {
+  it("passes on the assistant's sampling and nothing else", async () => {
+    const { participantSampling } = await import('../persona')
+    useAssistant.setState({
+      assistants: [
+        { id: 'coal', name: 'Coal', parameters: { temperature: 0.15, top_k: 16, top_p: 0.5, stream: true, note: 'x' } },
+      ],
+    } as never)
+    expect(participantSampling({ assistantId: 'coal' })).toEqual({ temperature: 0.15, top_k: 16, top_p: 0.5 })
+  })
+
+  it('is absent without an assistant, for a deleted one, or one with no sampling', async () => {
+    const { participantSampling } = await import('../persona')
+    useAssistant.setState({ assistants: [{ id: 'plain', name: 'P', parameters: {} }] } as never)
+    expect(participantSampling({})).toBeUndefined()
+    expect(participantSampling({ assistantId: 'gone' })).toBeUndefined()
+    expect(participantSampling({ assistantId: 'plain' })).toBeUndefined()
+  })
+})

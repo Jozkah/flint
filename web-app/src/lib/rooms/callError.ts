@@ -44,6 +44,8 @@ export type StreamReplyInput = {
   model: RoomModelRef
   /** The speaking participant's reasoning setting; absent for the model's default. */
   reasoning?: ParticipantReasoning
+  /** Sampling from the participant's assistant (temperature, top_p...), when it has one. */
+  sampling?: Record<string, number>
   system: string
   messages: PromptMessage[]
   maxOutputTokens: number

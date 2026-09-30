@@ -7,6 +7,7 @@
  * participants or the moderator from model output, and never consults any
  * tool-approval store.
  */
+import { participantSampling } from './persona'
 import { estimateTokens } from '@/lib/context-manager'
 import { parseAddress } from './addressing'
 import { isAbortLike } from '@/lib/coworkRunner'
@@ -559,6 +560,9 @@ class RoomRun {
             model: args.model,
             ...(args.participant?.reasoning
               ? { reasoning: args.participant.reasoning }
+              : {}),
+            ...(args.participant && participantSampling(args.participant)
+              ? { sampling: participantSampling(args.participant) }
               : {}),
             system: built.system,
             messages: built.messages,

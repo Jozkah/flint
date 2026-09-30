@@ -122,7 +122,9 @@ export async function streamParticipantReply(
       provider,
       input.signal,
       deps.createModel,
-      reasoning.params
+      // The assistant's sampling first; the participant's own reasoning
+      // setting wins where they overlap.
+      { ...(input.sampling ?? {}), ...(reasoning.params ?? {}) }
     )
   } catch (e) {
     if (isAbortLike(e, input.signal)) throw toRoomCallError(e, input.signal)
