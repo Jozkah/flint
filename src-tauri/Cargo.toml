@@ -32,8 +32,6 @@ name = "flint"
 path = "src/bin/flint.rs"
 required-features = ["cli"]
 
-# Binary-level tests of the headless protocol: they spawn the `flint` binary,
-# so they exist only in the build that has one.
 [[test]]
 name = "stream_json_init"
 path = "tests/stream_json_init.rs"
@@ -54,28 +52,6 @@ name = "sdk_examples"
 path = "tests/sdk_examples.rs"
 required-features = ["cli"]
 
-# Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
-# not in `default`, so `required-features` keeps cargo from building this target
-# unless it is asked for explicitly.
-#
-# An example rather than a [[bin]], because `required-features` only governs
-# cargo. The Tauri bundler enumerates every [[bin]] the package declares and
-# demands each one's file when it computes the installed size, so as a [[bin]]
-# this target failed `tauri build` outright:
-#
-#   failed to bundle project: when getting size of target/release/cowork-smoke.exe:
-#   The system cannot find the file specified. (os error 2)
-#
-# The bundler does not look at examples, so this keeps the harness out of the
-# installer instead of shipping a test binary to satisfy the size calculation.
-# `cargo ... --all-targets` still builds it, so CI coverage is unchanged.
-#
-# It also has to live outside `src/bin/`: the bundler enumerates that directory
-# directly, by file stem, rather than reading cargo's target list -- which is why
-# it asked for `cowork_smoke.exe` (the file name) and not `cowork-smoke.exe` (the
-# target name) even once no such target existed.
-#
-# Run it with: cargo run --example cowork-smoke --features cowork-smoke
 [[example]]
 name = "cowork-smoke"
 path = "examples/cowork_smoke.rs"
@@ -93,27 +69,15 @@ default = [
     "tauri/custom-protocol",
     "desktop",
 ]
-# Builds the `cowork-smoke` binary, which drives the real Tauri app and its
-# real WebView. Never enabled for release bundles.
 cowork-smoke = ["desktop"]
 hardware = ["tauri-plugin-hardware/tauri"]
 deep-link = ["dep:tauri-plugin-deep-link"]
-# WebDriver e2e only. Runs an embedded WebDriver server inside the app so
-# @wdio/tauri-service can drive it. Opt-in so release builds never ship a
-# remote-control listener; enabled by no supported build path.
 e2e = ["dep:tauri-plugin-wdio-webdriver"]
-# MLX (tauri-plugin-mlx) is Apple-Silicon-only; it's a macOS-target dependency
-# (see [target.'cfg(target_os = "macos")'.dependencies]) rather than a feature.
 desktop = [
     "deep-link",
     "hardware",
     "tauri-app",
 ]
-# Everything that makes this crate a Tauri application: the framework, its
-# plugins, and the native GUI helpers (file dialogs, GTK, D-Bus). The headless
-# `jan` CLI builds without this feature and links no GUI crate -- gtk/gdk enter
-# the graph through `tauri` itself (via muda), so the dependency must be absent,
-# not merely unused.
 tauri-app = [
     "dep:tauri",
     "dep:tauri-build",
@@ -162,9 +126,6 @@ serde_json = "1.0"
 
 [dependencies]
 dirs = "6.0.0"
-# The protocol types derive JSON Schema from themselves: `jan cli agent schema`
-# is generated, never hand-written, so a consumer validates against the types
-# rather than against a copy of them.
 schemars = "1"
 async-trait = "0.1"
 env = "1.0.1"
@@ -183,15 +144,8 @@ jan-utils = { path = "./utils" }
 jan-process = { path = "./process" }
 libloading = "0.8.7"
 log = "0.4"
-# Pulled in by rmcp's `auth` feature; used directly for `TokenResponse`
-# accessors on the persisted token record (`core::mcp::oauth`).
 oauth2 = "5.0"
 rand = "0.8"
-# Both directions: `client` + the http/child-process client transports consume
-# other people's servers (`core::mcp::helpers`), while `server`,
-# `transport-io` and `transport-streamable-http-server` serve Jan's own toolset
-# (`core::mcp::server`). The server side is Tauri-free so it builds in the `cli`
-# feature config too.
 rmcp = { version = "3.2.0", features = [
     "auth",
     "client",
@@ -205,9 +159,6 @@ rmcp = { version = "3.2.0", features = [
     "reqwest",
 ] }
 serde = { version = "1.0", features = ["derive"] }
-# `raw_value` keeps a JSON number as the text the server sent. Money fields in
-# the Tokamak usage API must round-trip exactly, and a plain parse routes every
-# number through f64 (see core/cli/tokamak/usage.rs).
 serde_json = { version = "1.0", features = ["raw_value"] }
 serde_yaml = "0.9.34"
 toml = "0.8"
@@ -220,17 +171,10 @@ tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-wdio-webdriver = { version = "1.4", optional = true }
 tauri-plugin-hardware = { path = "./plugins/tauri-plugin-hardware", default-features = false }
 tauri-plugin-llamacpp = { path = "./plugins/tauri-plugin-llamacpp", optional = true }
-# The CLI consumes only these plugins' tauri-free cores (`db`, `provider`, the
-# agent toolset); the desktop feature turns their Tauri command surface back on.
 tauri-plugin-vector-db = { path = "./plugins/tauri-plugin-vector-db", default-features = false }
 tauri-plugin-rag = { path = "./plugins/tauri-plugin-rag", optional = true }
 tauri-plugin-websearch = { path = "./plugins/tauri-plugin-websearch", default-features = false }
 tauri-plugin-agent-tools = { path = "./plugins/tauri-plugin-agent-tools", default-features = false }
-# `default-features = false` drops the plugin's default `rustls-tls` (bundled
-# Mozilla roots) so `native-tls` reads the OS trust store instead. Other
-# features re-list the plugin's defaults so behaviour is otherwise unchanged.
-# `macos-system-configuration` is reqwest's legacy alias for `system-proxy` —
-# cross-platform-safe; native deps are target-gated by Cargo.
 tauri-plugin-http = { version = "2", optional = true, default-features = false, features = [
   "native-tls",
   "http2",
@@ -267,14 +211,6 @@ clap = { version = "4", features = ["derive"] }
 env_logger = { version = "0.11", optional = true }
 indicatif = { version = "0.17", optional = true }
 console = { version = "0.15", optional = true }
-# The Secret Service backend must be `async-secret-service` (zbus, pure Rust),
-# not `sync-secret-service`: the latter pulls `libdbus-sys`, whose `DT_NEEDED`
-# on libdbus-1.so.3 is resolved before `main`, so a headless host without the
-# D-Bus runtime cannot even exec `jan` -- the encrypted-file fallback in
-# `core::server::provider_secrets` never gets a chance to run. `async-io`
-# rather than `tokio`: zbus's `tokio` `block_on` drives a runtime of its own,
-# which panics when called from inside one, and the keyring is read from async
-# CLI paths.
 keyring = { version = "3", features = [
     "apple-native",
     "windows-native",
@@ -285,19 +221,9 @@ keyring = { version = "3", features = [
 aes-gcm = "0.10"
 machine-uid = "0.5"
 ratatui = { version = "0.30", optional = true, features = ["unstable-rendered-line-info"] }
-# Display width for the TUI's own truncation: a CJK glyph or emoji is two
-# cells wide, so counting chars overflows a bordered panel. Already in the graph
-# via ratatui; named here because this crate calls it directly.
 unicode-width = { version = "0.2", optional = true }
-# Grapheme clusters for the `wave` glyph cap: `👁️‍🗨️` is one thing a person sees
-# but five `char`s, so the 3-glyph limit has to count clusters or it rejects a
-# single emoji. Not optional -- `global_config` builds for desktop too. Already
-# compiled in both graphs via ratatui/comfy-table, so this adds no build cost.
 unicode-segmentation = "1"
 pulldown-cmark = { version = "0.13", optional = true, default-features = false }
-# `regex-fancy` keeps this pure Rust: the default `onig` backend links libonig,
-# which the headless CLI must not pull in. The raw `.sublime-syntax`/`.tmTheme`
-# loaders (plist, yaml-rust, html) are off -- only the bundled dumps are used.
 syntect = { version = "5.3", optional = true, default-features = false, features = [
     "parsing",
     "default-syntaxes",
@@ -325,22 +251,56 @@ zbus = { version = "5", default-features = false, features = ["tokio"], optional
 gtk = { version = "0.18", optional = true }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.61.1", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_Security", "Win32_System_Registry"] }
+libc = "0.2.172"
+webview2-com = "0.38.2"
+windows-core = "0.61"
+windows-sys = { version = "0.60.2", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_Graphics_Dwm",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Threading",
+  "Win32_System_Console",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-mlx = { path = "./plugins/tauri-plugin-mlx", optional = true }
-
-[target.'cfg(not(target_os = "macos"))'.dependencies]
-tauri-plugin-mlx = { path = "./plugins/tauri-plugin-mlx", optional = true, default-features = false }
-
-[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
-tauri-plugin-single-instance = { version = "2.2.0", optional = true }
-
-[target.'cfg(not(any(windows, target_os = "macos")))'.dependencies]
-tauri-plugin-single-instance = { version = "2.2.0", optional = true }
-
-[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
-reqwest = { version = "0.12.4", features = ["json", "rustls-tls"], default-features = false }
+security-framework = "3"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-reqwest = { version = "0.12.4", features = ["json", "native-tls"] }
+reqwest = { version = "0.12", features = ["json", "blocking", "stream", "native-tls"] }
+genai = { version = "=0.7.0-beta.19", default-features = false, features = ["native-tls"] }
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false, features = ["json", "stream", "charset", "http2", "system-proxy", "native-tls"] }
+once_cell = "1.18"
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake"] }
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"], optional = true }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+reqwest = { version = "0.12", features = ["json", "blocking", "stream", "rustls-tls"], default-features = false }
+genai = { version = "=0.7.0-beta.19", default-features = false, features = ["rustls-tls"] }
+reqwest13 = { package = "reqwest", version = "0.13", default-features = false, features = ["json", "stream", "charset", "http2", "rustls"] }
+tauri-plugin-dialog = { version = "2.2.1", default-features = false, optional = true }
+tauri-plugin-http = { version = "2", default-features = false, optional = true }
+tauri-plugin-log = { version = "2.0.0-rc", default-features = false, optional = true }
+tauri-plugin-opener = { version = "2.2.7", default-features = false, optional = true }
+tauri-plugin-os = { version = "2.2.1", default-features = false, optional = true }
+tauri-plugin-shell = { version = "2.2.0", default-features = false, optional = true }
+tauri-plugin-store = { version = "2", default-features = false, optional = true }
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+strip = "symbols"
+codegen-units = 1
+panic = "unwind"
+overflow-checks = false
+debug = false
+debug-assertions = false
+incremental = false
+rpath = false
