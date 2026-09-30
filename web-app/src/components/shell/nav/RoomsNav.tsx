@@ -28,7 +28,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { Columns2, DoorOpen, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react'
-import { regenerateRoomTitle } from '@/lib/regenerateSessionTitle'
+import { regenerateRoomTitle, roomTranscript } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import {
   normalizeError,
@@ -97,6 +97,8 @@ const RoomItem = memo(function RoomItem({
         title={room.title}
         updated={room.updatedAt}
         summary={room.objective}
+        summaryKey={`${room.id}\u0000${room.updatedAt}`}
+        transcript={() => roomTranscript(room.id)}
         suppressed={menuOpen}
       >
         <NavButton

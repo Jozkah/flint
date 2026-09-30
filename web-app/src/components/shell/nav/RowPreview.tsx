@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import { usePreviewSummary } from '@/hooks/usePreviewSummary'
 import {
   HoverCard,
   HoverCardContent,
@@ -14,18 +15,30 @@ export function RowPreview({
   title,
   updated,
   summary,
+  summaryKey,
+  transcript,
   suppressed,
   children,
 }: {
   title: string
   /** Epoch milliseconds. */
   updated?: number
+  /** The plain line shown until (or instead of) a written summary. */
   summary?: string
+  /**
+   * Names the conversation in its current state (id, then a NUL, then its
+   * last-updated time) so a summary is made once and redone only on change.
+   */
+  summaryKey?: string
+  /** The conversation as text; called when the card opens. */
+  transcript?: () => Promise<string> | string
   /** Shut while the row's menu is open, so the card cannot cover it. */
   suppressed: boolean
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const written = usePreviewSummary(summaryKey, open && !suppressed, transcript)
+  const shown = written.summary ?? summary
   return (
     <HoverCard
       openDelay={650}
@@ -46,9 +59,14 @@ export function RowPreview({
         <p className="mt-1 text-[11px] text-subtle-foreground">
           {updated ? new Date(updated).toLocaleString() : ''}
         </p>
-        {summary && (
-          <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground">
-            {summary}
+        {shown && (
+          <p
+            data-testid="row-preview-summary"
+            className={`mt-2 line-clamp-5 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
+              written.loading && !written.summary ? ' opacity-60' : ''
+            }`}
+          >
+            {shown}
           </p>
         )}
       </HoverCardContent>

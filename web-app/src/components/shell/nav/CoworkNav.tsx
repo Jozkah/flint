@@ -49,7 +49,7 @@ import {
   FolderPlus,
   type LucideIcon,
 } from 'lucide-react'
-import { regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
+import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
@@ -150,6 +150,8 @@ const SessionItem = memo(function SessionItem({
         title={session.title}
         updated={session.updated}
         summary={summary}
+        summaryKey={`${session.id}\u0000${session.updated}`}
+        transcript={() => coworkTranscript(session.id)}
         suppressed={menuOpen}
       >
         <NavButton
