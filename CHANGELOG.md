@@ -58,6 +58,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 ### Run summary and opening pages
 
 - A finished run's folded steps now say what the run did, such as **Ran 20 commands, created 8 files, used 6 tools +645 −0**, instead of a bare step count.
+- Each step inside a folded run is one closed line saying what it did, such as **Read AUDIT.md** or **Failed to run Diffed original vs patched files**, and opens on click. The run's line counts failures, as in **Ran 54 commands, read 4 files (2 failed)**. The bash tool takes an optional `description` for that line.
 - Added an **`open_in_browser`** tool. The model can put a page in front of the user, shown as an **Opened in Browser** card with an **Open** button and a link menu. A page on this computer opens at once; any other site waits for the user to press **Open**.
 
 ### Git approvals

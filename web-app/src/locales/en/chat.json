@@ -101,7 +101,10 @@
     "steps_one": "{{count}} step",
     "steps_other": "{{count}} steps",
     "working": "Working",
+    "failed": "Failed:",
+    "failedToRun": "Failed to run",
     "summary": {
+      "failed": "{{count}} failed",
       "commands_one": "ran {{count}} command",
       "commands_other": "ran {{count}} commands",
       "created_one": "created {{count}} file",

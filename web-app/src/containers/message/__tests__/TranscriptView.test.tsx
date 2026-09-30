@@ -95,8 +95,8 @@ describe('Transcript view', () => {
     expect(screen.getAllByTestId('approval-actions').length).toBeGreaterThan(0)
     expect(headers()).toEqual([])
     const toggle = screen.getByTestId('transcript-steps-toggle')
-    // A finished run says what it did; failed calls are not counted.
-    expect(toggle).toHaveTextContent('transcriptView.summary.read:1, chat:transcriptView.summary.searched:1')
+    // A finished run says what it did, and how many calls failed.
+    expect(toggle).toHaveTextContent('transcriptView.summary.commands:1, chat:transcriptView.summary.read:1')
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(toggle)
     expect(toggle).toHaveAttribute('aria-expanded', 'true')
