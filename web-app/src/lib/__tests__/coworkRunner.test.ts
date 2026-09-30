@@ -1057,3 +1057,88 @@ describe('automatic recovery', () => {
     expect(d.sendStep).toHaveBeenCalledTimes(2)
   })
 })
+
+describe('harness refusals and steering yields', () => {
+  const inputError = (id: string, name: string, errorText: string, input: unknown = {}) =>
+    ({
+      type: 'tool-input-error',
+      toolCallId: id,
+      toolName: name,
+      input,
+      errorText,
+    }) as unknown as UIMessageChunk
+  const go = (d: ReturnType<typeof deps>) =>
+    runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: d,
+    } as never)
+
+  it('reports web access as off only for a tool that was not offered', async () => {
+    const off = deps([
+      [inputError('w1', 'web_fetch', "Model tried to call unavailable tool 'web_fetch'.")],
+      textStep('done'),
+    ])
+    expect(JSON.stringify((await go(off)).messages)).toContain('web access is turned')
+
+    const on = deps([
+      [inputError('w2', 'web_fetch', 'Invalid input for tool web_fetch: url is required')],
+      textStep('done'),
+    ])
+    const told = JSON.stringify((await go(on)).messages)
+    expect(told).not.toContain('web access is turned')
+    expect(told).toContain('url is required')
+  })
+
+  it('keeps the arguments of skill_list instead of forcing an empty call', async () => {
+    const d = deps([
+      [
+        inputError(
+          's1',
+          'skill_list',
+          'Invalid input for tool skill_list: query must be a string',
+          { query: 5 }
+        ),
+      ],
+      textStep('done'),
+    ])
+    await go(d)
+    expect(d.dispatch).not.toHaveBeenCalled()
+    const { NO_ARG_TOOLS } = await import('../coworkRunner')
+    expect(NO_ARG_TOOLS.has('skill_list')).toBe(false)
+  })
+
+  it('does not skip the rest of a batch for steering that has nothing to deliver, and says what was not run', async () => {
+    const dispatch = vi.fn(async (): Promise<ToolOutcome> => ({ output: 'ok' }))
+    const d = {
+      ...deps([[...toolStep('first', 'c1'), ...toolStep('second', 'c2')], textStep('done')], dispatch),
+      // Looks pending, but the mail was consumed by a tool: nothing to take.
+      hasSteering: () => true,
+      takeSteering: vi.fn(() => []),
+    }
+    await go(d)
+    expect(dispatch).toHaveBeenCalledTimes(1)
+    const second = (d.sendStep.mock.calls[1] as unknown as [UIMessage[]])[0]
+    const last = second.at(-1) as UIMessage
+    expect(last.role).toBe('user')
+    expect(JSON.stringify(last)).toContain('Not run; re-issue if still needed: second')
+  })
+
+  it('yields to steering during a batch of invalid calls and skips the rest', async () => {
+    const d = {
+      ...deps([
+        [
+          inputError('i1', 'ls', "Model tried to call unavailable tool 'ls'."),
+          inputError('i2', 'ls', "Model tried to call unavailable tool 'ls'."),
+        ],
+        textStep('done'),
+      ]),
+      hasSteering: () => true,
+      takeSteering: vi.fn(() => []),
+    }
+    const out = await go(d)
+    const told = JSON.stringify(out.messages)
+    expect(told).toContain('steered this turn before this call started')
+    expect(told).toContain('Re-issue it if it is still needed')
+  })
+})

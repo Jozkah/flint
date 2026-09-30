@@ -1388,6 +1388,15 @@ async fn execute_tool_inner(
     }
     if unsandboxed {
         ctx = ctx.with_unsandboxed_retry();
+    } else if name == "bash" {
+        // Edit access to a project folder means the shell works in it, as the
+        // user's own terminal would. The Windows sandbox cannot even enter such
+        // a folder, so the command runs there directly instead of failing.
+        if let Some(folder) =
+            handlers::direct_edit_shell_start(&write_roots, Path::new(&data_folder))
+        {
+            ctx = ctx.with_direct_edit_shell(folder);
+        }
     }
     // A Cowork session is a conversation with a stable id and a messaging
     // identity; bind both so `memory_propose` attributes to it and the mailbox

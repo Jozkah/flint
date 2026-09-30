@@ -72,8 +72,19 @@ export function localPairingStore(storage?: Storage): PairingStore {
         available.setItem(PAIRING_KEY, JSON.stringify(p))
         memoryOnly = false
       } catch {
-        // Private mode or a full quota: keep pairing for this visit.
+        // Private mode or a full quota: keep pairing for this visit. A
+        // previous pairing may still be on disk; overwrite it best-effort so
+        // it cannot come back on reload.
         memoryOnly = true
+        try {
+          available?.removeItem(PAIRING_KEY)
+        } catch {
+          try {
+            available?.setItem(PAIRING_KEY, 'null')
+          } catch {
+            // Storage is unusable; nothing more to do.
+          }
+        }
       }
     },
     clear() {
@@ -82,8 +93,14 @@ export function localPairingStore(storage?: Storage): PairingStore {
       try {
         available?.removeItem(PAIRING_KEY)
       } catch {
-        // Ignore any stale entry when storage cannot remove it.
+        // removeItem failed, so the old token would come back on reload
+        // ("forget device" undone). Overwrite it with a value get() rejects.
         memoryOnly = true
+        try {
+          available?.setItem(PAIRING_KEY, 'null')
+        } catch {
+          // Nothing more can be done; the entry stays until site data is cleared.
+        }
       }
     },
   }

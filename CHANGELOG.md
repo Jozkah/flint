@@ -6,7 +6,8 @@ This changelog is release-oriented: it lists shipped features, additions and mea
 
 ## Highlights
 
-- **Local-first and private.** Telemetry, catalogue/model-discovery fetches and update checks were removed from the Flint build. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes.
+- **Local-first and private.** Telemetry and automatic update checks stay disabled, while model discovery is intentionally user-initiated through Hugging Face **Discover** instead of hidden background catalogue traffic. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes.
+- **Hugging Face Discover.** Search Hugging Face, inspect model details and README, and download the exact GGUF quantization (or MLX repository on Apple silicon) you choose, with hardware-aware recommendations, gated-model token support, resumable/cancellable downloads and size/SHA-256 verification. Nothing is contacted until you open Discover, search, or click Download.
 - **Jan → Flint migration.** Existing Jan data is detected on first launch with Copy, Reuse, Move and Start fresh modes, per-category selection, conflict handling, backup/rollback and resumable migration.
 - **Cowork.** A full agentic coding workspace with managed worktrees, proposals, hunk review, Code/Preview/Changes/Activity panels, checkpoints, subagents, multiple attached folders, PR state/checks and browser verification.
 - **Discussion Rooms.** Multi-model rooms with per-participant models, tools, folder access, MCP, web research, reasoning controls, limits, pausing/resuming and automatic context compaction.
@@ -75,8 +76,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 ### Release infrastructure
 
-- Tag pushes matching `v*` now start the tag build pipeline.
-- Moving an existing release tag can rebuild the existing release: the workflow resolves the existing release upload URL and clears stale build assets before uploading replacements.
+- Tag pushes matching `v*` start the Flint release build, which attaches the Windows, macOS and Linux bundles to the existing release for that tag.
+- Moving an existing release tag rebuilds it and replaces the bundles already attached to that release.
+- The older tag build workflow is now manual-only: it needs an explicit tag, never touches a published release, and clears stale assets from a draft before uploading.
 - Reusable release workflows use `$GITHUB_OUTPUT` instead of deprecated `::set-output` handling.
 
 ### Windows installer
@@ -181,6 +183,7 @@ These are kept because they fix behavior inherited from the Jan base rather than
 - Prevent malformed or nameless interrupted tool calls from being resent into later provider requests.
 - Preserve thread/message integrity across deletes and concurrent saves, including safe handling of unreadable thread metadata.
 - Keep provider/model selection consistent when providers are added, removed or temporarily unreachable.
+- Keep the model selector's search popup inside the window while typing instead of letting it slide off-screen.
 - Harden archive extraction, secret storage, proxy forwarding and Local API Server request handling inherited from the base application.
 
 ---

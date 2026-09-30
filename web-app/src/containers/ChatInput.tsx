@@ -803,7 +803,7 @@ const ChatInput = memo(function ChatInput({
 
   const tokenCounterVisible =
     !hideTokenCounter &&
-    ((!!tokenSource?.threadId && !!selectedModel) || shouldShowTokenCounter({
+    shouldShowTokenCounter({
       hasSelectedModel: !!selectedModel,
       isAgentMode: effectiveAgentMode,
       isInitialMessage: !!initialMessage,
@@ -811,7 +811,7 @@ const ChatInput = memo(function ChatInput({
       hasPromptText: prompt.trim().length > 0,
       hasReportedUsage:
         (tokenSource?.usage?.totalTokens ?? 0) > 0 || !!tokenSource?.contextError,
-    }))
+    })
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')
@@ -1105,7 +1105,9 @@ const ChatInput = memo(function ChatInput({
           ? assistants.find((a) => a.id === projectAssistantId)
           : assistants.find((a) => a.id === selectedAssistantId)
 
-        setCurrentAssistant(assistant)
+        // Not saved as "last used": the composer's assistant is a draft (see
+        // AssistantsMenu), and routing may have moved it without the user.
+        setCurrentAssistant(assistant, false)
 
         // Never pin a thread to a model the provider cannot serve — a local
         // engine has no cloud catalogue to borrow an id from (janhq/jan#8007).

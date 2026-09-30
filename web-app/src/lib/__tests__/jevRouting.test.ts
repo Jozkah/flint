@@ -73,7 +73,7 @@ describe('Jev prompt routing', () => {
       skill: 'jev-route:coal:review', probability: 0.9, fallback: null, model: 'jev',
     })
     expect(await chooseJevPromptRoute({
-      message: 'Fix this bug', assistants, includeCoworkMode: true,
+      message: 'Fix this bug in the parser please', assistants, includeCoworkMode: true,
     })).toMatchObject({
       assistantId: 'coal', mode: 'review',
     })
@@ -82,24 +82,43 @@ describe('Jev prompt routing', () => {
   })
 
   it.each(['abstained', 'no_key'] as const)(
-    'falls back to Flint after %s', async (fallback) => {
+    'keeps the current assistant after %s', async (fallback) => {
       suggest.mockResolvedValue({ skill: null, probability: null, fallback, model: null })
-      expect(await chooseJevPromptRoute({ message: 'New task', assistants })).toMatchObject({
-        assistantId: 'jan', mode: null, fallback,
+      expect(await chooseJevPromptRoute({ message: 'A brand new task for you', assistants })).toMatchObject({
+        assistantId: null, mode: null, fallback,
       })
     }
   )
 
-  it('falls back to Flint on a transport error', async () => {
+  it('keeps the current assistant on a transport error', async () => {
     suggest.mockRejectedValue(new Error('unavailable'))
-    expect(await chooseJevPromptRoute({ message: 'New task', assistants })).toMatchObject({
-      assistantId: 'jan', mode: null,
+    expect(await chooseJevPromptRoute({ message: 'A brand new task for you', assistants })).toBeNull()
+  })
+
+  it('sends nothing for a pinned conversation, a temporary chat, or a short prompt', async () => {
+    const base = { message: 'Fix this bug in the parser please', assistants }
+    expect(await chooseJevPromptRoute({ ...base, pinned: true })).toBeNull()
+    expect(await chooseJevPromptRoute({ ...base, temporary: true })).toBeNull()
+    expect(await chooseJevPromptRoute({ ...base, message: 'fix it' })).toBeNull()
+    expect(await chooseJevPromptRoute({ ...base, message: '/compact now please and thanks' })).toBeNull()
+    expect(suggest).not.toHaveBeenCalled()
+  })
+
+  it('stops waiting for Jev when the turn is aborted', async () => {
+    suggest.mockReturnValue(new Promise(() => {}))
+    const controller = new AbortController()
+    const pending = chooseJevPromptRoute({
+      message: 'Fix this bug in the parser please',
+      assistants,
+      signal: controller.signal,
     })
+    controller.abort()
+    expect(await pending).toBeNull()
   })
 
   it('keeps custom assistants pinned without calling Jev', async () => {
     expect(await chooseJevPromptRoute({
-      message: 'Fix this bug', assistants, currentAssistantId: 'custom',
+      message: 'Fix this bug in the parser please', assistants, currentAssistantId: 'custom',
     })).toBeNull()
     expect(suggest).not.toHaveBeenCalled()
   })
@@ -107,7 +126,7 @@ describe('Jev prompt routing', () => {
   it('does not switch assistants in shadow mode', async () => {
     useJevSettings.setState({ skillMode: 'shadow' })
     suggest.mockResolvedValue({ skill: null, probability: 0.9, fallback: 'shadow', model: 'jev' })
-    expect(await chooseJevPromptRoute({ message: 'Fix this bug', assistants })).toMatchObject({
+    expect(await chooseJevPromptRoute({ message: 'Fix this bug in the parser please', assistants })).toMatchObject({
       assistantId: null, mode: null,
     })
   })

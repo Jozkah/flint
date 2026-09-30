@@ -21,7 +21,7 @@ Flint is an independent fork of the open-source [Jan](https://github.com/janhq/j
 
 - **Chat** for questions, writing and documents. Conversations stay on your computer, can be grouped into projects, and can run side by side in a split view.
 - **Cowork** for tasks that touch files. An agent reads, writes and runs commands in a sandbox or a managed copy of your project, asks before doing anything you have not allowed, and ends every run with a plain summary of what it did, what it checked and what is left to review.
-- **Local-only by design.** No telemetry, analytics, update checks or model downloads. Flint only reaches the network when you add a cloud provider key, a remote MCP server, or turn on web search.
+- **Local-first by design.** No telemetry, analytics or automatic update checks. Flint does not discover or download models in the background. Network access happens only for features you explicitly use: Hugging Face **Discover**, a cloud provider, a remote MCP server, or web search.
 
 ## Highlights
 
@@ -32,7 +32,7 @@ Flint is an independent fork of the open-source [Jan](https://github.com/janhq/j
 - **"What Flint is using":** for every reply, you can see which model, instructions, memory, tools and attachments applied.
 - **Honest run records:** a live tool timeline, replay, audit export, and summaries that only count real test, build and lint commands as checks.
 - **Usage and cost:** token and prompt-cache counts per message and session, spend budgets, and a dashboard.
-- **Your models:** GGUF through the bundled llama.cpp engine, MLX on Apple silicon, or any OpenAI- or Anthropic-compatible provider with your own key. Keys are stored in the OS keyring.
+- **Your models:** browse and download GGUF models directly from Hugging Face in **Discover**, use MLX repositories on Apple silicon, import local files manually, or connect any OpenAI- or Anthropic-compatible provider with your own key. Keys are stored in the OS keyring.
 - **Sandboxed shell commands** on every OS: bubblewrap on Linux, Seatbelt on macOS, AppContainer on Windows.
 - **A command line** for headless agent runs, a JSON-lines API and background jobs.
 
@@ -62,12 +62,12 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 - **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
 
-**You bring your own models.** Import a GGUF file you already have (Models → llama.cpp → Import), use an MLX model on Apple silicon, or add a cloud provider with your own key. Flint does not download models for you.
+**Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have from **Models → llama.cpp → Import**, or add a cloud provider with your own key.
 
 ## Getting started
 
 1. **Open Flint.** A short first-run guide asks what you want to do and explains the difference between local and cloud processing. You can skip it and reopen it from Settings → General.
-2. **Choose a model** in **Models**. The fit indicator separates what was *measured on this device* from what is only *estimated*. An estimate never stops you from trying a model.
+2. **Choose a model.** Open **Discover** to search/download one from Hugging Face, or **Models** to manage models and providers already configured. Flint marks a recommended quant using the same hardware-fit estimator as the Models page; an estimate never stops you from choosing another variant.
 3. **Start a chat.** Attach files with **+**, and open **What Flint is using** in the header to see what applies to the conversation.
 4. **Use Cowork for file work.** Attach a project folder or work in the sandbox, then describe the task. Flint asks before any change or command you have not allowed.
 5. **Review the result.** The run summary says what happened and what is unresolved. The **Changes** panel shows real diffs, and checkpoints restore earlier states.

@@ -46,6 +46,8 @@ export default function Home() {
   const composer = useApp((s) => s.composer)
   const models = useRpc('models.list', {})
   const { sessions } = useSessions()
+  // Keyed on the id list, not `sessions`, so a status tick on any session does not refetch every cowork.get.
+  const coworkIds = sessions.filter((s) => s.kind === 'cowork').slice(0, 10).map((s) => s.id).join(',')
   const [folders, setFolders] = useState<string[]>([])
   const [folder, setFolder] = useState<string | null>(null)
   const [seed, setSeed] = useState<{ text: string; n: number }>()
@@ -53,7 +55,7 @@ export default function Home() {
   useEffect(() => {
     if (mode !== 'cowork') return
     let live = true
-    const ids = sessions.filter((s) => s.kind === 'cowork').slice(0, 10).map((s) => s.id)
+    const ids = coworkIds.split(',').filter(Boolean)
     void Promise.all(ids.map((id) => client().rpc('cowork.get', { id }).catch(() => null))).then((details) => {
       if (!live) return
       const unique = [...new Set(details.flatMap((d) => d?.folder ? [d.folder] : []))]
@@ -61,7 +63,7 @@ export default function Home() {
       setFolder((current) => current && unique.includes(current) ? current : unique[0] ?? null)
     })
     return () => { live = false }
-  }, [mode, sessions])
+  }, [mode, coworkIds])
 
   const setMode = (m: HomeMode) => app.set({ homeMode: m })
   const fill = (text: string) => setSeed((s) => ({ text, n: (s?.n ?? 0) + 1 }))

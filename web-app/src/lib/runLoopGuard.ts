@@ -16,6 +16,7 @@ export type LoopReason =
   | 'recursive-delegation'
   | 'failing-shell'
   | 'shell-failure-budget'
+  | 'denial-budget'
   | 'failing-tool'
 
 export type LoopVerdict =
@@ -28,6 +29,8 @@ export const SHELL_STREAK_LIMIT = 3
 export const SHELL_FAILURE_BUDGET = 8
 export const TOOL_FAILURE_STREAK_LIMIT = 5
 export const DENIAL_LIMIT = 6
+/** Total denied calls per run, however different their arguments are. */
+export const DENIAL_TOTAL_LIMIT = 15
 export const NO_PROGRESS_LIMIT = 2
 export const DELEGATION_DEPTH_LIMIT = 3
 
@@ -293,6 +296,11 @@ function stableFailureScope(
   ) {
     return inputString(call, 'cwd')
   }
+  if (stable === 'tool is unavailable') {
+    return (
+      call.error?.match(/tool ['`]([^'`]+)['`]/i)?.[1]?.toLowerCase() ?? ''
+    )
+  }
   if (stable === 'subagent exhausted its run') {
     return inputString(call, 'subagent_name') || inputString(call, 'name')
   }
@@ -307,14 +315,32 @@ function stableFailureScope(
 }
 
 function stableFailureRepeat(calls: ObservedCall[]): LoopVerdict | null {
-  const counts = new Map<string, number>()
+  const counts = new Map<
+    string,
+    { tool: string; stable: StableFailureClass; scope: string; count: number }
+  >()
   for (const call of calls) {
+    if (call.failed === false) {
+      // A success means the blocker was cleared (stash then checkout, push then
+      // open the PR), so a later recurrence starts a fresh count instead of
+      // being blamed on the earlier one.
+      for (const [key, entry] of counts) {
+        if (
+          entry.tool === call.tool &&
+          stableFailureScope(call, entry.stable) === entry.scope
+        ) {
+          counts.delete(key)
+        }
+      }
+      continue
+    }
     if (!call.failed) continue
     const stable = classifyStableFailure(call.tool, call.error)
     if (!stable) continue
-    const key = `${call.tool}:${stable}:${stableFailureScope(call, stable)}`
-    const count = (counts.get(key) ?? 0) + 1
-    counts.set(key, count)
+    const scope = stableFailureScope(call, stable)
+    const key = `${call.tool}:${stable}:${scope}`
+    const count = (counts.get(key)?.count ?? 0) + 1
+    counts.set(key, { tool: call.tool, stable, scope, count })
     if (count >= 2) {
       return {
         tripped: true,
@@ -484,11 +510,33 @@ export function detectLoop(calls: ObservedCall[]): LoopVerdict {
   }
 
   return (
+    denialBudget(calls) ??
     shellFailures(calls) ??
     toolFailureStreak(calls) ??
     noProgressCycle(calls) ??
     { tripped: false }
   )
+}
+
+/**
+ * Denials are excluded from the per-key and streak limits so one refused path
+ * can be retried differently, but a model probing many different blocked paths
+ * never repeats a key. Cap the total so only step/time limits do not decide it.
+ */
+function denialBudget(calls: ObservedCall[]): LoopVerdict | null {
+  let denied = 0
+  for (const call of calls) {
+    if (!call.failed || !isDenial(call.error)) continue
+    denied += 1
+    if (denied >= DENIAL_TOTAL_LIMIT) {
+      return {
+        tripped: true,
+        reason: 'denial-budget',
+        detail: `${denied} tool calls were refused in this run`,
+      }
+    }
+  }
+  return null
 }
 
 function shellFailures(calls: ObservedCall[]): LoopVerdict | null {

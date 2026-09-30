@@ -6,7 +6,7 @@ import { DEFAULT_NOTIFY } from '../state/controls'
 import { I } from '../ui/icons'
 import { Empty, FlintMark, TypeSafeMark } from '../ui/bits'
 import { Grp, IRow } from '../ui/ios'
-import { act, app, client, go, openSheet, setTheme, toast, useApp } from '../state/app'
+import { act, app, back, client, go, openSheet, setTheme, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
 
@@ -124,5 +124,5 @@ const PAGES: Record<string, Page> = {
 export default function SettingsSub({ sub }: { sub: string }) {
   const { data } = useRpc('settings.get', {})
   const page = PAGES[sub]
-  return <><div className="top"><button type="button" className="navback" onClick={() => history.length > 1 ? history.back() : go({ name: 'settings' })}><I n="chevl" />Settings</button><div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}><b>{page?.[0] ?? 'Settings'}</b></div></div><div className="scroll" style={{ padding: 0 }}><div className="ios" style={{ paddingTop: 8 }}>{page ? page[1](data) : <Empty>Nothing here.</Empty>}</div></div></>
+  return <><div className="top"><button type="button" className="navback" onClick={() => back({ name: 'settings' })}><I n="chevl" />Settings</button><div className="crumb" style={{ textAlign: 'center', marginRight: 70 }}><b>{page?.[0] ?? 'Settings'}</b></div></div><div className="scroll" style={{ padding: 0 }}><div className="ios" style={{ paddingTop: 8 }}>{page ? page[1](data) : <Empty>Nothing here.</Empty>}</div></div></>
 }

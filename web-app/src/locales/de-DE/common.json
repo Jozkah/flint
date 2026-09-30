@@ -535,6 +535,7 @@
     "steeringHint": "Geht beim nächsten Schritt an den Agenten; endet der Lauf vorher, wird es als nächste Nachricht gesendet"
   },
   "coworkOrigins": {
+    "showAll": "Alle {{formattedCount}} anzeigen",
     "baseline": {
       "clean": "Der Git-Arbeitsbaum des angehängten Ordners hatte beim Start dieses Laufs keine nicht committeten Änderungen."
     },
@@ -696,5 +697,8 @@
   },
   "decisionScopeShowFull": "Vollständig anzeigen",
   "decisionScopeHide": "Ausblenden",
-  "decisionScopeCopy": "Kopieren"
+  "decisionScopeCopy": "Kopieren",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Anderen Browser wählen…"
+  }
 }

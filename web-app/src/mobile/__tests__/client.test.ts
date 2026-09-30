@@ -99,4 +99,19 @@ describe('localPairingStore', () => {
     store.set(pairing)
     expect(store.get()).toEqual(pairing)
   })
+
+  it('does not resurrect a cleared pairing after a reload when removeItem throws', () => {
+    const data = new Map<string, string>()
+    const flaky = {
+      getItem: (k: string) => data.get(k) ?? null,
+      setItem: (k: string, v: string) => void data.set(k, v),
+      removeItem: () => { throw new Error('SecurityError') },
+    } as unknown as Storage
+    const first = localPairingStore(flaky)
+    first.set(pairing)
+    first.clear()
+    expect(first.get()).toBeNull()
+    // A new store over the same storage is a page reload.
+    expect(localPairingStore(flaky).get()).toBeNull()
+  })
 })

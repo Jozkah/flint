@@ -2,11 +2,52 @@ import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
-import type { CreateRoomInput, RoomSettingsPatch } from '@/lib/rooms/controller'
+import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
+import { composerFor } from './composer'
+import { useAppState } from '@/hooks/useAppState'
+import type {
+  CreateRoomInput,
+  ParticipantInput,
+  ParticipantPatch,
+  RoomSettingsPatch,
+} from '@/lib/rooms/controller'
 
 const rec = (v: unknown): Record<string, unknown> =>
   v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+
+const pick = (src: Record<string, unknown>, keys: string[]) => {
+  const out: Record<string, unknown> = {}
+  for (const k of keys) if (k in src && src[k] !== undefined) out[k] = src[k]
+  return out
+}
+
+/**
+ * A phone may only change a room's plain settings. Folder and per-participant
+ * toolAccess widen what the room can touch on the desktop, so they are dropped
+ * here and stay desktop-only (Cowork's `cowork.send` guards folders the same way).
+ */
+function safeRoomPatch(raw: Record<string, unknown>): RoomSettingsPatch {
+  const patch = pick(raw, ['title', 'objective', 'mode', 'moderator', 'limits']) as RoomSettingsPatch
+  if (Array.isArray(raw.participants)) {
+    patch.participants = raw.participants.map(
+      (x) => pick(rec(x), ['id', 'model', 'reasoning']) as ParticipantPatch
+    )
+  }
+  return patch
+}
+
+/** Room creation from a phone: no folder, and every participant has no tools. */
+function safeRoomInput(raw: Record<string, unknown>): CreateRoomInput {
+  const input = pick(raw, ['title', 'objective', 'mode', 'moderator', 'limits']) as CreateRoomInput
+  if (Array.isArray(raw.participants)) {
+    input.participants = raw.participants.map((x) => ({
+      ...pick(rec(x), ['name', 'role', 'model', 'reasoning']),
+      toolAccess: 'none',
+    })) as ParticipantInput[]
+  }
+  return input
+}
 
 /**
  * Phone mutations reuse the desktop's existing stores/controllers rather than
@@ -23,14 +64,14 @@ export async function handleMobileMutation(
   if (!op) return null
 
   if (op === 'room.create') {
-    const input = rec(p.input) as CreateRoomInput & Record<string, unknown>
+    const input = rec(p.input)
     const title = str(input.title)
     if (!title) throw new Error('Room title is required')
     const room = await roomController.createRoom({
-      ...input,
+      ...safeRoomInput(input),
       title,
       objective: str(input.objective),
-    } as CreateRoomInput)
+    })
     return { ok: true, id: room.id }
   }
 
@@ -38,7 +79,7 @@ export async function handleMobileMutation(
     const id = str(p.id)
     if (!id) throw new Error('Room id is required')
     const { room } = await getRoomPersistence().getRoom(id)
-    const patch = rec(p.patch) as RoomSettingsPatch
+    const patch = safeRoomPatch(rec(p.patch))
     const next = await roomController.updateRoomSettings(room, patch)
     return { ok: true, id: next.id }
   }
@@ -68,6 +109,8 @@ export async function handleMobileMutation(
   if (op === 'thread.delete') {
     const id = str(p.id)
     if (!id) throw new Error('Thread id is required')
+    // Stop an in-flight reply first so it doesn't stream into a deleted thread.
+    if (useAppState.getState().busyThreads[id]) composerFor('chat', id)?.stop?.()
     useThreads.getState().deleteThread(id)
     return { ok: true }
   }
@@ -91,7 +134,8 @@ export async function handleMobileMutation(
   if (op === 'cowork.delete') {
     const id = str(p.id)
     if (!id) throw new Error('Session id is required')
-    useCoworkSessions.getState().deleteSession(id)
+    // Stops the session's run and drops everything held for it.
+    deleteCoworkSession(id)
     return { ok: true }
   }
 

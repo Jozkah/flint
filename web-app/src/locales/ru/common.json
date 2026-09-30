@@ -547,6 +547,7 @@
     "steeringHint": "Попадёт к агенту на следующем шаге; если запуск завершится раньше, будет отправлено следующим сообщением"
   },
   "coworkOrigins": {
+    "showAll": "Показать все ({{formattedCount}})",
     "baseline": {
       "clean": "В рабочем дереве Git подключённой папки не было незакоммиченных изменений на момент начала этого запуска."
     },
@@ -708,5 +709,8 @@
   },
   "decisionScopeShowFull": "Показать полностью",
   "decisionScopeHide": "Скрыть",
-  "decisionScopeCopy": "Копировать"
+  "decisionScopeCopy": "Копировать",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Выбрать другой браузер…"
+  }
 }

@@ -135,7 +135,11 @@ export function socket(): EventSocket | null {
 // Navigation, drawers, sheets, toasts
 // ---------------------------------------------------------------------------
 
-let depth = 0
+/** In-app steps above the entry page; kept in history.state so gesture Back and reloads cannot drift it. */
+function appDepth(): number {
+  const d = typeof history !== 'undefined' ? (history.state as { d?: unknown } | null)?.d : 0
+  return typeof d === 'number' && d > 0 ? d : 0
+}
 
 export function go(route: Route) {
   closeAll()
@@ -143,19 +147,18 @@ export function go(route: Route) {
   const hash = routeToHash(route)
   app.set({ route })
   if (typeof location !== 'undefined' && location.hash !== hash) {
-    depth++
-    history.pushState(null, '', hash)
+    history.pushState({ d: appDepth() + 1 }, '', hash)
   }
   if (route.name === 'notifications') markNoticesRead()
 }
 
-export function back() {
+/** Back within the app; on the first screen (nothing in-app to go back to) go to `fallback` instead of leaving the app. */
+export function back(fallback: Route = { name: 'home' }) {
   closeAll()
-  if (depth > 0 && typeof history !== 'undefined') {
-    depth--
+  if (appDepth() > 0) {
     history.back()
   } else {
-    go({ name: 'home' })
+    go(fallback)
   }
 }
 

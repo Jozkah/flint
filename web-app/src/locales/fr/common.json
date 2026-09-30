@@ -538,6 +538,7 @@
     "steeringHint": "Transmis à l'agent à sa prochaine étape ; si l'exécution se termine avant, il est envoyé comme message suivant"
   },
   "coworkOrigins": {
+    "showAll": "Tout afficher ({{formattedCount}})",
     "baseline": {
       "clean": "L'arbre de travail Git du dossier joint n'avait aucune modification non validée au démarrage de cette exécution."
     },
@@ -699,5 +700,8 @@
   },
   "decisionScopeShowFull": "Tout afficher",
   "decisionScopeHide": "Masquer",
-  "decisionScopeCopy": "Copier"
+  "decisionScopeCopy": "Copier",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Choisir un autre navigateur…"
+  }
 }

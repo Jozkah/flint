@@ -105,8 +105,18 @@ describe('ChainOfThought', () => {
     await user.click(screen.getByRole('button'))
     expect(screen.queryByText('Content here')).not.toBeInTheDocument()
 
-    // shouldCollapse flips back to false (e.g. a new tool call starts).
-    // The trace must stay collapsed — it was the user's choice.
+    // shouldCollapse must actually change for the effect to re-run: it goes
+    // true (the answer begins) and then back to false (a new tool call starts).
+    // The trace must stay collapsed -- it was the user's choice.
+    rerender(
+      <ChainOfThought shouldCollapse={true}>
+        <ChainOfThoughtHeader />
+        <ChainOfThoughtContent>
+          <p>Content here</p>
+        </ChainOfThoughtContent>
+      </ChainOfThought>
+    )
+    expect(screen.queryByText('Content here')).not.toBeInTheDocument()
     rerender(
       <ChainOfThought shouldCollapse={false}>
         <ChainOfThoughtHeader />

@@ -9,6 +9,11 @@ pub mod compat_env;
 pub mod jev;
 #[cfg(feature = "cli")]
 pub mod cli;
+// Explicit, user-initiated Hugging Face model discovery/downloads. Kept
+// desktop-only so the CLI remains network-agnostic unless the user configures
+// a provider there.
+#[cfg(not(feature = "cli"))]
+pub mod huggingface;
 // Native file dialogs/IO commands and the system/tray command surface are
 // desktop-only; the CLI uses std::fs and its own tools.
 #[cfg(not(feature = "cli"))]

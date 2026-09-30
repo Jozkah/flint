@@ -1910,6 +1910,16 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             policy = policy.with_unreachable_read_grants(refused);
         }
     }
+    // An unconfined shell for an edit folder the sandbox cannot reach starts in
+    // that folder, so relative paths and `Set-Location` mean the project.
+    if !ctx.sandbox {
+        if let Some(dir) = ctx.direct_shell_start.as_deref().map(anchored) {
+            if dir.is_dir() {
+                policy = policy.with_start_dir(&dir);
+                start = dir;
+            }
+        }
+    }
     let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -2850,6 +2860,26 @@ pub(crate) fn unsandboxed_shell(
     capable.ok_or_else(|| proc::chaining_unavailable_error(operator, &bare))
 }
 
+/// The folder an unconfined `bash` should start in, when the run has edit
+/// access to a folder the sandbox shell cannot reach.
+///
+/// On Windows an AppContainer checks every parent of a folder it opens, so a
+/// project under `Desktop/Coding` fails `Set-Location` ("Access is denied")
+/// and Node's `realpath` ("EPERM lstat 'C:\'") however it is granted; only
+/// Jan-owned worktrees are confined. `None` when the shell is confined to the
+/// roots (or there is no edit access), which keeps the sandbox.
+pub fn direct_edit_shell_start(write_roots: &[PathBuf], data_folder: &Path) -> Option<PathBuf> {
+    if !cfg!(windows) || jail::backend() != jail::Backend::AppContainer || write_roots.is_empty() {
+        return None;
+    }
+    let write_abs: Vec<PathBuf> = write_roots.iter().map(|p| anchored(p)).collect();
+    let owned = crate::workspace::worktrees_dir(&anchored(data_folder));
+    if jail::can_confine_write_roots(jail::backend(), &write_abs, Some(&owned)) {
+        return None;
+    }
+    write_abs.into_iter().find(|p| p.is_dir())
+}
+
 /// The folder a run's shell starts in when it is not the workspace: the
 /// managed worktree the run writes to, under exactly the conditions `bash`
 /// moves there (see [`managed_worktree_start`]). `None` for every other run.
@@ -3117,53 +3147,11 @@ fn remove_spill_file(path: &Path) {
 
 const SCREENSHOT_MAX_PNG_BYTES: usize = 4 * 1024 * 1024; // 4 MiB
 
+/// The browser `screenshot` launches. One resolver serves this and the app's
+/// "Verify in browser" (`browser_discovery`), so a browser the user chose in
+/// the app is the one used here.
 fn chrome_binary() -> Option<PathBuf> {
-    for name in ["FLINT_BROWSER_PATH", "CHROME_PATH"] {
-        if let Some(path) = std::env::var_os(name).map(PathBuf::from) {
-            if path.is_absolute() && path.is_file() {
-                return Some(path);
-            }
-        }
-    }
-    const CANDIDATES: &[&str] = &[
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-        "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-        "/Applications/Opera.app/Contents/MacOS/Opera",
-        "/Applications/Vivaldi.app/Contents/MacOS/Vivaldi",
-        "/Applications/Arc.app/Contents/MacOS/Arc",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
-        "/opt/google/chrome/chrome", "/usr/bin/microsoft-edge",
-        "/usr/bin/microsoft-edge-stable", "/opt/microsoft/msedge/msedge",
-        "/usr/bin/brave-browser", "/usr/bin/brave-browser-stable",
-        "/usr/bin/opera", "/usr/bin/opera-stable", "/usr/bin/vivaldi",
-        "/usr/bin/arc", "/usr/bin/chromium", "/usr/bin/chromium-browser",
-    ];
-    if let Some(path) = CANDIDATES.iter().map(PathBuf::from).find(|p| p.is_file()) {
-        return Some(path);
-    }
-    #[cfg(windows)]
-    {
-        for name in ["ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"] {
-            if let Some(root) = std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute()) {
-                for suffix in [
-                    "Google/Chrome/Application/chrome.exe",
-                    "Microsoft/Edge/Application/msedge.exe",
-                    "BraveSoftware/Brave-Browser/Application/brave.exe",
-                    "Opera/launcher.exe",
-                ] {
-                    let path = root.join(suffix);
-                    if path.is_file() { return Some(path); }
-                }
-                for version in 1..=20 {
-                    let path = root.join("Vivaldi").join(format!("app-{version}")).join("vivaldi.exe");
-                    if path.is_file() { return Some(path); }
-                }
-            }
-        }
-    }
-    None
+    crate::browser_discovery::find_browser_path()
 }
 
 /// Content-Security-Policy put in front of every page `screenshot` renders
@@ -4430,6 +4418,22 @@ async fn memory_propose(args: &serde_json::Value, ctx: &ToolContext<'_>) -> Stri
         },
     );
 
+    // The web app files a proposal card under `provenance.session_id`
+    // (`memory_proposals_list`), which `create::propose` leaves empty: without
+    // this the card of an agent-proposed memory never showed in its chat.
+    let source_session = ctx.session_id.map(str::to_string);
+    let decision = match decision {
+        Decision::Save(mut proposal) => {
+            proposal.record.provenance.session_id = source_session;
+            Decision::Save(proposal)
+        }
+        Decision::Pending { mut proposal, reason } => {
+            proposal.record.provenance.session_id = source_session;
+            Decision::Pending { proposal, reason }
+        }
+        refused => refused,
+    };
+
     match decision {
         Decision::Save(proposal) => match crate::memory::create::commit(&store_root, &proposal) {
             Ok(id) => format!(
@@ -5262,6 +5266,21 @@ on_failure = \"warn\"
         assert!(!plain.sandbox && !plain.sandbox_shell_parity);
         let rerun = ToolContext::new(&root, &store, &[]).with_unsandboxed_retry();
         assert!(!rerun.sandbox && rerun.sandbox_shell_parity);
+    }
+
+    /// An edit folder the sandbox shell cannot enter runs `bash` directly there,
+    /// in the shell the sandbox would have used; no edit access keeps the sandbox.
+    #[test]
+    fn an_edit_folder_the_sandbox_cannot_enter_gets_a_direct_shell() {
+        let root = unique_root();
+        let store = PathBuf::from("store");
+        let folder = root.join("project");
+        let ctx = ToolContext::new(&root, &store, &[]).with_direct_edit_shell(folder.clone());
+        assert!(!ctx.sandbox && ctx.sandbox_shell_parity);
+        assert_eq!(ctx.direct_shell_start.as_deref(), Some(folder.as_path()));
+        assert!(direct_edit_shell_start(&[], &root).is_none());
+        let plain = ToolContext::new(&root, &store, &[]);
+        assert!(plain.sandbox && plain.direct_shell_start.is_none());
     }
 
     /// #9044: the fallback note names the shell and why bash was not used,
@@ -8347,12 +8366,32 @@ on_failure = \"warn\"
     /// locations are searched when none is named.
     #[test]
     fn chrome_binary_uses_explicit_path() {
+        let _guard = crate::browser_discovery::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = unique_root();
         let exe = root.join("chrome");
         std::fs::write(&exe, b"x").unwrap();
+        let before = crate::browser_discovery::chosen_browser();
+        crate::browser_discovery::restore_chosen_browser(None);
         std::env::set_var("CHROME_PATH", &exe);
         let found = chrome_binary();
         std::env::remove_var("CHROME_PATH");
+        crate::browser_discovery::restore_chosen_browser(before);
+        assert_eq!(found.as_deref(), Some(exe.as_path()));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The screenshot tool and the app's "Verify in browser" share one
+    /// resolver, so the browser the user chose reaches the screenshot tool.
+    #[test]
+    fn chrome_binary_uses_the_shared_discovery() {
+        let _guard = crate::browser_discovery::TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let root = unique_root();
+        let exe = root.join("brave-browser");
+        std::fs::write(&exe, b"x").unwrap();
+        let before = crate::browser_discovery::chosen_browser();
+        crate::browser_discovery::set_chosen_browser(exe.to_str().unwrap()).unwrap();
+        let found = chrome_binary();
+        crate::browser_discovery::restore_chosen_browser(before);
         assert_eq!(found.as_deref(), Some(exe.as_path()));
         let _ = std::fs::remove_dir_all(&root);
     }
@@ -8562,6 +8601,33 @@ on_failure = \"warn\"
             !records[0].is_usable(records[0].created_at + 1),
             "an unanswered guess must never be injected"
         );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The Cowork proposal card is filed under the proposing chat's id, so an
+    /// agent-made proposal must list with `source_session_id` == its session.
+    #[tokio::test]
+    async fn a_proposed_memory_lists_under_the_session_that_proposed_it() {
+        let root = unique_root();
+        let store = crate::workspace::permanent_store(&root);
+        let ctx = propose_ctx(&root, &store, false);
+        let out = execute_text(
+            lookup("memory_propose").unwrap(),
+            &json!({"content": "The user prefers tabs over spaces."}),
+            &ctx,
+        )
+        .await;
+        assert!(out.contains("Not saved yet"), "{out}");
+        let pending = crate::memory::commands::memory_proposals_list(crate::memory::commands::Where {
+            data_folder: root.to_string_lossy().to_string(),
+            project_root: None,
+            session_id: Some("chat-a".to_string()),
+            jan_project_id: None,
+        })
+        .await
+        .expect("list");
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].source_session_id.as_deref(), Some("chat-a"));
         let _ = std::fs::remove_dir_all(&root);
     }
 

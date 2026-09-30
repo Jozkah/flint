@@ -535,6 +535,7 @@
     "steeringHint": "Diteruskan ke agen pada langkah berikutnya; jika run selesai lebih dulu, dikirim sebagai pesan berikutnya"
   },
   "coworkOrigins": {
+    "showAll": "Tampilkan semua {{formattedCount}}",
     "baseline": {
       "clean": "Working tree Git dari folder yang dilampirkan tidak memiliki perubahan yang belum di-commit saat run ini dimulai."
     },
@@ -696,5 +697,8 @@
   },
   "decisionScopeShowFull": "Tampilkan lengkap",
   "decisionScopeHide": "Sembunyikan",
-  "decisionScopeCopy": "Salin"
+  "decisionScopeCopy": "Salin",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Pilih browser lain…"
+  }
 }

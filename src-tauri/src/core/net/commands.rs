@@ -6,7 +6,7 @@
 //! resolution and one set of diagnostics.
 
 use serde::Serialize;
-use tauri::ipc::Channel;
+use tauri::{ipc::Channel, Runtime};
 
 use super::resolver;
 use super::transport::{self, ChunkSink, ProviderRequest, ProviderResponse, StreamChunk};
@@ -46,8 +46,116 @@ impl ChunkSink for ChannelSink {
     }
 }
 
+fn internal_response(body: serde_json::Value) -> Result<ProviderResponse, String> {
+    Ok(ProviderResponse {
+        status: 200,
+        status_text: "OK".to_string(),
+        headers: std::collections::HashMap::new(),
+        body: serde_json::to_string(&body).map_err(|e| e.to_string())?,
+        peer: None,
+        snapshot: None,
+    })
+}
+
+fn body_json(request: &ProviderRequest) -> Result<serde_json::Value, String> {
+    request
+        .body
+        .as_deref()
+        .map(serde_json::from_str)
+        .transpose()
+        .map_err(|e| format!("Invalid Hugging Face request: {e}"))?
+        .ok_or_else(|| "Missing Hugging Face request body".to_string())
+}
+
+fn body_string<'a>(body: &'a serde_json::Value, key: &str) -> Result<&'a str, String> {
+    body.get(key)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| format!("Missing Hugging Face field: {key}"))
+}
+
+fn optional_string(body: &serde_json::Value, key: &str) -> Option<String> {
+    body.get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .filter(|value| !value.trim().is_empty())
+}
+
+/// Explicit-only bridge for the model Hub. It deliberately uses a `flint://`
+/// pseudo URL so ordinary provider traffic can never fall into it by accident.
+/// No startup path calls these actions; opening/searching/downloading in Hub is
+/// the user's network consent boundary.
+async fn huggingface_bridge<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: &ProviderRequest,
+) -> Result<Option<ProviderResponse>, String> {
+    const PREFIX: &str = "flint://huggingface/";
+    let Some(action) = request.url.strip_prefix(PREFIX) else {
+        return Ok(None);
+    };
+    let body = body_json(request)?;
+    let token = optional_string(&body, "token");
+    let value = match action {
+        "search" => {
+            let query = body
+                .get("query")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let format = optional_string(&body, "format");
+            serde_json::to_value(
+                crate::core::huggingface::huggingface_search_models(query, format, token).await?,
+            )
+            .map_err(|e| e.to_string())?
+        }
+        "files" => {
+            let repo = body_string(&body, "repo")?.to_string();
+            serde_json::to_value(
+                crate::core::huggingface::huggingface_model_files(repo, token).await?,
+            )
+            .map_err(|e| e.to_string())?
+        }
+        "readme" => {
+            let repo = body_string(&body, "repo")?.to_string();
+            serde_json::Value::String(
+                crate::core::huggingface::huggingface_readme(repo, token).await?,
+            )
+        }
+        "download" => {
+            let task_id = body_string(&body, "taskId")?.to_string();
+            let repo = body_string(&body, "repo")?.to_string();
+            let filename = body_string(&body, "filename")?.to_string();
+            let expected_size = body.get("expectedSize").and_then(serde_json::Value::as_u64);
+            let expected_sha256 = optional_string(&body, "expectedSha256");
+            let path = crate::core::huggingface::huggingface_download_model(
+                app,
+                task_id,
+                repo,
+                filename,
+                expected_size,
+                expected_sha256,
+                token,
+            )
+            .await?;
+            serde_json::Value::String(path)
+        }
+        "cancel" => {
+            let task_id = body_string(&body, "taskId")?.to_string();
+            crate::core::huggingface::huggingface_cancel_download(task_id).await?;
+            serde_json::Value::Null
+        }
+        _ => return Err(format!("Unknown Hugging Face action: {action}")),
+    };
+    internal_response(value).map(Some)
+}
+
 #[tauri::command]
-pub async fn provider_http_request(request: ProviderRequest) -> Result<ProviderResponse, String> {
+pub async fn provider_http_request<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: ProviderRequest,
+) -> Result<ProviderResponse, String> {
+    if let Some(response) = huggingface_bridge(app, &request).await? {
+        return Ok(response);
+    }
     transport::send(request).await
 }
 

@@ -24,6 +24,10 @@ const Notifications = lazy(() => import('../screens/Notifications'))
 const Settings = lazy(() => import('../screens/Settings'))
 const SettingsSub = lazy(() => import('../screens/SettingsSub'))
 
+// Each conversation gets its own subtree so a composer draft, a private Room
+// recipient or a Chat's paging state can never leak into the next route.
+const routeKey = (r: Route) => ('id' in r ? `${r.name}:${r.id}` : 'sub' in r ? `sub:${r.sub}` : r.name)
+
 function Screen({ route }: { route: Route }) {
   switch (route.name) {
     case 'home':
@@ -174,7 +178,7 @@ export function Shell() {
     <div className="app" ref={ref}>
       <div id="views">
         <Suspense fallback={<Loading />}>
-          <section className="view">
+          <section className="view" key={routeKey(route)}>
             <Screen route={route} />
           </section>
         </Suspense>

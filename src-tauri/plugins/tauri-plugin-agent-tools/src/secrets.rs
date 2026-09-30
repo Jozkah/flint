@@ -218,19 +218,51 @@ fn is_call(line: &str, v: usize, value: &str) -> bool {
 }
 
 /// A property read is code, not a literal credential.
+///
+/// Only identifier-shaped references qualify (`spend.spent`,
+/// `process.env.API_KEY`). A dotted value that could be a credential is not
+/// exempt: JWTs (`eyJ...`), parts that start with a digit, parts mixing
+/// letters and digits the way generated secrets do (`abcd1234`), and the
+/// value of an env-style `UPPER_NAME=value` assignment, which is a `.env` or
+/// shell line rather than code.
 fn is_code_reference(line: &str, v: usize, value: &str) -> bool {
     if is_call(line, v, value) {
         return true;
     }
     let quoted = v > 0 && matches!(line.as_bytes()[v - 1], b'"' | b'\'');
-    !quoted
-        && value.contains('.')
-        && value.split('.').all(|part| {
-            !part.is_empty()
-                && part
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
-        })
+    if quoted || !value.contains('.') || value.starts_with("eyJ") || is_env_assignment(line, v) {
+        return false;
+    }
+    value.split('.').all(|part| {
+        let mut chars = part.chars();
+        let Some(head) = chars.next() else {
+            return false;
+        };
+        let has_digit = part.chars().any(|c| c.is_ascii_digit());
+        let has_alpha = part.chars().any(|c| c.is_ascii_alphabetic());
+        (head.is_ascii_alphabetic() || head == '_' || head == '$')
+            && part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+            // `hunter2`, `abcd1234`: a letter/digit mix that long is a
+            // generated secret, not a property name.
+            && !(has_digit && has_alpha && part.len() >= 5 && !part.contains('_'))
+    })
+}
+
+/// `NAME=value` with an upper-case name and no space around the `=`: a
+/// `.env` / shell assignment, where a dotted value is data, not a property read.
+fn is_env_assignment(line: &str, v: usize) -> bool {
+    let before = line[..v].trim_end_matches(['"', '\'']);
+    let Some(before) = before.strip_suffix('=') else {
+        return false;
+    };
+    let name: String = before
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Whether a value is a stand-in rather than a credential.
@@ -612,7 +644,7 @@ fn redact_line(line: &str) -> String {
 
 #[cfg(test)]
 mod code_reading_a_secret_tests {
-    use super::scan_text;
+    use super::{redact_secrets, scan_text, REDACTED};
 
     /// A Go file that reads its secret from the environment and builds the
     /// header from it was refused as "API key" and "token" (session 8411d403).
@@ -629,6 +661,23 @@ mod code_reading_a_secret_tests {
         assert!(scan_text("sessionTokens: spend.spent\n").is_empty());
         assert!(super::scan_diff("+++ b/coworkRunner.ts\n@@ -1,0 +1,1 @@\n+          sessionTokens: spend.spent,\n").is_empty());
         assert!(!scan_text("sessionTokens: \"abcdefghijklmnop\"\n").is_empty());
+    }
+
+    #[test]
+    fn dotted_credentials_are_not_mistaken_for_property_reads() {
+        for line in [
+            "API_TOKEN=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghij",
+            "DB_PASSWORD=correct.horse.battery",
+            "secret: abc123.def456",
+            "SECRET=abcd1234.efgh5678",
+            "password: hunter2.hunter2x",
+        ] {
+            assert!(!scan_text(line).is_empty(), "missed {line}");
+            let out = redact_secrets(line);
+            assert!(out.contains(REDACTED), "not redacted: {out}");
+        }
+        assert!(scan_text("token = process.env.API_TOKEN\n").is_empty());
+        assert!(scan_text("sessionTokens: spend.spent\n").is_empty());
     }
 
     #[test]

@@ -773,10 +773,35 @@ describe('the request Continue sends', () => {
       { kind: 'failed', tool: 'bash', target: 'pytest' },
       { kind: 'check-failed', command: 'npm test', exitCode: 1 },
     ])
-    expect(text).toMatch(/^Continue with the previous request\./)
-    expect(text).toContain('- write inventory.py (not offered: the last turn was read-only)')
-    expect(text).toContain('- bash pytest (failed)')
-    expect(text).toContain('- check did not pass: npm test')
+    expect(text).toMatch(/^Continue with the previous request/)
+    expect(text).toContain(
+      '- latest write blocker: inventory.py (not offered because the last run was read-only)'
+    )
+    expect(text).toContain('- latest bash blocker: pytest (failed)')
+    expect(text).toContain('- latest failed check: npm test')
+  })
+
+  it('keeps one blocker per target for the same tool, capped in total', () => {
+    const refused = (target: string): UnresolvedItem => ({
+      kind: 'refused',
+      tool: 'write',
+      target,
+    })
+    const text = continueRequest([
+      refused('a.ts'),
+      refused('b.ts'),
+      refused('a.ts'),
+      refused('c.ts'),
+    ])
+    expect(text).toContain('- latest write blocker: c.ts (refused)')
+    expect(text).toContain('- latest write blocker: b.ts (refused)')
+    expect(text).toContain('- latest write blocker: a.ts (refused)')
+    expect(text.match(/latest write blocker: a\.ts/g)).toHaveLength(1)
+
+    const many = continueRequest(
+      ['1', '2', '3', '4', '5', '6'].map((n) => refused(`f${n}.ts`))
+    )
+    expect(many.match(/latest write blocker/g)).toHaveLength(4)
   })
 
   it('just continues when nothing was left open', () => {

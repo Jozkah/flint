@@ -24,6 +24,8 @@ export function deleteCoworkSession(id: string): void {
   abortRun(id, 'deleted')
   useCoworkRun.getState().forgetSession(id)
   useToolApprovalRequests.getState().clearPendingForThread(id)
+  // A temporary Git grant is scoped to the conversation and dies with it.
+  useToolApprovalRequests.getState().forgetTemporaryGit(id)
   useMessageQueue.getState().clearQueue(id)
   useCoworkSessions.getState().deleteSession(id)
   // The activity record is keyed by session; leaving it behind would keep a

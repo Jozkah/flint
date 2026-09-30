@@ -134,6 +134,29 @@ pub fn grant_executable(name: &str, host_path: &OsString, avoid: &[PathBuf]) -> 
     rustup_toolchain_cargo(&rustup)
 }
 
+/// The folder whose permissions a grant for `exe` changes: the executable's
+/// own folder, except for a rustup toolchain's `bin`, where it is the
+/// toolchain root (`toolchains\<tc>`). `rustc` also reads its sysroot
+/// (`lib\rustlib`), a sibling of `bin`, so opening `bin` alone leaves the
+/// compiler unable to find its standard library. The entry inherits, so
+/// `bin` and `lib` are both covered; the folders above the root need no entry
+/// of their own, since a path opened directly is not checked at each parent.
+pub fn grant_root(exe: &Path) -> Option<PathBuf> {
+    let bin = exe.parent()?;
+    let toolchain = bin.parent();
+    let in_toolchains = toolchain
+        .and_then(Path::parent)
+        .and_then(Path::file_name)
+        .is_some_and(|n| n.eq_ignore_ascii_case("toolchains"));
+    let is_bin = bin.file_name().is_some_and(|n| n.eq_ignore_ascii_case("bin"));
+    match toolchain {
+        Some(root) if is_bin && in_toolchains && bin.parent().is_some_and(|r| r.join("lib").is_dir()) => {
+            Some(root.to_path_buf())
+        }
+        _ => Some(bin.to_path_buf()),
+    }
+}
+
 fn is_rustup_proxy(exe: &Path) -> bool {
     exe.parent().is_some_and(|bin| {
         bin.file_name().is_some_and(|n| n.eq_ignore_ascii_case("bin"))
@@ -150,7 +173,10 @@ pub fn preferred_rustup_bin(granted: &[PathBuf]) -> Option<PathBuf> {
         .or_else(|| std::env::var_os("USERPROFILE").map(|p| PathBuf::from(p).join(".rustup")))?;
     let cargo = rustup_toolchain_cargo(&rustup)?;
     let bin = cargo.parent()?.to_path_buf();
-    granted.iter().any(|g| g == &bin).then_some(bin)
+    // Granted as the toolchain root (see `grant_root`), or as `bin` by an
+    // older grant.
+    let root = grant_root(&cargo)?;
+    granted.iter().any(|g| g == &bin || g == &root).then_some(bin)
 }
 
 fn rustup_toolchain_cargo(rustup: &Path) -> Option<PathBuf> {
@@ -550,7 +576,7 @@ pub fn grant_candidates(
         let Some(exe) = grant_executable(name, host_path, avoid) else {
             continue;
         };
-        let Some(folder) = exe.parent().map(Path::to_path_buf) else {
+        let Some(folder) = grant_root(&exe) else {
             continue;
         };
         if can_execute(&folder) != Some(false)
@@ -1108,6 +1134,33 @@ mod tests {
         assert_eq!(rustup_toolchain_cargo(home.path()), Some(bin.join("cargo.exe")));
         std::fs::write(home.path().join("settings.toml"), "default_toolchain = \"..\\\\outside\"\n").unwrap();
         assert_eq!(rustup_toolchain_cargo(home.path()), None);
+    }
+
+    #[test]
+    fn a_rustup_grant_covers_the_toolchain_root_not_just_bin() {
+        let home = TempDir::new("rustup-root");
+        let root = home.path().join("toolchains").join("stable-test");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(root.join("lib").join("rustlib")).unwrap();
+        // rustc reads its sysroot (`lib\rustlib`), so `bin` alone is not enough.
+        assert_eq!(grant_root(&bin.join("cargo.exe")), Some(root.clone()));
+        // Any other program is granted on its own folder.
+        let other = home.path().join("python");
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(grant_root(&other.join("python.exe")), Some(other));
+        // A folder called `bin` outside `toolchains` is unchanged.
+        let plain = home.path().join("tool").join("bin");
+        std::fs::create_dir_all(&plain).unwrap();
+        std::fs::create_dir_all(home.path().join("tool").join("lib")).unwrap();
+        assert_eq!(grant_root(&plain.join("x.exe")), Some(plain));
+        // A grant recorded on the root keeps the toolchain on the sandbox PATH.
+        std::fs::write(bin.join("cargo.exe"), "").unwrap();
+        std::fs::write(bin.join("rustc.exe"), "").unwrap();
+        std::fs::write(home.path().join("settings.toml"), "default_toolchain = \"stable-test\"
+").unwrap();
+        let cargo = rustup_toolchain_cargo(home.path()).unwrap();
+        assert_eq!(grant_root(&cargo), Some(root));
     }
 
     #[test]

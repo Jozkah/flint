@@ -218,6 +218,10 @@ const CONFIGS = [
   .map((rel) => resolve(REPO, rel))
   .filter((path) => existsSync(path))
 
+/** The explicit, user-initiated Discover client; the one sanctioned exception. */
+const isDiscoverClient = (path: string) =>
+  /core[\/]huggingface\.rs$|lib[\/]huggingface\.ts$/.test(path)
+
 const EVERYWHERE = [...FILES, ...RUST, ...EXTENSIONS, ...CORE, ...SCRIPTS, ...CONFIGS]
 
 describe('nothing anywhere reports usage', () => {
@@ -283,7 +287,7 @@ describe('nothing anywhere fetches a model catalogue', () => {
   it('browses no model catalogue', () => {
     expect(
       repoMatches(
-        EVERYWHERE,
+        EVERYWHERE.filter((path) => !isDiscoverClient(path)),
         /huggingface\.co\/api\/models|hf\.co\/api\/models|model_catalog|model-catalog/
       )
     ).toEqual([])
@@ -402,12 +406,8 @@ describe('the shipped bundle carries no model-download code', () => {
   })
 })
 
-describe('no model-download surface remains', () => {
-  it('has no hub route', () => {
-    expect(existsSync(resolve(SRC, 'routes/hub'))).toBe(false)
-  })
-
-  it('has no download controls', () => {
+describe('no background model-download surface remains', () => {
+  it('has no legacy download controls', () => {
     for (const name of [
       'containers/DownloadButton.tsx',
       'containers/ModelDownloadAction.tsx',
@@ -427,5 +427,46 @@ describe('no model-download surface remains', () => {
         /useDownloadStore|useDownloadEvents|DownloadEventListener|ModelDownloadAction/
       )
     ).toEqual([])
+  })
+})
+
+/**
+ * Hugging Face Discover is the one deliberate network path for models: it
+ * runs only after the user opens Discover, searches, or clicks Download.
+ */
+describe('Hugging Face discovery is explicit-only', () => {
+  it('ships Discover and its native client', () => {
+    expect(existsSync(resolve(SRC, 'routes/hub/index.tsx'))).toBe(true)
+    expect(existsSync(resolve(SRC, 'routes/hub/$modelId.tsx'))).toBe(true)
+    expect(existsSync(resolve(SRC, 'lib/huggingface.ts'))).toBe(true)
+    expect(
+      existsSync(resolve(REPO, 'src-tauri/src/core/huggingface.rs'))
+    ).toBe(true)
+  })
+
+  it('funnels Hub networking through the explicit flint pseudo-protocol', () => {
+    const client = read(resolve(SRC, 'lib/huggingface.ts'))
+    const bridge = read(resolve(REPO, 'src-tauri/src/core/net/commands.rs'))
+    expect(client).toMatch(/flint:\/\/huggingface\//)
+    expect(bridge).toMatch(/flint:\/\/huggingface\//)
+    expect(bridge).toMatch(/huggingface_bridge/)
+  })
+
+  it('does not start discovery or a model transfer from app bootstrap', () => {
+    const bootstrapFiles = [
+      resolve(SRC, 'main.tsx'),
+      resolve(SRC, 'providers/DataProvider.tsx'),
+      resolve(REPO, 'src-tauri/src/core/setup.rs'),
+    ].filter(existsSync)
+    for (const path of bootstrapFiles) {
+      expect(read(path)).not.toMatch(
+        /searchHuggingFaceModels|downloadHuggingFaceFile|huggingface_search_models|huggingface_download_model/
+      )
+    }
+  })
+
+  it('stores no Hugging Face token in the download registry', () => {
+    const registry = read(resolve(SRC, 'lib/huggingfaceRegistry.ts'))
+    expect(registry).not.toMatch(/token\s*:/)
   })
 })

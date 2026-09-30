@@ -17,6 +17,7 @@ import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
+import { Route as HubIndexRouteImport } from './routes/hub/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
@@ -38,6 +39,7 @@ import { Route as SettingsAgentToolsRouteImport } from './routes/settings/agent-
 import { Route as RoomsRoomIdRouteImport } from './routes/rooms/$roomId'
 import { Route as ProjectProjectIdRouteImport } from './routes/project/$projectId'
 import { Route as LocalApiServerLogsRouteImport } from './routes/local-api-server/logs'
+import { Route as HubModelIdRouteImport } from './routes/hub/$modelId'
 import { Route as SettingsProvidersIndexRouteImport } from './routes/settings/providers/index'
 import { Route as SettingsProvidersProviderNameRouteImport } from './routes/settings/providers/$providerName'
 
@@ -79,6 +81,11 @@ const IndexRoute = IndexRouteImport.update({
 const RoomsIndexRoute = RoomsIndexRouteImport.update({
   id: '/rooms/',
   path: '/rooms/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HubIndexRoute = HubIndexRouteImport.update({
+  id: '/hub/',
+  path: '/hub/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ThreadsThreadIdRoute = ThreadsThreadIdRouteImport.update({
@@ -186,6 +193,11 @@ const LocalApiServerLogsRoute = LocalApiServerLogsRouteImport.update({
   path: '/local-api-server/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HubModelIdRoute = HubModelIdRouteImport.update({
+  id: '/hub/$modelId',
+  path: '/hub/$modelId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsProvidersIndexRoute = SettingsProvidersIndexRouteImport.update({
   id: '/settings/providers/',
   path: '/settings/providers/',
@@ -206,6 +218,7 @@ export interface FileRoutesByFullPath {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
@@ -227,6 +240,7 @@ export interface FileRoutesByFullPath {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
@@ -239,6 +253,7 @@ export interface FileRoutesByTo {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
@@ -260,6 +275,7 @@ export interface FileRoutesByTo {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/hub': typeof HubIndexRoute
   '/rooms': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers': typeof SettingsProvidersIndexRoute
@@ -273,6 +289,7 @@ export interface FileRoutesById {
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
   '/system-monitor': typeof SystemMonitorRoute
+  '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
@@ -294,6 +311,7 @@ export interface FileRoutesById {
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
+  '/hub/': typeof HubIndexRoute
   '/rooms/': typeof RoomsIndexRoute
   '/settings/providers/$providerName': typeof SettingsProvidersProviderNameRoute
   '/settings/providers/': typeof SettingsProvidersIndexRoute
@@ -308,6 +326,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/system-monitor'
+    | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
@@ -329,6 +348,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
@@ -341,6 +361,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/system-monitor'
+    | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
@@ -362,6 +383,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/hub'
     | '/rooms'
     | '/settings/providers/$providerName'
     | '/settings/providers'
@@ -374,6 +396,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/overview'
     | '/system-monitor'
+    | '/hub/$modelId'
     | '/local-api-server/logs'
     | '/project/$projectId'
     | '/rooms/$roomId'
@@ -395,6 +418,7 @@ export interface FileRouteTypes {
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
+    | '/hub/'
     | '/rooms/'
     | '/settings/providers/$providerName'
     | '/settings/providers/'
@@ -408,6 +432,7 @@ export interface RootRouteChildren {
   LogsRoute: typeof LogsRoute
   OverviewRoute: typeof OverviewRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
+  HubModelIdRoute: typeof HubModelIdRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
   RoomsRoomIdRoute: typeof RoomsRoomIdRoute
@@ -429,6 +454,7 @@ export interface RootRouteChildren {
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
+  HubIndexRoute: typeof HubIndexRoute
   RoomsIndexRoute: typeof RoomsIndexRoute
   SettingsProvidersProviderNameRoute: typeof SettingsProvidersProviderNameRoute
   SettingsProvidersIndexRoute: typeof SettingsProvidersIndexRoute
@@ -490,6 +516,13 @@ declare module '@tanstack/react-router' {
       path: '/rooms'
       fullPath: '/rooms/'
       preLoaderRoute: typeof RoomsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/hub/': {
+      id: '/hub/'
+      path: '/hub'
+      fullPath: '/hub/'
+      preLoaderRoute: typeof HubIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/threads/$threadId': {
@@ -639,6 +672,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LocalApiServerLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/hub/$modelId': {
+      id: '/hub/$modelId'
+      path: '/hub/$modelId'
+      fullPath: '/hub/$modelId'
+      preLoaderRoute: typeof HubModelIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/providers/': {
       id: '/settings/providers/'
       path: '/settings/providers'
@@ -664,6 +704,7 @@ const rootRouteChildren: RootRouteChildren = {
   LogsRoute: LogsRoute,
   OverviewRoute: OverviewRoute,
   SystemMonitorRoute: SystemMonitorRoute,
+  HubModelIdRoute: HubModelIdRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
   RoomsRoomIdRoute: RoomsRoomIdRoute,
@@ -685,6 +726,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
+  HubIndexRoute: HubIndexRoute,
   RoomsIndexRoute: RoomsIndexRoute,
   SettingsProvidersProviderNameRoute: SettingsProvidersProviderNameRoute,
   SettingsProvidersIndexRoute: SettingsProvidersIndexRoute,
