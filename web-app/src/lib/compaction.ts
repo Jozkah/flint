@@ -61,6 +61,24 @@ export function resolveAutoCompact(
   return policyAuto
 }
 
+/**
+ * The window assumed for compaction when a model's own is unknown, matching the
+ * agent loop's documented default. Compacting early in a bigger window costs a
+ * summary; never compacting lets a conversation fill a smaller one, where the
+ * model degrades (it repeats itself) long before the server refuses.
+ */
+export const ASSUMED_WINDOW_TOKENS = 128_000
+
+/** The window compaction plans against: the known one, else one a server named, else the assumed one. */
+export function compactionWindow(
+  known: number | null | undefined,
+  learned?: number | null
+): number {
+  if (known != null && known > 0) return known
+  if (learned != null && learned > 0) return learned
+  return ASSUMED_WINDOW_TOKENS
+}
+
 /** Tokens at which a request is compacted before it is sent. */
 export function thresholdTokens(
   window: number,

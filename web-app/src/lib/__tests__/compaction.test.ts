@@ -268,3 +268,13 @@ describe('isContextLengthError', () => {
     expect(isContextLengthError(new Error('The input has too many tokens for this model'))).toBe(true)
   })
 })
+
+describe('compactionWindow', () => {
+  it('uses the known window, then one a server named, then the assumed one', async () => {
+    const { compactionWindow, ASSUMED_WINDOW_TOKENS } = await import('../compaction')
+    expect(compactionWindow(200_000, 100_000)).toBe(200_000)
+    expect(compactionWindow(null, 200_000)).toBe(200_000)
+    expect(compactionWindow(null, null)).toBe(ASSUMED_WINDOW_TOKENS)
+    expect(compactionWindow(0, undefined)).toBe(ASSUMED_WINDOW_TOKENS)
+  })
+})

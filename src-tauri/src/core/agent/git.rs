@@ -1087,6 +1087,10 @@ fn symlink_target(abs: &Path) -> Option<String> {
     Some(std::fs::read_link(abs).ok()?.to_string_lossy().to_string())
 }
 
+/// How many untracked files get their lines counted in a status. The rest are
+/// listed but add nothing to the totals.
+const MAX_UNTRACKED_COUNTED: usize = 200;
+
 /// Count additions in a freshly-added (untracked) file. A symlink counts as its
 /// single target line, never the pointed-at file. Returns `None` when the path
 /// cannot be stat'd; binary and oversized regular files report zero additions.
@@ -1154,6 +1158,7 @@ pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
     let mut files = Vec::new();
     let mut total_add = 0u32;
     let mut total_del = 0u32;
+    let mut untracked_seen = 0usize;
     for rec in records {
         let staged = rec.x != '.';
         let unstaged = rec.y != '.' || rec.untracked;
@@ -1179,9 +1184,18 @@ pub fn status(project: &Path, scope: DiffScope) -> Result<GitStatus, String> {
             }
         };
         let (additions, deletions, binary) = if rec.untracked {
-            match untracked_counts(&root_s, &rec.path) {
-                Some((add, bin)) => (add, 0, bin),
-                None => (0, 0, false),
+            // Only the first few untracked files are read for a line count. A
+            // repository with thousands of untracked files (dumps, exports, a
+            // vendored tree) is not the work in front of the user, and counting
+            // each of them reported millions of added lines and read them all.
+            untracked_seen += 1;
+            if untracked_seen > MAX_UNTRACKED_COUNTED {
+                (0, 0, false)
+            } else {
+                match untracked_counts(&root_s, &rec.path) {
+                    Some((add, bin)) => (add, 0, bin),
+                    None => (0, 0, false),
+                }
             }
         } else {
             counts.get(&rec.path).copied().unwrap_or((0, 0, false))
@@ -1620,6 +1634,37 @@ mod review_tests {
     // An untracked symlink must be shown by its target text, never by
     // dereferencing to the pointed-at file — otherwise a link to a file outside
     // the attached repo would surface that file's contents in the panel.
+    /// A repository full of untracked files (dumps, exports) is not the work in
+    /// front of the user: only the first few are counted, so the totals stay
+    /// about what was changed and the status does not read every file.
+    #[test]
+    fn many_untracked_files_do_not_inflate_the_totals() {
+        let root = std::env::temp_dir().join(format!(
+            "jan_untracked_cap_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let r = root.to_string_lossy().to_string();
+        if git(&["-C", &r, "init", "-q"]).is_err() {
+            return;
+        }
+        for i in 0..(MAX_UNTRACKED_COUNTED + 50) {
+            std::fs::write(root.join(format!("dump_{i:04}.txt")), "a
+b
+c
+").unwrap();
+        }
+        let s = status(&root, DiffScope::All).expect("status");
+        assert_eq!(s.files.len(), MAX_UNTRACKED_COUNTED + 50, "all are still listed");
+        assert_eq!(s.additions as usize, MAX_UNTRACKED_COUNTED * 3);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[cfg(unix)]
     #[test]
     fn untracked_symlink_is_not_dereferenced() {

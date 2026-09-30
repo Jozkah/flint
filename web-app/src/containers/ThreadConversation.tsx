@@ -104,7 +104,7 @@ import {
 } from '@/utils/error'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
-import { CompactionDivider } from '@/containers/CompactionDivider'
+import { CompactingIndicator, CompactionDivider } from '@/containers/CompactionDivider'
 import {
   readChatCompaction,
   registerChatCompactor,
@@ -2851,6 +2851,7 @@ export function ThreadConversation({
                   </Fragment>
                 )
               })}
+              {compacting && <CompactingIndicator />}
               {pendingContinueMessage && status === 'submitted' && (
                 <MessageItem
                   key={`continue-placeholder-${pendingContinueMessage.id}`}
