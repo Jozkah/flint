@@ -4,6 +4,7 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { Card, CardItem } from '@/containers/Card'
+import { ImageDescriptionCard } from '@/containers/ImageDescriptionCard'
 import { useAttachments } from '@/hooks/useAttachments'
 import type { SettingComponentProps } from '@janhq/core'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -286,6 +287,7 @@ function AttachmentsSettings() {
             return card
           })}
         </Card>
+        <ImageDescriptionCard />
       </SettingsPageBody>
     </div>
   )

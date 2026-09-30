@@ -1,4 +1,5 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { currentDescriber } from '@/lib/imageDescription'
 import { needsWeb } from '@/lib/needsWeb'
 import TextareaAutosize from 'react-textarea-autosize'
 import { cn, formatBytes, getModelDisplayName } from '@/lib/utils'
@@ -958,6 +959,26 @@ const ChatInput = memo(function ChatInput({
           !selectedModel.capabilities?.includes(capability)
         ) {
           missing.push(capability)
+        }
+      }
+      // A model that cannot see still gets its images, described by one that
+      // can, so a missing vision capability is no reason to hold the message.
+      // A local model that might see with its mmproj is still offered that.
+      const describer = missing.includes('vision') ? currentDescriber() : null
+      if (describer) {
+        let mightSee = false
+        if (selectedProvider === 'llamacpp') {
+          try {
+            mightSee = await serviceHub.models().checkMmprojExists(selectedModel.id)
+          } catch {
+            mightSee = false
+          }
+        }
+        if (!mightSee) {
+          missing.splice(missing.indexOf('vision'), 1)
+          toast.info(
+            `${selectedModel.name ?? selectedModel.id} cannot see images, so ${describer.modelId} will describe them first.`
+          )
         }
       }
       if (missing.length > 0) {

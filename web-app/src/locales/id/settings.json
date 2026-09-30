@@ -287,5 +287,16 @@
     }
   },
   "backendInstallSuccess": "Backend berhasil diinstal",
-  "backendInstallError": "Gagal menginstal backend"
+  "backendInstallError": "Gagal menginstal backend",
+  "imageDescription": {
+    "title": "Gambar dan model teks saja",
+    "enabled": "Deskripsikan gambar untuk model yang tidak bisa melihat",
+    "enabledDesc": "Model tanpa kemampuan visual menerima deskripsi tertulis dari model yang bisa melihat sebagai pengganti setiap gambar terlampir. Jika mati, model tidak menerima apa pun dari gambar.",
+    "model": "Model deskripsi",
+    "modelDesc": "Model yang menulis deskripsi. Model lokal hanya dipakai jika Anda memilihnya di sini.",
+    "modelAuto": "Otomatis (model jarak jauh pertama yang bisa melihat)",
+    "noVisionModel": "Tidak ada model yang bisa melihat. Tambahkan satu atau tandai model sebagai mampu melihat.",
+    "embed": "Buat gambar terlampir bisa dicari",
+    "embedDesc": "Simpan juga deskripsi tiap gambar bersama dokumen obrolan agar bisa dicari nanti. Ini mengirim setiap gambar terlampir ke model deskripsi."
+  }
 }

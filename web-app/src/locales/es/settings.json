@@ -505,5 +505,16 @@
       "startSetup": "Iniciar configuración",
       "connecting": "Conectando..."
     }
+  },
+  "imageDescription": {
+    "title": "Imágenes y modelos solo de texto",
+    "enabled": "Describir imágenes para modelos que no ven",
+    "enabledDesc": "Un modelo sin visión recibe una descripción escrita de cada imagen adjunta, hecha por un modelo que sí ve, en lugar de la imagen. Desactivado, no recibe nada de la imagen.",
+    "model": "Modelo de descripción",
+    "modelDesc": "El modelo que escribe las descripciones. Un modelo local solo se usa si lo eliges aquí.",
+    "modelAuto": "Automático (primer modelo remoto que ve)",
+    "noVisionModel": "No hay ningún modelo que vea. Añade uno o marca un modelo como capaz de ver.",
+    "embed": "Hacer que las imágenes adjuntas se puedan buscar",
+    "embedDesc": "Guarda también la descripción de cada imagen con los documentos del chat para poder buscarla después. Envía cada imagen adjunta al modelo de descripción."
   }
 }

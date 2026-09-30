@@ -37,6 +37,7 @@ import { useModelDoctor } from '@/hooks/useModelDoctor'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useSkillActivation } from '@/hooks/useSkillActivation'
+import { useImageDescription } from '@/hooks/useImageDescription'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { scheduleRoomRecovery } from '@/lib/rooms/recovery'
@@ -90,6 +91,7 @@ const secondaryStores = [
   useJevSettings,
   useWorkProfiles,
   useSkillActivation,
+  useImageDescription,
   useOnboardingGuide,
   useSessionMessaging,
   useSplitConversation,

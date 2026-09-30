@@ -552,5 +552,16 @@
     "agentTools": "Files, shell and network access for Flint's built-in agent tools.",
     "localApiServer": "An OpenAI-compatible server other apps can use to reach your models.",
     "httpsProxy": "Send Flint's internet requests through a proxy."
+  },
+  "imageDescription": {
+    "title": "Images and text-only models",
+    "enabled": "Describe images for models that cannot see",
+    "enabledDesc": "A model without vision gets a written description of each attached image, made by a model that can see, in the image's place. Off, it gets nothing for the image.",
+    "model": "Description model",
+    "modelDesc": "The model that writes the descriptions. A local model is used only if you pick it here.",
+    "modelAuto": "Automatic (first remote model that can see)",
+    "noVisionModel": "No model that can see is available. Add one, or mark a model as vision-capable, to use this.",
+    "embed": "Make attached images searchable",
+    "embedDesc": "Also store each image's description with the chat's documents so it can be searched later. This sends every attached image to the description model."
   }
 }

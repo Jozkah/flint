@@ -338,5 +338,16 @@
     }
   },
   "backendInstallSuccess": "Backend installato con successo!",
-  "backendInstallError": "Impossibile installare il backend"
+  "backendInstallError": "Impossibile installare il backend",
+  "imageDescription": {
+    "title": "Immagini e modelli solo testo",
+    "enabled": "Descrivi le immagini per i modelli che non vedono",
+    "enabledDesc": "Un modello senza visione riceve, al posto di ogni immagine allegata, una descrizione scritta da un modello che vede. Disattivato, non riceve nulla dell'immagine.",
+    "model": "Modello di descrizione",
+    "modelDesc": "Il modello che scrive le descrizioni. Un modello locale viene usato solo se lo scegli qui.",
+    "modelAuto": "Automatico (primo modello remoto che vede)",
+    "noVisionModel": "Nessun modello in grado di vedere è disponibile. Aggiungine uno o contrassegna un modello come capace di vedere.",
+    "embed": "Rendi ricercabili le immagini allegate",
+    "embedDesc": "Salva anche la descrizione di ogni immagine con i documenti della chat per poterla cercare in seguito. Invia ogni immagine allegata al modello di descrizione."
+  }
 }
