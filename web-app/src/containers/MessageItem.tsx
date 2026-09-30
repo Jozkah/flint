@@ -50,7 +50,7 @@ const REVEAL_ACTIONS =
 
 /** Icon actions: compact with a mouse, 44px with a finger. */
 const ACTION_BUTTON =
-  'size-7 text-muted-foreground hover:text-foreground pointer-coarse:size-11'
+  'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
 import {
   CHAT_STATUS,
@@ -678,7 +678,7 @@ export const MessageItem = memo(
         <div className="flex items-center gap-0.5 text-muted-foreground">
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index <= 1}
             onClick={() => onSwitchVersion(message.id, -1)}
             title="Previous version"
@@ -690,7 +690,7 @@ export const MessageItem = memo(
           </span>
           <button
             type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:bg-accent hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
+            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
             disabled={versionInfo.index >= versionInfo.count}
             onClick={() => onSwitchVersion(message.id, 1)}
             title="Next version"

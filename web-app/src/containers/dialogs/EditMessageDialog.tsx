@@ -87,7 +87,7 @@ export function EditMessageDialog({
       tabIndex={0}
       disabled={!selectedModel}
       aria-label={t('common:editMessage')}
-      className="size-7 text-fg-2 hover:text-foreground pointer-coarse:size-11"
+      className="size-7 text-fg-2 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
