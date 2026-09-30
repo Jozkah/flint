@@ -135,6 +135,7 @@ const RoomItem = memo(function RoomItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <MoveToGroupSub surface="rooms" itemId={room.id} adapter={adapter} />
           <DropdownMenuSeparator />
           <DropdownMenuItem

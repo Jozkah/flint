@@ -207,12 +207,12 @@ const SessionItem = memo(function SessionItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <MoveToGroupSub
             surface="cowork"
             itemId={session.id}
             adapter={coworkFolderAdapter}
           />
-          <DropdownMenuSeparator />
           {/* AH-201. Copies the conversation and none of the access: the fork
               asks for its own folder and its own confirmation, so forking can
               never multiply authority that was granted once. */}
@@ -232,6 +232,7 @@ const SessionItem = memo(function SessionItem({
             <GitFork />
             <span>{t('common:forkSession')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
               void navigator.clipboard?.writeText(session.id)
