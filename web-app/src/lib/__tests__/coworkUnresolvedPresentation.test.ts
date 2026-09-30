@@ -36,6 +36,20 @@ describe('unresolvedForSummary', () => {
     ])
   })
 
+  it('keeps refused writes to different files as separate blockers', () => {
+    const refused = (target: string): UnresolvedItem => ({
+      kind: 'refused',
+      tool: 'write',
+      target,
+    })
+    expect(
+      unresolvedForSummary({
+        status: 'partial',
+        unresolved: [refused('a.ts'), refused('b.ts'), refused('a.ts'), refused('c.ts')],
+      })
+    ).toEqual([refused('b.ts'), refused('a.ts'), refused('c.ts')])
+  })
+
   it('does not duplicate failed checks under Unresolved', () => {
     expect(
       unresolvedForSummary({

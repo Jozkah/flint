@@ -7,7 +7,7 @@ import type { RunOutcome, UnresolvedItem } from '@/lib/coworkRunOutcome'
  *
  * Clean completions therefore show no Unresolved section. Interrupted runs keep
  * the stop reason and, for the remaining blockers, only the latest item for each
- * tool. Failed checks already have their own Checks section and are not repeated
+ * tool and target. Failed checks already have their own Checks section and are not repeated
  * here. Activity/Timeline remains the place to inspect every attempt.
  */
 export function unresolvedForSummary(
@@ -28,7 +28,12 @@ export function unresolvedForSummary(
     const item = outcome.unresolved[i]
     if (item.kind === 'stop' || item.kind === 'check-failed') continue
 
-    const key = `${item.kind}:${item.tool}`
+    // Shell targets are command spellings of one blocker; other tools' targets
+    // are distinct resources (three refused writes are three blockers).
+    const key =
+      item.tool === 'bash'
+        ? `${item.kind}:${item.tool}`
+        : `${item.kind}:${item.tool}:${item.target}`
     if (seen.has(key)) continue
     seen.add(key)
     blockers.push(item)

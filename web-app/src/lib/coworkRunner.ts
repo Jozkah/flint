@@ -159,10 +159,13 @@ export type ToolOutcome = {
  * - `invalid-call`: the call named an offered tool but its arguments could not
  *   be used.
  */
-/** Built-in tools whose schema has no properties: any arguments mean `{}`. */
+/**
+ * Built-in tools whose schema has no properties: any arguments mean `{}`.
+ * `skill_list` is not here: it takes an optional `query`, so its arguments are
+ * kept (an empty or unparseable call is still recovered as `{}` below).
+ */
 export const NO_ARG_TOOLS: ReadonlySet<string> = new Set([
   'memory_list',
-  'skill_list',
   'list_sessions',
   'message_check',
 ])
@@ -864,7 +867,7 @@ export type RunDeps = {
    */
   takeSteering?: () => UIMessage[] | Promise<UIMessage[]>
   /** Check for pending steering between calls from one model response. */
-  hasSteering?: () => boolean
+  hasSteering?: () => boolean | Promise<boolean>
   /**
    * Compact the conversation when it needs it (`lib/compaction.ts`).
    *
@@ -942,6 +945,9 @@ export async function runTurn(opts: {
   // dropped stream, or an empty reply, is continued once without the user
   // having to type "continue". Once, so it can never loop.
   let autoContinued = false
+  // Calls the last step skipped because steering was pending; told to the model
+  // when that steering turned out to have nothing to deliver.
+  let skippedForSteering: string[] = []
   const nudge = (text: string): UIMessage => ({
     id: deps.nextMessageId(),
     role: 'user',
@@ -990,6 +996,17 @@ export async function runTurn(opts: {
     // order typed -- never folded into the model's own turn.
     const steered = (await deps.takeSteering?.()) ?? []
     if (steered.length > 0) messages.push(...steered)
+    else if (skippedForSteering.length > 0) {
+      // The steering that cut the last batch short delivered nothing (mail a
+      // tool had already consumed): say what was not run so it is re-issued.
+      messages.push(
+        nudge(
+          `Not run; re-issue if still needed: ${skippedForSteering.join(', ')}. ` +
+            'They were skipped for input that had already been handled.'
+        )
+      )
+    }
+    skippedForSteering = []
 
     // Compacted here, at the same boundary: the next request would cross the
     // window's threshold, so the run keeps going on a summary instead of
@@ -1159,6 +1176,48 @@ export async function runTurn(opts: {
     // attribution in the UI assumes a single call in flight.
     const outcomes = new Map<string, ToolOutcome>()
     let steeringPending = false
+    /**
+     * Yield to steering between calls. The rest of the batch is skipped, and
+     * recorded as skipped so the timeline shows every call the model asked for.
+     */
+    const yieldToSteering = async (index: number) => {
+      if (
+        !deps.hasSteering ||
+        [...outcomes.values()].some((one) => one.endsTurn) ||
+        !(await deps.hasSteering())
+      ) {
+        return false
+      }
+      steeringPending = true
+      const who = deps.activity?.()
+      for (const skipped of result.toolCalls.slice(index + 1)) {
+        outcomes.set(skipped.toolCallId, {
+          output:
+            'Not run because the user steered this turn before this call started. ' +
+            'Re-issue it if it is still needed.',
+          isError: true,
+        })
+        skippedForSteering.push(skipped.toolName)
+        const identity = {
+          call: skipped.toolCallId,
+          tool: skipped.toolName,
+          session: who?.session ?? '',
+          run: who?.run ?? '',
+          invocation: who?.invocation ?? '',
+          agent: who?.agent ?? '',
+          project: who?.project ?? '',
+          source: who?.source ?? '',
+          parent: who?.parent ?? '',
+        }
+        void recordToolActivity({ ...identity, phase: 'requested' })
+        void recordToolActivity({
+          ...identity,
+          phase: 'cancelled',
+          detail: 'skipped: the user steered this turn before it started',
+        })
+      }
+      return true
+    }
     for (const [index, call] of result.toolCalls.entries()) {
       if (signal.aborted) {
         outcomes.set(call.toolCallId, {
@@ -1175,7 +1234,9 @@ export async function runTurn(opts: {
           ...(who?.agent ? { agent: who.agent } : {}),
         }
         const outcome: ToolOutcome = {
-          output: WEB_TOOL_NAMES.has(call.toolName)
+          output:
+            refusal.kind === 'tool-not-offered' &&
+            WEB_TOOL_NAMES.has(call.toolName)
             ? // Named, so the model stops asking for it: it knows
               // `web_fetch` from training and kept retrying it.
               `\`${call.toolName}\` is not available: web access is turned ` +
@@ -1217,6 +1278,7 @@ export async function runTurn(opts: {
           path: pathOf(call.input),
           after: undefined,
         })
+        if (await yieldToSteering(index)) break
         continue
       }
       const outcome = await deps.dispatch(call, signal)
@@ -1235,16 +1297,7 @@ export async function runTurn(opts: {
         path: pathOf(call.input),
         after: outcome.diff,
       })
-      if (deps.hasSteering?.() && ![...outcomes.values()].some((one) => one.endsTurn)) {
-        steeringPending = true
-        for (const skipped of result.toolCalls.slice(index + 1)) {
-          outcomes.set(skipped.toolCallId, {
-            output: 'Not run because the user steered this turn before this call started.',
-            isError: true,
-          })
-        }
-        break
-      }
+      if (await yieldToSteering(index)) break
     }
 
     /**

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const invoke = vi.fn()
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
 
-import { jevSuggestSkill } from '../jev'
+import { jevSuggestSkill, workProfileAsker } from '../jev'
 import { WORK_PROFILES } from '../workProfiles'
 
 const profiles = WORK_PROFILES.map((profile) => ({
@@ -59,5 +59,21 @@ describe('Jev work-profile routing', () => {
       message: 'help with this TypeScript error',
       skills,
     })
+  })
+})
+
+describe('Cowork work-profile Jev gate', () => {
+  beforeEach(() => invoke.mockReset())
+
+  it('asks only when rerank is on, since jev_rerank is governed by it', () => {
+    expect(workProfileAsker('off')).toBeUndefined()
+    expect(workProfileAsker('shadow')).toBeUndefined()
+    expect(workProfileAsker('on')).toBeTypeOf('function')
+  })
+
+  it('routes the question through jev_rerank and yields the chosen profile', async () => {
+    invoke.mockResolvedValue({ order: ['debug', 'execute'], fallback: null, model: 'jev' })
+    await expect(workProfileAsker('on')?.('find why this crashes', profiles)).resolves.toBe('debug')
+    expect(invoke).toHaveBeenCalledWith('jev_rerank', expect.anything())
   })
 })

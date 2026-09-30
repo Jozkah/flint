@@ -256,4 +256,15 @@ describe('isContextLengthError', () => {
     expect(isContextLengthError(new Error('429 rate limited'))).toBe(false)
     expect(isContextLengthError(null)).toBe(false)
   })
+
+  it('does not treat a bare "too many tokens" throttle as a length refusal', () => {
+    expect(isContextLengthError(new Error('Too many tokens per minute, slow down'))).toBe(false)
+    expect(isContextLengthError(new Error('429: too many tokens, retry after 20s'))).toBe(false)
+    expect(isContextLengthError(new Error('Rate limit: too many tokens in your request per minute'))).toBe(false)
+  })
+
+  it('still recognises "too many tokens" when it names the prompt or context', () => {
+    expect(isContextLengthError(new Error('Too many tokens in the prompt: 210000'))).toBe(true)
+    expect(isContextLengthError(new Error('The input has too many tokens for this model'))).toBe(true)
+  })
 })

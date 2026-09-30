@@ -10,7 +10,7 @@ vi.mock('@/lib/backendStorage', () => ({
   },
 }))
 
-import { startPaneSession, useCoworkSessions } from '../useCoworkSessions'
+import { startPaneSession, startPaneSessionParked, useCoworkSessions } from '../useCoworkSessions'
 import { useFileActivity } from '../useFileActivity'
 
 /**
@@ -100,14 +100,48 @@ describe('starting a session', () => {
     ])
   })
 
-  it('parks a draft on a blank session too', () => {
+  it('reuses a blank session and leaves the draft in the composer', () => {
     const first = store().startSession(idle)
 
-    const again = store().startSession({ running: false, draft: 'draft text' })
+    const again = store().startSessionParked({ running: false, draft: 'draft text' })
 
-    expect(again).not.toBe(first)
-    expect(store().sessions.find((s) => s.id === first)?.pendingInput).toEqual([
-      expect.objectContaining({ text: 'draft text' }),
+    // Parked on a blank session the draft would be hidden with it.
+    expect(again).toEqual({ id: first, parked: false })
+    expect(store().sessions).toHaveLength(1)
+    expect(store().sessions[0].pendingInput).toBeUndefined()
+  })
+
+  it('reports that a draft was parked only when it was', () => {
+    const first = store().startSession(idle)
+    store().setMessages(first, [{ id: 'm1' } as never])
+
+    expect(store().startSessionParked({ running: false, draft: 'kept' })).toMatchObject({
+      parked: true,
+    })
+    const [latest] = store().sessions
+    expect(store().startSessionParked({ running: false, draft: '   ' })).toEqual({
+      id: latest.id,
+      parked: false,
+    })
+  })
+
+  it('does not report a draft as parked when there is no session to park it on', () => {
+    const out = store().startSessionParked({ running: false, draft: 'orphan' })
+    expect(out.parked).toBe(false)
+    expect(store().sessions).toHaveLength(1)
+  })
+
+  it('reports parked from a pane too, and not for a blank pane session', () => {
+    const pane = store().createSession()
+    expect(
+      startPaneSessionParked(pane, { running: false, draft: 'blank pane draft' })
+    ).toEqual({ id: pane, parked: false })
+
+    store().setMessages(pane, [{ id: 'm' } as never])
+    const out = startPaneSessionParked(pane, { running: false, draft: 'pane draft' })
+    expect(out.parked).toBe(true)
+    expect(store().sessions.find((s) => s.id === pane)?.pendingInput).toEqual([
+      expect.objectContaining({ text: 'pane draft' }),
     ])
   })
 

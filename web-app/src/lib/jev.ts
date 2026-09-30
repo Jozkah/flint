@@ -134,6 +134,24 @@ export const jevSuggestSkill = (
     ? jevChooseWorkProfile(message, skills)
     : invoke<SkillDecision>('jev_suggest_skill', { message, skills })
 
+/**
+ * The work-profile chooser Cowork hands to `chooseWorkProfile`, or undefined
+ * when Jev should not be asked. Profiles are ranked through `jev_rerank`, which
+ * the backend governs with the rerank mode, so that is the mode to gate on --
+ * not the skill mode, which only governs `jev_suggest_skill`.
+ */
+export function workProfileAsker(
+  rerankMode: JevMode
+):
+  | ((
+      message: string,
+      options: { name: string; description: string }[]
+    ) => Promise<string | null>)
+  | undefined {
+  if (rerankMode !== 'on') return undefined
+  return (message, options) => jevSuggestSkill(message, options).then((d) => d.skill)
+}
+
 /** Worth asking about: long enough to mean something, not already a command. */
 export function shouldAskForSkill(text: string): boolean {
   const t = text.trim()
