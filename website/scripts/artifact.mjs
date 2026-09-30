@@ -37,9 +37,15 @@ for (const f of pages) {
 const home = fs.readFileSync(path.join(out, 'index.html'), 'utf8')
 const title = home.match(/<title>[\s\S]*?<\/title>/)[0]
 const style = home.match(/<style>[\s\S]*?<\/style>/)[0]
-const headScripts = [...home.match(/<head>[\s\S]*<\/head>/)[0].matchAll(/<script>[\s\S]*?<\/script>/g)].map((m) => m[0]).join('\n')
+const headHtml = home.match(/<head>([\s\S]*)<\/head>/)[1]
+// Scripts are split on the first closing tag; the bundle escapes any "</script" inside itself.
+const scripts = [...headHtml.matchAll(/<script\b[^>]*>[\s\S]*?<\/script>/g)].map((m) => m[0]).filter((s) => !s.includes('application/ld+json'))
+const isModule = (s) => s.startsWith('<script type="module"')
+const classic = scripts.filter((s) => !isModule(s)).join('\n')
+const moduleScript = scripts.find(isModule)
 const body = home.match(/<body>([\s\S]*)<\/body>/)[1]
-fs.writeFileSync(path.join(out, 'entry.html'), `${title}\n${style}\n${headScripts}\n${body}`)
+// Order matters: the module bundle goes after the markup it hydrates.
+fs.writeFileSync(path.join(out, 'entry.html'), [title, style, classic, body, moduleScript].join('\n'))
 
 for (const dir of ['brand']) fs.cpSync(path.join(dist, dir), path.join(out, dir), { recursive: true })
 fs.copyFileSync(path.join(dist, 'og.png'), path.join(out, 'og.png'))

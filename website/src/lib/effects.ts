@@ -1,25 +1,65 @@
+import { FLAT } from './site'
+
 // Small, dependency-free page effects. Everything here degrades to "content simply visible".
+
 export function startEffects(): () => void {
   const cleanups: Array<() => void> = []
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-  // 0. In-page links scroll explicitly (works in sandboxed frames where fragment navigation can be blocked).
-  const onLink = (ev: MouseEvent) => {
-    const a = (ev.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]')
-    if (!a || ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey) return
+  // 0. Links inside sandboxed hosts: fragment and sibling-page navigation can be swallowed by the frame, so handle both ourselves.
+  const plain = (ev: MouseEvent) => ev.button === 0 && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey && !ev.altKey
+  const hashLink = (ev: Event) => (ev.target as Element | null)?.closest<HTMLAnchorElement>('a[href^="#"]') ?? null
+  // Internal page links have no target=_blank. Hosts may rewrite relative hrefs, so match on the resolved path, not the attribute text.
+  const pageLink = (ev: Event) => {
+    if (!FLAT) return null
+    const a = (ev.target as Element | null)?.closest<HTMLAnchorElement>('a[href]')
+    return a && !a.target && /\/[\w-]+\.html$/.test(a.pathname) ? a : null
+  }
+  const goPage = (a: HTMLAnchorElement): boolean => {
+    const name = a.pathname.match(/\/([\w-]+)\.html$/)?.[1]
+    const go = (window as unknown as { __flintNavigate?: (page: string, hash?: string) => boolean }).__flintNavigate
+    return !!(name && go && go(name === 'index' ? '' : name, a.hash.slice(1) || undefined))
+  }
+  const goHash = (a: HTMLAnchorElement): boolean => {
     const id = decodeURIComponent(a.getAttribute('href')!.slice(1))
     const el = id ? document.getElementById(id) : document.body
-    if (!el) return
-    ev.preventDefault()
+    if (!el) return false
     el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
     try {
       history.replaceState(null, '', id ? `#${id}` : location.pathname + location.search)
     } catch {
       // Some sandboxes forbid history changes; scrolling already worked.
     }
+    return true
   }
-  document.addEventListener('click', onLink)
-  cleanups.push(() => document.removeEventListener('click', onLink))
+  let handledAt = 0
+  // pointerup fires even when the host swallows the click that follows it.
+  const onPointerUp = (ev: PointerEvent) => {
+    if (!plain(ev)) return
+    const a = pageLink(ev)
+    if (a && goPage(a)) {
+      handledAt = Date.now()
+      ev.preventDefault()
+    }
+  }
+  const onClick = (ev: MouseEvent) => {
+    const a = pageLink(ev)
+    if (a) {
+      if (Date.now() - handledAt < 800 || (plain(ev) && goPage(a))) {
+        ev.preventDefault()
+        ev.stopImmediatePropagation()
+      }
+      return
+    }
+    const h = hashLink(ev)
+    if (h && !ev.defaultPrevented && plain(ev) && goHash(h)) ev.preventDefault()
+  }
+  document.addEventListener('pointerup', onPointerUp, true)
+  document.addEventListener('click', onClick, true)
+  cleanups.push(() => {
+    document.removeEventListener('pointerup', onPointerUp, true)
+    document.removeEventListener('click', onClick, true)
+  })
 
   // 1. Reveal on scroll.
   const reveals = Array.from(document.querySelectorAll<HTMLElement>('.reveal, .reveal-mask'))

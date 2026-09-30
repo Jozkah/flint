@@ -3,11 +3,12 @@ import release from '../generated/release.json'
 declare const __SITE_URL__: string
 
 export const SITE_URL: string = typeof __SITE_URL__ === 'undefined' ? 'https://jozkah.github.io/flint/' : __SITE_URL__
-export const BASE: string = import.meta.env.BASE_URL
+export const FLAT = import.meta.env.VITE_FLAT === '1'
+// A flat build sits next to its assets, so it always uses relative paths (SSR would otherwise report '/').
+export const BASE: string = FLAT ? './' : import.meta.env.BASE_URL
 export const asset = (path: string) => `${BASE}${path.replace(/^\//, '')}`
 
 /** Internal page URL: '' is the homepage, 'privacy' is /privacy/. */
-export const FLAT = import.meta.env.VITE_FLAT === '1'
 export const pageHref = (path: string) => {
   const p = path.replace(/^\/|\/$/g, '')
   if (FLAT) return `${BASE}${p || 'index'}.html`
