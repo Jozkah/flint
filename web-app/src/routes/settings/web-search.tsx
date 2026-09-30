@@ -132,12 +132,22 @@ function WebSearchContent() {
               </DropdownMenu>
             }
           />
-          {/* The same anchor id on both branches, never a wrapper around
+          {/* The same anchor id on every branch, never a wrapper around
               them: the provider decides which control exists, so exactly
               one branch is ever mounted and the id stays unique — while a
               wrapper would make the row both first and last child and
               strip the card's dividers. */}
-          {provider.requiresEndpoint ? (
+          {provider.noSetup ? (
+            <CardItem
+              anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
+              title={t('settings:webSearch.noSetup', {
+                provider: provider.label,
+              })}
+              description={t('settings:webSearch.noSetupDesc', {
+                provider: provider.label,
+              })}
+            />
+          ) : provider.requiresEndpoint ? (
             <CardItem
               anchor={WEB_SEARCH_PROVIDER_CONFIG_ANCHOR}
               title={t('settings:webSearch.endpoint', {

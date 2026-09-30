@@ -5,8 +5,8 @@
 //! [`create_provider`]. Adding a backend is a new impl plus one match arm - the
 //! plugin command contract and the whole frontend stay unchanged.
 //!
-//! The only backend shipped today is [`ExaProvider`] (the default). Exa is a
-//! backend, never a product-facing identity:
+//! [`ExaProvider`] is the default. Exa is a backend, never a product-facing
+//! identity:
 //!
 //! * Keyless (default): Exa's hosted endpoint at `https://mcp.exa.ai/mcp`
 //!   answers over JSON-RPC with no API key.
@@ -41,6 +41,12 @@ const TAVILY_EXTRACT_URL: &str = "https://api.tavily.com/extract";
 
 const BRAVE_SEARCH_URL: &str = "https://api.search.brave.com/res/v1/web/search";
 const SERPER_SEARCH_URL: &str = "https://google.serper.dev/search";
+
+// DuckDuckGo has no search API. Its HTML results page is what its own lite
+// clients and every open-source integration read; it answers browsers, and
+// answers anything that does not look like one with a bot check.
+const DUCKDUCKGO_HTML_URL: &str = "https://html.duckduckgo.com/html/";
+const DUCKDUCKGO_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 
 const YOU_COM_HOSTED_URL: &str = "https://api.you.com/mcp?profile=free";
 // Identifies the calling application to You.com, per the convention its other
@@ -100,6 +106,7 @@ pub fn create_provider(
         Some("serper") | Some("google") => Ok(Box::new(SerperProvider::new(api_key)?)),
         Some("searxng") => Ok(Box::new(SearxngProvider::new(endpoint)?)),
         Some("you") => Ok(Box::new(YouComProvider::new(api_key)?)),
+        Some("duckduckgo") | Some("ddg") => Ok(Box::new(DuckDuckGoProvider::new()?)),
         Some(other) => Err(format!("Unknown web search provider '{other}'")),
     }
 }
@@ -1246,6 +1253,210 @@ fn normalize_searxng_search(body: &Value, count: u32) -> Vec<SearchResult> {
         .collect()
 }
 
+/// DuckDuckGo backend (key-less, no setup). Reads the HTML results page
+/// (`html.duckduckgo.com/html/`), which lists ten organic results with their
+/// real URLs, titles and snippets. There is no content-extraction endpoint, so
+/// `fetch` does a plain HTTP GET like SearXNG, Brave and Serper.
+///
+/// DuckDuckGo may answer a burst of queries with a bot check instead of
+/// results; that is reported as an error naming the way out rather than as
+/// "no results", so the model does not conclude the web has nothing to say.
+pub struct DuckDuckGoProvider {
+    client: reqwest::Client,
+}
+
+impl DuckDuckGoProvider {
+    pub fn new() -> Result<Self, String> {
+        Ok(Self {
+            client: build_http_client("DuckDuckGo")?,
+        })
+    }
+}
+
+#[async_trait]
+impl SearchProvider for DuckDuckGoProvider {
+    async fn search(&self, query: &str, count: u32) -> Result<Vec<SearchResult>, String> {
+        let resp = self
+            .client
+            .post(DUCKDUCKGO_HTML_URL)
+            .header(reqwest::header::USER_AGENT, DUCKDUCKGO_USER_AGENT)
+            .header(reqwest::header::ACCEPT_LANGUAGE, "en-US,en;q=0.9")
+            .form(&[("q", query)])
+            .send()
+            .await
+            .map_err(|e| format!("DuckDuckGo request failed: {e}"))?;
+        let status = resp.status();
+        let html = read_body_capped(resp, MAX_RESPONSE_BYTES)
+            .await
+            .map_err(|e| format!("DuckDuckGo: failed to read response body: {e}"))?;
+        // A bot check can come back as 200 or as 202/403; read the page first.
+        if is_duckduckgo_bot_check(&html) {
+            return Err(DUCKDUCKGO_BOT_CHECK.to_string());
+        }
+        if !status.is_success() {
+            return Err(format!("DuckDuckGo failed with HTTP {}", status.as_u16()));
+        }
+        Ok(parse_duckduckgo_results(&html, count))
+    }
+
+    async fn fetch(&self, url: &str) -> Result<FetchedPage, String> {
+        http_get_page(&self.client, url, "DuckDuckGo").await
+    }
+}
+
+const DUCKDUCKGO_BOT_CHECK: &str = "DuckDuckGo asked for a bot check instead of returning results, which it does after \
+     many searches in a short time. Wait a minute and retry, or switch the Web Search provider \
+     in Settings > Web Search to Exa or You.com, which work with no API key.";
+
+fn is_duckduckgo_bot_check(html: &str) -> bool {
+    html.contains("anomaly-modal") || html.contains("challenge-form")
+}
+
+/// The organic results on a DuckDuckGo HTML results page, in page order, with
+/// ads dropped and links resolved to the real destination. A page with no
+/// results parses to an empty list.
+fn parse_duckduckgo_results(html: &str, count: u32) -> Vec<SearchResult> {
+    let mut out: Vec<SearchResult> = Vec::new();
+    // Every result is one `<div class="result ...">`; the split leaves that
+    // opening tag's class list at the start of each piece.
+    for block in html.split("<div class=\"result ").skip(1) {
+        if out.len() >= count as usize {
+            break;
+        }
+        let classes = block.split('"').next().unwrap_or("");
+        if classes.split_whitespace().any(|c| c == "result--ad") {
+            continue;
+        }
+        let Some(link) = html_anchor_with_class(block, "result__a") else {
+            continue;
+        };
+        let Some(url) = duckduckgo_destination(&link.href) else {
+            continue;
+        };
+        if out.iter().any(|r| r.url == url) {
+            continue;
+        }
+        let title = html_text(&link.inner);
+        let snippet = html_anchor_with_class(block, "result__snippet")
+            .map(|a| clip_chars(&html_text(&a.inner), 500))
+            .unwrap_or_default();
+        out.push(SearchResult {
+            title: if title.is_empty() { url.clone() } else { title },
+            url,
+            snippet,
+            published_at: None,
+        });
+    }
+    out
+}
+
+struct HtmlAnchor {
+    href: String,
+    inner: String,
+}
+
+/// The first `<a ... class="...<class>..." ...>inner</a>` in `html`.
+fn html_anchor_with_class(html: &str, class: &str) -> Option<HtmlAnchor> {
+    let mut from = 0;
+    while let Some(rel) = html[from..].find("<a ") {
+        let start = from + rel;
+        let tag_end = start + html[start..].find('>')?;
+        let tag = &html[start..=tag_end];
+        from = tag_end + 1;
+        let has_class = html_attr(tag, "class").is_some_and(|c| c.split_whitespace().any(|x| x == class));
+        if !has_class {
+            continue;
+        }
+        let close = from + html[from..].find("</a>")?;
+        return Some(HtmlAnchor {
+            href: html_attr(tag, "href").unwrap_or_default(),
+            inner: html[from..close].to_string(),
+        });
+    }
+    None
+}
+
+/// The value of attribute `name` in an opening tag, entities decoded.
+fn html_attr(tag: &str, name: &str) -> Option<String> {
+    let needle = format!(" {name}=\"");
+    let start = tag.find(&needle)? + needle.len();
+    let end = start + tag[start..].find('"')?;
+    Some(decode_html_entities(&tag[start..end]))
+}
+
+/// Visible text of an HTML fragment: tags removed, entities decoded, runs of
+/// whitespace collapsed.
+fn html_text(fragment: &str) -> String {
+    decode_html_entities(&strip_html_tags(fragment))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn decode_html_entities(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        rest = &rest[amp..];
+        let decoded = rest.find(';').filter(|&semi| semi <= 10).and_then(|semi| {
+            let body = &rest[1..semi];
+            let ch = match body {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                "nbsp" => Some(' '),
+                _ => body
+                    .strip_prefix('#')
+                    .and_then(|n| match n.strip_prefix(['x', 'X']) {
+                        Some(hex) => u32::from_str_radix(hex, 16).ok(),
+                        None => n.parse::<u32>().ok(),
+                    })
+                    .and_then(char::from_u32),
+            }?;
+            Some((ch, semi + 1))
+        });
+        match decoded {
+            Some((ch, used)) => {
+                out.push(ch);
+                rest = &rest[used..];
+            }
+            None => {
+                out.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The page a DuckDuckGo result link leads to. A link is either the address
+/// itself or a `duckduckgo.com/l/?uddg=<address>` redirect that carries it.
+/// Only http(s) addresses are returned.
+fn duckduckgo_destination(href: &str) -> Option<String> {
+    let absolute = if let Some(rest) = href.strip_prefix("//") {
+        format!("https://{rest}")
+    } else {
+        href.to_string()
+    };
+    let parsed = reqwest::Url::parse(&absolute).ok()?;
+    let target = if parsed.host_str().is_some_and(|h| h == "duckduckgo.com" || h.ends_with(".duckduckgo.com"))
+        && parsed.path().starts_with("/l/")
+    {
+        let uddg = parsed.query_pairs().find(|(k, _)| k == "uddg")?.1.into_owned();
+        reqwest::Url::parse(&uddg).ok()?
+    } else {
+        parsed
+    };
+    matches!(target.scheme(), "http" | "https").then(|| target.to_string())
+}
+
 /// Fetch a URL directly and return its bounded body, titled from its `<title>`.
 /// Used by backends that have no content-extraction endpoint on the active
 /// transport, so `web_fetch` still answers instead of erroring.
@@ -1640,6 +1851,122 @@ mod tests {
         assert!(
             create_provider(Some("searxng"), None, Some("https://searx.example/".into())).is_ok()
         );
+    }
+
+    /// A results page shaped like the live one: a plain link, a `uddg` redirect
+    /// link, an ad, a repeat of the first result, and entities in the text.
+    const DDG_PAGE: &str = r#"<div id="links" class="results">
+      <div class="result results_links results_links_deep web-result ">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="https://docs.rs/async-trait/latest/async_trait/">async_trait - Rust - Docs.rs</a></h2>
+        <a class="result__snippet" href="https://docs.rs/async-trait/">It is the intention that all features of <b>Rust</b> <b>traits</b> work &amp; more.</a>
+      </div>
+      <div class="result results_links results_links_deep web-result ">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa%3Fb%3D1%26c%3D2&amp;rut=abc">Tom &amp; Jerry&#x27;s  guide</a></h2>
+        <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.org%2Fa">Second   snippet</a>
+      </div>
+      <div class="result results_links results_links_deep result--ad">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="https://ads.example.com/">Buy things</a></h2>
+        <a class="result__snippet" href="https://ads.example.com/">An ad</a>
+      </div>
+      <div class="result results_links results_links_deep web-result ">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="https://docs.rs/async-trait/latest/async_trait/">A repeat</a></h2>
+      </div>
+      <div class="result results_links results_links_deep web-result ">
+        <h2 class="result__title"><a rel="nofollow" class="result__a" href="javascript:alert(1)">Not a web page</a></h2>
+      </div>
+    </div>"#;
+
+    #[test]
+    fn duckduckgo_results_are_read_in_order_with_real_urls() {
+        let results = parse_duckduckgo_results(DDG_PAGE, 10);
+        assert_eq!(results.len(), 2, "the ad, the repeat and the non-http link are dropped: {results:?}");
+        assert_eq!(results[0].url, "https://docs.rs/async-trait/latest/async_trait/");
+        assert_eq!(results[0].title, "async_trait - Rust - Docs.rs");
+        assert_eq!(
+            results[0].snippet,
+            "It is the intention that all features of Rust traits work & more."
+        );
+        // The redirect wrapper is unwrapped, its query string intact.
+        assert_eq!(results[1].url, "https://example.org/a?b=1&c=2");
+        assert_eq!(results[1].title, "Tom & Jerry's guide");
+        assert_eq!(results[1].snippet, "Second snippet");
+        assert!(results.iter().all(|r| r.published_at.is_none()));
+    }
+
+    #[test]
+    fn duckduckgo_results_respect_the_count() {
+        assert_eq!(parse_duckduckgo_results(DDG_PAGE, 1).len(), 1);
+        assert!(parse_duckduckgo_results(DDG_PAGE, 0).is_empty());
+    }
+
+    #[test]
+    fn a_duckduckgo_page_with_no_results_is_an_empty_list_not_an_error() {
+        assert!(parse_duckduckgo_results("<html><body><div class=\"no-results\">No results.</div></body></html>", 5).is_empty());
+        assert!(parse_duckduckgo_results("", 5).is_empty());
+    }
+
+    #[test]
+    fn a_duckduckgo_bot_check_is_recognised() {
+        assert!(is_duckduckgo_bot_check("<div class=\"anomaly-modal__modal\">Unfortunately, bots use DuckDuckGo too.</div>"));
+        assert!(is_duckduckgo_bot_check("<form id=\"challenge-form\" action=\"//duckduckgo.com/anomaly.js\">"));
+        assert!(!is_duckduckgo_bot_check(DDG_PAGE));
+        assert!(DUCKDUCKGO_BOT_CHECK.contains("Exa or You.com"));
+    }
+
+    #[test]
+    fn duckduckgo_destinations_are_only_web_addresses() {
+        assert_eq!(duckduckgo_destination("https://a.example/x").as_deref(), Some("https://a.example/x"));
+        assert_eq!(
+            duckduckgo_destination("//duckduckgo.com/l/?uddg=http%3A%2F%2Fb.example%2F").as_deref(),
+            Some("http://b.example/")
+        );
+        assert_eq!(
+            duckduckgo_destination("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fc.example%2Fp&rut=1").as_deref(),
+            Some("https://c.example/p")
+        );
+        for bad in ["", "javascript:alert(1)", "/relative/path", "https://duckduckgo.com/l/?rut=1", "https://duckduckgo.com/l/?uddg=ftp%3A%2F%2Fx"] {
+            assert_eq!(duckduckgo_destination(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn html_entities_decode_named_and_numeric_forms_and_leave_the_rest() {
+        assert_eq!(decode_html_entities("a &amp; b &lt;c&gt; &quot;d&quot; &#39;e&#39; &#x2019;f&nbsp;g"), "a & b <c> \"d\" 'e' \u{2019}f g");
+        assert_eq!(decode_html_entities("AT&T &unknown; & lone &#xZZ; end&"), "AT&T &unknown; & lone &#xZZ; end&");
+    }
+
+    #[test]
+    fn duckduckgo_needs_no_key_or_endpoint_and_has_an_alias() {
+        assert!(create_provider(Some("duckduckgo"), None, None).is_ok());
+        assert!(create_provider(Some("DDG"), None, None).is_ok());
+        assert!(create_provider(Some("duckduckgo"), Some("ignored".into()), Some("also-ignored".into())).is_ok());
+    }
+
+    /// A page fetched through this provider goes through the same public-only
+    /// client as every other backend: it cannot reach this machine.
+    #[tokio::test]
+    async fn a_duckduckgo_fetch_never_reaches_a_local_address() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let provider = DuckDuckGoProvider::new().unwrap();
+        assert!(provider.fetch(&format!("http://127.0.0.1:{port}/")).await.is_err());
+        let connected = tokio::time::timeout(std::time::Duration::from_millis(300), listener.accept()).await;
+        assert!(connected.is_err(), "nothing may connect to the local listener");
+    }
+
+    /// Talks to the real site, so it is skipped by default:
+    /// `cargo test -p tauri-plugin-websearch -- --ignored duckduckgo_live`.
+    #[tokio::test]
+    #[ignore = "needs network access to duckduckgo.com"]
+    async fn duckduckgo_live_search_returns_real_results() {
+        let provider = DuckDuckGoProvider::new().unwrap();
+        let results = provider.search("rust programming language", 5).await.unwrap();
+        assert!(!results.is_empty(), "expected results");
+        for r in &results {
+            assert!(r.url.starts_with("http"), "{r:?}");
+            assert!(!r.title.is_empty(), "{r:?}");
+            assert!(!r.url.contains("duckduckgo.com/l/"), "redirect not unwrapped: {r:?}");
+        }
     }
 
     #[test]
