@@ -79,6 +79,14 @@ const UNIFIED_LARGE_THRESHOLD_BYTES = 36 * GIB
 /** Legacy file-size KV approximation, used only without GGUF metadata. */
 const KV_HEURISTIC_RATIO = 0.1
 const KV_BASELINE_CTX = 4096
+/**
+ * Above this file size the cache is a smaller share of the weights: a 70B model
+ * keeps about a sixth of the cache per byte that an 8B one does, because it
+ * grows with layers and KV heads, not with parameter count. The share falls with
+ * the square root of the size, which stays above the real figure (so the estimate
+ * remains conservative) without calling every large model too big.
+ */
+const KV_HEURISTIC_KNEE_BYTES = 12 * GIB
 
 const UNIT_BYTES: Record<string, number> = {
   b: 1,
@@ -125,7 +133,11 @@ export function estimateKvCacheBytes(
 ): number {
   if (!Number.isFinite(fileSizeBytes) || fileSizeBytes <= 0) return 0
   const ctx = ctxLength > 0 ? ctxLength : DEFAULT_CTX_LENGTH
-  return fileSizeBytes * KV_HEURISTIC_RATIO * (ctx / KV_BASELINE_CTX)
+  const sizeFactor =
+    fileSizeBytes > KV_HEURISTIC_KNEE_BYTES
+      ? Math.sqrt(KV_HEURISTIC_KNEE_BYTES / fileSizeBytes)
+      : 1
+  return fileSizeBytes * KV_HEURISTIC_RATIO * sizeFactor * (ctx / KV_BASELINE_CTX)
 }
 
 /** The attention shape needed to size a KV cache, read from GGUF metadata. */
@@ -257,6 +269,35 @@ export interface FitInput {
   gpuLayers?: number
   /** Other models that will stay loaded alongside this one. */
   otherLoadedBytes?: number
+  /**
+   * The llama.cpp device list with each device's on/off state. A GPU whose
+   * every device is switched off is left out of the memory the model may use.
+   */
+  devices?: Array<{ name: string; activated: boolean }>
+}
+
+const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Removes the GPUs the user has switched off in Settings -> Hardware. A GPU is
+ * only removed when llama.cpp lists it and none of its devices (one per
+ * backend) is on; one it does not list is kept, since nothing says it is off.
+ */
+export function withoutDisabledGpus(
+  hardware: HardwareData,
+  devices: FitInput['devices']
+): HardwareData {
+  if (!devices?.length || hardware.gpus.length === 0) return hardware
+  const gpus = hardware.gpus.filter((gpu) => {
+    const name = normalizeName(gpu.name)
+    if (!name) return true
+    const same = devices.filter((device) => {
+      const other = normalizeName(device.name)
+      return other && (other.includes(name) || name.includes(other))
+    })
+    return same.length === 0 || same.some((device) => device.activated)
+  })
+  return gpus.length === hardware.gpus.length ? hardware : { ...hardware, gpus }
 }
 
 export interface FitBreakdown {
@@ -290,6 +331,7 @@ export type FitAssumption =
   | 'system-reserve'
   | 'runtime-overhead'
   | 'cpu-only-by-setting'
+  | 'gpu-disabled-in-settings'
   | 'other-models-loaded'
   | 'mmap-not-counted'
   | 'mmproj-unknown'
@@ -331,8 +373,10 @@ function memoryModelOf(hardware: HardwareData): MemoryModel {
  * what is available, and every assumption the numbers rest on.
  */
 export function assessModelFit(input: FitInput): FitAssessment {
-  const { hardware, weightsBytes } = input
+  const { weightsBytes } = input
+  const hardware = withoutDisabledGpus(input.hardware, input.devices)
   const assumptions: FitAssumption[] = []
+  if (hardware !== input.hardware) assumptions.push('gpu-disabled-in-settings')
   const memoryModel = memoryModelOf(hardware)
   const requestedCtx =
     input.ctxLength > 0 ? input.ctxLength : DEFAULT_CTX_LENGTH

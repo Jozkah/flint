@@ -10,7 +10,8 @@ import {
   isLocalProvider,
 } from '@/lib/utils'
 import { sortModels } from '@/lib/modelSort'
-import { createFileRoute, useParams } from '@tanstack/react-router'
+import { createFileRoute, Link, useParams } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
@@ -1242,6 +1243,15 @@ function ProviderDetail() {
               provider && !isLocalProvider(provider.provider)
                 ? t('providers:noModelFoundRemoteDesc')
                 : t('providers:noModelFoundDesc')
+            }
+            action={
+              provider && isLocalProvider(provider.provider) ? (
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={route.hub.index}>
+                    {t('providers:browseHuggingFace')}
+                  </Link>
+                </Button>
+              ) : undefined
             }
           />
         )}

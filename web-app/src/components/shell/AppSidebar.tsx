@@ -40,6 +40,7 @@ import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useAppState } from '@/hooks/useAppState'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useHuggingFaceDownloads } from '@/hooks/useHuggingFaceDownloads'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import {
@@ -133,6 +134,15 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     [providers]
   )
 
+  const activeDownloads = useHuggingFaceDownloads(
+    (s) =>
+      Object.values(s.tasks).filter((task) =>
+        ['queued', 'downloading', 'paused', 'verifying', 'importing'].includes(
+          task.status
+        )
+      ).length
+  )
+
   const within = (base: string) =>
     pathname === base || pathname.startsWith(`${base}/`)
   const inDiscover =
@@ -150,6 +160,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       label: 'Discover',
       icon: 'search',
       active: inDiscover,
+      count: activeDownloads,
       testId: 'rail-discover',
     },
     {

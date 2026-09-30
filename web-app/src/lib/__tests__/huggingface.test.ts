@@ -4,7 +4,9 @@ import {
   chooseMmproj,
   cleanHuggingFaceRepo,
   groupHuggingFaceFiles,
+  mlxWeightsBytes,
   quantizationFromFilename,
+  repoFromDeepLink,
   splitInfo,
   type HuggingFaceFile,
 } from '@/lib/huggingface'
@@ -56,6 +58,22 @@ describe('GGUF variant grouping', () => {
   })
 })
 
+describe('deep links', () => {
+  it('opens a plain owner/name repository', () => {
+    expect(repoFromDeepLink('flint://models/huggingface/unsloth/Qwen3-GGUF')).toBe(
+      'unsloth/Qwen3-GGUF'
+    )
+    expect(repoFromDeepLink('jan://models/owner/repo')).toBe('owner/repo')
+  })
+
+  it('ignores anything else', () => {
+    expect(repoFromDeepLink('flint://settings/huggingface/a/b')).toBeNull()
+    expect(repoFromDeepLink('flint://models/huggingface/a/b/c')).toBeNull()
+    expect(repoFromDeepLink('flint://models/huggingface/..%2Fetc/x')).toBeNull()
+    expect(repoFromDeepLink('not a url')).toBeNull()
+  })
+})
+
 describe('quantization parsing', () => {
   it('recognizes common K quants', () => {
     expect(quantizationFromFilename('foo-Q5_K_M.gguf')).toBe('Q5_K_M')
@@ -68,5 +86,22 @@ describe('quantization parsing', () => {
       total: 3,
       base: 'foo-Q4_K_M',
     })
+  })
+})
+
+describe('MLX weight size', () => {
+  it('sums the safetensors shards only', () => {
+    expect(
+      mlxWeightsBytes([
+        { name: 'model-00001-of-00002.safetensors', size: 100 },
+        { name: 'model-00002-of-00002.safetensors', size: 50 },
+        { name: 'config.json', size: 3 },
+      ])
+    ).toBe(150)
+  })
+
+  it('is unknown when any shard has no size or there are none', () => {
+    expect(mlxWeightsBytes([{ name: 'a.safetensors' }])).toBeNull()
+    expect(mlxWeightsBytes([{ name: 'config.json', size: 3 }])).toBeNull()
   })
 })

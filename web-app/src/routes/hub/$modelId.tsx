@@ -21,11 +21,12 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useHardware } from '@/hooks/useHardware'
+import { useFitContext } from '@/hooks/useFitContext'
 import {
   explainQuantization,
   formatModelBytes,
@@ -36,18 +37,18 @@ import {
   inferModalities,
   inferParameterCount,
   isMlxRuntimeFile,
-  quantPreference,
   repoLooksMlx,
   searchHuggingFaceModels,
-  type HuggingFaceFileGroup,
   type HuggingFaceModel,
 } from '@/lib/huggingface'
 import {
-  assessModelFit,
-  DEFAULT_CTX_LENGTH,
-  type FitAssessment,
-  type FitVerdict,
-} from '@/lib/modelCompatibility'
+  bestGroup,
+  fitBasis,
+  fitOfGroup,
+  loadRepoArchitecture,
+  type GroupFit,
+} from '@/lib/huggingfaceFit'
+import type { KvArchitecture } from '@/lib/modelCompatibility'
 
 export const Route = createFileRoute(route.hub.model as any)({
   component: HuggingFaceModelDetail,
@@ -56,28 +57,7 @@ export const Route = createFileRoute(route.hub.model as any)({
   }),
 })
 
-function fitRank(verdict: FitVerdict): number {
-  if (verdict === 'fits') return 500
-  if (verdict === 'fits-partial-offload') return 400
-  if (verdict === 'tight') return 300
-  if (verdict === 'unknown') return 200
-  return 0
-}
-
-function recommendedGroup(
-  groups: HuggingFaceFileGroup[],
-  hardware: ReturnType<typeof useHardware.getState>['hardwareData']
-): HuggingFaceFileGroup | undefined {
-  return groups
-    .filter((group) => group.kind === 'model')
-    .sort((a, b) => {
-      const af = assessModelFit({ weightsBytes: a.totalSize, ctxLength: DEFAULT_CTX_LENGTH, hardware })
-      const bf = assessModelFit({ weightsBytes: b.totalSize, ctxLength: DEFAULT_CTX_LENGTH, hardware })
-      return (fitRank(bf.verdict) + quantPreference(b.quantization)) - (fitRank(af.verdict) + quantPreference(a.quantization))
-    })[0]
-}
-
-function fitSummary(fit: FitAssessment): { title: string; detail: string } {
+function fitSummary(fit: GroupFit): { title: string; detail: string } {
   if (fit.verdict === 'fits') return { title: 'Fits comfortably', detail: `${formatModelBytes(fit.required.total)} estimated working set` }
   if (fit.verdict === 'fits-partial-offload') return { title: 'Partial GPU offload', detail: 'Expected to use both GPU and system memory' }
   if (fit.verdict === 'tight') return { title: 'Tight fit', detail: 'A smaller context or quant may be safer' }
@@ -90,7 +70,7 @@ function HuggingFaceModelDetail() {
   const { modelId } = useParams({ strict: false }) as { modelId?: string }
   const search = useSearch({ strict: false }) as { repo?: string }
   const token = useGeneralSetting((state) => state.huggingfaceToken)
-  const hardware = useHardware((state) => state.hardwareData)
+  const { hardware, devices } = useFitContext()
   const repo = search.repo || modelId || ''
 
   const [model, setModel] = useState<HuggingFaceModel | null>(null)
@@ -99,6 +79,7 @@ function HuggingFaceModelDetail() {
   const [loading, setLoading] = useState(true)
   const [readmeLoading, setReadmeLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [kvArchitecture, setKvArchitecture] = useState<KvArchitecture | null>(null)
 
   useEffect(() => {
     if (!repo.includes('/')) {
@@ -142,7 +123,29 @@ function HuggingFaceModelDetail() {
   const variants = useMemo(() => groups.filter((group) => group.kind === 'model'), [groups])
   const mmprojCount = groups.filter((group) => group.kind === 'mmproj').length
   const draftCount = groups.filter((group) => group.kind === 'draft').length
-  const recommended = useMemo(() => recommendedGroup(groups, hardware), [groups, hardware])
+  const fitContext = useMemo(
+    () => ({
+      hardware,
+      devices,
+      architecture: kvArchitecture,
+      parameterBillions: model ? inferParameterCount(model) : null,
+    }),
+    [hardware, devices, kvArchitecture, model]
+  )
+  const recommended = useMemo(() => bestGroup(groups, fitContext), [groups, fitContext])
+
+  // The model's own header sizes its context memory exactly; the estimate
+  // covers the moment before it arrives and any repository it cannot be read from.
+  useEffect(() => {
+    if (!model || variants.length === 0) return
+    let cancelled = false
+    void loadRepoArchitecture(model.id, groups, token).then((value) => {
+      if (!cancelled) setKvArchitecture(value)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [model, groups, variants.length, token])
   const isMlx = Boolean(model && (repoLooksMlx(model) || (files.some((file) => file.name.endsWith('.safetensors')) && variants.length === 0)))
   const mlxFiles = files.filter(isMlxRuntimeFile)
   const mlxSize = mlxFiles.every((file) => typeof file.size === 'number')
@@ -205,7 +208,14 @@ function HuggingFaceModelDetail() {
       <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
         <div className="mx-auto max-w-5xl space-y-7">
           <section>
-            <p className="text-sm text-muted-foreground">{model.author || model.id.split('/')[0]}</p>
+            <div className="flex items-center gap-2.5">
+              <HuggingFaceAvatar
+                author={model.author || model.id.split('/')[0]}
+                modelId={model.id}
+                size={28}
+              />
+              <p className="text-sm text-muted-foreground">{model.author || model.id.split('/')[0]}</p>
+            </div>
             <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <h1 className="break-words text-2xl font-semibold tracking-tight">{model.id.split('/').slice(1).join('/') || model.id}</h1>
@@ -276,7 +286,7 @@ function HuggingFaceModelDetail() {
                   </thead>
                   <tbody>
                     {variants.map((group) => {
-                      const fit = assessModelFit({ weightsBytes: group.totalSize, ctxLength: DEFAULT_CTX_LENGTH, hardware })
+                      const fit = fitOfGroup(group, groups, fitContext)
                       const summary = fitSummary(fit)
                       const isRecommended = recommended?.id === group.id
                       return (
@@ -289,10 +299,10 @@ function HuggingFaceModelDetail() {
                             <p className="mt-1 max-w-md text-xs text-muted-foreground">{explainQuantization(group.quantization)}</p>
                           </td>
                           <td className="px-3 py-3">
-                            <span className="text-xs font-medium">{summary.title}</span>
+                            <span className="text-xs font-medium" title={fitBasis(fit)}>{summary.title}</span>
                             <p className="mt-1 max-w-52 text-[11px] text-muted-foreground">{summary.detail}</p>
                           </td>
-                          <td className="px-3 py-3 text-xs tabular-nums text-muted-foreground">{formatModelBytes(group.totalSize)}</td>
+                          <td className="px-3 py-3 text-xs tabular-nums text-muted-foreground">{fit.sizeEstimated ? '≈ ' : ''}{formatModelBytes(group.totalSize ?? fit.required.weights)}</td>
                           <td className="px-3 py-3 text-xs text-muted-foreground">{group.multipart ? `${group.files.length} shards` : '1 file'}</td>
                           <td className="px-3 py-3 text-right"><div className="flex justify-end"><HuggingFaceDownloadAction repo={model.id} revision={model.sha} group={group} groups={groups} /></div></td>
                         </tr>
