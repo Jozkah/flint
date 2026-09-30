@@ -120,6 +120,34 @@ export async function takeClaimed(
 }
 
 /**
+ * Whether a running session has input its runner should yield to between tool
+ * calls: something the user chose to steer with, or ready mail the agent has
+ * not already read itself.
+ *
+ * Mail `read_messages` / `wait_for_reply` consumed stays in the queue until
+ * the next drain drops it (see `takeClaimed`), so counting it would skip the
+ * rest of a tool batch for input that will never be delivered. The backend's
+ * unread list is read-only, so asking it changes nothing. If it cannot be read,
+ * the mail counts, which only costs a skipped call the runner reports.
+ */
+export async function hasLiveSteering(
+  sid: string,
+  mailbox: Pick<SessionMailbox, 'pending'> = sessionMailbox
+): Promise<boolean> {
+  const ready = queueOf(sid).filter(
+    (m) => !m.held && (m.steer === true || !!m.from)
+  )
+  if (ready.some((m) => !m.from)) return true
+  if (ready.length === 0) return false
+  try {
+    const unread = new Set((await mailbox.pending(sid)).map((e) => e.id))
+    return ready.some((m) => m.from && unread.has(m.from.messageId))
+  } catch {
+    return true
+  }
+}
+
+/**
  * The idle path's `dequeueReady`, claimed: the first ready message that may
  * still be sent, skipping mailbox messages a tool already consumed.
  */

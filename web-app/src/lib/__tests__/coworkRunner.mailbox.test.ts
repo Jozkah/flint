@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { runTurn, type ToolOutcome } from '../coworkRunner'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { envelopeToQueued, takeClaimed } from '../mailboxDelivery'
+import { envelopeToQueued, takeClaimed, hasLiveSteering } from '../mailboxDelivery'
 import { fakeMailbox } from './mailboxFake'
 import type { MailEnvelope } from '../sessionMailbox'
 
@@ -205,5 +205,34 @@ describe('mailbox messages in a running turn', () => {
     } as never)
     expect(sendStep).toHaveBeenCalledTimes(1)
     expect(useMessageQueue.getState().getQueue('A')).toHaveLength(1)
+  })
+})
+
+describe('hasLiveSteering', () => {
+  beforeEach(() => useMessageQueue.setState({ queues: {} }))
+
+  it('is false for an empty queue and for held mail', async () => {
+    const fake = fakeMailbox()
+    expect(await hasLiveSteering('A', fake.mailbox)).toBe(false)
+    useMessageQueue.getState().enqueue('A', envelopeToQueued(envelope('h'), true))
+    expect(await hasLiveSteering('A', fake.mailbox)).toBe(false)
+  })
+
+  it('is true for unread ready mail and false once a tool consumed it', async () => {
+    const fake = fakeMailbox()
+    fake.envelope('A', 'm1')
+    useMessageQueue.getState().enqueue('A', envelopeToQueued(envelope('m1'), false))
+    expect(await hasLiveSteering('A', fake.mailbox)).toBe(true)
+    fake.state.m1 = 'read'
+    expect(await hasLiveSteering('A', fake.mailbox)).toBe(false)
+  })
+
+  it('counts input the user chose to steer with without asking the backend', async () => {
+    const fake = fakeMailbox()
+    useMessageQueue
+      .getState()
+      .enqueue('A', { id: 'q1', text: 'use pnpm', createdAt: 1, held: false, steer: true } as never)
+    expect(await hasLiveSteering('A', fake.mailbox)).toBe(true)
+    expect(fake.mailbox.pending).not.toHaveBeenCalled()
   })
 })
