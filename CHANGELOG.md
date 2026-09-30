@@ -55,6 +55,15 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The chosen browser is shared by the verification runner and screenshot tooling for the current Flint session.
 - Windows discovery uses real install layouts, including Arc's Windows app-execution alias.
 
+### Attachments, images and forking
+
+- Added file attachments to Cowork messages. Documents are read inline or through embeddings, as in Chat, and reach the model with the message.
+- Added **Fork chat** to Chat, from the sidebar or from any reply, so a conversation can branch from any point into a new chat.
+- Added image description for models that cannot see. An attached image is described by a vision-capable model so a text-only model can use it, and the description is embedded so image content is searchable in Chat.
+- Attached images show above the message as one large card, or a row of tiles for several, in Chat and Cowork, and the composer previews them at a size worth looking at.
+- Clicking an image opens a viewer with arrow-key stepping, zoom by buttons, keys or wheel, drag when zoomed, save under its name and Esc to close.
+- Cowork keeps a resized copy of each attached image in the session, so images open again after a restart.
+
 ### Run summary and opening pages
 
 - A finished run's folded steps now say what the run did, such as **Ran 20 commands, created 8 files, used 6 tools +645 −0**, instead of a bare step count.
