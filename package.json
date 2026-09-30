@@ -41,6 +41,7 @@
     "download:bin": "node ./scripts/download-bin.mjs",
     "check:resources": "node ./scripts/check-tauri-resources.mjs",
     "check:sidecars": "node ./scripts/check-sidecars.mjs",
+    "prepare:windows-installer": "node scripts/prepare-windows-installer.mjs",
     "prepare:resources": "./scripts/stub-tauri-resources.sh && node ./scripts/check-tauri-resources.mjs",
     "build:mlx-server": "make build-mlx-server",
     "build:cli": "node scripts/run-os.mjs build:cli",

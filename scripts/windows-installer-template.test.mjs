@@ -11,6 +11,18 @@ const externalWorkflowPath = new URL(
   '../.github/workflows/template-tauri-build-windows-x64-external.yml',
   import.meta.url
 )
+const uiPaths = [
+  'flint-ui.nsh',
+  'flint-ui-runtime.nsh',
+  'flint-ui-pages.nsh',
+  'flint-ui-uninstall.nsh',
+].map((name) => new URL(`../src-tauri/installer/windows/${name}`, import.meta.url))
+
+async function readInstallerUi() {
+  return (await Promise.all(uiPaths.map((path) => readFile(path, 'utf8'))))
+    .join('\n')
+    .replace(/\r\n/g, '\n')
+}
 
 test('Windows installer resolves every source path from current workspace', async () => {
   const [template, internal, external] = await Promise.all([
@@ -38,13 +50,9 @@ test('Windows installer recovers only Flint bundled processes and locked files',
 })
 
 test('Windows installer uses the Flint UI and every asset it embeds exists', async () => {
-  const template = await readFile(templatePath, 'utf8')
-  const ui = await readFile(
-    new URL('../src-tauri/installer/windows/flint-ui.nsh', import.meta.url),
-    'utf8'
-  )
+  const template = (await readFile(templatePath, 'utf8')).replace(/\r\n/g, '\n')
+  const ui = await readInstallerUi()
 
-  // The workspace placeholder CI rewrites reaches the include through a define.
   assert.match(template, /!define FLINT_WORKSPACE "flint_workspace"/)
   assert.match(template, /!include "flint_workspace\\src-tauri\\installer\\windows\\flint-ui\.nsh"/)
   for (const hook of ['FlintInstFilesShow', 'FlintInstFilesLeave']) {

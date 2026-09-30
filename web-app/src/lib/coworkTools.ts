@@ -14,7 +14,7 @@ import type {
   ToolSchema,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import {
-  SESSION_MESSAGING_TOOL_NAMES,
+  SESSION_MESSAGING_TOOLS,
   STOP_SESSION_TOOL_NAME,
 } from '@/lib/sessionMessagingTools'
 import {
@@ -408,7 +408,7 @@ export async function buildCoworkTools(
   const runnableSchemas = opts.projectRoot
     ? schemas
     : schemas.filter(
-        (schema) => !SESSION_MESSAGING_TOOL_NAMES.has(schema.function.name)
+        (schema) => !SESSION_MESSAGING_TOOLS.has(schema.function.name)
       )
   return coworkToolsFromSchemas(runnableSchemas, opts)
 }
