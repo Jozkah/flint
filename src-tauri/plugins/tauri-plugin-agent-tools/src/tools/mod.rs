@@ -165,6 +165,9 @@ pub struct ToolContext<'a> {
     /// shell instead made `Push-Location` "command not found" in Git Bash and
     /// turned `cd .\dir` into `cd .dir`.
     pub sandbox_shell_parity: bool,
+    /// Where an unconfined `bash` starts when the user granted edit access to a
+    /// folder the sandbox cannot reach (see [`Self::with_direct_edit_shell`]).
+    pub direct_shell_start: Option<PathBuf>,
     /// Programs besides [`nul_programs::DEFAULT_NUL_PROGRAMS`] that open
     /// Windows' null device themselves (`[tools].nul_programs`). A sandboxed
     /// command naming one is not run where the null device refuses the
@@ -280,6 +283,7 @@ impl<'a> ToolContext<'a> {
             temporary: false,
             sandbox: true,
             sandbox_shell_parity: false,
+            direct_shell_start: None,
             nul_programs: &[],
             on_output: None,
             read_roots: &[],
@@ -460,6 +464,17 @@ impl<'a> ToolContext<'a> {
         let mut ctx = self.with_sandbox(false);
         ctx.sandbox_shell_parity = true;
         ctx
+    }
+
+    /// Run `bash` directly in a folder the user granted edit access to, in the
+    /// shell the sandbox would have used. Only for a folder an AppContainer
+    /// cannot confine a shell to (anything outside a Jan-owned worktree): the
+    /// sandbox cannot even change into it, so `Set-Location` and every Node
+    /// tool fail there. See [`handlers::direct_edit_shell_start`].
+    pub fn with_direct_edit_shell(mut self, folder: PathBuf) -> Self {
+        self = self.with_unsandboxed_retry();
+        self.direct_shell_start = Some(folder);
+        self
     }
 
     pub fn with_sandbox(mut self, sandbox: bool) -> Self {

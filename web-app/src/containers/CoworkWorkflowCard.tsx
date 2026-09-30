@@ -131,11 +131,9 @@ export function CoworkWorkflowCard({
           <span
             className={cn(
               'block h-full rounded-full motion-safe:transition-[width] motion-safe:duration-500 motion-safe:ease-expo',
-              status === 'partial'
-                ? 'bg-[linear-gradient(90deg,#f59e0b,#d97706)]'
-                : progress.error > 0
-                  ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
-                  : 'bg-grad'
+              progress.error > 0
+                ? 'bg-[linear-gradient(90deg,#ef4444,#dc2626)]'
+                : 'bg-grad'
             )}
             style={{ width: `${Math.round(progress.fraction * 100)}%` }}
           />

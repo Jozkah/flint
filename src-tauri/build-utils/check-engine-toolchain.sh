@@ -100,8 +100,9 @@ MINGW* | MSYS* | CYGWIN*)
       echo "        VCToolsInstallDir='${VCToolsInstallDir:-}')" >&2
       exit 1
     else
-      echo "warning: cl is not on PATH; run from a Visual Studio developer prompt" >&2
-      echo "         if the build cannot find the MSVC headers and libraries." >&2
+      # Non-CUDA Windows engine builds intentionally use clang/Ninja and do
+      # not require cl.exe on PATH. This is normal, not a warning condition.
+      echo "engine toolchain: cl.exe not required for non-CUDA $VARIANT build"
     fi
   fi
   echo "engine toolchain: ninja and clang found"

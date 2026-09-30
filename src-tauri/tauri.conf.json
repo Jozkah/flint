@@ -8,7 +8,7 @@
     "frontendDist": "../web-app/dist",
     "devUrl": "http://localhost:1420",
     "beforeDevCommand": "cross-env IS_TAURI=true IS_DEV=true yarn dev:web",
-    "beforeBuildCommand": "cross-env IS_TAURI=true yarn build:web"
+    "beforeBuildCommand": "yarn prepare:windows-installer && cross-env IS_TAURI=true yarn build:web"
   },
   "app": {
     "macOSPrivateApi": true,
