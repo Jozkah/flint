@@ -15,14 +15,15 @@ export const CopyButton = ({ text }: { text: string }) => {
     <Button
       variant="ghost"
       size="icon-xs"
+      className="size-7 text-fg-2 hover:text-foreground pointer-coarse:size-11"
       onClick={handleCopy}
     >
       {copied ? (
         <>
-          <CopyCheck size={16} className="text-primary" />
+          <CopyCheck className="size-4 text-primary" />
         </>
       ) : (
-        <Copy size={16} />
+        <Copy className="size-4" />
       )}
     </Button>
   )

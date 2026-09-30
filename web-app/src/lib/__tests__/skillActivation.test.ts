@@ -231,3 +231,14 @@ describe('latestUserText', () => {
     expect(latestUserText([])).toBeNull()
   })
 })
+
+describe('rankCandidates', () => {
+  it('puts a matching plugin skill ahead of unrelated own skills', async () => {
+    const { rankCandidates } = await import('../skillActivation')
+    const own = Array.from({ length: 5 }, (_, i) => skill(`own-${i}`))
+    const brainstorming = { ...skill('superpowers:brainstorming'), plugin: 'superpowers', description: 'Use before any creative work' }
+    const ranked = rankCandidates('brainstorm some ideas for a product name', [...own, brainstorming])
+    expect(ranked[0].name).toBe('superpowers:brainstorming')
+    expect(ranked.slice(1).map((s) => s.name)).toEqual(own.map((s) => s.name))
+  })
+})

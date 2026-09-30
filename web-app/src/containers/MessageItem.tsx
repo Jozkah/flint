@@ -782,50 +782,6 @@ export const MessageItem = memo(
           <WebSourcesRow citations={webCitations} readUrls={webReads} />
         )}
 
-        {message.role === 'assistant' &&
-          !isStreaming &&
-          usedSkills.length > 0 && (
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                data-testid="skills-used"
-                aria-label={t('common:skillsUsedLabel')}
-                className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
-              >
-                <Sparkles className="size-3.5" aria-hidden />
-                {t('common:skillsUsedCount', { count: usedSkills.length })}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
-              data-testid="skills-used-list"
-            >
-              <div className="mb-1.5 font-medium text-foreground">
-                {t('common:skillsUsedLabel')}
-              </div>
-              <ul className="flex flex-col gap-1">
-                {usedSkills.map((name) => {
-                  // A plugin's skill is named plugin:skill; the plugin reads
-                  // as context, the skill as the point.
-                  const at = name.indexOf(':')
-                  return (
-                    <li key={name} className="break-all text-foreground">
-                      {at > 0 && (
-                        <span className="text-muted-foreground">
-                          {name.slice(0, at + 1)}
-                        </span>
-                      )}
-                      {at > 0 ? name.slice(at + 1) : name}
-                    </li>
-                  )
-                })}
-              </ul>
-            </PopoverContent>
-          </Popover>
-        )}
-
         {isLastMessage &&
           message.role === 'assistant' &&
           !awaitingApproval &&
@@ -918,7 +874,7 @@ export const MessageItem = memo(
 
         {/* Message actions for assistant messages (non-tool) */}
         {message.role === 'assistant' && (
-            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground text-xs">
+            <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-2 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
               {/* The time is on the header line above. */}
               <div
                 className={cn(
@@ -998,6 +954,47 @@ export const MessageItem = memo(
                 metadata={metadata}
               />
             )}
+            {!isStreaming && usedSkills.length > 0 && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="skills-used"
+                aria-label={t('common:skillsUsedLabel')}
+                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
+              >
+                <Sparkles className="size-3.5" aria-hidden />
+                {t('common:skillsUsedCount', { count: usedSkills.length })}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
+              data-testid="skills-used-list"
+            >
+              <div className="mb-1.5 font-medium text-foreground">
+                {t('common:skillsUsedLabel')}
+              </div>
+              <ul className="flex flex-col gap-1">
+                {usedSkills.map((name) => {
+                  // A plugin's skill is named plugin:skill; the plugin reads
+                  // as context, the skill as the point.
+                  const at = name.indexOf(':')
+                  return (
+                    <li key={name} className="break-all text-foreground">
+                      {at > 0 && (
+                        <span className="text-muted-foreground">
+                          {name.slice(0, at + 1)}
+                        </span>
+                      )}
+                      {at > 0 ? name.slice(at + 1) : name}
+                    </li>
+                  )
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        )}
           </div>
         )}
 

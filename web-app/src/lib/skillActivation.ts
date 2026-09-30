@@ -122,14 +122,45 @@ export function clearSkillBodyCache(): void {
 
 onSkillsChanged(clearSkillBodyCache)
 
+/**
+ * The skills worth asking Jev about, most relevant first. With more skills than
+ * fit in one question the old order (own skills, then plugins') cut a plugin's
+ * skill off the list before Jev saw it, however well it matched. A word from the
+ * message that starts like a word in the skill's name or description counts
+ * ("brainstorm" finds "brainstorming"); ties keep the own-skills-first order.
+ */
+export function rankCandidates(text: string, candidates: CatalogSkill[]): CatalogSkill[] {
+  const words = [
+    ...new Set(
+      text
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 5)
+        .map((w) => w.slice(0, Math.max(5, w.length - 3)))
+    ),
+  ]
+  const score = (s: CatalogSkill) => {
+    const hay = `${s.name} ${s.description ?? ''}`.toLowerCase()
+    return words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0)
+  }
+  return candidates
+    .map((s, i) => ({ s, i, score: score(s) }))
+    .sort(
+      (a, b) =>
+        b.score - a.score ||
+        Number(Boolean(a.s.plugin)) - Number(Boolean(b.s.plugin)) ||
+        a.i - b.i
+    )
+    .map((x) => x.s)
+}
+
 async function jevPick(
   text: string,
   candidates: CatalogSkill[],
   signal?: AbortSignal
 ): Promise<string | null> {
   if (useJevSettings.getState().skillMode !== 'on' || !shouldAskForSkill(text)) return null
-  const options = [...candidates]
-    .sort((a, b) => Number(Boolean(a.plugin)) - Number(Boolean(b.plugin)))
+  const options = rankCandidates(text, candidates)
     .slice(0, JEV_CANDIDATE_LIMIT)
     .map((s) => ({ name: s.name, description: s.description ?? '' }))
   if (options.length === 0) return null
