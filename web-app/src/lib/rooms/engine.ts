@@ -7,6 +7,7 @@
  * participants or the moderator from model output, and never consults any
  * tool-approval store.
  */
+import { cleanReply } from './cleanReply'
 import { participantSampling } from './persona'
 import { estimateTokens } from '@/lib/context-manager'
 import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
@@ -607,7 +608,7 @@ class RoomRun {
             },
           })
           if (this.signal.aborted) throw new RunAborted()
-          const raw = typeof res.text === 'string' ? res.text : live.text
+          const raw = cleanReply(typeof res.text === 'string' ? res.text : live.text)
           const usage = measureCall({
             providerUsage: res.usage,
             promptText: built.promptText,

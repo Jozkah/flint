@@ -62,6 +62,7 @@ export function framedLine(header: string, text: string): string {
 }
 
 const ADDRESSING_RULES =
+  'Start your message with the text itself, never with a bracketed header such as "[Name to room]:"; the room adds those. ' +
   'You may begin your message with @Name to address one participant, @moderator, @user or @room. ' +
   'Without an address your message is to the room. Speak only as yourself, do not write lines for others, ' +
   'and keep each turn focused and reasonably short.'
