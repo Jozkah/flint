@@ -34,6 +34,10 @@ export type RoomToolContext = {
   /** More folders beside `folder`, reachable the same way. */
   extraFolders?: string[]
   access: ToolAccess
+  /** Who is speaking, named on the approval prompts their calls raise. */
+  participantName?: string
+  /** The turn's signal: stopping it withdraws any prompt still open. */
+  signal?: AbortSignal
 }
 
 export type StreamReplyInput = {

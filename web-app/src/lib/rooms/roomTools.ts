@@ -39,6 +39,8 @@ export const ROOM_WRITE_TOOLS = ['write', 'edit'] as const
 
 /** Upper bound on tool steps in one participant turn, so a turn cannot loop. */
 export const ROOM_TOOL_MAX_STEPS = 8
+/** A participant working like a Cowork agent gets far more steps per turn. */
+export const ROOM_FULL_TOOL_MAX_STEPS = 30
 
 /** Cap on captured tool output kept for the transcript's advanced view. */
 export const ROOM_TOOL_OUTPUT_CAP = 4000
@@ -83,6 +85,8 @@ function webResultText(content: unknown): string {
   return content == null ? '' : String(content)
 }
 
+import { buildFullFolderTools } from './fullTools'
+
 type ExecOptions = {
   readOnlyProject?: string
   extraProjects?: string[]
@@ -117,7 +121,9 @@ export async function buildRoomTools(
 
   // File tools only make sense against an attached folder. With `edit` access,
   // mint a write grant confined to that folder so write/edit can be offered.
-  if (ctx.folder) {
+  if (ctx.folder && ctx.access === 'full') {
+    Object.assign(tools, await buildFullFolderTools(ctx, onActivity))
+  } else if (ctx.folder) {
     const extras = ctx.extraFolders ?? []
     let writeGrant: string | undefined
     if (ctx.access === 'edit') {

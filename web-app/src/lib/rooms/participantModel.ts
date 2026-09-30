@@ -18,7 +18,7 @@ import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
-import { buildRoomTools, ROOM_TOOL_MAX_STEPS } from './roomTools'
+import { buildRoomTools, ROOM_FULL_TOOL_MAX_STEPS, ROOM_TOOL_MAX_STEPS } from './roomTools'
 import { buildParticipantReasoningRequest } from './participantReasoning'
 import {
   RoomCallError,
@@ -136,7 +136,7 @@ export async function streamParticipantReply(
   const toolActivity: RoomToolActivity[] = []
   let tools: Record<string, Tool> | undefined
   if (input.toolContext) {
-    tools = await buildRoomTools(input.toolContext, (a) => {
+    tools = await buildRoomTools({ ...input.toolContext, signal: input.signal }, (a) => {
       toolActivity.push(a)
       input.onToolActivity?.(a)
     })
@@ -158,7 +158,11 @@ export async function streamParticipantReply(
       ...(tools
         ? {
             tools,
-            stopWhen: stepCountIs(ROOM_TOOL_MAX_STEPS),
+            stopWhen: stepCountIs(
+              input.toolContext?.access === 'full'
+                ? ROOM_FULL_TOOL_MAX_STEPS
+                : ROOM_TOOL_MAX_STEPS
+            ),
             // Salvage a tool call whose arguments the model emitted with trailing
             // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
             // parse rejects. Recover the first complete object rather than fail the

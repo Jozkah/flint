@@ -526,6 +526,7 @@ class RoomRun {
               folder: this.room.folder ?? null,
               extraFolders: this.room.extraFolders ?? [],
               access: args.participant.toolAccess,
+              participantName: args.participant.name,
             }
           : undefined
 

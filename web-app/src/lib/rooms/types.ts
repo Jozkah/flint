@@ -40,7 +40,7 @@ export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected
  * callback, so nothing that needs approval can ever execute inside a room.
  * Models without the `tools` capability are forced to `none`.
  */
-export type ToolAccess = 'none' | 'read' | 'edit'
+export type ToolAccess = 'none' | 'read' | 'edit' | 'full'
 
 export type ParticipantAvailability =
   | { state: 'unknown' }

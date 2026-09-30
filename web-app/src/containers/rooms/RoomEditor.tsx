@@ -298,10 +298,17 @@ const TOOL_PILL: Record<ToolAccess, string> = {
   none: 'bg-accent text-muted-foreground',
   read: 'bg-info-tint text-info',
   edit: 'bg-warning-tint text-warning',
+  full: 'bg-warning-tint text-warning',
 }
 
 const toolKey = (v: ToolAccess) =>
-  v === 'none' ? 'rooms:editor.toolNone' : v === 'read' ? 'rooms:editor.toolRead' : 'rooms:editor.toolEdit'
+  v === 'none'
+    ? 'rooms:editor.toolNone'
+    : v === 'read'
+      ? 'rooms:editor.toolRead'
+      : v === 'edit'
+        ? 'rooms:editor.toolEdit'
+        : 'rooms:editor.toolFull'
 
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
@@ -710,7 +717,7 @@ export function RoomEditor({ room }: { room: Room }) {
                         onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
                         className="flex flex-wrap gap-4"
                       >
-                        {(['none', 'read', 'edit'] as const).map((v) => (
+                        {(['none', 'read', 'edit', 'full'] as const).map((v) => (
                           <div key={v} className="flex items-center gap-2">
                             <RadioGroupItem id={`${pid}-tools-${v}`} value={v} aria-label={t(toolKey(v))} />
                             <Label htmlFor={`${pid}-tools-${v}`}>{t(toolKey(v))}</Label>
@@ -720,9 +727,11 @@ export function RoomEditor({ room }: { room: Room }) {
                       <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
                         {!tools
                           ? t('rooms:editor.toolUnsupported')
-                          : p.toolAccess === 'edit'
-                            ? t('rooms:editor.toolEditHint')
-                            : t('rooms:editor.toolReadHint')}
+                          : p.toolAccess === 'full'
+                            ? t('rooms:editor.toolFullHint')
+                            : p.toolAccess === 'edit'
+                              ? t('rooms:editor.toolEditHint')
+                              : t('rooms:editor.toolReadHint')}
                       </p>
                     </div>
 

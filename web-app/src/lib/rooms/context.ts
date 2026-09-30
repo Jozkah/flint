@@ -123,7 +123,7 @@ function childPath(folder: string, name: string): string {
  * The model must use full paths under the folder — spell that out, with the
  * folder's real path, or it lists an empty sandbox and gives up.
  */
-function toolGuidance(room: Room, access: 'read' | 'edit'): string {
+function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
   const web = useWebSearchConfig.getState().webSearchEnabled
   if (!room.folder) {
     // No folder means no file tools; whether any tools exist depends on web
@@ -138,6 +138,17 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
   }
   const example = childPath(room.folder, 'notes.md')
   const extras = room.extraFolders ?? []
+  if (access === 'full') {
+    return [
+      `You work like a Cowork agent: you can read, search, write and edit files, run commands with the shell, use git, and call skills and plugins, in your working ${extras.length ? 'folders' : 'folder'}. The working folder is: ${room.folder}`,
+      ...(extras.length
+        ? [`Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`]
+        : []),
+      `Always use full paths under it — e.g. \`${example}\`. Use \`skill_list\` and \`skill_read\` for skills, and \`list_plugins\` for what is installed.`,
+      'Anything that changes files or runs a command may wait for the user to allow it; if a call is refused, do not retry it or work around it. Say what you would have done.',
+      'Do not invent file contents or command output: if a call fails, say so instead of guessing. Other participants work at the same time in the same folders, so keep changes small and say what you changed.',
+    ].join('\n')
+  }
   const verbs =
     access === 'edit'
       ? `read, list, write and edit files in your working ${extras.length ? 'folders' : 'folder'}`

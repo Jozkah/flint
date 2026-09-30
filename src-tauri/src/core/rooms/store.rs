@@ -160,6 +160,9 @@ pub enum ToolAccess {
     /// direct-edit grant. Requires a folder; falls back to read behaviour with
     /// none.
     Edit,
+    /// Everything a Cowork session can do -- commands, git, skills, plugins --
+    /// under Cowork's own permission policy: a mutating call waits for the user.
+    Full,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

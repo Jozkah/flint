@@ -375,7 +375,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     // honoured. 'read'/'edit' both need a tool-capable model, and any choice is
     // dropped to 'none' when the model has no tools.
     const requested: ToolAccess = input.toolAccess ?? 'read'
-    const wantsTools = requested === 'read' || requested === 'edit'
+    const wantsTools = requested === 'read' || requested === 'edit' || requested === 'full'
     const reasoning = normaliseParticipantReasoning(input.reasoning)
     let pricing: Participant['pricing']
     if (input.pricing) {
@@ -396,7 +396,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       // tools again at run time, when the model is resolvable.
       toolAccess:
         wantsTools && modelToolSupport(input.model, lookup) !== 'no'
-          ? (requested as 'read' | 'edit')
+          ? (requested as 'read' | 'edit' | 'full')
           : 'none',
       removed: input.removed ?? false,
       order: input.order,
