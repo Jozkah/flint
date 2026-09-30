@@ -50,7 +50,7 @@
     "build:cli:linux": "make build-cli",
     "build:tauri:win32": "yarn download:bin && yarn build:cli && yarn check:sidecars && yarn tauri build",
     "build:tauri:linux": "yarn download:bin && yarn build:cli && yarn check:sidecars && NO_STRIP=1 ./src-tauri/build-utils/shim-linuxdeploy.sh yarn tauri build && ./src-tauri/build-utils/buildAppImage.sh",
-    "build:tauri:darwin": "yarn download:bin && yarn build:mlx-server && yarn build:cli && yarn check:sidecars && yarn tauri build --target universal-apple-darwin",
+    "build:tauri:darwin": "yarn download:bin && yarn build:mlx-server && yarn build:cli && yarn check:sidecars && yarn tauri build --target ${FLINT_MAC_TARGET:-universal-apple-darwin}",
     "build:tauri": "yarn build:icon && yarn copy:assets:tauri && node scripts/run-os.mjs build:tauri",
     "build:tauri:plugin:api": "cd src-tauri/plugins && yarn install && cd ../.. && node scripts/run-os.mjs build:tauri:plugin:api",
     "typecheck": "yarn workspace @janhq/web-app typecheck",

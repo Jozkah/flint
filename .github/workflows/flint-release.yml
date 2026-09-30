@@ -10,6 +10,10 @@ on:
         description: 'Existing release tag to build and upload to (e.g. v0.9.0)'
         required: true
         default: 'v0.9.0'
+      optimize:
+        description: 'Full size optimization (fat LTO, one codegen unit): much slower to build, slightly smaller binary. Off by default.'
+        type: boolean
+        default: false
   push:
     tags: ['v*']
 
@@ -24,6 +28,14 @@ env:
   TAG: ${{ inputs.tag || github.ref_name }}
   CARGO_TERM_COLOR: always
   NODE_OPTIONS: '--max-old-space-size=4096'
+  # Tag builds are unsigned and mostly for trying a release out, so they use
+  # thin LTO with parallel codegen, which builds in roughly half the time of
+  # the `[profile.release]` in Cargo.toml (fat LTO, one codegen unit, opt-level
+  # z). Run the workflow by hand with `optimize` ticked for the full profile.
+  FLINT_OPTIMIZE: ${{ inputs.optimize && 'full' || 'fast' }}
+  CARGO_PROFILE_RELEASE_LTO: ${{ inputs.optimize && 'fat' || 'thin' }}
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: ${{ inputs.optimize && '1' || '16' }}
+  CARGO_PROFILE_RELEASE_OPT_LEVEL: ${{ inputs.optimize && 'z' || 's' }}
 
 jobs:
   # Fail in seconds rather than after an hour of compiling when the tag has no
@@ -52,13 +64,14 @@ jobs:
             os: windows-latest
             engine_variant: vulkan
             rust_targets: ''
-          # Universal .dmg: `build:tauri:darwin` passes
-          # --target universal-apple-darwin, and build-cli lipo's both slices.
-          # The engine worker is host-arch (arm64) only.
-          - name: macos-universal
+          # Apple silicon .dmg. A universal build compiles the whole app (and the
+          # CLI) twice and merges the slices, which made this the slowest job by
+          # far; the engine worker and MLX server are arm64-only anyway.
+          - name: macos-arm64
             os: macos-latest
             engine_variant: metal
-            rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
+            rust_targets: 'aarch64-apple-darwin'
+            mac_arch: arm64
           # AppImage + .deb. 22.04 keeps the glibc floor low.
           - name: linux-x64
             os: ubuntu-22.04
@@ -129,7 +142,10 @@ jobs:
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
-          key: flint-release-${{ matrix.name }}
+          key: flint-release-${{ matrix.name }}-${{ env.FLINT_OPTIMIZE }}
+          # Saved even when the build fails, so a retry starts from what was
+          # already compiled instead of from nothing.
+          cache-on-failure: true
 
       # Selects the variant, provisions ccache (and the Vulkan SDK when the
       # variant needs it) and fails fast if the image cannot build it.
@@ -149,6 +165,10 @@ jobs:
       # TAURI_SIGNING_*/APPLE_* variables are set, and
       # JAN_ENGINE_REQUIRE_SIGNING is left unset so sign-engine.sh skips.
       - name: Build Flint
+        env:
+          # Read by the Makefile and package.json: build one macOS slice.
+          FLINT_MAC_ARCH: ${{ matrix.mac_arch }}
+          FLINT_MAC_TARGET: ${{ matrix.mac_arch == 'arm64' && 'aarch64-apple-darwin' || '' }}
         run: make build
 
       - name: Report ccache statistics

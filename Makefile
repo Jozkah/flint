@@ -275,11 +275,15 @@ endif
 build-cli:
 ifeq ($(DETECTED_OS),Darwin)
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target aarch64-apple-darwin
+ifeq ($(FLINT_MAC_ARCH),arm64)
+	cp src-tauri/target/aarch64-apple-darwin/release/flint src-tauri/resources/bin/flint
+else
 	cd src-tauri && cargo build --release --no-default-features --features cli --bin flint --target x86_64-apple-darwin
 	lipo -create \
 		src-tauri/target/aarch64-apple-darwin/release/flint \
 		src-tauri/target/x86_64-apple-darwin/release/flint \
 		-output src-tauri/resources/bin/flint
+endif
 	chmod +x src-tauri/resources/bin/flint
 	$(call MKDIR,'src-tauri/target/universal-apple-darwin/release')
 
