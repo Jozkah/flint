@@ -567,7 +567,8 @@ pub fn resolve_decision(
     }
     // `request_access` grants nothing by being called: the user is asked, and
     // the path is vetted by `access::prepare`. `list_plugins` reads Flint's own
-    // plugin state. Neither touches a project file.
+    // plugin state; `open_in_browser` hands a URL to the user's browser.
+    // None touches a project file.
     if crate::tools::is_host_tool(tool.name) {
         return Decision::Allow;
     }
