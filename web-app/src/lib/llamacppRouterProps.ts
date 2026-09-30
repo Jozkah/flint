@@ -5,6 +5,8 @@ export interface LlamacppModelProps {
   totalSlots?: number
   modelAlias?: string
   isSleeping?: boolean
+  /** The sampling defaults the server reports for this model. */
+  generationDefaults?: Record<string, unknown>
 }
 
 interface LlamacppExtensionLike {

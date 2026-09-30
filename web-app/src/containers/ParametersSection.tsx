@@ -23,6 +23,8 @@ import {
   isModelLevelRejected,
 } from '@/lib/providerCaps'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
+import { useModelReportedDefaults } from '@/hooks/useModelReportedDefaults'
+import { formatReported } from '@/lib/modelReportedDefaults'
 
 export interface ParametersSectionProps {
   params: Record<string, unknown>
@@ -52,6 +54,7 @@ export function ParametersSection({
   providerId,
   modelId,
 }: ParametersSectionProps) {
+  const reported = useModelReportedDefaults(providerId, modelId)
   const modelRejects = (key: string) =>
     !!(providerId && modelId && isModelLevelRejected(key, providerId, modelId))
   const supportIndex = useMemo(() => {
@@ -156,6 +159,7 @@ export function ParametersSection({
         onAddStandalone={addStandalone}
         onAddGroup={addGroup}
         modelRejects={modelRejects}
+        reported={reported}
       />
     </div>
   )
@@ -308,6 +312,8 @@ interface AddParameterMenuProps {
   onAddStandalone: (def: ParamDef) => void
   onAddGroup: (group: ParamGroup) => void
   modelRejects: (key: string) => boolean
+  /** What the model in use reports as its defaults, by parameter key. */
+  reported: Record<string, unknown>
 }
 
 function AddParameterMenu({
@@ -316,6 +322,7 @@ function AddParameterMenu({
   onAddStandalone,
   onAddGroup,
   modelRejects,
+  reported,
 }: AddParameterMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -465,6 +472,11 @@ function AddParameterMenu({
               {entries.map((entry) => {
                 const id = entryId(entry)
                 const highlighted = currentId === id
+                // What the model in use says it would run, shown on hover.
+                const showsReported =
+                  highlighted &&
+                  entry.kind === 'param' &&
+                  entry.def.key in reported
                 const title = entry.kind === 'param' ? entry.def.title : entry.group.title
                 const desc =
                   entry.kind === 'param'
@@ -506,10 +518,20 @@ function AddParameterMenu({
                       <span className="text-sm">
                         <Highlight text={title} query={query} />
                       </span>
+                      {showsReported && entry.kind === 'param' && (
+                          <span
+                            data-testid="reported-default"
+                            className="ml-auto text-xs tabular-nums text-muted-foreground"
+                          >
+                            {t('common:paramSearch.modelReports', {
+                              value: formatReported(reported[entry.def.key]),
+                            })}
+                          </span>
+                        )}
                       {maybeBy && (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <span className="ml-auto" aria-label={warning}>
+                            <span className={showsReported ? 'ml-1' : 'ml-auto'} aria-label={warning}>
                               <TriangleAlert size={11} className="text-amber-500" />
                             </span>
                           </TooltipTrigger>
