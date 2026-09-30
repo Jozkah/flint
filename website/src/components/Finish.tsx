@@ -1,7 +1,6 @@
 import { useEffect, useState, type KeyboardEvent } from 'react'
 import { ExternalLink, FlintMark, Icon, Reveal, DownloadButton, useOS } from './ui'
-import { LINKS, mb, OS_LABEL, RELEASE, type OS } from '../lib/site'
-import { asset } from '../lib/site'
+import { asset, LINKS, mb, OS_LABEL, pageHref, RELEASE, sectionHref, type OS } from '../lib/site'
 
 const OSES: OS[] = ['windows', 'macos', 'linux']
 
@@ -32,7 +31,7 @@ export function Download() {
               Install Flint.
             </h2>
             <p className="lede" style={{ marginTop: 22 }}>
-              Installers for Windows, macOS and Linux are attached to each release. Flint is free and does not ask you to sign up.
+              Installers for Windows, macOS and Linux are attached to each release. Flint is free and open source.
             </p>
             <p className="dim" style={{ fontSize: 14, marginTop: 18 }}>
               {RELEASE.tag ? (
@@ -42,7 +41,7 @@ export function Download() {
               ) : (
                 <ExternalLink href={LINKS.latest} className="link">Open the latest release</ExternalLink>
               )}{' '}
-              · <ExternalLink href={LINKS.build} className="link">Build from source</ExternalLink>
+              · <ExternalLink href={LINKS.build} className="link">Build from source</ExternalLink> · <a href={pageHref('install')} className="link">Install guide</a>
             </p>
           </Reveal>
           <Reveal delay={100}>
@@ -142,25 +141,27 @@ export function FinalCta() {
   )
 }
 
-const COLS: Array<[string, Array<[string, string, boolean?]>]> = [
-  ['Product', [['Chat', '#product'], ['Cowork', '#cowork'], ['Discussion Rooms', '#rooms'], ['Models', '#models'], ['Security', '#security']]],
-  ['Resources', [['Docs', LINKS.docs, true], ['Releases', LINKS.releases, true], ['Build from source', LINKS.build, true], ['All features', LINKS.features, true]]],
-  ['Open source', [['GitHub', LINKS.repo, true], ['Apache 2.0', LINKS.license, true], ['Contribute', LINKS.contributing, true], ['Report an issue', LINKS.issues, true]]],
+type FLink = [label: string, href: string, external?: boolean]
+const cols = (home: boolean): Array<[string, FLink[]]> => [
+  ['Product', [['Chat', sectionHref('product', home)], ['Cowork', sectionHref('cowork', home)], ['Discussion Rooms', sectionHref('rooms', home)], ['Models', sectionHref('models', home)], ['Security', sectionHref('security', home)]]],
+  ['Resources', [['Docs', pageHref('docs')], ['Install guide', pageHref('install')], ['FAQ', pageHref('faq')], ['Changelog', pageHref('changelog')], ['Releases', LINKS.releases, true], ['Build from source', LINKS.build, true]]],
+  ['Legal', [['Privacy', pageHref('privacy')], ['Terms', pageHref('terms')], ['License and attribution', pageHref('license')], ['Security policy', pageHref('security-policy')], ['Accessibility', pageHref('accessibility')]]],
+  ['Open source', [['GitHub', LINKS.repo, true], ['Apache 2.0', LINKS.license, true], ['Contribute', LINKS.contributing, true], ['Report an issue', LINKS.issues, true], ['Brand assets', pageHref('brand')]]],
 ]
 
-export function Footer() {
+export function Footer({ home }: { home: boolean }) {
   return (
     <footer className="footer">
       <div className="wrap-wide">
         <div className="fgrid">
           <div className="fbrand">
-            <a href="#top" className="brand">
+            <a href={home ? '#top' : pageHref('')} className="brand">
               <img src={asset('brand/icon-64.png')} width="30" height="30" alt="" />
               Flint
             </a>
             <p>A private, local-first AI workspace for your desktop.</p>
           </div>
-          {COLS.map(([h, links]) => (
+          {cols(home).map(([h, links]) => (
             <nav key={h} aria-label={h}>
               <h2>{h}</h2>
               <ul>
@@ -181,7 +182,9 @@ export function Footer() {
           <span>
             Flint is an independent fork of <ExternalLink href={LINKS.jan} className="link">Jan</ExternalLink> and keeps upstream attribution.
           </span>
-          <span>Licensed under the Apache License 2.0.</span>
+          <span>
+            Licensed under the Apache License 2.0. <a href={pageHref('license')} className="link">Details</a>
+          </span>
         </div>
       </div>
     </footer>

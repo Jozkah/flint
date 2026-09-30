@@ -18,6 +18,14 @@ npm run preview    # serve dist/ at http://localhost:4173/flint/
 
 `dev` and `build` first run `scripts/assets.mjs` and `scripts/release.mjs`.
 
+## Pages
+
+Each page is a React component registered in `src/pages/registry.tsx` (path, title, description). The build prerenders every entry to `dist/<path>/index.html`, plus `404.html`, `robots.txt` and a sitemap; the client hydrates only when the markup is for the current page.
+
+- Home, `/docs/`, `/install/`, `/faq/`, `/changelog/` (built from the repository's `CHANGELOG.md`), `/brand/`.
+- Legal and policy pages live in `src/pages/legal.tsx`: `/privacy/`, `/terms/`, `/license/`, `/security-policy/` (mirrors `SECURITY.md`) and `/accessibility/`. Their wording was drafted from what the repository's code, README and feature list say. Have the project owner review it, and update `UPDATED` in that file whenever it changes.
+- `npm test` fails if a page lacks a unique title, description or canonical URL, if a legal page stops matching `LICENSE`, `NOTICE` or `SECURITY.md`, or if any page links to something missing.
+
 ## Where things come from
 
 - **Product screenshots** are the real captures in [`docs/screenshots`](../docs/screenshots). `scripts/assets.mjs` derives AVIF and WebP widths from them into `public/shots` (git-ignored). The page only frames and crops them; no pixel is redrawn. Crops are CSS regions of the same image (`Shot` with `region`).

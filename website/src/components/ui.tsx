@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { asset, detectOS, LINKS, OS_LABEL, RELEASE, type OS } from '../lib/site'
+import { asset, detectOS, LINKS, OS_LABEL, RELEASE, sectionHref, type OS } from '../lib/site'
 
 export const Icon = {
   github: (
@@ -96,12 +96,12 @@ export function useOS(): OS | null {
   return os
 }
 
-export function DownloadButton({ className = 'btn btn-primary', label = 'Download Flint' }: { className?: string; label?: string }) {
+export function DownloadButton({ className = 'btn btn-primary', label = 'Download Flint', home = true }: { className?: string; label?: string; home?: boolean }) {
   const os = useOS()
   const file = os ? RELEASE.assets[os][0] : undefined
   const text = os ? `${label.replace(' Flint', '')} for ${OS_LABEL[os]}` : label
   return (
-    <a className={className} href={file ? file.url : '#download'} {...(file ? { rel: 'noopener', 'data-os': os } : {})}>
+    <a className={className} href={file ? file.url : sectionHref('download', home)} {...(file ? { rel: 'noopener', 'data-os': os } : {})}>
       {Icon.download}
       {os ? text : label}
     </a>

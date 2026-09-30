@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { asset, LINKS } from '../lib/site'
+import { asset, pageHref, sectionHref } from '../lib/site'
 import { DownloadButton, ExternalLink, Icon } from './ui'
 
 const ITEMS = [
@@ -9,7 +9,7 @@ const ITEMS = [
   { id: 'security', label: 'Security' },
 ] as const
 
-export function Nav() {
+export function Nav({ home }: { home: boolean }) {
   const [scrolled, setScrolled] = useState(false)
   const [active, setActive] = useState<string>('')
   const [open, setOpen] = useState(false)
@@ -48,24 +48,24 @@ export function Nav() {
     <>
       <header className={`nav ${scrolled || open ? 'scrolled' : ''}`}>
         <div className="wrap-wide nav-inner">
-          <a href="#top" className="brand" aria-label="Flint, back to top" onClick={() => setOpen(false)}>
+          <a href={home ? '#top' : pageHref('')} className="brand" aria-label={home ? 'Flint, back to top' : 'Flint, home'} onClick={() => setOpen(false)}>
             <img src={asset('brand/icon-64.png')} width="30" height="30" alt="" />
             Flint
           </a>
           <nav className="nav-links" aria-label="Primary">
             {ITEMS.map((i) => (
-              <a key={i.id} href={`#${i.id}`} aria-current={active === i.id ? 'true' : undefined}>
+              <a key={i.id} href={sectionHref(i.id, home)} aria-current={home && active === i.id ? 'true' : undefined}>
                 {i.label}
               </a>
             ))}
-            <ExternalLink href={LINKS.docs}>Docs</ExternalLink>
+            <a href={pageHref('docs')}>Docs</a>
           </nav>
           <div className="nav-right">
-            <ExternalLink href={LINKS.repo} className="btn btn-sm nav-gh">
+            <ExternalLink href="https://github.com/Jozkah/flint" className="btn btn-sm nav-gh">
               {Icon.github}
               GitHub
             </ExternalLink>
-            <a className="btn btn-sm btn-primary dl" href="#download" onClick={() => setOpen(false)}>
+            <a className="btn btn-sm btn-primary dl" href={sectionHref('download', home)} onClick={() => setOpen(false)}>
               Download
             </a>
             <button className="menu-btn" aria-expanded={open} aria-controls="mobile-nav" aria-label={open ? 'Close menu' : 'Open menu'} onClick={() => setOpen((v) => !v)}>
@@ -76,18 +76,18 @@ export function Nav() {
       </header>
       <div id="mobile-nav" className={`mnav ${open ? 'open' : ''}`} aria-hidden={!open} {...(open ? {} : { inert: true })}>
         {ITEMS.map((i) => (
-          <a key={i.id} className="l" href={`#${i.id}`} onClick={() => setOpen(false)}>
+          <a key={i.id} className="l" href={sectionHref(i.id, home)} onClick={() => setOpen(false)}>
             {i.label}
             <span className="dim">{Icon.arrow}</span>
           </a>
         ))}
-        <ExternalLink href={LINKS.docs} className="l">
+        <a href={pageHref('docs')} className="l">
           Docs
           <span className="dim">{Icon.arrow}</span>
-        </ExternalLink>
+        </a>
         <div className="row">
-          <DownloadButton />
-          <ExternalLink href={LINKS.repo} className="btn">
+          <DownloadButton home={home} />
+          <ExternalLink href="https://github.com/Jozkah/flint" className="btn">
             {Icon.github}
             View on GitHub
           </ExternalLink>

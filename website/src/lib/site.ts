@@ -6,6 +6,14 @@ export const SITE_URL: string = typeof __SITE_URL__ === 'undefined' ? 'https://j
 export const BASE: string = import.meta.env.BASE_URL
 export const asset = (path: string) => `${BASE}${path.replace(/^\//, '')}`
 
+/** Internal page URL: '' is the homepage, 'privacy' is /privacy/. */
+export const pageHref = (path: string) => (path ? `${BASE}${path.replace(/^\/|\/$/g, '')}/` : BASE)
+/** Section link that works from any page. */
+export const sectionHref = (id: string, home: boolean) => (home ? `#${id}` : `${BASE}#${id}`)
+/** Path relative to the site base, without slashes ('' for home). */
+export const pathFromLocation = (pathname: string) =>
+  (pathname.startsWith(BASE) ? pathname.slice(BASE.length) : pathname.replace(/^\//, '')).replace(/\/+$/, '').replace(/\/index\.html$/, '')
+
 export const REPO = 'https://github.com/Jozkah/flint'
 export const LINKS = {
   repo: REPO,
@@ -16,6 +24,13 @@ export const LINKS = {
   build: `${REPO}/blob/main/docs/BUILDING.md`,
   contributing: `${REPO}/blob/main/CONTRIBUTING.md`,
   issues: `${REPO}/issues`,
+  advisory: `${REPO}/security/advisories/new`,
+  securityPolicy: `${REPO}/blob/main/SECURITY.md`,
+  changelog: `${REPO}/blob/main/CHANGELOG.md`,
+  readme: `${REPO}/blob/main/README.md`,
+  shots: `${REPO}/tree/main/docs/screenshots`,
+  src: `${REPO}/blob/main/website/src/pages`,
+  inter: 'https://github.com/rsms/inter',
   license: `${REPO}/blob/main/LICENSE`,
   jan: 'https://github.com/janhq/jan',
   llamacpp: 'https://github.com/ggerganov/llama.cpp',
