@@ -1910,6 +1910,16 @@ async fn bash(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             policy = policy.with_unreachable_read_grants(refused);
         }
     }
+    // An unconfined shell for an edit folder the sandbox cannot reach starts in
+    // that folder, so relative paths and `Set-Location` mean the project.
+    if !ctx.sandbox {
+        if let Some(dir) = ctx.direct_shell_start.as_deref().map(anchored) {
+            if dir.is_dir() {
+                policy = policy.with_start_dir(&dir);
+                start = dir;
+            }
+        }
+    }
     let in_worktree = start.as_path() != root;
     // With the sandbox off the shell is spawned bare, the way the user's own
     // terminal would: no wrapper, no policy, the real `$HOME` and `/tmp`. Only
@@ -2848,6 +2858,26 @@ pub(crate) fn unsandboxed_shell(
     let capable = if rerun { sandbox_chaining() } else { None }
         .or_else(|| host_candidates().into_iter().find(proc::supports_and_or_chaining));
     capable.ok_or_else(|| proc::chaining_unavailable_error(operator, &bare))
+}
+
+/// The folder an unconfined `bash` should start in, when the run has edit
+/// access to a folder the sandbox shell cannot reach.
+///
+/// On Windows an AppContainer checks every parent of a folder it opens, so a
+/// project under `Desktop/Coding` fails `Set-Location` ("Access is denied")
+/// and Node's `realpath` ("EPERM lstat 'C:\'") however it is granted; only
+/// Jan-owned worktrees are confined. `None` when the shell is confined to the
+/// roots (or there is no edit access), which keeps the sandbox.
+pub fn direct_edit_shell_start(write_roots: &[PathBuf], data_folder: &Path) -> Option<PathBuf> {
+    if !cfg!(windows) || jail::backend() != jail::Backend::AppContainer || write_roots.is_empty() {
+        return None;
+    }
+    let write_abs: Vec<PathBuf> = write_roots.iter().map(|p| anchored(p)).collect();
+    let owned = crate::workspace::worktrees_dir(&anchored(data_folder));
+    if jail::can_confine_write_roots(jail::backend(), &write_abs, Some(&owned)) {
+        return None;
+    }
+    write_abs.into_iter().find(|p| p.is_dir())
 }
 
 /// The folder a run's shell starts in when it is not the workspace: the
@@ -5262,6 +5292,21 @@ on_failure = \"warn\"
         assert!(!plain.sandbox && !plain.sandbox_shell_parity);
         let rerun = ToolContext::new(&root, &store, &[]).with_unsandboxed_retry();
         assert!(!rerun.sandbox && rerun.sandbox_shell_parity);
+    }
+
+    /// An edit folder the sandbox shell cannot enter runs `bash` directly there,
+    /// in the shell the sandbox would have used; no edit access keeps the sandbox.
+    #[test]
+    fn an_edit_folder_the_sandbox_cannot_enter_gets_a_direct_shell() {
+        let root = unique_root();
+        let store = PathBuf::from("store");
+        let folder = root.join("project");
+        let ctx = ToolContext::new(&root, &store, &[]).with_direct_edit_shell(folder.clone());
+        assert!(!ctx.sandbox && ctx.sandbox_shell_parity);
+        assert_eq!(ctx.direct_shell_start.as_deref(), Some(folder.as_path()));
+        assert!(direct_edit_shell_start(&[], &root).is_none());
+        let plain = ToolContext::new(&root, &store, &[]);
+        assert!(plain.sandbox && plain.direct_shell_start.is_none());
     }
 
     /// #9044: the fallback note names the shell and why bash was not used,
