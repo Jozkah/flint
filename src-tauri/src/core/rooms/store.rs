@@ -1002,6 +1002,32 @@ impl RoomStore {
         Ok(record)
     }
 
+    /// Forget everything said in a room: empty its journal and keep the room
+    /// itself (settings, participants, limits). The caller resets the room's
+    /// counters; this only removes what was recorded.
+    pub fn clear_journal(&self, room_id: &str) -> Result<(), RoomError> {
+        let dir = self.room_dir(room_id)?;
+        let _guard = write_guard();
+        match fs::symlink_metadata(&dir) {
+            Ok(meta) if meta.is_dir() => {}
+            _ => {
+                return Err(RoomError::new(
+                    RoomErrorCode::NotFound,
+                    format!("room {room_id} not found"),
+                ))
+            }
+        }
+        let journal = dir.join("journal.jsonl");
+        match fs::remove_file(&journal) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(RoomError::new(
+                RoomErrorCode::Io,
+                format!("clear journal of room {room_id}: {e}"),
+            )),
+        }
+    }
+
     pub fn delete(&self, room_id: &str) -> Result<(), RoomError> {
         let dir = self.room_dir(room_id)?;
         let _guard = write_guard();

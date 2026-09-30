@@ -380,6 +380,75 @@ describe('room controller', () => {
   })
 })
 
+describe('clearing a room', () => {
+  async function ranRoom() {
+    const { fn } = scriptedStream(() => ({ text: uniqueText() }))
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl)
+    await ctl.start(room.id)
+    await ctl.whenIdle(room.id)
+    return { ctl, persistence, room }
+  }
+
+  it('chat only: empties the transcript and returns the room to a draft, keeping what it used', async () => {
+    const { ctl, persistence, room } = await ranRoom()
+    expect(messagesOf(persistence, room.id).length).toBeGreaterThan(0)
+    const before = persistence.rooms.get(room.id)!
+    expect(before.usage.turns).toBeGreaterThan(0)
+    await ctl.clearRoom(room.id, 'chat')
+    const after = persistence.rooms.get(room.id)!
+    expect(messagesOf(persistence, room.id)).toHaveLength(0)
+    expect(after.status).toBe('draft')
+    expect(after.round).toBe(0)
+    expect(after.usage.turns).toBe(before.usage.turns)
+    expect(after.participants.map((p) => p.name)).toEqual(['Alice', 'Bob'])
+  })
+
+  it('chat and knowledge: also resets the counters and any suspension', async () => {
+    const { ctl, persistence, room } = await ranRoom()
+    const saved = persistence.rooms.get(room.id)!
+    persistence.rooms.set(room.id, {
+      ...saved,
+      participants: saved.participants.map((p, i) =>
+        i === 0
+          ? { ...p, availability: { state: 'unavailable', reason: 'repeated-errors', message: 'x', at: 1 } }
+          : p
+      ),
+    })
+    await ctl.clearRoom(room.id, 'knowledge')
+    const after = persistence.rooms.get(room.id)!
+    expect(after.usage.turns).toBe(0)
+    expect(after.participants[0].availability.state).not.toBe('unavailable')
+  })
+
+  it('never touches the settings, the participants or the attached folder', async () => {
+    const { ctl, persistence, room } = await ranRoom()
+    const saved = persistence.rooms.get(room.id)!
+    persistence.rooms.set(room.id, { ...saved, folder: 'C:/proj', extraFolders: ['C:/notes'] })
+    await ctl.clearRoom(room.id, 'everything')
+    const after = persistence.rooms.get(room.id)!
+    expect(after.folder).toBe('C:/proj')
+    expect(after.extraFolders).toEqual(['C:/notes'])
+    expect(after.objective).toBe('Pick a plan')
+    expect(after.limits.maxTurns).toBe(2)
+  })
+
+  it('is refused while the room is running', async () => {
+    const { fn, started } = (() => {
+      const b = blockingStream()
+      return b
+    })()
+    const { ctl, persistence } = setup(fn)
+    const room = await createDefault(ctl)
+    void ctl.start(room.id)
+    await started
+    await expect(ctl.clearRoom(room.id, 'chat')).rejects.toBeTruthy()
+    expect(persistence.rooms.get(room.id)).toBeTruthy()
+    await ctl.stop(room.id)
+    await ctl.whenIdle(room.id)
+  })
+})
+
 function lastContentIncludes(input: StreamReplyInput, s: string) {
   return (input.messages[input.messages.length - 1]?.content ?? '').includes(s)
 }

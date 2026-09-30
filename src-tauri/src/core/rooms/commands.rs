@@ -73,6 +73,15 @@ pub async fn room_append<R: Runtime>(
 }
 
 #[tauri::command]
+pub async fn room_clear_journal<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+) -> Result<(), RoomError> {
+    let store = store(app_handle);
+    run_blocking(move || store.clear_journal(&room_id)).await
+}
+
+#[tauri::command]
 pub async fn room_delete<R: Runtime>(
     app_handle: AppHandle<R>,
     room_id: String,

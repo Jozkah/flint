@@ -13,6 +13,8 @@
 
 import type { WorkProfileId } from '@/lib/workProfiles'
 
+import type { ClearScope } from './clearRoom'
+
 export const ROOM_SCHEMA_VERSION = 1 as const
 
 /** A model reference resolved through Flint's provider store and ModelFactory. */
@@ -309,6 +311,8 @@ export type RoomError = { code: RoomErrorCode; message: string }
 
 /** Actions the UI invokes. Implemented by `lib/rooms/controller.ts`. */
 export interface RoomController {
+  /** Forget what was said in the room (and, by scope, more). Refused while it runs. */
+  clearRoom(roomId: string, scope: ClearScope): Promise<void>
   start(roomId: string): Promise<void>
   pause(roomId: string): Promise<void>
   resume(roomId: string): Promise<void>

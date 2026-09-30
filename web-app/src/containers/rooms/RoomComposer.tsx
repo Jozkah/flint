@@ -1,4 +1,6 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
+import { ClearRoomDialog } from './ClearRoomDialog'
+import type { ClearScope } from '@/lib/rooms/clearRoom'
 import { ArrowUp, AtSign } from 'lucide-react'
 import type { Address, Room } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
@@ -36,10 +38,27 @@ export function RoomComposer({ room }: { room: Room }) {
   const textRef = useRef<HTMLTextAreaElement>(null)
   // The same `/` commands as the other composers, filtered for Rooms; a
   // command expands into the message the room receives.
+  const [clearOpen, setClearOpen] = useState(false)
   const slash = useSlashCommands({
     surface: 'rooms',
     helpDescription: t('slash:builtin.help'),
+    builtins: [
+      {
+        name: 'clear',
+        description: t('rooms:clear.command'),
+        run: () => setClearOpen(true),
+      },
+    ],
   })
+  const clear = async (scope: ClearScope) => {
+    setClearOpen(false)
+    setError(null)
+    try {
+      await api.controller.clearRoom(room.id, scope)
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
   const changeText = (value: string) => {
     setText(value)
     slash.onTextChange(value)
@@ -152,6 +171,12 @@ export function RoomComposer({ room }: { room: Room }) {
     // The fade lets the transcript dissolve into the composer instead of
     // stopping at a hard edge; the composer itself sits above it.
     <div className="relative shrink-0 px-3.5 pt-2 pb-3.5 before:pointer-events-none before:absolute before:inset-x-0 before:-top-9 before:h-9 before:bg-gradient-to-b before:from-transparent before:to-card">
+      <ClearRoomDialog
+        open={clearOpen}
+        running={room.status === 'running'}
+        onCancel={() => setClearOpen(false)}
+        onClear={(scope) => void clear(scope)}
+      />
       <form
         className="relative z-10 mx-auto flex w-full max-w-[780px] flex-col rounded-xl border-[0.8px] border-border bg-card shadow-[0_4px_14px_rgba(0,0,0,.04)] transition-[border-color,box-shadow,transform] duration-300 ease-expo focus-within:border-border-strong focus-within:shadow-[0_0_0_3px_rgba(156,163,175,.18),0_12px_30px_-12px_rgba(0,0,0,.25)] motion-safe:focus-within:-translate-y-0.5"
         onSubmit={(e) => {

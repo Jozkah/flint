@@ -111,6 +111,7 @@ function inertApi(status: 'pending' | 'unavailable'): RoomsUiApi {
     selectNext: unavailable,
     sendUserMessage: unavailable,
     extendLimit: unavailable,
+    clearRoom: unavailable,
     callVote: unavailable,
     requestFinalPositions: unavailable,
     synthesize: unavailable,

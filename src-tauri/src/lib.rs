@@ -278,6 +278,7 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
+        core::rooms::commands::room_clear_journal,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)

@@ -395,6 +395,9 @@ export function seedRooms() {
       journals.set(roomId, [...(journals.get(roomId) ?? []), record])
       return record
     },
+    clearRoomJournal: async (roomId) => {
+      journals.set(roomId, [])
+    },
     deleteRoom: async (roomId) => {
       rooms.delete(roomId)
       journals.delete(roomId)

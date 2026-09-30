@@ -6,6 +6,7 @@
  * AbortController. Only these editor helpers (user actions) change settings,
  * participants, tool access, limits or the moderator.
  */
+import { clearRoomScratch, clearsKnowledge, clearsScratch } from './clearRoom'
 import { isWorkProfileId } from '@/lib/workProfiles'
 import {
   runRoom,
@@ -15,6 +16,7 @@ import {
   type SummarizeFn,
 } from './engine'
 import {
+  clearSuspensions,
   defaultProviderLookup,
   modelToolSupport,
   type ProviderLookup,
@@ -721,6 +723,34 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         })
       })
     },
+
+    clearRoom: (roomId, scope) =>
+      guarded('clear', async () => {
+        if (slot(roomId).run) {
+          throw roomError('invalid_room', 'Pause or stop the room before clearing it.')
+        }
+        await enqueue(roomId, async () => {
+          const { room } = await persistence().getRoom(roomId)
+          if (room.status === 'running') {
+            throw roomError('invalid_room', 'Pause or stop the room before clearing it.')
+          }
+          await persistence().clearRoomJournal(roomId)
+          let next: Room = {
+            ...room,
+            status: 'draft',
+            round: 0,
+            spokenThisRound: [],
+            nextSpeakerId: null,
+            stopReason: null,
+          }
+          if (clearsKnowledge(scope)) {
+            next = { ...clearSuspensions(next), usage: emptyUsage() }
+          }
+          await saveRoom(next)
+        })
+        if (clearsScratch(scope)) await clearRoomScratch(roomId)
+        await store().loadRoom(roomId)
+      }),
 
     deleteRoom: async (roomId) => {
       await abortRun(roomId, 'stop')

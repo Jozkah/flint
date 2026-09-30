@@ -56,6 +56,20 @@
     "moderator-selected": "Moderator chooses",
     "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion."
   },
+  "clear": {
+    "command": "Clear this room: its chat, what it learned, its scratch files",
+    "title": "Clear this room",
+    "description": "Choose what to forget. This cannot be undone.",
+    "running": "Pause or stop the room first: a running room cannot be cleared.",
+    "chat": "Chat only",
+    "chatHint": "Every message, vote and synthesis. The room goes back to a draft.",
+    "knowledge": "Chat and knowledge",
+    "knowledgeHint": "Also what the room built up from the chat: run counters and limits used, the round it was in, and any suspended participant. It starts over from the objective.",
+    "everything": "Everything, including cache",
+    "everythingHint": "Also the room's scratch files and command sandbox, and any approval still waiting for an answer.",
+    "kept": "The room's settings, participants and limits, and the folders attached to it, are never touched.",
+    "confirm": "Clear"
+  },
   "editor": {
     "heading": "Room settings",
     "sectionGeneral": "General",
