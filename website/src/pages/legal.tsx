@@ -32,6 +32,16 @@ export function Privacy() {
       ),
     },
     {
+      id: 'cookies',
+      title: 'Cookies and browser storage',
+      body: (
+        <>
+          <p>This site does not set cookies and does not use local storage, session storage or IndexedDB. It has no user IDs, fingerprinting or advertising, so there is nothing to opt out of and no consent banner to click.</p>
+          <p>Because nothing is tracked, browser signals such as Do Not Track and Global Privacy Control have nothing to change.</p>
+        </>
+      ),
+    },
+    {
       id: 'app-local',
       title: 'What stays on your computer',
       body: (
@@ -81,6 +91,16 @@ export function Privacy() {
           <li>Review what Flint proposes to remember before it is saved. Forgetting a memory also removes the saved requests that used it.</li>
           <li>Choose a custom data folder, and delete your data by removing that folder. Your data is yours to copy, move or delete.</li>
         </ul>
+      ),
+    },
+    {
+      id: 'rights',
+      title: 'Retention, your rights and children',
+      body: (
+        <>
+          <p>The Flint maintainers do not hold personal data about visitors to this site or users of the app, so there is nothing to retain, correct or delete on our side. Privacy laws such as the GDPR and the CCPA give you rights over data that an organization holds about you, and you can still ask by opening a <Ext href={LINKS.issues}>public issue</Ext> (please do not include personal details in it). Requests about the request data GitHub keeps as our web host go to GitHub, under its privacy statement.</p>
+          <p>The data the app stores is on your own computer, where you can open, export or delete it yourself. Neither the site nor the app is directed at children, and neither collects information from anyone.</p>
+        </>
       ),
     },
     {
@@ -165,12 +185,47 @@ export function Terms() {
       body: <p>When you add a cloud provider, MCP server or search service, you use it under your own account and its own terms. You are responsible for those terms, for any charges, and for what you choose to send. Do not use Flint to break the law or a provider’s rules.</p>,
     },
     {
+      id: 'acceptable-use',
+      title: 'Acceptable use',
+      body: (
+        <>
+          <p>You may browse and link to this site freely. Please do not:</p>
+          <ul>
+            <li>attack, overload or probe the site or the repository infrastructure it depends on;</li>
+            <li>present Flint, this site or its text as coming from someone else, or imply that the authors endorse you or your product;</li>
+            <li>use Flint to break the law, to harm others, or to break the rules of a model provider or service you connect.</li>
+          </ul>
+          <p>Use of the software itself is governed by the license above, which allows use for any purpose.</p>
+        </>
+      ),
+    },
+    {
+      id: 'names',
+      title: 'Names, logos and third-party marks',
+      body: <p>The license does not grant permission to use the authors’ names, trademarks or product names, except to describe where the software comes from (Apache License 2.0, Section 6). Jan is a project of Menlo Research. Names of models, providers and other products that appear on this site belong to their owners and are used only to describe compatibility.</p>,
+    },
+    {
       id: 'website',
       title: 'This website',
       body: (
         <>
           <p>The site is informational and provided as is. Descriptions reflect the software at the time of writing and may lag behind a release. The repository and <Ext href={LINKS.features}>feature list</Ext> are the authority on what Flint does.</p>
           <p>Screenshots are real captures of Flint using an invented example project and made-up data. Product and provider names shown in them belong to their owners, and their appearance does not imply endorsement.</p>
+        </>
+      ),
+    },
+    {
+      id: 'links',
+      title: 'Links to other sites',
+      body: <p>Links to GitHub, Hugging Face, Tailscale and other sites lead to services we do not run. Their content, availability and privacy practices are their own, and the terms of each apply once you leave this site.</p>,
+    },
+    {
+      id: 'liability',
+      title: 'Warranty and liability',
+      body: (
+        <>
+          <p>The software is provided “as is” and the authors are not liable for damages from its use, as Sections 7 and 8 of the Apache License 2.0 say. The same applies to this website: it comes without warranties, and it may change, move or go offline at any time.</p>
+          <p>Nothing on this page limits rights you have by law that cannot be waived. If a part of these terms turns out to be unenforceable, the rest still applies.</p>
         </>
       ),
     },
@@ -197,7 +252,7 @@ export function Terms() {
     <DocPage
       eyebrow="Legal"
       title="Terms of use"
-      lede="Plain-language terms for this website and for using Flint. The software license is the Apache License 2.0."
+      lede="Plain-language terms for this website and for using Flint. The software license is the Apache License 2.0, and it decides your rights to the software."
       updated={UPDATED}
       source="legal.tsx"
       sections={sections}

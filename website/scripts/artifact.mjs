@@ -1,6 +1,6 @@
 // Packages a FLAT build (VITE_FLAT=1 SITE_BASE=./ npm run build) as a self-contained preview folder:
 // every page is one HTML file with its CSS, JavaScript and fonts inlined, next to shots/ and brand/.
-// Used to host the site somewhere that only allows inline code (for example a claude.ai artifact).
+// Used to host the site somewhere that only allows inline code.
 //   node scripts/artifact.mjs <out-dir>
 import fs from 'node:fs'
 import path from 'node:path'
