@@ -16,9 +16,10 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
 import {
   Brain,
-  Sigma,
+  Gauge,
   Ruler,
   Layers2,
   Image,
@@ -34,6 +35,8 @@ interface TokenCounterProps {
   additionalTokens?: number
   /** Usage reported directly, for a surface that keeps no thread messages. */
   source?: TokenUsageSource
+  /** Generation speed of the latest reply and the conversation's average. */
+  speed?: { last?: number; average?: number }
 }
 
 const WARN_PCT = 85
@@ -46,6 +49,7 @@ export const TokenCounter = memo(function TokenCounter({
   className,
   additionalTokens = 0,
   source,
+  speed: speedProp,
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
@@ -65,6 +69,29 @@ export const TokenCounter = memo(function TokenCounter({
         )
       ),
     [source?.session, messages]
+  )
+
+  // How fast the replies came: handed in, else reported by the surface, else
+  // read from the messages' own timing.
+  const speed = useMemo(
+    () =>
+      speedProp ??
+      source?.speed ??
+      speedStats(
+        messages.map((m) => {
+          const meta = m.metadata as
+            | { tokenSpeed?: SpeedSample; usage?: unknown }
+            | undefined
+          const ts = meta?.tokenSpeed
+          if (!ts) return undefined
+          return {
+            tokenSpeed: ts.tokenSpeed,
+            durationMs: ts.durationMs,
+            tokenCount: readTokenUsage(meta?.usage)?.outputTokens ?? ts.tokenCount,
+          }
+        })
+      ),
+    [speedProp, source?.speed, messages]
   )
 
   const [isAnimating, setIsAnimating] = useState(false)
@@ -146,6 +173,7 @@ export const TokenCounter = memo(function TokenCounter({
         sessionUsage={sessionUsage}
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
+        speed={speed}
         className={className}
       />
     )
@@ -198,8 +226,14 @@ export const TokenCounter = memo(function TokenCounter({
             onClick={handleCalculateTokens}
           >
             {/* The composer's context ring: how full the window is, as a
-                ring and a number, quiet until it gets close. */}
-            <div className="flex h-7 items-center gap-[5px] rounded-[7px] px-1.5 text-[11.5px] text-muted-foreground tabular-nums transition-colors hover:bg-accent">
+                circle and nothing else. The figures are on hover; a
+                screen reader gets the same in words. */}
+            <div
+              className={cn(
+                'grid size-7 place-items-center rounded-full transition-colors hover:bg-accent',
+                isAnimating && 'scale-110'
+              )}
+            >
               <svg
                 aria-hidden
                 className="size-[18px] shrink-0 -rotate-90"
@@ -232,14 +266,8 @@ export const TokenCounter = memo(function TokenCounter({
                   className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
                 />
               </svg>
-              <span
-                className={cn(
-                  'transition-transform duration-500 ease-out',
-                  tier !== 'ok' && textCls,
-                  isAnimating && 'scale-110'
-                )}
-              >
-                {pct?.toFixed(1) ?? '0.0'}%
+              <span className="sr-only" data-testid="context-percent">
+                {`Context ${pct?.toFixed(0) ?? '0'}% full`}
               </span>
               {tier !== 'ok' && (
                 // AH-077: said in words, not only by colour, and announced.
@@ -247,7 +275,7 @@ export const TokenCounter = memo(function TokenCounter({
                   role="status"
                   data-testid="context-pressure"
                   data-tier={tier}
-                  className={cn('text-[11px] font-medium', textCls)}
+                  className="sr-only"
                 >
                   {tier === 'over' ? 'Full' : 'Nearly full'}
                 </span>
@@ -334,6 +362,8 @@ export const TokenCounter = memo(function TokenCounter({
             )}
           </div>
 
+          <SpeedSection speed={speed} />
+
           {/* Token breakdown */}
           <div className="px-3 py-2 border-t border-border space-y-1.5">
             <TokenUsageBreakdown usage={breakdown} scope={scope} />
@@ -397,6 +427,7 @@ function TokenCountOnly({
   sessionUsage,
   scope,
   modelDisplayName,
+  speed,
   className,
 }: {
   totalTokens: number
@@ -404,6 +435,7 @@ function TokenCountOnly({
   sessionUsage?: TokenUsage
   scope?: string
   modelDisplayName?: string
+  speed?: { last?: number; average?: number }
   className?: string
 }) {
   return (
@@ -417,11 +449,22 @@ function TokenCountOnly({
             data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
           >
-            <div className="flex h-7 items-center gap-1.5 rounded-[7px] px-1.5 text-[11.5px] text-muted-foreground transition-colors hover:bg-accent">
-              <Sigma className="size-3.5 text-muted-foreground shrink-0" />
-              <span className="font-medium tabular-nums text-fg-2">
-                {formatTokenCount(totalTokens)}
-              </span>
+            {/* No window size is known for this provider, so there is no
+                fill to show: the circle is the same one the local models get,
+                empty, with the total on hover. */}
+            <div className="grid size-7 place-items-center rounded-full transition-colors hover:bg-accent">
+              <svg aria-hidden className="size-[18px] shrink-0" viewBox="0 0 20 20">
+                <circle
+                  cx="10"
+                  cy="10"
+                  r="8"
+                  strokeWidth="2.4"
+                  fill="none"
+                  className="stroke-track"
+                />
+                <circle cx="10" cy="10" r="2.2" className="fill-muted-foreground" />
+              </svg>
+              <span className="sr-only">{`Token usage ${formatTokenCount(totalTokens)}`}</span>
             </div>
           </button>
         </TooltipTrigger>
@@ -449,10 +492,28 @@ function TokenCountOnly({
           <div className="px-3 py-2">
             <TokenUsageBreakdown usage={usage} scope={scope} />
           </div>
+          <SpeedSection speed={speed} />
           <SessionUsageSection usage={sessionUsage} scope={scope} />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  )
+}
+
+/** Generation speed, when at least one reply was long enough to time. */
+function SpeedSection({ speed }: { speed?: { last?: number; average?: number } }) {
+  if (!speed?.last && !speed?.average) return null
+  const fmt = (n: number) => `${n >= 100 ? Math.round(n) : n.toFixed(1)} tokens/sec`
+  return (
+    <div className="px-3 py-2 border-t border-border space-y-1" data-testid="speed-section">
+      <div className="text-[11px] font-medium text-foreground">Generation speed</div>
+      {speed.last ? (
+        <Row icon={<Gauge className="size-3.5" />} label="Latest reply" value={fmt(speed.last)} />
+      ) : null}
+      {speed.average ? (
+        <Row icon={<Gauge className="size-3.5" />} label="Average" value={fmt(speed.average)} />
+      ) : null}
+    </div>
   )
 }
 

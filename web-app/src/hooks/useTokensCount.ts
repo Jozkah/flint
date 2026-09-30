@@ -65,6 +65,8 @@ export interface TokenUsageSource {
    * launched context window is never refetched for a Cowork session.
    */
   loadingModel?: boolean
+  /** Generation speed of the latest reply and the session's average. */
+  speed?: { last?: number; average?: number }
 }
 
 // The token-usage popup normally reflects the last *successful* turn. When a

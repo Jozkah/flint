@@ -217,6 +217,7 @@ import { usePrompt } from '@/hooks/usePrompt'
 import { addSnapshotSink, type PromptSnapshotRef } from '@/lib/providerFetch'
 import { recordPayloadUsage } from '@/lib/payloadUsage'
 import { fromCoworkUsage, summarizeUsage } from '@/lib/tokenUsage'
+import { speedStats } from '@/lib/tokenSpeed'
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { TurnUsageDetails } from '@/components/TurnUsageDetails'
 import { recordMemoryUses } from '@/lib/memoryUses'
@@ -1882,6 +1883,14 @@ export function CoworkPage() {
         (session?.turns ?? []).map((turn) => fromCoworkUsage(turn.usage))
       ),
       loadingModel: sessionLoadingModel,
+      // How fast this session's replies came, for the counter's hover card.
+      speed: speedStats(
+        (session?.turns ?? []).map((turn) => ({
+          tokenSpeed: turn.tokenSpeed?.tokenSpeed,
+          durationMs: turn.tokenSpeed?.durationMs,
+          tokenCount: turn.usage?.completion_tokens ?? turn.tokenSpeed?.tokenCount,
+        }))
+      ),
     }),
     [session?.id, session?.turns, usage, sessionLoadingModel, stoppedBy, runError]
   )
@@ -5938,10 +5947,6 @@ export function CoworkPage() {
                   />
                 }
                 tokenSource={tokenSource}
-                // Token usage is shown per turn in the transcript
-                // (TurnUsageDetails); hide the composer's counter so the same
-                // number is not reported in two places.
-                hideTokenCounter
                 // Assistant, sampling, web search and reasoning behind one
                 // Options button: the Cowork row stays quiet.
                 groupOptions

@@ -1,7 +1,7 @@
 /** Below this many output tokens a tokens/sec figure is noise. */
-export const MIN_SPEED_TOKENS = 20
+export const MIN_SPEED_TOKENS = 8
 /** Below this duration a tokens/sec figure is noise too. */
-export const MIN_SPEED_DURATION_MS = 500
+export const MIN_SPEED_DURATION_MS = 250
 
 /**
  * Whether a generation speed is worth showing. A 7-token reply timed over a
@@ -16,4 +16,36 @@ export function isMeaningfulSpeed(
   if (durationMs !== undefined && durationMs < MIN_SPEED_DURATION_MS)
     return false
   return true
+}
+
+/** What a reply's speed is measured from; the shape both surfaces store. */
+export type SpeedSample = {
+  tokenSpeed?: number
+  tokenCount?: number
+  durationMs?: number
+}
+
+/**
+ * The speed of the latest measurable reply, and the average over all of them
+ * weighted by tokens (so a long reply counts for more than a one-liner).
+ * Replies too short or too quick to time are left out, as they are beside the
+ * message itself. Both are absent when nothing could be measured.
+ */
+export function speedStats(samples: readonly (SpeedSample | undefined | null)[]): {
+  last?: number
+  average?: number
+} {
+  let last: number | undefined
+  let weighted = 0
+  let weight = 0
+  for (const s of samples) {
+    const speed = s?.tokenSpeed
+    if (!speed || !Number.isFinite(speed) || speed <= 0) continue
+    const tokens = s?.tokenCount ?? 0
+    if (!isMeaningfulSpeed(tokens, s?.durationMs)) continue
+    last = speed
+    weighted += speed * tokens
+    weight += tokens
+  }
+  return weight > 0 ? { last, average: weighted / weight } : {}
 }
