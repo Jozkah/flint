@@ -509,3 +509,18 @@ describe('live transcript order', () => {
     expect(segmentAssistantMessage(reply)).toBe(segmentAssistantMessage(reply))
   })
 })
+
+describe('the assistant that answered', () => {
+  it('rides on the reply as metadata, for the header to name', async () => {
+    const { coworkTurnsToUIMessages } = await import('../coworkTurns')
+    const out = coworkTurnsToUIMessages(
+      [
+        { role: 'user', content: 'research this' },
+        { role: 'assistant', content: 'Here is what I found.', assistant: { name: 'Quartz', avatar: '/images/quartz.png' } },
+      ] as never,
+      'sid'
+    ) as { role: string; metadata?: Record<string, unknown> }[]
+    const reply = out.find((m) => m.role === 'assistant')
+    expect(reply?.metadata).toMatchObject({ assistantName: 'Quartz', assistantAvatar: '/images/quartz.png' })
+  })
+})

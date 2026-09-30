@@ -273,10 +273,24 @@ export class CoworkChatTransport extends CustomChatTransport {
     // contributes its persona beneath Cowork's policy.
     this.routedAssistantInstructions =
       selected && selected.id !== 'jan' ? selected.instructions : undefined
+    this.answeringAssistant = selected?.name
+      ? {
+          name: selected.name,
+          avatar:
+            selected.id !== 'jan' && typeof selected.avatar === 'string'
+              ? selected.avatar
+              : undefined,
+        }
+      : undefined
     this.routedMode = route?.mode ?? null
     // The global assistant store is deliberately not touched: routing is per
     // session, and mirroring it there would leak into other conversations and
     // be saved as the user's "last used" assistant.
+  }
+
+  /** The assistant answering this session's turns, for naming its replies. */
+  answering(): { name: string; avatar?: string } | undefined {
+    return this.answeringAssistant
   }
 
   override async sendMessages(

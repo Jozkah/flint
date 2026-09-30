@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { switchedFromOf } from '@/lib/assistantSwitch'
 import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
 import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
@@ -4355,8 +4356,13 @@ export function CoworkPage() {
                 : genDurationSec > 0 && stepOutputTokens > 0
                   ? stepOutputTokens / genDurationSec
                   : 0
-            const settledTurns = turns.map((turn) =>
-              turn.role === 'assistant' &&
+            const answeredBy = transport.answering()
+            const settledTurns = turns.map((turn0) => {
+              const turn =
+                answeredBy && turn0.role === 'assistant' && !turn0.assistant
+                  ? { ...turn0, assistant: answeredBy }
+                  : turn0
+              return turn.role === 'assistant' &&
               turn.content === result.text &&
               computedTps > 0
                 ? {
@@ -4372,7 +4378,7 @@ export function CoworkPage() {
                     },
                   }
                 : turn
-            )
+            })
             // Reset the generation span so the next step measures its own.
             genFirstAt = 0
             genLastAt = 0
@@ -5526,6 +5532,9 @@ export function CoworkPage() {
                         <MessageItem
                           message={message}
                           isFirstMessage={i === 0 && k === 0}
+                          switchedFrom={
+                            k === 0 ? switchedFromOf(uiMessages, i) : undefined
+                          }
                           isLastMessage={
                             i === uiMessages.length - 1 &&
                             k === segments.length - 1

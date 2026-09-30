@@ -184,6 +184,14 @@ export function coworkTurnsToUIMessages(
           data: { usage: turn.usage, memory: turn.memory },
         } as never)
       }
+      if (turn.assistant) {
+        const asst = ensureAssistant(i)
+        asst.metadata = {
+          ...(asst.metadata ?? {}),
+          assistantName: turn.assistant.name,
+          assistantAvatar: turn.assistant.avatar,
+        }
+      }
       if (turn.tokenSpeed) {
         const asst = ensureAssistant(i)
         asst.metadata = {
