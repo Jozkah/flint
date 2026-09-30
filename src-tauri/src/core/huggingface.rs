@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use url::Url;
 
 const HF_HOST: &str = "huggingface.co";
-const MAX_SEARCH_RESULTS: &str = "30";
+const MAX_SEARCH_RESULTS: &str = "50";
+const MAX_README_BYTES: u64 = 512 * 1024;
 
 static ACTIVE_DOWNLOADS: OnceLock<Mutex<HashMap<String, CancellationToken>>> = OnceLock::new();
 
@@ -19,18 +20,26 @@ fn active_downloads() -> &'static Mutex<HashMap<String, CancellationToken>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct HuggingFaceModel {
     pub id: String,
+    pub author: Option<String>,
+    pub sha: Option<String>,
     pub downloads: u64,
     pub likes: u64,
     pub gated: bool,
+    pub private: bool,
+    pub disabled: bool,
     pub tags: Vec<String>,
     pub pipeline_tag: Option<String>,
+    pub library_name: Option<String>,
+    pub created_at: Option<String>,
+    pub last_modified: Option<String>,
+    pub card_data: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct HuggingFaceFile {
     pub name: String,
@@ -49,15 +58,28 @@ pub struct HuggingFaceDownloadProgress {
 #[derive(Debug, Deserialize)]
 struct SearchModel {
     id: String,
+    author: Option<String>,
+    sha: Option<String>,
     #[serde(default)]
     downloads: u64,
     #[serde(default)]
     likes: u64,
     #[serde(default)]
     gated: serde_json::Value,
+    #[serde(default, rename = "private")]
+    is_private: bool,
+    #[serde(default)]
+    disabled: bool,
     #[serde(default)]
     tags: Vec<String>,
     pipeline_tag: Option<String>,
+    library_name: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: Option<String>,
+    #[serde(rename = "lastModified")]
+    last_modified: Option<String>,
+    #[serde(rename = "cardData")]
+    card_data: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +105,7 @@ fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert(
         reqwest::header::USER_AGENT,
-        reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface-download"),
+        reqwest::header::HeaderValue::from_static("Flint/explicit-huggingface"),
     );
     if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
         let value = reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
@@ -122,11 +144,18 @@ fn valid_repo_id(repo: &str) -> bool {
         })
 }
 
-fn valid_remote_filename(filename: &str) -> bool {
+fn valid_remote_path(filename: &str) -> bool {
     !filename.is_empty()
-        && filename.to_ascii_lowercase().ends_with(".gguf")
-        && !filename.split('/').any(|part| part.is_empty() || part == "." || part == "..")
+        && !filename.starts_with('/')
         && !filename.contains('\\')
+        && filename.split('/').all(|part| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | ' ' | '+' | '(' | ')'))
+        })
 }
 
 fn gated(value: &serde_json::Value) -> bool {
@@ -147,27 +176,34 @@ fn safe_component(value: &str) -> String {
         }
     }
     let trimmed = out.trim_matches(['.', '-']).to_string();
-    if trimmed.is_empty() { "model".to_string() } else { trimmed }
+    if trimmed.is_empty() {
+        "file".to_string()
+    } else {
+        trimmed
+    }
+}
+
+fn relative_download_path(repo: &str, filename: &str) -> PathBuf {
+    let mut path = PathBuf::from("downloads").join("huggingface");
+    for part in repo.split('/') {
+        path.push(safe_component(part));
+    }
+    for part in filename.split('/') {
+        path.push(safe_component(part));
+    }
+    path
 }
 
 fn download_path<R: Runtime>(app: &tauri::AppHandle<R>, repo: &str, filename: &str) -> PathBuf {
-    let basename = Path::new(filename)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("model.gguf");
-    get_jan_data_folder_path(app.clone())
-        .join("downloads")
-        .join("huggingface")
-        .join(safe_component(repo))
-        .join(safe_component(basename))
+    get_jan_data_folder_path(app.clone()).join(relative_download_path(repo, filename))
 }
 
-fn model_file_url(repo: &str, filename: &str) -> Result<Url, String> {
+fn remote_file_url(repo: &str, filename: &str) -> Result<Url, String> {
     if !valid_repo_id(repo) {
         return Err("Invalid Hugging Face repository id".to_string());
     }
-    if !valid_remote_filename(filename) {
-        return Err("Only safe .gguf files can be downloaded".to_string());
+    if !valid_remote_path(filename) {
+        return Err("Invalid Hugging Face file path".to_string());
     }
     let mut url = Url::parse("https://huggingface.co").map_err(|e| e.to_string())?;
     {
@@ -202,26 +238,41 @@ async fn response_error(response: reqwest::Response) -> String {
     if detail.is_empty() {
         format!("Hugging Face returned {status}")
     } else {
-        format!("Hugging Face returned {status}: {}", detail.chars().take(300).collect::<String>())
+        format!(
+            "Hugging Face returned {status}: {}",
+            detail.chars().take(300).collect::<String>()
+        )
     }
 }
 
 #[tauri::command]
 pub async fn huggingface_search_models(
     query: String,
+    format: Option<String>,
     token: Option<String>,
 ) -> Result<Vec<HuggingFaceModel>, String> {
     let query = query.trim();
-    if query.is_empty() {
-        return Ok(Vec::new());
-    }
     let mut url = api_url(&["api", "models"])?;
-    url.query_pairs_mut()
-        .append_pair("search", query)
-        .append_pair("filter", "gguf")
-        .append_pair("sort", "downloads")
-        .append_pair("direction", "-1")
-        .append_pair("limit", MAX_SEARCH_RESULTS);
+    {
+        let mut pairs = url.query_pairs_mut();
+        if !query.is_empty() {
+            pairs.append_pair("search", query);
+        }
+        match format.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            Some("mlx") => {
+                pairs.append_pair("filter", "mlx");
+            }
+            Some("all") => {}
+            _ => {
+                pairs.append_pair("filter", "gguf");
+            }
+        }
+        pairs
+            .append_pair("sort", "downloads")
+            .append_pair("direction", "-1")
+            .append_pair("full", "true")
+            .append_pair("limit", MAX_SEARCH_RESULTS);
+    }
     let response = hf_client(token.as_deref())?
         .get(url)
         .send()
@@ -238,11 +289,19 @@ pub async fn huggingface_search_models(
         .into_iter()
         .map(|model| HuggingFaceModel {
             id: model.id,
+            author: model.author,
+            sha: model.sha,
             downloads: model.downloads,
             likes: model.likes,
             gated: gated(&model.gated),
+            private: model.is_private,
+            disabled: model.disabled,
             tags: model.tags,
             pipeline_tag: model.pipeline_tag,
+            library_name: model.library_name,
+            created_at: model.created_at,
+            last_modified: model.last_modified,
+            card_data: model.card_data,
         })
         .collect())
 }
@@ -274,7 +333,7 @@ pub async fn huggingface_model_files(
     let mut files: Vec<HuggingFaceFile> = info
         .siblings
         .into_iter()
-        .filter(|file| valid_remote_filename(&file.rfilename))
+        .filter(|file| valid_remote_path(&file.rfilename))
         .map(|file| HuggingFaceFile {
             name: file.rfilename,
             size: file.lfs.as_ref().and_then(|lfs| lfs.size).or(file.size),
@@ -283,6 +342,33 @@ pub async fn huggingface_model_files(
         .collect();
     files.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
     Ok(files)
+}
+
+#[tauri::command]
+pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<String, String> {
+    let url = remote_file_url(&repo, "README.md")?;
+    let response = hf_client(token.as_deref())?
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("Could not load Hugging Face README: {e}"))?;
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(String::new());
+    }
+    if !response.status().is_success() {
+        return Err(response_error(response).await);
+    }
+    if response.content_length().unwrap_or(0) > MAX_README_BYTES {
+        return Err("Hugging Face README is too large to display".to_string());
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Could not read Hugging Face README: {e}"))?;
+    if bytes.len() as u64 > MAX_README_BYTES {
+        return Err("Hugging Face README is too large to display".to_string());
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|_| "Hugging Face README is not UTF-8".to_string())
 }
 
 #[tauri::command]
@@ -308,9 +394,15 @@ pub async fn huggingface_download_model<R: Runtime>(
     if task_id.trim().is_empty() {
         return Err("Missing download id".to_string());
     }
-    let url = model_file_url(&repo, &filename)?;
+    let url = remote_file_url(&repo, &filename)?;
     let final_path = download_path(&app, &repo, &filename);
-    let part_path = final_path.with_extension("gguf.part");
+    let mut part_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("download")
+        .to_string();
+    part_name.push_str(".part");
+    let part_path = final_path.with_file_name(part_name);
     if let Some(parent) = final_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -326,60 +418,66 @@ pub async fn huggingface_download_model<R: Runtime>(
     }
 
     let result = async {
-        let client = hf_client(token.as_deref())?;
         let existing = tokio::fs::metadata(&part_path)
             .await
             .map(|meta| meta.len())
             .unwrap_or(0);
-        let mut request = client.get(url.clone());
-        if existing > 0 {
-            request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
-        }
-        let response = request
-            .send()
-            .await
-            .map_err(|e| format!("Hugging Face download failed: {e}"))?;
-        if !response.status().is_success() {
-            return Err(response_error(response).await);
-        }
 
-        let resumed = existing > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-        let start = if resumed { existing } else { 0 };
-        let total = response
-            .content_length()
-            .map(|remaining| start.saturating_add(remaining))
-            .or(expected_size);
-        let mut output = tokio::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .append(resumed)
-            .truncate(!resumed)
-            .open(&part_path)
-            .await
-            .map_err(|e| format!("Could not open model download file: {e}"))?;
-        let mut downloaded = start;
-        let mut stream = response.bytes_stream();
-
-        while let Some(chunk) = stream.next().await {
-            if cancel.is_cancelled() {
-                return Err("Download cancelled".to_string());
+        if expected_size != Some(existing) || existing == 0 {
+            let client = hf_client(token.as_deref())?;
+            let mut request = client.get(url);
+            if existing > 0 {
+                request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
             }
-            let chunk = chunk.map_err(|e| format!("Hugging Face download interrupted: {e}"))?;
-            output
-                .write_all(&chunk)
+            let response = request
+                .send()
                 .await
-                .map_err(|e| format!("Could not write model download: {e}"))?;
-            downloaded = downloaded.saturating_add(chunk.len() as u64);
-            let _ = app.emit(
-                "huggingface-download-progress",
-                HuggingFaceDownloadProgress {
-                    task_id: task_id.clone(),
-                    downloaded,
-                    total,
-                },
-            );
+                .map_err(|e| format!("Hugging Face download failed: {e}"))?;
+            if !response.status().is_success() {
+                return Err(response_error(response).await);
+            }
+
+            let resumed = existing > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+            let start = if resumed { existing } else { 0 };
+            let total = response
+                .content_length()
+                .map(|remaining| start.saturating_add(remaining))
+                .or(expected_size);
+            let mut output = tokio::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .append(resumed)
+                .truncate(!resumed)
+                .open(&part_path)
+                .await
+                .map_err(|e| format!("Could not open model download file: {e}"))?;
+            let mut downloaded = start;
+            let mut stream = response.bytes_stream();
+
+            while let Some(chunk) = stream.next().await {
+                if cancel.is_cancelled() {
+                    return Err("Download paused".to_string());
+                }
+                let chunk = chunk.map_err(|e| format!("Hugging Face download interrupted: {e}"))?;
+                output
+                    .write_all(&chunk)
+                    .await
+                    .map_err(|e| format!("Could not write model download: {e}"))?;
+                downloaded = downloaded.saturating_add(chunk.len() as u64);
+                let _ = app.emit(
+                    "huggingface-download-progress",
+                    HuggingFaceDownloadProgress {
+                        task_id: task_id.clone(),
+                        downloaded,
+                        total,
+                    },
+                );
+            }
+            output
+                .flush()
+                .await
+                .map_err(|e| format!("Could not flush model download: {e}"))?;
         }
-        output.flush().await.map_err(|e| format!("Could not flush model download: {e}"))?;
 
         if let Some(size) = expected_size {
             let actual = tokio::fs::metadata(&part_path)
@@ -387,7 +485,9 @@ pub async fn huggingface_download_model<R: Runtime>(
                 .map_err(|e| format!("Could not verify model size: {e}"))?
                 .len();
             if actual != size {
-                return Err(format!("Downloaded model size mismatch: expected {size} bytes, got {actual}"));
+                return Err(format!(
+                    "Downloaded file size mismatch: expected {size} bytes, got {actual}"
+                ));
             }
         }
         if let Some(expected) = expected_sha256
@@ -397,18 +497,20 @@ pub async fn huggingface_download_model<R: Runtime>(
         {
             let actual = jan_utils::crypto::compute_file_sha256_with_cancellation(&part_path, &cancel)
                 .await
-                .map_err(|e| format!("Could not verify model SHA-256: {e}"))?;
+                .map_err(|e| format!("Could not verify file SHA-256: {e}"))?;
             if !actual.eq_ignore_ascii_case(expected) {
-                return Err("Downloaded model failed SHA-256 verification".to_string());
+                return Err("Downloaded file failed SHA-256 verification".to_string());
             }
         }
         if cancel.is_cancelled() {
-            return Err("Download cancelled".to_string());
+            return Err("Download paused".to_string());
         }
         tokio::fs::rename(&part_path, &final_path)
             .await
-            .map_err(|e| format!("Could not finalize model download: {e}"))?;
-        Ok(final_path.to_string_lossy().into_owned())
+            .map_err(|e| format!("Could not finalize download: {e}"))?;
+        Ok(relative_download_path(&repo, &filename)
+            .to_string_lossy()
+            .replace('\\', "/"))
     }
     .await;
 
@@ -423,23 +525,33 @@ mod tests {
     #[test]
     fn repo_ids_are_strictly_owner_and_name() {
         assert!(valid_repo_id("bartowski/Qwen3-GGUF"));
-        assert!(!valid_repo_id("Qwen3-GGUF"));
-        assert!(!valid_repo_id("a/b/c"));
-        assert!(!valid_repo_id("../b"));
+        assert!(!valid_repo_id("bartowski/Qwen3-GGUF/extra"));
+        assert!(!valid_repo_id("../Qwen"));
     }
 
     #[test]
-    fn model_files_must_be_safe_gguf_paths() {
-        assert!(valid_remote_filename("Q4_K_M/model.gguf"));
-        assert!(!valid_remote_filename("../model.gguf"));
-        assert!(!valid_remote_filename("model.safetensors"));
-        assert!(!valid_remote_filename("dir\\model.gguf"));
+    fn remote_paths_allow_model_assets_but_not_traversal() {
+        assert!(valid_remote_path("model-q4_k_m.gguf"));
+        assert!(valid_remote_path("tokenizer/tokenizer.json"));
+        assert!(valid_remote_path("model-00001-of-00002.safetensors"));
+        assert!(!valid_remote_path("../secret"));
+        assert!(!valid_remote_path("folder/../secret"));
+        assert!(!valid_remote_path("folder\\secret"));
     }
 
     #[test]
-    fn model_url_never_leaves_hugging_face() {
-        let url = model_file_url("bartowski/Qwen3-GGUF", "Qwen3-Q4_K_M.gguf").unwrap();
+    fn resolve_url_stays_on_hugging_face() {
+        let url = remote_file_url("bartowski/Qwen3-GGUF", "sub/model.gguf").unwrap();
         assert_eq!(url.host_str(), Some(HF_HOST));
-        assert!(url.path().contains("/resolve/main/"));
+        assert!(url.path().contains("/resolve/main/sub/model.gguf"));
+    }
+
+    #[test]
+    fn download_path_keeps_repo_and_subdirectories_distinct() {
+        let rel = relative_download_path("owner/repo", "tokenizer/files.json");
+        assert_eq!(
+            rel.to_string_lossy().replace('\\', "/"),
+            "downloads/huggingface/owner/repo/tokenizer/files.json"
+        );
     }
 }
