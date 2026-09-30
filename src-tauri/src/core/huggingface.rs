@@ -1,22 +1,25 @@
 use crate::core::app::commands::get_jan_data_folder_path;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 use tauri::{Emitter, Runtime};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
-use tokio_util::sync::CancellationToken;
 use url::Url;
 
 const HF_HOST: &str = "huggingface.co";
 const MAX_SEARCH_RESULTS: &str = "50";
 const MAX_README_BYTES: u64 = 512 * 1024;
 
-static ACTIVE_DOWNLOADS: OnceLock<Mutex<HashMap<String, CancellationToken>>> = OnceLock::new();
+type CancelFlag = Arc<AtomicBool>;
 
-fn active_downloads() -> &'static Mutex<HashMap<String, CancellationToken>> {
+static ACTIVE_DOWNLOADS: OnceLock<Mutex<HashMap<String, CancelFlag>>> = OnceLock::new();
+
+fn active_downloads() -> &'static Mutex<HashMap<String, CancelFlag>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -256,6 +259,63 @@ async fn response_error(response: reqwest::Response) -> String {
     }
 }
 
+async fn sha256_file(path: &PathBuf, cancel: &AtomicBool) -> Result<String, String> {
+    let mut file = tokio::fs::File::open(path)
+        .await
+        .map_err(|e| format!("Could not open downloaded file for verification: {e}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = vec![0u8; 1024 * 1024];
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Download paused".to_string());
+        }
+        let read = file
+            .read(&mut buffer)
+            .await
+            .map_err(|e| format!("Could not read downloaded file for verification: {e}"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+async fn finalize_verified_download(part_path: &PathBuf, final_path: &PathBuf) -> Result<(), String> {
+    if tokio::fs::metadata(final_path).await.is_err() {
+        return tokio::fs::rename(part_path, final_path)
+            .await
+            .map_err(|e| format!("Could not finalize download: {e}"));
+    }
+
+    let file_name = final_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("model");
+    let backup_path = final_path.with_file_name(format!("{file_name}.previous"));
+    let _ = tokio::fs::remove_file(&backup_path).await;
+    tokio::fs::rename(final_path, &backup_path)
+        .await
+        .map_err(|e| format!("Could not stage existing model for replacement: {e}"))?;
+
+    match tokio::fs::rename(part_path, final_path).await {
+        Ok(()) => {
+            let _ = tokio::fs::remove_file(&backup_path).await;
+            Ok(())
+        }
+        Err(error) => {
+            let restore = tokio::fs::rename(&backup_path, final_path).await;
+            match restore {
+                Ok(()) => Err(format!("Could not finalize download: {error}")),
+                Err(restore_error) => Err(format!(
+                    "Could not finalize download ({error}) and could not restore the previous file ({restore_error}); the previous file remains at {}",
+                    backup_path.display()
+                )),
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn huggingface_search_models(
     query: String,
@@ -387,10 +447,10 @@ pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<S
 #[tauri::command]
 pub async fn huggingface_cancel_download(task_id: String) -> Result<(), String> {
     let downloads = active_downloads().lock().await;
-    let Some(token) = downloads.get(&task_id) else {
+    let Some(cancel) = downloads.get(&task_id) else {
         return Err("No active Hugging Face download with that id".to_string());
     };
-    token.cancel();
+    cancel.store(true, Ordering::Relaxed);
     Ok(())
 }
 
@@ -422,11 +482,11 @@ pub async fn huggingface_download_model<R: Runtime>(
             .map_err(|e| format!("Could not create model download folder: {e}"))?;
     }
 
-    let cancel = CancellationToken::new();
+    let cancel = Arc::new(AtomicBool::new(false));
     {
         let mut downloads = active_downloads().lock().await;
         if let Some(previous) = downloads.insert(task_id.clone(), cancel.clone()) {
-            previous.cancel();
+            previous.store(true, Ordering::Relaxed);
         }
     }
 
@@ -468,7 +528,7 @@ pub async fn huggingface_download_model<R: Runtime>(
             let mut stream = response.bytes_stream();
 
             while let Some(chunk) = stream.next().await {
-                if cancel.is_cancelled() {
+                if cancel.load(Ordering::Relaxed) {
                     return Err("Download paused".to_string());
                 }
                 let chunk = chunk.map_err(|e| format!("Hugging Face download interrupted: {e}"))?;
@@ -508,19 +568,15 @@ pub async fn huggingface_download_model<R: Runtime>(
             .map(str::trim)
             .filter(|value| !value.is_empty())
         {
-            let actual = jan_utils::crypto::compute_file_sha256_with_cancellation(&part_path, &cancel)
-                .await
-                .map_err(|e| format!("Could not verify file SHA-256: {e}"))?;
+            let actual = sha256_file(&part_path, &cancel).await?;
             if !actual.eq_ignore_ascii_case(expected) {
                 return Err("Downloaded file failed SHA-256 verification".to_string());
             }
         }
-        if cancel.is_cancelled() {
+        if cancel.load(Ordering::Relaxed) {
             return Err("Download paused".to_string());
         }
-        tokio::fs::rename(&part_path, &final_path)
-            .await
-            .map_err(|e| format!("Could not finalize download: {e}"))?;
+        finalize_verified_download(&part_path, &final_path).await?;
         Ok(relative_download_path(&repo, &filename)
             .to_string_lossy()
             .replace('\\', "/"))
