@@ -18,6 +18,8 @@ export type PickerItem = {
   hint?: string
   /** The mark shown before the label, in the menu and on the button. */
   icon?: ReactNode
+  /** Choosing it leaves the menu open, for a row that opens a field beneath it. */
+  keepOpen?: boolean
 }
 
 export type PickerGroup = { label?: string; items: PickerItem[] }
@@ -37,6 +39,7 @@ export function PickerDropdown({
   shownLabel,
   searchPlaceholder,
   onChange,
+  inlineInput,
   footer,
   disabled,
   invalid,
@@ -53,6 +56,16 @@ export function PickerDropdown({
   /** When set, the menu opens with a search box in it. */
   searchPlaceholder?: string
   onChange: (value: string) => void
+  /**
+   * A text field shown inside the menu, under the row with value `forValue`
+   * while that row is the current choice (the "Other" row's own input).
+   */
+  inlineInput?: {
+    forValue: string
+    value: string
+    placeholder: string
+    onChange: (text: string) => void
+  }
   /** Extra actions under the list, each closing the menu when chosen. */
   footer?: { label: string; icon?: ReactNode; onSelect: () => void }[]
   disabled?: boolean
@@ -100,7 +113,7 @@ export function PickerDropdown({
       <DropdownMenuContent
         align="start"
         collisionPadding={12}
-        className="max-h-[min(32rem,70vh)] w-80 max-w-[calc(100vw-2rem)] overflow-y-auto p-1.5"
+        className="max-h-[min(32rem,70vh)] w-(--radix-dropdown-menu-trigger-width) min-w-60 max-w-80 overflow-y-auto p-1.5"
       >
         {searchPlaceholder && (
           <div className="mb-1 flex items-center gap-2 border-b border-border px-2 pb-2 pt-1">
@@ -136,7 +149,10 @@ export function PickerDropdown({
                   key={item.value}
                   role="menuitemradio"
                   aria-checked={selected}
-                  onSelect={() => onChange(item.value)}
+                  onSelect={(e) => {
+                    if (item.keepOpen) e.preventDefault()
+                    onChange(item.value)
+                  }}
                   className={cn('items-start gap-2.5 px-2.5 py-2', selected && 'bg-accent')}
                 >
                   {item.icon && <span className="mt-px shrink-0">{item.icon}</span>}
@@ -152,6 +168,27 @@ export function PickerDropdown({
                 </DropdownMenuItem>
               )
             })}
+            {inlineInput &&
+              group.items.some((i) => i.value === inlineInput.forValue) &&
+              value === inlineInput.forValue && (
+                <div className="px-2.5 pb-2 pt-1">
+                  <input
+                    autoFocus
+                    value={inlineInput.value}
+                    placeholder={inlineInput.placeholder}
+                    aria-label={inlineInput.placeholder}
+                    className="h-8 w-full rounded-lg border-[0.8px] border-border bg-card px-2 text-[13px] text-foreground outline-hidden placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/20"
+                    onChange={(e) => inlineInput.onChange(e.target.value)}
+                    // Typing is typing: no row-by-first-letter jumps, and Enter
+                    // settles the menu instead of submitting the form behind it.
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') return
+                      e.stopPropagation()
+                      if (e.key === 'Enter') e.preventDefault()
+                    }}
+                  />
+                </div>
+              )}
           </div>
         ))}
         {footer && footer.length > 0 && (

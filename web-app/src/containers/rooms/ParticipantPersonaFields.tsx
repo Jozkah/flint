@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { Plus } from 'lucide-react'
 import { useAssistant } from '@/hooks/useAssistant'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import AddEditAssistant from '@/containers/dialogs/AddEditAssistant'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -59,6 +58,14 @@ export function ParticipantPersonaFields({
           value={roleValue}
           placeholder={t('rooms:editor.participantRoleNone')}
           menuLabel={t('common:jev.profilesTitle')}
+          // The role written by hand is the button's label once there is one.
+          shownLabel={isOther && role.trim() ? role.trim() : undefined}
+          inlineInput={{
+            forValue: OTHER,
+            value: role,
+            placeholder: t('rooms:editor.participantRolePlaceholder'),
+            onChange: (text) => onChange({ workProfile: undefined, role: text }),
+          }}
           disabled={disabled}
           groups={[
             {
@@ -73,7 +80,7 @@ export function ParticipantPersonaFields({
                     icon: <Icon aria-hidden className="size-4 text-secondary-foreground" />,
                   }
                 }),
-                { value: OTHER, label: t('rooms:editor.participantRoleOther') },
+                { value: OTHER, label: t('rooms:editor.participantRoleOther'), keepOpen: true },
               ],
             },
           ]}
@@ -93,16 +100,6 @@ export function ParticipantPersonaFields({
             }
           }}
         />
-        {isOther && (
-          <Input
-            id={`${idPrefix}-role-other`}
-            value={role}
-            disabled={disabled}
-            aria-label={t('rooms:editor.participantRoleOtherLabel')}
-            placeholder={t('rooms:editor.participantRolePlaceholder')}
-            onChange={(e) => onChange({ workProfile: undefined, role: e.target.value })}
-          />
-        )}
       </div>
       <div className="flex min-w-0 flex-col gap-1.5">
         <Label htmlFor={`${idPrefix}-assistant`}>{t('rooms:editor.participantAssistant')}</Label>
