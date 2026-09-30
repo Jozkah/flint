@@ -836,13 +836,17 @@ pub(crate) fn located(flavor: ShellFlavor, command: &str, cwd: &Path) -> String 
 /// asked to enter, and the sandbox may not look at those, so
 /// `Set-Location C:\...\sessions\<id>` failed with "Access is denied" in the
 /// agent's own workspace. The drive reaches the same folder without walking
-/// its parents. Only arguments under `$env:JAN_WORKSPACE` change; everything
-/// else, parameter names included, is passed to the real cmdlet as given.
+/// its parents. Only arguments under `$env:JAN_WORKSPACE` change (the next
+/// character after the workspace path must be a separator or the end, so a
+/// sibling `...\sessions\abc` is not mistaken for `...\sessions\ab`);
+/// everything else, parameter names included, is passed to the real cmdlet as given.
 pub(crate) const POWERSHELL_WORKSPACE_CD: &str = "foreach ($__jc in 'Set-Location','Push-Location') { \
      Set-Item -Path \"Function:global:$__jc\" -Value ([scriptblock]::Create(\
      'for ($i = 0; $i -lt $args.Count; $i++) { $a = $args[$i]; \
      if ($a -is [string] -and $env:JAN_WORKSPACE) { $n = $a.Replace(''/'', ''\\''); \
-     if ($n.StartsWith($env:JAN_WORKSPACE, [StringComparison]::OrdinalIgnoreCase)) { \
+     if ($n.StartsWith($env:JAN_WORKSPACE, [StringComparison]::OrdinalIgnoreCase) -and \
+     ($n.Length -eq $env:JAN_WORKSPACE.Length -or $n[$env:JAN_WORKSPACE.Length] -eq [char]92 \
+     -or $env:JAN_WORKSPACE.EndsWith([string][char]92))) { \
      $args[$i] = ''JanWorkspace:\\'' + $n.Substring($env:JAN_WORKSPACE.Length).TrimStart(''\\'') } } }; \
      Microsoft.PowerShell.Management\\' + $__jc + ' @args')) }";
 
@@ -862,7 +866,7 @@ pub(crate) const POWERSHELL_WEB_DEFAULTS: &str = "if (Get-Command curl.exe -Comm
 /// PowerShell prefers npm.ps1/npx.ps1 over their .cmd launchers. AppContainer
 /// rejects those scripts during AuthorizationManager checks; the .cmd launchers
 /// invoke the same Node CLI without PowerShell's script policy.
-pub(crate) const POWERSHELL_CMD_SHIMS: &str = "foreach ($__jn in 'npm','npx','corepack') { \
+pub(crate) const POWERSHELL_CMD_SHIMS: &str = "foreach ($__jn in 'npm','npx','corepack','pnpm','yarn') { \
      if (Get-Command ($__jn + '.cmd') -CommandType Application -ErrorAction SilentlyContinue) { \
      Set-Item -Path ('Function:global:' + $__jn) -Value ([scriptblock]::Create('& ' + $__jn + '.cmd @args')) } }";
 
@@ -976,6 +980,45 @@ mod located_tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(log.trim(), "ok");
         assert_eq!(status.code(), Some(0));
+    }
+
+    /// A folder that merely starts with the workspace's name (`ab` vs `abc`)
+    /// is not inside it: `Set-Location` there must reach the real folder, not
+    /// be rewritten to a path under the `JanWorkspace:` drive.
+    #[cfg(windows)]
+    #[test]
+    fn a_sibling_that_shares_the_workspace_prefix_is_not_rewritten() {
+        let base = std::env::temp_dir().join(format!("jan-sib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let ws = base.join("ab");
+        let sibling = base.join("abc").join("x");
+        std::fs::create_dir_all(&ws).unwrap();
+        std::fs::create_dir_all(&sibling).unwrap();
+        let script = located(
+            ShellFlavor::PowerShell,
+            &format!("Set-Location '{}'; (Get-Location).Path", sibling.display()),
+            &ws,
+        );
+        let out = std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .current_dir(&ws)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let _ = std::fs::remove_dir_all(&base);
+        assert!(
+            text.trim().to_lowercase().ends_with(r"abc\x"),
+            "got: {text} / {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert_eq!(out.status.code(), Some(0));
+    }
+
+    #[test]
+    fn package_manager_shims_cover_pnpm_and_yarn() {
+        for name in ["npm", "npx", "corepack", "pnpm", "yarn"] {
+            assert!(POWERSHELL_CMD_SHIMS.contains(&format!("'{name}'")), "{name}");
+        }
     }
 
     /// `curl` in Windows PowerShell reaches the real curl.exe, not the

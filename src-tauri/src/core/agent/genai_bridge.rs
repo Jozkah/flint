@@ -797,6 +797,9 @@ pub(crate) async fn stream_chat_completions(
             client_request_id,
         );
 
+        // Timeouts on this key, counted apart from other failures: `attempt`
+        // also counts 5xx and connect errors, which are not timeouts.
+        let mut timeouts: u32 = 0;
         for attempt in 0..MAX_ATTEMPTS {
             let mut progressed = false;
             match run_once(
@@ -855,10 +858,20 @@ pub(crate) async fn stream_chat_completions(
                                 let d = described.to_ascii_lowercase();
                                 d.contains("timed out") || d.contains("timeout")
                             };
-                            if timed_out && attempt + 1 >= MAX_TIMEOUT_ATTEMPTS {
+                            if timed_out {
+                                timeouts += 1;
+                            }
+                            if timed_out && timeouts >= MAX_TIMEOUT_ATTEMPTS {
+                                // Another key may reach a healthy route; only
+                                // give up when this was the last one.
+                                if key_index + 1 < keys.len() {
+                                    log::warn!(
+                                        "genai: {timeouts} timeouts with API key index {key_index}, trying next key"
+                                    );
+                                    break;
+                                }
                                 return Err(format!(
-                                    "{last_err} (timed out {} times; not retried again)",
-                                    attempt + 1
+                                    "{last_err} (timed out {timeouts} times; not retried again)"
                                 ));
                             }
                             Disposition::Retry

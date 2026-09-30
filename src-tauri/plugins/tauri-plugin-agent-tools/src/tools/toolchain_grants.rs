@@ -194,10 +194,8 @@ pub fn grant_at(
     profile: Option<&Path>,
     acl: &dyn Acl,
 ) -> Result<ToolchainGrant, String> {
-    let folder = exe
-        .parent()
-        .ok_or_else(|| format!("{} has no folder", exe.display()))?
-        .to_path_buf();
+    let folder = host_tools::grant_root(exe)
+        .ok_or_else(|| format!("{} has no folder", exe.display()))?;
     validate_folder(&folder, exe, profile)?;
     let mut grants = load_from(store);
     if grants.iter().any(|g| same(&g.folder, &folder)) {
@@ -568,6 +566,26 @@ mod tests {
         assert_eq!(*acl.removed.borrow(), vec![made.folder.clone()]);
         assert!(load_from(&store).is_empty());
         assert!(revoke_at(&store, &made.folder, &acl).is_err());
+    }
+
+    /// The set of granted paths for a rustup toolchain: the toolchain root
+    /// (so `lib\rustlib`, which `rustc` reads, is covered), once, and nothing
+    /// above it.
+    #[test]
+    fn a_rustup_toolchain_is_granted_at_its_root() {
+        let dir = TempDir::new();
+        let profile = dir.path().join("Users").join("me");
+        let root = profile.join(".rustup").join("toolchains").join("stable-x");
+        let bin = root.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(root.join("lib").join("rustlib")).unwrap();
+        let exe = bin.join("cargo.exe");
+        std::fs::write(&exe, b"").unwrap();
+        let store = store_path(&dir.path().join("settings"));
+        let acl = FakeAcl::default();
+        let made = grant_at(&store, "cargo", &exe, Some(&profile), &acl).unwrap();
+        assert_eq!(made.folder, root);
+        assert_eq!(*acl.added.borrow(), vec![root]);
     }
 
     #[test]
