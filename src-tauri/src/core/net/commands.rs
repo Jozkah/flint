@@ -190,7 +190,7 @@ pub fn provider_endpoint_diagnostics(
                 .iter()
                 .map(|c| CandidateView {
                     address: c.addr.ip().to_string(),
-                    class: format!("{:?}", c.class),
+                    class: c.class.as_str().to_string(),
                     eligible: c.eligible,
                 })
                 .collect(),
@@ -201,45 +201,42 @@ pub fn provider_endpoint_diagnostics(
     }))
 }
 
+/// Forget what was resolved: a provider was edited, the network moved, or the
+/// user asked for a fresh attempt. Omitting the host clears everything.
 #[tauri::command]
 pub fn provider_endpoint_refresh(host: Option<String>, port: Option<u16>) {
-    if let (Some(host), Some(port)) = (host, port) {
-        resolver::shared().forget(&host, port);
-    } else {
-        resolver::shared().clear();
+    match (host, port) {
+        (Some(host), Some(port)) => transport::invalidate(&host, port),
+        _ => transport::invalidate_all(),
     }
 }
 
+/// What the configured CA bundle does right now (AH-190).
 #[tauri::command]
-pub async fn provider_endpoint_probe(host: String, port: u16) -> Result<EndpointDiagnostics, String> {
-    let resolved = resolver::shared().resolve(&host, port).await?;
-    let selected = resolved.selected().map(|a| a.ip().to_string());
-    Ok(EndpointDiagnostics {
-        host: resolved.host,
-        port: resolved.port,
-        local_name: resolved.local_name,
-        candidates: resolved
-            .candidates
-            .iter()
-            .map(|c| CandidateView {
-                address: c.addr.ip().to_string(),
-                class: format!("{:?}", c.class),
-                eligible: c.eligible,
-            })
-            .collect(),
-        selected,
-        suppressed_public: resolved.suppressed_public,
-        responded: resolved.responded.map(|a| a.ip().to_string()),
-    })
+pub fn network_ca_status() -> serde_json::Value {
+    super::tls::status()
 }
 
+/// Check a bundle path before it is saved, so the settings page can say what
+/// it would do. Nothing is stored here: the page saves the path itself, and the
+/// next outbound client built reads it from the settings.
 #[tauri::command]
 pub fn network_ca_check(path: String) -> serde_json::Value {
-    match transport::check_ca_file(std::path::Path::new(&path)) {
-        Ok(()) => serde_json::json!({ "valid": true }),
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return serde_json::json!({ "state": "none" });
+    }
+    match super::tls::load(std::path::Path::new(trimmed), super::tls::Source::DesktopSettings) {
+        Ok(bundle) => serde_json::json!({
+            "state": "in_use",
+            "path": bundle.path.display().to_string(),
+            "certificates": bundle.fingerprints.len(),
+            "sha256": bundle.fingerprints,
+        }),
         Err(error) => serde_json::json!({
-            "valid": false,
-            "code": error.code,
+            "state": "broken",
+            "kind": error.kind.tag(),
+            "path": error.path.display().to_string(),
             "message": error.message,
         }),
     }
