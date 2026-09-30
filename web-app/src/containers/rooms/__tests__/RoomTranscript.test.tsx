@@ -197,7 +197,7 @@ describe('RoomTranscript', () => {
     expect(md.textContent).toContain('```bash\nls -la\n```')
   })
 
-  it('shows tool chips and expands them to the advanced input/output view', () => {
+  it('folds tool calls into a one-line summary, then chips, then the full view', () => {
     const msg = makeMessage({
       text: 'Looked it up.',
       toolCalls: [
@@ -208,31 +208,35 @@ describe('RoomTranscript', () => {
     render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
 
     const tools = screen.getByTestId('message-tools')
-    // Normal view: every chip, failed included, behind the toggle.
+    // Folded by default: a summary that says what happened, no chips, no details.
+    expect(screen.getByTestId('tool-trace-summary')).toHaveTextContent(/summary.read/)
+    expect(screen.getByTestId('tool-trace-summary')).toHaveTextContent(/summary.failed/)
     expect(within(tools).queryByText('read')).not.toBeInTheDocument()
-    expect(within(tools).queryByText('grep')).not.toBeInTheDocument()
     expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
 
+    // Opened: one chip per call, failed included.
+    fireEvent.click(screen.getByTestId('tool-trace-summary'))
+    expect(within(tools).getAllByTestId('tool-chip')).toHaveLength(2)
+    expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
+
+    // Details: every call as a table.
     fireEvent.click(screen.getByTestId('tool-trace-toggle'))
-
-    expect(within(tools).getAllByText('read').length).toBeGreaterThan(0)
-
     const details = screen.getByTestId('tool-trace-details')
-    // Args render as a label/value table: the key and its value each appear.
     expect(within(details).getByText('path')).toBeInTheDocument()
     expect(within(details).getByText('notes.md')).toBeInTheDocument()
     expect(within(details).getByText('FILE BODY')).toBeInTheDocument()
     expect(within(details).getByText('ERROR: nope')).toBeInTheDocument()
   })
 
-  it('opens every call in the verbose transcript view', () => {
+  it('stays folded by default in the verbose transcript view too', () => {
     useInterfaceSettings.setState({ transcriptView: 'verbose' })
     const msg = makeMessage({
       text: 'Looked it up.',
       toolCalls: [{ name: 'read', ok: true, args: { path: 'notes.md' }, output: 'FILE BODY' }],
     })
     render(<RoomTranscript room={makeRoom()} journal={asJournal([msg])} liveTurn={null} />)
-    expect(screen.getByTestId('tool-trace-details')).toBeInTheDocument()
+    expect(screen.queryByTestId('tool-trace-details')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('tool-chip')).not.toBeInTheDocument()
     useInterfaceSettings.setState({ transcriptView: 'normal' })
   })
 })

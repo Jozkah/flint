@@ -145,6 +145,7 @@ function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
         ? [`Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`]
         : []),
       `Always use full paths under it — e.g. \`${example}\`. Use \`skill_list\` and \`skill_read\` for skills, and \`list_plugins\` for what is installed.`,
+      "The shell's working directory is a scratch sandbox, not the project: you cannot `cd` or `Set-Location` into the folder (it is refused), so give commands absolute paths (for example `python -m unittest discover -s <folder>/tests`) and set `PYTHONPATH` when a package must be importable.",
       'Anything that changes files or runs a command may wait for the user to allow it; if a call is refused, do not retry it or work around it. Say what you would have done.',
       'Do not invent file contents or command output: if a call fails, say so instead of guessing. Other participants work at the same time in the same folders, so keep changes small and say what you changed.',
     ].join('\n')
