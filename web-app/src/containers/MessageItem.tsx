@@ -914,7 +914,7 @@ export const MessageItem = memo(
                   onClick={() => onFork(message.id)}
                   aria-label={t('chat:actions.fork')}
                 >
-                  <GitFork className="size-4" />
+                  <GitFork className="size-3.5" />
                 </Button>
 </TooltipTrigger>
 <TooltipContent>{t('chat:actions.fork')}</TooltipContent>
@@ -935,7 +935,7 @@ export const MessageItem = memo(
                       onClick={handleContinue}
                       aria-label={t('chat:actions.continue')}
                     >
-                      <Play className="size-4" />
+                      <Play className="size-3.5" />
                     </Button>
 </TooltipTrigger>
 <TooltipContent>{t('chat:actions.continue')}</TooltipContent>
@@ -955,7 +955,7 @@ export const MessageItem = memo(
                     onClick={handleRegenerate}
                     aria-label={t('chat:actions.regenerate')}
                   >
-                    <RefreshCw className="size-4" />
+                    <RefreshCw className="size-3.5" />
                   </Button>
 </TooltipTrigger>
 <TooltipContent>{t('chat:actions.regenerate')}</TooltipContent>

@@ -39,7 +39,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
       role="button"
       tabIndex={0}
       aria-label={t('common:deleteMessage')}
-      className="size-7 text-fg-2 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
+      className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -47,7 +47,7 @@ export function DeleteMessageDialog({ onDelete }: DeleteMessageDialogProps) {
         }
       }}
     >
-      <Trash2 className="size-[17px]" />
+      <Trash2 className="size-3.5" />
     </Button>
   )
 

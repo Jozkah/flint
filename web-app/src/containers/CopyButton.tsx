@@ -24,15 +24,15 @@ export const CopyButton = ({ text }: { text: string }) => {
         <Button
           variant="ghost"
           size="icon-xs"
-          className="size-7 text-fg-2 hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
+          className="size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11"
           onClick={handleCopy}
         >
           {copied ? (
             <>
-              <CopyCheck className="size-[15px] text-primary" />
+              <CopyCheck className="size-3.5 text-primary" />
             </>
           ) : (
-            <Copy className="size-[15px]" />
+            <Copy className="size-3.5" />
           )}
         </Button>
       </TooltipTrigger>
