@@ -191,6 +191,13 @@ export async function streamParticipantReply(
       },
     })
     for await (const part of result.fullStream) {
+      if (
+        part.type === 'text-delta' ||
+        part.type === 'reasoning-delta' ||
+        part.type === 'tool-input-delta'
+      ) {
+        input.onStreamActivity?.()
+      }
       if (part.type === 'text-delta') {
         if (!part.text) continue
         text += part.text

@@ -52,6 +52,8 @@ export type StreamReplyInput = {
   signal: AbortSignal
   /** Text deltas only; reasoning is never passed here. */
   onText: (delta: string) => void
+  /** Any piece of output arriving (text, reasoning, tool-call arguments), for timing. */
+  onStreamActivity?: () => void
   /** Read-only tools for this turn, when the participant may use them. */
   toolContext?: RoomToolContext
   /** Reports each tool the participant runs, for the live/settled transcript. */

@@ -176,3 +176,21 @@ describe('usage of a turn with several model calls', () => {
     expect(res.usage).toEqual({ inputTokens: 1_000, outputTokens: 10 })
   })
 })
+
+describe('stream activity', () => {
+  it('ticks for text, reasoning and tool-call arguments, so tool-only turns can be timed', async () => {
+    const stream = fakeStream([
+      { type: 'reasoning-delta', id: 'r', text: 'hm' },
+      { type: 'tool-input-delta', id: 'c', delta: '{"a"' },
+      { type: 'text-delta', id: 't', text: 'x' },
+      { type: 'tool-result', toolCallId: 'c' },
+    ])
+    const onStreamActivity = vi.fn()
+    await streamParticipantReply(input({ onStreamActivity }), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(onStreamActivity).toHaveBeenCalledTimes(3)
+  })
+})

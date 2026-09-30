@@ -571,6 +571,11 @@ class RoomRun {
         // not the waits for a tool or an approval in between.
         let lastDeltaAt = 0
         let streamedMs = 0
+        const tick = () => {
+          const at = this.deps.now()
+          if (lastDeltaAt && at - lastDeltaAt < STREAM_GAP_MS) streamedMs += at - lastDeltaAt
+          lastDeltaAt = at
+        }
         try {
           const res = await this.deps.streamReply({
             model: args.model,
@@ -584,10 +589,9 @@ class RoomRun {
             messages: built.messages,
             maxOutputTokens: this.maxOutputTokens(),
             signal: this.signal,
+            onStreamActivity: tick,
             onText: (delta) => {
-              const at = this.deps.now()
-              if (lastDeltaAt && at - lastDeltaAt < STREAM_GAP_MS) streamedMs += at - lastDeltaAt
-              lastDeltaAt = at
+              tick()
               live.text += delta
               this.emit({ type: 'live', roomId: this.roomId, live: { ...live } })
             },
@@ -612,10 +616,7 @@ class RoomRun {
           this.room = { ...this.room, usage: addCallUsage(this.room.usage, usage, pricing) }
           if (args.participant) this.errorStreaks.set(args.participant.id, 0)
           const extra = args.finalize ? args.finalize(raw) : {}
-          const speed = writingSpeed(
-            res.toolActivity?.length ? estimateTokens(raw) : usage.outputTokens,
-            streamedMs
-          )
+          const speed = writingSpeed(usage.outputTokens, streamedMs)
           const message = this.message({
             ...base,
             text: raw,
