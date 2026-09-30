@@ -20,7 +20,7 @@ Function FlintWelcome
 
   ${FlintPx} $1 224
   ${FlintPx} $3 22
-  ${NSD_CreateLabel} $0 $1 $2 $3 "●   Private by default"
+  ${NSD_CreateLabel} $0 $1 $2 $3 "●   Open source, Apache-2.0"
   Pop $4
   SendMessage $4 ${WM_SETFONT} $FlintFontBodyMedium 1
   !insertmacro _FlintCtl $4 FG BG

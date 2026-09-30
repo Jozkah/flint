@@ -394,7 +394,7 @@ MSI_PAGES = {
         title="Install Flint",
         sub="Your local AI workspace, ready in minutes.",
         body=["Flint runs locally on your computer for chats, coding and agent workflows — with the models and providers you choose."],
-        bullets=["Private by default", "Local-first and under your control", "Bring your own models"],
+        bullets=["Open source, Apache-2.0", "Local-first and under your control", "Bring your own models"],
     ),
     "installdir": dict(
         title="Choose where to install",
