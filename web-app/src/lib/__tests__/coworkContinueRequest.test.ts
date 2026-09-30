@@ -25,16 +25,18 @@ describe('continueRequest', () => {
     expect(text).toContain('previous run stopped early (loop)')
   })
 
-  it('keeps only one failed check and the latest blocker per tool', () => {
+  it('keeps only one failed check and the latest blocker per tool and target', () => {
     const text = continueRequest([
       failed('read', 'old.ts'),
       failed('read', 'new.ts'),
+      failed('read', 'old.ts'),
       { kind: 'check-failed', command: 'npm test old', exitCode: 1 },
       { kind: 'check-failed', command: 'npm test new', exitCode: 1 },
     ])
 
-    expect(text).not.toContain('old.ts')
+    // Different files are different blockers; the same file is listed once.
     expect(text).toContain('new.ts')
+    expect(text.match(/old\.ts/g)).toHaveLength(1)
     expect(text).not.toContain('npm test old')
     expect(text).toContain('npm test new')
   })
