@@ -100,6 +100,26 @@ export function summarizeTrace(parts: TraceSummaryPart[]): TraceSummary {
   return out
 }
 
+/**
+ * The summary as one plain line: "Ran 3 commands, created 1 file (1 failed) +12 −3".
+ * Undefined when nothing ran, so the caller keeps its own wording.
+ */
+export function summaryLabel(
+  s: TraceSummary,
+  t: (key: string, options?: Record<string, unknown>) => string
+): string | undefined {
+  const text = summaryPhrases(s)
+    .map((p) => t(`chat:transcriptView.summary.${p.key}`, { count: p.count }))
+    .join(', ')
+  if (!text) return undefined
+  const failed =
+    s.failed > 0
+      ? ` (${t('chat:transcriptView.summary.failed', { count: s.failed })})`
+      : ''
+  const diff = s.added > 0 || s.removed > 0 ? ` +${s.added} −${s.removed}` : ''
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}${failed}${diff}`
+}
+
 /** The summary's phrases in reading order, each a translation key and count. */
 export function summaryPhrases(
   s: TraceSummary
