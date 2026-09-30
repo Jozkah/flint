@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "Vel. mitjana"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

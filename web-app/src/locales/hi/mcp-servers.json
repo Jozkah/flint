@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "मॉडल खोजें…",
     "routerModelEmptyList": "कोई उपलब्ध हल्के मॉडल नहीं हैं। कृपया छोटे मॉडल जोड़ें या 'Models' में API कुंजी सेट करें।",
     "routerModelEmptySearch": "कोई परिणाम नहीं मिला जो '{{query}}' से मेल खाता हो।"
+  },
+  "mention": {
+    "offTitle": "{{serverName}} बंद है",
+    "offDesc": "आपने इसका उल्लेख किया, लेकिन यह चल नहीं रहा है, इसलिए इसके टूल इस उत्तर के लिए उपलब्ध नहीं हैं।",
+    "enable": "चालू करें",
+    "enabled": "{{serverName}} चालू है। इसके टूल इस्तेमाल करने के लिए अपना अनुरोध फिर भेजें।",
+    "failed": "{{serverName}} चालू नहीं किया जा सका: {{error}}"
   }
 }

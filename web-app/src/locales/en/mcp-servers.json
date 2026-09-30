@@ -246,5 +246,12 @@
   },
   "selfApproval": {
     "note": "This server can approve its own commands ({{names}}). Flint asks you about every call to these tools and never auto-approves them."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} is off",
+    "offDesc": "You mentioned it, but it isn't running, so its tools aren't available to this reply.",
+    "enable": "Enable",
+    "enabled": "{{serverName}} is on. Send your request again to use its tools.",
+    "failed": "Could not enable {{serverName}}: {{error}}"
   }
 }

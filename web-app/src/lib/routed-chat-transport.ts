@@ -9,6 +9,14 @@ import { useAssistant } from '@/hooks/useAssistant'
 import { useThreads } from '@/hooks/useThreads'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { renderInstructions } from '@/lib/instructionTemplate'
+import { chooseWorkProfile, useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { workProfileAsker } from '@/lib/jev'
+import {
+  resolveSkillActivation,
+  skillActivationBlock,
+  type ActivatedSkill,
+} from '@/lib/skillActivation'
+import { refreshSkillCatalog } from '@/lib/skillCatalog'
 
 function latestUserMessage(
   messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
@@ -36,7 +44,15 @@ function latestUserMessage(
 export class RoutedChatTransport extends CustomChatTransport {
   private lastRoutedUserMessageId: string | null = null
   private routedMode: JevSuggestedMode | null = null
+  private activeSkills: ActivatedSkill[] = []
 
+  /**
+   * Everything that has to be decided before this message is sent, run side by
+   * side: the skills that apply, the work profile, and the assistant route.
+   * They are independent, and each may wait on Jev, so waiting for them one
+   * after another would add their delays together; together the wait is the
+   * slowest one, and with Jev off none of them touches the network.
+   */
   private async routeAssistant(
     messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages'],
     signal?: AbortSignal
@@ -48,6 +64,35 @@ export class RoutedChatTransport extends CustomChatTransport {
     // shadowed, unavailable, or a custom assistant has been pinned.
     this.routedMode = null
 
+    const [skills] = await Promise.all([
+      // Skills that apply to this message (always-active, triggered, or Jev's
+      // pick), read now so the prompt built later carries their instructions.
+      refreshSkillCatalog()
+        .then(() =>
+          resolveSkillActivation({ text: latest.text, temporary: this.temporary, signal })
+        )
+        // Routing is help, never a reason to fail the user's prompt.
+        .catch((): ActivatedSkill[] => []),
+      // Work profiles (off unless the user turned them on): the new message
+      // picks how this conversation approaches it -- Jev decides when its
+      // suggestions are on, a keyword match otherwise, a profile picked by hand
+      // is kept. A temporary chat never sends its prompt to Jev.
+      this.threadId
+        ? chooseWorkProfile(
+            this.threadId,
+            latest.text,
+            this.temporary ? undefined : workProfileAsker(useJevSettings.getState().rerankMode)
+          ).catch(() => undefined)
+        : Promise.resolve(undefined),
+      this.routeAssistantFor(latest, signal),
+    ])
+    this.activeSkills = skills
+  }
+
+  private async routeAssistantFor(
+    latest: { id: string; text: string },
+    signal?: AbortSignal
+  ) {
     const assistantState = useAssistant.getState()
     const thread = this.threadId
       ? useThreads.getState().threads[this.threadId]
@@ -108,10 +153,15 @@ export class RoutedChatTransport extends CustomChatTransport {
     }
   }
 
+  protected override skillTextsInPrompt(): string[] {
+    return [...super.skillTextsInPrompt(), skillActivationBlock(this.activeSkills)]
+  }
+
   protected override buildSystemPrompt(messages: UIMessage[]): string | undefined {
     const base = super.buildSystemPrompt(messages)
     const modeHint = jevModeSuggestion(this.routedMode)
-    return [base, modeHint]
+    const profile = useWorkProfiles.getState().blockFor(this.threadId)
+    return [base, profile, skillActivationBlock(this.activeSkills), modeHint]
       .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
       .join('\n\n') || undefined
   }

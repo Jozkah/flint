@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "Vel. media"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

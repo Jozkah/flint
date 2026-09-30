@@ -71,5 +71,12 @@
     "routerModelEmptySearch": "Cap coincidència per a «{{query}}»."
   },
   "proactiveMode": "Mode proactiu d’ús del navegador",
-  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines."
+  "proactiveModeDesc": "Quan està activat, captura automàticament captures de pantalla del navegador per aportar context addicional a les tasques d’automatització. Requereix l’MCP Flint Browser amb visió i model d’ús d’eines.",
+  "mention": {
+    "offTitle": "{{serverName}} està desactivat",
+    "offDesc": "L'heu esmentat, però no s'està executant, així que les seves eines no estan disponibles per a aquesta resposta.",
+    "enable": "Activa",
+    "enabled": "{{serverName}} està activat. Torneu a enviar la sol·licitud per utilitzar-ne les eines.",
+    "failed": "No s'ha pogut activar {{serverName}}: {{error}}"
+  }
 }

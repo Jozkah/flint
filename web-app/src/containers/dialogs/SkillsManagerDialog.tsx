@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Zap,
 } from 'lucide-react'
 import {
   Dialog,
@@ -44,15 +45,42 @@ import {
 } from '@/hooks/useSkills'
 import { normalizeAppError } from '@/utils/appError'
 import { isPluginSkill } from '@/lib/skillStore'
+import {
+  isAlwaysActive,
+  isTrustedSkill,
+  skillKey,
+  useSkillActivation,
+  type ActivationSkill,
+} from '@/hooks/useSkillActivation'
+
+/**
+ * What activation needs to know about a listed skill: which folder's store it is
+ * from (the manager shows the attached project's skills, or the global store's),
+ * so its always-on choice is kept per folder.
+ */
+function activationSkill(
+  s: { name: string; plugin?: string },
+  folder: string | null
+): ActivationSkill {
+  return {
+    name: s.name,
+    plugin: s.plugin,
+    always: (s as { always?: boolean }).always,
+    ...(folder ? { origin: 'project' as const, folder } : {}),
+  }
+}
 
 function SkillListRow({
   skill: s,
   isSelected,
   isEnabled,
+  isAlways,
+  canToggleAlways,
   isPlugin,
   scope,
   onSelect,
   onToggleEnabled,
+  onToggleAlways,
   onScopeChange,
   onDelete,
   t,
@@ -60,10 +88,13 @@ function SkillListRow({
   skill: { name: string; description?: string; plugin?: string }
   isSelected: boolean
   isEnabled: boolean
+  isAlways: boolean
+  canToggleAlways: boolean
   isPlugin: boolean
   scope: Scope
   onSelect: () => void
   onToggleEnabled: () => void
+  onToggleAlways: () => void
   onScopeChange: (scope: Scope) => void
   onDelete: () => void
   t: (key: string, opts?: Record<string, unknown>) => string
@@ -120,6 +151,7 @@ function SkillListRow({
               ? t('connections:skills.state.enabled')
               : t('connections:skills.state.disabled')}
           </span>
+          {canToggleAlways && isAlways && ` · ${t('connections:skills.alwaysOn')}`}
           {' · '}
           {scope === 'global' ? 'Global' : 'Workspace'}
         </div>
@@ -153,6 +185,17 @@ function SkillListRow({
                 : t('connections:skills.state.enable')}
             </span>
           </DropdownMenuItem>
+          {canToggleAlways && (
+          <DropdownMenuItem
+            role="menuitemcheckbox"
+            aria-checked={isAlways}
+            onSelect={onToggleAlways}
+            title={t('connections:skills.alwaysActiveHelp')}
+          >
+            {isAlways ? <Check size={14} /> : <Zap size={14} />}
+            <span>{t('connections:skills.alwaysActive')}</span>
+          </DropdownMenuItem>
+          )}
           <DropdownMenuSub>
             <DropdownMenuSubTrigger>
               <Globe size={14} />
@@ -205,6 +248,7 @@ export default function SkillsManagerDialog({
   const localNames = new Set(skills.map((s) => s.name))
   // Installed = listed here. Enabled = in the project's `[skills].enabled`
   // whitelist (empty whitelist = all), which is what the agent is offered.
+  const activation = useSkillActivation()
   const enabledNames = effectiveEnabled(
     enabled,
     skills.map((s) => s.name)
@@ -405,6 +449,18 @@ export default function SkillsManagerDialog({
                       skill={s}
                       isSelected={!hubMode && selected === s.name}
                       isEnabled={enabledNames.has(s.name)}
+                      isAlways={isAlwaysActive(activationSkill(s, folder), activation)}
+                      onToggleAlways={() => {
+                        const keyed = activationSkill(s, folder)
+                        useSkillActivation
+                          .getState()
+                          .setAlways(
+                            skillKey(keyed),
+                            !isAlwaysActive(keyed, activation),
+                            Boolean(keyed.always && isTrustedSkill(keyed))
+                          )
+                      }}
+                      canToggleAlways
                       isPlugin={isPluginSkill(s)}
                       scope={globalExt.getSkillScope(s.name)}
                       onSelect={() => openSkill(s.name)}

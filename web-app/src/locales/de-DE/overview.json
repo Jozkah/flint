@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "Ø Tempo"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

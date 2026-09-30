@@ -175,13 +175,15 @@ export default function AddEditAssistant({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <label className="mb-2 inline-block text-sm font-medium text-fg-2">
+          {/* Both columns are label over control with one gap, bottoms
+              aligned, so "Emoji" and "Name" sit on the same line. */}
+          <div className="flex items-start gap-2">
+            <div className="relative space-y-2">
+              <label className="inline-block text-sm font-medium text-fg-2">
                 {t('assistants:emoji')}
               </label>
               <div
-                className="flex size-9 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-muted pointer-coarse:size-11"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-md border border-border bg-card p-1 hover:bg-muted pointer-coarse:size-11"
                 onClick={() => setShowEmojiPicker(!showEmojiPicker)}
                 ref={emojiPickerTriggerRef}
               >
@@ -217,7 +219,7 @@ export default function AddEditAssistant({
             </div>
 
             <div className="space-y-2 w-full">
-              <label className="mb-2 inline-block text-sm font-medium text-fg-2">
+              <label className="inline-block text-sm font-medium text-fg-2">
                 {t(`common:name`)}
               </label>
               <Input
@@ -239,7 +241,7 @@ export default function AddEditAssistant({
           )}
 
           <div className="space-y-2">
-            <label className="mb-2 inline-block text-sm font-medium text-fg-2">
+            <label className="inline-block text-sm font-medium text-fg-2">
               {t('assistants:description')}
             </label>
             <Textarea
@@ -255,7 +257,7 @@ export default function AddEditAssistant({
           </div>
 
           <div className="space-y-2">
-            <label className="mb-2 inline-block text-sm font-medium text-fg-2">
+            <label className="inline-block text-sm font-medium text-fg-2">
               {t('assistants:instructions')}
             </label>
             <Textarea

@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Tìm model…",
     "routerModelEmptyList": "Không có model nhẹ. Hãy thêm model nhỏ hơn hoặc cấu hình khóa API trong Models.",
     "routerModelEmptySearch": "Không có kết quả cho “{{query}}”."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} đang tắt",
+    "offDesc": "Bạn đã nhắc đến nó nhưng nó không chạy, nên công cụ của nó không dùng được cho câu trả lời này.",
+    "enable": "Bật",
+    "enabled": "{{serverName}} đã bật. Hãy gửi lại yêu cầu để dùng công cụ của nó.",
+    "failed": "Không thể bật {{serverName}}: {{error}}"
   }
 }

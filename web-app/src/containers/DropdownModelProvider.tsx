@@ -77,6 +77,16 @@ type DropdownModelProviderProps = {
   variant?: 'pill' | 'quiet'
 }
 
+/** `api.example.com:8080` from a base URL, or `''` when there is none. */
+function hostOf(baseUrl?: string): string {
+  if (!baseUrl) return ''
+  try {
+    return new URL(baseUrl).host
+  } catch {
+    return ''
+  }
+}
+
 interface SearchableModel {
   provider: ModelProvider
   model: Model
@@ -502,7 +512,37 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     return items
   }, [providers])
 
-  // Create Fzf instance for fuzzy search
+  // Model ids offered by more than one provider (the same model behind two
+  // remotes). Their rows must say which remote they belong to, everywhere.
+  const ambiguousModelIds = useMemo(() => {
+    const seen = new Map<string, number>()
+    searchableItems.forEach((item) =>
+      seen.set(item.model.id, (seen.get(item.model.id) ?? 0) + 1)
+    )
+    return new Set([...seen].filter(([, n]) => n > 1).map(([id]) => id))
+  }, [searchableItems])
+
+  // What to call each remote: its title, plus its host when another provider
+  // has the same title (two endpoints of one vendor, two local proxies).
+  const remoteLabel = useCallback(
+    (p: ModelProvider) => {
+      const title = getProviderTitle(p.provider)
+      const twins = searchableItems.filter(
+        (i) =>
+          i.provider.provider !== p.provider &&
+          getProviderTitle(i.provider.provider) === title
+      )
+      if (twins.length === 0) return title
+      const host = hostOf(p.base_url)
+      return host ? `${title} · ${host}` : `${title} · ${p.provider}`
+    },
+    [searchableItems]
+  )
+
+  // Create Fzf instance for fuzzy search over what a model is called. The
+  // remote it sits behind is matched separately (below), as plain text: folded
+  // into this string, fuzzy matching let "mmm" find models through the letters
+  // of an unrelated provider's name.
   const fzfInstance = useMemo(() => {
     return new Fzf(searchableItems, {
       selector: (item) =>
@@ -521,19 +561,33 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const filteredItems = useMemo(() => {
     if (!searchValue) return searchableItems
 
-    return fzfInstance.find(searchValue.toLowerCase()).map((result) => {
-      const item = result.item
-      const positions = Array.from(result.positions) || []
+    // Each word must hit the model's name (fuzzy) or its remote (substring):
+    // "gpt-4o work" is the copy of gpt-4o behind the remote called "work".
+    // Order follows the first word's fuzzy ranking, then the rest as listed.
+    const words = searchValue.toLowerCase().split(/\s+/).filter(Boolean)
+    const nameHits = words.map((w) => fzfInstance.find(w))
+    const nameSets = nameHits.map((hits) => new Set(hits.map((h) => h.item)))
+    const remoteText = (item: SearchableModel) =>
+      `${getProviderTitle(item.provider.provider)} ${item.provider.provider} ${hostOf(item.provider.base_url)}`.toLowerCase()
+    const matches = (item: SearchableModel) =>
+      words.every(
+        (w, i) => nameSets[i].has(item) || remoteText(item).includes(w)
+      )
+    const ranked = (nameHits[0] ?? []).map((h) => h.item)
+    const rankedSet = new Set(ranked)
+    const ordered = [
+      ...ranked,
+      ...searchableItems.filter((item) => !rankedSet.has(item)),
+    ].filter(matches)
+
+    return ordered.map((item) => {
+      const hit = nameHits[0]?.find((h) => h.item === item)
       const highlightedId = highlightFzfMatch(
         item.model.id,
-        positions,
+        hit ? Array.from(hit.positions) : [],
         'text-acc-text'
       )
-
-      return {
-        ...item,
-        highlightedId,
-      }
+      return { ...item, highlightedId }
     })
   }, [searchableItems, searchValue, fzfInstance])
 
@@ -730,12 +784,17 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     const modelName = getModelDisplayName(item.model)
     const offline = modelIsOffline(item)
     // A single list has no provider header, so the row carries the provider.
-    const secondary =
-      list === 'flat'
-        ? `${getProviderTitle(item.provider.provider)}${modelName !== item.model.id ? ` · ${item.model.id}` : ''}`
-        : modelName !== item.model.id
-          ? item.model.id
-          : undefined
+    // So does any row that could be mistaken for another remote's copy of the
+    // same model, and every favourite (pinned above the provider sections).
+    const showRemote =
+      list === 'flat' ||
+      list === 'fav' ||
+      ambiguousModelIds.has(item.model.id)
+    const secondary = showRemote
+      ? `${remoteLabel(item.provider)}${modelName !== item.model.id ? ` · ${item.model.id}` : ''}`
+      : modelName !== item.model.id
+        ? item.model.id
+        : undefined
     return (
       <div
         key={`${list}-${item.value}`}
@@ -776,7 +835,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
               )}
             </div>
           </TooltipTrigger>
-          <TooltipContent>{item.model.id}</TooltipContent>
+          <TooltipContent>
+            {item.model.id} · {remoteLabel(item.provider)}
+          </TooltipContent>
         </Tooltip>
         <ModelEvidenceBadges
           provider={item.provider.provider}

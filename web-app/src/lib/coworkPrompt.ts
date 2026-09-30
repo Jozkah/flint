@@ -117,6 +117,10 @@ export type CoworkPromptOptions = {
   availableTools?: readonly string[]
   /** The work-profile add-on for this request, when work profiles are on. */
   workProfileBlock?: string
+  /** The `# Skills` catalogue (see `skillCatalog.ts`), when skills are installed. */
+  skillsBlock?: string
+  /** Skills active for this turn, with their instructions (`skillActivation.ts`). */
+  skillActivationBlock?: string
   /** Selected assistant's persona, subordinate to Cowork and project rules. */
   assistantProfileBlock?: string
   /** Jev's work-style advice for this turn, never a permission change. */
@@ -540,6 +544,12 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     )
   }
   if (hasTool(opts, 'list_sessions')) blocks.push(SESSIONS_BLOCK)
+  // Skills are only worth naming when the run can read them.
+  if (opts.skillsBlock?.trim() && hasTool(opts, 'skill_read')) {
+    blocks.push(opts.skillsBlock.trim())
+  }
+  // Not gated on `skill_read`: an active skill's instructions are already here.
+  if (opts.skillActivationBlock?.trim()) blocks.push(opts.skillActivationBlock.trim())
   // Never both: plan mode ends on a `plan_review` question and an "Exit plan
   // mode" option, the opening turn on `continue_proposal`. Given both, the
   // model offered choices neither contract could carry out (#296), so only

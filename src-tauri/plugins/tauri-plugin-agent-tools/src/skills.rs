@@ -96,6 +96,12 @@ pub struct SkillMeta {
     /// never said what it is cannot satisfy a constraint on it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// The skill asks to be active in every conversation (`always: true`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub always: bool,
+    /// Phrases that mean this skill applies (`triggers:` in the frontmatter).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<String>,
 }
 
 /// The two `agent.toml` keys skill discovery depends on.
@@ -176,6 +182,42 @@ struct Frontmatter {
     /// AH-124. The skills this one's instructions depend on, optionally with
     /// a version bound: `requires: ["formatting", "deploy >=2.1"]`.
     requires: Option<Vec<String>>,
+    /// The skill should be active in every conversation (caveman-style modes,
+    /// house rules). Spelled `always`, `always-on` or `always_active`.
+    #[serde(alias = "always-on", alias = "always_active", alias = "always-active")]
+    always: Option<bool>,
+    /// What a request looks like when this skill applies: a list, or one
+    /// comma/newline separated string. Spelled `triggers`, `trigger` or `when`.
+    #[serde(alias = "trigger", alias = "when")]
+    triggers: Option<serde_yaml::Value>,
+}
+
+/// The trigger phrases a frontmatter value declares: a list, or a string split
+/// on commas and newlines. Lowercased, trimmed, empties and duplicates dropped.
+fn parse_triggers(value: Option<serde_yaml::Value>) -> Vec<String> {
+    let raw: Vec<String> = match value {
+        Some(serde_yaml::Value::String(s)) => s
+            .split(|c| c == ',' || c == '\n')
+            .map(str::to_string)
+            .collect(),
+        Some(serde_yaml::Value::Sequence(items)) => items
+            .into_iter()
+            .filter_map(|v| match v {
+                serde_yaml::Value::String(s) => Some(s),
+                serde_yaml::Value::Number(n) => Some(n.to_string()),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let mut out: Vec<String> = Vec::new();
+    for phrase in raw {
+        let phrase = phrase.trim().to_lowercase();
+        if !phrase.is_empty() && !out.contains(&phrase) {
+            out.push(phrase);
+        }
+    }
+    out
 }
 
 /// A declared version (AH-123): three numbers, and whatever the author wrote.
@@ -337,6 +379,10 @@ pub struct ParsedSkill {
     pub version: Option<String>,
     /// The skills this one depends on (AH-124).
     pub requires: Vec<SkillRequirement>,
+    /// `always: true`: active in every conversation, not only when chosen.
+    pub always: bool,
+    /// Phrases that mean this skill applies to a request, lowercased.
+    pub triggers: Vec<String>,
 }
 
 /// Split leading `---\n...\n---` YAML frontmatter from the markdown body.
@@ -353,6 +399,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             needs: Vec::new(),
             version: None,
             requires: Vec::new(),
+            always: false,
+            triggers: Vec::new(),
         };
     }
     let mut yaml = String::new();
@@ -380,6 +428,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             needs: Vec::new(),
             version: None,
             requires: Vec::new(),
+            always: false,
+            triggers: Vec::new(),
         };
     }
     let fm = serde_yaml::from_str::<Frontmatter>(&yaml).unwrap_or_default();
@@ -413,6 +463,8 @@ pub fn parse(content: &str) -> ParsedSkill {
             .iter()
             .filter_map(|entry| parse_requirement(entry))
             .collect(),
+        always: fm.always.unwrap_or(false),
+        triggers: parse_triggers(fm.triggers),
     }
 }
 
@@ -845,6 +897,8 @@ fn default_jan_skill_meta() -> SkillMeta {
         model_invocable: true,
         needs: parsed.needs.clone(),
         version: parsed.version.clone(),
+        always: parsed.always,
+        triggers: parsed.triggers.clone(),
     }
 }
 
@@ -857,6 +911,8 @@ fn meta_for(entry: &SkillEntry, parsed: &ParsedSkill) -> SkillMeta {
         model_invocable: parsed.model_invocable,
         needs: parsed.needs.clone(),
         version: parsed.version.clone(),
+        always: parsed.always,
+        triggers: parsed.triggers.clone(),
     }
 }
 
@@ -1101,6 +1157,270 @@ pub fn read_for_model_with_user(
     }
 }
 
+/// What one layer says about where a skill the model asked for lives.
+enum Located {
+    Found(SkillEntry),
+    Hidden,
+    Missing,
+}
+
+fn locate_in_layer(store: &Path, enabled: &[String], name: &str) -> Located {
+    if is_default_jan_skill(name) {
+        return Located::Missing;
+    }
+    let disabled = load_config(store).disabled_plugins;
+    let Ok(entry) = resolve_readable(store, name, &disabled) else {
+        if let Some((plugin, _)) = name.split_once(':') {
+            if plugins_dir(store).join(plugin).is_dir() {
+                return Located::Hidden;
+            }
+        }
+        return Located::Missing;
+    };
+    if entry_enabled(enabled, &entry) {
+        Located::Found(entry)
+    } else {
+        Located::Hidden
+    }
+}
+
+fn locate_in_user_layer(user: &Path, enabled: &[String], name: &str) -> Located {
+    if name.contains(':') {
+        return Located::Missing;
+    }
+    let Ok(entry) = resolve_store_skill(user, name) else {
+        return Located::Missing;
+    };
+    if entry_enabled(enabled, &entry) {
+        Located::Found(entry)
+    } else {
+        Located::Hidden
+    }
+}
+
+/// The on-disk entry [`read_for_model_with_user`] would read: same layers, same
+/// precedence, same "hidden never falls through" rule. `None` for a skill the
+/// model may not see and for the built-in one, which has no files.
+pub fn locate_for_model_with_user(
+    project: Option<&Path>,
+    store: &Path,
+    user: Option<&Path>,
+    enabled: &[String],
+    name: &str,
+) -> Option<SkillEntry> {
+    if let Some(project) = project {
+        let config = load_config(project);
+        match locate_in_layer(project, &config.enabled, name) {
+            Located::Found(entry) => return Some(entry),
+            Located::Hidden => return None,
+            Located::Missing if name.contains(':') => return None,
+            Located::Missing => {}
+        }
+    }
+    match locate_in_layer(store, enabled, name) {
+        Located::Found(entry) => return Some(entry),
+        Located::Hidden => return None,
+        Located::Missing => {}
+    }
+    match locate_in_user_layer(user_layer(store, user)?, enabled, name) {
+        Located::Found(entry) => Some(entry),
+        Located::Hidden | Located::Missing => None,
+    }
+}
+
+/// The largest bundled file `skill_read` hands over in one call.
+pub const BUNDLED_FILE_MAX_BYTES: u64 = 256 * 1024;
+/// Entries a bundled-files listing shows before it says how many are left.
+const BUNDLE_LISTING_MAX: usize = 60;
+const BUNDLE_WALK_DEPTH: usize = 4;
+
+/// The folder a skill's bundled files live in: the skill's own folder, or the
+/// plugin folder for a repo that is itself one skill. A flat `<name>.md` skill
+/// bundles nothing.
+pub fn bundle_dir(entry: &SkillEntry) -> Option<PathBuf> {
+    let is_skill_md = entry.file.file_name().is_some_and(|n| n == "SKILL.md");
+    if entry.is_folder || is_skill_md {
+        entry.file.parent().map(Path::to_path_buf)
+    } else {
+        None
+    }
+}
+
+/// Folders that are never a skill's own files: dependency and build output,
+/// which can hold tens of thousands of entries.
+const BUNDLE_SKIP_DIRS: &[&str] = &["node_modules", ".venv", "venv", "__pycache__", "target", ".git"];
+
+/// Collect `dir`'s entries relative to `base`, at most `depth` levels deep and
+/// at most `cap` entries. Credential files (`.env`, keys) are left out, as the
+/// file tools refuse them, and so are dependency folders.
+fn walk_bundle(dir: &Path, base: &Path, depth: usize, cap: usize, out: &mut Vec<String>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let mut entries: Vec<_> = rd.flatten().collect();
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        if out.len() >= cap {
+            return;
+        }
+        let path = e.path();
+        let Ok(rel) = path.strip_prefix(base) else {
+            continue;
+        };
+        let file_name = e.file_name().to_string_lossy().to_string();
+        let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        if crate::project_browse::is_sensitive_name(&file_name)
+            || (is_dir && BUNDLE_SKIP_DIRS.contains(&file_name.as_str()))
+        {
+            continue;
+        }
+        let mut name = rel.to_string_lossy().replace('\\', "/");
+        if !is_dir && name == "SKILL.md" {
+            continue;
+        }
+        if is_dir {
+            name.push('/');
+        }
+        out.push(name);
+        if is_dir && depth > 1 {
+            walk_bundle(&path, base, depth - 1, cap, out);
+        }
+    }
+}
+
+/// A short "what else is in this skill's folder" note for the end of a
+/// `skill_read` body, or `None` when the skill bundles nothing. Without it the
+/// model has no way to learn that `themes/` exists, let alone read it.
+pub fn bundle_listing(entry: &SkillEntry, name: &str) -> Option<String> {
+    let base = bundle_dir(entry)?.canonicalize().ok()?;
+    let mut all = Vec::new();
+    walk_bundle(&base, &base, BUNDLE_WALK_DEPTH, BUNDLE_LISTING_MAX + 1, &mut all);
+    if all.is_empty() {
+        return None;
+    }
+    let shown = all.iter().take(BUNDLE_LISTING_MAX);
+    let mut text = format!(
+        "\n\n---\nThis skill bundles files. Paths in the instructions above are relative to its \
+         folder and are not in your workspace: read them with `skill_read` \
+         {{\"name\": \"{name}\", \"file\": \"<path>\"}} (a folder path lists it).\n"
+    );
+    for line in shown {
+        text.push_str("- ");
+        text.push_str(line);
+        text.push('\n');
+    }
+    if all.len() > BUNDLE_LISTING_MAX {
+        text.push_str(&format!(
+            "... {} more; pass a folder as `file` to list it.\n",
+            all.len() - BUNDLE_LISTING_MAX
+        ));
+    }
+    Some(text)
+}
+
+/// One bundled file (or a folder listing) from inside a skill's folder.
+///
+/// `rel` is relative to [`bundle_dir`]. Absolute paths, `..`, and anything that
+/// resolves outside the folder (a symlink included) are refused, so this can
+/// reach nothing the skill did not ship. Text only, [`BUNDLED_FILE_MAX_BYTES`]
+/// at most; the result is an `ERROR:` string on any failure.
+///
+/// Credential files (`.env`, keys) are refused exactly as the `read` tool
+/// refuses them, and `blocked` is asked about the resolved path so the run's
+/// own deny rules apply here too: a skill's folder is not a way around them.
+pub fn read_bundled(entry: &SkillEntry, rel: &str, blocked: &dyn Fn(&Path) -> bool) -> String {
+    let Some(base) = bundle_dir(entry) else {
+        return "ERROR: this skill is a single file and bundles nothing else".to_string();
+    };
+    let rel = rel.trim().replace('\\', "/");
+    let rel = rel.trim_start_matches("./");
+    let rel_path = Path::new(rel);
+    let unsafe_component = rel_path.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::ParentDir
+                | std::path::Component::RootDir
+                | std::path::Component::Prefix(_)
+        )
+    });
+    if unsafe_component || rel_path.is_absolute() {
+        return format!(
+            "ERROR: '{rel}' must be a path relative to the skill's folder, without '..'"
+        );
+    }
+    let Ok(base_c) = base.canonicalize() else {
+        return "ERROR: the skill folder is unreadable".to_string();
+    };
+    let target = if rel.is_empty() || rel == "." {
+        base_c.clone()
+    } else {
+        base_c.join(rel_path)
+    };
+    let Ok(target_c) = target.canonicalize() else {
+        return format!("ERROR: '{rel}' not found in this skill's folder");
+    };
+    if !target_c.starts_with(&base_c) {
+        return format!("ERROR: '{rel}' resolves outside the skill's folder");
+    }
+    let is_secret = |p: &Path| {
+        p.strip_prefix(&base_c)
+            .unwrap_or(p)
+            .components()
+            .any(|c| crate::project_browse::is_sensitive_name(&c.as_os_str().to_string_lossy()))
+    };
+    if is_secret(&target_c) || is_secret(&target) || blocked(&target_c) {
+        return format!("ERROR: '{rel}' is not readable: it may hold credentials, or the run's rules deny it");
+    }
+    if target_c.is_dir() {
+        let mut all = Vec::new();
+        walk_bundle(&target_c, &target_c, 1, BUNDLE_LISTING_MAX + 1, &mut all);
+        return if all.is_empty() {
+            format!("{rel}/ is empty")
+        } else {
+            all.join("\n")
+        };
+    }
+    match std::fs::metadata(&target_c) {
+        Ok(m) if m.len() > BUNDLED_FILE_MAX_BYTES => {
+            return format!(
+                "ERROR: '{rel}' is {} bytes, over the {BUNDLED_FILE_MAX_BYTES}-byte limit for a \
+                 skill file",
+                m.len()
+            )
+        }
+        Err(e) => return format!("ERROR: {e}"),
+        Ok(_) => {}
+    }
+    match std::fs::read(&target_c) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(e) => format!(
+                "ERROR: '{rel}' is a binary file ({} bytes) and cannot be shown as text",
+                e.as_bytes().len()
+            ),
+        },
+        Err(e) => format!("ERROR: {e}"),
+    }
+}
+
+/// Folders holding installed skills, for the read gate: the store's `skills/`
+/// and `plugins/`, and the user store's. Read-only and existing only. The
+/// desktop's data folder is off-limits to `request_access`, so without this a
+/// skill's bundled files could never be opened with `read`/`ls`/`grep`.
+pub fn readable_skill_roots(store: &Path, user: Option<&Path>) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for s in std::iter::once(store).chain(user) {
+        for dir in [skills_dir(s), plugins_dir(s)] {
+            if let Ok(c) = dir.canonicalize() {
+                if c.is_dir() && !out.contains(&c) {
+                    out.push(c);
+                }
+            }
+        }
+    }
+    out
+}
+
 /// The model-side catalog across the same two layers as [`read_for_model`].
 pub fn catalog_for_model(
     project: Option<&Path>,
@@ -1241,6 +1561,130 @@ mod tests {
             std::fs::write(folder.join("SKILL.md"), content).expect("skill file");
         }
         store
+    }
+
+    /// A folder skill that ships `themes/ocean.md` and a top-level `notes.txt`.
+    fn store_with_bundle() -> std::path::PathBuf {
+        let store = store_with(&[("theme-factory", "---\ndescription: themes\n---\nUse themes/ocean.md")]);
+        let dir = skills_dir(&store).join("theme-factory");
+        std::fs::create_dir_all(dir.join("themes")).unwrap();
+        std::fs::write(dir.join("themes").join("ocean.md"), "deep blue").unwrap();
+        std::fs::write(dir.join("notes.txt"), "n").unwrap();
+        store
+    }
+
+    fn located(store: &std::path::Path, name: &str) -> SkillEntry {
+        locate_for_model_with_user(None, store, None, &[], name).expect("skill located")
+    }
+
+    #[test]
+    fn a_bundled_file_is_read_from_inside_the_skill_folder() {
+        let store = store_with_bundle();
+        let entry = located(&store, "theme-factory");
+        assert_eq!(read_bundled(&entry, "themes/ocean.md", &|_| false), "deep blue");
+        assert_eq!(read_bundled(&entry, "themes\\ocean.md", &|_| false), "deep blue");
+        assert_eq!(read_bundled(&entry, "./notes.txt", &|_| false), "n");
+        let listing = read_bundled(&entry, "themes", &|_| false);
+        assert_eq!(listing, "ocean.md");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn a_bundled_file_cannot_leave_the_skill_folder() {
+        let store = store_with_bundle();
+        std::fs::write(skills_dir(&store).join("secret.txt"), "s3cret").unwrap();
+        let entry = located(&store, "theme-factory");
+        for bad in ["../secret.txt", "themes/../../secret.txt", "/etc/passwd", "C:/Windows/win.ini"] {
+            let out = read_bundled(&entry, bad, &|_| false);
+            assert!(out.starts_with("ERROR:"), "{bad}: {out}");
+            assert!(!out.contains("s3cret"), "{bad}: {out}");
+        }
+        assert!(read_bundled(&entry, "missing.md", &|_| false).starts_with("ERROR:"));
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn credential_files_and_denied_paths_in_a_bundle_are_not_handed_over() {
+        let store = store_with_bundle();
+        let dir = skills_dir(&store).join("theme-factory");
+        std::fs::write(dir.join(".env"), "API_KEY=s3cret").unwrap();
+        std::fs::create_dir_all(dir.join("node_modules").join("dep")).unwrap();
+        std::fs::write(dir.join("node_modules").join("dep").join("x.js"), "x").unwrap();
+        let entry = located(&store, "theme-factory");
+        let out = read_bundled(&entry, ".env", &|_| false);
+        assert!(out.starts_with("ERROR:") && !out.contains("s3cret"), "{out}");
+        // A rule of the run that denies the path applies too.
+        let denied = read_bundled(&entry, "notes.txt", &|p| p.ends_with("notes.txt"));
+        assert!(denied.starts_with("ERROR:"), "{denied}");
+        let listing = bundle_listing(&entry, "theme-factory").unwrap();
+        assert!(!listing.contains(".env") && !listing.contains("node_modules"), "{listing}");
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn the_skill_body_lists_what_it_bundles_and_a_bare_skill_lists_nothing() {
+        let store = store_with_bundle();
+        let listing = bundle_listing(&located(&store, "theme-factory"), "theme-factory").unwrap();
+        assert!(listing.contains("- themes/\n"), "{listing}");
+        assert!(listing.contains("- themes/ocean.md\n"), "{listing}");
+        assert!(listing.contains("- notes.txt\n"), "{listing}");
+        assert!(!listing.contains("SKILL.md"), "{listing}");
+        let bare = store_with(&[("plain", "just text")]);
+        assert!(bundle_listing(&located(&bare, "plain"), "plain").is_none());
+        let _ = std::fs::remove_dir_all(&store);
+        let _ = std::fs::remove_dir_all(&bare);
+    }
+
+    #[test]
+    fn a_flat_skill_bundles_nothing_and_a_hidden_one_is_not_located() {
+        let store = store_with(&[]);
+        std::fs::write(skills_dir(&store).join("flat.md"), "flat body").unwrap();
+        let entry = located(&store, "flat");
+        assert!(read_bundled(&entry, "x", &|_| false).starts_with("ERROR:"));
+        let only_other = vec!["other".to_string()];
+        assert!(locate_for_model_with_user(None, &store, None, &only_other, "flat").is_none());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn a_skill_can_ask_to_be_always_active_and_name_what_triggers_it() {
+        let p = parse("---\nalways: true\ntriggers: [Review PR, \"Code Review\", review pr]\n---\nbody");
+        assert!(p.always);
+        assert_eq!(p.triggers, vec!["review pr", "code review"]);
+        let p = parse("---\nalways-on: true\nwhen: \"debug a crash, stack trace\\nsegfault\"\n---\nx");
+        assert!(p.always);
+        assert_eq!(p.triggers, vec!["debug a crash", "stack trace", "segfault"]);
+        let plain = parse("---\ndescription: d\n---\nx");
+        assert!(!plain.always && plain.triggers.is_empty());
+        assert!(!parse("no frontmatter").always);
+    }
+
+    #[test]
+    fn always_and_triggers_reach_the_listing_only_when_declared() {
+        let store = store_with(&[
+            ("mode", "---\ndescription: m\nalways: true\ntriggers: [go]\n---\nb"),
+            ("plain", "---\ndescription: p\n---\nb"),
+        ]);
+        let metas = list_meta(&store);
+        let json = |name: &str| {
+            serde_json::to_value(metas.iter().find(|m| m.name == name).unwrap()).unwrap()
+        };
+        assert_eq!(json("mode")["always"], true);
+        assert_eq!(json("mode")["triggers"][0], "go");
+        assert!(json("plain").get("always").is_none());
+        assert!(json("plain").get("triggers").is_none());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn installed_skill_folders_are_readable_roots() {
+        let store = store_with_bundle();
+        let roots = readable_skill_roots(&store, None);
+        let expected = skills_dir(&store).canonicalize().unwrap();
+        assert!(roots.contains(&expected), "{roots:?}");
+        // No plugins folder yet: only what exists is offered.
+        assert!(roots.iter().all(|r| r.is_dir()));
+        let _ = std::fs::remove_dir_all(&store);
     }
 
     /// What a store answers when asked for a skill by name.

@@ -1,0 +1,7 @@
+{
+  "skills": {
+    "alwaysOn": "항상 켜짐",
+    "alwaysActive": "항상 활성",
+    "alwaysActiveHelp": "요청하지 않아도 모든 대화에서 이 스킬을 따릅니다."
+  }
+}

@@ -1175,12 +1175,23 @@ async fn execute_tool_inner(
             }
         }
     }
+    // Installed skills and plugins are readable by the file tools, read-only:
+    // their bundled files are otherwise unreachable, since the data folder they
+    // sit in cannot be granted through `request_access`. Kept out of
+    // `read_roots` itself: that list's first entry is taken as the attached
+    // project, and it is what the shell is given to mount.
+    let mut gate_roots = read_roots.clone();
+    for dir in skills::readable_skill_roots(&store, None) {
+        if !gate_roots.contains(&dir) {
+            gate_roots.push(dir);
+        }
+    }
     let decision = gate::resolve_decision(
         tool,
         &args,
         &root,
         Some(&scratch),
-        &read_roots,
+        &gate_roots,
         &permissions,
         &grants,
         true,
@@ -1328,7 +1339,9 @@ async fn execute_tool_inner(
             return Err(format!(
                 "tool '{name}' was refused: that path is outside the workspace and every \
                  folder the user has granted. Call request_access with the narrowest \
-                 required path and explain why access is needed, then retry this call."
+                 required path and explain why access is needed, then retry this call. \
+                 (Skill files are the exception: read one with skill_read and its `file` \
+                 argument; request_access cannot grant Flint's own data folder.)"
             )
             .into());
         }

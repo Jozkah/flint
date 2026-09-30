@@ -97,5 +97,12 @@
     "clearFailed": "{{serverName}} için kimlik bilgileri temizlenemedi",
     "renew": "Oturumu yenile",
     "expiredAgo": "{{duration}} önce süresi doldu"
+  },
+  "mention": {
+    "offTitle": "{{serverName}} kapalı",
+    "offDesc": "Bundan söz ettiniz ama çalışmıyor, bu yüzden araçları bu yanıt için kullanılamıyor.",
+    "enable": "Etkinleştir",
+    "enabled": "{{serverName}} açık. Araçlarını kullanmak için isteğinizi yeniden gönderin.",
+    "failed": "{{serverName}} etkinleştirilemedi: {{error}}"
   }
 }

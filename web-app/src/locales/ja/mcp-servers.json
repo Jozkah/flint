@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "モデルを検索…",
     "routerModelEmptyList": "利用可能な軽量モデルがありません。より小さなモデルを追加するか、「モデル」でAPIキーを設定してください。",
     "routerModelEmptySearch": "「{{query}}」に一致するものはありません。"
+  },
+  "mention": {
+    "offTitle": "{{serverName}} はオフです",
+    "offDesc": "このサーバーに言及されましたが、実行されていないため、この返信ではそのツールを利用できません。",
+    "enable": "有効にする",
+    "enabled": "{{serverName}} をオンにしました。ツールを使うには、もう一度リクエストを送信してください。",
+    "failed": "{{serverName}} を有効にできませんでした: {{error}}"
   }
 }

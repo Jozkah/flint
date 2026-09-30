@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Hledat modely…",
     "routerModelEmptyList": "Nejsou dostupné žádné lehké modely. Přidejte menší model nebo nastavte klíče API v části Modely.",
     "routerModelEmptySearch": "Žádné shody pro „{{query}}“."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} je vypnutý",
+    "offDesc": "Zmínili jste ho, ale neběží, takže jeho nástroje nejsou pro tuto odpověď dostupné.",
+    "enable": "Zapnout",
+    "enabled": "{{serverName}} je zapnutý. Pošlete požadavek znovu, aby se použily jeho nástroje.",
+    "failed": "{{serverName}} se nepodařilo zapnout: {{error}}"
   }
 }

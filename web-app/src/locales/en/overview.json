@@ -46,8 +46,10 @@
     "model": "Model",
     "status": "Status",
     "started": "Started",
+    "speed": "Avg. speed",
     "tokens": "Tokens"
   },
+  "tokensPerSecond": "{{value}} t/s",
   "status": {
     "running": "Running",
     "approval": "Needs approval",

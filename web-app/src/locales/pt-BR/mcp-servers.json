@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Pesquisar modelos…",
     "routerModelEmptyList": "Nenhum modelo leve disponível. Adicione um modelo menor ou configure chaves de API em Modelos.",
     "routerModelEmptySearch": "Nenhum resultado para “{{query}}”."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} está desligado",
+    "offDesc": "Você o mencionou, mas ele não está em execução, então suas ferramentas não estão disponíveis para esta resposta.",
+    "enable": "Ativar",
+    "enabled": "{{serverName}} está ligado. Envie o pedido novamente para usar suas ferramentas.",
+    "failed": "Não foi possível ativar {{serverName}}: {{error}}"
   }
 }

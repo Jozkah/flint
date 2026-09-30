@@ -265,6 +265,8 @@ pub(crate) fn unmet_requirements(
         needs: Vec::new(),
         version: None,
         requires: requires.to_vec(),
+        always: false,
+        triggers: Vec::new(),
     };
     let lookup = |wanted: &str| {
         resolve_readable(root, wanted)

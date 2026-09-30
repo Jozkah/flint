@@ -9,7 +9,6 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 interface DeleteAssistantDialogProps {
   open: boolean
@@ -49,7 +48,9 @@ export function DeleteAssistantDialog({
             {t('assistants:deleteConfirmationDesc')}
           </DialogDescription>
         </DialogHeader>
-        <DialogFooter className={STICKY_DIALOG_FOOTER}>
+        {/* A two-line confirmation never scrolls, so its footer is plain: the
+            sticky band (border and slab) belongs to long forms. */}
+        <DialogFooter className="mb-0">
           <Button
             ref={cancelButtonRef}
             variant="ghost"

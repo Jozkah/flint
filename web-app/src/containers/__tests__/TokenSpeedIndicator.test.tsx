@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { TokenSpeedIndicator } from '@/containers/TokenSpeedIndicator'
-import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
+import { isMeaningfulSpeed, speedStats } from '@/lib/tokenSpeed'
 
 vi.mock('@/hooks/useInterfaceSettings', () => ({
   useInterfaceSettings: (sel: (s: { showTokenSpeed: boolean }) => unknown) =>
@@ -39,5 +39,30 @@ describe('TokenSpeedIndicator', () => {
       />
     )
     expect(screen.getByText('42 tokens/sec')).toBeTruthy()
+  })
+})
+
+describe('a short reply still gets a speed', () => {
+  it('counts a 20-token reply over a quarter second, which used to be hidden', () => {
+    expect(isMeaningfulSpeed(20, 300)).toBe(true)
+    expect(isMeaningfulSpeed(8, 250)).toBe(true)
+  })
+})
+
+describe('speedStats', () => {
+  it('gives the latest measurable reply and a token-weighted average', () => {
+    const stats = speedStats([
+      { tokenSpeed: 100, tokenCount: 100, durationMs: 1000 },
+      { tokenSpeed: 50, tokenCount: 300, durationMs: 6000 },
+      { tokenSpeed: 900, tokenCount: 3, durationMs: 4 }, // too short to time
+      undefined,
+    ])
+    expect(stats.last).toBe(50)
+    expect(stats.average).toBeCloseTo((100 * 100 + 50 * 300) / 400)
+  })
+
+  it('is empty when nothing could be measured', () => {
+    expect(speedStats([])).toEqual({})
+    expect(speedStats([{ tokenSpeed: 900, tokenCount: 3, durationMs: 4 }])).toEqual({})
   })
 })

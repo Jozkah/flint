@@ -1,0 +1,6 @@
+{
+  "col": {
+    "speed": "평균 속도"
+  },
+  "tokensPerSecond": "{{value}} t/s"
+}

@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TokenCounter } from '../TokenCounter'
 import { useTokensCount } from '@/hooks/useTokensCount'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 vi.mock('@/hooks/useTokensCount', () => ({
   useTokensCount: vi.fn(),
 }))
@@ -167,7 +168,8 @@ describe('TokenCounter', () => {
     })
     render(<TokenCounter />)
     expect(screen.queryByText(/%/)).toBeNull()
-    expect(screen.getAllByText('1.4K').length).toBeGreaterThanOrEqual(1)
+    // The trigger is a circle; the total is said to a screen reader and shown on hover.
+    expect(screen.getByText('Token usage 1.4K')).toBeTruthy()
     expect(screen.getByText('GPT X')).toBeTruthy()
     // Exact count is grouped in the reader's locale, so derive the
     // expectation rather than hard-coding en-US separators.
@@ -423,7 +425,93 @@ describe('TokenCounter', () => {
       })
       render(<TokenCounter />)
       const trigger = screen.getByTestId('token-counter')
-      expect(trigger.textContent).toBe('6.0K')
+      expect(trigger.textContent).toBe('Token usage 6.0K')
+      expect(trigger.textContent).not.toContain('5,974')
+    })
+  })
+
+  describe('the circle', () => {
+    it('shows no number on the trigger, only the ring, and says the fill in words', () => {
+      mockTokens({ tokenCount: 370, maxTokens: 1000 })
+      render(<TokenCounter />)
+      const trigger = screen.getByTestId('token-counter')
+      expect(trigger.querySelector('svg')).toBeTruthy()
+      expect(trigger.querySelector('.sr-only')?.textContent).toBe('Context 37% full')
+      // Nothing but the screen-reader text is text.
+      expect(trigger.textContent).toBe('Context 37% full')
+    })
+
+    it('is a circle for a provider with no window size too', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: undefined })
+      render(<TokenCounter />)
+      const trigger = screen.getByTestId('token-counter')
+      expect(trigger.querySelector('svg')).toBeTruthy()
+    })
+  })
+
+  describe('the context card', () => {
+    const breakdown = {
+      at: 1,
+      segments: [
+        { id: 'messages' as const, label: 'Messages', tokens: 300, color: 'bg-blue-500' },
+        { id: 'systemPrompt' as const, label: 'System prompt', tokens: 100, color: 'bg-slate-400' },
+      ],
+    }
+
+    it('replaces the plain progress block once a request has been measured', () => {
+      useContextBreakdown.setState({ byId: { t1: breakdown } })
+      mockTokens({ tokenCount: 400, maxTokens: 1000 })
+      const onCompact = vi.fn()
+      render(<TokenCounter source={{ threadId: 't1' }} onCompact={onCompact} />)
+      expect(screen.getByTestId('context-window-card')).toBeTruthy()
+      expect(screen.getByTestId('context-bar').querySelector('[data-segment="messages"]')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Compact session' })).toBeTruthy()
+      useContextBreakdown.setState({ byId: {} })
+    })
+
+    it('is there for a provider with no window size too, without a compaction line', () => {
+      useContextBreakdown.setState({ byId: { t1: breakdown } })
+      mockTokens({ tokenCount: 400, maxTokens: undefined })
+      render(<TokenCounter source={{ threadId: 't1' }} />)
+      expect(screen.getByTestId('context-window-card')).toBeTruthy()
+      expect(screen.queryByTestId('until-compact')).toBeNull()
+      useContextBreakdown.setState({ byId: {} })
+    })
+
+    it('leaves the plain layout when nothing has been measured', () => {
+      useContextBreakdown.setState({ byId: {} })
+      mockTokens({ tokenCount: 400, maxTokens: 1000 })
+      render(<TokenCounter source={{ threadId: 't1' }} />)
+      expect(screen.queryByTestId('context-window-card')).toBeNull()
+    })
+  })
+
+  describe('generation speed on hover', () => {
+    it('shows the latest and the average speed when there are some', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: undefined })
+      render(<TokenCounter speed={{ last: 41.26, average: 38 }} />)
+      expect(screen.getByTestId('speed-section')).toBeTruthy()
+      expect(screen.getByText('41.3 tokens/sec')).toBeTruthy()
+      expect(screen.getByText('38.0 tokens/sec')).toBeTruthy()
+    })
+
+    it('reads the speed off the messages when none is handed in', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: 8000 })
+      const messages = [
+        { id: 'a', role: 'assistant', metadata: { tokenSpeed: { tokenSpeed: 50, tokenCount: 200, durationMs: 4000 } } },
+      ] as never
+      render(<TokenCounter messages={messages} />)
+      // One reply: it is both the latest and the average.
+      expect(screen.getAllByText('50.0 tokens/sec')).toHaveLength(2)
+    })
+
+    it('says nothing about speed when no reply was long enough to time', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: undefined })
+      const messages = [
+        { id: 'a', role: 'assistant', metadata: { tokenSpeed: { tokenSpeed: 900, tokenCount: 3, durationMs: 4 } } },
+      ] as never
+      render(<TokenCounter messages={messages} />)
+      expect(screen.queryByTestId('speed-section')).toBeNull()
     })
   })
 

@@ -69,5 +69,12 @@
     "routerModelSearchPlaceholder": "Cari model…",
     "routerModelEmptyList": "Tidak ada model ringan. Tambahkan model yang lebih kecil atau atur kunci API di Model.",
     "routerModelEmptySearch": "Tidak ada yang cocok untuk “{{query}}”."
+  },
+  "mention": {
+    "offTitle": "{{serverName}} nonaktif",
+    "offDesc": "Anda menyebutnya, tetapi server ini tidak berjalan sehingga alatnya tidak tersedia untuk balasan ini.",
+    "enable": "Aktifkan",
+    "enabled": "{{serverName}} aktif. Kirim ulang permintaan Anda untuk memakai alatnya.",
+    "failed": "Tidak dapat mengaktifkan {{serverName}}: {{error}}"
   }
 }
