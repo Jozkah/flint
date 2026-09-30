@@ -73,6 +73,40 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Reply actions show a tooltip each, a dot separates the cache figure from the speed, and the row holds still while hovering.
 - The Windows installer, Flatpak metadata and credits name Jozkah.
 
+### Rooms: assistants, tools and folders
+
+- Each participant can be given its own **assistant** and **work role**, picked from menus that match the composer's, with an **Other** role that takes free text and a way to add a custom assistant.
+- A participant runs with its assistant's sampling (temperature, top-p, top-k and the like) as well as its instructions, and is told which language to write in.
+- A room can attach **several folders**, each with the same access as the main one.
+- A new **Like Cowork** access level lets a participant read, edit, run commands with the shell, use git, and call skills and plugins. Anything that changes files or runs a command asks for approval, and a refused call is reported instead of retried.
+- Tool calls in a room are folded to one line saying what they did, such as **Ran 10 commands, edited 1 file**. Opening it shows a chip per call, hovering a chip shows what it was given and what came back, and **Details** lays every call out in its own card.
+- A live turn says what the participant is doing (thinking, writing, running a named tool, or waiting for your approval) and lists the calls finished so far, instead of a fixed "Speaking…".
+- Each reply shows the tokens it wrote and how fast, at the end of its header, also for turns that only made tool calls. A message to a participant is coloured like that participant.
+- **`/clear`** forgets a room's chat, its accumulated state, or everything including its scratch files and waiting prompts, and never touches its settings or folders.
+- A long turn of tool calls is charged to the room's token budget once, not once per call.
+- Regenerating a title is also available for Cowork sessions and rooms.
+
+### Models that have gone away
+
+- Starting or resuming a room, chat or Cowork session with a model that is no longer available asks which model to use instead of failing or silently skipping the participant.
+- Refreshing a provider's model list now removes models the server no longer lists, and an empty answer never clears the saved ones.
+
+### Reply language
+
+- A new **Reply language** setting under **Settings → General** makes the model answer in a chosen language in chats, Cowork and rooms, whatever language the user, files or tool results are in. Code, commands and paths are left alone. **Automatic** keeps the old behaviour.
+- Rooms repeat the language rule in the last message of every turn, where a long turn of tool results cannot push it out of reach.
+
+### Titles, spacing and assistants on replies
+
+- **Regenerate title** in the sidebar menu of a chat, Cowork session or room rewrites the name from what the conversation is about. The chat, Cowork and Rooms menus are split into groups, and submenu triggers use the same text size as items.
+- Cowork replies and room messages name the assistant that wrote them, and a rule marks where the assistant changes. Messages sit closer together.
+- Sidebar preview cards show a written summary of the conversation instead of its first prompt, and size to fit it.
+
+### Fixes to original Jan behavior
+
+- Opening a chat no longer animates every message in, which made long chats slow to appear. A chat's messages are also read when the pointer reaches its row.
+- A site without a favicon tries its common icon names before falling back to a letter.
+
 ### Run summary and opening pages
 
 - A finished run's folded steps now say what the run did, such as **Ran 20 commands, created 8 files, used 6 tools +645 −0**, instead of a bare step count.
