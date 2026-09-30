@@ -22,6 +22,7 @@ import HeaderPage from '@/containers/HeaderPage'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
+import { forkThread } from '@/lib/forkThread'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
@@ -2056,6 +2057,21 @@ export function ThreadConversation({
 
   // Regenerate keeps the previous reply as a prior version (no deletion); the
   // new reply arrives in onFinish as a sibling and becomes the active branch.
+  // Fork this chat from a message into a new chat, and open it.
+  const handleFork = useCallback(
+    async (messageId: string) => {
+      if (!threadId) return
+      const forkedId = await forkThread(threadId, messageId)
+      if (!forkedId) {
+        toast.error(t('chat:fork.failed'))
+        return
+      }
+      toast.success(t('chat:fork.done'))
+      navigate({ to: route.threadsDetail, params: { threadId: forkedId } })
+    },
+    [threadId, navigate, t]
+  )
+
   const handleRegenerate = useCallback(
     (messageId?: string) => {
       const hadBannerError =
@@ -2814,6 +2830,7 @@ export function ThreadConversation({
                       onReasoningScroll={handleReasoningScroll}
                       onReasoningScrollToBottom={forceScrollReasoningToBottom}
                       onRegenerate={handleRegenerate}
+                      onFork={handleFork}
                       onContinue={handleContinue}
                       onEdit={handleEditMessage}
                       onDelete={handleDeleteMessage}

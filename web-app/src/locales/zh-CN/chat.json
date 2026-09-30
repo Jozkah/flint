@@ -16,7 +16,8 @@
   },
   "actions": {
     "regenerate": "重新生成回复",
-    "continue": "继续生成"
+    "continue": "继续生成",
+    "fork": "从此处分叉对话"
   },
   "webSources": "{{count}} 个来源",
   "reasoning": {
@@ -64,5 +65,10 @@
   "transcriptView": {
     "steps_other": "{{count}} 个步骤",
     "working": "处理中"
+  },
+  "fork": {
+    "chat": "分叉对话",
+    "done": "已分叉为新对话。",
+    "failed": "无法分叉此对话。"
   }
 }

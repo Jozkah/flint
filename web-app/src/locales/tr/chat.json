@@ -15,7 +15,8 @@
   },
   "actions": {
     "regenerate": "Yanıtı yeniden üret",
-    "continue": "Üretmeye devam et"
+    "continue": "Üretmeye devam et",
+    "fork": "Sohbeti buradan dallandır"
   },
   "done": "Bitti",
   "webSources": "{{count}} kaynak",
@@ -65,5 +66,10 @@
     "steps_one": "{{count}} adım",
     "steps_other": "{{count}} adım",
     "working": "Çalışıyor"
+  },
+  "fork": {
+    "chat": "Sohbeti dallandır",
+    "done": "Yeni bir sohbete dallandırıldı.",
+    "failed": "Bu sohbet dallandırılamadı."
   }
 }

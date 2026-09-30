@@ -47,5 +47,13 @@
     "steps_many": "{{count}} etapas",
     "steps_other": "{{count}} etapas",
     "working": "Trabalhando"
+  },
+  "actions": {
+    "fork": "Ramificar o chat a partir daqui"
+  },
+  "fork": {
+    "chat": "Ramificar chat",
+    "done": "Ramificado em um novo chat.",
+    "failed": "Não foi possível ramificar este chat."
   }
 }
