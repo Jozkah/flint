@@ -1,0 +1,38 @@
+name: One-shot Discover changelog wording
+
+on:
+  push:
+    branches:
+      - feat/huggingface-model-downloads
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/huggingface-model-downloads
+      - name: Polish Discover release wording
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('CHANGELOG.md')
+          text = path.read_text(encoding='utf-8')
+          old = "- **Local-first and private.** Telemetry, automatic update checks and background model-discovery fetches were removed from the Flint build. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes, including Hugging Face **Discover**."
+          new = "- **Local-first and private.** Telemetry and automatic update checks stay disabled, while model discovery is intentionally user-initiated through Hugging Face **Discover** instead of hidden background catalogue traffic. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes."
+          if old not in text:
+              raise SystemExit('Expected Discover privacy wording was not found')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Commit wording and remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+Jozkah@users.noreply.github.com"
+          git add CHANGELOG.md
+          git rm .github/workflows/_polish-hub-changelog.yml
+          git diff --cached --check
+          git commit -m "docs(changelog): frame Discover as improved model discovery"
+          git push origin HEAD:feat/huggingface-model-downloads
