@@ -109,7 +109,7 @@ function WebSearchContent() {
                     variant="outline"
                     className="max-w-full justify-between gap-2 pointer-coarse:h-11"
                   >
-                    <ProviderFavicon provider={provider} />
+                    <ProviderFavicon key={provider.id} provider={provider} />
                     <span className="truncate">{provider.label}</span>
                     <Icon name="arrow-down" size={12} className="ml-2 opacity-70" />
                   </Button>
@@ -124,7 +124,7 @@ function WebSearchContent() {
                       )}
                       onClick={() => setSearchProvider(p.id)}
                     >
-                      <ProviderFavicon provider={p} />
+                      <ProviderFavicon key={p.id} provider={p} />
                       <span className="truncate">{p.label}</span>
                     </DropdownMenuItem>
                   ))}

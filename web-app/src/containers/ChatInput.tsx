@@ -1105,7 +1105,9 @@ const ChatInput = memo(function ChatInput({
           ? assistants.find((a) => a.id === projectAssistantId)
           : assistants.find((a) => a.id === selectedAssistantId)
 
-        setCurrentAssistant(assistant)
+        // Not saved as "last used": the composer's assistant is a draft (see
+        // AssistantsMenu), and routing may have moved it without the user.
+        setCurrentAssistant(assistant, false)
 
         // Never pin a thread to a model the provider cannot serve — a local
         // engine has no cloud catalogue to borrow an id from (janhq/jan#8007).

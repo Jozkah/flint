@@ -537,6 +537,7 @@
     "steeringHint": "Trafi do agenta w jego następnym kroku; jeśli przebieg skończy się wcześniej, zostanie wysłane jako następna wiadomość"
   },
   "coworkOrigins": {
+    "showAll": "Pokaż wszystkie ({{formattedCount}})",
     "baseline": {
       "clean": "Drzewo robocze Git dołączonego folderu nie miało niezatwierdzonych zmian w chwili rozpoczęcia tego przebiegu."
     },
@@ -698,5 +699,8 @@
   },
   "decisionScopeShowFull": "Pokaż całość",
   "decisionScopeHide": "Ukryj",
-  "decisionScopeCopy": "Kopiuj"
+  "decisionScopeCopy": "Kopiuj",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Wybierz inną przeglądarkę…"
+  }
 }

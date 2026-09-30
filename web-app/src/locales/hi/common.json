@@ -605,6 +605,7 @@
     "steeringHint": "एजेंट को उसके अगले चरण पर जाता है; यदि रन पहले खत्म हो जाए, तो इसे अगले संदेश के रूप में भेजा जाता है"
   },
   "coworkOrigins": {
+    "showAll": "सभी {{formattedCount}} दिखाएँ",
     "baseline": {
       "clean": "यह रन शुरू होते समय संलग्न फ़ोल्डर के Git वर्किंग ट्री में कोई अनकमिटेड बदलाव नहीं थे।"
     },
@@ -766,5 +767,8 @@
   },
   "decisionScopeShowFull": "पूरा दिखाएँ",
   "decisionScopeHide": "छिपाएँ",
-  "decisionScopeCopy": "कॉपी करें"
+  "decisionScopeCopy": "कॉपी करें",
+  "browserVerify": {
+    "chooseDifferentBrowser": "कोई दूसरा ब्राउज़र चुनें…"
+  }
 }

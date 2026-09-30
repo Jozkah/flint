@@ -54,7 +54,7 @@
     "allowOnce": "Allow once",
     "allowThread": "Allow in this conversation",
     "allowGitTemporary": "Allow all temporarily",
-    "allowGitTemporaryExplanation": "Allow ordinary non-destructive Git and GitHub remote actions for this conversation only. Destructive operations still ask.",
+    "allowGitTemporaryExplanation": "Allow pushes to a configured Git remote and routine GitHub actions for this conversation, until Flint restarts. Destructive operations, pushes to a URL, and creating, editing or merging on GitHub still ask.",
     "noBroaderOptions": "No broader safe approval is available for this request.",
     "allowAlwaysServer": "Always allow {{server}}",
     "allowAlwaysTool": "Always allow {{tool}}",

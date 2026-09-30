@@ -537,6 +537,7 @@
     "steeringHint": "Dostane se k agentovi v jeho dalším kroku; pokud běh skončí dřív, odešle se jako další zpráva"
   },
   "coworkOrigins": {
+    "showAll": "Zobrazit vše ({{formattedCount}})",
     "baseline": {
       "clean": "Pracovní strom Gitu připojené složky neměl při spuštění tohoto běhu žádné necommitnuté změny."
     },
@@ -698,5 +699,8 @@
   },
   "decisionScopeShowFull": "Zobrazit celé",
   "decisionScopeHide": "Skrýt",
-  "decisionScopeCopy": "Kopírovat"
+  "decisionScopeCopy": "Kopírovat",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Vybrat jiný prohlížeč…"
+  }
 }

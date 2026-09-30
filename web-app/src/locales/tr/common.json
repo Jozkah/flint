@@ -817,6 +817,7 @@
     "steeringHint": "Ajana bir sonraki adımında gider; çalıştırma önce biterse sonraki mesaj olarak gönderilir"
   },
   "coworkOrigins": {
+    "showAll": "Tümünü göster ({{formattedCount}})",
     "baseline": {
       "clean": "Bu çalıştırma başladığında eklenen klasörün Git çalışma ağacında commit edilmemiş değişiklik yoktu."
     },
@@ -977,5 +978,8 @@
   },
   "decisionScopeShowFull": "Tamamını göster",
   "decisionScopeHide": "Gizle",
-  "decisionScopeCopy": "Kopyala"
+  "decisionScopeCopy": "Kopyala",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Başka bir tarayıcı seç…"
+  }
 }

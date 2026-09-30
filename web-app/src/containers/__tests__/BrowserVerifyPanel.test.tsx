@@ -13,6 +13,14 @@ vi.mock('@/hooks/useServiceHub', () => ({
   }),
 }))
 
+const setBrowserPath = vi.hoisted(() => vi.fn())
+const toastError = vi.hoisted(() => vi.fn())
+vi.mock('sonner', () => ({ toast: { error: toastError } }))
+vi.mock('@/lib/browserVerify', async (orig) => ({
+  ...(await orig<typeof import('@/lib/browserVerify')>()),
+  setBrowserPath,
+}))
+
 import { BrowserVerifyPanel, BrowserVerifyEvidence } from '../BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -45,6 +53,26 @@ describe('BrowserVerifyPanel', () => {
     )
     await screen.findByTestId('bv-no-browser')
     expect(screen.getByTestId('bv-choose-browser')).toBeTruthy()
+  })
+
+  it('surfaces a refused browser path instead of swallowing it', async () => {
+    setBrowserPath.mockRejectedValueOnce(new Error('must be absolute'))
+    render(
+      <BrowserVerifyPanel
+        sessionId="s1"
+        detect={async () => ({ found: false, path: null, name: null, hint: null })}
+      />
+    )
+    fireEvent.click(await screen.findByTestId('bv-choose-browser'))
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('must be absolute'))
+  })
+
+  it('offers a different browser even when one is already found', async () => {
+    setBrowserPath.mockResolvedValueOnce({ found: true, path: '/usr/bin/brave-browser', name: 'Brave', hint: null })
+    render(<BrowserVerifyPanel sessionId="s1" detect={found} />)
+    fireEvent.click(await screen.findByTestId('bv-choose-other-browser'))
+    await waitFor(() => expect(screen.getByText('common:browserVerify.using')).toBeTruthy())
+    expect(setBrowserPath).toHaveBeenCalledWith('/usr/bin/brave-browser')
   })
 
   it('will not run against a URL that is not on this machine', async () => {

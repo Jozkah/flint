@@ -536,6 +536,7 @@
     "steeringHint": "Vai para o agente no próximo passo; se a execução terminar antes, é enviado como próxima mensagem"
   },
   "coworkOrigins": {
+    "showAll": "Mostrar todos os {{formattedCount}}",
     "baseline": {
       "clean": "A árvore de trabalho Git da pasta anexada não tinha alterações não commitadas quando esta execução começou."
     },
@@ -697,5 +698,8 @@
   },
   "decisionScopeShowFull": "Mostrar completo",
   "decisionScopeHide": "Ocultar",
-  "decisionScopeCopy": "Copiar"
+  "decisionScopeCopy": "Copiar",
+  "browserVerify": {
+    "chooseDifferentBrowser": "Escolher outro navegador…"
+  }
 }

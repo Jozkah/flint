@@ -10,6 +10,7 @@ import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, VectorDBExtension } from '@janhq/core'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
 import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
 
@@ -98,6 +99,8 @@ const cleanupThreadArtifacts = (threadId: string) => {
   cleanupVectorDB(threadId)
   cleanupThreadCache(threadId)
   cleanupThreadWorkspace(threadId)
+  // "Allow all temporarily" lasts only as long as its conversation.
+  useToolApprovalRequests.getState().forgetTemporaryGit(threadId)
 }
 
 export const useThreads = create<ThreadState>()((set, get) => ({
@@ -408,12 +411,16 @@ export const useThreads = create<ThreadState>()((set, get) => ({
     set((state) => {
       if (!state.currentThreadId) return { ...state }
       const currentThread = state.getCurrentThread()
+      // A pick by the user means the assistant is no longer Jev's to change.
+      const rest = { ...(currentThread?.metadata ?? {}) }
+      delete rest.jevRoutedAssistantId
       if (currentThread)
         getServiceHub()
           .threads()
           .updateThread({
             ...currentThread,
             assistants: assistant ? [{ ...assistant, model: currentThread.model }] : [],
+            metadata: rest,
           })
       return {
         threads: {
@@ -423,6 +430,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
             assistants: assistant
               ? [{ ...assistant, model: currentThread?.model }]
               : [],
+            metadata: rest,
             updated: Date.now() / 1000,
           },
         },
