@@ -1,0 +1,62 @@
+name: One-shot v0.9.0 release notes refresh
+
+on:
+  push:
+    branches:
+      - feat/huggingface-model-downloads
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/huggingface-model-downloads
+      - name: Update published v0.9.0 notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v0.9.0" > /tmp/release.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path('/tmp/release.json').read_text(encoding='utf-8'))
+          body = release.get('body') or ''
+
+          old = "- **Local-first and private.** Telemetry, update checks, model discovery and catalogue fetches are removed and the whole repo is guarded against phoning home; web search no longer reports back what it returned. Flint runs against your own models and providers, and nothing leaves the machine unless you send it."
+          new = "- **Local-first and private.** Telemetry, automatic update checks and hidden background catalogue traffic are disabled and the repo is guarded against phoning home; web search no longer reports back what it returned. Hugging Face discovery and downloads are available through Flint's explicit **Discover** experience and contact the service only when you open or use it."
+          hub = "- **A rebuilt Hugging Face model Hub.** Discover keeps the full model-browsing and download workflow — search, filters and sorting, GGUF/MLX variants, model details and README, inline progress, installed state and New Chat — rebuilt in Flint's UI with hardware-aware recommendations, multipart GGUF/MMProj/speculative companion handling, gated-model tokens, resumable/cancellable downloads, size/SHA verification and update provenance."
+
+          if old in body:
+              body = body.replace(old, new + "\n" + hub, 1)
+          elif hub not in body:
+              raise SystemExit('Expected v0.9.0 local-first release bullet was not found')
+
+          payload = {'body': body}
+          Path('/tmp/release-patch.json').write_text(json.dumps(payload), encoding='utf-8')
+          print(release['id'])
+          PY
+          release_id=$(python -c "import json; print(json.load(open('/tmp/release.json'))['id'])")
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" --input /tmp/release-patch.json >/tmp/release-updated.json
+          python - <<'PY'
+          import json
+          updated=json.load(open('/tmp/release-updated.json'))
+          body=updated.get('body') or ''
+          assert 'A rebuilt Hugging Face model Hub' in body
+          assert 'model discovery and catalogue fetches are removed' not in body
+          print(updated['html_url'])
+          PY
+      - name: Remove one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/_update-release-v090.yml
+          git commit -m "chore: remove one-shot release notes workflow"
+          git push origin HEAD:feat/huggingface-model-downloads
