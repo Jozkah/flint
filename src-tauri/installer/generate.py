@@ -214,7 +214,7 @@ def button_width(label, small=False):
     return max(88, text_width(label, "Medium", 13) + 28)
 
 
-def button(theme, variant, label, scale, width=None, small=False):
+def button(theme, variant, label, scale, width=None, small=False, flat=False):
     """A `size="lg"` Flint button: 36px tall, 14px padding, 13px medium, 8px radius.
     With `small`, the default size: 32px tall, 12px medium.
 
@@ -239,6 +239,8 @@ def button(theme, variant, label, scale, width=None, small=False):
         border, fill, fg = t["destructive_tint"], Image.new("RGB", (w, h), rgb(t["destructive_tint"])), t["destructive"]
     else:  # outline
         border, fill, fg = t["border"], Image.new("RGB", (w, h), rgb(t["card"])), t["secondary_fg"]
+        if flat:
+            border = t["card"]  # no border of its own, see msi_button()
 
     img.paste(Image.new("RGB", (w, h), rgb(border)), (0, 0), rounded_mask((w, h), r))
     inner = (w - 2 * bw, h - 2 * bw)
@@ -514,6 +516,11 @@ def msi_page(theme, name):
     y = msi_text(img, (MSI_X, y + 6), spec["sub"], "Regular", 13, rgb(t["muted_fg"]), MSI_COL)
     if "label" in spec:
         msi_text(img, (MSI_X, 112), spec["label"], "Medium", 13, rgb(t["foreground"]))
+        # The path box: the app Input (32px, like the Browse button beside it), with the path
+        # written over it by a text control. A Windows edit control draws a black border of
+        # its own and cannot be centred, so it is not used; Browse and the folder picker's
+        # own edit box are how the path changes.
+        img.paste(field(theme, msi_field_w(), 100), (MSI_X, MSI_ROW_Y))
         msi_text(img, (MSI_X, 190), spec["note"], "Regular", 12, rgb(t["muted_fg"]), MSI_COL)
     by = y + 26
     for para in spec.get("body", []):
@@ -545,6 +552,11 @@ def msi_button_w(label, small=False):
     return (button_width(label, small) + 3) // 4 * 4
 
 
+def msi_field_w():
+    """Install-location box: from the text column to the Browse button, less an 8px gap."""
+    return 468 - msi_button_w("Browse", True) - 8 - MSI_X
+
+
 def msi_button_h(small=False):
     return 32 if small else 36
 
@@ -561,7 +573,9 @@ def msi_button(theme, variant, label):
     small = slug in MSI_SMALL_SLUGS
     w, h = msi_button_w(label, small), msi_button_h(small)
     art = Image.new("RGB", (w + 8, h + 8), rgb(THEMES[theme]["background"]))
-    art.paste(button(theme, variant, label, 100, width=w, small=small), (4, 4))
+    # An outline button also draws no border here. Windows draws its own frame around a push
+    # button, and shows it on hover; with the app's border as well that read as two outlines.
+    art.paste(button(theme, variant, label, 100, width=w, small=small, flat=variant == "outline"), (4, 4))
     return art
 
 
@@ -572,6 +586,7 @@ def slug_of(variant, label):
 # One place for every MSI dialog: geometry in px (multiples of 4, so DU are whole
 # numbers) and the events each button publishes. Written to flint-ui-dialogs.wxi.
 RIGHT = 468  # right edge of the footer button row, px
+MSI_ROW_Y = 132  # top of the install-location row (path box and Browse), px
 
 
 def du(px):
@@ -630,8 +645,8 @@ def msi_dialogs():
         ("Back", "outline", "back", RIGHT - 3 * 88 - 16, Y, [("NewDialog", "FlintWelcomeDlg", "", "1")], None),
         ("Cancel", "outline", "cancel", RIGHT - 88 - 8 - 88, Y, cancel, None),
         ("Install", "primary", "install", RIGHT - 88, Y, [("SetTargetPath", "[WIXUI_INSTALLDIR]", 1, "1"), ("EndDialog", "Return", 2, "1")], None),
-        ("Browse", "outline", "browse", RIGHT - browse_w, 132, [("DoAction", "FlintBrowseFolder", "", "1")], None)],
-        native=f'        <Control Id="FolderEdit" Type="PathEdit" X="137" Y="104" Width="{(RIGHT - browse_w - 8 - 182) * 3 // 4}" Height="15" Property="WIXUI_INSTALLDIR" Indirect="yes" />')
+        ("Browse", "outline", "browse", RIGHT - browse_w, MSI_ROW_Y, [("DoAction", "FlintBrowseFolder", "", "1")], None)],
+        native=f'        <Control Id="FolderText" Type="Text" X="{(MSI_X + 12) * 3 // 4}" Y="{(MSI_ROW_Y + 8) * 3 // 4}" Width="{(msi_field_w() - 24) * 3 // 4}" Height="12" Transparent="yes" NoPrefix="yes" NoWrap="yes" Text="[INSTALLDIR]" />')
     for did, page in (("Flint_progress_Dlg", "Page_progress"), ("Flint_removing_Dlg", "Page_removing")):
         dialog(did, 370, 270, page, [("Cancel", "outline", "cancel", RIGHT - 88, Y, cancel, None)], modeless=True, native=
                '        <Control Id="ActionText" Type="Text" X="137" Y="112" Width="215" Height="10" Transparent="yes" NoPrefix="yes" Text="Starting">\n'
