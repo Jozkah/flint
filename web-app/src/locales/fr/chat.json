@@ -47,5 +47,13 @@
     "steps_many": "{{count}} étapes",
     "steps_other": "{{count}} étapes",
     "working": "En cours"
+  },
+  "actions": {
+    "fork": "Créer une branche du chat à partir d'ici"
+  },
+  "fork": {
+    "chat": "Dupliquer le chat en branche",
+    "done": "Branche créée dans un nouveau chat.",
+    "failed": "Impossible de créer une branche de ce chat."
   }
 }

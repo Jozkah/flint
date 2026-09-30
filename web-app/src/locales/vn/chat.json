@@ -45,5 +45,13 @@
   "transcriptView": {
     "steps_other": "{{count}} bước",
     "working": "Đang làm"
+  },
+  "actions": {
+    "fork": "Tách nhánh cuộc trò chuyện từ đây"
+  },
+  "fork": {
+    "chat": "Tách nhánh cuộc trò chuyện",
+    "done": "Đã tách sang cuộc trò chuyện mới.",
+    "failed": "Không thể tách nhánh cuộc trò chuyện này."
   }
 }

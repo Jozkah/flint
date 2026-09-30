@@ -46,5 +46,13 @@
     "steps_one": "{{count}} pas",
     "steps_other": "{{count}} passos",
     "working": "Treballant"
+  },
+  "actions": {
+    "fork": "Bifurca el xat des d'aquí"
+  },
+  "fork": {
+    "chat": "Bifurca el xat",
+    "done": "S'ha bifurcat en un xat nou.",
+    "failed": "No s'ha pogut bifurcar aquest xat."
   }
 }

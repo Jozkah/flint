@@ -45,5 +45,13 @@
   "transcriptView": {
     "steps_other": "{{count}} langkah",
     "working": "Bekerja"
+  },
+  "actions": {
+    "fork": "Cabangkan obrolan dari sini"
+  },
+  "fork": {
+    "chat": "Cabangkan obrolan",
+    "done": "Dicabangkan ke obrolan baru.",
+    "failed": "Tidak dapat mencabangkan obrolan ini."
   }
 }

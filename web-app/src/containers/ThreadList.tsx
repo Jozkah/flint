@@ -4,6 +4,7 @@ import {
   Columns2,
   Copy,
   Folder,
+  GitFork,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -53,6 +54,9 @@ import { memo, useMemo, useState } from 'react'
 import { Link, useParams } from '@tanstack/react-router'
 import { RenameThreadDialog, DeleteThreadDialog } from '@/containers/dialogs'
 import { toast } from 'sonner'
+import { useNavigate } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
+import { forkThread } from '@/lib/forkThread'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
@@ -84,6 +88,7 @@ const ThreadItem = memo(
     const renameThread = useThreads((state) => state.renameThread)
     const { folders, addFolder } = useThreadManagement()
     const { t } = useTranslation()
+    const navigate = useNavigate()
     const [menuOpen, setMenuOpen] = useState(false)
     const [renameOpen, setRenameOpen] = useState(false)
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
@@ -338,6 +343,23 @@ const ThreadItem = memo(
             <DropdownMenuItem onSelect={() => setRenameOpen(true)}>
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              data-testid="fork-chat"
+              onSelect={() => {
+                void (async () => {
+                  const forkedId = await forkThread(thread.id)
+                  if (!forkedId) {
+                    toast.error(t('chat:fork.failed'))
+                    return
+                  }
+                  toast.success(t('chat:fork.done'))
+                  navigate({ to: route.threadsDetail, params: { threadId: forkedId } })
+                })()
+              }}
+            >
+              <GitFork className="size-4" />
+              <span>{t('chat:fork.chat')}</span>
             </DropdownMenuItem>
             <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
               <DropdownMenuSubTrigger className="gap-2">

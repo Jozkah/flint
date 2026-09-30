@@ -17,6 +17,7 @@ vi.mock('@tanstack/react-router', () => ({
   ),
   useParams: ({ select }: any = {}) =>
     select ? select({ threadId: undefined }) : { threadId: undefined },
+  useNavigate: () => vi.fn(),
 }))
 
 vi.mock('@/i18n/react-i18next-compat', () => ({
@@ -144,6 +145,12 @@ describe('what the menu contains', () => {
       screen.getByText('common:projects.moveToGroup')
     ).toBeInTheDocument()
     expect(screen.getByText('common:delete')).toBeInTheDocument()
+  })
+
+  it('offers to fork the chat', () => {
+    renderList()
+    fireEvent.contextMenu(screen.getByTestId('row'))
+    expect(screen.getByText('chat:fork.chat')).toBeInTheDocument()
   })
 
   it('offers copying the conversation id', () => {
