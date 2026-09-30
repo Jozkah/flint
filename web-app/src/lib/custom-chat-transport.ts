@@ -1,5 +1,7 @@
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
+import { buildContextBreakdown } from '@/lib/contextBreakdown'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
@@ -834,6 +836,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * succeed.
    */
   protected recordsChatRun = true
+  /** Which MCP server each advertised tool came from, for the context breakdown. */
+  protected toolServers = new Map<string, string>()
   /**
    * Whether this transport compacts a conversation at the threshold itself.
    * Cowork compacts in its run loop, where the summary is persisted, and turns
@@ -1104,6 +1108,45 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * undefined so we don't send a useless system turn that some chat templates
    * still wrap into special tokens.
    */
+  /** Skill text this surface puts in the prompt, counted apart in the breakdown. */
+  protected skillTextsInPrompt(): string[] {
+    return [skillCatalogBlock()]
+  }
+
+  /**
+   * Measure what this request carries by kind and hand it to the composer's
+   * context circle. Never throws: a figure that cannot be worked out is a
+   * missing figure, not a failed message.
+   */
+  protected publishContextBreakdown(
+    systemPrompt: string | undefined,
+    messages: UIMessage[]
+  ): void {
+    if (!this.threadId) return
+    try {
+      const memory = this.memorySelection
+      useContextBreakdown.getState().set(
+        this.threadId,
+        buildContextBreakdown({
+          systemPrompt,
+          skillTexts: this.skillTextsInPrompt(),
+          memoryTexts: memory?.block ? [memory.precedence ?? '', memory.block] : [],
+          tools: Object.entries(this.tools ?? {}).map(([name, tool]) => ({
+            name,
+            schema: {
+              description: (tool as { description?: string }).description,
+              inputSchema: (tool as { inputSchema?: unknown }).inputSchema,
+            },
+            server: this.toolServers.get(name),
+          })),
+          messages,
+        })
+      )
+    } catch {
+      // Not measured this time.
+    }
+  }
+
   protected buildSystemPrompt(messages: UIMessage[]): string | undefined {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
@@ -1219,6 +1262,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     const toolsRecord: Record<string, Tool> = {}
+    const toolServers = new Map<string, string>()
 
     // Tool availability is global (shared across all chats).
     const disabledToolKeys = useToolAvailable.getState().getDisabledTools()
@@ -1380,6 +1424,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               )
             }
             seenBy.set(tool.name, serverName)
+            toolServers.set(tool.name, serverName)
             toolsRecord[tool.name] = {
               description: tool.description,
               inputSchema: jsonSchema(
@@ -1451,6 +1496,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // conversation (transcript audit #11).
     for (const name of deadTools(this.threadId)) delete toolsRecord[name]
     this.tools = toolsRecord
+    this.toolServers = toolServers
     this.toolsCacheKey = cacheKey
   }
 
@@ -1902,6 +1948,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     await this.refreshMemory()
     const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
+    this.publishContextBreakdown(effectiveSystem, messagesToConvert)
 
     const maxOutputTokens: number | undefined = (() => {
       const raw = inferenceParams.max_output_tokens ?? inferenceParams.max_tokens

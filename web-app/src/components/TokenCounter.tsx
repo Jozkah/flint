@@ -17,6 +17,15 @@ import {
 } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
+import { ContextWindowCard } from '@/components/ContextWindowCard'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import { reconcileBreakdown } from '@/lib/contextBreakdown'
+import {
+  DEFAULT_COMPACTION_POLICY,
+  effectiveReserve,
+  getCompactionPolicy,
+  type CompactionPolicy,
+} from '@/lib/compactionPolicy'
 import {
   Brain,
   Gauge,
@@ -37,6 +46,8 @@ interface TokenCounterProps {
   source?: TokenUsageSource
   /** Generation speed of the latest reply and the conversation's average. */
   speed?: { last?: number; average?: number }
+  /** Compacts the conversation; offered from the context card when given. */
+  onCompact?: () => void
 }
 
 const WARN_PCT = 85
@@ -50,6 +61,7 @@ export const TokenCounter = memo(function TokenCounter({
   additionalTokens = 0,
   source,
   speed: speedProp,
+  onCompact,
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
@@ -94,6 +106,19 @@ export const TokenCounter = memo(function TokenCounter({
     [speedProp, source?.speed, messages]
   )
 
+  // What the last request carried, by kind, for the context card.
+  const stored = useContextBreakdown((s) => (scope ? s.byId[scope] : undefined))
+  const [policy, setPolicy] = useState<CompactionPolicy>(DEFAULT_COMPACTION_POLICY)
+  useEffect(() => {
+    let alive = true
+    getCompactionPolicy()
+      .then((p) => alive && setPolicy(p))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const [isAnimating, setIsAnimating] = useState(false)
   const [prevTokenCount, setPrevTokenCount] = useState(0)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -130,6 +155,11 @@ export const TokenCounter = memo(function TokenCounter({
   const totalTokens = useMemo(
     () => tokenData.tokenCount + additionalTokens,
     [tokenData.tokenCount, additionalTokens]
+  )
+
+  const reconciled = useMemo(
+    () => (stored ? reconcileBreakdown(stored, totalTokens) : null),
+    [stored, totalTokens]
   )
 
   const pct = useMemo(() => {
@@ -174,6 +204,15 @@ export const TokenCounter = memo(function TokenCounter({
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         speed={speed}
+        card={
+          reconciled ? (
+            <ContextWindowCard
+              segments={reconciled.segments}
+              usedTokens={reconciled.usedTokens}
+              onCompact={onCompact}
+            />
+          ) : null
+        }
         className={className}
       />
     )
@@ -291,6 +330,29 @@ export const TokenCounter = memo(function TokenCounter({
           className="min-w-72 max-w-80 bg-background border p-0 overflow-hidden"
           data-testid="token-usage-popover"
         >
+          {reconciled ? (
+            <div className="border-b border-border">
+              {tier !== 'ok' && (
+                <p
+                  data-testid="context-pressure-detail"
+                  className={cn('px-3 pt-2.5 text-[11px] leading-snug', textCls)}
+                >
+                  {tier === 'over'
+                    ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
+                    : `${formatExact(remaining)} tokens left. Start a new chat or remove attachments before the window fills.`}
+                </p>
+              )}
+              <ContextWindowCard
+                segments={reconciled.segments}
+                usedTokens={reconciled.usedTokens}
+                windowTokens={tokenData.maxTokens}
+                autoCompactOn={policy.auto}
+                autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
+                onCompact={onCompact}
+              />
+            </div>
+          ) : (
+            <>
           {/* Header */}
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />
@@ -362,6 +424,9 @@ export const TokenCounter = memo(function TokenCounter({
             )}
           </div>
 
+            </>
+          )}
+
           <SpeedSection speed={speed} />
 
           {/* Token breakdown */}
@@ -428,6 +493,7 @@ function TokenCountOnly({
   scope,
   modelDisplayName,
   speed,
+  card,
   className,
 }: {
   totalTokens: number
@@ -436,6 +502,7 @@ function TokenCountOnly({
   scope?: string
   modelDisplayName?: string
   speed?: { last?: number; average?: number }
+  card?: React.ReactNode
   className?: string
 }) {
   return (
@@ -489,6 +556,7 @@ function TokenCountOnly({
               )}
             </div>
           </div>
+          {card ? <div className="border-b border-border">{card}</div> : null}
           <div className="px-3 py-2">
             <TokenUsageBreakdown usage={usage} scope={scope} />
           </div>

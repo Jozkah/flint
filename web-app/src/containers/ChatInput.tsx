@@ -176,6 +176,12 @@ type ChatInputProps = {
    * reported twice.
    */
   hideTokenCounter?: boolean
+  /**
+   * Compacts the open conversation, offered from the context circle. Chat
+   * compacts through its registered compactor; a surface with its own (Cowork)
+   * supplies this.
+   */
+  onCompact?: () => void
   model?: ThreadModel
   initialMessage?: boolean
   projectId?: string
@@ -328,6 +334,7 @@ const ChatInput = memo(function ChatInput({
   stopControl,
   tokenSource,
   hideTokenCounter,
+  onCompact,
   threadId: threadIdProp,
   modelSelection,
   modelOverrideScope,
@@ -801,6 +808,16 @@ const ChatInput = memo(function ChatInput({
     selectedProvider,
     isModelActive
   )
+
+  const compactFromCounter =
+    onCompact ??
+    (currentThreadId
+      ? () => {
+          if (!requestChatCompaction(currentThreadId)) {
+            toast.info(t('common:budget.compactFailed'))
+          }
+        }
+      : undefined)
 
   const tokenCounterVisible =
     !hideTokenCounter &&
@@ -3594,6 +3611,7 @@ const ChatInput = memo(function ChatInput({
                     messages={threadMessages || []}
                     source={tokenSource}
                     compact={true}
+                    onCompact={compactFromCounter}
                   />
                 </div>
               )}
@@ -3722,7 +3740,11 @@ const ChatInput = memo(function ChatInput({
 
       {tokenCounterVisible && !tokenCounterCompact && (
         <div className="flex-1 w-full flex justify-start px-2">
-          <TokenCounter messages={threadMessages || []} source={tokenSource} />
+          <TokenCounter
+            messages={threadMessages || []}
+            source={tokenSource}
+            onCompact={compactFromCounter}
+          />
         </div>
       )}
 

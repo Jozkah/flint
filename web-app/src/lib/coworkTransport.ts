@@ -315,6 +315,13 @@ export class CoworkChatTransport extends CustomChatTransport {
    * and its position says the same thing -- nothing remembered outranks the
    * run's rules or JAN.md.
    */
+  protected override skillTextsInPrompt(): string[] {
+    return [
+      skillCatalogBlock(undefined, this.config.readOnlyFolder),
+      skillActivationBlock(this.activeSkills),
+    ]
+  }
+
   protected override buildSystemPrompt(messages: UIMessage[]): string {
     const assistantProfile = this.routedAssistantInstructions?.trim()
       ? [

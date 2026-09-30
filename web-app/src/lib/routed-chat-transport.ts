@@ -153,6 +153,10 @@ export class RoutedChatTransport extends CustomChatTransport {
     }
   }
 
+  protected override skillTextsInPrompt(): string[] {
+    return [...super.skillTextsInPrompt(), skillActivationBlock(this.activeSkills)]
+  }
+
   protected override buildSystemPrompt(messages: UIMessage[]): string | undefined {
     const base = super.buildSystemPrompt(messages)
     const modeHint = jevModeSuggestion(this.routedMode)

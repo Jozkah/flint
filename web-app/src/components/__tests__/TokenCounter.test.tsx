@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TokenCounter } from '../TokenCounter'
 import { useTokensCount } from '@/hooks/useTokensCount'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 vi.mock('@/hooks/useTokensCount', () => ({
   useTokensCount: vi.fn(),
 }))
@@ -445,6 +446,43 @@ describe('TokenCounter', () => {
       render(<TokenCounter />)
       const trigger = screen.getByTestId('token-counter')
       expect(trigger.querySelector('svg')).toBeTruthy()
+    })
+  })
+
+  describe('the context card', () => {
+    const breakdown = {
+      at: 1,
+      segments: [
+        { id: 'messages' as const, label: 'Messages', tokens: 300, color: 'bg-blue-500' },
+        { id: 'systemPrompt' as const, label: 'System prompt', tokens: 100, color: 'bg-slate-400' },
+      ],
+    }
+
+    it('replaces the plain progress block once a request has been measured', () => {
+      useContextBreakdown.setState({ byId: { t1: breakdown } })
+      mockTokens({ tokenCount: 400, maxTokens: 1000 })
+      const onCompact = vi.fn()
+      render(<TokenCounter source={{ threadId: 't1' }} onCompact={onCompact} />)
+      expect(screen.getByTestId('context-window-card')).toBeTruthy()
+      expect(screen.getByTestId('context-bar').querySelector('[data-segment="messages"]')).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Compact session' })).toBeTruthy()
+      useContextBreakdown.setState({ byId: {} })
+    })
+
+    it('is there for a provider with no window size too, without a compaction line', () => {
+      useContextBreakdown.setState({ byId: { t1: breakdown } })
+      mockTokens({ tokenCount: 400, maxTokens: undefined })
+      render(<TokenCounter source={{ threadId: 't1' }} />)
+      expect(screen.getByTestId('context-window-card')).toBeTruthy()
+      expect(screen.queryByTestId('until-compact')).toBeNull()
+      useContextBreakdown.setState({ byId: {} })
+    })
+
+    it('leaves the plain layout when nothing has been measured', () => {
+      useContextBreakdown.setState({ byId: {} })
+      mockTokens({ tokenCount: 400, maxTokens: 1000 })
+      render(<TokenCounter source={{ threadId: 't1' }} />)
+      expect(screen.queryByTestId('context-window-card')).toBeNull()
     })
   })
 

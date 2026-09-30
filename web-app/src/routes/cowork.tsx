@@ -5947,6 +5947,7 @@ export function CoworkPage() {
                   />
                 }
                 tokenSource={tokenSource}
+                onCompact={() => void compactNowRef.current()}
                 // Assistant, sampling, web search and reasoning behind one
                 // Options button: the Cowork row stays quiet.
                 groupOptions
