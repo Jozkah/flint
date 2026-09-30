@@ -61,7 +61,7 @@ export function Ways() {
                 <Shot
                   id="03-cowork-tools"
                   alt="A Cowork run: tool call cards for edits and a test, an approval card waiting for an answer, and the Changes panel with a diff."
-                  sizes={[860, 92]}
+                  sizes={[1480, 92]}
                 />
               </Frame>
             </Reveal>
@@ -71,30 +71,14 @@ export function Ways() {
             </div>
             <p>It reads files, uses tools, runs commands in a sandbox and proposes changes. You approve what it has no grant for and review what it changed.</p>
           </article>
-          <article className="way way-rooms">
-            <Reveal mask delay={120}>
-              <Frame>
-                <Shot
-                  id="08-room"
-                  region={{ x: 1205, y: 66, w: 385, h: 930 }}
-                  alt="A Discussion Room control rail: who is speaking, up next, steering actions and the participants with their access."
-                  sizes={[400, 60]}
-                />
-              </Frame>
-            </Reveal>
-            <div className="meta">
-              <span className="k">ROOMS</span>
-              <h3 className="h3">Several models, one topic</h3>
-            </div>
-            <p>Different providers discuss a question with a moderator, budgets and a final synthesis.</p>
-          </article>
           <article className="way way-chat">
             <Reveal mask>
               <Frame>
                 <Shot
                   id="15-what-flint-is-using"
-                  alt="A chat with the Details panel open: context, changes, What Flint is using, available tools and activity."
-                  sizes={[860, 92]}
+                  region={{ x: 266, y: 60, w: 1000, h: 625 }}
+                  alt="A chat about a stale forecast cache: the model's reply, an approval card for a commit, and a prompt asking whether to remember a finding."
+                  sizes={[840, 92]}
                 />
               </Frame>
             </Reveal>
@@ -103,6 +87,23 @@ export function Ways() {
               <h3 className="h3">Questions, files and code, on your machine</h3>
             </div>
             <p>Attach files, keep conversations in projects, split two chats side by side, and see what each reply was built from.</p>
+          </article>
+          <article className="way way-rooms">
+            <Reveal mask delay={120}>
+              <Frame>
+                <Shot
+                  id="08-room"
+                  region={{ x: 1205, y: 66, w: 385, h: 930 }}
+                  alt="A Discussion Room control rail: who is speaking, up next, steering actions and the participants with their access."
+                  sizes={[440, 60]}
+                />
+              </Frame>
+            </Reveal>
+            <div className="meta">
+              <span className="k">ROOMS</span>
+              <h3 className="h3">Several models, one topic</h3>
+            </div>
+            <p>Different providers discuss a question with a moderator, budgets and a final synthesis.</p>
           </article>
         </div>
       </div>
@@ -145,7 +146,7 @@ const STEPS: Step[] = [
   },
   {
     shot: '03-cowork-tools',
-    region: R16(1040, 190, 560),
+    region: R16(840, 160, 760),
     title: 'Changes stay in a worktree',
     body: 'Flint works in its own copy. Nothing reaches your folder until you apply it, file by file or hunk by hunk.',
     alt: 'The Output panel: a note that the run works in its own copy, Review changes and Export as patch, and the files changed.',
@@ -402,7 +403,7 @@ export function Provenance() {
             </Reveal>
           </div>
           <Reveal mask>
-            <div style={{ maxWidth: 440, marginInline: 'auto' }}>
+            <div style={{ maxWidth: 350, marginInline: 'auto' }}>
               <Frame>
                 <Shot
                   id="15-what-flint-is-using"

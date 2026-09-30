@@ -6,43 +6,43 @@ export function Models() {
   return (
     <section className="section" id="models" style={{ paddingTop: 0 }}>
       <div className="wrap-wide">
-        <div className="split textimg" style={{ alignItems: 'center' }}>
-          <div className="stack">
-            <Reveal>
-              <p className="eyebrow">
-                <span className="dot" />
-                Models
-              </p>
-              <h2 className="h2" style={{ marginTop: 16 }}>
-                Your models. Your choice.
-              </h2>
-              <p className="lede" style={{ marginTop: 22 }}>
-                Run models on this machine, or connect a provider with your own key. Flint never switches to a cloud provider on its own.
-              </p>
-            </Reveal>
-            <Reveal delay={100}>
-              <div className="opts">
-                <div className="opt">
-                  <h3>GGUF, through the bundled llama.cpp engine</h3>
-                  <p>You bring the model files. Nothing is downloaded for you.</p>
-                </div>
-                <div className="opt">
-                  <h3>MLX on Apple silicon</h3>
-                  <p>Local models on macOS need an M1 or later. Intel Macs can use cloud providers.</p>
-                </div>
-                <div className="opt">
-                  <h3>OpenAI-compatible and Anthropic-compatible providers</h3>
-                  <p>Or point Flint at a server on your network. Keys are kept in the OS keyring.</p>
-                </div>
+        <div className="split">
+          <Reveal className="stack">
+            <p className="eyebrow">
+              <span className="dot" />
+              Models
+            </p>
+            <h2 className="h2" style={{ marginTop: 16 }}>
+              Your models. Your choice.
+            </h2>
+            <p className="lede" style={{ marginTop: 22 }}>
+              Run models on this machine, or connect a provider with your own key. Flint never switches to a cloud provider on its own.
+            </p>
+          </Reveal>
+          <Reveal delay={100}>
+            <div className="opts" style={{ marginTop: 0 }}>
+              <div className="opt">
+                <h3>GGUF, through the bundled llama.cpp engine</h3>
+                <p>You bring the model files. Nothing is downloaded for you.</p>
               </div>
-            </Reveal>
-          </div>
-          <Reveal mask className="bleed-r">
+              <div className="opt">
+                <h3>MLX on Apple silicon</h3>
+                <p>Local models on macOS need an M1 or later. Intel Macs can use cloud providers.</p>
+              </div>
+              <div className="opt">
+                <h3>OpenAI-compatible and Anthropic-compatible providers</h3>
+                <p>Or point Flint at a server on your network. Keys are kept in the OS keyring.</p>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+        <div style={{ marginTop: 'clamp(40px, 6vw, 80px)' }}>
+          <Reveal mask>
             <Frame>
               <Shot
                 id="09-models"
                 alt="The Models page: installed, loaded and disk totals, three loaded local models with live speed, provider cards for Llama.cpp, Anthropic, OpenAI, Gemini, OpenRouter, Mistral and Groq, and a custom provider slot."
-                sizes={[1100, 100]}
+                sizes={[1480, 92]}
               />
             </Frame>
           </Reveal>
@@ -57,61 +57,59 @@ export function Rooms() {
     <section className="section" id="rooms" style={{ paddingTop: 0 }}>
       <div className="wrap-wide">
         <div className="split">
-          <div className="stack">
-            <Reveal>
-              <p className="eyebrow">
-                <span className="dot" />
-                Discussion Rooms
-              </p>
-              <h2 className="h2" style={{ marginTop: 16 }}>
-                More than one model. One room.
-              </h2>
-              <p className="lede" style={{ marginTop: 22 }}>
-                Put several models from different providers in one room to work on a question, with you in control of the discussion.
-              </p>
-            </Reveal>
-            <Reveal delay={100}>
-              <ul className="prov-list" style={{ marginTop: 8 }}>
-                <li>
-                  <b>A moderator and speaking policies</b>
-                  <span>Round-robin, or you choose who speaks next.</span>
-                </li>
-                <li>
-                  <b>@mentions, votes and a synthesis</b>
-                  <span>Address a participant, call a vote, then ask for a summary with the dissent.</span>
-                </li>
-                <li>
-                  <b>Budgets and limits per room</b>
-                  <span>Turns, rounds, tokens, cost and time, shown at the top.</span>
-                </li>
-                <li>
-                  <b>Optional tools and files</b>
-                  <span>Read-only or read and edit access in a folder you pick. Every tool call shows as a chip.</span>
-                </li>
-              </ul>
-            </Reveal>
-          </div>
-          <div style={{ position: 'relative', paddingBottom: 'clamp(0px, 8vw, 96px)' }}>
-            <Reveal mask className="bleed-r">
-              <Frame>
-                <Shot
-                  id="08-room"
-                  alt="A Discussion Room: three models discuss a retry policy with tool chips, a vote, and a turn, round, token, cost and time counter."
-                  sizes={[1000, 100]}
-                />
-              </Frame>
-            </Reveal>
-            <Reveal delay={160} className="rooms-inset">
-              <Frame flat>
-                <Shot
-                  id="07-rooms"
-                  region={{ x: 266, y: 120, w: 1310, h: 420 }}
-                  alt="The Rooms page: one room running, one waiting for you, turns this week and models taking part."
-                  sizes={[520, 60]}
-                />
-              </Frame>
-            </Reveal>
-          </div>
+          <Reveal className="stack">
+            <p className="eyebrow">
+              <span className="dot" />
+              Discussion Rooms
+            </p>
+            <h2 className="h2" style={{ marginTop: 16 }}>
+              More than one model. One room.
+            </h2>
+            <p className="lede" style={{ marginTop: 22 }}>
+              Put several models from different providers in one room to work on a question, with you in control of the discussion.
+            </p>
+          </Reveal>
+          <Reveal delay={100}>
+            <ul className="prov-list" style={{ marginTop: 0 }}>
+              <li>
+                <b>A moderator and speaking policies</b>
+                <span>Round-robin, or you choose who speaks next.</span>
+              </li>
+              <li>
+                <b>@mentions, votes and a synthesis</b>
+                <span>Address a participant, call a vote, then ask for a summary with the dissent.</span>
+              </li>
+              <li>
+                <b>Budgets and limits per room</b>
+                <span>Turns, rounds, tokens, cost and time, shown at the top.</span>
+              </li>
+              <li>
+                <b>Optional tools and files</b>
+                <span>Read-only or read and edit access in a folder you pick. Every tool call shows as a chip.</span>
+              </li>
+            </ul>
+          </Reveal>
+        </div>
+        <div className="rooms-stage">
+          <Reveal mask>
+            <Frame>
+              <Shot
+                id="08-room"
+                alt="A Discussion Room: three models discuss a retry policy with tool chips, a vote, and a turn, round, token, cost and time counter."
+                sizes={[1480, 92]}
+              />
+            </Frame>
+          </Reveal>
+          <Reveal delay={160} className="rooms-inset">
+            <Frame flat>
+              <Shot
+                id="07-rooms"
+                region={{ x: 266, y: 130, w: 800, h: 330 }}
+                alt="The Rooms page: one room running, one waiting for you, turns this week and models taking part."
+                sizes={[520, 60]}
+              />
+            </Frame>
+          </Reveal>
         </div>
       </div>
     </section>
@@ -371,9 +369,11 @@ export function OpenSource() {
             </Reveal>
           </div>
           <Reveal mask delay={60}>
+            <div style={{ maxWidth: 460, marginInline: 'auto' }}>
             <Frame>
-              <Shot id="02-code-panel" region={{ x: 1156, y: 190, w: 430, h: 400 }} alt="Flint's Code panel showing a TypeScript file with change markers in the gutter and a Save button." sizes={[520, 92]} />
+              <Shot id="02-code-panel" region={{ x: 1150, y: 190, w: 440, h: 400 }} alt="Flint's Code panel showing a TypeScript file with change markers in the gutter and a Save button." sizes={[460, 92]} />
             </Frame>
+            </div>
           </Reveal>
         </div>
       </div>

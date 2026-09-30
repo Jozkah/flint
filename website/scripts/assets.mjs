@@ -33,8 +33,8 @@ for (const f of files) {
   for (const w of widths) {
     const avif = path.join(shotsOut, `${id}-${w}.avif`)
     const webp = path.join(shotsOut, `${id}-${w}.webp`)
-    if (!fresh(avif, src)) await sharp(src).resize({ width: w }).avif({ quality: 58, effort: 4 }).toFile(avif)
-    if (!fresh(webp, src)) await sharp(src).resize({ width: w }).webp({ quality: 84, effort: 5 }).toFile(webp)
+    if (!fresh(avif, src)) await sharp(src).resize({ width: w }).avif({ quality: 72, effort: 4, chromaSubsampling: '4:4:4' }).toFile(avif)
+    if (!fresh(webp, src)) await sharp(src).resize({ width: w }).webp({ quality: 90, effort: 5, smartSubsample: true }).toFile(webp)
   }
 }
 fs.writeFileSync(path.join(genOut, 'shots.json'), JSON.stringify(manifest, null, 2))
