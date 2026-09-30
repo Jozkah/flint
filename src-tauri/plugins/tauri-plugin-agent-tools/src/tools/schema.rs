@@ -279,11 +279,12 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "skill_read",
-                "description": "Load a skill's full instructions by name. The system prompt lists each skill's name and purpose; call this to read the complete procedure before you apply it, rather than guessing the steps.",
+                "description": "Load a skill's full instructions by name. Call `skill_list` (or read the skills listed in the system prompt) to find what exists, and call this to read the complete procedure BEFORE you do a task the skill covers, rather than guessing the steps. A skill may bundle files (templates, themes, scripts); the reply lists them, and they are NOT in your workspace: pass `file` to read one. Do not `ls`/`read` a skill's folder or use request_access for it.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "name": { "type": "string", "description": "Skill name, without the .md extension." }
+                        "name": { "type": "string", "description": "Skill name, without the .md extension. Plugin skills are `<plugin>:<skill>`." },
+                        "file": { "type": "string", "description": "Optional. A file or folder bundled with the skill, relative to the skill's folder (e.g. `themes/ocean.md`). Omit to load the instructions." }
                     },
                     "required": ["name"]
                 }

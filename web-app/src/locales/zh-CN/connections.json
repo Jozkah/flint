@@ -1,0 +1,7 @@
+{
+  "skills": {
+    "alwaysOn": "始终开启",
+    "alwaysActive": "始终启用",
+    "alwaysActiveHelp": "在每次对话中自动遵循此技能，无需提示。"
+  }
+}

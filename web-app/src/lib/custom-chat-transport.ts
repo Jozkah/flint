@@ -1,4 +1,5 @@
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
+import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
@@ -1413,6 +1414,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       // Read before the system prompt is assembled, which names the enabled
       // plugins from this cache.
       await refreshPluginInventory()
+      await refreshSkillCatalog()
       if (!useAgentToolsConfig.getState().agentToolsEnabled) {
         try {
           const listPlugins = (await getAgentToolSchemas()).find(
@@ -2558,6 +2560,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         'be refused. Use absolute paths for them.'
       )
     }
+    const skills = skillCatalogBlock()
+    if (skills) parts.push('', skills, '')
     // Stating the limits up front is cheaper than letting the model discover
     // them by having a command refused. Only when bash is actually offered.
     parts.push(SHELL_ROUTING_GUIDANCE)

@@ -17,6 +17,9 @@
     "loadHubFailed": "Could not load the skill hub: {{error}}",
     "deleteSkill": "Delete skill {{name}}",
     "fromPlugin": "From plugin {{plugin}}",
-    "pluginReadOnly": "This skill comes from the plugin {{plugin}} and is read-only here. To change it, edit the plugin's source and reinstall the plugin, or turn the plugin off in Plugins."
+    "pluginReadOnly": "This skill comes from the plugin {{plugin}} and is read-only here. To change it, edit the plugin's source and reinstall the plugin, or turn the plugin off in Plugins.",
+    "alwaysOn": "Always on",
+    "alwaysActive": "Always active",
+    "alwaysActiveHelp": "Follow this skill in every conversation, without being asked."
   }
 }

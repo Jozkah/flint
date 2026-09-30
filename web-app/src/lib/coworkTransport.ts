@@ -20,6 +20,13 @@ import {
   type CoworkEnvironmentOptions,
   type PromptFolderAccess,
 } from '@/lib/coworkPrompt'
+import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
+import {
+  latestUserText,
+  resolveSkillActivation,
+  skillActivationBlock,
+  type ActivatedSkill,
+} from '@/lib/skillActivation'
 import { measureContextPack } from '@/lib/coworkContext'
 import type { ContextAccounting } from '@/lib/coworkReadiness'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -121,6 +128,9 @@ export class CoworkChatTransport extends CustomChatTransport {
    * mode change therefore applies at the next message, not mid-run.
    */
   private frozenTools: Record<string, Tool> | null = null
+  /** Skills that apply to the latest user message, and which message that was. */
+  private activeSkills: ActivatedSkill[] = []
+  private activatedFor: string | null = null
   /** Last set actually built, kept across runs so an unchanged config does not
    * pay for a rebuild at every run boundary. */
   private builtTools: Record<string, Tool> | null = null
@@ -270,6 +280,27 @@ export class CoworkChatTransport extends CustomChatTransport {
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
     await this.routePrompt(options.messages, options.abortSignal)
+    // Read before the prompt is assembled, which names the installed skills
+    // from this cache.
+    // Which skills apply to this message, with their instructions, so the
+    // prompt built below carries them. A tool follow-up inside the same run
+    // keeps the set: the latest user message has not changed, so nothing is
+    // fetched again.
+    const latest = latestUserText(options.messages)
+    if (latest && latest.id !== this.activatedFor) {
+      this.activatedFor = latest.id
+      try {
+        await refreshSkillCatalog(this.config.readOnlyFolder)
+        this.activeSkills = await resolveSkillActivation({
+          folder: this.config.readOnlyFolder,
+          text: latest.text,
+          signal: options.abortSignal,
+        })
+      } catch {
+        // Help, never a reason to fail the prompt.
+        this.activeSkills = []
+      }
+    }
     return super.sendMessages(options)
   }
 
@@ -309,6 +340,8 @@ export class CoworkChatTransport extends CustomChatTransport {
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],
       webSearch: this.config.webSearch,
+      skillsBlock: skillCatalogBlock(undefined, this.config.readOnlyFolder),
+      skillActivationBlock: skillActivationBlock(this.activeSkills),
       workProfileBlock: useWorkProfiles.getState().blockFor(this.threadId),
       assistantProfileBlock: assistantProfile,
       modeSuggestionBlock: jevModeSuggestion(this.routedMode),

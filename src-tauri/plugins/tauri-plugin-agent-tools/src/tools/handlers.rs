@@ -1254,7 +1254,38 @@ fn skill_read(args: &serde_json::Value, ctx: &ToolContext<'_>) -> String {
             unmet.join("; ")
         );
     }
-    parsed.body
+    let entry = skills::locate_for_model_with_user(
+        ctx.skill_project,
+        ctx.store_root,
+        ctx.user_skills_root,
+        ctx.enabled_skills,
+        name,
+    );
+    // A bundled file (`themes/x.md`, `scripts/run.py`) is read from inside the
+    // skill's own folder, which the file tools cannot be pointed at by a
+    // relative path: those resolve against the workspace.
+    if let Some(file) = arg_str(args, "file") {
+        return match entry {
+            Some(entry) => skills::read_bundled(&entry, file, &|path| {
+                match (ctx.permissions, ctx.subject) {
+                    (Some(permissions), Some(subject)) => permissions
+                        .denies_call(
+                            "read",
+                            &[crate::resource::Resource::Path(path.to_path_buf())],
+                            subject,
+                        )
+                        .is_some(),
+                    _ => false,
+                }
+            }),
+            None => format!("ERROR: skill '{name}' has no bundled files"),
+        };
+    }
+    let mut body = parsed.body;
+    if let Some(listing) = entry.as_ref().and_then(|e| skills::bundle_listing(e, name)) {
+        body.push_str(&listing);
+    }
+    body
 }
 
 /// `skill_write` tool: create/update a skill (new ones as `<name>/SKILL.md`).

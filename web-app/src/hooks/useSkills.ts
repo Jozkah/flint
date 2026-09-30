@@ -4,6 +4,8 @@ import { create } from 'zustand'
 import { toast } from 'sonner'
 import * as skillStore from '@/lib/skillStore'
 import type { SkillMeta } from '@/lib/skillStore'
+import { invalidateSkillCatalog } from '@/lib/skillCatalog'
+import { clearSkillBodyCache } from '@/lib/skillActivation'
 
 export type { SkillMeta }
 export type HubSkill = { name: string; description: string }
@@ -62,7 +64,12 @@ export function storedEnabled(next: Set<string>, allNames: string[]): string[] {
 // and the input's SkillSelector) re-fetches when any of them changes a skill.
 const useSkillsVersion = create<{ v: number; bump: () => void }>((set) => ({
   v: 0,
-  bump: () => set((s) => ({ v: s.v + 1 })),
+  bump: () => {
+    // The model-facing list and cached skill instructions are stale too.
+    invalidateSkillCatalog()
+    clearSkillBodyCache()
+    set((s) => ({ v: s.v + 1 }))
+  },
 }))
 
 /**

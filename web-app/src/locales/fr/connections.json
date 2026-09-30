@@ -1,0 +1,7 @@
+{
+  "skills": {
+    "alwaysOn": "Toujours active",
+    "alwaysActive": "Toujours active",
+    "alwaysActiveHelp": "Suivre cette compétence dans toutes les conversations, sans qu'on le demande."
+  }
+}

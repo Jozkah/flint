@@ -7,6 +7,7 @@ import {
   type SkillMeta as ApiSkillMeta,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { notifySkillsChanged } from '@/lib/skillEvents'
 
 /**
  * A listed skill. `plugin` is set when the skill ships in an enabled plugin
@@ -96,9 +97,11 @@ export async function writeSkill(
       name,
       content,
     })
+    notifySkillsChanged()
     return
   }
   await skillWrite(await dataFolder(), name, content)
+  notifySkillsChanged()
 }
 
 export async function deleteSkill(
@@ -107,7 +110,9 @@ export async function deleteSkill(
 ): Promise<void> {
   if (scope.kind === 'project') {
     await invoke('agent_skill_delete', { project: scope.folder, name })
+    notifySkillsChanged()
     return
   }
   await skillDelete(await dataFolder(), name)
+  notifySkillsChanged()
 }

@@ -1,0 +1,7 @@
+{
+  "skills": {
+    "alwaysOn": "常時オン",
+    "alwaysActive": "常に有効",
+    "alwaysActiveHelp": "依頼されなくても、すべての会話でこのスキルに従います。"
+  }
+}

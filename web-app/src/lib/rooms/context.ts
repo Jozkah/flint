@@ -354,7 +354,7 @@ export async function buildPrompt(input: BuildPromptInput): Promise<BuiltPrompt>
   if (hasTools) {
     const catalog = renderSkillsCatalog(await resolveExtensions('rooms'))
     if (catalog) {
-      system = `${system}\n\n${catalog}\n\nCall \`skill_read\` with a skill's name to load its instructions before using it.`
+      system = `${system}\n\n${catalog}\n\nThese skills are installed for you to use. Before you answer or start work, check the list: when a skill covers what is being asked, even in part, call \`skill_read\` with its name FIRST and follow it instead of improvising. Read every skill that applies.`
     }
   }
   // Last, so a new day does not invalidate the cached prefix before it.
