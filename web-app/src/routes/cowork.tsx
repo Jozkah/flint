@@ -2659,6 +2659,7 @@ export function CoworkPage() {
           {
             role: 'user',
             content: attached ? `${text}${attached.shownNote}` : text,
+            ...(attached && attached.keptImages.length > 0 ? { images: attached.keptImages } : {}),
             ...(from ? { from: agentAttribution(from) } : {}),
             ...(hidden ? { hidden: true } : {}),
           },

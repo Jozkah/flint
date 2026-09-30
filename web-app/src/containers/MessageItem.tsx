@@ -79,6 +79,8 @@ import { injectCitationMarkers } from '@/lib/grounding'
 import { attributionOf } from '@/lib/requestAttribution'
 import { FlintMark } from '@/components/shell/FlintMark'
 import { CompactionDivider } from '@/containers/CompactionDivider'
+import { AttachedImages } from '@/components/AttachedImages'
+import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import type { CompactionRecord } from '@/lib/compaction'
 
 export type MessageItemProps = {
@@ -154,9 +156,10 @@ export const MessageItem = memo(
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
     const createdAt = (metadata?.createdAt as Date) ?? new Date()
-    const [previewImage, setPreviewImage] = useState<{
-      url: string
-      filename?: string
+    // The image viewer: the images it can step through, and which is showing.
+    const [viewer, setViewer] = useState<{
+      images: ViewerImage[]
+      index: number
     } | null>(null)
     const [ctxMenuOpen, setCtxMenuOpen] = useState(false)
 
@@ -201,6 +204,19 @@ export const MessageItem = memo(
         })
         .map((part) => (part as { url: string }).url)
     }, [message.parts])
+
+    // The images a user attached, with their names, for the gallery and viewer.
+    const userImages = useMemo<ViewerImage[]>(() => {
+      if (message.role !== 'user') return []
+      const out: ViewerImage[] = []
+      for (const part of message.parts) {
+        const p = part as { type?: string; url?: string; mediaType?: string; filename?: string }
+        if (p.type === 'file' && p.url && p.mediaType?.startsWith('image/')) {
+          out.push({ url: p.url, name: p.filename })
+        }
+      }
+      return out
+    }, [message.role, message.parts])
 
     // A tool part is "pending" until it reaches a terminal state. While any
     // tool on the last assistant message is still pending the turn isn't
@@ -539,27 +555,8 @@ export const MessageItem = memo(
         )
       }
 
-      if (message.role === 'user' && isImage && part.url) {
-        return (
-          <div
-            key={`${message.id}-${partIndex}`}
-            className="flex justify-end w-full my-2"
-          >
-            <div className="flex flex-wrap gap-2 max-w-[80%] justify-end">
-              <div className="relative">
-                <img
-                  src={part.url}
-                  alt={part.filename || 'Uploaded attachment'}
-                  className="size-20 rounded-md object-cover border border-border cursor-pointer"
-                  onClick={() =>
-                    setPreviewImage({ url: part.url!, filename: part.filename })
-                  }
-                />
-              </div>
-            </div>
-          </div>
-        )
-      }
+      // A user's images are shown together, above their text (see `userImages`).
+      if (message.role === 'user' && isImage && part.url) return null
 
       if (message.role === 'assistant' && isImage && part.url) {
         return (
@@ -569,7 +566,10 @@ export const MessageItem = memo(
               alt={part.filename || 'Generated image'}
               className="max-w-full rounded-md cursor-pointer"
               onClick={() =>
-                setPreviewImage({ url: part.url!, filename: part.filename })
+                setViewer({
+                  images: [{ url: part.url!, name: part.filename }],
+                  index: 0,
+                })
               }
             />
           </div>
@@ -753,6 +753,12 @@ export const MessageItem = memo(
         )}
 
         {/* Render message parts */}
+        {userImages.length > 0 && (
+          <AttachedImages
+            images={userImages}
+            onOpen={(index) => setViewer({ images: userImages, index })}
+          />
+        )}
         {renderedParts}
 
         {message.role === 'assistant' &&
@@ -1014,18 +1020,13 @@ export const MessageItem = memo(
             })
           }}
         />
-        {previewImage && (
-          <div
-            className="fixed inset-0 z-100 bg-background/80 backdrop-blur-md flex items-center justify-center cursor-pointer"
-            onClick={() => setPreviewImage(null)}
-          >
-            <img
-              src={previewImage.url}
-              alt={previewImage.filename || 'Preview'}
-              className="max-h-[90vh] max-w-[90vw] object-contain"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
+        {viewer && (
+          <ImageViewer
+            images={viewer.images}
+            index={viewer.index}
+            onIndexChange={(index) => setViewer((v) => (v ? { ...v, index } : v))}
+            onClose={() => setViewer(null)}
+          />
         )}
       </div>
     )
