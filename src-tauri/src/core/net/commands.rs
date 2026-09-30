@@ -138,6 +138,13 @@ async fn huggingface_bridge<R: Runtime>(
             .await?;
             serde_json::Value::String(path)
         }
+        "gguf-header" => {
+            let repo = body_string(&body, "repo")?.to_string();
+            let filename = body_string(&body, "filename")?.to_string();
+            serde_json::Value::String(
+                crate::core::huggingface::huggingface_gguf_header(repo, filename, token).await?,
+            )
+        }
         "cancel" => {
             let task_id = body_string(&body, "taskId")?.to_string();
             crate::core::huggingface::huggingface_cancel_download(task_id).await?;

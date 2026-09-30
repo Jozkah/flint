@@ -36,10 +36,9 @@ import { cn } from '@/lib/utils'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { route } from '@/constants/routes'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useHardware } from '@/hooks/useHardware'
+import { useFitContext } from '@/hooks/useFitContext'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
-  chooseMmproj,
   cleanHuggingFaceRepo,
   explainQuantization,
   formatModelBytes,
@@ -49,18 +48,25 @@ import {
   inferModalities,
   inferParameterCount,
   mlxWeightsBytes,
-  quantPreference,
   repoLooksMlx,
   searchHuggingFaceModels,
   type HuggingFaceFile,
-  type HuggingFaceFileGroup,
   type HuggingFaceFormat,
   type HuggingFaceModel,
 } from '@/lib/huggingface'
 import {
+  bestGroup,
+  fitBasis,
+  fitOfGroup,
+  loadRepoArchitecture,
+  type FitContext,
+  type GroupFit,
+} from '@/lib/huggingfaceFit'
+import {
   assessModelFit,
   DEFAULT_CTX_LENGTH,
   type FitVerdict,
+  type KvArchitecture,
 } from '@/lib/modelCompatibility'
 
 export const Route = createFileRoute(route.hub.index as any)({
@@ -84,52 +90,6 @@ function formatCount(value: number): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`
   return String(value)
-}
-
-function fitRank(verdict: FitVerdict): number {
-  if (verdict === 'fits') return 500
-  if (verdict === 'fits-partial-offload') return 400
-  if (verdict === 'tight') return 300
-  if (verdict === 'unknown') return 200
-  return 0
-}
-
-type Hardware = ReturnType<typeof useHardware.getState>['hardwareData']
-
-/**
- * Whether a variant is expected to run here. A vision model's projector is
- * downloaded with it, so it counts against memory too.
- */
-function fitOfGroup(
-  group: HuggingFaceFileGroup,
-  groups: HuggingFaceFileGroup[],
-  hardware: Hardware
-) {
-  return assessModelFit({
-    weightsBytes: group.totalSize,
-    mmprojBytes: chooseMmproj(groups)?.totalSize ?? 0,
-    ctxLength: DEFAULT_CTX_LENGTH,
-    hardware,
-  })
-}
-
-function bestGroup(
-  groups: HuggingFaceFileGroup[],
-  hardware: Hardware
-): HuggingFaceFileGroup | undefined {
-  const models = groups.filter((group) => group.kind === 'model')
-  if (!models.length) return undefined
-  return [...models].sort((a, b) => {
-    const aFit = fitOfGroup(a, groups, hardware)
-    const bFit = fitOfGroup(b, groups, hardware)
-    const aScore = fitRank(aFit.verdict) + quantPreference(a.quantization)
-    const bScore = fitRank(bFit.verdict) + quantPreference(b.quantization)
-    if (aScore !== bScore) return bScore - aScore
-    return (
-      (a.totalSize ?? Number.MAX_SAFE_INTEGER) -
-      (b.totalSize ?? Number.MAX_SAFE_INTEGER)
-    )
-  })[0]
 }
 
 function fitLabel(verdict: FitVerdict): string {
@@ -175,7 +135,7 @@ const MODALITY_PILLS: Array<{
 function ModelDiscoverRoute() {
   const navigate = useNavigate()
   const token = useGeneralSetting((state) => state.huggingfaceToken)
-  const hardware = useHardware((state) => state.hardwareData)
+  const { hardware, devices } = useFitContext()
   const providers = useModelProvider((state) => state.providers)
   const parentRef = useRef<HTMLDivElement>(null)
 
@@ -198,6 +158,9 @@ function ModelDiscoverRoute() {
     Record<string, HuggingFaceFile[]>
   >({})
   const [loadingFiles, setLoadingFiles] = useState<Record<string, boolean>>({})
+  const [archByRepo, setArchByRepo] = useState<
+    Record<string, KvArchitecture | null>
+  >({})
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -338,7 +301,16 @@ function ModelDiscoverRoute() {
   const toggleExpanded = async (repo: string) => {
     const opening = !expanded[repo]
     setExpanded((state) => ({ ...state, [repo]: opening }))
-    if (opening) await loadFiles(repo).catch(() => {})
+    if (!opening) return
+    const files = await loadFiles(repo).catch(() => [] as HuggingFaceFile[])
+    // The model's own header gives its context memory exactly; until it
+    // arrives (or if it cannot be read) the estimate stands.
+    const architecture = await loadRepoArchitecture(
+      repo,
+      groupHuggingFaceFiles(files),
+      token
+    )
+    setArchByRepo((state) => ({ ...state, [repo]: architecture }))
   }
 
   const rowVirtualizer = useVirtualizer({
@@ -602,22 +574,32 @@ function ModelDiscoverRoute() {
                 const files = filesByRepo[model.id] ?? model.files ?? []
                 const groups = groupHuggingFaceFiles(files)
                 const variants = groups.filter((group) => group.kind === 'model')
-                const recommended = bestGroup(groups, hardware)
+                const parameterCount = inferParameterCount(model)
+                const fitContext: FitContext = {
+                  hardware,
+                  devices,
+                  architecture: archByRepo[model.id],
+                  parameterBillions: parameterCount,
+                }
+                const recommended = bestGroup(groups, fitContext)
                 const isMlx = repoLooksMlx(model)
                 const mlxBytes = isMlx ? mlxWeightsBytes(files) : null
-                const recommendedFit = isMlx
+                const recommendedFit: GroupFit | null = isMlx
                   ? mlxBytes
-                    ? assessModelFit({
-                        weightsBytes: mlxBytes,
-                        ctxLength: DEFAULT_CTX_LENGTH,
-                        hardware,
-                      })
+                    ? {
+                        ...assessModelFit({
+                          weightsBytes: mlxBytes,
+                          ctxLength: DEFAULT_CTX_LENGTH,
+                          hardware,
+                          devices,
+                        }),
+                        sizeEstimated: false,
+                      }
                     : null
                   : recommended
-                    ? fitOfGroup(recommended, groups, hardware)
+                    ? fitOfGroup(recommended, groups, fitContext)
                     : null
                 const modalities = inferModalities(model, files)
-                const parameterCount = inferParameterCount(model)
                 const arch = inferArchitecture(model)
                 const opened = Boolean(expanded[model.id])
                 const installed = repoInstalled(model)
@@ -762,7 +744,11 @@ function ModelDiscoverRoute() {
                               isMlx ? mlxBytes : recommended?.totalSize
                             )}
                           </span>
-                          <Chip tone={fitTone(recommendedFit.verdict)} dot>
+                          <Chip
+                            tone={fitTone(recommendedFit.verdict)}
+                            dot
+                            title={fitBasis(recommendedFit)}
+                          >
                             {fitLabel(recommendedFit.verdict)}
                           </Chip>
                         </div>
@@ -782,7 +768,7 @@ function ModelDiscoverRoute() {
                           ) : (
                             <div className="space-y-1">
                               {variants.map((group) => {
-                                const fit = fitOfGroup(group, groups, hardware)
+                                const fit = fitOfGroup(group, groups, fitContext)
                                 const isRecommended = recommended?.id === group.id
                                 return (
                                   <div
@@ -805,12 +791,20 @@ function ModelDiscoverRoute() {
                                           </Chip>
                                         )}
                                         <span className="text-xs text-muted-foreground tabular-nums">
-                                          {formatModelBytes(group.totalSize)}
+                                          {fit.sizeEstimated ? '≈ ' : ''}
+                                          {formatModelBytes(
+                                            group.totalSize ??
+                                              fit.required.weights
+                                          )}
                                         </span>
                                         {group.multipart && (
                                           <Chip>{group.files.length} shards</Chip>
                                         )}
-                                        <Chip tone={fitTone(fit.verdict)} dot>
+                                        <Chip
+                                          tone={fitTone(fit.verdict)}
+                                          dot
+                                          title={fitBasis(fit)}
+                                        >
                                           {fitLabel(fit.verdict)}
                                         </Chip>
                                       </div>

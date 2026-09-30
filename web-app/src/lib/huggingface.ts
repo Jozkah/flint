@@ -40,7 +40,7 @@ type NativeResponse = {
 }
 
 async function call<T>(
-  action: 'search' | 'files' | 'readme' | 'download' | 'cancel',
+  action: 'search' | 'files' | 'readme' | 'gguf-header' | 'download' | 'cancel',
   payload: Record<string, unknown>
 ): Promise<T> {
   const response = await invoke<NativeResponse>('provider_http_request', {
@@ -77,6 +77,19 @@ export async function getHuggingFaceReadme(
   token?: string
 ): Promise<string> {
   return call<string>('readme', { repo, token })
+}
+
+/** The first megabyte of a GGUF file, which holds its architecture keys. */
+export async function getHuggingFaceGgufHeader(
+  repo: string,
+  filename: string,
+  token?: string
+): Promise<Uint8Array> {
+  const encoded = await call<string>('gguf-header', { repo, filename, token })
+  const binary = atob(encoded)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes
 }
 
 export async function downloadHuggingFaceFile(args: {
@@ -233,6 +246,34 @@ export function groupHuggingFaceFiles(files: HuggingFaceFile[]): HuggingFaceFile
       kind: fileKind(sorted[0].name),
     }
   })
+}
+
+/**
+ * Average bits stored per weight for the common GGUF quantizations, block
+ * scales included. Used only to size a file whose length the listing did not
+ * give, from its parameter count.
+ */
+const BITS_PER_WEIGHT: Array<[RegExp, number]> = [
+  [/^IQ1/, 1.8],
+  [/^(IQ2|Q2)/, 2.7],
+  [/^(IQ3|Q3)/, 3.6],
+  [/^(IQ4|Q4_K|Q4_1)/, 4.85],
+  [/^Q4_0/, 4.5],
+  [/^Q5/, 5.65],
+  [/^Q6/, 6.6],
+  [/^Q8/, 8.5],
+  [/^(F16|BF16)/, 16],
+  [/^F32/, 32],
+]
+
+export function approxWeightsBytes(
+  parameterBillions: number | null,
+  quantization: string | null
+): number | null {
+  if (!parameterBillions || parameterBillions <= 0 || !quantization) return null
+  const key = quantization.toUpperCase()
+  const bits = BITS_PER_WEIGHT.find(([pattern]) => pattern.test(key))?.[1]
+  return bits ? (parameterBillions * 1e9 * bits) / 8 : null
 }
 
 /** Total size of an MLX repository's weight shards, or null if any size is unknown. */

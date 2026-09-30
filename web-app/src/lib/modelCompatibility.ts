@@ -269,6 +269,35 @@ export interface FitInput {
   gpuLayers?: number
   /** Other models that will stay loaded alongside this one. */
   otherLoadedBytes?: number
+  /**
+   * The llama.cpp device list with each device's on/off state. A GPU whose
+   * every device is switched off is left out of the memory the model may use.
+   */
+  devices?: Array<{ name: string; activated: boolean }>
+}
+
+const normalizeName = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Removes the GPUs the user has switched off in Settings -> Hardware. A GPU is
+ * only removed when llama.cpp lists it and none of its devices (one per
+ * backend) is on; one it does not list is kept, since nothing says it is off.
+ */
+export function withoutDisabledGpus(
+  hardware: HardwareData,
+  devices: FitInput['devices']
+): HardwareData {
+  if (!devices?.length || hardware.gpus.length === 0) return hardware
+  const gpus = hardware.gpus.filter((gpu) => {
+    const name = normalizeName(gpu.name)
+    if (!name) return true
+    const same = devices.filter((device) => {
+      const other = normalizeName(device.name)
+      return other && (other.includes(name) || name.includes(other))
+    })
+    return same.length === 0 || same.some((device) => device.activated)
+  })
+  return gpus.length === hardware.gpus.length ? hardware : { ...hardware, gpus }
 }
 
 export interface FitBreakdown {
@@ -302,6 +331,7 @@ export type FitAssumption =
   | 'system-reserve'
   | 'runtime-overhead'
   | 'cpu-only-by-setting'
+  | 'gpu-disabled-in-settings'
   | 'other-models-loaded'
   | 'mmap-not-counted'
   | 'mmproj-unknown'
@@ -343,8 +373,10 @@ function memoryModelOf(hardware: HardwareData): MemoryModel {
  * what is available, and every assumption the numbers rest on.
  */
 export function assessModelFit(input: FitInput): FitAssessment {
-  const { hardware, weightsBytes } = input
+  const { weightsBytes } = input
+  const hardware = withoutDisabledGpus(input.hardware, input.devices)
   const assumptions: FitAssumption[] = []
+  if (hardware !== input.hardware) assumptions.push('gpu-disabled-in-settings')
   const memoryModel = memoryModelOf(hardware)
   const requestedCtx =
     input.ctxLength > 0 ? input.ctxLength : DEFAULT_CTX_LENGTH

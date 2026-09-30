@@ -14,6 +14,10 @@ use url::Url;
 const HF_HOST: &str = "huggingface.co";
 const MAX_SEARCH_RESULTS: &str = "50";
 const MAX_README_BYTES: u64 = 512 * 1024;
+/// How much of a GGUF file's start is read to learn its architecture. The
+/// key/value header sits at the front; a megabyte covers it for every model
+/// this needed to handle, and it is a single ranged request.
+const GGUF_HEADER_BYTES: usize = 1024 * 1024;
 
 type CancelFlag = Arc<AtomicBool>;
 
@@ -442,6 +446,51 @@ pub async fn huggingface_readme(repo: String, token: Option<String>) -> Result<S
         return Err("Hugging Face README is too large to display".to_string());
     }
     String::from_utf8(bytes.to_vec()).map_err(|_| "Hugging Face README is not UTF-8".to_string())
+}
+
+/// The first `GGUF_HEADER_BYTES` of a `.gguf` file, base64-encoded, so the UI
+/// can size a model's context memory exactly without downloading the weights.
+/// Read-only, ranged, and only ever aimed at Hugging Face's own file URL.
+#[tauri::command]
+pub async fn huggingface_gguf_header(
+    repo: String,
+    filename: String,
+    token: Option<String>,
+) -> Result<String, String> {
+    if !filename.to_ascii_lowercase().ends_with(".gguf") {
+        return Err("Only GGUF files have a readable header".to_string());
+    }
+    let url = remote_file_url(&repo, &filename)?;
+    let mut response = hf_client(token.as_deref())?
+        .get(url)
+        .header(
+            reqwest::header::RANGE,
+            format!("bytes=0-{}", GGUF_HEADER_BYTES - 1),
+        )
+        .send()
+        .await
+        .map_err(|e| format!("Could not read the model header: {e}"))?;
+    if !response.status().is_success() {
+        return Err(response_error(response).await);
+    }
+    // A server that ignores Range answers 200 with the whole file: read only
+    // what is needed and drop the rest of the connection.
+    let mut header: Vec<u8> = Vec::with_capacity(GGUF_HEADER_BYTES);
+    while header.len() < GGUF_HEADER_BYTES {
+        match response
+            .chunk()
+            .await
+            .map_err(|e| format!("Could not read the model header: {e}"))?
+        {
+            Some(chunk) => {
+                let room = GGUF_HEADER_BYTES - header.len();
+                header.extend_from_slice(&chunk[..chunk.len().min(room)]);
+            }
+            None => break,
+        }
+    }
+    use base64::Engine as _;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&header))
 }
 
 #[tauri::command]
