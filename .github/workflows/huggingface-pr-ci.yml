@@ -23,10 +23,8 @@ jobs:
           corepack prepare yarn@4.10.3 --activate
       - name: Install dependencies
         run: yarn install --immutable
-      - name: Build Tauri plugin APIs
-        run: yarn build:tauri:plugin:api
-      - name: Build core
-        run: yarn workspace @janhq/core build
+      - name: Build bundled extensions
+        run: yarn build:extensions
       - name: Generate routes and bundle web app
         run: yarn workspace @janhq/web-app vite build
       - name: Typecheck web app against main baseline
