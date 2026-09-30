@@ -57,6 +57,14 @@ test('installer template transformation creates the complete Flint wizard', asyn
   assert.match(generated, /!define VERSION "0\.9\.0"/)
   assert.match(generated, /!define VERSIONWITHBUILD "0\.9\.0\.0"/)
   assert.match(generated, /!define BUNDLEID "jan\.ai\.app"/)
+  assert.match(
+    generated,
+    /!define ADDITIONALPLUGINSPATH "\{\{additional_plugins_path\}\}"/
+  )
+  assert.doesNotMatch(
+    generated,
+    /target\\release\\nsis\\(?:x64|arm64)\\Plugins\\x86-unicode\\additional/
+  )
   assert.match(generated, /\$FlintDesktopShortcutState = 1/)
   assert.match(generated, /Interactive installs always[\s\S]*completion page, which exclusively owns app launch/)
   assert.doesNotMatch(
@@ -86,6 +94,10 @@ test('template preparation preserves Windows ARM64 retargeting', async () => {
   assert.match(generated, /\\VC\\Runtimes\\arm64/)
   assert.match(generated, /VC_RuntimeMinimumVSU_arm64/)
   assert.doesNotMatch(generated, /x86_64-pc-windows-msvc/)
+  assert.match(
+    generated,
+    /!define ADDITIONALPLUGINSPATH "\{\{additional_plugins_path\}\}"/
+  )
 })
 
 test('Flint UI uses the real app icon, Inter and the expected page copy', async () => {
