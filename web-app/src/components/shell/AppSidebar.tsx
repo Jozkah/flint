@@ -135,6 +135,8 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   const within = (base: string) =>
     pathname === base || pathname.startsWith(`${base}/`)
+  const inDiscover =
+    pathname === route.hub.index.replace(/\/$/, '') || pathname.startsWith('/hub/')
 
   const newChat = () => {
     useAgentMode.getState().removeThread(TEMPORARY_CHAT_ID)
@@ -144,10 +146,17 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   const engine: LinkRow[] = [
     {
+      to: route.hub.index,
+      label: 'Discover',
+      icon: 'search',
+      active: inDiscover,
+      testId: 'rail-discover',
+    },
+    {
       to: route.settings.model_providers,
       label: t('common:appRail.models'),
       icon: 'x-cube',
-      active: area === 'models',
+      active: within(route.settings.model_providers),
       count: modelCount,
       testId: 'rail-models',
     },
