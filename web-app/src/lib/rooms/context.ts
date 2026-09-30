@@ -4,6 +4,7 @@
  * only the speaker's own speech is `assistant`; everything else is attributed
  * `user` content, fitted to the speaker's own context window.
  */
+import { participantPersona } from './persona'
 import { todayLine } from '@/lib/promptSafety'
 import { estimateTokens } from '@/lib/context-manager'
 import { DEFAULT_COMPACT_THRESHOLD, thresholdTokens } from '@/lib/compaction'
@@ -79,6 +80,7 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
     lines.push(
       `You are ${speaker.participant.name}${roleSuffix(speaker.participant.role)}, a participant in a moderated multi-party discussion.`
     )
+    lines.push(...participantPersona(speaker.participant))
   } else {
     lines.push(`You are ${room.moderator.name || 'the moderator'}, the moderator of a multi-party discussion.`)
   }

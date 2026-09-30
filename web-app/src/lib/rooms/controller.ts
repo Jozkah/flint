@@ -6,6 +6,7 @@
  * AbortController. Only these editor helpers (user actions) change settings,
  * participants, tool access, limits or the moderator.
  */
+import { isWorkProfileId } from '@/lib/workProfiles'
 import {
   runRoom,
   type AbortIntent,
@@ -61,6 +62,9 @@ export type ParticipantInput = {
   toolAccess?: ToolAccess
   pricing?: Participant['pricing']
   reasoning?: Participant['reasoning']
+  /** `null` clears it. */
+  assistantId?: string | null
+  workProfile?: string | null
 }
 
 export type CreateRoomInput = {
@@ -82,6 +86,9 @@ export type ParticipantPatch = { id?: string } & Partial<
 > & {
   /** `null` returns the participant to its model's default reasoning. */
   reasoning?: Participant['reasoning'] | null
+  /** `null` clears it. */
+  assistantId?: string | null
+  workProfile?: Participant['workProfile'] | null
 }
 
 export type RoomSettingsPatch = {
@@ -378,6 +385,8 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       availability: { state: 'unknown' },
       ...(pricing ? { pricing } : {}),
       ...(reasoning ? { reasoning } : {}),
+      ...(input.assistantId?.trim() ? { assistantId: input.assistantId.trim() } : {}),
+      ...(isWorkProfileId(input.workProfile) ? { workProfile: input.workProfile } : {}),
     }
   }
 
@@ -631,6 +640,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               edit.reasoning === undefined
                 ? prev.reasoning
                 : (edit.reasoning ?? undefined),
+            assistantId:
+              edit.assistantId === undefined ? prev.assistantId : edit.assistantId,
+            workProfile:
+              edit.workProfile === undefined ? prev.workProfile : edit.workProfile,
             order: edit.order ?? prev.order,
             removed: prev.removed,
           })

@@ -12,6 +12,8 @@ import type {
   ToolAccess,
 } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import type { WorkProfileId } from '@/lib/workProfiles'
+import { ParticipantPersonaFields } from './ParticipantPersonaFields'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -124,6 +126,8 @@ type DraftParticipant = {
   priceIn: string
   priceOut: string
   reasoning?: ParticipantReasoning
+  assistantId?: string
+  workProfile?: WorkProfileId
   source: Participant
 }
 
@@ -136,6 +140,8 @@ const toDraftParticipant = (p: Participant): DraftParticipant => ({
   priceIn: p.pricing ? String(p.pricing.inputPerMTokUsd) : '',
   priceOut: p.pricing ? String(p.pricing.outputPerMTokUsd) : '',
   reasoning: p.reasoning,
+  assistantId: p.assistantId,
+  workProfile: p.workProfile,
   source: p,
 })
 
@@ -326,6 +332,7 @@ export function RoomEditor({ room }: { room: Room }) {
 
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState('')
+  const [newPersona, setNewPersona] = useState<{ assistantId?: string; workProfile?: WorkProfileId }>({})
   const [newModel, setNewModel] = useState<RoomModelRef | null>(null)
   const [newErrors, setNewErrors] = useState<Errors>({})
 
@@ -417,6 +424,8 @@ export function RoomEditor({ room }: { room: Room }) {
           role: d.role.trim(),
           model: d.model,
           toolAccess: d.toolAccess,
+          assistantId: d.assistantId ?? null,
+          workProfile: d.workProfile ?? null,
           pricing: parsePricing(d),
           // Only what the chosen model acts on is kept; `null` returns the
           // participant to the model's default.
@@ -461,12 +470,15 @@ export function RoomEditor({ room }: { room: Room }) {
       await api.addParticipant(room, {
         name: newName.trim(),
         role: newRole.trim(),
+        assistantId: newPersona.assistantId,
+        workProfile: newPersona.workProfile,
         model: newModel,
         // Omitted so the controller applies its default (read-only for a
         // tool-capable model), rather than starting the participant tool-less.
       })
       setNewName('')
       setNewRole('')
+      setNewPersona({})
       setNewModel(null)
     } catch (err) {
       setError(normalizeError(err))
@@ -628,16 +640,15 @@ export function RoomEditor({ room }: { room: Room }) {
                         />
                         <FieldError id={`${pid}-name-error`} message={visibleErrors[`${p.id}:name`]} />
                       </div>
-                      <div className="flex min-w-0 flex-col gap-1.5">
-                        <Label htmlFor={`${pid}-role`}>{t('rooms:editor.participantRole')}</Label>
-                        <Input
-                          id={`${pid}-role`}
-                          value={p.role}
-                          placeholder={t('rooms:editor.participantRolePlaceholder')}
-                          onChange={(e) => updateParticipant(p.id, { role: e.target.value })}
-                        />
-                      </div>
                     </div>
+                    <ParticipantPersonaFields
+                      idPrefix={pid}
+                      role={p.role}
+                      assistantId={p.assistantId}
+                      workProfile={p.workProfile}
+                      disabled={disabled}
+                      onChange={(patch) => updateParticipant(p.id, patch)}
+                    />
                     <div className="flex min-w-0 flex-col gap-1.5">
                       <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
                       <RoomModelSelect
@@ -778,16 +789,18 @@ export function RoomEditor({ room }: { room: Room }) {
                       />
                       <FieldError id={`${uid}-new-name-error`} message={newErrors.name} />
                     </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${uid}-new-role`}>{t('rooms:editor.participantRole')}</Label>
-                      <Input
-                        id={`${uid}-new-role`}
-                        value={newRole}
-                        placeholder={t('rooms:editor.participantRolePlaceholder')}
-                        onChange={(e) => setNewRole(e.target.value)}
-                      />
-                    </div>
                   </div>
+                  <ParticipantPersonaFields
+                    idPrefix={`${uid}-new`}
+                    role={newRole}
+                    assistantId={newPersona.assistantId}
+                    workProfile={newPersona.workProfile}
+                    disabled={disabled}
+                    onChange={({ role, ...patch }) => {
+                      if (role !== undefined) setNewRole(role)
+                      setNewPersona((prev) => ({ ...prev, ...patch }))
+                    }}
+                  />
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <Label htmlFor={`${uid}-new-model`}>{t('rooms:editor.participantModel')}</Label>
                     <RoomModelSelect

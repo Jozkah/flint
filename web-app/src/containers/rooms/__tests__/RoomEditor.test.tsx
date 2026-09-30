@@ -54,8 +54,8 @@ describe('RoomEditor', () => {
     const newName = nameInputs[nameInputs.length - 1]
     await user.type(newName, 'ALICE')
     const modelSelects = screen.getAllByLabelText('Model')
-    const newModel = modelSelects[modelSelects.length - 1] as HTMLSelectElement
-    await user.selectOptions(newModel, screen.getAllByRole('option', { name: 'Plain Model' }).at(-1)!)
+    await user.click(modelSelects[modelSelects.length - 1])
+    await user.click((await screen.findAllByRole('menuitemradio', { name: /^Plain Model/ })).at(-1)!)
     await user.click(screen.getByRole('button', { name: 'Add participant' }))
     expect(screen.getByText('Another participant is already called “ALICE”.')).toBeInTheDocument()
     expect(api.addParticipant).not.toHaveBeenCalled()
@@ -230,7 +230,8 @@ describe('RoomEditor', () => {
     renderWithApi(<RoomEditor room={room} />, api)
     expect(screen.getByText('Provider is not configured — No API key')).toBeInTheDocument()
     expect(screen.getByText('Model is missing')).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: 'gone / ghost (missing)' })).toBeInTheDocument()
+    // A model that no longer resolves stays visible as the current choice.
+    expect(screen.getByText('gone / ghost (missing)')).toBeInTheDocument()
   })
 
   // #165: while the form was dirty, a new revision updated the participant

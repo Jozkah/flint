@@ -209,6 +209,13 @@ pub struct Participant {
     /// saved before it existed and on participants left at the model default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ParticipantReasoning>,
+    /// The assistant whose personality this participant speaks with. Stored,
+    /// never interpreted here: the turn is built on the frontend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assistant_id: Option<String>,
+    /// The work profile (how to approach the task) this participant works in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_profile: Option<String>,
 }
 
 /// A participant's reasoning setting, mirroring `ParticipantReasoning` in

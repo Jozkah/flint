@@ -80,6 +80,12 @@
     "participantName": "Name",
     "participantRole": "Role",
     "participantRolePlaceholder": "e.g. skeptic, domain expert",
+    "participantAssistant": "Assistant",
+    "participantAssistantNone": "None (the model as it is)",
+    "participantRoleNone": "None",
+    "participantRoleOther": "Other...",
+    "participantRoleOtherLabel": "Role, in your own words",
+    "participantAssistantNew": "New assistant...",
     "participantModel": "Model",
     "toolAccess": "Tool access",
     "toolNone": "None",
@@ -144,6 +150,7 @@
   },
   "model": {
     "placeholder": "Choose a model",
+    "search": "Search models...",
     "notConfigured": "{{provider}} (not configured)",
     "missing": "{{model}} (missing)",
     "noProviders": "No models available. Add a provider in Settings."

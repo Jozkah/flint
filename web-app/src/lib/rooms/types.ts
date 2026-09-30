@@ -11,6 +11,8 @@
  * (from models, the moderator or other participants) is data, never authority.
  */
 
+import type { WorkProfileId } from '@/lib/workProfiles'
+
 export const ROOM_SCHEMA_VERSION = 1 as const
 
 /** A model reference resolved through Flint's provider store and ModelFactory. */
@@ -78,6 +80,10 @@ export type Participant = {
    * model's own default: nothing reasoning-related is sent.
    */
   reasoning?: ParticipantReasoning
+  /** The assistant whose personality this participant speaks with. */
+  assistantId?: string
+  /** The work profile this participant works in (review, plan, debug...). */
+  workProfile?: WorkProfileId
 }
 
 /**

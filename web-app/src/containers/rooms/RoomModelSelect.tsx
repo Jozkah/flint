@@ -4,7 +4,9 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { isProviderUsable } from '@/lib/providerReadiness'
 import { offersModels } from '@/lib/providerOffers'
 import { useTranslation } from '@/i18n/react-i18next-compat'
-import { cn, getProviderTitle } from '@/lib/utils'
+import { getProviderTitle } from '@/lib/utils'
+import { PickerDropdown, type PickerGroup } from './PickerDropdown'
+import { ModelAvatar } from '@/containers/ModelAvatar'
 
 type ProviderLike = Pick<ModelProvider, 'provider' | 'models'> &
   Partial<Pick<ModelProvider, 'api_key' | 'api_key_fallbacks'>>
@@ -89,45 +91,53 @@ export function RoomModelSelect({
       ? `${modelLabel(m)} — ${provider}`
       : modelLabel(m)
 
+  const pickerGroups: PickerGroup[] = [
+    ...(missing && value
+      ? [
+          {
+            items: [
+              {
+                value: encode(value),
+                label: t('rooms:model.missing', { model: `${value.provider} / ${value.id}` }),
+              },
+            ],
+          },
+        ]
+      : []),
+    ...groups.map(({ provider, models }) => ({
+      label: isProviderUsable(provider)
+        ? getProviderTitle(provider.provider)
+        : t('rooms:model.notConfigured', { provider: getProviderTitle(provider.provider) }),
+      items: models.map((m) => ({
+        value: encode({ provider: provider.provider, id: m.id }),
+        label: optionLabel(m, provider.provider),
+        hint: getProviderTitle(provider.provider),
+        icon: (
+          <ModelAvatar
+            modelId={m.id}
+            name={modelLabel(m)}
+            provider={provider.provider}
+            size={18}
+          />
+        ),
+      })),
+    })),
+  ]
+
   return (
-    <select
+    <PickerDropdown
       id={id}
-      className={cn(selectClassName)}
-      value={value ? encode(value) : ''}
+      value={value ? encode(value) : null}
+      groups={pickerGroups}
+      placeholder={groups.length === 0 ? t('rooms:model.noProviders') : t('rooms:model.placeholder')}
+      searchPlaceholder={t('rooms:model.search')}
       disabled={disabled}
-      aria-invalid={invalid || undefined}
-      aria-describedby={describedBy}
-      onChange={(e) => {
-        const ref = decode(e.target.value)
+      invalid={invalid}
+      describedBy={describedBy}
+      onChange={(v) => {
+        const ref = decode(v)
         if (ref) onChange(ref)
       }}
-    >
-      <option value="" disabled>
-        {groups.length === 0 ? t('rooms:model.noProviders') : t('rooms:model.placeholder')}
-      </option>
-      {missing && value && (
-        <option value={encode(value)}>
-          {t('rooms:model.missing', { model: `${value.provider} / ${value.id}` })}
-        </option>
-      )}
-      {groups.map(({ provider, models }) => (
-        <optgroup
-          key={provider.provider}
-          label={
-            isProviderUsable(provider)
-              ? getProviderTitle(provider.provider)
-              : t('rooms:model.notConfigured', {
-                  provider: getProviderTitle(provider.provider),
-                })
-          }
-        >
-          {models.map((m) => (
-            <option key={m.id} value={encode({ provider: provider.provider, id: m.id })}>
-              {optionLabel(m, provider.provider)}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
+    />
   )
 }
