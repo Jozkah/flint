@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
+export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all'
+
 export type HuggingFaceModel = {
   id: string
   author?: string | null
@@ -14,6 +16,7 @@ export type HuggingFaceModel = {
   libraryName?: string | null
   createdAt?: string | null
   lastModified?: string | null
+  cardData?: Record<string, unknown> | null
 }
 
 export type HuggingFaceFile = {
@@ -36,7 +39,7 @@ type NativeResponse = {
 }
 
 async function call<T>(
-  action: 'search' | 'files' | 'download' | 'cancel',
+  action: 'search' | 'files' | 'readme' | 'download' | 'cancel',
   payload: Record<string, unknown>
 ): Promise<T> {
   const response = await invoke<NativeResponse>('provider_http_request', {
@@ -55,9 +58,10 @@ async function call<T>(
 
 export async function searchHuggingFaceModels(
   query: string,
-  token?: string
+  token?: string,
+  format: HuggingFaceFormat = 'gguf'
 ): Promise<HuggingFaceModel[]> {
-  return call<HuggingFaceModel[]>('search', { query, token })
+  return call<HuggingFaceModel[]>('search', { query, token, format })
 }
 
 export async function getHuggingFaceFiles(
@@ -65,6 +69,13 @@ export async function getHuggingFaceFiles(
   token?: string
 ): Promise<HuggingFaceFile[]> {
   return call<HuggingFaceFile[]>('files', { repo, token })
+}
+
+export async function getHuggingFaceReadme(
+  repo: string,
+  token?: string
+): Promise<string> {
+  return call<string>('readme', { repo, token })
 }
 
 export async function downloadHuggingFaceFile(args: {
@@ -146,9 +157,21 @@ function fileKind(name: string): HuggingFaceFileGroup['kind'] {
   return 'model'
 }
 
+export function isGgufFile(file: HuggingFaceFile): boolean {
+  return file.name.toLowerCase().endsWith('.gguf')
+}
+
+export function isMlxRuntimeFile(file: HuggingFaceFile): boolean {
+  const lower = file.name.toLowerCase()
+  if (lower.startsWith('.git') || lower.includes('/.git')) return false
+  if (/\.(png|jpe?g|gif|webp|svg|md|pdf|zip|tar|gz)$/i.test(lower)) return false
+  return /\.(safetensors|json|txt|model|tiktoken|jinja|yaml|yml)$/i.test(lower) ||
+    /(^|\/)(tokenizer|vocab|merges|config|generation_config|special_tokens_map)(\.|$)/i.test(lower)
+}
+
 export function groupHuggingFaceFiles(files: HuggingFaceFile[]): HuggingFaceFileGroup[] {
   const groups = new Map<string, HuggingFaceFile[]>()
-  for (const file of files) {
+  for (const file of files.filter(isGgufFile)) {
     const split = splitInfo(file.name)
     const key = split ? `${fileKind(file.name)}:${split.base}` : `${fileKind(file.name)}:${file.name}`
     const list = groups.get(key) ?? []
@@ -174,6 +197,41 @@ export function groupHuggingFaceFiles(files: HuggingFaceFile[]): HuggingFaceFile
   })
 }
 
+export function chooseMmproj(groups: HuggingFaceFileGroup[]): HuggingFaceFileGroup | null {
+  const mmproj = groups.filter((group) => group.kind === 'mmproj')
+  return (
+    mmproj.find((group) => /f16/i.test(group.primary.name)) ??
+    mmproj.find((group) => /q8/i.test(group.primary.name)) ??
+    mmproj[0] ??
+    null
+  )
+}
+
+export function chooseDraft(
+  groups: HuggingFaceFileGroup[],
+  model: HuggingFaceFileGroup
+): HuggingFaceFileGroup | null {
+  const drafts = groups.filter((group) => group.kind === 'draft')
+  const quant = model.quantization?.toLowerCase()
+  if (quant) {
+    const sameQuant = drafts.find((group) => group.primary.name.toLowerCase().includes(quant))
+    if (sameQuant) return sameQuant
+  }
+  return drafts[0] ?? null
+}
+
+export function modelIdForGroup(repo: string, group: HuggingFaceFileGroup): string {
+  const raw = (splitInfo(group.primary.name)?.base ?? group.primary.name)
+    .replace(/\.gguf$/i, '')
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${repo}/${raw || 'model'}`
+}
+
+export function mlxModelId(repo: string): string {
+  return repo
+}
+
 export function inferParameterCount(model: HuggingFaceModel): number | null {
   const haystack = [model.id, ...model.tags].join(' ')
   const matches = [...haystack.matchAll(/(?:^|[-_\s])(\d+(?:\.\d+)?)\s*[bB](?:[-_\s]|$)/g)]
@@ -191,7 +249,7 @@ export function inferArchitecture(model: HuggingFaceModel): string | null {
   return names.find((name) => haystack.includes(name)) ?? null
 }
 
-export function inferModalities(model: HuggingFaceModel, files: HuggingFaceFile[]): string[] {
+export function inferModalities(model: HuggingFaceModel, files: HuggingFaceFile[] = []): string[] {
   const tags = model.tags.map((t) => t.toLowerCase())
   const out = new Set<string>()
   if (model.pipelineTag?.includes('image') || tags.some((t) => /vision|multimodal|image-text/.test(t))) out.add('vision')
@@ -212,4 +270,13 @@ export function formatModelBytes(value?: number | null): string {
     unit += 1
   }
   return `${amount >= 10 || unit === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unit]}`
+}
+
+export function repoLooksMlx(model: HuggingFaceModel): boolean {
+  const tags = model.tags.map((t) => t.toLowerCase())
+  return tags.includes('mlx') || /(^|[-_/])mlx([-_/]|$)/i.test(model.id) || model.libraryName?.toLowerCase() === 'mlx'
+}
+
+export function repoLooksGguf(model: HuggingFaceModel): boolean {
+  return model.tags.some((tag) => tag.toLowerCase() === 'gguf') || /gguf/i.test(model.id)
 }
