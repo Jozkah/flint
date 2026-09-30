@@ -856,7 +856,7 @@ export function continueRequest(unresolved: readonly UnresolvedItem[]): string {
       item.kind === 'stop'
   )
   const selected: Exclude<UnresolvedItem, { kind: 'stop' }>[] = []
-  const seenTools = new Set<string>()
+  const seenTargets = new Set<string>()
   let keptCheck = false
 
   for (let i = unresolved.length - 1; i >= 0; i -= 1) {
@@ -867,8 +867,11 @@ export function continueRequest(unresolved: readonly UnresolvedItem[]): string {
       keptCheck = true
       selected.push(item)
     } else {
-      if (seenTools.has(item.tool)) continue
-      seenTools.add(item.tool)
+      // Shell targets are command spellings (`npm install`, `npm.cmd install`),
+      // so one blocker per shell; every other tool's target is a resource.
+      const key = item.tool === 'bash' ? item.tool : `${item.tool}::${item.target}`
+      if (seenTargets.has(key)) continue
+      seenTargets.add(key)
       selected.push(item)
     }
     if (selected.length >= MAX_CONTINUE_BLOCKERS) break
