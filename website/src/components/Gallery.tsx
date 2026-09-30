@@ -101,7 +101,7 @@ export function Gallery() {
                 aria-label={`Open screenshot: ${it.caption}`}
                 onClick={(ev) => show(i, ev.currentTarget)}
               >
-                <Shot id={idOf(i)} alt={altOf(i)} sizes={it.span === 'w4' ? [760, 100] : it.span === 'w3' ? [580, 50] : [390, 50]} />
+                <Shot key={idOf(i)} id={idOf(i)} alt={altOf(i)} sizes={it.span === 'w4' ? [760, 100] : it.span === 'w3' ? [580, 50] : [390, 50]} />
                 <span className="cap">{it.caption}</span>
               </button>
             </li>
@@ -123,7 +123,7 @@ export function Gallery() {
               </button>
             </div>
             <div className="lb-img">
-              <picture>
+              <picture key={curId}>
                 <source type="image/avif" srcSet={e.widths.map((w) => `${asset(`shots/${curId}-${w}.avif`)} ${w}w`).join(', ')} sizes="100vw" />
                 <img src={shotUrl(curId, 2560)} width={e.width} height={e.height} alt={altOf(cur)} />
               </picture>

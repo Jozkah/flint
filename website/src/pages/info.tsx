@@ -398,7 +398,6 @@ export function Brand() {
         <ul>
           <li>Write the name as “Flint”.</li>
           <li>Do not redraw, recolor, stretch, rotate or add effects to the icon. It reads best on the dark background Flint uses.</li>
-          <li>Leave clear space around it of at least a quarter of its height.</li>
           <li>Say where it comes from. Flint is an independent fork of Jan, so do not present it as Jan or as made by Jan’s authors.</li>
           <li>
             The <a href={pageHref('license')}>license</a> covers the software. It does not grant rights to the authors’ names or trademarks beyond describing where the software comes from.
