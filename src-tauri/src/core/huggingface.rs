@@ -22,6 +22,14 @@ fn active_downloads() -> &'static Mutex<HashMap<String, CancellationToken>> {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct HuggingFaceFile {
+    pub name: String,
+    pub size: Option<u64>,
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HuggingFaceModel {
     pub id: String,
     pub author: Option<String>,
@@ -37,14 +45,7 @@ pub struct HuggingFaceModel {
     pub created_at: Option<String>,
     pub last_modified: Option<String>,
     pub card_data: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct HuggingFaceFile {
-    pub name: String,
-    pub size: Option<u64>,
-    pub sha256: Option<String>,
+    pub files: Vec<HuggingFaceFile>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -80,6 +81,8 @@ struct SearchModel {
     last_modified: Option<String>,
     #[serde(rename = "cardData")]
     card_data: Option<serde_json::Value>,
+    #[serde(default)]
+    siblings: Vec<RepoSibling>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,6 +102,14 @@ struct RepoSibling {
 struct LfsInfo {
     sha256: Option<String>,
     size: Option<u64>,
+}
+
+fn sibling_file(file: RepoSibling) -> HuggingFaceFile {
+    HuggingFaceFile {
+        name: file.rfilename,
+        size: file.lfs.as_ref().and_then(|lfs| lfs.size).or(file.size),
+        sha256: file.lfs.and_then(|lfs| lfs.sha256),
+    }
 }
 
 fn hf_client(token: Option<&str>) -> Result<reqwest::Client, String> {
@@ -302,6 +313,12 @@ pub async fn huggingface_search_models(
             created_at: model.created_at,
             last_modified: model.last_modified,
             card_data: model.card_data,
+            files: model
+                .siblings
+                .into_iter()
+                .filter(|file| valid_remote_path(&file.rfilename))
+                .map(sibling_file)
+                .collect(),
         })
         .collect())
 }
@@ -334,11 +351,7 @@ pub async fn huggingface_model_files(
         .siblings
         .into_iter()
         .filter(|file| valid_remote_path(&file.rfilename))
-        .map(|file| HuggingFaceFile {
-            name: file.rfilename,
-            size: file.lfs.as_ref().and_then(|lfs| lfs.size).or(file.size),
-            sha256: file.lfs.and_then(|lfs| lfs.sha256),
-        })
+        .map(sibling_file)
         .collect();
     files.sort_by(|a, b| a.name.to_ascii_lowercase().cmp(&b.name.to_ascii_lowercase()));
     Ok(files)
