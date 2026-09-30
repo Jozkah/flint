@@ -248,7 +248,10 @@ export class CoworkChatTransport extends CustomChatTransport {
       message: latest.text,
       assistants: state.assistants,
       currentAssistantId: base?.id,
-      includeCoworkMode: true,
+      // Five assistants, not fifteen assistant-and-style pairs (see the chat
+      // transport): the split left each pair under Jev's 0.7 bar. The work
+      // profile chosen alongside already says how to approach the message.
+      includeCoworkMode: false,
       pinned: !base || base.id !== 'jan',
       temporary: false,
       signal,
