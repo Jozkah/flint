@@ -781,9 +781,31 @@ export const MessageItem = memo(
           usedSkills.length > 0 && (
           <div
             aria-label={t('common:skillsUsedLabel')}
-            className="mt-2 inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 text-xs font-medium text-secondary-foreground"
+            data-testid="skills-used"
+            className="mt-2 flex flex-wrap items-center gap-1.5 text-xs"
           >
-            {t('common:skillsUsed', { skills: usedSkills.join(', ') })}
+            <span className="text-muted-foreground">
+              {t('common:skillsUsedLabel')}
+            </span>
+            {usedSkills.map((name) => {
+              // A plugin's skill is named plugin:skill; the plugin reads as
+              // context, the skill as the point.
+              const at = name.indexOf(':')
+              return (
+                <span
+                  key={name}
+                  title={name}
+                  className="inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 font-medium text-secondary-foreground"
+                >
+                  {at > 0 && (
+                    <span className="mr-0.5 font-normal text-muted-foreground">
+                      {name.slice(0, at + 1)}
+                    </span>
+                  )}
+                  <span className="truncate">{at > 0 ? name.slice(at + 1) : name}</span>
+                </span>
+              )
+            })}
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 
 // ---- Module mocks ----------------------------------------------------------
@@ -583,9 +583,10 @@ describe('MessageItem', () => {
       />
     )
 
-    expect(
-      screen.getByText('common:skillsUsed pptx')
-    ).toBeInTheDocument()
+    // One chip per skill, under the "Skills used" label.
+    const used = screen.getByTestId('skills-used')
+    expect(used).toHaveTextContent('common:skillsUsedLabel')
+    expect(within(used).getByText('pptx')).toBeInTheDocument()
     expect(screen.getByText('Used pptx')).toBeInTheDocument()
   })
 
