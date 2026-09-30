@@ -2,6 +2,12 @@ import { invoke } from '@tauri-apps/api/core'
 
 export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all'
 
+export type HuggingFaceFile = {
+  name: string
+  size?: number | null
+  sha256?: string | null
+}
+
 export type HuggingFaceModel = {
   id: string
   author?: string | null
@@ -17,12 +23,7 @@ export type HuggingFaceModel = {
   createdAt?: string | null
   lastModified?: string | null
   cardData?: Record<string, unknown> | null
-}
-
-export type HuggingFaceFile = {
-  name: string
-  size?: number | null
-  sha256?: string | null
+  files: HuggingFaceFile[]
 }
 
 export type HuggingFaceDownloadProgress = {
@@ -127,6 +128,22 @@ export function explainQuantization(quant: string | null): string {
   if (q.startsWith('Q3') || q.startsWith('IQ3')) return 'Smaller and faster, with a noticeable quality trade-off'
   if (q.startsWith('Q2') || q.startsWith('IQ2') || q.startsWith('IQ1')) return 'Very small footprint with the largest quality trade-off'
   return 'Quantized GGUF model'
+}
+
+export function quantPreference(quant: string | null): number {
+  const q = quant?.toUpperCase() ?? ''
+  if (q === 'Q5_K_M') return 110
+  if (q === 'Q4_K_M') return 105
+  if (q === 'IQ4_XS') return 100
+  if (q === 'Q6_K') return 95
+  if (q === 'Q5_K_S') return 90
+  if (q === 'Q4_K_S') return 85
+  if (q === 'Q8_0') return 80
+  if (q.startsWith('Q4')) return 75
+  if (q.startsWith('Q3') || q.startsWith('IQ3')) return 60
+  if (q.startsWith('Q2') || q.startsWith('IQ2')) return 40
+  if (q === 'F16' || q === 'BF16' || q === 'F32') return 30
+  return 50
 }
 
 export type SplitInfo = { index: number; total: number; base: string }
