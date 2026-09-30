@@ -5102,17 +5102,6 @@ export function CoworkPage() {
           else void returnToReviewOnly()
         }}
       />
-      {session?.id &&
-        (pendingFolder[session.id] || pendingAccess[session.id]) && (
-          <span role="status" className="text-xs text-muted-foreground">
-            {t('common:coworkAccess.pendingNextRun')}
-          </span>
-        )}
-      {running && (
-        <span className="text-xs text-muted-foreground">
-          {t('common:coworkAccess.currentRunUnchanged')}
-        </span>
-      )}
       {workProfilesOn && session?.id && (
         <CoworkWorkProfilePicker
           variant={variant}
