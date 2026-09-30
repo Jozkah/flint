@@ -16,6 +16,11 @@ import {
 } from '@/lib/agentActivity'
 import type { SubagentRun } from '@/types/coworkSession'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -24,6 +29,7 @@ import {
   Paperclip,
   Play,
   RefreshCw,
+  Sparkles,
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
@@ -779,34 +785,45 @@ export const MessageItem = memo(
         {message.role === 'assistant' &&
           !isStreaming &&
           usedSkills.length > 0 && (
-          <div
-            aria-label={t('common:skillsUsedLabel')}
-            data-testid="skills-used"
-            className="mt-2 flex flex-wrap items-center gap-1.5 text-xs"
-          >
-            <span className="text-muted-foreground">
-              {t('common:skillsUsedLabel')}
-            </span>
-            {usedSkills.map((name) => {
-              // A plugin's skill is named plugin:skill; the plugin reads as
-              // context, the skill as the point.
-              const at = name.indexOf(':')
-              return (
-                <span
-                  key={name}
-                  title={name}
-                  className="inline-flex h-[22px] max-w-full items-center rounded-md border-[0.8px] border-border bg-card px-2 font-medium text-secondary-foreground"
-                >
-                  {at > 0 && (
-                    <span className="mr-0.5 font-normal text-muted-foreground">
-                      {name.slice(0, at + 1)}
-                    </span>
-                  )}
-                  <span className="truncate">{at > 0 ? name.slice(at + 1) : name}</span>
-                </span>
-              )
-            })}
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                data-testid="skills-used"
+                aria-label={t('common:skillsUsedLabel')}
+                className="mt-2 inline-flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground"
+              >
+                <Sparkles className="size-3.5" aria-hidden />
+                {t('common:skillsUsedCount', { count: usedSkills.length })}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-72 max-w-[calc(100vw-2rem)] p-3 text-xs"
+              data-testid="skills-used-list"
+            >
+              <div className="mb-1.5 font-medium text-foreground">
+                {t('common:skillsUsedLabel')}
+              </div>
+              <ul className="flex flex-col gap-1">
+                {usedSkills.map((name) => {
+                  // A plugin's skill is named plugin:skill; the plugin reads
+                  // as context, the skill as the point.
+                  const at = name.indexOf(':')
+                  return (
+                    <li key={name} className="break-all text-foreground">
+                      {at > 0 && (
+                        <span className="text-muted-foreground">
+                          {name.slice(0, at + 1)}
+                        </span>
+                      )}
+                      {at > 0 ? name.slice(at + 1) : name}
+                    </li>
+                  )
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
         )}
 
         {isLastMessage &&

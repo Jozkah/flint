@@ -560,7 +560,7 @@ describe('MessageItem', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument()
   })
 
-  it('shows a persistent badge for a successfully loaded skill', () => {
+  it('shows a persistent badge for a successfully loaded skill', async () => {
     render(
       <MessageItem
         message={
@@ -583,10 +583,13 @@ describe('MessageItem', () => {
       />
     )
 
-    // One chip per skill, under the "Skills used" label.
+    // One line saying how many, and the names in a popover on press.
     const used = screen.getByTestId('skills-used')
-    expect(used).toHaveTextContent('common:skillsUsedLabel')
-    expect(within(used).getByText('pptx')).toBeInTheDocument()
+    expect(used).toHaveTextContent('common:skillsUsedCount')
+    fireEvent.click(used)
+    expect(
+      within(await screen.findByTestId('skills-used-list')).getByText('pptx')
+    ).toBeInTheDocument()
     expect(screen.getByText('Used pptx')).toBeInTheDocument()
   })
 

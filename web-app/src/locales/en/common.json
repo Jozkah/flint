@@ -883,6 +883,8 @@
   "artifactShowInFolder": "Show in Folder",
   "skillsUsedLabel": "Skills used",
   "skillsUsed": "Skills used: {{skills}}",
+  "skillsUsedCount_one": "Used {{count}} skill",
+  "skillsUsedCount_other": "Used {{count}} skills",
   "artifactsAll": "All",
   "artifactsEmpty": "Nothing produced yet. Artifacts from Cowork runs show up here.",
   "artifactsNoMatch": "No artifacts match.",
