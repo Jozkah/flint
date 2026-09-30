@@ -80,9 +80,10 @@ fn optional_string(body: &serde_json::Value, key: &str) -> Option<String> {
         .filter(|value| !value.trim().is_empty())
 }
 
-/// Internal, explicit-only bridge for the model download dialog. It deliberately
-/// uses a `flint://` pseudo URL so ordinary provider traffic can never fall into
-/// it by accident. No caller invokes these actions during startup.
+/// Explicit-only bridge for the model Hub. It deliberately uses a `flint://`
+/// pseudo URL so ordinary provider traffic can never fall into it by accident.
+/// No startup path calls these actions; opening/searching/downloading in Hub is
+/// the user's network consent boundary.
 async fn huggingface_bridge<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: &ProviderRequest,
@@ -95,9 +96,14 @@ async fn huggingface_bridge<R: Runtime>(
     let token = optional_string(&body, "token");
     let value = match action {
         "search" => {
-            let query = body_string(&body, "query")?.to_string();
+            let query = body
+                .get("query")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let format = optional_string(&body, "format");
             serde_json::to_value(
-                crate::core::huggingface::huggingface_search_models(query, token).await?,
+                crate::core::huggingface::huggingface_search_models(query, format, token).await?,
             )
             .map_err(|e| e.to_string())?
         }
@@ -107,6 +113,12 @@ async fn huggingface_bridge<R: Runtime>(
                 crate::core::huggingface::huggingface_model_files(repo, token).await?,
             )
             .map_err(|e| e.to_string())?
+        }
+        "readme" => {
+            let repo = body_string(&body, "repo")?.to_string();
+            serde_json::Value::String(
+                crate::core::huggingface::huggingface_readme(repo, token).await?,
+            )
         }
         "download" => {
             let task_id = body_string(&body, "taskId")?.to_string();
@@ -178,7 +190,7 @@ pub fn provider_endpoint_diagnostics(
                 .iter()
                 .map(|c| CandidateView {
                     address: c.addr.ip().to_string(),
-                    class: c.class.as_str().to_string(),
+                    class: format!("{:?}", c.class),
                     eligible: c.eligible,
                 })
                 .collect(),
@@ -189,42 +201,45 @@ pub fn provider_endpoint_diagnostics(
     }))
 }
 
-/// Forget what was resolved: a provider was edited, the network moved, or the
-/// user asked for a fresh attempt. Omitting the host clears everything.
 #[tauri::command]
 pub fn provider_endpoint_refresh(host: Option<String>, port: Option<u16>) {
-    match (host, port) {
-        (Some(host), Some(port)) => transport::invalidate(&host, port),
-        _ => transport::invalidate_all(),
+    if let (Some(host), Some(port)) = (host, port) {
+        resolver::shared().forget(&host, port);
+    } else {
+        resolver::shared().clear();
     }
 }
 
-/// What the configured CA bundle does right now (AH-190).
 #[tauri::command]
-pub fn network_ca_status() -> serde_json::Value {
-    super::tls::status()
+pub async fn provider_endpoint_probe(host: String, port: u16) -> Result<EndpointDiagnostics, String> {
+    let resolved = resolver::shared().resolve(&host, port).await?;
+    let selected = resolved.selected().map(|a| a.ip().to_string());
+    Ok(EndpointDiagnostics {
+        host: resolved.host,
+        port: resolved.port,
+        local_name: resolved.local_name,
+        candidates: resolved
+            .candidates
+            .iter()
+            .map(|c| CandidateView {
+                address: c.addr.ip().to_string(),
+                class: format!("{:?}", c.class),
+                eligible: c.eligible,
+            })
+            .collect(),
+        selected,
+        suppressed_public: resolved.suppressed_public,
+        responded: resolved.responded.map(|a| a.ip().to_string()),
+    })
 }
 
-/// Check a bundle path before it is saved, so the settings page can say what
-/// it would do. Nothing is stored here: the page saves the path itself, and the
-/// next outbound client built reads it from the settings.
 #[tauri::command]
 pub fn network_ca_check(path: String) -> serde_json::Value {
-    let trimmed = path.trim();
-    if trimmed.is_empty() {
-        return serde_json::json!({ "state": "none" });
-    }
-    match super::tls::load(std::path::Path::new(trimmed), super::tls::Source::DesktopSettings) {
-        Ok(bundle) => serde_json::json!({
-            "state": "in_use",
-            "path": bundle.path.display().to_string(),
-            "certificates": bundle.fingerprints.len(),
-            "sha256": bundle.fingerprints,
-        }),
+    match transport::check_ca_file(std::path::Path::new(&path)) {
+        Ok(()) => serde_json::json!({ "valid": true }),
         Err(error) => serde_json::json!({
-            "state": "broken",
-            "kind": error.kind.tag(),
-            "path": error.path.display().to_string(),
+            "valid": false,
+            "code": error.code,
             "message": error.message,
         }),
     }
