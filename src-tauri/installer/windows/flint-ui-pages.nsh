@@ -48,6 +48,22 @@ Function FlintBrowse
   nsDialogs::SelectFolderDialog "Choose where Flint should be installed" "$INSTDIR"
   Pop $0
   ${If} $0 != error
+  ${AndIf} $0 != ""
+    ; Never install loose into the chosen folder: the uninstaller removes
+    ; the resources subfolder of the install dir recursively, so browsing to
+    ; e.g. Documents or a drive root would otherwise delete user data. Append
+    ; the app folder unless the
+    ; leaf already is it.
+    StrCpy $1 $0 1 -1
+    ${If} $1 == "\"
+      StrCpy $0 $0 -1
+    ${EndIf}
+    StrLen $1 "\${PRODUCTNAME}"
+    IntOp $1 0 - $1
+    StrCpy $2 $0 "" $1
+    ${If} $2 != "\${PRODUCTNAME}"
+      StrCpy $0 "$0\${PRODUCTNAME}"
+    ${EndIf}
     ${NSD_SetText} $FlintPathEdit $0
   ${EndIf}
 FunctionEnd
@@ -171,6 +187,32 @@ Function FlintOptionsLeave
     MessageBox MB_ICONEXCLAMATION "Choose an install location before continuing."
     Abort
   ${EndIf}
+  ; Reject anything that is not an absolute path below a drive root or UNC
+  ; share root, so files are never scattered into (and later deleted from) a
+  ; shared location.
+  StrCpy $1 $0 1 -1
+  ${If} $1 == "\"
+    StrCpy $0 $0 -1
+  ${EndIf}
+  StrCpy $1 $0 1 1
+  StrCpy $2 $0 2
+  StrLen $3 $0
+  ${If} $2 == "\\"
+    ; UNC path: fine
+  ${ElseIf} $1 == ":"
+    ${If} $3 <= 2
+      MessageBox MB_ICONEXCLAMATION "Choose a folder, not a drive root. Flint needs its own folder (for example $0\${PRODUCTNAME})."
+      Abort
+    ${EndIf}
+    StrCpy $1 $0 1 2
+    ${If} $1 != "\"
+      MessageBox MB_ICONEXCLAMATION "Enter a full install path such as C:\Program Files\${PRODUCTNAME}."
+      Abort
+    ${EndIf}
+  ${Else}
+    MessageBox MB_ICONEXCLAMATION "Enter a full install path such as C:\Program Files\${PRODUCTNAME}."
+    Abort
+  ${EndIf}
   GetFullPathName $INSTDIR $0
 FunctionEnd
 
@@ -214,7 +256,7 @@ Function FlintMaintenance
   SendMessage $R3 ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $R3 FG BG
   !if "${ALLOWDOWNGRADES}" == "false"
-    ${IfThen} $R0 = -1 ${|} EnableWindow $R3 0 ${|}
+    ${IfThen} $ReinstallVersionState = -1 ${|} EnableWindow $R3 0 ${|}
   !endif
   ${NSD_OnClick} $R3 PageReinstallUpdateSelection
 
