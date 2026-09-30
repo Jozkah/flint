@@ -838,8 +838,10 @@ pub fn plan_from_args(v: &Value) -> Result<GitPlan, String> {
 }
 
 /// Split a command line into arguments: whitespace separates, and single or
-/// double quotes group (with `\"` inside double quotes). No expansion of any
-/// kind. `None` for an unterminated quote.
+/// double quotes group (`\"` is a quote and `\\` a backslash inside double
+/// quotes; any other backslash stays literal so Windows paths survive, and a
+/// leading `\\` of a UNC path is kept as is). No expansion of any kind.
+/// `None` for an unterminated quote.
 fn split_command_line(line: &str) -> Option<Vec<String>> {
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -849,12 +851,21 @@ fn split_command_line(line: &str) -> Option<Vec<String>> {
         match c {
             '\'' | '"' => {
                 in_word = true;
+                let start = cur.len();
                 loop {
                     match chars.next() {
                         None => return None,
                         Some(q) if q == c => break,
                         Some('\\') if c == '"' && chars.peek() == Some(&'"') => {
                             cur.push('"');
+                            chars.next();
+                        }
+                        // `\\` is one backslash, except at the very start of
+                        // the quoted text where it is a UNC prefix.
+                        Some('\\')
+                            if c == '"' && chars.peek() == Some(&'\\') && cur.len() > start =>
+                        {
+                            cur.push('\\');
                             chars.next();
                         }
                         Some(other) => cur.push(other),
@@ -1468,8 +1479,23 @@ fn pr_flag(args: &[String], long: &str, short: &str) -> Option<String> {
     })
 }
 
+/// How many times `long`/`short` (or `long=value`) appear. `gh` honours the
+/// LAST one while `pr_flag` reads the first, so a repeat would verify one
+/// target and open the PR against another.
+fn pr_flag_count(args: &[String], long: &str, short: &str) -> usize {
+    let prefix = format!("{long}=");
+    args.iter()
+        .filter(|arg| *arg == long || *arg == short || arg.starts_with(&prefix))
+        .count()
+}
+
 fn pr_preflight_target(args: &[String]) -> Result<(String, String, String, String), String> {
     let required = || "include explicit --repo owner/repo, --base branch and --head branch so Flint can verify the proposed pull request before opening it".to_string();
+    for (long, short) in [("--repo", "-R"), ("--base", "-B"), ("--head", "-H")] {
+        if pr_flag_count(args, long, short) > 1 {
+            return Err(format!("pass {long} only once so the verified target is the one used"));
+        }
+    }
     let repo = pr_flag(args, "--repo", "-R").ok_or_else(required)?;
     let base = pr_flag(args, "--base", "-B").ok_or_else(required)?;
     let head = pr_flag(args, "--head", "-H").ok_or_else(required)?;
@@ -1480,15 +1506,19 @@ fn pr_preflight_target(args: &[String]) -> Result<(String, String, String, Strin
     {
         return Err("--repo must name owner/repo or host/owner/repo".into());
     }
+    // `#`, `@` and `+` are legal in ref names (`fix/issue#12`). Still refused:
+    // a leading `-` (flag injection), `..`, `@{`, spaces, control characters,
+    // backslash and `~^:?*[`: none of those are in the allowed set.
     let valid_branch = |name: &str| !name.is_empty() && !name.contains("..")
+        && name != "@"
         && !name.starts_with('-')
-        && name.chars().all(|c| c.is_ascii_alphanumeric() || "._/-".contains(c));
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || "._/-#@+".contains(c));
     let (head_owner, head_branch) = head.split_once(':')
         .map_or((parts[parts.len() - 2], head.as_str()), |(owner, branch)| (owner, branch));
     if !valid_branch(&base) || !valid_branch(head_branch) || head_owner.is_empty()
         || !head_owner.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c))
     {
-        return Err("--base and --head must name ordinary branch refs".into());
+        return Err("--base and --head must name ordinary branch refs: letters, digits and . _ / - # @ + only, no '..', no leading '-'".into());
     }
     let host = if parts.len() == 3 { parts[0] } else { "github.com" };
     let base_url = format!("https://{host}/{}/{}.git", parts[parts.len() - 2], parts[parts.len() - 1]);
@@ -2335,5 +2365,53 @@ mod tests {
             vec!["log", "--oneline", "-5"]
         );
         assert!(split_command_line("log 'open").is_none());
+    }
+
+    #[test]
+    fn a_backslash_before_a_closing_quote_does_not_swallow_it() {
+        assert_eq!(
+            split_command_line(r#"add "dir\\" next"#).unwrap(),
+            vec!["add", r"dir\", "next"]
+        );
+        assert_eq!(
+            split_command_line(r#"add "say \"hi\"""#).unwrap(),
+            vec!["add", r#"say "hi""#]
+        );
+        // Single backslashes and a UNC prefix stay literal.
+        assert_eq!(
+            split_command_line(r#"add "C:\\repo\src" "\\server\share""#).unwrap(),
+            vec!["add", r"C:\repo\src", r"\\server\share"]
+        );
+    }
+
+    #[test]
+    fn duplicate_pr_flags_are_rejected() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        for dup in [
+            args(&["pr", "create", "--repo", "o/r", "--base", "a", "--base", "b", "--head", "h"]),
+            args(&["pr", "create", "--repo", "o/r", "--base", "a", "-B", "b", "--head", "h"]),
+            args(&["pr", "create", "--repo", "o/r", "--base=a", "--base", "b", "--head", "h"]),
+            args(&["pr", "create", "--repo", "o/r", "--repo", "x/y", "--base", "a", "--head", "h"]),
+        ] {
+            assert!(pr_preflight_target(&dup).is_err(), "{dup:?}");
+        }
+    }
+
+    #[test]
+    fn branch_names_with_hash_at_and_plus_are_accepted() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let ok = args(&["pr", "create", "--repo", "o/r", "--base", "main", "--head", "fix/issue#12+x@y"]);
+        assert_eq!(pr_preflight_target(&ok).unwrap().3, "fix/issue#12+x@y");
+        for bad in ["-x", "a..b", "a@{1}", "a b", "a\\b", "a~1", "a^", "a:b:c", "a?", "a*", "a[", "@"] {
+            let a = args(&["pr", "create", "--repo", "o/r", "--base", "main", "--head", bad]);
+            assert!(pr_preflight_target(&a).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn sha_in_skips_a_command_header_line() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let out = format!("$ git ls-remote https://github.com/o/r.git main\n{sha}\trefs/heads/main\n");
+        assert_eq!(sha_in(&out).as_deref(), Some(sha));
     }
 }
