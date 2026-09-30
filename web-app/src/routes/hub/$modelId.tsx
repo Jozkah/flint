@@ -21,6 +21,7 @@ import {
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { RenderMarkdown } from '@/containers/RenderMarkdown'
 import { route } from '@/constants/routes'
@@ -205,7 +206,14 @@ function HuggingFaceModelDetail() {
       <main className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
         <div className="mx-auto max-w-5xl space-y-7">
           <section>
-            <p className="text-sm text-muted-foreground">{model.author || model.id.split('/')[0]}</p>
+            <div className="flex items-center gap-2.5">
+              <HuggingFaceAvatar
+                author={model.author || model.id.split('/')[0]}
+                modelId={model.id}
+                size={28}
+              />
+              <p className="text-sm text-muted-foreground">{model.author || model.id.split('/')[0]}</p>
+            </div>
             <div className="mt-1 flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">
                 <h1 className="break-words text-2xl font-semibold tracking-tight">{model.id.split('/').slice(1).join('/') || model.id}</h1>

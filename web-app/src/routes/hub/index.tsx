@@ -31,8 +31,7 @@ import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
-import { BrandMark } from '@/containers/engine/BrandMark'
-import { modelLogo } from '@/lib/brandLogos'
+import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
 import { cn } from '@/lib/utils'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { route } from '@/constants/routes'
@@ -40,6 +39,7 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useHardware } from '@/hooks/useHardware'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import {
+  chooseMmproj,
   cleanHuggingFaceRepo,
   explainQuantization,
   formatModelBytes,
@@ -48,6 +48,7 @@ import {
   inferArchitecture,
   inferModalities,
   inferParameterCount,
+  mlxWeightsBytes,
   quantPreference,
   repoLooksMlx,
   searchHuggingFaceModels,
@@ -93,23 +94,34 @@ function fitRank(verdict: FitVerdict): number {
   return 0
 }
 
+type Hardware = ReturnType<typeof useHardware.getState>['hardwareData']
+
+/**
+ * Whether a variant is expected to run here. A vision model's projector is
+ * downloaded with it, so it counts against memory too.
+ */
+function fitOfGroup(
+  group: HuggingFaceFileGroup,
+  groups: HuggingFaceFileGroup[],
+  hardware: Hardware
+) {
+  return assessModelFit({
+    weightsBytes: group.totalSize,
+    mmprojBytes: chooseMmproj(groups)?.totalSize ?? 0,
+    ctxLength: DEFAULT_CTX_LENGTH,
+    hardware,
+  })
+}
+
 function bestGroup(
   groups: HuggingFaceFileGroup[],
-  hardware: ReturnType<typeof useHardware.getState>['hardwareData']
+  hardware: Hardware
 ): HuggingFaceFileGroup | undefined {
   const models = groups.filter((group) => group.kind === 'model')
   if (!models.length) return undefined
   return [...models].sort((a, b) => {
-    const aFit = assessModelFit({
-      weightsBytes: a.totalSize,
-      ctxLength: DEFAULT_CTX_LENGTH,
-      hardware,
-    })
-    const bFit = assessModelFit({
-      weightsBytes: b.totalSize,
-      ctxLength: DEFAULT_CTX_LENGTH,
-      hardware,
-    })
+    const aFit = fitOfGroup(a, groups, hardware)
+    const bFit = fitOfGroup(b, groups, hardware)
     const aScore = fitRank(aFit.verdict) + quantPreference(a.quantization)
     const bScore = fitRank(bFit.verdict) + quantPreference(b.quantization)
     if (aScore !== bScore) return bScore - aScore
@@ -143,42 +155,6 @@ function formatUpdated(value?: string | null): string | null {
     day: 'numeric',
     year: 'numeric',
   })
-}
-
-const AVATAR_TINTS = [
-  'from-sky-400 to-indigo-500',
-  'from-emerald-400 to-teal-600',
-  'from-rose-400 to-pink-600',
-  'from-amber-300 to-orange-500',
-  'from-violet-400 to-fuchsia-600',
-  'from-lime-400 to-emerald-600',
-]
-
-/** The family's brand mark when there is one, else a tinted initial per author. */
-function ModelAvatar({
-  id,
-  author,
-  name,
-}: {
-  id: string
-  author: string
-  name: string
-}) {
-  const logo = modelLogo(id)
-  if (logo) return <BrandMark logo={logo} name={name} size={44} />
-  let hash = 0
-  for (const char of author) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        'grid size-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br text-[17px] font-semibold text-white shadow-lift',
-        AVATAR_TINTS[hash % AVATAR_TINTS.length]
-      )}
-    >
-      {author.charAt(0).toUpperCase()}
-    </span>
-  )
 }
 
 const SELECT =
@@ -425,7 +401,7 @@ function ModelDiscoverRoute() {
                 <h1 className="mt-1 text-2xl leading-tight font-medium tracking-[-0.01em]">
                   Discover local models
                 </h1>
-                <p className="mt-1 max-w-2xl text-[13px] text-secondary-foreground">
+                <p className="mt-1 hidden max-w-2xl text-[13px] text-secondary-foreground [@media(min-height:700px)]:block">
                   Search, compare and download models that run on this device.
                   Hugging Face is contacted only while you use Discover or start
                   a download.
@@ -627,14 +603,19 @@ function ModelDiscoverRoute() {
                 const groups = groupHuggingFaceFiles(files)
                 const variants = groups.filter((group) => group.kind === 'model')
                 const recommended = bestGroup(groups, hardware)
-                const recommendedFit = recommended
-                  ? assessModelFit({
-                      weightsBytes: recommended.totalSize,
-                      ctxLength: DEFAULT_CTX_LENGTH,
-                      hardware,
-                    })
-                  : null
                 const isMlx = repoLooksMlx(model)
+                const mlxBytes = isMlx ? mlxWeightsBytes(files) : null
+                const recommendedFit = isMlx
+                  ? mlxBytes
+                    ? assessModelFit({
+                        weightsBytes: mlxBytes,
+                        ctxLength: DEFAULT_CTX_LENGTH,
+                        hardware,
+                      })
+                    : null
+                  : recommended
+                    ? fitOfGroup(recommended, groups, hardware)
+                    : null
                 const modalities = inferModalities(model, files)
                 const parameterCount = inferParameterCount(model)
                 const arch = inferArchitecture(model)
@@ -665,7 +646,7 @@ function ModelDiscoverRoute() {
                           onClick={() => openModel(model)}
                           className="flex min-w-0 flex-1 gap-3.5 rounded-lg text-left outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40"
                         >
-                          <ModelAvatar id={model.id} author={author} name={name} />
+                          <HuggingFaceAvatar author={author} modelId={model.id} />
                           <span className="min-w-0 flex-1">
                             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                               <span className="truncate text-[15px] font-semibold">
@@ -764,16 +745,22 @@ function ModelDiscoverRoute() {
                         </div>
                       </div>
 
-                      {!isMlx && recommended && recommendedFit && !opened && (
+                      {recommendedFit && !opened && (isMlx || recommended) && (
                         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-muted/40 px-4 py-2 text-xs text-secondary-foreground">
                           <span className="inline-flex items-center gap-1.5 font-medium text-acc-text">
-                            <Sparkles className="size-3.5" /> Best for this device
+                            <Sparkles className="size-3.5" />{' '}
+                            {isMlx ? 'On this Mac' : 'Best for this device'}
                           </span>
                           <span className="font-mono">
-                            {recommended.quantization || recommended.primary.name}
+                            {isMlx
+                              ? 'MLX'
+                              : recommended?.quantization ||
+                                recommended?.primary.name}
                           </span>
                           <span className="text-muted-foreground">
-                            {formatModelBytes(recommended.totalSize)}
+                            {formatModelBytes(
+                              isMlx ? mlxBytes : recommended?.totalSize
+                            )}
                           </span>
                           <Chip tone={fitTone(recommendedFit.verdict)} dot>
                             {fitLabel(recommendedFit.verdict)}
@@ -795,11 +782,7 @@ function ModelDiscoverRoute() {
                           ) : (
                             <div className="space-y-1">
                               {variants.map((group) => {
-                                const fit = assessModelFit({
-                                  weightsBytes: group.totalSize,
-                                  ctxLength: DEFAULT_CTX_LENGTH,
-                                  hardware,
-                                })
+                                const fit = fitOfGroup(group, groups, hardware)
                                 const isRecommended = recommended?.id === group.id
                                 return (
                                   <div

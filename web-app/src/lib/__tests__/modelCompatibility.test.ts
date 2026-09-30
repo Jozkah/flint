@@ -410,3 +410,79 @@ describe('kvArchitectureFromGguf', () => {
     expect(kvArchitectureFromGguf({ 'general.architecture': 'llama' })).toBeNull()
   })
 })
+
+describe('estimateKvCacheBytes for large files', () => {
+  it('keeps 10% per 4k up to the knee', () => {
+    expect(estimateKvCacheBytes(12 * GB, 4096)).toBeCloseTo(1.2 * GB)
+  })
+
+  it('shrinks the share for very large models but stays above the real cache', () => {
+    // A 70B Q4 (~42.5 GB, 80 layers, 8 KV heads, 128 head dim) keeps ~2.7 GB
+    // of cache at 8k; the old flat 10% estimated 8.5 GB.
+    const estimate = estimateKvCacheBytes(42.5 * GB, 8192)
+    expect(estimate).toBeLessThan(6 * GB)
+    expect(estimate).toBeGreaterThan(2.7 * GB)
+  })
+})
+
+describe('assessModelFit across real machines', () => {
+  const igpu = baseHardware({
+    gpus: [
+      {
+        ...withDiscreteGpu(16, 1).gpus[0],
+        vulkan_info: {
+          index: 0,
+          device_id: 0,
+          device_type: 'IntegratedGpu',
+          api_version: '',
+        },
+      },
+    ],
+  })
+  const verdict = (hardware: HardwareData, gb: number, mmprojGb = 0) =>
+    assessModelFit({
+      weightsBytes: gb * GB,
+      mmprojBytes: mmprojGb * GB,
+      ctxLength: DEFAULT_CTX_LENGTH,
+      hardware,
+    }).verdict
+
+  it.each([
+    ['8 GB CPU-only', baseHardware({ total_memory: 8 * 1024 }), 1.9, 'fits'],
+    ['8 GB CPU-only', baseHardware({ total_memory: 8 * 1024 }), 4.9, 'exceeds'],
+    ['16 GB CPU-only', baseHardware(), 4.9, 'fits'],
+    ['16 GB CPU-only', baseHardware(), 19, 'exceeds'],
+    ['8 GB GPU / 16 GB RAM', withDiscreteGpu(16, 8), 4.9, 'fits'],
+    ['8 GB GPU / 16 GB RAM', withDiscreteGpu(16, 8), 8.5, 'fits-partial-offload'],
+    ['8 GB GPU / 16 GB RAM', withDiscreteGpu(16, 8), 42.5, 'exceeds'],
+    ['8 GB GPU / 64 GB RAM', withDiscreteGpu(64, 8), 42.5, 'fits-partial-offload'],
+    ['24 GB GPU / 32 GB RAM', withDiscreteGpu(32, 24), 19, 'fits'],
+    ['integrated GPU, 16 GB', igpu, 8.5, 'fits'],
+    ['integrated GPU, 16 GB', igpu, 19, 'exceeds'],
+    ['Apple silicon 8 GB', appleSilicon(8), 4.9, 'exceeds'],
+    ['Apple silicon 16 GB', appleSilicon(16), 4.9, 'fits'],
+    ['Apple silicon 64 GB', appleSilicon(64), 42.5, 'fits-partial-offload'],
+  ] as const)('%s, %s GB model: %s', (_name, hardware, gb, expected) => {
+    expect(verdict(hardware, gb)).toBe(expected)
+  })
+
+  it('counts a downloaded vision projector against memory', () => {
+    const hardware = withDiscreteGpu(16, 8)
+    expect(verdict(hardware, 5.6)).toBe('fits')
+    expect(verdict(hardware, 5.6, 1.5)).toBe('fits-partial-offload')
+  })
+
+  it('does not guess when the machine has not been measured', () => {
+    expect(verdict(baseHardware({ total_memory: 0 }), 4.9)).toBe('unknown')
+  })
+
+  it('does not guess when the file size is unknown', () => {
+    expect(
+      assessModelFit({
+        weightsBytes: null,
+        ctxLength: DEFAULT_CTX_LENGTH,
+        hardware: baseHardware(),
+      }).verdict
+    ).toBe('unknown')
+  })
+})

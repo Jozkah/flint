@@ -79,6 +79,14 @@ const UNIFIED_LARGE_THRESHOLD_BYTES = 36 * GIB
 /** Legacy file-size KV approximation, used only without GGUF metadata. */
 const KV_HEURISTIC_RATIO = 0.1
 const KV_BASELINE_CTX = 4096
+/**
+ * Above this file size the cache is a smaller share of the weights: a 70B model
+ * keeps about a sixth of the cache per byte that an 8B one does, because it
+ * grows with layers and KV heads, not with parameter count. The share falls with
+ * the square root of the size, which stays above the real figure (so the estimate
+ * remains conservative) without calling every large model too big.
+ */
+const KV_HEURISTIC_KNEE_BYTES = 12 * GIB
 
 const UNIT_BYTES: Record<string, number> = {
   b: 1,
@@ -125,7 +133,11 @@ export function estimateKvCacheBytes(
 ): number {
   if (!Number.isFinite(fileSizeBytes) || fileSizeBytes <= 0) return 0
   const ctx = ctxLength > 0 ? ctxLength : DEFAULT_CTX_LENGTH
-  return fileSizeBytes * KV_HEURISTIC_RATIO * (ctx / KV_BASELINE_CTX)
+  const sizeFactor =
+    fileSizeBytes > KV_HEURISTIC_KNEE_BYTES
+      ? Math.sqrt(KV_HEURISTIC_KNEE_BYTES / fileSizeBytes)
+      : 1
+  return fileSizeBytes * KV_HEURISTIC_RATIO * sizeFactor * (ctx / KV_BASELINE_CTX)
 }
 
 /** The attention shape needed to size a KV cache, read from GGUF metadata. */

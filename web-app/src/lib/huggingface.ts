@@ -235,6 +235,15 @@ export function groupHuggingFaceFiles(files: HuggingFaceFile[]): HuggingFaceFile
   })
 }
 
+/** Total size of an MLX repository's weight shards, or null if any size is unknown. */
+export function mlxWeightsBytes(files: HuggingFaceFile[]): number | null {
+  const shards = files.filter((file) => /\.safetensors$/i.test(file.name))
+  if (!shards.length || shards.some((file) => typeof file.size !== 'number')) {
+    return null
+  }
+  return shards.reduce((sum, file) => sum + (file.size ?? 0), 0)
+}
+
 export function chooseMmproj(groups: HuggingFaceFileGroup[]): HuggingFaceFileGroup | null {
   const mmproj = groups.filter((group) => group.kind === 'mmproj')
   return (

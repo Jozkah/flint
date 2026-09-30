@@ -4,6 +4,7 @@ import {
   chooseMmproj,
   cleanHuggingFaceRepo,
   groupHuggingFaceFiles,
+  mlxWeightsBytes,
   quantizationFromFilename,
   repoFromDeepLink,
   splitInfo,
@@ -85,5 +86,22 @@ describe('quantization parsing', () => {
       total: 3,
       base: 'foo-Q4_K_M',
     })
+  })
+})
+
+describe('MLX weight size', () => {
+  it('sums the safetensors shards only', () => {
+    expect(
+      mlxWeightsBytes([
+        { name: 'model-00001-of-00002.safetensors', size: 100 },
+        { name: 'model-00002-of-00002.safetensors', size: 50 },
+        { name: 'config.json', size: 3 },
+      ])
+    ).toBe(150)
+  })
+
+  it('is unknown when any shard has no size or there are none', () => {
+    expect(mlxWeightsBytes([{ name: 'a.safetensors' }])).toBeNull()
+    expect(mlxWeightsBytes([{ name: 'config.json', size: 3 }])).toBeNull()
   })
 })
