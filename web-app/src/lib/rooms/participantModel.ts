@@ -30,6 +30,9 @@ import {
   type StreamReplyResult,
 } from './callError'
 
+const OUT_OF_STEPS_NOTICE =
+  'You have used all your tool steps for this turn. Do not call any more tools: write your reply now, saying what you did, what is still open, and who should act next.'
+
 export type {
   StreamReply,
   StreamReplyInput,
@@ -97,6 +100,8 @@ export async function streamParticipantReply(
 ): Promise<StreamReplyResult> {
   const lookup = deps.lookup ?? defaultProviderLookup
   const stream = deps.streamText ?? streamText
+  const maxSteps =
+    input.toolContext?.access === 'full' ? ROOM_FULL_TOOL_MAX_STEPS : ROOM_TOOL_MAX_STEPS
   const provider = lookup(input.model.provider)
   if (!provider) {
     throw new RoomCallError(
@@ -170,11 +175,19 @@ export async function streamParticipantReply(
       ...(tools
         ? {
             tools,
-            stopWhen: stepCountIs(
-              input.toolContext?.access === 'full'
-                ? ROOM_FULL_TOOL_MAX_STEPS
-                : ROOM_TOOL_MAX_STEPS
-            ),
+            stopWhen: stepCountIs(maxSteps),
+            // The last step is for writing. A turn that used every step on tool
+            // calls ended with no reply at all, so the moderator saw nothing and
+            // chose the same speaker again until the consecutive-turn limit.
+            prepareStep: ({ stepNumber }: { stepNumber: number }) =>
+              stepNumber >= maxSteps - 1
+                ? {
+                    toolChoice: 'none' as const,
+                    system: `${input.system}
+
+${OUT_OF_STEPS_NOTICE}`,
+                  }
+                : undefined,
             // Salvage a tool call whose arguments the model emitted with trailing
             // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
             // parse rejects. Recover the first complete object rather than fail the

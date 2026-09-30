@@ -194,3 +194,21 @@ describe('stream activity', () => {
     expect(onStreamActivity).toHaveBeenCalledTimes(3)
   })
 })
+
+describe('the last tool step', () => {
+  it('turns tools off and asks for a written reply, so a busy turn still ends with text', async () => {
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({ toolContext: { roomId: 'r', folder: '/w', extraFolders: [], access: 'edit' } as never }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: stream as never }
+    )
+    const args = stream.mock.calls[0][0] as {
+      prepareStep?: (o: { stepNumber: number }) => { toolChoice?: string; system?: string } | undefined
+    }
+    expect(args.prepareStep?.({ stepNumber: 2 })).toBeUndefined()
+    const last = args.prepareStep?.({ stepNumber: 7 })
+    expect(last?.toolChoice).toBe('none')
+    expect(last?.system).toContain('SYS')
+    expect(last?.system).toContain('used all your tool steps')
+  })
+})
