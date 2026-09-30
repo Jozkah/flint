@@ -13,6 +13,7 @@ on:
       - 'scripts/prepare-windows-installer.mjs'
       - 'scripts/windows-installer*.mjs'
       - 'scripts/windows-installer-smoke.nsi'
+      - 'scripts/windows-msi*'
       - '.github/workflows/installer-ui.yml'
   workflow_dispatch:
 
@@ -49,7 +50,7 @@ jobs:
 
       - name: Test installer wiring
         shell: pwsh
-        run: node --test scripts/windows-installer-template.test.mjs scripts/windows-installer-custom-ui.test.mjs
+        run: node --test scripts/windows-installer-template.test.mjs scripts/windows-installer-custom-ui.test.mjs scripts/windows-msi-ui.test.mjs
 
       - name: Prepare production template
         shell: pwsh
@@ -61,6 +62,25 @@ jobs:
           $root = (Resolve-Path .).Path
           & "C:\Program Files (x86)\NSIS\makensis.exe" /WX "/DFLINT_SMOKE_ROOT=$root" scripts\windows-installer-smoke.nsi
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The image ships WiX 3.14 (its path is in $env:WIX). Tauri runs `light` with ICE
+      # validation, which rejects a wizard missing a standard dialog or with a button
+      # that does nothing, so run it the same way here, in seconds, on a throwaway product.
+      - name: Compile and validate the MSI wizard
+        shell: pwsh
+        run: |
+          $wix = if ($env:WIX) { Join-Path $env:WIX 'bin' } else { 'C:\Program Files (x86)\WiX Toolset v3.14\bin' }
+          if (-not (Test-Path "$wix\candle.exe")) { choco install wixtoolset --yes --no-progress; $wix = 'C:\Program Files (x86)\WiX Toolset v3.14\bin' }
+          $root = (Resolve-Path .).Path
+          $work = Join-Path $env:RUNNER_TEMP 'msi-smoke'
+          New-Item -ItemType Directory -Force $work | Out-Null
+          Copy-Item "$env:WINDIR\System32\hostname.exe" "$work\dummy.exe"
+          Push-Location $work
+          & "$wix\candle.exe" -nologo -ext WixUIExtension -arch x64 "$root\scripts\windows-msi-smoke.wxs" "$root\src-tauri\installer\wix\flint-ui.wxs"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$wix\light.exe" -nologo -ext WixUIExtension -out flint-smoke.msi windows-msi-smoke.wixobj flint-ui.wixobj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
 
   windows-package:
     name: Release-grade Windows build

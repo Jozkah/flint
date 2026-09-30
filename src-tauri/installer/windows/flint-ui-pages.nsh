@@ -35,8 +35,8 @@ Function FlintWelcome
   SendMessage $4 ${WM_SETFONT} $FlintFontBodyMedium 1
   !insertmacro _FlintCtl $4 FG BG
 
-  !insertmacro _FlintSecondaryButton 412 366 "Cancel" FlintCancel
-  !insertmacro _FlintPrimaryButton 556 366 "Continue" FlintNext
+  !insertmacro _FlintButton outline cancel 592 ${FLINT_FOOT_Y} FlintCancel
+  !insertmacro _FlintButton primary continue 688 ${FLINT_FOOT_Y} FlintNext
   nsDialogs::Show
 FunctionEnd
 
@@ -112,15 +112,27 @@ Function FlintOptions
   SendMessage $4 ${WM_SETFONT} $FlintFontBodyMedium 1
   !insertmacro _FlintCtl $4 FG BG
 
+  ; The field is the app Input (32px, 8px radius, --border, --card) drawn as
+  ; a bitmap; the edit control sits inside it with no border of its own.
   ${FlintPx} $1 176
-  ${FlintPx} $2 280
-  ${FlintPx} $3 36
-  ${NSD_CreateText} $0 $1 $2 $3 "$INSTDIR"
+  ${FlintPx} $2 ${FLINT_FIELD_W}
+  ${FlintPx} $3 ${FLINT_FIELD_H}
+  ${NSD_CreateBitmap} $0 $1 $2 $3 ""
+  Pop $4
+  ${NSD_SetImage} $4 "$FlintAssets\field.bmp" $5
+  ${FlintPx} $0 275
+  ${FlintPx} $1 184
+  ${FlintPx} $2 306
+  ${FlintPx} $3 16
+  ; No WS_BORDER / client-edge styles, so nothing but the bitmap draws a frame.
+  nsDialogs::CreateControl EDIT "${DEFAULT_STYLES}|${WS_TABSTOP}|${ES_AUTOHSCROLL}" 0 $0 $1 $2 $3 "$INSTDIR"
   Pop $FlintPathEdit
+  ; Keep the frame bitmap underneath the edit that sits inside it.
+  System::Call 'user32::SetWindowPos(p r4, p 1, i 0, i 0, i 0, i 0, i 0x13)'
   SendMessage $FlintPathEdit ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $FlintPathEdit FG CARD
 
-  !insertmacro _FlintSecondaryButton 556 174 "Browse" FlintBrowse
+  !insertmacro _FlintButton outline browse 688 174 FlintBrowse
 
   ${FlintPx} $0 ${FLINT_RIGHT_X}
   ${FlintPx} $1 236
@@ -173,9 +185,9 @@ Function FlintOptions
   SendMessage $4 ${WM_SETFONT} $FlintFontTiny 1
   !insertmacro _FlintCtl $4 MUTED BG
 
-  !insertmacro _FlintSecondaryButton 268 366 "Back" FlintBack
-  !insertmacro _FlintSecondaryButton 412 366 "Cancel" FlintCancel
-  !insertmacro _FlintPrimaryButton 556 366 "Install" FlintNext
+  !insertmacro _FlintButton outline back 496 ${FLINT_FOOT_Y} FlintBack
+  !insertmacro _FlintButton outline cancel 592 ${FLINT_FOOT_Y} FlintCancel
+  !insertmacro _FlintButton primary install 688 ${FLINT_FOOT_Y} FlintNext
   nsDialogs::Show
   ${NSD_FreeImage} $FlintDesktopSwitchImg
   ${NSD_FreeImage} $FlintLaunchSwitchImg
@@ -213,7 +225,16 @@ Function FlintOptionsLeave
     MessageBox MB_ICONEXCLAMATION "Enter a full install path such as C:\Program Files\${PRODUCTNAME}."
     Abort
   ${EndIf}
-  GetFullPathName $INSTDIR $0
+  ; GetFullPathName yields an empty string for a folder that does not exist
+  ; yet, which is the normal case on a first install, and an empty $INSTDIR
+  ; would send every file to the wrong place. Keep the validated path then.
+  ClearErrors
+  GetFullPathName $1 $0
+  ${If} ${Errors}
+  ${OrIf} $1 == ""
+    StrCpy $1 $0
+  ${EndIf}
+  StrCpy $INSTDIR $1
 FunctionEnd
 
 ; Existing-install page. The template computes the maintenance text and puts it
@@ -240,25 +261,27 @@ Function FlintMaintenance
   SendMessage $4 ${WM_SETFONT} $FlintFontBody 1
   !insertmacro _FlintCtl $4 FG2 BG
 
+  ; Real radio buttons keep the choice, because the template leave function
+  ; reads them, but they stay hidden: a themed radio paints its label in the
+  ; system colour, and the app radio is a 16px ring/disc. The Flint dots and
+  ; labels below mirror and drive them.
   ${FlintPx} $0 284
   ${FlintPx} $1 224
   ${FlintPx} $2 380
   ${FlintPx} $3 24
   ${NSD_CreateRadioButton} $0 $1 $2 $3 "$5"
   Pop $R2
-  SendMessage $R2 ${WM_SETFONT} $FlintFontBody 1
-  !insertmacro _FlintCtl $R2 FG BG
   ${NSD_OnClick} $R2 PageReinstallUpdateSelection
+  ShowWindow $R2 ${SW_HIDE}
 
   ${FlintPx} $1 264
   ${NSD_CreateRadioButton} $0 $1 $2 $3 "$6"
   Pop $R3
-  SendMessage $R3 ${WM_SETFONT} $FlintFontBody 1
-  !insertmacro _FlintCtl $R3 FG BG
   !if "${ALLOWDOWNGRADES}" == "false"
     ${IfThen} $ReinstallVersionState = -1 ${|} EnableWindow $R3 0 ${|}
   !endif
   ${NSD_OnClick} $R3 PageReinstallUpdateSelection
+  ShowWindow $R3 ${SW_HIDE}
 
   ${If} $ReinstallPageCheck <> 2
     SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
@@ -266,9 +289,68 @@ Function FlintMaintenance
     SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
   ${EndIf}
 
-  !insertmacro _FlintSecondaryButton 412 366 "Cancel" FlintCancel
-  !insertmacro _FlintPrimaryButton 556 366 "Continue" FlintNext
+  ${FlintPx} $0 310
+  ${FlintPx} $1 224
+  ${FlintPx} $2 354
+  ${FlintPx} $3 24
+  ${NSD_CreateLabel} $0 $1 $2 $3 "$5"
+  Pop $FlintRadioLbl1
+  ${NSD_OnClick} $FlintRadioLbl1 FlintRadioClick
+  SendMessage $FlintRadioLbl1 ${WM_SETFONT} $FlintFontBody 1
+  !insertmacro _FlintCtl $FlintRadioLbl1 FG BG
+  ${FlintPx} $1 264
+  ${NSD_CreateLabel} $0 $1 $2 $3 "$6"
+  Pop $FlintRadioLbl2
+  ${NSD_OnClick} $FlintRadioLbl2 FlintRadioClick
+  SendMessage $FlintRadioLbl2 ${WM_SETFONT} $FlintFontBody 1
+  !insertmacro _FlintCtl $FlintRadioLbl2 FG BG
+
+  ${FlintPx} $0 284
+  ${FlintPx} $1 225
+  ${FlintPx} $2 16
+  ${FlintPx} $3 16
+  ${NSD_CreateBitmap} $0 $1 $2 $3 ""
+  Pop $FlintRadioImg1
+  ${NSD_OnClick} $FlintRadioImg1 FlintRadioClick
+  ${FlintPx} $1 265
+  ${NSD_CreateBitmap} $0 $1 $2 $3 ""
+  Pop $FlintRadioImg2
+  ${NSD_OnClick} $FlintRadioImg2 FlintRadioClick
+  Call FlintRadioPaint
+
+  !insertmacro _FlintButton outline cancel 592 ${FLINT_FOOT_Y} FlintCancel
+  !insertmacro _FlintButton primary continue 688 ${FLINT_FOOT_Y} FlintNext
   nsDialogs::Show
+FunctionEnd
+
+; Show the checked state of the hidden radio buttons on the Flint radio dots.
+Function FlintRadioPaint
+  ${NSD_FreeImage} $FlintRadioBmp1
+  ${NSD_FreeImage} $FlintRadioBmp2
+  ${NSD_GetState} $R2 $0
+  ${If} $0 == ${BST_CHECKED}
+    ${NSD_SetImage} $FlintRadioImg1 "$FlintAssets\radio-on.bmp" $FlintRadioBmp1
+    ${NSD_SetImage} $FlintRadioImg2 "$FlintAssets\radio-off.bmp" $FlintRadioBmp2
+  ${Else}
+    ${NSD_SetImage} $FlintRadioImg1 "$FlintAssets\radio-off.bmp" $FlintRadioBmp1
+    ${NSD_SetImage} $FlintRadioImg2 "$FlintAssets\radio-on.bmp" $FlintRadioBmp2
+  ${EndIf}
+FunctionEnd
+
+; A click on either dot or label picks that option. The callback receives the
+; clicked control handle.
+Function FlintRadioClick
+  Pop $0
+  ${If} $0 == $FlintRadioImg2
+  ${OrIf} $0 == $FlintRadioLbl2
+    SendMessage $R3 ${BM_SETCHECK} ${BST_CHECKED} 0
+    SendMessage $R2 ${BM_SETCHECK} ${BST_UNCHECKED} 0
+  ${Else}
+    SendMessage $R2 ${BM_SETCHECK} ${BST_CHECKED} 0
+    SendMessage $R3 ${BM_SETCHECK} ${BST_UNCHECKED} 0
+  ${EndIf}
+  Call FlintRadioPaint
+  Call PageReinstallUpdateSelection
 FunctionEnd
 
 ; MUI installation/uninstallation progress functions are instantiated once for
@@ -316,7 +398,11 @@ Function ${UN}FlintInstFilesShow
   ${FlintPx} $1 300
   ${FlintPx} $2 ${FLINT_RIGHT_W}
   ${FlintPx} $3 32
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "Flint is copying its application files and configuring required components.", i 0x50000000, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
+  !if "${UN}" == "un."
+    System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "Flint is removing its application files.", i 0x50000000, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
+  !else
+    System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "Flint is copying its application files and configuring required components.", i 0x50000000, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
+  !endif
   SendMessage $4 ${WM_SETFONT} $FlintFontTiny 1
   !insertmacro _FlintCtl $4 MUTED BG
 FunctionEnd
@@ -389,10 +475,10 @@ Function FlintFinish
   !insertmacro _FlintCtl $4 MUTED BG
 
   ${If} $FlintLaunchState = 1
-    !insertmacro _FlintSecondaryButton 412 366 "Close" FlintFinishClose
-    !insertmacro _FlintPrimaryButton 556 366 "Launch Flint" FlintFinishLaunch
+    !insertmacro _FlintButton outline close 577 ${FLINT_FOOT_Y} FlintFinishClose
+    !insertmacro _FlintButton primary launch 688 ${FLINT_FOOT_Y} FlintFinishLaunch
   ${Else}
-    !insertmacro _FlintPrimaryButton 556 366 "Finish" FlintFinishClose
+    !insertmacro _FlintButton primary finish 688 ${FLINT_FOOT_Y} FlintFinishClose
   ${EndIf}
   nsDialogs::Show
 FunctionEnd

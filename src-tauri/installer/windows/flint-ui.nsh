@@ -13,6 +13,7 @@
   !error "Define FLINT_WORKSPACE before including flint-ui.nsh"
 !endif
 !define FLINT_UI "${FLINT_WORKSPACE}\src-tauri\installer\windows"
+!include "${FLINT_UI}\flint-ui-assets.nsh"
 !define FLINT_INTER "${FLINT_WORKSPACE}\web-app\public\fonts\inter"
 
 ; 720x440 keeps the mockup proportions while still fitting a 1080p monitor at
@@ -78,6 +79,12 @@ Var FlintDesktopShortcutState
 Var FlintDesktopSwitch
 Var FlintDesktopSwitchImg
 Var FlintLaunchState
+Var FlintRadioImg1
+Var FlintRadioImg2
+Var FlintRadioLbl1
+Var FlintRadioLbl2
+Var FlintRadioBmp1
+Var FlintRadioBmp2
 Var FlintLaunchSwitch
 Var FlintLaunchSwitchImg
 Var FlintDeleteSwitch
@@ -142,44 +149,29 @@ Var ReinstallVersionState
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\btn-cancel.bmp" "${FLINT_UI}\${theme}\${scale}\btn-cancel.bmp"
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\switch-on.bmp" "${FLINT_UI}\${theme}\${scale}\switch-on.bmp"
   File "/oname=$PLUGINSDIR\flint\${theme}\${scale}\switch-off.bmp" "${FLINT_UI}\${theme}\${scale}\switch-off.bmp"
+  !insertmacro _FlintExtractWizard ${theme} ${scale}
 !macroend
 
-; Custom Flint buttons: no stock Windows button chrome. Primary is the app's
-; default --primary surface; secondary is a rounded one-pixel --border shell
-; around a --card inner surface. Both use the bundled Inter face.
-!macro _FlintPrimaryButton x y label callback
-  ${FlintPx} $0 ${x}
+; Flint buttons are bitmaps rendered by src-tauri/installer/generate.py from
+; the app's own Button (components/ui/button.tsx): the primary gradient, the
+; outline surface with --secondary-foreground text, 8px radius, 13px Inter
+; medium, 36px tall. That keeps them identical to the app at every DPI scale,
+; and a bitmap made with NSD_CreateBitmap is a control nsDialogs owns, so its
+; ${NSD_OnClick} is delivered. (A STATIC built with a raw CreateWindowExW is
+; not: it looks like a button and never fires.) Buttons are placed by their
+; right edge, 8px apart, on the row the app uses for dialog footers.
+!define FLINT_FOOT_Y 370
+!macro _FlintButton variant slug right y callback
+  !define /math _FlintBtnX ${right} - ${FLINT_BTN_W_${variant}_${slug}}
+  ${FlintPx} $0 ${_FlintBtnX}
   ${FlintPx} $1 ${y}
-  ${FlintPx} $2 132
-  ${FlintPx} $3 40
-  ${FlintPx} $5 8
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
-  !insertmacro _FlintRound $4 $2 $3 $5
-  SendMessage $4 ${WM_SETFONT} $FlintFontBodyMedium 1
-  !insertmacro _FlintCtl $4 ONACCENT ACCENT
+  ${FlintPx} $2 ${FLINT_BTN_W_${variant}_${slug}}
+  ${FlintPx} $3 36
+  ${NSD_CreateBitmap} $0 $1 $2 $3 ""
+  Pop $4
   ${NSD_OnClick} $4 ${callback}
-!macroend
-
-!macro _FlintSecondaryButton x y label callback
-  ${FlintPx} $0 ${x}
-  ${FlintPx} $1 ${y}
-  ${FlintPx} $2 132
-  ${FlintPx} $3 40
-  ${FlintPx} $5 8
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "", i 0x50000100, i r0, i r1, i r2, i r3, p $FlintPage, p 0, p 0, p 0) p .r4'
-  !insertmacro _FlintRound $4 $2 $3 $5
-  !insertmacro _FlintCtl $4 NONE BORDER
-  ${FlintPx} $6 1
-  IntOp $7 $2 - $6
-  IntOp $7 $7 - $6
-  IntOp $8 $3 - $6
-  IntOp $8 $8 - $6
-  ${FlintPx} $5 7
-  System::Call 'user32::CreateWindowExW(i 0, w "STATIC", w "${label}", i 0x50000301, i r6, i r6, i r7, i r8, p r4, p 0, p 0, p 0) p .r6'
-  !insertmacro _FlintRound $6 $7 $8 $5
-  SendMessage $6 ${WM_SETFONT} $FlintFontBodyMedium 1
-  !insertmacro _FlintCtl $6 FG CARD
-  ${NSD_OnClick} $6 ${callback}
+  ${NSD_SetImage} $4 "$FlintAssets\btn-${variant}-${slug}.bmp" $5
+  !undef _FlintBtnX
 !macroend
 
 ; Reposition one of MUI's native buttons. Used only as a failure escape hatch;

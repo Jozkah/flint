@@ -154,18 +154,16 @@ export function transformWindowsInstallerTemplate(
     'desktop shortcut behaviour'
   )
 
+  // Files copied, the interactive installer has to move on by itself: the
+  // native Next button is parked off-screen behind Flint's own controls, so
+  // without SetAutoClose the progress page would sit on "Completed" with no
+  // way forward. A failed install still stays on the page (NSIS only skips
+  // ahead after a successful run).
   out = replaceOnce(
     out,
     /  ; Auto close this page for passive mode\n  \$\{If\} \$PassiveMode = 1\n    SetAutoClose true\n  \$\{EndIf\}\nSectionEnd/,
-    `  ; Passive installs have no completion page. Interactive installs always\n  ; continue to Flint's completion page, which exclusively owns app launch.\n  \${If} $PassiveMode = 1\n    SetAutoClose true\n  \${EndIf}\nSectionEnd`,
+    `  ; Passive installs have no completion page. Interactive installs always\n  ; continue to Flint's completion page, which exclusively owns app launch.\n  ; Either way the progress page advances on its own once the files are copied.\n  SetAutoClose true\nSectionEnd`,
     'interactive completion behaviour'
-  )
-
-  out = replaceOnce(
-    out,
-    /  ; Always auto close: the Flint progress page has no details or Close button\n  ; to linger on \(a failed uninstall brings the native buttons back instead\)\.\n  SetAutoClose true/,
-    `  ; Interactive uninstalls continue to Flint's completion page.\n  \${If} $PassiveMode = 1\n  \${OrIf} \${Silent}\n    SetAutoClose true\n  \${Else}\n    SetAutoClose false\n  \${EndIf}`,
-    'uninstaller autoclose'
   )
 
   return out
