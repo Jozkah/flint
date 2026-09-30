@@ -73,6 +73,10 @@ export function memoryPersistence() {
       journal.push(clone(record))
       return clone(record)
     },
+    async clearRoomJournal(roomId) {
+      if (!rooms.has(roomId)) throw { code: 'not_found', message: 'no room' }
+      journals.set(roomId, [])
+    },
     async deleteRoom(roomId) {
       rooms.delete(roomId)
       journals.delete(roomId)

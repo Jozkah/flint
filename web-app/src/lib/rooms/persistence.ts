@@ -19,6 +19,8 @@ export interface RoomPersistence {
   saveRoom(room: Room): Promise<Room>
   appendRoomRecord(roomId: string, record: RoomJournalRecord): Promise<RoomJournalRecord>
   deleteRoom(roomId: string): Promise<void>
+  /** Empty the room's journal, keeping the room. */
+  clearRoomJournal(roomId: string): Promise<void>
 }
 
 type RoomsServiceModule = RoomPersistence & { toRoomError?: (e: unknown) => RoomError }
@@ -35,6 +37,9 @@ export const defaultRoomPersistence: RoomPersistence = {
     (await loadService()).appendRoomRecord(roomId, record),
   deleteRoom: async (roomId) => {
     await (await loadService()).deleteRoom(roomId)
+  },
+  clearRoomJournal: async (roomId) => {
+    await (await loadService()).clearRoomJournal(roomId)
   },
 }
 

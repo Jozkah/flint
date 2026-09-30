@@ -12,6 +12,9 @@ import type {
   ToolAccess,
 } from '@/lib/rooms/types'
 import { ROOM_LIMIT_CEILINGS } from '@/lib/rooms/types'
+import { MAX_EXTRA_FOLDERS } from '@/lib/rooms/controller'
+import type { WorkProfileId } from '@/lib/workProfiles'
+import { ParticipantPersonaFields } from './ParticipantPersonaFields'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
@@ -124,6 +127,8 @@ type DraftParticipant = {
   priceIn: string
   priceOut: string
   reasoning?: ParticipantReasoning
+  assistantId?: string
+  workProfile?: WorkProfileId
   source: Participant
 }
 
@@ -136,6 +141,8 @@ const toDraftParticipant = (p: Participant): DraftParticipant => ({
   priceIn: p.pricing ? String(p.pricing.inputPerMTokUsd) : '',
   priceOut: p.pricing ? String(p.pricing.outputPerMTokUsd) : '',
   reasoning: p.reasoning,
+  assistantId: p.assistantId,
+  workProfile: p.workProfile,
   source: p,
 })
 
@@ -291,10 +298,17 @@ const TOOL_PILL: Record<ToolAccess, string> = {
   none: 'bg-accent text-muted-foreground',
   read: 'bg-info-tint text-info',
   edit: 'bg-warning-tint text-warning',
+  full: 'bg-warning-tint text-warning',
 }
 
 const toolKey = (v: ToolAccess) =>
-  v === 'none' ? 'rooms:editor.toolNone' : v === 'read' ? 'rooms:editor.toolRead' : 'rooms:editor.toolEdit'
+  v === 'none'
+    ? 'rooms:editor.toolNone'
+    : v === 'read'
+      ? 'rooms:editor.toolRead'
+      : v === 'edit'
+        ? 'rooms:editor.toolEdit'
+        : 'rooms:editor.toolFull'
 
 export function RoomEditor({ room }: { room: Room }) {
   const { t } = useTranslation()
@@ -326,6 +340,7 @@ export function RoomEditor({ room }: { room: Room }) {
 
   const [newName, setNewName] = useState('')
   const [newRole, setNewRole] = useState('')
+  const [newPersona, setNewPersona] = useState<{ assistantId?: string; workProfile?: WorkProfileId }>({})
   const [newModel, setNewModel] = useState<RoomModelRef | null>(null)
   const [newErrors, setNewErrors] = useState<Errors>({})
 
@@ -417,6 +432,8 @@ export function RoomEditor({ room }: { room: Room }) {
           role: d.role.trim(),
           model: d.model,
           toolAccess: d.toolAccess,
+          assistantId: d.assistantId ?? null,
+          workProfile: d.workProfile ?? null,
           pricing: parsePricing(d),
           // Only what the chosen model acts on is kept; `null` returns the
           // participant to the model's default.
@@ -461,12 +478,15 @@ export function RoomEditor({ room }: { room: Room }) {
       await api.addParticipant(room, {
         name: newName.trim(),
         role: newRole.trim(),
+        assistantId: newPersona.assistantId,
+        workProfile: newPersona.workProfile,
         model: newModel,
         // Omitted so the controller applies its default (read-only for a
         // tool-capable model), rather than starting the participant tool-less.
       })
       setNewName('')
       setNewRole('')
+      setNewPersona({})
       setNewModel(null)
     } catch (err) {
       setError(normalizeError(err))
@@ -496,7 +516,32 @@ export function RoomEditor({ room }: { room: Room }) {
   const detachFolder = async () => {
     setError(null)
     try {
-      await api.updateRoomSettings(room, { folder: null })
+      // The next folder, if there is one, becomes the main one.
+      const [next, ...rest] = room.extraFolders ?? []
+      await api.updateRoomSettings(room, { folder: next ?? null, extraFolders: rest })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const addExtraFolder = async () => {
+    setError(null)
+    try {
+      const picked = await serviceHub.dialog().open({ directory: true })
+      const path = Array.isArray(picked) ? picked[0] : picked
+      if (!path) return
+      const current = room.extraFolders ?? []
+      if (path === room.folder || current.includes(path)) return
+      await api.updateRoomSettings(room, { extraFolders: [...current, path] })
+    } catch (err) {
+      setError(normalizeError(err))
+    }
+  }
+  const removeExtraFolder = async (path: string) => {
+    setError(null)
+    try {
+      await api.updateRoomSettings(room, {
+        extraFolders: (room.extraFolders ?? []).filter((f) => f !== path),
+      })
     } catch (err) {
       setError(normalizeError(err))
     }
@@ -628,16 +673,15 @@ export function RoomEditor({ room }: { room: Room }) {
                         />
                         <FieldError id={`${pid}-name-error`} message={visibleErrors[`${p.id}:name`]} />
                       </div>
-                      <div className="flex min-w-0 flex-col gap-1.5">
-                        <Label htmlFor={`${pid}-role`}>{t('rooms:editor.participantRole')}</Label>
-                        <Input
-                          id={`${pid}-role`}
-                          value={p.role}
-                          placeholder={t('rooms:editor.participantRolePlaceholder')}
-                          onChange={(e) => updateParticipant(p.id, { role: e.target.value })}
-                        />
-                      </div>
                     </div>
+                    <ParticipantPersonaFields
+                      idPrefix={pid}
+                      role={p.role}
+                      assistantId={p.assistantId}
+                      workProfile={p.workProfile}
+                      disabled={disabled}
+                      onChange={(patch) => updateParticipant(p.id, patch)}
+                    />
                     <div className="flex min-w-0 flex-col gap-1.5">
                       <Label htmlFor={`${pid}-model`}>{t('rooms:editor.participantModel')}</Label>
                       <RoomModelSelect
@@ -673,7 +717,7 @@ export function RoomEditor({ room }: { room: Room }) {
                         onValueChange={(v) => updateParticipant(p.id, { toolAccess: v as ToolAccess })}
                         className="flex flex-wrap gap-4"
                       >
-                        {(['none', 'read', 'edit'] as const).map((v) => (
+                        {(['none', 'read', 'edit', 'full'] as const).map((v) => (
                           <div key={v} className="flex items-center gap-2">
                             <RadioGroupItem id={`${pid}-tools-${v}`} value={v} aria-label={t(toolKey(v))} />
                             <Label htmlFor={`${pid}-tools-${v}`}>{t(toolKey(v))}</Label>
@@ -683,9 +727,11 @@ export function RoomEditor({ room }: { room: Room }) {
                       <p id={`${pid}-tools-hint`} className="text-xs text-muted-foreground">
                         {!tools
                           ? t('rooms:editor.toolUnsupported')
-                          : p.toolAccess === 'edit'
-                            ? t('rooms:editor.toolEditHint')
-                            : t('rooms:editor.toolReadHint')}
+                          : p.toolAccess === 'full'
+                            ? t('rooms:editor.toolFullHint')
+                            : p.toolAccess === 'edit'
+                              ? t('rooms:editor.toolEditHint')
+                              : t('rooms:editor.toolReadHint')}
                       </p>
                     </div>
 
@@ -778,16 +824,18 @@ export function RoomEditor({ room }: { room: Room }) {
                       />
                       <FieldError id={`${uid}-new-name-error`} message={newErrors.name} />
                     </div>
-                    <div className="flex min-w-0 flex-col gap-1.5">
-                      <Label htmlFor={`${uid}-new-role`}>{t('rooms:editor.participantRole')}</Label>
-                      <Input
-                        id={`${uid}-new-role`}
-                        value={newRole}
-                        placeholder={t('rooms:editor.participantRolePlaceholder')}
-                        onChange={(e) => setNewRole(e.target.value)}
-                      />
-                    </div>
                   </div>
+                  <ParticipantPersonaFields
+                    idPrefix={`${uid}-new`}
+                    role={newRole}
+                    assistantId={newPersona.assistantId}
+                    workProfile={newPersona.workProfile}
+                    disabled={disabled}
+                    onChange={({ role, ...patch }) => {
+                      if (role !== undefined) setNewRole(role)
+                      setNewPersona((prev) => ({ ...prev, ...patch }))
+                    }}
+                  />
                   <div className="flex min-w-0 flex-col gap-1.5">
                     <Label htmlFor={`${uid}-new-model`}>{t('rooms:editor.participantModel')}</Label>
                     <RoomModelSelect
@@ -884,6 +932,33 @@ export function RoomEditor({ room }: { room: Room }) {
                     onClick={() => void attachFolder()}
                   >
                     {t('rooms:editor.attachFolder')}
+                  </Button>
+                )}
+                {(room.extraFolders ?? []).map((f) => (
+                  <div key={f} className="flex flex-wrap items-center gap-1.5">
+                    <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-2 py-1.5 font-mono text-[11.5px]">
+                      {f}
+                    </code>
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => void removeExtraFolder(f)}
+                    >
+                      {t('rooms:editor.detachFolder')}
+                    </Button>
+                  </div>
+                ))}
+                {room.folder && (room.extraFolders ?? []).length < MAX_EXTRA_FOLDERS && (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    className="self-start"
+                    onClick={() => void addExtraFolder()}
+                  >
+                    <Plus className="size-3.5" aria-hidden />
+                    {t('rooms:editor.addFolder')}
                   </Button>
                 )}
                 <p className="text-xs text-muted-foreground">{t('rooms:editor.workingFolderHint')}</p>

@@ -554,6 +554,32 @@ fn list_orders_newest_first_and_skips_unreadable_rooms() {
 }
 
 #[test]
+fn clear_journal_forgets_what_was_said_and_keeps_the_room() {
+    let (_dir, store) = new_store();
+    let saved = store.save(room("r1"), 10).unwrap();
+    store.append("r1", message("r1", "m1", "hello")).unwrap();
+    store.append("r1", turn_start("t2")).unwrap();
+    assert_eq!(store.get("r1").unwrap().journal.len(), 2);
+
+    store.clear_journal("r1").unwrap();
+
+    let after = store.get("r1").unwrap();
+    assert!(after.journal.is_empty());
+    assert_eq!(after.room.id, saved.id);
+    // Clearing twice is fine, and the next message starts at seq 1 again.
+    store.clear_journal("r1").unwrap();
+    let again = store.append("r1", message("r1", "m2", "again")).unwrap();
+    assert_eq!(seq_of(&again), 1);
+}
+
+#[test]
+fn clear_journal_refuses_a_room_that_does_not_exist_or_a_bad_id() {
+    let (_dir, store) = new_store();
+    assert_eq!(store.clear_journal("nope").unwrap_err().code, RoomErrorCode::NotFound);
+    assert_eq!(store.clear_journal("..").unwrap_err().code, RoomErrorCode::InvalidId);
+}
+
+#[test]
 fn delete_removes_the_room_directory() {
     let (_dir, store) = new_store();
     store.save(room("r1"), 1).unwrap();

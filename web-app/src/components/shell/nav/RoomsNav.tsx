@@ -27,7 +27,9 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useLocation, useNavigate, useParams } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { Columns2, DoorOpen, MoreHorizontal, Plus, Trash2 } from 'lucide-react'
+import { Columns2, DoorOpen, MoreHorizontal, Plus, Sparkles, Trash2 } from 'lucide-react'
+import { regenerateRoomTitle, roomTranscript } from '@/lib/regenerateSessionTitle'
+import { regenerateWithToast } from '@/lib/regenerateToast'
 import {
   normalizeError,
   useRoomsApi,
@@ -95,6 +97,8 @@ const RoomItem = memo(function RoomItem({
         title={room.title}
         updated={room.updatedAt}
         summary={room.objective}
+        summaryKey={`${room.id}\u0000${room.updatedAt}`}
+        transcript={() => roomTranscript(room.id)}
         suppressed={menuOpen}
       >
         <NavButton
@@ -119,6 +123,16 @@ const RoomItem = memo(function RoomItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem
+            data-testid="regenerate-room-title"
+            onSelect={() =>
+              regenerateWithToast(() => regenerateRoomTitle(room.id), t)
+            }
+          >
+            <Sparkles />
+            <span>{t('chat:regenerateTitle.menu')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => onSelect(room.id)}>
             <DoorOpen />
             <span>{t('common:open')}</span>
@@ -135,6 +149,7 @@ const RoomItem = memo(function RoomItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <MoveToGroupSub surface="rooms" itemId={room.id} adapter={adapter} />
           <DropdownMenuSeparator />
           <DropdownMenuItem

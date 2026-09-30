@@ -110,7 +110,7 @@ describe('buildRoomTools', () => {
     getAgentToolSchemas.mockResolvedValue([schema('read')])
     executeAgentTool.mockResolvedValue({ content: 'FILE BODY' })
     const activity: RoomToolActivity[] = []
-    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+    const tools = await buildRoomTools(ctx, (a) => { if (!a.running) activity.push(a) })
 
     const out = await (tools.read as { execute: (i: unknown) => Promise<string> }).execute({
       path: 'src/main.rs',
@@ -126,11 +126,21 @@ describe('buildRoomTools', () => {
     ])
   })
 
+  it('announces a call before it runs, so the live turn can name it', async () => {
+    getAgentToolSchemas.mockResolvedValue([schema('read')])
+    executeAgentTool.mockResolvedValue({ content: 'X' })
+    const events: RoomToolActivity[] = []
+    const tools = await buildRoomTools(ctx, (a) => events.push(a))
+    await (tools.read as { execute: (i: unknown) => Promise<string> }).execute({ path: 'a' })
+    expect(events[0]).toEqual({ name: 'read', ok: true, args: { path: 'a' }, running: true })
+    expect(events[1].running).toBeUndefined()
+  })
+
   it('surfaces a tool error as text and marks the activity failed', async () => {
     getAgentToolSchemas.mockResolvedValue([schema('grep')])
     executeAgentTool.mockResolvedValue({ error: 'permission denied' })
     const activity: RoomToolActivity[] = []
-    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+    const tools = await buildRoomTools(ctx, (a) => { if (!a.running) activity.push(a) })
 
     const out = await (tools.grep as { execute: (i: unknown) => Promise<string> }).execute({
       pattern: 'x',
@@ -189,7 +199,7 @@ describe('buildRoomTools', () => {
     disabledTools = ['docs::hidden']
     callTool.mockResolvedValue({ error: '', content: [{ text: 'RESULT A' }, { text: 'RESULT B' }] })
     const activity: RoomToolActivity[] = []
-    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+    const tools = await buildRoomTools(ctx, (a) => { if (!a.running) activity.push(a) })
 
     // The disabled tool is dropped; the enabled one is offered alongside reads.
     expect(Object.keys(tools).sort()).toEqual(['read', 'search_docs', 'skill_read'])
@@ -217,7 +227,7 @@ describe('buildRoomTools', () => {
     ])
     callTool.mockResolvedValue({ error: 'boom', content: [] })
     const activity: RoomToolActivity[] = []
-    const tools = await buildRoomTools(ctx, (a) => activity.push(a))
+    const tools = await buildRoomTools(ctx, (a) => { if (!a.running) activity.push(a) })
 
     // The built-in `read` is kept; MCP does not overwrite it.
     expect((tools.read as { description: string }).description).toBe('read tool')

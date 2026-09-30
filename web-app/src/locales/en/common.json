@@ -883,6 +883,16 @@
   "artifactShowInFolder": "Show in Folder",
   "skillsUsedLabel": "Skills used",
   "skillsUsed": "Skills used: {{skills}}",
+  "coworkShowEarlier_one": "Show {{count}} earlier message",
+  "coworkShowEarlier_other": "Show {{count}} earlier messages",
+  "modelReplace": {
+    "title": "A model is no longer available",
+    "description": "{{subject}} uses a model that can't be used now. Choose another to continue.",
+    "missing": "No longer available: {{model}}",
+    "use": "Use this model",
+    "thisChat": "This chat",
+    "thisSession": "This session"
+  },
   "skillsUsedCount_one": "Used {{count}} skill",
   "skillsUsedCount_other": "Used {{count}} skills",
   "artifactsAll": "All",

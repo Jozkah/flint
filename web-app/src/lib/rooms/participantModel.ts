@@ -6,6 +6,7 @@
  * transport or any tool/approval store, and it advertises no tools. Only text
  * deltas become the reply; reasoning is never collected.
  */
+import { extractModelSamplingDefaults } from '@/lib/custom-chat-transport'
 import {
   streamText,
   stepCountIs,
@@ -18,7 +19,7 @@ import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
-import { buildRoomTools, ROOM_TOOL_MAX_STEPS } from './roomTools'
+import { buildRoomTools, ROOM_FULL_TOOL_MAX_STEPS, ROOM_TOOL_MAX_STEPS } from './roomTools'
 import { buildParticipantReasoningRequest } from './participantReasoning'
 import {
   RoomCallError,
@@ -28,6 +29,9 @@ import {
   type StreamReplyInput,
   type StreamReplyResult,
 } from './callError'
+
+const OUT_OF_STEPS_NOTICE =
+  'You have used all your tool steps for this turn. Do not call any more tools: write your reply now, saying what you did, what is still open, and who should act next.'
 
 export type {
   StreamReply,
@@ -96,6 +100,8 @@ export async function streamParticipantReply(
 ): Promise<StreamReplyResult> {
   const lookup = deps.lookup ?? defaultProviderLookup
   const stream = deps.streamText ?? streamText
+  const maxSteps =
+    input.toolContext?.access === 'full' ? ROOM_FULL_TOOL_MAX_STEPS : ROOM_TOOL_MAX_STEPS
   const provider = lookup(input.model.provider)
   if (!provider) {
     throw new RoomCallError(
@@ -115,6 +121,13 @@ export async function streamParticipantReply(
     input.maxOutputTokens
   )
 
+  // The sampling set on the model itself (its sidebar), which a chat with it
+  // sends and a room did not: the floor under the assistant's and the
+  // participant's own.
+  const modelSampling = extractModelSamplingDefaults(
+    provider.models?.find((m) => m.id === input.model.id)
+  )
+
   let languageModel: LanguageModel
   try {
     languageModel = await createModelOrAbort(
@@ -122,7 +135,9 @@ export async function streamParticipantReply(
       provider,
       input.signal,
       deps.createModel,
-      reasoning.params
+      // The model's own sampling, then the assistant's; the participant's own
+      // reasoning setting wins where they overlap.
+      { ...modelSampling, ...(input.sampling ?? {}), ...(reasoning.params ?? {}) }
     )
   } catch (e) {
     if (isAbortLike(e, input.signal)) throw toRoomCallError(e, input.signal)
@@ -136,8 +151,10 @@ export async function streamParticipantReply(
   const toolActivity: RoomToolActivity[] = []
   let tools: Record<string, Tool> | undefined
   if (input.toolContext) {
-    tools = await buildRoomTools(input.toolContext, (a) => {
-      toolActivity.push(a)
+    tools = await buildRoomTools({ ...input.toolContext, signal: input.signal }, (a) => {
+      // A call that has only started is reported for the live view, and is
+      // kept only once it returns.
+      if (!a.running) toolActivity.push(a)
       input.onToolActivity?.(a)
     })
     if (Object.keys(tools).length === 0) tools = undefined
@@ -158,7 +175,19 @@ export async function streamParticipantReply(
       ...(tools
         ? {
             tools,
-            stopWhen: stepCountIs(ROOM_TOOL_MAX_STEPS),
+            stopWhen: stepCountIs(maxSteps),
+            // The last step is for writing. A turn that used every step on tool
+            // calls ended with no reply at all, so the moderator saw nothing and
+            // chose the same speaker again until the consecutive-turn limit.
+            prepareStep: ({ stepNumber }: { stepNumber: number }) =>
+              stepNumber >= maxSteps - 1
+                ? {
+                    toolChoice: 'none' as const,
+                    system: `${input.system}
+
+${OUT_OF_STEPS_NOTICE}`,
+                  }
+                : undefined,
             // Salvage a tool call whose arguments the model emitted with trailing
             // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
             // parse rejects. Recover the first complete object rather than fail the
@@ -175,6 +204,13 @@ export async function streamParticipantReply(
       },
     })
     for await (const part of result.fullStream) {
+      if (
+        part.type === 'text-delta' ||
+        part.type === 'reasoning-delta' ||
+        part.type === 'tool-input-delta'
+      ) {
+        input.onStreamActivity?.()
+      }
       if (part.type === 'text-delta') {
         if (!part.text) continue
         text += part.text
@@ -193,6 +229,24 @@ export async function streamParticipantReply(
     try {
       const u = await result.totalUsage
       usage = { inputTokens: u?.inputTokens, outputTokens: u?.outputTokens }
+      // A turn that uses tools is many model calls, each sent the whole
+      // conversation again, and the total adds that conversation up once per
+      // call: one 39-call turn counted 520,000 input tokens against a 600,000
+      // room budget while writing 4,700. What the room should be charged for is
+      // the conversation as the turn saw it (its largest call) plus all that was
+      // written, so input is the largest single call, not the sum.
+      try {
+        const steps = (await result.steps) ?? []
+        const widest = Math.max(
+          0,
+          ...steps.map((st) => (typeof st.usage?.inputTokens === 'number' ? st.usage.inputTokens : 0))
+        )
+        if (steps.length > 1 && widest > 0 && typeof usage.inputTokens === 'number') {
+          usage = { ...usage, inputTokens: Math.min(usage.inputTokens, widest) }
+        }
+      } catch {
+        // No per-call figures: the total stands.
+      }
     } catch {
       usage = undefined
     }

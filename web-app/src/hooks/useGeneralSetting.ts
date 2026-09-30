@@ -58,6 +58,8 @@ export async function loadHuggingfaceToken(
 }
 type GeneralSettingState = {
   currentLanguage: Language
+  /** Language replies are pinned to, as the model is told it; '' follows the conversation. */
+  replyLanguage: string
   spellCheckChatInput: boolean
   tokenCounterCompact: boolean
   stripReasoningFromContext: boolean
@@ -67,12 +69,14 @@ type GeneralSettingState = {
   setTokenCounterCompact: (value: boolean) => void
   setStripReasoningFromContext: (value: boolean) => void
   setCurrentLanguage: (value: Language) => void
+  setReplyLanguage: (value: string) => void
 }
 
 export const useGeneralSetting = create<GeneralSettingState>()(
   persist(
     (set) => ({
       currentLanguage: 'en',
+      replyLanguage: '',
       spellCheckChatInput: true,
       tokenCounterCompact: true,
       stripReasoningFromContext: false,
@@ -82,6 +86,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       setStripReasoningFromContext: (value) =>
         set({ stripReasoningFromContext: value }),
       setCurrentLanguage: (value) => set({ currentLanguage: value }),
+      setReplyLanguage: (value) => set({ replyLanguage: value }),
       setHuggingfaceToken: (token) => {
         set({ huggingfaceToken: token })
         // Canonical secret store is the OS keyring, not settings storage.
@@ -113,6 +118,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       // huggingfaceToken is a secret — kept in the OS keyring, never persisted here.
       partialize: (state) => ({
         currentLanguage: state.currentLanguage,
+        replyLanguage: state.replyLanguage,
         spellCheckChatInput: state.spellCheckChatInput,
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,

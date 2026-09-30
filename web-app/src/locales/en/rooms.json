@@ -56,6 +56,20 @@
     "moderator-selected": "Moderator chooses",
     "moderator-selectedHint": "A moderator model picks each speaker and can close the discussion."
   },
+  "clear": {
+    "command": "Clear this room: its chat, what it learned, its scratch files",
+    "title": "Clear this room",
+    "description": "Choose what to forget. This cannot be undone.",
+    "running": "Pause or stop the room first: a running room cannot be cleared.",
+    "chat": "Chat only",
+    "chatHint": "Every message, vote and synthesis. The room goes back to a draft.",
+    "knowledge": "Chat and knowledge",
+    "knowledgeHint": "Also what the room built up from the chat: run counters and limits used, the round it was in, and any suspended participant. It starts over from the objective.",
+    "everything": "Everything, including cache",
+    "everythingHint": "Also the room's scratch files and command sandbox, and any approval still waiting for an answer.",
+    "kept": "The room's settings, participants and limits, and the folders attached to it, are never touched.",
+    "confirm": "Clear"
+  },
   "editor": {
     "heading": "Room settings",
     "sectionGeneral": "General",
@@ -80,12 +94,21 @@
     "participantName": "Name",
     "participantRole": "Role",
     "participantRolePlaceholder": "e.g. skeptic, domain expert",
+    "participantAssistant": "Assistant",
+    "participantAssistantNone": "None (the model as it is)",
+    "participantRoleNone": "None",
+    "participantRoleOther": "Other...",
+    "participantRoleOtherLabel": "Role, in your own words",
+    "participantAssistantNew": "New assistant...",
+    "addFolder": "Add another folder",
     "participantModel": "Model",
     "toolAccess": "Tool access",
     "toolNone": "None",
     "toolRead": "Read-only",
     "toolEdit": "Read & edit",
+    "toolFull": "Like Cowork",
     "toolReadHint": "Read-only tools only. Approvals never apply in rooms: anything that needs approval is refused. MCP tools appear only for servers you've already trusted in Settings.",
+    "toolFullHint": "Everything a Cowork session can do: read, write, run commands, git, skills and plugins, in the room's folders. As in Cowork, a call that changes something or runs a command waits for you to allow it (see the approvals in the header), using your saved rules. More steps per turn. Needs a folder and a tool-capable model.",
     "toolEditHint": "Reads plus write/edit, confined to the room's working folder. Attach a folder for these tools to work. MCP tools appear only for servers you've already trusted in Settings.",
     "toolUnsupported": "This model does not support tools, so tool access stays off.",
     "reasoning": "Reasoning",
@@ -144,6 +167,7 @@
   },
   "model": {
     "placeholder": "Choose a model",
+    "search": "Search models...",
     "notConfigured": "{{provider}} (not configured)",
     "missing": "{{model}} (missing)",
     "noProviders": "No models available. Add a provider in Settings."
@@ -172,6 +196,9 @@
     "interrupted": "Interrupted",
     "failed": "Failed",
     "streaming": "Speaking…",
+    "thinking": "Thinking…",
+    "writing": "Writing…",
+    "waitingApproval": "Waiting for your approval · {{tool}}",
     "compacting": "Compacting…",
     "compactingBody": "Summarising earlier messages that no longer fit the context window…",
     "voteCall": "Vote called",
@@ -195,7 +222,10 @@
     "toolOutput": "Result",
     "toolError": "Error",
     "toolOk": "ok",
-    "toolFailed": "failed"
+    "toolFailed": "failed",
+    "speed": "{{tps}} tok/s",
+    "tokensOut": "{{approx}}{{count}} tokens",
+    "speedTitle": "Tokens written in this reply, and how fast"
   },
   "controls": {
     "label": "Room controls",

@@ -49,6 +49,20 @@ describe('streamParticipantReply', () => {
     expect(createModel).toHaveBeenCalledWith('model-1', expect.objectContaining({ provider: 'provider-a' }), {})
   })
 
+  it("sends the assistant's sampling with the model, under the participant's own reasoning setting", async () => {
+    const createModel = vi.fn(async () => ({}) as LanguageModel)
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(input({ sampling: { temperature: 0.15, top_p: 0.5 } }), {
+      lookup,
+      createModel,
+      streamText: stream as never,
+    })
+    expect(createModel).toHaveBeenCalledWith('model-1', expect.anything(), {
+      temperature: 0.15,
+      top_p: 0.5,
+    })
+  })
+
   it("applies the participant's reasoning: body fields to the model, native options to the stream", async () => {
     const local = providerLookup([
       makeProvider('llamacpp', [{ id: 'qwen', settings: { ctx_len: { controller_props: { value: 40960 } } } as never }]),
@@ -120,5 +134,81 @@ describe('streamParticipantReply', () => {
     await expect(
       streamParticipantReply(input(), { lookup, createModel, streamText: fakeStream([{ type: 'error', error: overflow }]) as never })
     ).rejects.toMatchObject({ kind: 'overflow' })
+  })
+})
+
+describe('usage of a turn with several model calls', () => {
+  it('charges the conversation once (the widest call), not once per call', async () => {
+    const stream = vi.fn(() => ({
+      fullStream: (async function* () {
+        yield { type: 'text-delta', id: 't', text: 'done' }
+      })(),
+      totalUsage: Promise.resolve({ inputTokens: 90_000, outputTokens: 500 }),
+      steps: Promise.resolve([
+        { usage: { inputTokens: 20_000 } },
+        { usage: { inputTokens: 30_000 } },
+        { usage: { inputTokens: 40_000 } },
+      ]),
+      finishReason: Promise.resolve('stop'),
+    }))
+    const res = await streamParticipantReply(input(), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(res.usage).toEqual({ inputTokens: 40_000, outputTokens: 500 })
+  })
+
+  it('keeps the total when the calls report nothing, or there was only one', async () => {
+    const stream = vi.fn(() => ({
+      fullStream: (async function* () {
+        yield { type: 'text-delta', id: 't', text: 'ok' }
+      })(),
+      totalUsage: Promise.resolve({ inputTokens: 1_000, outputTokens: 10 }),
+      steps: Promise.resolve([{ usage: { inputTokens: 1_000 } }]),
+      finishReason: Promise.resolve('stop'),
+    }))
+    const res = await streamParticipantReply(input(), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(res.usage).toEqual({ inputTokens: 1_000, outputTokens: 10 })
+  })
+})
+
+describe('stream activity', () => {
+  it('ticks for text, reasoning and tool-call arguments, so tool-only turns can be timed', async () => {
+    const stream = fakeStream([
+      { type: 'reasoning-delta', id: 'r', text: 'hm' },
+      { type: 'tool-input-delta', id: 'c', delta: '{"a"' },
+      { type: 'text-delta', id: 't', text: 'x' },
+      { type: 'tool-result', toolCallId: 'c' },
+    ])
+    const onStreamActivity = vi.fn()
+    await streamParticipantReply(input({ onStreamActivity }), {
+      lookup,
+      createModel: async () => ({}) as LanguageModel,
+      streamText: stream as never,
+    })
+    expect(onStreamActivity).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('the last tool step', () => {
+  it('turns tools off and asks for a written reply, so a busy turn still ends with text', async () => {
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({ toolContext: { roomId: 'r', folder: '/w', extraFolders: [], access: 'edit' } as never }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: stream as never }
+    )
+    const args = stream.mock.calls[0][0] as {
+      prepareStep?: (o: { stepNumber: number }) => { toolChoice?: string; system?: string } | undefined
+    }
+    expect(args.prepareStep?.({ stepNumber: 2 })).toBeUndefined()
+    const last = args.prepareStep?.({ stepNumber: 7 })
+    expect(last?.toolChoice).toBe('none')
+    expect(last?.system).toContain('SYS')
+    expect(last?.system).toContain('used all your tool steps')
   })
 })

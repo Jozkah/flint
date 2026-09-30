@@ -26,6 +26,7 @@ import { SystemEvent } from '@/types/events'
 import { Input } from '@/components/ui/input'
 import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
+import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
 import { isRootDir } from '@/utils/path'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
@@ -226,6 +227,11 @@ function General() {
             anchor="settings-general-language"
             title={t('common:language')}
             actions={<LanguageSwitcher />}
+          />
+          <CardItem
+            title={t('settings:general.replyLanguage')}
+            description={t('settings:general.replyLanguageDesc')}
+            actions={<ReplyLanguageSwitcher />}
           />
           <CardItem
             title={t('onboarding:reopenGuide')}

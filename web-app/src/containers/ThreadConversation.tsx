@@ -1,4 +1,7 @@
 import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
+import { switchedFromOf } from '@/lib/assistantSwitch'
+import { loadThreadMessages } from '@/lib/threadPrefetch'
+import { markConversationOpened } from '@/lib/messageEntry'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
@@ -300,6 +303,12 @@ export function ThreadConversation({
   paneControls,
 }: ThreadConversationProps) {
   const serviceHub = useServiceHub()
+  // Opening a chat draws its history at once; see lib/messageEntry.
+  const openedThreadRef = useRef<string | null>(null)
+  if (openedThreadRef.current !== threadId) {
+    openedThreadRef.current = threadId
+    markConversationOpened()
+  }
   // Which pane this is. With the split closed there is one pane, always active.
   const pane = useConversationPane()
   const isSplit = Boolean(pane?.isSplit)
@@ -1465,9 +1474,8 @@ export function ThreadConversation({
       return
     }
 
-    serviceHub
-      .messages()
-      .fetchMessages(threadId)
+    // The read may already have started when the pointer reached the row.
+    loadThreadMessages(threadId, (id) => serviceHub.messages().fetchMessages(id))
       .then((fetchedMessages) => {
         if (fetchedMessages && fetchedMessages.length > 0) {
           const currentLocalMessages = useMessages
@@ -2824,6 +2832,7 @@ export function ThreadConversation({
                       message={message}
                       isFirstMessage={isFirstMessage}
                       isLastMessage={isLastMessage}
+                      switchedFrom={switchedFromOf(chatMessages, index)}
                       status={effectiveStatus}
                       reasoningContainerRef={reasoningContainerRef}
                       isReasoningAtBottom={isReasoningAtBottom}

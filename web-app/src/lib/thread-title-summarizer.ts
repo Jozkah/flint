@@ -1,3 +1,4 @@
+import { engineSlotsIdle } from '@janhq/tauri-plugin-llamacpp-api'
 import { runUtilityAgent } from './utilityAgents'
 import { ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -117,10 +118,93 @@ export function generateThreadTitle(
   })
 }
 
+/**
+ * A fresh title on the user's request: the same model call as the automatic
+ * one, without its once-per-chat guards, and without the cut-from-the-message
+ * fallback, since a title the user asked for that is only their first words
+ * would be no answer. Null when aborted or the model gave nothing usable.
+ */
+export async function regenerateThreadTitle(
+  transcript: string,
+  abortSignal: AbortSignal,
+  session: string
+): Promise<string | null> {
+  const title = await requestTitle(transcript, abortSignal, session)
+  return title === ABORTED || abortSignal.aborted ? null : title
+}
+
 const ABORTED = Symbol('aborted')
 
 async function requestTitle(
   transcript: string,
+  abortSignal: AbortSignal,
+  session: string
+): Promise<string | null | typeof ABORTED> {
+  const text = await runUtilityText(
+    'title',
+    buildSummarizePrompt(transcript),
+    128,
+    abortSignal,
+    session
+  )
+  return typeof text === 'string' ? cleanTitle(text) : text
+}
+
+const SUMMARY_CHARS = 600
+
+function buildConversationSummaryPrompt(transcript: string): string {
+  const truncated =
+    transcript.length > MAX_PROMPT_LENGTH
+      ? transcript.slice(0, MAX_PROMPT_LENGTH) + '...'
+      : transcript
+  return `Summarize the conversation below in two short sentences: what it is about and where it stands now. Plain text only, no lists, no quotes, no preamble.\n\nConversation:\n${truncated}`
+}
+
+/**
+ * Two sentences on what a conversation is about and where it stands, for the
+ * preview card of a sidebar row. Null when aborted, when the model cannot be
+ * asked right now, or when it gave nothing usable.
+ */
+export async function summarizeConversation(
+  transcript: string,
+  abortSignal: AbortSignal,
+  session: string
+): Promise<string | null> {
+  // A local model serves one request at a time. A summary made for a hover
+  // must never queue beside a run, so it is skipped while the engine is busy.
+  const { selectedProvider, selectedModel } = session
+    ? resolveThreadModelSelection(session)
+    : useModelProvider.getState()
+  if (selectedProvider === 'llamacpp' && selectedModel?.id) {
+    try {
+      if (!(await engineSlotsIdle(selectedModel.id))) return null
+    } catch {
+      // Not reachable: the call below fails the same way and returns null.
+    }
+  }
+  const text = await runUtilityText(
+    'summary',
+    buildConversationSummaryPrompt(transcript),
+    200,
+    abortSignal,
+    session
+  )
+  if (typeof text !== 'string') return null
+  const clean = text
+    .replace(/<(think|thinking|reasoning|analysis)[^>]*>[\s\S]*?<\/\1>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (clean.length < 10) return null
+  return clean.length > SUMMARY_CHARS
+    ? `${clean.slice(0, SUMMARY_CHARS).replace(/\s+\S*$/, '')}...`
+    : clean
+}
+
+async function runUtilityText(
+  kind: 'title' | 'summary',
+  prompt: string,
+  maxOutputTokens: number,
   abortSignal: AbortSignal,
   session: string
 ): Promise<string | null | typeof ABORTED> {
@@ -169,15 +253,15 @@ async function requestTitle(
     // Neither the transcript nor the title is logged -- both are the user's
     // conversation, and the webview console is written to the app log.
     const text = await runUtilityAgent({
-      kind: 'title',
+      kind,
       session,
       model,
       modelId: selectedModel.id,
-      messages: [{ role: 'user', content: buildSummarizePrompt(transcript) }],
-      maxOutputTokens: 128,
+      messages: [{ role: 'user', content: prompt }],
+      maxOutputTokens,
       abortSignal,
     })
-    return cleanTitle(text)
+    return text
   } catch (error) {
     // Silently swallow abort errors -- this is expected when the user sends a new message
     if ((error as Error).name === 'AbortError') return ABORTED

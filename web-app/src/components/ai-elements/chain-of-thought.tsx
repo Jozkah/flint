@@ -185,10 +185,11 @@ export const ChainOfThought = memo(
 
 // ── ChainOfThoughtHeader ───────────────────────────────────────────────────
 
-export type ChainOfThoughtHeaderProps = ComponentProps<
-  typeof CollapsibleTrigger
+export type ChainOfThoughtHeaderProps = Omit<
+  ComponentProps<typeof CollapsibleTrigger>,
+  'title'
 > & {
-  title?: string
+  title?: ReactNode
   /** Label shown while streaming, e.g. "Working...". Defaults to "Reasoning...". */
   streamingLabel?: string
   /** Which past-tense phrasing to use once the trace is complete. */
@@ -317,7 +318,11 @@ export const ChainOfThoughtContent = memo(
     <CollapsibleContent
       className={cn(
         'mt-2 text-sm relative',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-fg-2 outline-none motion-safe:data-[state=closed]:animate-out motion-safe:data-[state=open]:animate-in',
+        // No exit animation: Radix keeps closed content mounted until its
+        // `animationend` fires, and on a long trace (hundreds of tool cards)
+        // that event can be missed, leaving the faded content holding its
+        // whole height as a blank gap between messages. Closing is instant.
+        'data-[state=open]:slide-in-from-top-2 text-fg-2 outline-none motion-safe:data-[state=open]:animate-in',
         className
       )}
       {...props}

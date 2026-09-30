@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { RoomModelSelect } from '../RoomModelSelect'
 
@@ -28,9 +29,12 @@ vi.mock('@/hooks/useModelProvider', () => ({
 }))
 
 describe('RoomModelSelect', () => {
-  it('names the provider on a model several providers offer', () => {
+  it('names the provider on a model several providers offer', async () => {
     render(<RoomModelSelect id="m" value={null} onChange={() => {}} />)
-    const labels = screen.getAllByRole('option').map((o) => o.textContent)
+    await userEvent.click(screen.getByRole('button'))
+    const labels = (await screen.findAllByRole('menuitemradio')).map(
+      (o) => o.querySelector('.truncate')?.textContent
+    )
     expect(labels).toEqual(
       expect.arrayContaining([
         'qwen3.8-27b — openai',
@@ -43,10 +47,22 @@ describe('RoomModelSelect', () => {
     expect(labels.filter((l) => l === 'qwen3.8-27b')).toHaveLength(0)
   })
 
-  it('groups the options by provider', () => {
-    const { container } = render(<RoomModelSelect id="m" value={null} onChange={() => {}} />)
-    const groups = [...container.querySelectorAll('optgroup')].map((g) => g.label)
+  it('groups the options by provider', async () => {
+    render(<RoomModelSelect id="m" value={null} onChange={() => {}} />)
+    await userEvent.click(screen.getByRole('button'))
     // Groups are labelled by the provider title, which follows renames.
-    expect(groups).toEqual(['OpenAI', 'OpenRouter', 'Groq'])
+    await screen.findAllByRole('menuitemradio')
+    const headings = [...document.querySelectorAll('[data-slot="dropdown-menu-label"]')].map(
+      (h) => h.textContent
+    )
+    expect(headings).toEqual(['OpenAI', 'OpenRouter', 'Groq'])
+  })
+
+  it('reports the model chosen from the list', async () => {
+    const onChange = vi.fn()
+    render(<RoomModelSelect id="m" value={null} onChange={onChange} />)
+    await userEvent.click(screen.getByRole('button'))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: /^Solo Model/ }))
+    expect(onChange).toHaveBeenCalledWith({ provider: 'openai', id: 'solo' })
   })
 })

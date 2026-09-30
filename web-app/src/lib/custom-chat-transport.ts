@@ -66,6 +66,7 @@ import { useAppState } from '@/hooks/useAppState'
 import { unloadLlamaModel, getLoadedModels } from '@janhq/tauri-plugin-llamacpp-api'
 import { engineFailure } from '@/lib/engineError'
 import { chatSafetyGuidelines, todayLine } from '@/lib/promptSafety'
+import { replyLanguageLine } from '@/lib/replyLanguage'
 import { ExtensionManager } from '@/lib/extension'
 import { getLlamacppExtension } from '@/lib/llamacppRouterProps'
 import { clampThinkingBudget } from '@/lib/thinkingBudget'
@@ -1181,9 +1182,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       ]
         .filter((s) => typeof s === 'string' && s.trim().length > 0)
         .join('\n\n') || undefined
-    if (typeof raw !== 'string' || raw.trim().length === 0) return undefined
+    const language = replyLanguageLine()
+    if (typeof raw !== 'string' || raw.trim().length === 0) return language || undefined
     // Last, so a new day does not invalidate the cached prefix before it.
-    return `${raw}\n\n${todayLine()}`
+    return `${raw}\n\n${language ? `${language}\n\n` : ''}${todayLine()}`
   }
 
   /**

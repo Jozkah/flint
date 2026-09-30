@@ -136,7 +136,7 @@ export type RoomParticipant = {
   role: string
   model: string
   provider: string
-  toolAccess: 'none' | 'read' | 'edit'
+  toolAccess: 'none' | 'read' | 'edit' | 'full'
   /** Persisted participant reasoning override when one exists. */
   reasoning?: { mode?: ReasoningMode; level?: string }
 }
@@ -263,7 +263,7 @@ export type RoomCreateParticipant = {
   name: string
   role: string
   model: ModelRef
-  toolAccess: 'none' | 'read' | 'edit'
+  toolAccess: 'none' | 'read' | 'edit' | 'full'
   reasoning?: { mode?: ReasoningMode; level?: string }
 }
 export type RoomCreateParams = {

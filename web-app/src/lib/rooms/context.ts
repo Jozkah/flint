@@ -4,6 +4,7 @@
  * only the speaker's own speech is `assistant`; everything else is attributed
  * `user` content, fitted to the speaker's own context window.
  */
+import { participantPersona } from './persona'
 import { todayLine } from '@/lib/promptSafety'
 import { estimateTokens } from '@/lib/context-manager'
 import { DEFAULT_COMPACT_THRESHOLD, thresholdTokens } from '@/lib/compaction'
@@ -11,6 +12,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { resolveExtensions, type SkillMeta } from '@/lib/extensionsStore'
 import { addressLabel } from './addressing'
 import { CONCLUDE_SIGNAL } from './consensus'
+import { pinnedReplyLanguage, replyLanguageLine } from '@/lib/replyLanguage'
 import type { Participant, Room, RoomMessage } from './types'
 
 export type PromptMessage = { role: 'user' | 'assistant'; content: string }
@@ -60,6 +62,7 @@ export function framedLine(header: string, text: string): string {
 }
 
 const ADDRESSING_RULES =
+  'Start your message with the text itself, never with a bracketed header such as "[Name to room]:"; the room adds those. ' +
   'You may begin your message with @Name to address one participant, @moderator, @user or @room. ' +
   'Without an address your message is to the room. Speak only as yourself, do not write lines for others, ' +
   'and keep each turn focused and reasonably short.'
@@ -79,6 +82,7 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
     lines.push(
       `You are ${speaker.participant.name}${roleSuffix(speaker.participant.role)}, a participant in a moderated multi-party discussion.`
     )
+    lines.push(...participantPersona(speaker.participant))
   } else {
     lines.push(`You are ${room.moderator.name || 'the moderator'}, the moderator of a multi-party discussion.`)
   }
@@ -104,7 +108,13 @@ export function buildSystemPrompt(room: Room, speaker: SpeakerIdentity): string 
       `When the objective is fully met and further turns would only repeat what has been said, end your message with a final line containing exactly ${CONCLUDE_SIGNAL}. This closes the discussion, so use it only at genuine consensus or once the task is done — not to end a live disagreement.`
     )
   }
-  lines.push(ADDRESSING_RULES, FRAMING_NOTICE, UNTRUSTED_NOTICE)
+  lines.push(
+    replyLanguageLine() ||
+      "Write in the language of the objective and of the user's messages, whatever language a file or tool result is in.",
+    ADDRESSING_RULES,
+    FRAMING_NOTICE,
+    UNTRUSTED_NOTICE
+  )
   return lines.join('\n')
 }
 
@@ -121,7 +131,7 @@ function childPath(folder: string, name: string): string {
  * The model must use full paths under the folder — spell that out, with the
  * folder's real path, or it lists an empty sandbox and gives up.
  */
-function toolGuidance(room: Room, access: 'read' | 'edit'): string {
+function toolGuidance(room: Room, access: 'read' | 'edit' | 'full'): string {
   const web = useWebSearchConfig.getState().webSearchEnabled
   if (!room.folder) {
     // No folder means no file tools; whether any tools exist depends on web
@@ -135,12 +145,30 @@ function toolGuidance(room: Room, access: 'read' | 'edit'): string {
     return `No working folder is attached, so file tools are unavailable.${webNote}`
   }
   const example = childPath(room.folder, 'notes.md')
+  const extras = room.extraFolders ?? []
+  if (access === 'full') {
+    return [
+      `You work like a Cowork agent: you can read, search, write and edit files, run commands with the shell, use git, and call skills and plugins, in your working ${extras.length ? 'folders' : 'folder'}. The working folder is: ${room.folder}`,
+      ...(extras.length
+        ? [`Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`]
+        : []),
+      `Always use full paths under it — e.g. \`${example}\`. Use \`skill_list\` and \`skill_read\` for skills, and \`list_plugins\` for what is installed.`,
+      "The shell's working directory is a scratch sandbox, not the project: you cannot `cd` or `Set-Location` into the folder (it is refused), so give commands absolute paths (for example `python -m unittest discover -s <folder>/tests`) and set `PYTHONPATH` when a package must be importable.",
+      'Anything that changes files or runs a command may wait for the user to allow it; if a call is refused, do not retry it or work around it. Say what you would have done.',
+      'Do not invent file contents or command output: if a call fails, say so instead of guessing. Other participants work at the same time in the same folders, so keep changes small and say what you changed.',
+    ].join('\n')
+  }
   const verbs =
     access === 'edit'
-      ? 'read, list, write and edit files in your working folder'
-      : 'read and list files in your working folder (read-only)'
+      ? `read, list, write and edit files in your working ${extras.length ? 'folders' : 'folder'}`
+      : `read and list files in your working ${extras.length ? 'folders' : 'folder'} (read-only)`
   return [
     `You can ${verbs}. The working folder is: ${room.folder}`,
+    ...(extras.length
+      ? [
+          `Also attached, with the same access: ${extras.map((f) => `\`${f}\``).join(', ')}.`,
+        ]
+      : []),
     `Always use full paths under it — e.g. read \`${example}\`, and list the folder with \`ls\` on \`${room.folder}\`. A bare filename like \`notes.md\` will not resolve.`,
     'Do not invent file contents: if a read fails, say so instead of guessing.',
     ...(access === 'edit'
@@ -212,6 +240,23 @@ export function projectHistory(
   return out
 }
 
+const CJK = /[぀-ヿ㐀-鿿가-힯]/
+
+/**
+ * The language reminder, in the last message the model reads. A line in the
+ * system prompt is far from the end of a long turn full of tool results, and a
+ * model that once slipped into Chinese continues in it because its own earlier
+ * messages are in the history; the last message is the one it follows.
+ */
+export function languageCue(room: Room): string {
+  const pinned = pinnedReplyLanguage()
+  if (pinned) return `Reply in ${pinned}.`
+  const text = `${room.objective ?? ''} ${room.title ?? ''}`
+  return CJK.test(text)
+    ? 'Reply in the language of the objective.'
+    : 'Reply in the language of the objective, even if earlier messages or files are in Chinese or another language.'
+}
+
 export function turnCue(
   room: Room,
   speaker: SpeakerIdentity,
@@ -221,7 +266,7 @@ export function turnCue(
     speaker.kind === 'participant'
       ? speaker.participant.name
       : room.moderator.name || 'moderator'
-  const base = `[Room to ${who}]: It is your turn, ${who}.`
+  const base = `[Room to ${who}]: It is your turn, ${who}. ${languageCue(room)}`
   return instruction ? `${base}\n${instruction}` : base
 }
 

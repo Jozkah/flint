@@ -6,6 +6,8 @@
  * AbortController. Only these editor helpers (user actions) change settings,
  * participants, tool access, limits or the moderator.
  */
+import { clearRoomScratch, clearsKnowledge, clearsScratch } from './clearRoom'
+import { isWorkProfileId } from '@/lib/workProfiles'
 import {
   runRoom,
   type AbortIntent,
@@ -14,6 +16,7 @@ import {
   type SummarizeFn,
 } from './engine'
 import {
+  clearSuspensions,
   defaultProviderLookup,
   modelToolSupport,
   type ProviderLookup,
@@ -61,6 +64,9 @@ export type ParticipantInput = {
   toolAccess?: ToolAccess
   pricing?: Participant['pricing']
   reasoning?: Participant['reasoning']
+  /** `null` clears it. */
+  assistantId?: string | null
+  workProfile?: string | null
 }
 
 export type CreateRoomInput = {
@@ -82,6 +88,9 @@ export type ParticipantPatch = { id?: string } & Partial<
 > & {
   /** `null` returns the participant to its model's default reasoning. */
   reasoning?: Participant['reasoning'] | null
+  /** `null` clears it. */
+  assistantId?: string | null
+  workProfile?: Participant['workProfile'] | null
 }
 
 export type RoomSettingsPatch = {
@@ -93,6 +102,8 @@ export type RoomSettingsPatch = {
   participants?: ParticipantPatch[]
   /** The working folder, or `null` to detach it. */
   folder?: string | null
+  /** More folders beside the main one; the list replaces the old one. */
+  extraFolders?: string[]
 }
 
 export interface RoomEditor {
@@ -166,6 +177,22 @@ type RoomSlot = {
   run: { controller: AbortController; intent: AbortIntent | null } | null
   override: string | null
   userQueue: Array<{ text: string; to: Address }>
+}
+
+/** Most folders a room may have beside its main one. */
+export const MAX_EXTRA_FOLDERS = 8
+
+/** The extra folders as stored: trimmed, no repeats, none that is the main one, capped. */
+export function cleanExtraFolders(
+  folders: readonly string[],
+  main: string | null
+): string[] {
+  const out: string[] = []
+  for (const raw of folders) {
+    const f = typeof raw === 'string' ? raw.trim() : ''
+    if (f && f !== main && !out.includes(f)) out.push(f)
+  }
+  return out.slice(0, MAX_EXTRA_FOLDERS)
 }
 
 export function createRoomController(deps: ControllerDeps = {}): RoomControllerApi {
@@ -350,7 +377,7 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
     // honoured. 'read'/'edit' both need a tool-capable model, and any choice is
     // dropped to 'none' when the model has no tools.
     const requested: ToolAccess = input.toolAccess ?? 'read'
-    const wantsTools = requested === 'read' || requested === 'edit'
+    const wantsTools = requested === 'read' || requested === 'edit' || requested === 'full'
     const reasoning = normaliseParticipantReasoning(input.reasoning)
     let pricing: Participant['pricing']
     if (input.pricing) {
@@ -371,13 +398,15 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
       // tools again at run time, when the model is resolvable.
       toolAccess:
         wantsTools && modelToolSupport(input.model, lookup) !== 'no'
-          ? (requested as 'read' | 'edit')
+          ? (requested as 'read' | 'edit' | 'full')
           : 'none',
       removed: input.removed ?? false,
       order: input.order,
       availability: { state: 'unknown' },
       ...(pricing ? { pricing } : {}),
       ...(reasoning ? { reasoning } : {}),
+      ...(input.assistantId?.trim() ? { assistantId: input.assistantId.trim() } : {}),
+      ...(isWorkProfileId(input.workProfile) ? { workProfile: input.workProfile } : {}),
     }
   }
 
@@ -631,6 +660,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
               edit.reasoning === undefined
                 ? prev.reasoning
                 : (edit.reasoning ?? undefined),
+            assistantId:
+              edit.assistantId === undefined ? prev.assistantId : edit.assistantId,
+            workProfile:
+              edit.workProfile === undefined ? prev.workProfile : edit.workProfile,
             order: edit.order ?? prev.order,
             removed: prev.removed,
           })
@@ -645,6 +678,10 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
           moderator: patch.moderator ? normaliseModerator(patch.moderator, room.moderator) : room.moderator,
           folder:
             patch.folder !== undefined ? patch.folder || null : (room.folder ?? null),
+          extraFolders: cleanExtraFolders(
+            patch.extraFolders !== undefined ? patch.extraFolders : (room.extraFolders ?? []),
+            patch.folder !== undefined ? patch.folder || null : (room.folder ?? null)
+          ),
           limits: clampLimits({ ...room.limits, ...(patch.limits ?? {}) }),
           // Raising a limit that stopped the room clears the stop, so a message
           // resumes it instead of being stranded by a limit that no longer binds.
@@ -686,6 +723,34 @@ export function createRoomController(deps: ControllerDeps = {}): RoomControllerA
         })
       })
     },
+
+    clearRoom: (roomId, scope) =>
+      guarded('clear', async () => {
+        if (slot(roomId).run) {
+          throw roomError('invalid_room', 'Pause or stop the room before clearing it.')
+        }
+        await enqueue(roomId, async () => {
+          const { room } = await persistence().getRoom(roomId)
+          if (room.status === 'running') {
+            throw roomError('invalid_room', 'Pause or stop the room before clearing it.')
+          }
+          await persistence().clearRoomJournal(roomId)
+          let next: Room = {
+            ...room,
+            status: 'draft',
+            round: 0,
+            spokenThisRound: [],
+            nextSpeakerId: null,
+            stopReason: null,
+          }
+          if (clearsKnowledge(scope)) {
+            next = { ...clearSuspensions(next), usage: emptyUsage() }
+          }
+          await saveRoom(next)
+        })
+        if (clearsScratch(scope)) await clearRoomScratch(roomId)
+        await store().loadRoom(roomId)
+      }),
 
     deleteRoom: async (roomId) => {
       await abortRun(roomId, 'stop')

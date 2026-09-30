@@ -28,7 +28,7 @@ import {
   type WorkProfileId,
 } from '@/lib/workProfiles'
 
-const ICONS: Record<WorkProfileId, LucideIcon> = {
+export const ICONS: Record<WorkProfileId, LucideIcon> = {
   execute: Hammer,
   review: ScanSearch,
   plan: Map,

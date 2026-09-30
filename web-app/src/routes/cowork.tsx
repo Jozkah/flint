@@ -1,4 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
+import { modelKey, unavailableModels } from '@/lib/modelReplace'
+import { switchedFromOf } from '@/lib/assistantSwitch'
+import { messageWeight, transcriptWindowStart } from '@/lib/transcriptWindow'
+import { markConversationOpened } from '@/lib/messageEntry'
 import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
@@ -630,6 +635,20 @@ export function CoworkPage() {
     }
   }, [sessionModel, globalProvider, globalModel, modelProviders])
 
+  // A session whose model has gone away asks for another before it runs, rather
+  // than quietly taking whatever the picker holds.
+  const confirmSessionModel = useCallback(() => {
+    const gone = unavailableModels([sessionModel])
+    if (gone.length === 0) return { status: 'ok' as const }
+    return promptReplaceModels(t('common:modelReplace.thisSession'), gone).then((choices) => {
+      const pick = choices?.[modelKey(gone[0])]
+      const sid = coworkPane?.sessionId ?? useCoworkSessions.getState().currentId
+      if (!pick || !sid) return { status: 'stop' as const }
+      useCoworkSessions.getState().setModel(sid, pick)
+      return { status: 'retry' as const, modelId: pick.id }
+    })
+  }, [sessionModel, coworkPane?.sessionId, t])
+
   const sessions = useCoworkSessions((s) => s.sessions)
   const routeCurrentId = useCoworkSessions((s) => s.currentId)
   const currentId = coworkPane?.sessionId ?? routeCurrentId
@@ -649,6 +668,12 @@ export function CoworkPage() {
     () => sessions.find((s) => s.id === currentId) ?? null,
     [sessions, currentId]
   )
+  // Opening a session draws its history at once; see lib/messageEntry.
+  const openedSessionRef = useRef<string | null>(null)
+  if (openedSessionRef.current !== (session?.id ?? null)) {
+    openedSessionRef.current = session?.id ?? null
+    markConversationOpened()
+  }
   const folder = session?.folder ?? null
   // Folders attached beside the primary, like a multi-root workspace.
   const sessionExtraFolders = session?.extraFolders
@@ -1839,6 +1864,20 @@ export function CoworkPage() {
     () => appendLiveMessages(committedMessages, liveMessages),
     [committedMessages, liveMessages]
   )
+
+  // A long session is drawn from its newest messages, the rest on request.
+  // Drawing every message and tool card at once is what made opening a long
+  // session slow; what is above the window is still in the session.
+  const [earlierShown, setEarlierShown] = useState<{ sid: string | null; pages: number }>({
+    sid: null,
+    pages: 0,
+  })
+  const earlierPages = earlierShown.sid === (session?.id ?? null) ? earlierShown.pages : 0
+  const messageWeights = useMemo(
+    () => uiMessages.map((m) => messageWeight(m.parts as { type: string }[])),
+    [uiMessages]
+  )
+  const windowStart = transcriptWindowStart(messageWeights, earlierPages)
 
   // The plan each run left, by the prompt it follows.
   const snapshotByAnchor = useMemo(
@@ -4333,8 +4372,13 @@ export function CoworkPage() {
                 : genDurationSec > 0 && stepOutputTokens > 0
                   ? stepOutputTokens / genDurationSec
                   : 0
-            const settledTurns = turns.map((turn) =>
-              turn.role === 'assistant' &&
+            const answeredBy = transport.answering()
+            const settledTurns = turns.map((turn0) => {
+              const turn =
+                answeredBy && turn0.role === 'assistant' && !turn0.assistant
+                  ? { ...turn0, assistant: answeredBy }
+                  : turn0
+              return turn.role === 'assistant' &&
               turn.content === result.text &&
               computedTps > 0
                 ? {
@@ -4350,7 +4394,7 @@ export function CoworkPage() {
                     },
                   }
                 : turn
-            )
+            })
             // Reset the generation span so the next step measures its own.
             genFirstAt = 0
             genLastAt = 0
@@ -5461,7 +5505,30 @@ export function CoworkPage() {
             openDiff={openToolDiff}
             displayPath={displayToolPath}
           >
-                    {uiMessages.map((whole, i) => {
+                    {windowStart > 0 && (
+                      <div className="flex justify-center pb-3">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          data-testid="show-earlier-messages"
+                          className="text-muted-foreground"
+                          onClick={() =>
+                            setEarlierShown({
+                              sid: session?.id ?? null,
+                              pages: earlierPages + 1,
+                            })
+                          }
+                        >
+                          {t('common:coworkShowEarlier', {
+                            count:
+                              windowStart -
+                              transcriptWindowStart(messageWeights, earlierPages + 1),
+                          })}
+                        </Button>
+                      </div>
+                    )}
+                    {uiMessages.slice(windowStart).map((whole, shownAt) => {
+                      const i = shownAt + windowStart
                       // Each model round renders with its own rows beneath
                       // it, so the newest content is always last.
                       const segments = segmentAssistantMessage(whole)
@@ -5481,6 +5548,9 @@ export function CoworkPage() {
                         <MessageItem
                           message={message}
                           isFirstMessage={i === 0 && k === 0}
+                          switchedFrom={
+                            k === 0 ? switchedFromOf(uiMessages, i) : undefined
+                          }
                           isLastMessage={
                             i === uiMessages.length - 1 &&
                             k === segments.length - 1
@@ -5962,6 +6032,7 @@ export function CoworkPage() {
                 // The session's own effort, where its transport reads it.
                 modelOverrideScope={session?.id ?? ''}
                 unavailableModel={composerModel.unavailable}
+                confirmModel={confirmSessionModel}
                 // Held input is shown once, in CoworkHeldInput above.
                 heldShownElsewhere
                 ownsToolSet={false}

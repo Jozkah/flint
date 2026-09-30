@@ -349,6 +349,9 @@
     "promise5": "We're transparent about what we collect and why"
   },
   "general": {
+    "replyLanguage": "Reply language",
+    "replyLanguageDesc": "Make the model always answer in this language in chats, Cowork and rooms. Automatic follows what you write.",
+    "replyLanguageAuto": "Automatic",
     "showInFinder": "Show in Finder",
     "showInFileExplorer": "Show in File Explorer",
     "openContainingFolder": "Open Containing Folder",

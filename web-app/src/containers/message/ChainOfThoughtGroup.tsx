@@ -20,7 +20,7 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { partitionTrace, type TranscriptView } from '@/lib/transcriptView'
-import { summarizeTrace, summaryPhrases } from '@/lib/traceSummary'
+import { summarizeTrace, summaryLabelParts, summaryPhrases } from '@/lib/traceSummary'
 import { cn } from '@/lib/utils'
 import { segmentReasoningSteps } from '@/lib/reasoning'
 import { ToolCallCard } from './ToolCallCard'
@@ -443,6 +443,35 @@ export const ChainOfThoughtGroup = memo(
         fallbackDuration={toolSpanSeconds}
       >
         <ChainOfThoughtHeader
+          // A finished trace says what it did ("Ran 3 commands, created 1
+          // file") rather than how long it took, which is not kept once the
+          // app is closed and then reads "a few seconds".
+          title={
+            groupIsStreaming
+              ? undefined
+              : (() => {
+                  const parts = summaryLabelParts(
+                    summarizeTrace(entries.map((e) => e.part)),
+                    t as never
+                  )
+                  if (!parts) return undefined
+                  return (
+                    <>
+                      {parts.text}
+                      {(parts.added > 0 || parts.removed > 0) && (
+                        <span className="ml-1 font-mono tabular-nums">
+                          <span className="text-emerald-600 dark:text-emerald-400">
+                            +{parts.added}
+                          </span>{' '}
+                          <span className="text-red-600 dark:text-red-400">
+                            −{parts.removed}
+                          </span>
+                        </span>
+                      )}
+                    </>
+                  )
+                })()
+          }
           streamingLabel={
             currentStepIsTool
               ? t('chat:reasoning.usingTool', { tool: currentToolLabel })

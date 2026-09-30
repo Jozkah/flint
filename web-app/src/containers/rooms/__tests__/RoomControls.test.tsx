@@ -1,14 +1,30 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, waitFor, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import type { RoomStatus } from '@/lib/rooms/types'
 import { createFakeApi, makeParticipant, makeRoom, renderWithApi } from './roomsTestUtils'
 import { RoomControls } from '../RoomControls'
+import { useModelProvider } from '@/hooks/useModelProvider'
 
 vi.mock('@/i18n/react-i18next-compat', async () => {
   const u = await import('./roomsTestUtils')
   return { useTranslation: () => ({ t: u.t }) }
+})
+
+const prompt = vi.hoisted(() => vi.fn())
+vi.mock('@/hooks/useModelReplacePrompt', () => ({ promptReplaceModels: prompt }))
+
+// The models the test rooms use, present in their provider so none is "gone".
+const provider = (models: string[]) => ({
+  provider: 'openai',
+  active: true,
+  api_key: 'k',
+  models: models.map((id) => ({ id })),
+})
+beforeEach(() => {
+  prompt.mockReset()
+  useModelProvider.setState({ providers: [provider(['tool-model', 'plain-model'])] } as never)
 })
 
 const btn = (name: string) => screen.getByRole('button', { name })
@@ -31,6 +47,15 @@ describe('RoomControls', () => {
       expect(btn(name)).toBeDisabled()
     await userEvent.click(btn('Start'))
     expect(controller.start).toHaveBeenCalledWith('r1')
+  })
+
+  it('asks for another model before starting when one is gone, and does not start if cancelled', async () => {
+    prompt.mockResolvedValue(null)
+    useModelProvider.setState({ providers: [provider(['plain-model'])] } as never)
+    const { controller } = setup('draft')
+    await userEvent.click(btn('Start'))
+    expect(prompt).toHaveBeenCalled()
+    expect(controller.start).not.toHaveBeenCalled()
   })
 
   it('draft with fewer than two participants cannot start', () => {

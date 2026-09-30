@@ -40,6 +40,7 @@ import {
   FileClock,
   GitFork,
   Share2,
+  Sparkles,
   Upload,
   MoreHorizontal,
   Puzzle,
@@ -48,6 +49,8 @@ import {
   FolderPlus,
   type LucideIcon,
 } from 'lucide-react'
+import { coworkTranscript, regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
+import { regenerateWithToast } from '@/lib/regenerateToast'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import {
@@ -147,6 +150,8 @@ const SessionItem = memo(function SessionItem({
         title={session.title}
         updated={session.updated}
         summary={summary}
+        summaryKey={`${session.id}\u0000${session.updated}`}
+        transcript={() => coworkTranscript(session.id)}
         suppressed={menuOpen}
       >
         <NavButton
@@ -191,6 +196,16 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem
+            data-testid="regenerate-session-title"
+            onSelect={() =>
+              regenerateWithToast(() => regenerateCoworkTitle(session.id), t)
+            }
+          >
+            <Sparkles />
+            <span>{t('chat:regenerateTitle.menu')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
             <FileClock />
             <span>{t('common:fileActivity.menuItem')}</span>
@@ -207,12 +222,12 @@ const SessionItem = memo(function SessionItem({
             <Columns2 />
             <span>{t('chat:split.openInSplit')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <MoveToGroupSub
             surface="cowork"
             itemId={session.id}
             adapter={coworkFolderAdapter}
           />
-          <DropdownMenuSeparator />
           {/* AH-201. Copies the conversation and none of the access: the fork
               asks for its own folder and its own confirmation, so forking can
               never multiply authority that was granted once. */}
@@ -232,6 +247,7 @@ const SessionItem = memo(function SessionItem({
             <GitFork />
             <span>{t('common:forkSession')}</span>
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={() => {
               void navigator.clipboard?.writeText(session.id)

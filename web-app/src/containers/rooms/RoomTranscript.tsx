@@ -12,7 +12,10 @@ import type {
 } from '@/lib/rooms/types'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
-import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card'
+import { liveStatus } from '@/lib/rooms/liveStatus'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { summarizeTrace, summaryLabelParts } from '@/lib/traceSummary'
 import {
   addressLabel,
   findParticipant,
@@ -152,46 +155,172 @@ function argRows(args: unknown): Array<[string, string]> {
   return [['', typeof args === 'string' ? args : JSON.stringify(args, null, 2)]]
 }
 
+/** A room tool call as the trace summary reads a tool part. */
+const asPart = (c: RoomToolActivity) => ({
+  type: `tool-${c.name}`,
+  state: c.ok ? 'output-available' : 'output-error',
+  input: c.args,
+  output: c.output,
+})
+
+/** What one call was given and what came back: the body of the popup and of Details. */
+function ToolCallBody({
+  c,
+  t,
+  compact,
+}: {
+  c: RoomToolActivity
+  t: T
+  compact?: boolean
+}) {
+  const rows = argRows(c.args)
+  const isError = !c.ok
+  return (
+    <>
+      {rows.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {t('rooms:transcript.toolArgs')}
+          </p>
+          <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-card px-3 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
+            {rows.map(([k, v], r) => (
+              <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
+                {k ? (
+                  <dt className="truncate font-mono text-[11px] text-muted-foreground">{k}</dt>
+                ) : (
+                  <dt className="sr-only">value</dt>
+                )}
+                <dd
+                  className={cn(
+                    'min-w-0 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground',
+                    compact ? 'max-h-16' : 'max-h-24',
+                    k ? '' : 'col-span-2'
+                  )}
+                >
+                  {v}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+      {c.output && (
+        <div className="space-y-1">
+          <p className="text-[11px] font-medium text-muted-foreground">
+            {isError ? t('rooms:transcript.toolError') : t('rooms:transcript.toolOutput')}
+          </p>
+          <pre
+            className={cn(
+              'overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
+              compact ? 'max-h-32' : 'max-h-40',
+              isError
+                ? 'border border-destructive/30 bg-destructive-tint text-destructive'
+                : 'bg-card text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
+            )}
+          >
+            {c.output}
+          </pre>
+        </div>
+      )}
+    </>
+  )
+}
+
 /**
- * The tools a participant used. Simple view: one tone-coloured chip per call,
- * the same palette as the Cowork tab (built-in indigo, read cyan, write amber,
- * MCP violet, failures red). Advanced view (the Details toggle) expands each
- * call into a tidy Input table and a Result/Error block.
+ * The tools a participant used, folded by default to one line that says what
+ * they did ("Ran 10 commands, edited 1 file (4 failed)"). Opening it shows one
+ * chip per call, tone-coloured as in the Cowork tab (built-in indigo, read cyan,
+ * write amber, MCP violet, failures red); hovering a chip shows what that call
+ * was given and what came back. Details opens every call as a full table.
  */
 function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
-  // Transcript view: Verbose opens every call; Thinking keeps failed calls on
-  // screen, Normal none, and fold the rest behind the details toggle.
-  const view = useInterfaceSettings((s) => s.transcriptView)
-  const verbose = view === 'verbose'
-  const [expanded, setExpanded] = useState(verbose)
+  const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const hasDetails = calls.some((c) => c.args !== undefined || Boolean(c.output))
+  const summary = summaryLabelParts(summarizeTrace(calls.map(asPart)), t as never)
+  const failed = calls.filter((c) => !c.ok).length
 
   return (
     <div data-testid="message-tools">
       <div className="flex flex-wrap items-center gap-1.5">
-        {calls.map((c, i) => {
-          if (!verbose && !expanded && (c.ok || view === 'normal')) return null
-          const tone = TONE_CLASSES[toneFor(c)]
-          const Icon = toolIcon(c.name)
-          // Match Cowork: a neutral chip whose icon carries the tool's kind
-          // colour, and a red tint only when the call failed.
-          return (
-            <span
-              key={`${c.name}-${i}`}
-              className={cn(
-                'inline-flex h-[22px] items-center gap-[5px] rounded-md px-2 font-mono text-[11.5px]',
-                c.ok ? 'bg-accent text-secondary-foreground' : 'bg-destructive-tint text-destructive'
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          data-testid="tool-trace-summary"
+          className="inline-flex min-h-6 cursor-pointer items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronDown
+            className={cn(
+              'size-3 shrink-0 transition-transform duration-200',
+              open ? 'rotate-0' : '-rotate-90'
+            )}
+            aria-hidden
+          />
+          {summary ? (
+            <>
+              {summary.text}
+              {(summary.added > 0 || summary.removed > 0) && (
+                <span className="ml-1 font-mono tabular-nums">
+                  <span className="text-emerald-600 dark:text-emerald-400">+{summary.added}</span>{' '}
+                  <span className="text-red-600 dark:text-red-400">−{summary.removed}</span>
+                </span>
               )}
-            >
-              <Icon
-                className={cn('size-3 shrink-0', c.ok ? tone.icon : 'text-destructive')}
-                aria-hidden
-              />
-              {c.name}
-            </span>
-          )
-        })}
-        {(hasDetails || !verbose) && (
+            </>
+          ) : (
+            <>
+              {t('chat:transcriptView.steps', { count: calls.length })}
+              {failed > 0 && <span className="text-destructive"> · {failed}</span>}
+            </>
+          )}
+        </button>
+        {open &&
+          calls.map((c, i) => {
+            const tone = TONE_CLASSES[toneFor(c)]
+            const Icon = toolIcon(c.name)
+            // Match Cowork: a neutral chip whose icon carries the tool's kind
+            // colour, and a red tint only when the call failed.
+            return (
+              <HoverCard key={`${c.name}-${i}`} openDelay={150} closeDelay={80}>
+                <HoverCardTrigger asChild>
+                  <span
+                    tabIndex={0}
+                    data-testid="tool-chip"
+                    className={cn(
+                      'inline-flex h-[22px] cursor-default items-center gap-[5px] rounded-md px-2 font-mono text-[11.5px] outline-hidden focus-visible:ring-2 focus-visible:ring-ring/40',
+                      c.ok ? 'bg-accent text-secondary-foreground' : 'bg-destructive-tint text-destructive'
+                    )}
+                  >
+                    <Icon
+                      className={cn('size-3 shrink-0', c.ok ? tone.icon : 'text-destructive')}
+                      aria-hidden
+                    />
+                    {c.name}
+                  </span>
+                </HoverCardTrigger>
+                <HoverCardContent
+                  side="top"
+                  align="start"
+                  className="w-96 max-w-[calc(100vw-2rem)] space-y-2 p-3"
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-medium">
+                    <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
+                    <span className="text-foreground">{c.name}</span>
+                    <span
+                      className={cn(
+                        'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
+                        c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
+                      )}
+                    >
+                      {c.ok ? t('rooms:transcript.toolOk') : t('rooms:transcript.toolFailed')}
+                    </span>
+                  </div>
+                  <ToolCallBody c={c} t={t} compact />
+                </HoverCardContent>
+              </HoverCard>
+            )
+          })}
+        {open && hasDetails && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -206,85 +335,49 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
               )}
               aria-hidden
             />
-            {expanded
-              ? t('rooms:transcript.toolHide')
-              : verbose
-                ? t('rooms:transcript.toolDetails')
-                : t('chat:transcriptView.steps', { count: calls.length })}
+            {expanded ? t('rooms:transcript.toolHide') : t('rooms:transcript.toolDetails')}
           </button>
         )}
       </div>
-      {expanded && hasDetails && (
-        <div
-          className="mt-1.5 space-y-2.5 rounded-lg bg-muted px-2.5 py-2 motion-safe:animate-dd-in"
-          data-testid="tool-trace-details"
-        >
+      {open && expanded && hasDetails && (
+        <div className="mt-2 space-y-3 motion-safe:animate-dd-in" data-testid="tool-trace-details">
           {calls.map((c, i) => {
             const tone = TONE_CLASSES[toneFor(c)]
             const Icon = toolIcon(c.name)
-            const rows = argRows(c.args)
-            const isError = !c.ok
+            // Each call is a card of its own: numbered, headed, with room between
+            // what it was given and what came back.
             return (
-              <div key={`${c.name}-detail-${i}`} className="min-w-0 space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs font-medium">
+              <div
+                key={`${c.name}-detail-${i}`}
+                data-testid="tool-detail"
+                className={cn(
+                  'min-w-0 overflow-hidden rounded-lg border-[0.8px] bg-muted',
+                  c.ok ? 'border-border' : 'border-destructive/40'
+                )}
+              >
+                <div
+                  className={cn(
+                    'flex items-center gap-2 border-b-[0.8px] px-3 py-2 text-xs font-medium',
+                    c.ok ? 'border-border bg-accent/40' : 'border-destructive/30 bg-destructive-tint'
+                  )}
+                >
+                  <span className="grid size-5 shrink-0 place-items-center rounded-full bg-card font-mono text-[10px] tabular-nums text-muted-foreground shadow-[inset_0_0_0_0.8px_var(--border)]">
+                    {i + 1}
+                  </span>
                   <Icon className={cn('size-3.5 shrink-0', tone.icon)} aria-hidden />
-                  <span className="text-foreground">{c.name}</span>
+                  <span className="font-mono text-foreground">{c.name}</span>
                   <span
                     className={cn(
-                      'ml-auto rounded px-1.5 py-0.5 text-[10px] font-medium',
-                      isError
-                        ? 'bg-destructive-tint text-destructive'
-                        : 'bg-success-tint text-success'
+                      'ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium',
+                      c.ok ? 'bg-success-tint text-success' : 'bg-destructive-tint text-destructive'
                     )}
                   >
-                    {isError ? t('rooms:transcript.toolFailed') : t('rooms:transcript.toolOk')}
+                    {c.ok ? t('rooms:transcript.toolOk') : t('rooms:transcript.toolFailed')}
                   </span>
                 </div>
-                {rows.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      {t('rooms:transcript.toolArgs')}
-                    </p>
-                    <dl className="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-md bg-card px-3 py-2 shadow-[inset_0_0_0_0.8px_var(--border)]">
-                      {rows.map(([k, v], r) => (
-                        <div key={`${k}-${r}`} className="col-span-2 grid grid-cols-subgrid">
-                          {k ? (
-                            <dt className="truncate font-mono text-[11px] text-muted-foreground">
-                              {k}
-                            </dt>
-                          ) : (
-                            <dt className="sr-only">value</dt>
-                          )}
-                          <dd
-                            className={cn(
-                              'min-w-0 max-h-24 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] text-foreground',
-                              k ? '' : 'col-span-2'
-                            )}
-                          >
-                            {v}
-                          </dd>
-                        </div>
-                      ))}
-                    </dl>
-                  </div>
-                )}
-                {c.output && (
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium text-muted-foreground">
-                      {isError ? t('rooms:transcript.toolError') : t('rooms:transcript.toolOutput')}
-                    </p>
-                    <pre
-                      className={cn(
-                        'max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md px-3 py-2 font-mono text-[11px]',
-                        isError
-                          ? 'border border-destructive/30 bg-destructive-tint text-destructive'
-                          : 'bg-card text-foreground shadow-[inset_0_0_0_0.8px_var(--border)]'
-                      )}
-                    >
-                      {c.output}
-                    </pre>
-                  </div>
-                )}
+                <div className="space-y-3 p-3">
+                  <ToolCallBody c={c} t={t} />
+                </div>
               </div>
             )
           })}
@@ -379,6 +472,21 @@ type RoomTranscriptProps = {
  */
 const NEAR_BOTTOM_PX = 64
 
+function liveStatusLabel(status: ReturnType<typeof liveStatus>, t: T): string {
+  switch (status.kind) {
+    case 'compacting':
+      return t('rooms:transcript.compacting')
+    case 'approval':
+      return t('rooms:transcript.waitingApproval', { tool: status.tool })
+    case 'tool':
+      return `${status.text}…`
+    case 'writing':
+      return t('rooms:transcript.writing')
+    default:
+      return t('rooms:transcript.thinking')
+  }
+}
+
 export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps) {
   const { t } = useTranslation()
   const messages = useMemo(() => messagesOf(journal), [journal])
@@ -387,6 +495,10 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
   // same color as that participant's name. Rebuilt only when the roster changes.
   const mentionColors = useMemo(() => participantColorsByName(room), [room])
   const live = liveTurn?.roomId === room.id ? liveTurn : null
+  const approvalTool = useToolApprovalRequests((s) => {
+    for (const p of Object.values(s.pending ?? {})) if (p.threadId === room.id) return p.toolName
+    return null
+  })
 
   const scrollRef = useRef<HTMLDivElement>(null)
   // Whether new content should pull the viewport down. True only while the user
@@ -502,7 +614,23 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
               <header className="flex flex-wrap items-center gap-1.5 text-xs">
                 <AuthorName author={m.author} room={room} t={t} />
                 {chip && (
-                  <span className="rounded-full bg-accent px-[7px] py-px text-[11px] text-muted-foreground">
+                  <span
+                    data-testid="message-to"
+                    // A message to a participant wears that participant's colour,
+                    // like their own name does.
+                    style={
+                      m.to.kind === 'participant'
+                        ? {
+                            color: participantColor(m.to.participantId),
+                            backgroundColor: `color-mix(in oklab, ${participantColor(m.to.participantId)} 14%, transparent)`,
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      'rounded-full px-[7px] py-px text-[11px]',
+                      m.to.kind !== 'participant' && 'bg-accent text-muted-foreground'
+                    )}
+                  >
                     {chip}
                   </span>
                 )}
@@ -518,6 +646,27 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
                     {t('rooms:transcript.addressedToYou')}
                   </span>
                 )}
+                {m.usage?.outputTokens || m.usage?.tokensPerSecond ? (
+                  <span
+                    data-testid="message-speed"
+                    title={t('rooms:transcript.speedTitle')}
+                    className="ml-auto tabular-nums text-muted-foreground"
+                  >
+                    {[
+                      m.usage?.outputTokens
+                        ? t('rooms:transcript.tokensOut', {
+                            count: m.usage.outputTokens,
+                            approx: m.usage.estimated ? '~' : '',
+                          })
+                        : null,
+                      m.usage?.tokensPerSecond
+                        ? t('rooms:transcript.speed', { tps: Math.round(m.usage.tokensPerSecond) })
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </span>
+                ) : null}
               </header>
               <MessageBody
                 message={m}
@@ -538,19 +687,20 @@ export function RoomTranscript({ room, journal, liveTurn }: RoomTranscriptProps)
           <header className="flex flex-wrap items-center gap-1.5 text-xs">
             <AuthorName author={live.author} room={room} t={t} />
             <span className="text-muted-foreground motion-safe:animate-pulse">
-              {t(live.compacting ? 'rooms:transcript.compacting' : 'rooms:transcript.streaming')}
+              {liveStatusLabel(liveStatus(live, approvalTool), t)}
             </span>
           </header>
+          {live.tools && live.tools.length > 0 && <ToolTrace calls={live.tools} t={t} />}
           {live.compacting ? (
             <p className="text-[13px] text-muted-foreground">{t('rooms:transcript.compactingBody')}</p>
-          ) : (
+          ) : live.text ? (
             <RoomMessageText
               text={stripConclusion(live.text).text}
               mentionColors={mentionColors}
               isStreaming
               className="text-[13.5px] leading-[1.6] text-fg-2"
             />
-          )}
+          ) : null}
         </article>
       )}
       </div>

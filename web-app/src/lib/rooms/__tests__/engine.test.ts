@@ -847,3 +847,18 @@ describe('engine: guaranteed termination', () => {
     expect(room.usage.turns).toBeLessThan(clampLimits(absurd).maxTurns)
   })
 })
+
+describe('writingSpeed', () => {
+  it('is tokens over the time spent writing, to a tenth', async () => {
+    const { writingSpeed } = await import('../engine')
+    expect(writingSpeed(150, 2000)).toBe(75)
+    expect(writingSpeed(100, 3000)).toBe(33.3)
+  })
+
+  it('is absent for a reply too short or too quick to mean anything', async () => {
+    const { writingSpeed } = await import('../engine')
+    expect(writingSpeed(5, 2000)).toBeUndefined()
+    expect(writingSpeed(200, 10)).toBeUndefined()
+    expect(writingSpeed(200, 0)).toBeUndefined()
+  })
+})

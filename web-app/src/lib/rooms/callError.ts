@@ -31,19 +31,29 @@ export type RoomToolContext = {
   roomId: string
   /** The folder file-read tools resolve against, or null for none. */
   folder: string | null
+  /** More folders beside `folder`, reachable the same way. */
+  extraFolders?: string[]
   access: ToolAccess
+  /** Who is speaking, named on the approval prompts their calls raise. */
+  participantName?: string
+  /** The turn's signal: stopping it withdraws any prompt still open. */
+  signal?: AbortSignal
 }
 
 export type StreamReplyInput = {
   model: RoomModelRef
   /** The speaking participant's reasoning setting; absent for the model's default. */
   reasoning?: ParticipantReasoning
+  /** Sampling from the participant's assistant (temperature, top_p...), when it has one. */
+  sampling?: Record<string, number>
   system: string
   messages: PromptMessage[]
   maxOutputTokens: number
   signal: AbortSignal
   /** Text deltas only; reasoning is never passed here. */
   onText: (delta: string) => void
+  /** Any piece of output arriving (text, reasoning, tool-call arguments), for timing. */
+  onStreamActivity?: () => void
   /** Read-only tools for this turn, when the participant may use them. */
   toolContext?: RoomToolContext
   /** Reports each tool the participant runs, for the live/settled transcript. */

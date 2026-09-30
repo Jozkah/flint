@@ -52,6 +52,7 @@ const REVEAL_ACTIONS =
 const ACTION_BUTTON =
   'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { shouldAnimateEntry } from '@/lib/messageEntry'
 import {
   CHAT_STATUS,
   CONTENT_TYPE,
@@ -121,6 +122,11 @@ export type MessageItemProps = {
    */
   continuation?: boolean
   /**
+   * Chat only: the assistant that answered the message before this one, when
+   * it is a different one. Sets this reply apart with a rule above it.
+   */
+  switchedFrom?: string
+  /**
    * Cowork only: more of the same reply follows this row (a later model
    * round). The row is not the end of the run, so it gets no empty-run
    * fallback and no token-speed line of its own.
@@ -137,6 +143,7 @@ export const MessageItem = memo(
     isAnimating,
     hideActions,
     continuation,
+    switchedFrom,
     midReply,
     keepToolActivity,
     subagents,
@@ -160,6 +167,8 @@ export const MessageItem = memo(
     )
     const updateProvider = useModelProvider((state) => state.updateProvider)
     const [enableToolsOpen, setEnableToolsOpen] = useState(false)
+    // Decided once, as the message mounts: history is not animated in.
+    const [animateIn] = useState(shouldAnimateEntry)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
@@ -716,7 +725,10 @@ export const MessageItem = memo(
       <div
         data-role={message.role}
         className={cn(
-          'group/message mb-[18px] w-full motion-safe:animate-msg-in',
+          'group/message mb-3 w-full',
+          // A different assistant took over: a rule and some air mark the change.
+          switchedFrom && 'mt-4 border-t-[0.8px] border-border pt-4',
+          animateIn && 'motion-safe:animate-msg-in',
           message.role === 'user' && !isFirstMessage && 'mt-2'
         )}
         onContextMenu={openContextMenu}
@@ -874,7 +886,7 @@ export const MessageItem = memo(
         )}
 
         {/* Message actions for assistant messages (non-tool) */}
-        {message.role === 'assistant' && (
+        {message.role === 'assistant' && !(hideActions && midReply) && (
             <div className="mt-1.5 flex h-7 flex-nowrap items-center gap-x-0.5 overflow-hidden text-muted-foreground text-xs pointer-coarse:h-11">
               {/* The time is on the header line above. */}
               <div
@@ -1110,6 +1122,7 @@ export const MessageItem = memo(
       prevProps.status === nextProps.status &&
       prevProps.hideActions === nextProps.hideActions &&
       prevProps.continuation === nextProps.continuation &&
+      prevProps.switchedFrom === nextProps.switchedFrom &&
       prevProps.midReply === nextProps.midReply &&
       prevProps.keepToolActivity === nextProps.keepToolActivity &&
       prevProps.versionInfo?.index === nextProps.versionInfo?.index &&

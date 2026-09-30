@@ -105,6 +105,8 @@ export type CoworkTurn = {
    * reported none.
    */
   usage?: Usage
+  /** The assistant that answered, so the reply can name it. Flint has no avatar. */
+  assistant?: { name: string; avatar?: string }
   /** Provider-reported generation and prompt-reading speeds for this reply. */
   tokenSpeed?: {
     tokenSpeed: number

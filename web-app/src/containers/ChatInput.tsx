@@ -1,4 +1,6 @@
 import { offerToEnableMentionedServers } from '@/lib/mcpMention'
+import { promptReplaceModels } from '@/hooks/useModelReplacePrompt'
+import { modelKey, unavailableModels } from '@/lib/modelReplace'
 import { currentDescriber } from '@/lib/imageDescription'
 import { ImageViewer } from '@/components/ImageViewer'
 import { needsWeb } from '@/lib/needsWeb'
@@ -279,6 +281,13 @@ type ChatInputProps = {
    */
   unavailableModel?: string
   /**
+   * Checked before a send, for a host that owns the model choice (Cowork): if
+   * the saved model is gone, ask the user for another and record it. `'retry'`
+   * means a replacement was applied and the send should go ahead once it shows;
+   * `'stop'` means the user cancelled. Absent, a chat checks its own thread.
+   */
+  confirmModel?: () => ModelCheck | Promise<ModelCheck>
+  /**
    * Keeps this composer's draft apart from the main one. The second pane of a
    * split conversation passes a scope; without one the shared main draft is
    * used, as before.
@@ -341,6 +350,7 @@ const ChatInput = memo(function ChatInput({
   modelSelection,
   modelOverrideScope,
   unavailableModel,
+  confirmModel,
   draftScope,
   takeFocus = true,
   slashSurface = 'home',
@@ -927,6 +937,31 @@ const ChatInput = memo(function ChatInput({
   const mcpExtension = extensionManager.get<MCPExtension>(ExtensionTypeEnum.MCP)
   const MCPToolComponent = mcpExtension?.getToolComponent?.()
 
+  // A send waiting for the replacement model to show; see handleSendMessage.
+  const pendingSendRef = useRef<{
+    typed: string
+    modelId: string
+    at: number
+    options: { steer: boolean; allowNoWeb: boolean; capabilityAsked: boolean }
+  } | null>(null)
+  const updateThreadModelFor = useThreads((state) => state.updateThreadModel)
+  const confirmThreadModel = (): ModelCheck | Promise<ModelCheck> => {
+    // A composer whose host owns the model has its own check (`confirmModel`).
+    const saved = modelSelection ? undefined : currentThread?.model
+    const gone = unavailableModels([saved])
+    // Nothing to ask: stay synchronous, so an ordinary send is no slower.
+    if (!currentThread || gone.length === 0) return { status: 'ok' }
+    return promptReplaceModels(t('common:modelReplace.thisChat'), gone).then(
+      (choices): ModelCheck => {
+        const pick = choices?.[modelKey(gone[0])]
+        if (!pick) return { status: 'stop' }
+        updateThreadModelFor(currentThread.id, pick)
+        selectModelProvider(pick.provider, pick.id)
+        return { status: 'retry', modelId: pick.id }
+      }
+    )
+  }
+
   const handleSendMessage = async (
     typed: string,
     {
@@ -939,6 +974,22 @@ const ChatInput = memo(function ChatInput({
     if (!allowNoWeb && !webSearchEnabled && needsWeb(typed)) {
       setWebOffPrompt(typed)
       return
+    }
+    // A model that has gone away is replaced with the user's say before the
+    // message goes, not silently swapped for whatever the picker holds.
+    if (!slashCommands.isBuiltin(typed)) {
+      const check = (confirmModel ?? confirmThreadModel)()
+      const checked = check instanceof Promise ? await check : check
+      if (checked.status === 'stop') return
+      if (checked.status === 'retry') {
+        pendingSendRef.current = {
+          typed,
+          modelId: checked.modelId,
+          at: Date.now(),
+          options: { steer, allowNoWeb, capabilityAsked },
+        }
+        return
+      }
     }
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
       setMessage(
@@ -1201,6 +1252,17 @@ const ChatInput = memo(function ChatInput({
       // processing is complete.
     }
   }
+
+  // The replacement model has shown: send the message that was waiting for it.
+  useEffect(() => {
+    const pending = pendingSendRef.current
+    if (!pending || selectedModel?.id !== pending.modelId) return
+    pendingSendRef.current = null
+    // Only a send waiting for this switch; one that waited too long is dropped.
+    if (Date.now() - pending.at > 15_000) return
+    void handleSendMessage(pending.typed, pending.options)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedModel?.id])
 
   useEffect(() => {
     const handleFocusIn = () => {
@@ -3861,5 +3923,7 @@ const ChatInput = memo(function ChatInput({
     </div>
   )
 })
+
+type ModelCheck = { status: 'ok' | 'stop' } | { status: 'retry'; modelId: string }
 
 export default ChatInput

@@ -8,6 +8,7 @@
  */
 
 import { INSPECT_AND_PROPOSE_ADDENDUM } from '@/lib/coworkContinuity'
+import { replyLanguageLine } from '@/lib/replyLanguage'
 import {
   DESTRUCTIVE_ACTION_RULE,
   UNTRUSTED_CONTENT_RULE,
@@ -81,7 +82,8 @@ function sessionBlock(opts: {
   readOnlyFolder: string | null
   folderAccess?: PromptFolderAccess
 }): string {
-  const lines = ['# Session', '', todayLine()]
+  const language = replyLanguageLine()
+  const lines = ['# Session', '', todayLine(), ...(language ? [language] : [])]
   // A managed worktree names its own branch in the workspace block; the
   // source checkout's branch here read as "the worktree is on main", which
   // is how runs came to report their changes as "on main".

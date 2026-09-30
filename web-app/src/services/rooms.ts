@@ -107,6 +107,11 @@ export function appendRoomRecord(
   return call<RoomJournalRecord>('room_append', { roomId, record })
 }
 
+/** Empty a room's journal; the room and its settings stay. */
+export async function clearRoomJournal(roomId: string): Promise<void> {
+  await call<null>('room_clear_journal', { roomId })
+}
+
 export async function deleteRoom(roomId: string): Promise<void> {
   await call<null>('room_delete', { roomId })
 }

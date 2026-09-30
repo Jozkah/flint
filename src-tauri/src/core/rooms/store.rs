@@ -160,6 +160,9 @@ pub enum ToolAccess {
     /// direct-edit grant. Requires a folder; falls back to read behaviour with
     /// none.
     Edit,
+    /// Everything a Cowork session can do -- commands, git, skills, plugins --
+    /// under Cowork's own permission policy: a mutating call waits for the user.
+    Full,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,6 +212,13 @@ pub struct Participant {
     /// saved before it existed and on participants left at the model default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ParticipantReasoning>,
+    /// The assistant whose personality this participant speaks with. Stored,
+    /// never interpreted here: the turn is built on the frontend.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assistant_id: Option<String>,
+    /// The work profile (how to approach the task) this participant works in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_profile: Option<String>,
 }
 
 /// A participant's reasoning setting, mirroring `ParticipantReasoning` in
@@ -312,6 +322,10 @@ pub struct Room {
     /// have not attached one (serde default keeps those loading unchanged).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder: Option<String>,
+    /// More folders beside `folder`, reachable the same way and covered by the
+    /// same access. Absent on rooms saved before this existed.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_folders: Vec<String>,
     pub limits: RoomLimits,
     pub usage: RoomUsage,
     pub round: u64,
@@ -393,6 +407,10 @@ pub struct RoomMessageUsage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub estimated: bool,
+    /// How fast the reply was written, in tokens per second, when it could be
+    /// measured. Absent on replies from before it was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_per_second: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -986,6 +1004,32 @@ impl RoomStore {
         write()
             .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("append journal.jsonl: {e}")))?;
         Ok(record)
+    }
+
+    /// Forget everything said in a room: empty its journal and keep the room
+    /// itself (settings, participants, limits). The caller resets the room's
+    /// counters; this only removes what was recorded.
+    pub fn clear_journal(&self, room_id: &str) -> Result<(), RoomError> {
+        let dir = self.room_dir(room_id)?;
+        let _guard = write_guard();
+        match fs::symlink_metadata(&dir) {
+            Ok(meta) if meta.is_dir() => {}
+            _ => {
+                return Err(RoomError::new(
+                    RoomErrorCode::NotFound,
+                    format!("room {room_id} not found"),
+                ))
+            }
+        }
+        let journal = dir.join("journal.jsonl");
+        match fs::remove_file(&journal) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(RoomError::new(
+                RoomErrorCode::Io,
+                format!("clear journal of room {room_id}: {e}"),
+            )),
+        }
     }
 
     pub fn delete(&self, room_id: &str) -> Result<(), RoomError> {

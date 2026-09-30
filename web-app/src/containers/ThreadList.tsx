@@ -9,6 +9,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Sparkles,
   Trash2,
 } from 'lucide-react'
 import { useThreads } from '@/hooks/useThreads'
@@ -57,6 +58,10 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
+import { prefetchThreadMessages } from '@/lib/threadPrefetch'
+import { regenerateTitle } from '@/lib/regenerateTitle'
+import { regenerateWithToast } from '@/lib/regenerateToast'
+import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { ThreadMessage } from '@janhq/core'
@@ -290,7 +295,16 @@ const ThreadItem = memo(
           >
             <HoverCardTrigger asChild>
               <NavButton asChild size="sm" isActive={isSelected}>
-                <Link to="/threads/$threadId" params={{ threadId: thread.id }} data-testid="thread-nav-item">
+                <Link
+                  to="/threads/$threadId"
+                  params={{ threadId: thread.id }}
+                  data-testid="thread-nav-item"
+                  onPointerEnter={() =>
+                    prefetchThreadMessages(thread.id, (id) =>
+                      serviceHub.messages().fetchMessages(id)
+                    )
+                  }
+                >
                   <ThreadStatusMark status={status} />
                   <FadeText className={isSelected ? 'font-medium' : undefined}>{thread.title || t('common:newThread')}</FadeText>
                 </Link>
@@ -298,18 +312,20 @@ const ThreadItem = memo(
             </HoverCardTrigger>
             {/* A peek at the chat without opening it: its title, when it was
                 last active and the last thing asked. */}
-            <HoverCardContent side="right" align="start" sideOffset={10} className="w-72 p-3">
+            <HoverCardContent side="right" align="start" sideOffset={10} className="w-80 max-w-[calc(100vw-2rem)] p-3">
+              {/* The written summary is asked for here, when the card opens. */}
+              <ThreadPreviewSummary
+                open={previewOpen && !menuOpen}
+                threadId={thread.id}
+                updated={thread.updated}
+                fallback={lastUserMessageText}
+              />
               <p className="line-clamp-2 text-[0.8125rem] font-medium text-foreground">
                 {thread.title || t('common:newThread')}
               </p>
               <p className="mt-1 text-[11px] text-subtle-foreground">
                 {thread.updated ? new Date(updatedMs(thread.updated)).toLocaleString() : ''}
               </p>
-              {lastUserMessageText && (
-                <p className="mt-2 line-clamp-4 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground">
-                  {lastUserMessageText}
-                </p>
-              )}
             </HoverCardContent>
           </HoverCard>
         }
@@ -344,6 +360,16 @@ const ThreadItem = memo(
               <Pencil className="size-4" />
               <span>{t('common:rename')}</span>
             </DropdownMenuItem>
+            <DropdownMenuItem
+              data-testid="regenerate-title"
+              onSelect={() =>
+                regenerateWithToast(() => regenerateTitle(thread.id), t)
+              }
+            >
+              <Sparkles className="size-4" />
+              <span>{t('chat:regenerateTitle.menu')}</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
               data-testid="fork-chat"
               onSelect={() => {

@@ -50,15 +50,20 @@ export type CreateRoomInput = { title: string; objective: string }
 
 export type NewParticipantInput = Pick<Participant, 'name' | 'role' | 'model' | 'pricing'> &
   // Optional: omitted, the controller defaults it (read-only for a tool-capable model).
-  Partial<Pick<Participant, 'toolAccess'>>
+  Partial<Pick<Participant, 'toolAccess' | 'assistantId' | 'workProfile'>>
 
 /** Fields only the user may change, through the editor. */
 export type RoomSettingsPatch = Partial<
-  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'folder'>
+  Pick<Room, 'title' | 'objective' | 'mode' | 'moderator' | 'limits' | 'folder' | 'extraFolders'>
 > & {
   /** A participant's `reasoning: null` returns it to its model's default. */
   participants?: Array<
-    Omit<Participant, 'reasoning'> & { reasoning?: Participant['reasoning'] | null }
+    Omit<Participant, 'reasoning' | 'assistantId' | 'workProfile'> & {
+      reasoning?: Participant['reasoning'] | null
+      /** `null` clears it. */
+      assistantId?: string | null
+      workProfile?: Participant['workProfile'] | null
+    }
   >
 }
 
@@ -106,6 +111,7 @@ function inertApi(status: 'pending' | 'unavailable'): RoomsUiApi {
     selectNext: unavailable,
     sendUserMessage: unavailable,
     extendLimit: unavailable,
+    clearRoom: unavailable,
     callVote: unavailable,
     requestFinalPositions: unavailable,
     synthesize: unavailable,

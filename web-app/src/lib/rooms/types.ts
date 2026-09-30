@@ -11,6 +11,10 @@
  * (from models, the moderator or other participants) is data, never authority.
  */
 
+import type { WorkProfileId } from '@/lib/workProfiles'
+
+import type { ClearScope } from './clearRoom'
+
 export const ROOM_SCHEMA_VERSION = 1 as const
 
 /** A model reference resolved through Flint's provider store and ModelFactory. */
@@ -38,7 +42,7 @@ export type SpeakingMode = 'round-robin' | 'user-selected' | 'moderator-selected
  * callback, so nothing that needs approval can ever execute inside a room.
  * Models without the `tools` capability are forced to `none`.
  */
-export type ToolAccess = 'none' | 'read' | 'edit'
+export type ToolAccess = 'none' | 'read' | 'edit' | 'full'
 
 export type ParticipantAvailability =
   | { state: 'unknown' }
@@ -78,6 +82,10 @@ export type Participant = {
    * model's own default: nothing reasoning-related is sent.
    */
   reasoning?: ParticipantReasoning
+  /** The assistant whose personality this participant speaks with. */
+  assistantId?: string
+  /** The work profile this participant works in (review, plan, debug...). */
+  workProfile?: WorkProfileId
 }
 
 /**
@@ -181,6 +189,8 @@ export type Room = {
    * `null`/absent when no folder is attached. Persisted with the room.
    */
   folder?: string | null
+  /** More folders beside `folder`, under the same access. */
+  extraFolders?: string[]
   limits: RoomLimits
   usage: RoomUsage
   /** 1-based current round; 0 before the first turn. */
@@ -236,7 +246,13 @@ export type RoomMessage = {
   createdAt: number
   status: 'complete' | 'interrupted' | 'failed'
   error?: { code: string; message: string }
-  usage?: { inputTokens: number; outputTokens: number; estimated: boolean }
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    estimated: boolean
+    /** How fast the reply was written, when it could be measured. */
+    tokensPerSecond?: number
+  }
   vote?: { callId: string; choice: VoteChoice; proposal: string }
   /** For synthesis: dissent the engine appended deterministically. */
   dissent?: Array<{ participantId: string; name: string; position: string }>
@@ -266,6 +282,11 @@ export type RoomToolActivity = {
   output?: string
   /** The tool came from an MCP server (colours the chip like Cowork's). */
   mcp?: boolean
+  /**
+   * The call has started and not yet returned. Reported while a turn is live
+   * so the room can say what a participant is doing; never stored on a message.
+   */
+  running?: boolean
 }
 
 /** What the moderator model is asked to return (parsed leniently from JSON). */
@@ -301,6 +322,8 @@ export type RoomError = { code: RoomErrorCode; message: string }
 
 /** Actions the UI invokes. Implemented by `lib/rooms/controller.ts`. */
 export interface RoomController {
+  /** Forget what was said in the room (and, by scope, more). Refused while it runs. */
+  clearRoom(roomId: string, scope: ClearScope): Promise<void>
   start(roomId: string): Promise<void>
   pause(roomId: string): Promise<void>
   resume(roomId: string): Promise<void>
@@ -332,4 +355,8 @@ export type LiveTurn = {
   /** The turn is pausing to compact (summarise) earlier messages that no longer
    * fit the model's context window, before it speaks. */
   compacting?: boolean
+  /** The calls this turn has finished so far, shown while it is still going. */
+  tools?: RoomToolActivity[]
+  /** The call running right now, if any. */
+  activity?: { name: string; args?: unknown }
 }

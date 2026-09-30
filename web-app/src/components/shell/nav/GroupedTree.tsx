@@ -313,7 +313,7 @@ export function GroupedTree({
                 </div>
               </DropZone>
               <NavCollapse open={visible.length > 0}>
-                <ul className="flex flex-col pl-2">{visible.map(row)}</ul>
+                <ul className="flex flex-col gap-0.5 pl-2">{visible.map(row)}</ul>
               </NavCollapse>
             </li>
           )
@@ -325,7 +325,7 @@ export function GroupedTree({
                 {t('common:groups.ungrouped')}
               </div>
             </DropZone>
-            <ul className="flex flex-col">{layout.recents.map(row)}</ul>
+            <ul className="flex flex-col gap-0.5">{layout.recents.map(row)}</ul>
           </li>
         ) : (
           layout.recents.map(row)
