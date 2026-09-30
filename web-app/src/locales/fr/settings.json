@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Vous avez trouvé un bug ? Aidez-nous en signalant un problème sur GitHub.",
   "reportIssue": "Signaler un problème",
   "credits": "Crédits",
-  "creditsDesc1": "👋 Flint est construit avec ❤️ par l'équipe de Menlo Research.",
+  "creditsDesc1": "👋 Flint est construit avec ❤️ par Jozkah.",
   "creditsDesc2": "Remerciements spéciaux à nos dépendances open-source, en particulier llama.cpp et Tauri, ainsi qu'à notre incroyable communauté IA.",
   "appVersion": "Version de l'application",
   "dataFolder": {
@@ -276,7 +276,7 @@
     "reportAnIssueDesc": "Vous avez trouvé un bug ? Aidez-nous en signalant un problème sur GitHub.",
     "reportIssue": "Signaler un problème",
     "credits": "Crédits",
-    "creditsDesc1": "👋 Flint est construit avec ❤️ par l'équipe de Menlo Research.",
+    "creditsDesc1": "👋 Flint est construit avec ❤️ par Jozkah.",
     "creditsDesc2": "Remerciements spéciaux à nos dépendances open-source, en particulier llama.cpp et Tauri, ainsi qu'à notre incroyable communauté IA."
   },
   "extensions": {

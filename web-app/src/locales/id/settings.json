@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Menemukan bug? Bantu kami dengan mengajukan masalah di GitHub.",
   "reportIssue": "Laporkan Masalah",
   "credits": "Kredit",
-  "creditsDesc1": "Flint dibuat dengan ❤️ oleh Tim Menlo.",
+  "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
   "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa.",
   "appVersion": "Versi Aplikasi",
   "dataFolder": {
@@ -270,7 +270,7 @@
     "reportAnIssueDesc": "Menemukan bug? Bantu kami dengan mengajukan masalah di GitHub.",
     "reportIssue": "Laporkan Masalah",
     "credits": "Kredit",
-    "creditsDesc1": "Flint dibuat dengan ❤️ oleh Tim Menlo.",
+    "creditsDesc1": "Flint dibuat dengan ❤️ oleh Jozkah.",
     "creditsDesc2": "Terima kasih khusus kepada dependensi sumber terbuka kami—terutama llama.cpp dan Tauri—dan kepada komunitas AI kami yang luar biasa."
   },
   "extensions": {

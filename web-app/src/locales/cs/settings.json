@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Našli jste chybu? Pomozte nám nahlášením problému na GitHubu.",
   "reportIssue": "Nahlásit problém",
   "credits": "Poděkování",
-  "creditsDesc1": "👋 Flint je vytvořen s ❤️ týmem Menlo Research.",
+  "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
   "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě.",
   "appVersion": "Verze aplikace",
   "dataFolder": {
@@ -276,7 +276,7 @@
     "reportAnIssueDesc": "Našli jste chybu? Pomozte nám nahlášením problému na GitHubu.",
     "reportIssue": "Nahlásit problém",
     "credits": "Poděkování",
-    "creditsDesc1": "👋 Flint je vytvořen s ❤️ týmem Menlo Research.",
+    "creditsDesc1": "👋 Flint vytváří s ❤️ Jozkah.",
     "creditsDesc2": "Speciální poděkování našim open-source závislostem—zejména llama.cpp a Tauri—a naší úžasné AI komunitě."
   },
   "extensions": {

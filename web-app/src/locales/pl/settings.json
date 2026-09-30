@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Znalazłeś/-aś błąd? Pomóż nam, zgłaszając go na GitHubie.",
   "reportIssue": "Zgłoś Problem",
   "credits": "Podziękowania",
-  "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Zespół Menlo.",
+  "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
   "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI.",
   "appVersion": "Wersja Aplikacji",
   "dataFolder": {
@@ -270,7 +270,7 @@
     "reportAnIssueDesc": "Znalazłeś/-aś błąd? Pomóż nam, zgłaszając go na GitHubie.",
     "reportIssue": "Zgłoś Problem",
     "credits": "Podziękowania",
-    "creditsDesc1": "Aplikacja 👋 Flint jest rozwijana z ❤️ przez zespół Menlo Research.",
+    "creditsDesc1": "Aplikacja Flint jest rozwijana z ❤️ przez Jozkah.",
     "creditsDesc2": "Szczególne podziękowania dla naszych otwartoźródłowych zależności - zwłaszcza llama.cpp i Tauri - oraz dla naszej wspaniałej społeczności SI."
   },
   "extensions": {

@@ -43,7 +43,7 @@
   "reportAnIssueDesc": "Hast Du einen Bug gefunden? Hilf uns, indem Du ein Problem auf GitHub meldest.",
   "reportIssue": "Problem melden",
   "credits": "Credits",
-  "creditsDesc1": "Flint wurde mit ❤️ gebaut vom Menlo Team.",
+  "creditsDesc1": "Flint wurde mit ❤️ von Jozkah gebaut.",
   "creditsDesc2": "Besonderer Dank gilt unseren Open-Source-Abhängigkeiten - insbesondere llama.cpp und Tauri - und unserer großartigen KI-Community.",
   "appVersion": "App Version",
   "dataFolder": {
@@ -270,7 +270,7 @@
     "reportAnIssueDesc": "Hast Du einen Bug gefunden? Hilf uns, indem Du ein Problem auf GitHub meldest.",
     "reportIssue": "Problem melden",
     "credits": "Credits",
-    "creditsDesc1": "Flint wurde mit ❤️ gebaut vom Menlo Team.",
+    "creditsDesc1": "Flint wurde mit ❤️ von Jozkah gebaut.",
     "creditsDesc2": "Besonderer Dank gilt unseren Open-Source-Abhängigkeiten - insbesondere llama.cpp und Tauri - und unserer großartigen KI-Community."
   },
   "extensions": {
