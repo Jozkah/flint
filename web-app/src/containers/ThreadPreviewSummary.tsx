@@ -39,9 +39,9 @@ export function ThreadPreviewSummary({
   return (
     <p
       data-testid="row-preview-summary"
-      className={`mt-2 line-clamp-5 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
-        loading && !summary ? ' opacity-60' : ''
-      }`}
+      className={`mt-2 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
+        summary ? '' : ' line-clamp-4'
+      }${loading && !summary ? ' opacity-60' : ''}`}
     >
       {shown}
     </p>

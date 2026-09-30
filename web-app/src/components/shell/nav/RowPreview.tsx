@@ -51,7 +51,7 @@ export function RowPreview({
         side="right"
         align="start"
         sideOffset={10}
-        className="w-72 p-3"
+        className="w-80 max-w-[calc(100vw-2rem)] p-3"
       >
         <p className="line-clamp-2 text-[0.8125rem] font-medium text-foreground">
           {title}
@@ -62,9 +62,11 @@ export function RowPreview({
         {shown && (
           <p
             data-testid="row-preview-summary"
-            className={`mt-2 line-clamp-5 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
-              written.loading && !written.summary ? ' opacity-60' : ''
-            }`}
+            className={`mt-2 rounded-lg bg-muted px-2.5 py-2 text-xs leading-relaxed text-secondary-foreground${
+              // A written summary is as long as it is; the plain fallback line
+              // can be a whole pasted prompt, so it stays cut short.
+              written.summary ? '' : ' line-clamp-4'
+            }${written.loading && !written.summary ? ' opacity-60' : ''}`}
           >
             {shown}
           </p>

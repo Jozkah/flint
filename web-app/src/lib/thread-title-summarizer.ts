@@ -150,7 +150,7 @@ async function requestTitle(
   return typeof text === 'string' ? cleanTitle(text) : text
 }
 
-const SUMMARY_CHARS = 320
+const SUMMARY_CHARS = 600
 
 function buildConversationSummaryPrompt(transcript: string): string {
   const truncated =

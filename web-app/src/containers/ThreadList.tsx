@@ -312,7 +312,7 @@ const ThreadItem = memo(
             </HoverCardTrigger>
             {/* A peek at the chat without opening it: its title, when it was
                 last active and the last thing asked. */}
-            <HoverCardContent side="right" align="start" sideOffset={10} className="w-72 p-3">
+            <HoverCardContent side="right" align="start" sideOffset={10} className="w-80 max-w-[calc(100vw-2rem)] p-3">
               {/* The written summary is asked for here, when the card opens. */}
               <ThreadPreviewSummary
                 open={previewOpen && !menuOpen}
