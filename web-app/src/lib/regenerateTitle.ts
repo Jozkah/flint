@@ -22,17 +22,30 @@ const textOf = (m: ThreadMessage): string =>
  * not only by its last reply.
  */
 export function titleTranscript(messages: readonly ThreadMessage[]): string {
-  const turns = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
+  return transcriptOf(
+    messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({
+        speaker: m.role === 'assistant' ? 'Assistant' : 'User',
+        text: textOf(m),
+      }))
+  )
+}
+
+/** The same, from turns that already carry a speaker label and plain text. */
+export function transcriptOf(
+  turns: readonly { speaker: string; text: string }[]
+): string {
   const picked =
     turns.length <= HEAD_TURNS + TAIL_TURNS
       ? turns
       : [...turns.slice(0, HEAD_TURNS), ...turns.slice(-TAIL_TURNS)]
   return picked
-    .map((m) => {
-      const text = textOf(m)
-      if (!text) return ''
-      const cut = text.length > PER_TURN_CHARS ? `${text.slice(0, PER_TURN_CHARS)}...` : text
-      return `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${cut}`
+    .map(({ speaker, text }) => {
+      const clean = text.trim()
+      if (!clean) return ''
+      const cut = clean.length > PER_TURN_CHARS ? `${clean.slice(0, PER_TURN_CHARS)}...` : clean
+      return `${speaker}: ${cut}`
     })
     .filter(Boolean)
     .join('\n\n')

@@ -133,6 +133,7 @@
     "working": "Naming the chat...",
     "done": "Chat renamed.",
     "empty": "Nothing to name this chat from yet.",
+    "busy": "Pause or stop the room before renaming it.",
     "failed": "Could not generate a title."
   },
   "fork": {

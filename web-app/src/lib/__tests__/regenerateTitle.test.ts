@@ -38,3 +38,18 @@ describe('titleTranscript', () => {
     expect(titleTranscript([])).toBe('')
   })
 })
+
+describe('transcriptOf', () => {
+  it('keeps any speaker label and the opening and latest turns', async () => {
+    const { transcriptOf } = await import('../regenerateTitle')
+    const turns = Array.from({ length: 20 }, (_, i) => ({
+      speaker: i === 0 ? 'Objective' : `P${i % 3}`,
+      text: `line ${i}`,
+    }))
+    const out = transcriptOf(turns)
+    expect(out.startsWith('Objective: line 0')).toBe(true)
+    expect(out).toContain('line 19')
+    expect(out).not.toContain('line 8')
+    expect(transcriptOf([{ speaker: 'A', text: '   ' }])).toBe('')
+  })
+})

@@ -40,6 +40,7 @@ import {
   FileClock,
   GitFork,
   Share2,
+  Sparkles,
   Upload,
   MoreHorizontal,
   Puzzle,
@@ -48,6 +49,8 @@ import {
   FolderPlus,
   type LucideIcon,
 } from 'lucide-react'
+import { regenerateCoworkTitle } from '@/lib/regenerateSessionTitle'
+import { regenerateWithToast } from '@/lib/regenerateToast'
 import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import {
@@ -191,6 +194,16 @@ const SessionItem = memo(function SessionItem({
           side={isMobile ? 'bottom' : 'right'}
           align={isMobile ? 'end' : 'start'}
         >
+          <DropdownMenuItem
+            data-testid="regenerate-session-title"
+            onSelect={() =>
+              regenerateWithToast(() => regenerateCoworkTitle(session.id), t)
+            }
+          >
+            <Sparkles />
+            <span>{t('chat:regenerateTitle.menu')}</span>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => setActivityOpen(true)}>
             <FileClock />
             <span>{t('common:fileActivity.menuItem')}</span>
