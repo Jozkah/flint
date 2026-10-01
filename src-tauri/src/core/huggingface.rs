@@ -213,7 +213,7 @@ fn safe_component(value: &str) -> String {
     }
 }
 
-fn relative_download_path(repo: &str, filename: &str) -> PathBuf {
+pub(crate) fn relative_download_path(repo: &str, filename: &str) -> PathBuf {
     let mut path = PathBuf::from("downloads").join("huggingface");
     for part in repo.split('/') {
         path.push(safe_component(part));

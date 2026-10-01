@@ -1,5 +1,8 @@
 pub mod agent;
 pub mod app;
+// Local image and video generation (stable-diffusion.cpp sidecar); desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod diffusion;
 // "Verify in browser": a separate, confined browser; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod browser_verify;

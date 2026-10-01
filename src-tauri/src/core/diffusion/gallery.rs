@@ -1,0 +1,257 @@
+//! What was generated, kept on disk.
+//!
+//! Each result is a media file beside a small JSON file with how it was made (the
+//! prompt, size, steps and seed), so a result can be shown, reproduced and
+//! deleted without a database. Images live in `<data>/images/`, videos in
+//! `<data>/videos/`. Writes go to a temporary name first and are renamed, so a
+//! crash never leaves half a file in the gallery.
+
+use super::catalog::Kind;
+use crate::core::app::commands::get_jan_data_folder_path;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
+use tauri::Runtime;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Recipe {
+    pub job_id: String,
+    pub kind: Kind,
+    pub prompt: String,
+    pub negative_prompt: String,
+    pub width: u32,
+    pub height: u32,
+    pub steps: u32,
+    /// The seed of this image. Reproduce a batch with `batch_seed`.
+    pub seed: u32,
+    pub batch_seed: u32,
+    pub model_id: String,
+    pub model_name: String,
+    pub frames: Option<u32>,
+    pub fps: Option<u32>,
+    pub created_at_ms: u64,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Saved {
+    pub id: String,
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GalleryItem {
+    pub id: String,
+    pub kind: Kind,
+    pub path: String,
+    pub recipe: Recipe,
+}
+
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+pub fn dir_for<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind) -> PathBuf {
+    get_jan_data_folder_path(app.clone()).join(match kind {
+        Kind::Image => "images",
+        Kind::Video => "videos",
+    })
+}
+
+/// Only letters, digits, `-` and `_`, so a job id can never name a path.
+fn file_safe(text: &str) -> String {
+    let cleaned: String = text
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    if cleaned.is_empty() { "job".to_string() } else { cleaned }
+}
+
+fn write_atomically(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes).map_err(|e| format!("Could not save the result: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("Could not save the result: {e}")
+    })
+}
+
+fn save<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    recipe: &Recipe,
+    id: String,
+    extension: &str,
+    bytes: &[u8],
+) -> Result<Saved, String> {
+    let dir = dir_for(app, recipe.kind);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Could not create the gallery folder: {e}"))?;
+    let media = dir.join(format!("{id}.{extension}"));
+    write_atomically(&media, bytes)?;
+    let json = serde_json::to_vec_pretty(recipe).map_err(|e| e.to_string())?;
+    write_atomically(&dir.join(format!("{id}.json")), &json)?;
+    Ok(Saved { id, path: media })
+}
+
+pub fn save_image<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    recipe: &Recipe,
+    index: u32,
+    png: &[u8],
+) -> Result<Saved, String> {
+    let id = format!("{}-{}-{:02}", recipe.created_at_ms, file_safe(&recipe.job_id), index);
+    save(app, recipe, id, "png", png)
+}
+
+pub fn save_video<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    recipe: &Recipe,
+    webm: &[u8],
+) -> Result<Saved, String> {
+    let id = format!("{}-{}", recipe.created_at_ms, file_safe(&recipe.job_id));
+    save(app, recipe, id, "webm", webm)
+}
+
+fn media_file(dir: &Path, id: &str) -> Option<PathBuf> {
+    ["png", "webm"]
+        .iter()
+        .map(|ext| dir.join(format!("{id}.{ext}")))
+        .find(|p| p.is_file())
+}
+
+/// Every result of `kind`, newest first. A JSON file without its media file, or
+/// one that cannot be read, is skipped rather than failing the list.
+pub fn list<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind) -> Vec<GalleryItem> {
+    list_in(&dir_for(app, kind), kind)
+}
+
+fn list_in(dir: &Path, kind: Kind) -> Vec<GalleryItem> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut items: Vec<GalleryItem> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                return None;
+            }
+            let id = path.file_stem()?.to_str()?.to_string();
+            let recipe: Recipe = serde_json::from_slice(&std::fs::read(&path).ok()?).ok()?;
+            if recipe.kind != kind {
+                return None;
+            }
+            let media = media_file(dir, &id)?;
+            Some(GalleryItem {
+                id,
+                kind,
+                path: media.to_string_lossy().into_owned(),
+                recipe,
+            })
+        })
+        .collect();
+    items.sort_by(|a, b| b.recipe.created_at_ms.cmp(&a.recipe.created_at_ms).then(a.id.cmp(&b.id)));
+    items
+}
+
+/// Delete one result and its recipe. The id must be one the gallery made.
+pub fn delete<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind, id: &str) -> Result<(), String> {
+    delete_in(&dir_for(app, kind), id)
+}
+
+fn delete_in(dir: &Path, id: &str) -> Result<(), String> {
+    if id.is_empty() || id != file_safe(id) {
+        return Err("That is not a gallery item.".to_string());
+    }
+    for ext in ["png", "webm", "json"] {
+        let path = dir.join(format!("{id}.{ext}"));
+        if path.is_file() {
+            std::fs::remove_file(&path).map_err(|e| format!("Could not delete {}: {e}", path.display()))?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn recipe(job: &str, at: u64, kind: Kind) -> Recipe {
+        Recipe {
+            job_id: job.into(),
+            kind,
+            prompt: "a cat".into(),
+            negative_prompt: String::new(),
+            width: 1024,
+            height: 1024,
+            steps: 8,
+            seed: 7,
+            batch_seed: 7,
+            model_id: "z-image-turbo".into(),
+            model_name: "Z-Image Turbo".into(),
+            frames: None,
+            fps: None,
+            created_at_ms: at,
+            duration_ms: 1200,
+        }
+    }
+
+    fn put(dir: &Path, id: &str, ext: &str, r: &Recipe) {
+        std::fs::write(dir.join(format!("{id}.{ext}")), b"media").unwrap();
+        std::fs::write(dir.join(format!("{id}.json")), serde_json::to_vec(r).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn the_list_is_newest_first_and_only_the_asked_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        put(dir.path(), "a", "png", &recipe("job_1", 100, Kind::Image));
+        put(dir.path(), "b", "png", &recipe("job_2", 300, Kind::Image));
+        put(dir.path(), "c", "webm", &recipe("job_3", 200, Kind::Video));
+        let ids: Vec<_> = list_in(dir.path(), Kind::Image).into_iter().map(|i| i.id).collect();
+        assert_eq!(ids, vec!["b", "a"]);
+        assert_eq!(list_in(dir.path(), Kind::Video).len(), 1);
+    }
+
+    #[test]
+    fn a_recipe_without_media_or_unreadable_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("lonely.json"),
+            serde_json::to_vec(&recipe("j", 1, Kind::Image)).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("junk.json"), b"not json").unwrap();
+        assert!(list_in(dir.path(), Kind::Image).is_empty());
+        assert!(list_in(&dir.path().join("missing"), Kind::Image).is_empty());
+    }
+
+    #[test]
+    fn deleting_removes_the_media_and_its_recipe_and_refuses_a_path() {
+        let dir = tempfile::tempdir().unwrap();
+        put(dir.path(), "x", "png", &recipe("j", 1, Kind::Image));
+        delete_in(dir.path(), "x").unwrap();
+        assert!(!dir.path().join("x.png").exists() && !dir.path().join("x.json").exists());
+        assert!(delete_in(dir.path(), "../x").is_err());
+        assert!(delete_in(dir.path(), "a/b").is_err());
+        assert!(delete_in(dir.path(), "").is_err());
+    }
+
+    #[test]
+    fn job_ids_become_safe_file_names() {
+        assert_eq!(file_safe("job_ab-12"), "job_ab-12");
+        assert_eq!(file_safe("../x y"), "---x-y");
+        assert_eq!(file_safe(""), "job");
+    }
+
+    #[test]
+    fn a_recipe_round_trips_in_camel_case() {
+        let r = recipe("job_1", 5, Kind::Image);
+        let json = serde_json::to_string(&r).unwrap();
+        assert!(json.contains("\"jobId\"") && json.contains("\"createdAtMs\""));
+        assert_eq!(serde_json::from_str::<Recipe>(&json).unwrap(), r);
+    }
+}
