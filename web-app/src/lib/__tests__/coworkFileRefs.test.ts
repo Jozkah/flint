@@ -4,6 +4,7 @@ import {
   parseFileRefs,
   hasFileRef,
   parseFileRefHref,
+  remarkFileRefs,
   FILE_REF_HREF_PREFIX,
   type RefSegment,
 } from '@/lib/coworkFileRefs'
@@ -145,5 +146,47 @@ describe('parseFileRefHref', () => {
         `${FILE_REF_HREF_PREFIX}${encodeURIComponent('/etc/passwd')}`
       )
     ).toBeNull()
+  })
+})
+
+describe('remarkFileRefs inline-code paths', () => {
+  type N = { type: string; value?: string; url?: string; children?: N[] }
+  const run = (children: N[]) => {
+    const tree: N = { type: 'root', children: [{ type: 'paragraph', children }] }
+    remarkFileRefs()(tree)
+    return tree.children![0].children!
+  }
+
+  it('links a whole inline-code span that is a path, keeping the code node', () => {
+    const [node] = run([{ type: 'inlineCode', value: 'src/a.ts:12' }])
+    expect(node.type).toBe('link')
+    expect(node.url).toMatch(/^#coworkpath-/)
+    expect(node.children).toEqual([{ type: 'inlineCode', value: 'src/a.ts:12' }])
+  })
+
+  it('leaves non-path code spans and prose alone', () => {
+    for (const v of ['npm install', 'v1.2.3', 'e.g.', 'foo.bar()']) {
+      expect(run([{ type: 'inlineCode', value: v }])[0].type, v).toBe('inlineCode')
+    }
+    // A path-looking word in prose is not touched.
+    expect(run([{ type: 'text', value: 'edit src/a.ts now' }])).toEqual([
+      { type: 'text', value: 'edit src/a.ts now' },
+    ])
+  })
+
+  it('does not nest links inside existing links', () => {
+    const tree: N = {
+      type: 'root',
+      children: [
+        {
+          type: 'paragraph',
+          children: [
+            { type: 'link', url: 'https://x', children: [{ type: 'inlineCode', value: 'src/a.ts' }] },
+          ],
+        },
+      ],
+    }
+    remarkFileRefs()(tree)
+    expect(tree.children![0].children![0].children![0].type).toBe('inlineCode')
   })
 })

@@ -43,6 +43,15 @@ export type CodeOpenTools = {
   displayPath?: (path: string) => string
 }
 
+/**
+ * The folders a surface holds (Cowork: sandbox, project, attached folders;
+ * Chat: the thread's attached folders). An absolute path in a reply becomes a
+ * link only when it sits inside one of these.
+ */
+export const PathRootsContext = createContext<readonly string[]>([])
+
+export const usePathRoots = (): readonly string[] => useContext(PathRootsContext)
+
 export const CodeOpenToolsContext = createContext<CodeOpenTools>({})
 
 export const useCodeOpenTools = (): CodeOpenTools =>

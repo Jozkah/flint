@@ -26,6 +26,8 @@ import { MermaidError } from '@/components/MermaidError'
 import { CitationLink } from '@/components/CitationLink'
 import { WebCitationChip } from '@/components/WebCitationChip'
 import { CoworkFileRef } from '@/containers/message/CoworkFileRef'
+import { InlinePathLink } from '@/containers/message/InlinePathLink'
+import { PATH_HREF_PREFIX } from '@/lib/pathOpen'
 import { remarkFileRefs, FILE_REF_HREF_PREFIX } from '@/lib/coworkFileRefs'
 import { MarkdownTable } from '@/components/MarkdownTable'
 
@@ -249,6 +251,13 @@ function RenderMarkdownComponent({
           <CoworkFileRef href={href} className={aClass}>
             {children}
           </CoworkFileRef>
+        )
+      }
+      if (typeof href === 'string' && href.startsWith(PATH_HREF_PREFIX)) {
+        return (
+          <InlinePathLink href={href} className={aClass}>
+            {children}
+          </InlinePathLink>
         )
       }
       if (typeof href === 'string' && href.startsWith('#cite-')) {

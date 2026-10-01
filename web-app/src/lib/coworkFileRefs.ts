@@ -14,6 +14,8 @@
 //
 // Pure and DOM-free so the rules are testable without React or a markdown tree.
 
+import { pathHref, parseInlinePath } from '@/lib/pathOpen'
+
 /** One parsed reference: a repo/sandbox-relative path with an optional line. */
 export type FileRef = {
   /** The reference text as written, without the leading `@` (e.g. `a/b.ts:2`). */
@@ -180,6 +182,17 @@ function transform(node: MdNode): void {
             : refNode(seg.ref)
         )
       }
+    } else if (
+      child.type === 'inlineCode' &&
+      typeof child.value === 'string' &&
+      parseInlinePath(child.value)
+    ) {
+      // A whole inline-code span that is a path: link it, keep the code look.
+      next.push({
+        type: 'link',
+        url: pathHref(child.value.trim()),
+        children: [child],
+      })
     } else {
       transform(child)
       next.push(child)
