@@ -53,3 +53,19 @@ export function speedStats(samples: readonly (SpeedSample | undefined | null)[])
   }
   return weight > 0 ? { last, average: weighted / weight } : {}
 }
+
+/**
+ * How much of a speculative draft the model kept, as a whole percentage, or
+ * null when no draft ran. `draftTokens` is how many were proposed.
+ */
+export function draftAcceptancePercent(sample: {
+  draftTokens?: number
+  draftAccepted?: number
+}): number | null {
+  const total = sample.draftTokens
+  if (typeof total !== 'number' || !Number.isFinite(total) || total <= 0) {
+    return null
+  }
+  const accepted = Math.min(Math.max(sample.draftAccepted ?? 0, 0), total)
+  return Math.round((accepted / total) * 100)
+}

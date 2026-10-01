@@ -103,6 +103,9 @@ interface LlamaCppTimings {
   predicted_per_second?: number
   prompt_per_second?: number
   cache_n?: number
+  // Speculative decoding: tokens a draft proposed, and how many the model kept.
+  draft_n?: number
+  draft_n_accepted?: number
 }
 
 // prompt_n only counts tokens freshly processed this turn; tokens served from
@@ -119,6 +122,17 @@ const cacheTokensOf = (timings: LlamaCppTimings): { cacheTokens?: number } =>
     ? { cacheTokens: timings.cache_n }
     : {}
 
+// Only when a draft ran this turn; an engine without speculative decoding sends
+// neither field, and a turn with none proposed says nothing about acceptance.
+const draftOf = (
+  timings: LlamaCppTimings
+): { draftTokens?: number; draftAccepted?: number } =>
+  typeof timings.draft_n === 'number' &&
+  timings.draft_n > 0 &&
+  typeof timings.draft_n_accepted === 'number'
+    ? { draftTokens: timings.draft_n, draftAccepted: timings.draft_n_accepted }
+    : {}
+
 const timingsMetadata = (timings: LlamaCppTimings) => ({
   providerMetadata: {
     promptTokens: totalPromptTokens(timings),
@@ -126,6 +140,7 @@ const timingsMetadata = (timings: LlamaCppTimings) => ({
     tokensPerSecond: timings.predicted_per_second ?? null,
     promptPerSecond: timings.prompt_per_second ?? null,
     ...cacheTokensOf(timings),
+    ...draftOf(timings),
   },
 })
 
