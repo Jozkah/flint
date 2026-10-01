@@ -449,6 +449,16 @@ enum ScheduleCommands {
         #[arg(long)]
         wait: bool,
     },
+    /// Start whatever is due, once, then exit. For an OS scheduler entry that
+    /// runs while the app is closed; safe alongside the app's own ticking.
+    Tick {
+        /// The Flint data folder to work on (an OS scheduler carries no
+        /// environment, so the installed entry passes it)
+        #[arg(long)]
+        data: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
     /// A task's run history, newest first
     Runs {
         /// The task id (see `list`)
@@ -1623,6 +1633,7 @@ async fn handle_cli(cmd: CliCommands) {
             let result = match cmd {
                 ScheduleCommands::List { json } => schedule::list(json),
                 ScheduleCommands::Run { id, wait } => schedule::run_now(&id, wait).await,
+                ScheduleCommands::Tick { data, json } => schedule::tick(data.as_deref(), json),
                 ScheduleCommands::Runs { id, limit, json } => schedule::runs(&id, limit, json),
                 ScheduleCommands::RunSpec { spec } => schedule::run_spec(std::path::Path::new(&spec)).await,
             };

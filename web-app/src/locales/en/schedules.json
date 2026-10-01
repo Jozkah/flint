@@ -9,6 +9,20 @@
   "saveFailed": "Could not save the task",
   "deleteFailed": "Could not delete the task",
   "runFailed": "Could not start the run",
+  "os": {
+    "title": "Run when Flint is closed",
+    "description": "Optional. Adds an entry to your computer's own scheduler that starts due tasks every few minutes, so a task still runs when Flint is not open.",
+    "switch": "Run scheduled tasks while Flint is closed",
+    "on": "On. {{platform}} checks every {{minutes}} minutes and starts any task that is due, even when Flint is closed.",
+    "off": "Off. Tasks run only while Flint is open. A run missed while it was closed follows the task's catch-up setting when Flint next opens.",
+    "caveat": "It runs only while you are logged in and the computer is awake, and it never starts the same run twice when Flint is open too.",
+    "runs": "It runs:",
+    "confirmTitle": "Add an entry to {{platform}}?",
+    "confirmBody": "This writes the files and runs the commands below, and nothing else.",
+    "confirmUndo": "Turning the switch off removes the entry and every file listed here.",
+    "install": "Add entry",
+    "failed": "Could not change the scheduler entry"
+  },
   "unavailable": "Scheduled tasks are only available in the desktop app.",
   "list": {
     "nextRun": "Next run {{when}}",

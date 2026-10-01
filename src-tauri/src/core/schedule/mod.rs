@@ -16,6 +16,7 @@ pub mod cron;
 #[cfg(not(feature = "cli"))]
 pub mod driver;
 pub mod engine;
+pub mod os_scheduler;
 pub mod runner;
 pub mod spec;
 pub mod store;

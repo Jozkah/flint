@@ -413,3 +413,58 @@ fn a_cost_limit_on_an_unpriced_model_fails_with_the_reason() {
     assert!(why.contains("no price") && why.contains("prices.toml"), "{why}");
     assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was spent before refusing");
 }
+
+// ---- flint cli schedule tick (what the OS scheduler runs) ----
+
+#[test]
+fn tick_starts_a_due_task_and_the_run_finishes() {
+    let s = Scratch::new("tick");
+    let (url, _served) = stub_provider(&[ANSWER], Duration::ZERO);
+    s.configure(&url);
+    let store = Store::new(&s.data());
+    let mut task = s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.schedule = Schedule::Cron { expr: "* * * * *".into() };
+    task.catch_up = CatchUp::Once;
+    let task = store.save_task(task).expect("task is valid");
+    // Last seen ten minutes ago, so a run is owed.
+    store
+        .merge_watermarks(&[(task.id.clone(), chrono::Utc::now() - chrono::Duration::minutes(10))].into())
+        .expect("watermark");
+
+    let out = s
+        .command(&["cli", "schedule", "tick", "--data", s.data().to_str().expect("utf-8 path")])
+        .output()
+        .expect("run the tick");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 started"), "{}", String::from_utf8_lossy(&out.stdout));
+
+    let mut finished = None;
+    for _ in 0..120 {
+        let runs = store.list_runs(&task.id, 5).expect("runs");
+        if let Some(r) = runs.into_iter().find(|r| r.status.is_ended()) {
+            finished = Some(r);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let r = finished.expect("the detached run never finished");
+    assert_eq!(r.status, RunStatus::Succeeded, "{r:?}");
+    // Every minute is also due right now, so the on-time fire covers the missed ones.
+    assert_ne!(r.trigger, Trigger::Manual);
+}
+
+#[test]
+fn tick_does_nothing_while_the_app_holds_the_tick_lock() {
+    let s = Scratch::new("ticklock");
+    let store = Store::new(&s.data());
+    let task = store.save_task(s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly)).expect("valid");
+    let held = store.try_lock_tick().expect("take the lock as the app would");
+    let out = s
+        .command(&["cli", "schedule", "tick", "--data", s.data().to_str().expect("utf-8 path"), "--json"])
+        .output()
+        .expect("run the tick");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(v["lockedOut"], true, "{v}");
+    assert!(store.list_runs(&task.id, 5).expect("runs").is_empty());
+    drop(held);
+}

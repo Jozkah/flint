@@ -78,6 +78,42 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
     Ok(())
 }
 
+/// `flint cli schedule tick`: what the app's 30-second driver does, once. The
+/// OS-scheduler entry runs this. It takes the same tick lock as the app, so
+/// when the app is open and ticking too, whichever gets the lock starts the
+/// run and the other does nothing.
+pub fn tick(data: Option<&str>, json: bool) -> Result<(), HarnessError> {
+    if let Some(dir) = data {
+        std::env::set_var("JAN_DATA_FOLDER", dir);
+    }
+    let data = data_folder();
+    let store = Store::new(&data);
+    let report = runner::tick(&store, &data, &SupervisorLauncher, chrono::Utc::now());
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "started": report.started.iter().map(|r| &r.id).collect::<Vec<_>>(),
+                "skipped": report.skipped.len(),
+                "lockedOut": report.locked_out,
+                "errors": report.errors,
+            })
+        );
+    } else if report.locked_out {
+        println!("Another process is ticking; nothing to do.");
+    } else {
+        println!("{} started, {} skipped", report.started.len(), report.skipped.len());
+        for e in &report.errors {
+            eprintln!("{e}");
+        }
+    }
+    if report.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(HarnessError::new(ErrorKind::Io, report.errors.join("; ")).at(Stage::Startup))
+    }
+}
+
 /// `flint cli schedule runs <id>`
 pub fn runs(task_id: &str, limit: usize, json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
