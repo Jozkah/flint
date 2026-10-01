@@ -13,7 +13,7 @@ import {
 } from '@/lib/studio/studio'
 import { downloadedBytes, parseDownloadTask } from '@/lib/studio/helpers'
 
-type Job = { kind: StudioKind; phase: string; fraction: number; startedAt: number }
+type Job = { kind: StudioKind; phase: string; fraction: number; startedAt: number; remote?: string }
 
 /** What this session has asked for, newest first: the Activity list on the page. */
 export type StudioActivity = {
@@ -28,6 +28,9 @@ export type StudioActivity = {
 
 const ACTIVITY_LIMIT = 12
 let activityId = 0
+
+/** Stops the hosted request in flight, if the running job is one. */
+let remoteAbort: AbortController | null = null
 
 type StudioState = {
   status: StudioStatus | null
@@ -44,7 +47,12 @@ type StudioState = {
   downloadModel: (model: StudioModel) => Promise<void>
   load: (modelId: string) => Promise<void>
   unload: () => Promise<void>
-  generate: (kind: StudioKind, prompt: string, run: () => Promise<unknown>) => Promise<boolean>
+  generate: (
+    kind: StudioKind,
+    prompt: string,
+    run: () => Promise<unknown>,
+    remote?: { label: string; abort: AbortController }
+  ) => Promise<boolean>
   cancel: () => Promise<void>
   remove: (kind: StudioKind, id: string) => Promise<void>
   clearError: () => void
@@ -161,11 +169,16 @@ export const useStudio = create<StudioState>((set, get) => ({
     }
   },
 
-  generate: async (kind, prompt, run) => {
+  generate: async (kind, prompt, run, remote) => {
     if (get().job) return false
     const startedAt = Date.now()
     void allowNotifications()
-    set({ error: null, jobPrompt: prompt, job: { kind, phase: 'queued', fraction: 0, startedAt } })
+    remoteAbort = remote?.abort ?? null
+    set({
+      error: null,
+      jobPrompt: prompt,
+      job: { kind, phase: remote ? 'remote' : 'queued', fraction: 0, startedAt, remote: remote?.label },
+    })
     const log = (status: StudioActivity['status'], error?: string) =>
       set((s) => ({
         activity: [
@@ -174,7 +187,9 @@ export const useStudio = create<StudioState>((set, get) => ({
         ].slice(0, ACTIVITY_LIMIT),
       }))
     try {
-      await getServiceHub().models().stopAllModels().catch(() => undefined)
+      // A hosted provider does not use this computer's graphics card, so the
+      // chat models stay loaded.
+      if (!remote) await getServiceHub().models().stopAllModels().catch(() => undefined)
       await run()
       await get().refreshGallery(kind)
       log('done')
@@ -182,7 +197,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       return true
     } catch (error) {
       const text = message(error)
-      if (text === 'Cancelled.') {
+      if (text === 'Cancelled.' || remote?.abort.signal.aborted) {
         log('stopped')
       } else {
         set({ error: text })
@@ -190,12 +205,17 @@ export const useStudio = create<StudioState>((set, get) => ({
       }
       return false
     } finally {
+      remoteAbort = null
       set({ job: null })
       await get().refresh()
     }
   },
 
   cancel: async () => {
+    if (remoteAbort) {
+      remoteAbort.abort()
+      return
+    }
     try {
       await studioApi.cancel()
     } catch (error) {

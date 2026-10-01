@@ -1,6 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { ArrowLeftRight, Download, Film, ImageIcon, Loader, RefreshCw, Sparkles, Square, Trash2, X } from 'lucide-react'
+import {
+  ArrowLeftRight,
+  Download,
+  Film,
+  ImageIcon,
+  Loader,
+  RefreshCw,
+  Sparkles,
+  Square,
+  Trash2,
+  X,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
@@ -20,8 +31,15 @@ import {
 import { ImageViewer, type ViewerImage } from '@/components/ImageViewer'
 import { EnginePage, PageHead } from '@/containers/engine/EngineKit'
 import { useStudio, type StudioActivity } from '@/hooks/useStudio'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { useFitContext } from '@/hooks/useFitContext'
 import { cn } from '@/lib/utils'
+import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
+import {
+  cloudTargets,
+  generateCloudImages,
+  type CloudTarget,
+} from '@/lib/studio/cloud'
 import { formatModelBytes } from '@/lib/huggingface'
 import { formatEta } from '@/lib/downloadSpeed'
 import {
@@ -30,7 +48,6 @@ import {
   VIDEO_SECONDS,
   VIDEO_SIZES,
   customSize,
-  downloadProgressText,
   durationText,
   estimateVideoMs,
   framesForSeconds,
@@ -50,9 +67,21 @@ import {
 } from '@/lib/studio/studio'
 
 const BUILDS: Array<{ id: EngineBuild; label: string; note: string }> = [
-  { id: 'win-vulkan-x64', label: 'Any graphics card', note: 'About 30 MB. Works on NVIDIA, AMD and Intel.' },
-  { id: 'win-cuda12-x64', label: 'NVIDIA (faster)', note: 'About 900 MB. Needs a recent NVIDIA driver.' },
-  { id: 'win-cpu-x64', label: 'No graphics card', note: 'About 17 MB. Very slow.' },
+  {
+    id: 'win-vulkan-x64',
+    label: 'Any graphics card',
+    note: 'About 30 MB. Works on NVIDIA, AMD and Intel.',
+  },
+  {
+    id: 'win-cuda12-x64',
+    label: 'NVIDIA (faster)',
+    note: 'About 900 MB. Needs a recent NVIDIA driver.',
+  },
+  {
+    id: 'win-cpu-x64',
+    label: 'No graphics card',
+    note: 'About 17 MB. Very slow.',
+  },
 ]
 
 /** What the left column and the stage share: the prompt and the options. */
@@ -64,6 +93,8 @@ type Form = {
   sizeIndex: number
   customWidth: string
   customHeight: string
+  /** `provider/model` of a hosted image model, or empty for the model on this computer. */
+  cloud: string
   count: number
   seconds: number
   accepted: boolean
@@ -78,21 +109,47 @@ const EMPTY_FORM: Form = {
   sizeIndex: 0,
   customWidth: '1024',
   customHeight: '1024',
+  cloud: '',
   count: 1,
   seconds: VIDEO_SECONDS[VIDEO_SECONDS.length - 1],
   accepted: false,
 }
 
+/** The hosted image models that can be used now: the providers with an API key set. */
+function useCloudTargets(kind: StudioKind): CloudTarget[] {
+  const providers = useModelProvider((s) => s.providers)
+  return useMemo(() => {
+    if (kind !== 'image') return []
+    const configured = new Set(
+      providers
+        .filter((p) => p.active && providerHasRemoteApiKeys(p))
+        .map((p) => p.provider)
+    )
+    return cloudTargets(configured)
+  }, [providers, kind])
+}
+
 /** The size the form asks for: a standard shape, or the two boxes snapped into range. */
-function chosenSize(kind: StudioKind, model: StudioModel, form: Form): { width: number; height: number } {
+function chosenSize(
+  kind: StudioKind,
+  model: StudioModel,
+  form: Form
+): { width: number; height: number } {
   if (form.sizeIndex === CUSTOM) {
-    return customSize(form.customWidth, form.customHeight, { min: model.min_side, max: model.max_side }, 1024)
+    return customSize(
+      form.customWidth,
+      form.customHeight,
+      { min: model.min_side, max: model.max_side },
+      1024
+    )
   }
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
   return sizes[Math.min(Math.max(form.sizeIndex, 0), sizes.length - 1)]
 }
 
-const rise = (index: number) => ({ animationDelay: `${40 + Math.min(index, 10) * 35}ms` })
+const rise = (index: number) => ({
+  animationDelay: `${40 + Math.min(index, 10) * 35}ms`,
+})
 
 /** A pressable option, like the chips in the design: 28px, a hairline, pressed = filled. */
 function Option({
@@ -135,7 +192,13 @@ function ShapeGlyph({ width, height }: { width: number; height: number }) {
   const long = 14
   const w = width >= height ? long : Math.round((long * width) / height)
   const h = height >= width ? long : Math.round((long * height) / width)
-  return <i aria-hidden className="inline-block rounded-[2px] border-[1.5px] border-current" style={{ width: w, height: h }} />
+  return (
+    <i
+      aria-hidden
+      className="inline-block rounded-[2px] border-[1.5px] border-current"
+      style={{ width: w, height: h }}
+    />
+  )
 }
 
 function EngineSetup() {
@@ -150,21 +213,25 @@ function EngineSetup() {
         <FrameHeader title="Not available on this system yet" />
         <FrameBody className="p-3.5">
           <p className="text-[13px] text-muted-foreground">
-            Image and video generation works on Windows for now. It is not built for this system yet.
+            Image and video generation works on Windows for now. It is not built
+            for this system yet.
           </p>
         </FrameBody>
       </Frame>
     )
   }
   if (status.engineBackend) return null
-  const percent = installing?.total ? Math.round((installing.downloaded / installing.total) * 100) : 0
+  const percent = installing?.total
+    ? Math.round((installing.downloaded / installing.total) * 100)
+    : 0
   return (
     <Frame className="motion-safe:animate-rise-in">
       <FrameHeader title="Set up the image engine" />
       <FrameBody className="gap-3 p-3.5">
         <p className="text-[13px] text-muted-foreground">
-          Flint makes images and video on this computer with stable-diffusion.cpp. The engine is downloaded once,
-          checked against its published checksum, and runs only while you generate.
+          Flint makes images and video on this computer with
+          stable-diffusion.cpp. The engine is downloaded once, checked against
+          its published checksum, and runs only while you generate.
         </p>
         <div className="grid gap-2 sm:grid-cols-3">
           {BUILDS.map((b) => (
@@ -214,7 +281,10 @@ function ModelBlock({ model }: { model: StudioModel }) {
   const [loading, setLoading] = useState(false)
   const resident = status?.resident?.model_id === model.id
   const downloading = download?.modelId === model.id
-  const percent = downloading && download.total ? Math.round((download.bytes / download.total) * 100) : 0
+  const percent =
+    downloading && download.total
+      ? Math.round((download.bytes / download.total) * 100)
+      : 0
   const engineReady = !!status?.engineBackend
 
   return (
@@ -224,7 +294,9 @@ function ModelBlock({ model }: { model: StudioModel }) {
           {resident ? 'Loaded' : model.installed ? 'Ready' : 'Not downloaded'}
         </Chip>
         <div className="min-w-0">
-          <p className="text-[13px] leading-snug font-medium text-foreground">{model.display_name}</p>
+          <p className="text-[13px] leading-snug font-medium text-foreground">
+            {model.display_name}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatModelBytes(model.totalBytes)} · {model.license}
           </p>
@@ -234,17 +306,29 @@ function ModelBlock({ model }: { model: StudioModel }) {
         <div className="space-y-1.5">
           <Progress value={percent} />
           <p className="text-xs text-muted-foreground">
-            {downloadProgressText(download.bytes, download.total, formatModelBytes)}
+            {formatModelBytes(download.bytes)} of{' '}
+            {formatModelBytes(download.total)}
           </p>
         </div>
       )}
       {!model.installed ? (
-        <Button size="sm" disabled={downloading} onClick={() => void downloadModel(model)}>
+        <Button
+          size="sm"
+          disabled={downloading}
+          onClick={() => void downloadModel(model)}
+        >
           <Download className="size-3.5" />
-          {downloading ? 'Downloading…' : `Download (${formatModelBytes(model.totalBytes)})`}
+          {downloading
+            ? 'Downloading…'
+            : `Download (${formatModelBytes(model.totalBytes)})`}
         </Button>
       ) : resident ? (
-        <Button size="sm" variant="outline" disabled={!!job} onClick={() => void unload()}>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!!job}
+          onClick={() => void unload()}
+        >
           Unload
         </Button>
       ) : (
@@ -261,13 +345,21 @@ function ModelBlock({ model }: { model: StudioModel }) {
         </Button>
       )}
       {!engineReady && model.installed && (
-        <p className="text-xs text-muted-foreground">Install the image engine above to use this model.</p>
+        <p className="text-xs text-muted-foreground">
+          Install the image engine above to use this model.
+        </p>
       )}
     </div>
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-xs text-muted-foreground">{label}</span>
@@ -292,7 +384,9 @@ function CustomSize({
 }) {
   const settle = (key: 'customWidth' | 'customHeight') => {
     const typed = parseSide(form[key])
-    setForm({ [key]: String(snapSide(typed ?? 1024, model.min_side, model.max_side)) })
+    setForm({
+      [key]: String(snapSide(typed ?? 1024, model.min_side, model.max_side)),
+    })
   }
   const box = (key: 'customWidth' | 'customHeight', label: string) => (
     <Input
@@ -300,7 +394,9 @@ function CustomSize({
       inputMode="numeric"
       disabled={disabled}
       aria-label={label}
-      onChange={(e) => setForm({ [key]: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+      onChange={(e) =>
+        setForm({ [key]: e.target.value.replace(/\D/g, '').slice(0, 5) })
+      }
       onBlur={() => settle(key)}
       onKeyDown={(e) => e.key === 'Enter' && settle(key)}
       className="min-w-0 text-center tabular-nums"
@@ -319,7 +415,12 @@ function CustomSize({
           title="Swap width and height"
           aria-label="Swap width and height"
           disabled={disabled}
-          onClick={() => setForm({ customWidth: form.customHeight, customHeight: form.customWidth })}
+          onClick={() =>
+            setForm({
+              customWidth: form.customHeight,
+              customHeight: form.customWidth,
+            })
+          }
           className="grid size-8 shrink-0 place-items-center rounded-md border-[0.8px] border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:opacity-50 pointer-coarse:size-11"
         >
           <ArrowLeftRight className="size-3.5" />
@@ -327,7 +428,9 @@ function CustomSize({
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
         Multiples of 16, from {model.min_side} to {model.max_side} pixels.
-        {kind === 'video' ? ' Big clips need a lot of memory.' : ' Big pictures need more memory and time.'}
+        {kind === 'video'
+          ? ' Big clips need a lot of memory.'
+          : ' Big pictures need more memory and time.'}
       </p>
     </div>
   )
@@ -338,16 +441,20 @@ function Settings({
   model,
   form,
   setForm,
+  targets,
 }: {
   kind: StudioKind
   model: StudioModel
   form: Form
   setForm: (patch: Partial<Form>) => void
+  targets: CloudTarget[]
 }) {
   const job = useStudio((s) => s.job)
+  const hosted = targets.find((t) => t.key === form.cloud)
   const { hardware } = useFitContext()
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
-  const warning = kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
+  const warning =
+    kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
   const running = !!job
   const lastClip = useStudio((s) => s.gallery.video[0]?.recipe)
   const guess =
@@ -362,7 +469,44 @@ function Settings({
     <Frame className="motion-safe:animate-rise-in" style={rise(0)}>
       <FrameHeader title="Settings" />
       <FrameBody className="gap-4 p-3.5">
-        <ModelBlock model={model} />
+        {kind === 'image' && (
+          <Field label="Where to make it">
+            <div className="flex flex-wrap gap-1.5">
+              <Option
+                pressed={!hosted}
+                disabled={running}
+                onClick={() => setForm({ cloud: '' })}
+                title="Runs on this computer"
+              >
+                This computer
+              </Option>
+              {targets.map((t) => (
+                <Option
+                  key={t.key}
+                  pressed={form.cloud === t.key}
+                  disabled={running}
+                  onClick={() => setForm({ cloud: t.key })}
+                  title={`${t.model.name} on ${t.provider.label}`}
+                >
+                  {t.model.name}
+                </Option>
+              ))}
+            </div>
+            {hosted ? (
+              <p className="text-xs leading-snug text-muted-foreground">
+                Your prompt is sent to {hosted.provider.label} and the pictures
+                come back to your gallery. It uses the API key from Providers
+                and is billed by {hosted.provider.label}.
+              </p>
+            ) : targets.length === 0 ? (
+              <p className="text-xs leading-snug text-muted-foreground">
+                Add an API key for OpenAI, Gemini, xAI or Together AI in
+                Providers to make pictures with their models.
+              </p>
+            ) : null}
+          </Field>
+        )}
+        {!hosted && <ModelBlock model={model} />}
         <Field label="Shape">
           <div className="flex flex-wrap gap-1.5">
             {sizes.map((s, i) => (
@@ -387,14 +531,25 @@ function Settings({
             </Option>
           </div>
           {form.sizeIndex === CUSTOM && (
-            <CustomSize kind={kind} model={model} form={form} setForm={setForm} disabled={running} />
+            <CustomSize
+              kind={kind}
+              model={model}
+              form={form}
+              setForm={setForm}
+              disabled={running}
+            />
           )}
         </Field>
         {kind === 'image' ? (
           <Field label="Images">
             <div className="flex flex-wrap gap-1.5">
               {[1, 2, 3, 4].map((n) => (
-                <Option key={n} pressed={form.count === n} disabled={running} onClick={() => setForm({ count: n })}>
+                <Option
+                  key={n}
+                  pressed={form.count === n}
+                  disabled={running}
+                  onClick={() => setForm({ count: n })}
+                >
                   {n}
                 </Option>
               ))}
@@ -404,7 +559,12 @@ function Settings({
           <Field label="Length">
             <div className="flex flex-wrap gap-1.5">
               {VIDEO_SECONDS.map((n) => (
-                <Option key={n} pressed={form.seconds === n} disabled={running} onClick={() => setForm({ seconds: n })}>
+                <Option
+                  key={n}
+                  pressed={form.seconds === n}
+                  disabled={running}
+                  onClick={() => setForm({ seconds: n })}
+                >
                   {n} s
                 </Option>
               ))}
@@ -416,25 +576,29 @@ function Settings({
             About {durationText(guess)}, from your last clip.
           </p>
         )}
-        <Field label="Seed">
-          <Input
-            value={form.seed}
-            onChange={(e) => setForm({ seed: e.target.value })}
-            placeholder="Random"
-            disabled={running}
-            aria-label="Seed"
-          />
-        </Field>
-        <Field label="Avoid">
-          <Input
-            value={form.negative}
-            onChange={(e) => setForm({ negative: e.target.value })}
-            placeholder="Blurry, extra fingers…"
-            disabled={running}
-            aria-label="What to avoid"
-          />
-        </Field>
-        {warning && (
+        {!hosted && (
+          <>
+            <Field label="Seed">
+              <Input
+                value={form.seed}
+                onChange={(e) => setForm({ seed: e.target.value })}
+                placeholder="Random"
+                disabled={running}
+                aria-label="Seed"
+              />
+            </Field>
+            <Field label="Avoid">
+              <Input
+                value={form.negative}
+                onChange={(e) => setForm({ negative: e.target.value })}
+                placeholder="Blurry, extra fingers…"
+                disabled={running}
+                aria-label="What to avoid"
+              />
+            </Field>
+          </>
+        )}
+        {warning && !hosted && (
           <label className="flex items-start gap-2 rounded-lg bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
             <input
               type="checkbox"
@@ -454,9 +618,19 @@ function Settings({
 function Thumb({ item, className }: { item: GalleryItem; className?: string }) {
   const src = convertFileSrc(item.path)
   return item.kind === 'video' ? (
-    <video src={src} muted preload="metadata" className={cn('size-full object-cover', className)} />
+    <video
+      src={src}
+      muted
+      preload="metadata"
+      className={cn('size-full object-cover', className)}
+    />
   ) : (
-    <img src={src} alt="" loading="lazy" className={cn('size-full object-cover', className)} />
+    <img
+      src={src}
+      alt=""
+      loading="lazy"
+      className={cn('size-full object-cover', className)}
+    />
   )
 }
 
@@ -467,6 +641,7 @@ function Stage({
   setForm,
   promptRef,
   onOpen,
+  targets,
 }: {
   kind: StudioKind
   model: StudioModel
@@ -474,7 +649,14 @@ function Stage({
   setForm: (patch: Partial<Form>) => void
   promptRef: React.RefObject<HTMLTextAreaElement | null>
   onOpen: (index: number) => void
+  targets: CloudTarget[]
 }) {
+  const hosted = targets.find((t) => t.key === form.cloud)
+  const providerSettings = useModelProvider((s) =>
+    hosted
+      ? s.providers.find((p) => p.provider === hosted.provider.provider)
+      : undefined
+  )
   const status = useStudio((s) => s.status)
   const job = useStudio((s) => s.job)
   const jobPrompt = useStudio((s) => s.jobPrompt)
@@ -483,8 +665,9 @@ function Stage({
   const cancel = useStudio((s) => s.cancel)
   const { hardware } = useFitContext()
   const size = chosenSize(kind, model, form)
-  const warning = kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
-  const ready = status?.resident?.model_id === model.id
+  const warning =
+    kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
+  const ready = hosted ? true : status?.resident?.model_id === model.id
   const running = job?.kind === kind
   const busy = !!job
   const latest = items[0]
@@ -494,6 +677,32 @@ function Stage({
   const start = async () => {
     const text = form.prompt.trim()
     if (!text) return toast.error('Write a prompt first.')
+    if (hosted) {
+      if (!providerSettings)
+        return toast.error(
+          `${hosted.provider.label} is not set up in Providers.`
+        )
+      const abort = new AbortController()
+      const ok = await generate(
+        kind,
+        text,
+        () =>
+          generateCloudImages(
+            hosted,
+            providerSettings,
+            {
+              prompt: text,
+              width: size.width,
+              height: size.height,
+              count: form.count,
+            },
+            abort.signal
+          ),
+        { label: hosted.provider.label, abort }
+      )
+      if (ok) toast.success('Image ready')
+      return
+    }
     const common = {
       model: model.id,
       prompt: text,
@@ -504,14 +713,20 @@ function Stage({
     }
     const ok = await generate(kind, text, () =>
       kind === 'video'
-        ? studioApi.generateVideo({ ...common, frames: framesForSeconds(form.seconds, model.video?.fps ?? 24) })
+        ? studioApi.generateVideo({
+            ...common,
+            frames: framesForSeconds(form.seconds, model.video?.fps ?? 24),
+          })
         : studioApi.generateImage({ ...common, count: form.count })
     )
     if (ok) toast.success(kind === 'video' ? 'Video ready' : 'Image ready')
   }
 
   return (
-    <Frame className="motion-safe:animate-rise-in max-lg:order-first" style={rise(1)}>
+    <Frame
+      className="motion-safe:animate-rise-in max-lg:order-first"
+      style={rise(1)}
+    >
       <FrameHeader
         title={kind === 'video' ? 'Video' : 'Image'}
         actions={
@@ -528,7 +743,10 @@ function Stage({
           // Nothing made yet: a compact stage, not a tall empty square.
           style={
             latest
-              ? { aspectRatio: `${size.width} / ${size.height}`, maxHeight: '62vh' }
+              ? {
+                  aspectRatio: `${size.width} / ${size.height}`,
+                  maxHeight: '62vh',
+                }
               : { height: 'min(44vh, 360px)' }
           }
         >
@@ -554,7 +772,9 @@ function Stage({
                   alt={latest.recipe.prompt}
                   className={cn(
                     'size-full object-contain transition-[filter,transform,opacity] duration-500 ease-expo',
-                    running ? 'scale-105 opacity-60 blur-xl' : 'motion-safe:animate-rise-in'
+                    running
+                      ? 'scale-105 opacity-60 blur-xl'
+                      : 'motion-safe:animate-rise-in'
                   )}
                 />
               </button>
@@ -564,7 +784,11 @@ function Stage({
               <EmptyState
                 className="absolute inset-0"
                 icon={kind === 'video' ? <Film /> : <ImageIcon />}
-                title={kind === 'video' ? 'Your first video starts here' : 'Your first image starts here'}
+                title={
+                  kind === 'video'
+                    ? 'Your first video starts here'
+                    : 'Your first image starts here'
+                }
                 description="Describe it below, or try one of the examples."
               />
             )
@@ -577,15 +801,30 @@ function Stage({
             )}
           >
             <p className="line-clamp-1 text-xs opacity-80">{jobPrompt}</p>
-            <Progress value={percent} className="h-1 bg-white/25" />
+            <Progress
+              value={job?.remote ? 100 : percent}
+              className={cn(
+                'h-1 bg-white/25',
+                job?.remote && 'motion-safe:animate-pulse'
+              )}
+            />
             <div className="flex items-center justify-between gap-3 text-xs">
               <span className="tabular-nums">
-                {phaseLabel(job?.phase ?? 'queued')} · {percent}%
-                {job?.startedAt && job.fraction > 0.05 && job.fraction < 0.97
+                {job?.remote
+                  ? `Waiting for ${job.remote}…`
+                  : `${phaseLabel(job?.phase ?? 'queued')} · ${percent}%`}
+                {!job?.remote &&
+                job?.startedAt &&
+                job.fraction > 0.05 &&
+                job.fraction < 0.97
                   ? ` · about ${formatEta(((Date.now() - job.startedAt) / 1000) * ((1 - job.fraction) / job.fraction))} left`
                   : ''}
               </span>
-              <Button variant="secondary" size="sm" onClick={() => void cancel()}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void cancel()}
+              >
                 <Square className="size-3" /> Stop
               </Button>
             </div>
@@ -606,7 +845,11 @@ function Stage({
             rows={2}
             disabled={busy}
             aria-label="Prompt"
-            placeholder={kind === 'video' ? 'A cat walking through a rainy alley, cinematic' : 'A lighthouse on a cliff at sunrise, oil painting'}
+            placeholder={
+              kind === 'video'
+                ? 'A cat walking through a rainy alley, cinematic'
+                : 'A lighthouse on a cliff at sunrise, oil painting'
+            }
             className="min-h-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 shadow-none focus-visible:ring-0"
           />
           <Button
@@ -659,7 +902,11 @@ function Stage({
 }
 
 const ACTIVITY_TONE = { done: 'ok', failed: 'err', stopped: 'neutral' } as const
-const ACTIVITY_LABEL = { done: 'Done', failed: 'Failed', stopped: 'Stopped' } as const
+const ACTIVITY_LABEL = {
+  done: 'Done',
+  failed: 'Failed',
+  stopped: 'Stopped',
+} as const
 
 function ActivityRow({ entry }: { entry: StudioActivity }) {
   return (
@@ -668,10 +915,18 @@ function ActivityRow({ entry }: { entry: StudioActivity }) {
         <Chip tone={ACTIVITY_TONE[entry.status]} dot>
           {ACTIVITY_LABEL[entry.status]}
         </Chip>
-        <span className="text-xs text-muted-foreground tabular-nums">{durationText(entry.durationMs)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {durationText(entry.durationMs)}
+        </span>
       </div>
-      <p className="line-clamp-2 text-[12.5px] text-foreground">{entry.prompt}</p>
-      {entry.error && <p className="line-clamp-3 text-xs break-words text-muted-foreground">{entry.error}</p>}
+      <p className="line-clamp-2 text-[12.5px] text-foreground">
+        {entry.prompt}
+      </p>
+      {entry.error && (
+        <p className="line-clamp-3 text-xs break-words text-muted-foreground">
+          {entry.error}
+        </p>
+      )}
     </li>
   )
 }
@@ -687,7 +942,9 @@ function Activity({ kind }: { kind: StudioKind }) {
       <FrameHeader title="Activity" />
       <FrameBody className="p-3.5">
         {!job && entries.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nothing yet. Jobs from this session show up here.</p>
+          <p className="text-xs text-muted-foreground">
+            Nothing yet. Jobs from this session show up here.
+          </p>
         ) : (
           <ul className="flex flex-col">
             {job && (
@@ -697,11 +954,18 @@ function Activity({ kind }: { kind: StudioKind }) {
                     Making
                   </Chip>
                   <span className="text-xs text-muted-foreground tabular-nums">
-                    {phaseLabel(job.phase)} · {percent}%
+                    {job.remote
+                      ? `Waiting for ${job.remote}`
+                      : `${phaseLabel(job.phase)} · ${percent}%`}
                   </span>
                 </div>
-                <p className="line-clamp-2 text-[12.5px] text-foreground">{jobPrompt}</p>
-                <Progress value={percent} />
+                <p className="line-clamp-2 text-[12.5px] text-foreground">
+                  {jobPrompt}
+                </p>
+                <Progress
+                  value={job.remote ? 100 : percent}
+                  className={cn(job.remote && 'motion-safe:animate-pulse')}
+                />
               </li>
             )}
             {entries.map((entry) => (
@@ -715,7 +979,13 @@ function Activity({ kind }: { kind: StudioKind }) {
 }
 
 /** A video opens in a dialog with its own controls: the image viewer is for pictures. */
-export function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClose: () => void }) {
+export function VideoDialog({
+  item,
+  onClose,
+}: {
+  item: GalleryItem | null
+  onClose: () => void
+}) {
   const remove = useStudio((s) => s.remove)
   if (!item) return null
   const r = item.recipe
@@ -726,12 +996,21 @@ export function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClo
           <DialogTitle>{r.modelName}</DialogTitle>
           <DialogDescription>
             {r.width} × {r.height} · {r.steps} steps · seed {r.seed}
-            {r.frames ? ` · ${r.frames} frames` : ''} · {durationText(r.durationMs)}
+            {r.frames ? ` · ${r.frames} frames` : ''} ·{' '}
+            {durationText(r.durationMs)}
           </DialogDescription>
         </DialogHeader>
-        <video src={convertFileSrc(item.path)} controls className="max-h-[60vh] w-full rounded-lg bg-black" />
+        <video
+          src={convertFileSrc(item.path)}
+          controls
+          className="max-h-[60vh] w-full rounded-lg bg-black"
+        />
         <p className="text-sm">{r.prompt}</p>
-        {r.negativePrompt && <p className="text-xs text-muted-foreground">Avoid: {r.negativePrompt}</p>}
+        {r.negativePrompt && (
+          <p className="text-xs text-muted-foreground">
+            Avoid: {r.negativePrompt}
+          </p>
+        )}
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -774,12 +1053,18 @@ function Gallery({
       <FrameHeader
         title={kind === 'video' ? 'Your videos' : 'Your images'}
         actions={
-          items.length > 0 ? <span className="text-xs text-muted-foreground tabular-nums">{items.length}</span> : undefined
+          items.length > 0 ? (
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {items.length}
+            </span>
+          ) : undefined
         }
       />
       <FrameBody className="p-3.5">
         {items.length === 0 ? (
-          <p className="text-[13px] text-muted-foreground">Nothing here yet. What you make appears here.</p>
+          <p className="text-[13px] text-muted-foreground">
+            Nothing here yet. What you make appears here.
+          </p>
         ) : (
           <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,160px),1fr))] gap-3">
             {items.map((item, i) => (
@@ -805,10 +1090,15 @@ function Gallery({
                   </span>
                 )}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-col gap-1.5 bg-gradient-to-t from-black/75 to-transparent p-2 pt-10 text-white opacity-0 transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100">
-                  <p className="line-clamp-2 text-[11px] leading-snug">{item.recipe.prompt}</p>
+                  <p className="line-clamp-2 text-[11px] leading-snug">
+                    {item.recipe.prompt}
+                  </p>
                   <div className="flex items-center justify-between gap-1">
                     <span className="truncate text-[10px] opacity-80 tabular-nums">
-                      seed {item.recipe.seed} · {durationText(item.recipe.durationMs)}
+                      {item.recipe.steps === 0
+                        ? item.recipe.modelName
+                        : `seed ${item.recipe.seed}`}{' '}
+                      · {durationText(item.recipe.durationMs)}
                     </span>
                     <span className="pointer-events-auto flex shrink-0 gap-1">
                       <button
@@ -852,8 +1142,10 @@ export function StudioPage() {
   const [form, setFormState] = useState<Form>(EMPTY_FORM)
   const [viewing, setViewing] = useState<number | null>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  const targets = useCloudTargets(kind)
 
-  const setForm = (patch: Partial<Form>) => setFormState((f) => ({ ...f, ...patch }))
+  const setForm = (patch: Partial<Form>) =>
+    setFormState((f) => ({ ...f, ...patch }))
 
   useEffect(() => {
     void refresh()
@@ -861,13 +1153,16 @@ export function StudioPage() {
     void refreshGallery('video')
   }, [refresh, refreshGallery])
 
-  const model = useMemo(() => status?.models.find((m) => m.kind === kind), [status, kind])
+  const model = useMemo(
+    () => status?.models.find((m) => m.kind === kind),
+    [status, kind]
+  )
 
   // The sizes differ between images and video, so the chosen shape starts over.
   const changeKind = (next: StudioKind) => {
     setViewing(null)
     setKind(next)
-    setForm({ sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0 })
+    setForm({ sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0, cloud: '' })
   }
 
   const remix = (item: GalleryItem) => {
@@ -876,10 +1171,21 @@ export function StudioPage() {
       prompt: item.recipe.prompt,
       negative: item.recipe.negativePrompt,
       seed: '',
+      cloud: targets.some((t) => t.key === item.recipe.modelId)
+        ? item.recipe.modelId
+        : '',
       // The exact size it was made at: a standard shape when it is one,
       // else the custom boxes, so a remix never quietly changes the size.
-      ...(sizes.some((s) => s.width === item.recipe.width && s.height === item.recipe.height)
-        ? { sizeIndex: sizeIndexOf(sizes, item.recipe.width, item.recipe.height) }
+      ...(sizes.some(
+        (s) => s.width === item.recipe.width && s.height === item.recipe.height
+      )
+        ? {
+            sizeIndex: sizeIndexOf(
+              sizes,
+              item.recipe.width,
+              item.recipe.height
+            ),
+          }
         : {
             sizeIndex: CUSTOM,
             customWidth: String(item.recipe.width),
@@ -895,7 +1201,10 @@ export function StudioPage() {
   const viewerImages = useMemo<ViewerImage[]>(
     () =>
       kind === 'image'
-        ? shown.map((g) => ({ url: convertFileSrc(g.path), name: `studio-${g.recipe.seed}` }))
+        ? shown.map((g) => ({
+            url: convertFileSrc(g.path),
+            name: `studio-${g.recipe.seed}`,
+          }))
         : [],
     [shown, kind]
   )
@@ -904,7 +1213,7 @@ export function StudioPage() {
     <EnginePage testId="studio-page">
       <PageHead
         title="Studio"
-        description="Make images and video on this computer. Nothing is sent anywhere."
+        description="Make images and video on this computer. Nothing leaves it unless you pick a hosted model."
         actions={
           <Segmented<StudioKind>
             aria-label="What to make"
@@ -943,7 +1252,13 @@ export function StudioPage() {
           <EngineSetup />
           {status.supported && model && (
             <div className="grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)_270px]">
-              <Settings kind={kind} model={model} form={form} setForm={setForm} />
+              <Settings
+                kind={kind}
+                model={model}
+                form={form}
+                setForm={setForm}
+                targets={targets}
+              />
               <Stage
                 kind={kind}
                 model={model}
@@ -951,6 +1266,7 @@ export function StudioPage() {
                 setForm={setForm}
                 promptRef={promptRef}
                 onOpen={setViewing}
+                targets={targets}
               />
               <Activity kind={kind} />
             </div>
@@ -966,7 +1282,12 @@ export function StudioPage() {
           onClose={() => setViewing(null)}
         />
       )}
-      <VideoDialog item={kind === 'video' && viewing !== null ? (shown[viewing] ?? null) : null} onClose={() => setViewing(null)} />
+      <VideoDialog
+        item={
+          kind === 'video' && viewing !== null ? (shown[viewing] ?? null) : null
+        }
+        onClose={() => setViewing(null)}
+      />
     </EnginePage>
   )
 }

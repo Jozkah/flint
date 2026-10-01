@@ -108,6 +108,17 @@ export const studioApi = {
   cancel: () => invoke<void>('diffusion_cancel'),
   gallery: (kind: StudioKind) => invoke<GalleryItem[]>('diffusion_gallery', { kind }),
   remove: (kind: StudioKind, id: string) => invoke<void>('diffusion_delete', { kind, id }),
+  /** Pictures a hosted provider made, kept in the gallery beside local ones. */
+  saveExternalImages: (params: {
+    prompt: string
+    negativePrompt?: string
+    width: number
+    height: number
+    modelId: string
+    modelName: string
+    durationMs: number
+    images: string[]
+  }) => invoke<Generated>('diffusion_save_external_images', { params }),
   /** A gallery item's media as a `data:` URL (for phones; the desktop shows files directly). */
   media: (kind: StudioKind, id: string) => invoke<string>('diffusion_media', { kind, id }),
 }
