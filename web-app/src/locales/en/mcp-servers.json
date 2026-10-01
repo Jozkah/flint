@@ -69,11 +69,12 @@
     "state": {
       "notInstalled": "Not configured",
       "disabled": "Off",
-      "connecting": "Connecting...",
-      "connected": "Connected",
+      "connecting": "Starting…",
+      "connected": "Running",
       "needsAuthorization": "Needs sign-in",
-      "failed": "Failed to connect",
-      "notConnected": "On, but not connected"
+      "failed": "Failed",
+      "notConnected": "On, but not connected",
+      "stopped": "Stopped · starts when needed"
     },
     "nextStep": {
       "checkCommand": "Check that the command is installed and can be found on your PATH, then turn the server on again.",
@@ -253,5 +254,10 @@
     "enable": "Enable",
     "enabled": "{{serverName}} is on. Send your request again to use its tools.",
     "failed": "Could not enable {{serverName}}: {{error}}"
+  },
+  "lifecycle": {
+    "startWithFlint": "Start with Flint",
+    "start": "Start",
+    "stop": "Stop"
   }
 }

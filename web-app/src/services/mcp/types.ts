@@ -5,6 +5,22 @@
 import { MCPTool, MCPToolCallResult } from '@janhq/core'
 import type { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 
+/** Options for listing tools. */
+export interface ListToolsOptions {
+  /**
+   * Start enabled servers that are not running (servers start on demand).
+   * Without it a stopped server contributes its last known tools only.
+   */
+  start?: boolean
+}
+
+/** Lifecycle status of one enabled server, from `get_mcp_server_statuses`. */
+export type MCPServerStatus =
+  | { state: 'stopped' }
+  | { state: 'starting' }
+  | { state: 'running' }
+  | { state: 'failed'; error: string }
+
 export interface MCPConfig {
   mcpServers?: MCPServers
   mcpSettings?: MCPSettings
@@ -91,9 +107,9 @@ export interface MCPService {
   updateMCPConfig(configs: string): Promise<void>
   restartMCPServers(): Promise<void>
   getMCPConfig(): Promise<MCPConfig>
-  getTools(): Promise<MCPTool[]>
+  getTools(options?: ListToolsOptions): Promise<MCPTool[]>
   /** Fetch tools from a specific subset of servers. */
-  getToolsForServers(serverNames: string[]): Promise<MCPTool[]>
+  getToolsForServers(serverNames: string[], options?: ListToolsOptions): Promise<MCPTool[]>
   /** Return name/capabilities/description for all connected servers. */
   getServerSummaries(): Promise<ServerSummary[]>
   /** One server's own stderr log, scrubbed and bounded, newest last (AH-140). */
@@ -158,8 +174,19 @@ export interface MCPService {
   cancelToolCall(cancellationToken: string): Promise<void>
 
   // MCP Server lifecycle management
-  activateMCPServer(name: string, config: MCPServerConfig): Promise<void>
+  /** `start: false` only enables it; it starts when first needed. */
+  activateMCPServer(
+    name: string,
+    config: MCPServerConfig,
+    options?: { start?: boolean }
+  ): Promise<void>
   deactivateMCPServer(name: string): Promise<void>
+  /** Start an enabled server now (manual Start). */
+  startMCPServer(name: string): Promise<void>
+  /** Stop a running server, keeping it enabled (manual Stop). */
+  stopMCPServer(name: string): Promise<void>
+  /** Status of every enabled server, by name. */
+  getServerStatuses(): Promise<Record<string, MCPServerStatus>>
   checkJanBrowserExtensionConnected(): Promise<boolean>
 
   // OAuth for remote (http/sse) servers
