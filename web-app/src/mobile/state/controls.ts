@@ -25,6 +25,19 @@ export async function forkFrom(id: string, messageId?: string) {
   }
 }
 
+/** Step a message to its previous or next version; true when the chat moved. */
+export async function stepVersion(id: string, messageId: string, dir: -1 | 1): Promise<boolean> {
+  try {
+    const { ok } = await client().rpc('thread.branch.select', { id, messageId, dir })
+    if (!ok) toast('Wait for the reply to finish, then try again.')
+    else invalidate(['thread.messages', 'chat.details', 'sessions.list'])
+    return ok
+  } catch (e) {
+    toast(e instanceof Error ? e.message : 'Could not switch versions.')
+    return false
+  }
+}
+
 /** Regenerate title, in the desktop's words for each result. */
 export async function regenerateTitleOf(kind: SessionKind, id: string) {
   toast('Naming the chat…')

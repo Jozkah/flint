@@ -40,6 +40,7 @@ import type { ScopedMemoryRetrieved } from '@/lib/memoryBinding'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { isLocalProvider } from '@/lib/utils'
 import { forkThread } from '@/lib/forkThread'
+import { BRANCH_CHANGED_EVENT, selectVersion as selectBranchVersion } from '@/lib/branchSelect'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateCoworkTitle, regenerateRoomTitle } from '@/lib/regenerateSessionTitle'
 import { canCompactChat, requestChatCompaction } from '@/lib/chatCompaction'
@@ -296,6 +297,17 @@ export const appExtras: RemoteExtras = {
   }),
 
   forkChat: (id, messageId) => forkThread(id, messageId),
+  selectVersion: (id, messageId, dir) => {
+    // A reply being written is on the path; moving it under the stream would
+    // attach the reply to the wrong version.
+    const app = useAppState.getState()
+    if (app.busyThreads[id] || app.currentStreamThreadId === id) return false
+    if (!selectBranchVersion(id, messageId, dir)) return false
+    window.dispatchEvent(
+      new CustomEvent(BRANCH_CHANGED_EVENT, { detail: { threadId: id } })
+    )
+    return true
+  },
   compactChat: (id) => requestChatCompaction(id),
 
   regenerateTitle: async (kind, id) => {
