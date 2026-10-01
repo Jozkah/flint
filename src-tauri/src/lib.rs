@@ -37,6 +37,7 @@ macro_rules! invoke_commands_with_extras {
     ($($extra:path),* $(,)?) => {
         tauri::generate_handler![
         // FS commands - Deperecate soon
+        core::model_scan::scan_local_models,
         core::filesystem::commands::join_path,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,

@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+import { normalizeAppError } from '@/utils/appError'
 import {
   Check,
   FileCode,
@@ -23,6 +24,12 @@ import {
 } from 'lucide-react'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 import { readGgufMetadata } from '@janhq/tauri-plugin-llamacpp-api'
+import {
+  groupBySource,
+  scanLocalModels,
+  type ScannedModel,
+} from '@/lib/localModelScan'
+import { formatBytes } from '@/lib/utils'
 
 type DetectedModalities = { vision: boolean; audio: boolean }
 
@@ -362,6 +369,30 @@ export const ImportLlamacppModelDialog = ({
     [validateGgufFile]
   )
 
+  // Use a model file chosen by path, whether picked in a dialog or found by the
+  // scan. The temporary name is replaced by the one in the file's metadata.
+  const chooseModelFile = async (path: string, displayName: string) => {
+    setModelFile(path)
+    setModelName(toModelId(displayName))
+    await validateModelFile(path)
+  }
+
+  const [scanState, setScanState] = useState<
+    | { status: 'idle' }
+    | { status: 'scanning' }
+    | { status: 'done'; models: ScannedModel[] }
+    | { status: 'failed'; message: string }
+  >({ status: 'idle' })
+
+  const runScan = async () => {
+    setScanState({ status: 'scanning' })
+    try {
+      setScanState({ status: 'done', models: await scanLocalModels() })
+    } catch (error) {
+      setScanState({ status: 'failed', message: normalizeAppError(error) })
+    }
+  }
+
   const handleFileSelect = async (type: 'model' | 'mmproj' | 'draft') => {
     const selectedFile = await serviceHub.dialog().open({
       multiple: false,
@@ -372,13 +403,7 @@ export const ImportLlamacppModelDialog = ({
       const fileName = selectedFile.split(/[\\/]/).pop() || ''
 
       if (type === 'model') {
-        setModelFile(selectedFile)
-        // Set temporary model name from filename (will be overridden by baseName from metadata if available)
-        const sanitizedName = toModelId(fileName.replace(/\.(gguf|GGUF)$/, ''))
-        setModelName(sanitizedName)
-
-        // Validate the selected model file (this will update model name with baseName from metadata)
-        await validateModelFile(selectedFile)
+        await chooseModelFile(selectedFile, fileName.replace(/\.(gguf|GGUF)$/, ''))
       } else if (type === 'mmproj') {
         setMmProjFile(selectedFile)
         // Validate the selected mmproj file
@@ -686,6 +711,71 @@ export const ImportLlamacppModelDialog = ({
                 >
                   Select GGUF File
                 </Button>
+              )}
+
+              {!modelFile && (
+                <div className="space-y-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={runScan}
+                    disabled={importing || scanState.status === 'scanning'}
+                  >
+                    {scanState.status === 'scanning' ? (
+                      <LoaderCircle
+                        size={14}
+                        className="mr-2 motion-safe:animate-spin"
+                      />
+                    ) : null}
+                    Find models already on this computer
+                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Looks in LM Studio, Ollama, the Hugging Face cache,
+                    llama.cpp and GPT4All. Nothing is copied until you import.
+                  </p>
+                  {scanState.status === 'failed' && (
+                    <p className="text-sm text-destructive">
+                      {scanState.message}
+                    </p>
+                  )}
+                  {scanState.status === 'done' &&
+                    scanState.models.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No models found in those apps' usual folders.
+                      </p>
+                    )}
+                  {scanState.status === 'done' &&
+                    scanState.models.length > 0 && (
+                      <div className="max-h-56 space-y-3 overflow-y-auto rounded-lg border border-border p-2">
+                        {groupBySource(scanState.models).map((group) => (
+                          <div key={group.source}>
+                            <p className="px-1 pb-1 text-xs font-medium text-muted-foreground">
+                              {group.source}
+                            </p>
+                            {group.models.map((found) => (
+                              <button
+                                key={found.path}
+                                type="button"
+                                onClick={() =>
+                                  void chooseModelFile(found.path, found.name)
+                                }
+                                disabled={importing}
+                                className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
+                              >
+                                <span className="min-w-0 break-all">
+                                  {found.name}
+                                </span>
+                                <span className="shrink-0 text-xs text-muted-foreground">
+                                  {formatBytes(found.size_bytes)}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
               )}
             </div>
 

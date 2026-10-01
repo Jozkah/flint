@@ -19,6 +19,9 @@ pub mod huggingface;
 #[cfg(not(feature = "cli"))]
 pub mod filesystem;
 pub mod mcp;
+// Read-only lookup of models other apps already keep on disk; desktop-only.
+#[cfg(not(feature = "cli"))]
+pub mod model_scan;
 pub mod migration;
 pub mod net;
 pub mod openai_schema;
