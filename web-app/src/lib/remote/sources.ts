@@ -48,6 +48,7 @@ import type {
   SessionKind,
   StreamSnapshot,
 } from './protocol'
+import { removeReasoningContent } from '@/utils/reasoning'
 
 const MAX_HUNKS = 6
 const MAX_HUNK_CHARS = 4000
@@ -81,7 +82,7 @@ function coworkTurnsOf(id: string) {
 
 function threadMessageText(m: ThreadMessage): string {
   return (m.content ?? [])
-    .map((c) => c.text?.value ?? '')
+    .map((c) => removeReasoningContent(c.text?.value ?? ''))
     .filter(Boolean)
     .join('\n')
 }

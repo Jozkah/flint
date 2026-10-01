@@ -9,6 +9,7 @@ import { respond } from '../ui/respond'
 import { usePhonePermissions } from '../ui/hooks'
 import { DEFAULT_NOTIFY, roomAct } from '../state/controls'
 import { ACCESS_MODES, COWORK_MODES } from './labels'
+import { copyToClipboard } from '@/lib/clipboard'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
@@ -168,7 +169,7 @@ function RoomNewSheet({ props }: { props: Props }) {
 
 function copyId(props: Props) {
   const id = str(props.id); if (!id) return
-  void navigator.clipboard?.writeText(id).then(() => toast('ID copied'), () => toast('Copy failed'))
+  void copyToClipboard(id).then((ok) => toast(ok ? 'ID copied' : 'Copy failed'))
 }
 function ThreadMenu({ props }: { props: Props }) {
   const id = str(props.id)
@@ -192,7 +193,7 @@ const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   msgmenu: () => <><Title>Message actions</Title><DesktopOnly title="Additional message actions" sub="Copy is available directly on each assistant message. Edit/regenerate/branch/delete are not exposed remotely." /></>,
   coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,
   chatfilter: () => <><Title>Show</Title><Opt title="All" selected onClick={closeSheet} /><DesktopOnly title="Active filter" /></>,
-  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing an existing session workspace requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void navigator.clipboard?.writeText(str(props.folder)!).then(() => toast('Path copied'), () => toast('Copy failed'))} />}</>,
+  workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing an existing session workspace requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void copyToClipboard(str(props.folder)!).then((ok) => toast(ok ? 'Path copied' : 'Copy failed'))} />}</>,
   temp: () => <><Title>Temporary chat</Title><DesktopOnly title="Temporary chat" sub="Temporary history is not exposed by the current remote protocol." /></>,
   profile: () => <><Title>Work profile</Title><DesktopOnly title="Work profile" sub="Persisted Cowork profiles are selected on the computer." /></>,
   worktree: ({ props }) => <><Title>Session worktree</Title><Kv k="Branch" v={str(props.branch) ?? 'Working copy'} /><Kv k="Path" v={str(props.path) ?? '—'} /><DesktopOnly title="Apply / merge changes" sub="Applying changes to the attached folder requires desktop confirmation." /></>,

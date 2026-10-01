@@ -41,7 +41,7 @@ import {
   recordHuggingFaceInstall,
 } from '@/lib/huggingfaceRegistry'
 import { cn } from '@/lib/utils'
-import { formatDuration, secondsRemaining } from '@/lib/downloadSpeed'
+import { formatEta, secondsRemaining } from '@/lib/downloadSpeed'
 import type { SpecDraftKind } from '@janhq/core'
 
 function draftKind(filename?: string): SpecDraftKind | undefined {
@@ -204,7 +204,7 @@ export function HuggingFaceDownloadAction({
                 {task.status === 'downloading' && task.bytesPerSecond
                   ? ` · ${formatModelBytes(task.bytesPerSecond)}/s${
                       secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) !== null
-                        ? ` · ${formatDuration(
+                        ? ` · ${formatEta(
                             secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) as number
                           )} left`
                         : ''
