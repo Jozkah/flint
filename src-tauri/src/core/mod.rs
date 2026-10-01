@@ -38,6 +38,7 @@ pub mod rooms;
 // built for mobile targets, and the CLI has no window to bridge to).
 #[cfg(all(not(feature = "cli"), not(any(target_os = "android", target_os = "ios"))))]
 pub mod remote;
+pub mod schedule;
 pub mod secret_values;
 pub mod server;
 // Desktop-only app setup (tray, theme, window wiring); pulls in Tauri GUI types
