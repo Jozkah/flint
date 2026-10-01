@@ -65,6 +65,25 @@ describe('message-branching', () => {
     expect((sib.metadata as Record<string, unknown>).activeChildId).toBeUndefined()
   })
 
+  it('makeSibling keeps the images of an edited message but not its reasoning', () => {
+    const u = msg('a', 'user', 'orig', { parentId: null })
+    u.content.push(
+      {
+        type: ContentType.Image,
+        image_url: { url: 'data:image/png;base64,AAAA', detail: 'auto' },
+      } as never,
+      { type: ContentType.Reasoning, text: { value: 'why', annotations: [] } } as never
+    )
+    const sib = makeSibling(u, { id: 'a2', createdAt: 5000, text: 'edited' })
+    expect(sib.content.map((c) => c.type)).toEqual([
+      ContentType.Text,
+      ContentType.Image,
+    ])
+    expect(sib.content[0].text?.value).toBe('edited')
+    // The source keeps its own content untouched.
+    expect(u.content).toHaveLength(3)
+  })
+
   it('newest sibling is active by default; activeChildId overrides', () => {
     // root user a -> assistant b1 (v1) and b2 (v2, newer)
     const a = msg('a', 'user', 'q', { parentId: null })

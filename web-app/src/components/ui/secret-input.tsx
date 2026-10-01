@@ -7,6 +7,7 @@ import {
   EyeOff,
 } from 'lucide-react'
 import { useState } from 'react'
+import { copyToClipboard } from '@/lib/clipboard'
 
 type SecretInputProps = Omit<
   React.ComponentProps<typeof Input>,
@@ -19,9 +20,9 @@ export function SecretInput({ className, value, ...props }: SecretInputProps) {
 
   const stringValue = typeof value === 'string' ? value : String(value ?? '')
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!stringValue) return
-    navigator.clipboard.writeText(stringValue)
+    if (!(await copyToClipboard(stringValue))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

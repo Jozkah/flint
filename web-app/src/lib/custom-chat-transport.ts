@@ -119,6 +119,7 @@ import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
+import { transcodeWebpImages } from '@/lib/imageTranscode'
 import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
@@ -2110,10 +2111,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // screenshot tool) would arrive as its full base64 and flood the context.
     // The image is swapped for a note and, for a model that can see, attached
     // again as an image. Remote providers have the room and are left alone.
+    // llama.cpp cannot decode WebP, so a WebP image goes to it as PNG.
     const attachmentsReady = LOCAL_ENGINE_PROVIDERS.has(providerId ?? '')
-      ? prepareToolResultImagesForModel(withInlineAttachments, {
-          supportsVision: modelSupportsVision,
-        })
+      ? await transcodeWebpImages(
+          prepareToolResultImagesForModel(withInlineAttachments, {
+            supportsVision: modelSupportsVision,
+          })
+        )
       : withInlineAttachments
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
