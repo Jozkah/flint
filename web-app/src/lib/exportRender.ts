@@ -53,13 +53,43 @@ export function renderHtmlPage(doc: ExportDoc, options: RenderOptions = {}): str
   return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title><style>${CSS}</style></head><body><div class="flint-export">${renderHtmlBody(doc, options)}</div></body></html>`
 }
 
+export type PdfStrategy = 'print' | 'html'
+
+/**
+ * How to produce a PDF here. Only the Windows webview (WebView2) is known to
+ * open a print dialog from a frame's `print()`; macOS and Linux webviews
+ * ignore it or print nothing, so they go straight to the HTML fallback.
+ */
+export function pdfStrategy(env: { platform: string; canPrint: boolean }): PdfStrategy {
+  return env.canPrint && /win/i.test(env.platform) && !/darwin/i.test(env.platform)
+    ? 'print'
+    : 'html'
+}
+
+/** The strategy for the running webview. */
+export function currentPdfStrategy(): PdfStrategy {
+  const nav = typeof navigator === 'undefined' ? undefined : navigator
+  return pdfStrategy({
+    platform: nav?.userAgent ?? '',
+    canPrint: typeof window !== 'undefined' && typeof window.print === 'function',
+  })
+}
+
+/** How long to wait for the webview to announce a print before calling it a no-op. */
+const PRINT_ANNOUNCE_MS = 1500
+
 /**
  * Open the system print dialog on a hidden frame holding the document. The
- * user prints it or picks "Save as PDF". Resolves once the dialog has been
- * handed over, not once something was saved: the app cannot see the outcome.
+ * user prints it or picks "Save as PDF". Resolves `'printed'` once the dialog
+ * has been handed over (not once something was saved: the app cannot see the
+ * outcome) and `'unavailable'` when `print()` threw or the webview never
+ * announced a print, so the caller can fall back to a file.
  */
-export function printDocument(doc: ExportDoc, options: RenderOptions = {}): Promise<void> {
-  return new Promise((resolve, reject) => {
+export function printDocument(
+  doc: ExportDoc,
+  options: RenderOptions = {}
+): Promise<'printed' | 'unavailable'> {
+  return new Promise((resolve) => {
     const frame = document.createElement('iframe')
     frame.setAttribute('aria-hidden', 'true')
     frame.tabIndex = -1
@@ -75,20 +105,32 @@ export function printDocument(doc: ExportDoc, options: RenderOptions = {}): Prom
       const win = frame.contentWindow
       if (!win) {
         cleanup()
-        reject(new Error('the print frame did not open'))
+        resolve('unavailable')
         return
       }
+      let announced = false
+      win.addEventListener('beforeprint', () => {
+        announced = true
+      })
       win.addEventListener('afterprint', cleanup)
       try {
         win.focus()
         win.print()
-        resolve()
-      } catch (e) {
+      } catch {
         cleanup()
-        reject(e instanceof Error ? e : new Error(String(e)))
+        resolve('unavailable')
         return
       }
-      // Some webviews never fire `afterprint`; do not leak the frame.
+      // A webview that ignores print() says nothing; give it a moment, then
+      // treat the silence as a failure rather than report a dialog that never
+      // opened. Some webviews never fire `afterprint`; do not leak the frame.
+      window.setTimeout(() => {
+        if (announced) resolve('printed')
+        else {
+          cleanup()
+          resolve('unavailable')
+        }
+      }, PRINT_ANNOUNCE_MS)
       window.setTimeout(cleanup, 120_000)
     }
     frame.srcdoc = renderHtmlPage(doc, options)
@@ -145,7 +187,10 @@ export async function renderPng(
   if (scale === null) {
     return {
       ok: false,
-      message: `the conversation is too long for one image (${height}px, the limit is ${MAX_CANVAS_PX}px); export it as PDF or Markdown`,
+      // Not tiled: a webview canvas tops out near 16k px on a side, so
+      // stitching tiles could not make a taller PNG, only several files and
+      // a save dialog for each. Point at the formats that paginate instead.
+      message: `the conversation is too tall for one image (about ${Math.ceil(height / 1000)}k px, the limit is ${MAX_CANVAS_PX / 1000}k); export it as PDF or Markdown, or export a single message`,
     }
   }
   const inner = xhtml

@@ -2633,11 +2633,12 @@ export function ThreadConversation({
   // What acts on the conversation, plus whatever the surrounding layout adds.
   // The model sits under the composer (on a phone, on the conversation's own
   // header row).
-  const buildExportDoc = () =>
+  const buildExportDoc = ({ allVersions }: { allVersions: boolean }) =>
     docFromThread(
       thread ?? { id: threadId },
       useMessages.getState().getMessages(threadId),
-      new Date()
+      new Date(),
+      { allVersions }
     )
   const controlsWith = (extra: ReactNode) => (
     <>
@@ -2663,7 +2664,7 @@ export function ThreadConversation({
                 <PanelRight className="size-4" />
                 <span>{t('context:details')}</span>
               </DropdownMenuItem>
-              <ExportSubmenu build={buildExportDoc} />
+              <ExportSubmenu build={buildExportDoc} versions />
               {extra && (
                 <DropdownMenuItem
                   onSelect={() => useSplitConversation.getState().addPane()}
@@ -2689,7 +2690,7 @@ export function ThreadConversation({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <ExportItems build={buildExportDoc} />
+              <ExportItems build={buildExportDoc} versions />
             </DropdownMenuContent>
           </DropdownMenu>
         )}

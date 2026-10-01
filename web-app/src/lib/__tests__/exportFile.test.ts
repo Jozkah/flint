@@ -7,9 +7,11 @@ const renderPng = vi.fn()
 vi.mock('@/lib/exportRender', () => ({
   printDocument: (...a: unknown[]) => printDocument(...a),
   renderPng: (...a: unknown[]) => renderPng(...a),
+  renderHtmlPage: () => '<html>page</html>',
+  currentPdfStrategy: () => 'print',
 }))
 
-import { exportDocument, redactDoc } from '../exportFile'
+import { exportDocument, redactDoc, sizeProblem, MAX_EXPORT_BYTES } from '../exportFile'
 import type { ExportDoc } from '../exportMarkdown'
 
 const doc: ExportDoc = {
@@ -77,9 +79,9 @@ describe('exportDocument', () => {
   })
 
   it('opens the print dialog for PDF and has no path to report', async () => {
-    printDocument.mockResolvedValue(undefined)
+    printDocument.mockResolvedValue('printed')
     const out = await exportDocument(doc, 'pdf')
-    expect(out).toMatchObject({ ok: true, path: null })
+    expect(out).toMatchObject({ ok: true, path: null, kind: 'print' })
     expect(invoke).not.toHaveBeenCalled()
     expect(printDocument.mock.calls[0][0].messages[0].text).not.toContain('SECRET')
   })
@@ -92,6 +94,50 @@ describe('exportDocument', () => {
       { view: 'verbose' }
     )
     expect(invoke.mock.calls[0][1].text).toContain('BODY')
+  })
+})
+
+describe('PDF fallback', () => {
+  it('saves a print-ready html file when the webview cannot print', async () => {
+    printDocument.mockResolvedValue('unavailable')
+    invoke.mockResolvedValue({ path: 'C:\out\Notes.html', redactions: 0 })
+    const out = await exportDocument(doc, 'pdf')
+    expect(out).toMatchObject({ ok: true, kind: 'html', path: 'C:\out\Notes.html' })
+    expect(invoke.mock.calls[0][1]).toMatchObject({
+      ext: 'html',
+      suggestedName: 'Notes- a-b.html',
+      text: '<html>page</html>',
+    })
+  })
+
+  it('skips printing entirely when the strategy is html', async () => {
+    invoke.mockResolvedValue({ path: 'x.html', redactions: 0 })
+    const out = await exportDocument(doc, 'pdf', { pdf: 'html' })
+    expect(printDocument).not.toHaveBeenCalled()
+    expect(out).toMatchObject({ ok: true, kind: 'html' })
+  })
+
+  it('is cancelled, not saved, when the fallback dialog is dismissed', async () => {
+    printDocument.mockResolvedValue('unavailable')
+    invoke.mockResolvedValue(null)
+    expect(await exportDocument(doc, 'pdf')).toEqual({ ok: false, cancelled: true })
+  })
+})
+
+describe('size cap', () => {
+  it('names the limit and what to do', () => {
+    expect(sizeProblem(MAX_EXPORT_BYTES)).toBeNull()
+    expect(sizeProblem(MAX_EXPORT_BYTES + 1)).toMatch(/50 MB.*single message/)
+  })
+
+  it('refuses a huge export before calling the backend', async () => {
+    const big: ExportDoc = {
+      ...doc,
+      messages: [{ role: 'assistant', text: 'x'.repeat(MAX_EXPORT_BYTES + 10) }],
+    }
+    const out = await exportDocument(big, 'markdown')
+    expect(out).toMatchObject({ ok: false, cancelled: false })
+    expect(invoke).not.toHaveBeenCalled()
   })
 })
 

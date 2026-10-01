@@ -7,8 +7,10 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: (...a: unknown[]) => invoke(...
 const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 vi.mock('sonner', () => ({ toast }))
 vi.mock('@/lib/exportRender', () => ({
-  printDocument: vi.fn().mockResolvedValue(undefined),
+  printDocument: vi.fn().mockResolvedValue('printed'),
   renderPng: vi.fn(),
+  renderHtmlPage: () => '<html></html>',
+  currentPdfStrategy: () => 'print',
 }))
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
@@ -31,11 +33,11 @@ const doc: ExportDoc = {
   messages: [{ role: 'user', text: 'hi' }],
 }
 
-const renderMenu = (build = () => doc) =>
+const renderMenu = (build: (o: { allVersions: boolean }) => ExportDoc = () => doc, versions = false) =>
   render(
     <DropdownMenu open>
       <DropdownMenuContent>
-        <ExportItems build={build} />
+        <ExportItems build={build} versions={versions} />
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -52,6 +54,21 @@ describe('ExportItems', () => {
     for (const id of ['markdown', 'markdown-full', 'obsidian', 'pdf', 'image']) {
       expect(screen.getByTestId(`export-${id}`)).toBeTruthy()
     }
+  })
+
+  it('offers the all-versions entries only where asked for', () => {
+    renderMenu()
+    expect(screen.queryByTestId('export-markdown-versions')).toBeNull()
+  })
+
+  it('passes allVersions to the builder', async () => {
+    invoke.mockResolvedValue(null)
+    const build = vi.fn((_o: { allVersions: boolean }) => doc)
+    renderMenu(build, true)
+    await userEvent.click(screen.getByTestId('export-markdown-versions'))
+    await vi.waitFor(() =>
+      expect(build).toHaveBeenCalledWith({ allVersions: true })
+    )
   })
 
   it('saves Markdown through export_save_file and confirms with the path', async () => {

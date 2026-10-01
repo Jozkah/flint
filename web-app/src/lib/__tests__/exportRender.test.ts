@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { imageScale, MAX_CANVAS_PX, renderHtmlBody, renderHtmlPage } from '../exportRender'
+import { imageScale, MAX_CANVAS_PX, pdfStrategy, renderHtmlBody, renderHtmlPage } from '../exportRender'
 import type { ExportDoc } from '../exportMarkdown'
 
 const doc: ExportDoc = {
@@ -33,5 +33,18 @@ describe('imageScale', () => {
     expect(imageScale(MAX_CANVAS_PX / 2 + 1)).toBe(1)
     expect(imageScale(MAX_CANVAS_PX)).toBe(1)
     expect(imageScale(MAX_CANVAS_PX + 1)).toBeNull()
+  })
+})
+
+describe('pdfStrategy', () => {
+  const win = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) WebView2'
+  it('prints on Windows when print exists', () => {
+    expect(pdfStrategy({ platform: win, canPrint: true })).toBe('print')
+  })
+  it('falls back to html on macOS, Linux, or without print()', () => {
+    expect(pdfStrategy({ platform: 'Mozilla/5.0 (Macintosh; Intel Mac OS X) AppleWebKit', canPrint: true })).toBe('html')
+    expect(pdfStrategy({ platform: 'Mozilla/5.0 (X11; Linux x86_64)', canPrint: true })).toBe('html')
+    expect(pdfStrategy({ platform: win, canPrint: false })).toBe('html')
+    expect(pdfStrategy({ platform: '', canPrint: true })).toBe('html')
   })
 })

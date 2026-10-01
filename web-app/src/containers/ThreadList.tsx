@@ -390,12 +390,13 @@ const ThreadItem = memo(
               <span>{t('chat:fork.chat')}</span>
             </DropdownMenuItem>
             <ExportSubmenu
-              build={async () => {
+              versions
+              build={async ({ allVersions }) => {
                 let stored = useMessages.getState().getMessages(thread.id)
                 if (stored.length === 0) {
                   stored = await serviceHub.messages().fetchMessages(thread.id)
                 }
-                return docFromThread(thread, stored, new Date())
+                return docFromThread(thread, stored, new Date(), { allVersions })
               }}
             />
             <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
