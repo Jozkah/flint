@@ -10,6 +10,8 @@ const touch = { touches: [{ clientX: 120, clientY: 300 }], changedTouches: [{ cl
 const items = [
   { key: 'thread:t1', kind: 'thread', title: 'Old chat', archivedAt: Date.now() - 3600_000, sizeBytes: 2048 },
   { key: 'room:r1', kind: 'room', title: 'Big room', archivedAt: Date.now() - 7200_000, sizeBytes: 10 },
+  { key: 'studio:images-1-j', kind: 'studio', title: 'Cat picture', archivedAt: Date.now() - 9500_000, sizeBytes: 1 },
+  { key: 'assistant:a1', kind: 'assistant', title: 'Helper', archivedAt: Date.now() - 9600_000, sizeBytes: 1 },
   { key: 'cowork:c1', kind: 'cowork', title: 'Work session', archivedAt: Date.now() - 9000_000, sizeBytes: 99 },
 ]
 
@@ -37,6 +39,16 @@ describe('phone Archive', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Rooms' }))
     expect(screen.queryByText('Old chat')).not.toBeInTheDocument()
     expect(screen.getByText('Big room')).toBeInTheDocument()
+  })
+
+  it('filters Studio results and assistants', async () => {
+    render(<Shell />)
+    await screen.findByText('Old chat', {}, T)
+    fireEvent.click(screen.getByRole('button', { name: 'Studio' }))
+    expect(screen.getByText('Cat picture')).toBeInTheDocument()
+    expect(screen.queryByText('Helper')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Assistants' }))
+    expect(screen.getByText('Helper')).toBeInTheDocument()
   })
 
   it('says items stay when retention is off', async () => {

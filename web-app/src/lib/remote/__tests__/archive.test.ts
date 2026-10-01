@@ -35,6 +35,10 @@ describe('archive handlers', () => {
   it('restores and purges by key', async () => {
     expect(await call('archive.restore', { key: 'room:r1' })).toEqual({ result: { ok: true } })
     expect(a.restore).toHaveBeenCalledWith('room', 'r1')
+    await call('archive.restore', { key: 'studio:images-1-job-00' })
+    expect(a.restore).toHaveBeenLastCalledWith('studio', 'images-1-job-00')
+    await call('archive.purge', { key: 'assistant:abc' })
+    expect(a.purge).toHaveBeenLastCalledWith('assistant', 'abc')
     expect(await call('archive.purge', { key: 'cowork:c-2' })).toEqual({ result: { ok: true } })
     expect(a.purge).toHaveBeenCalledWith('cowork', 'c-2')
   })

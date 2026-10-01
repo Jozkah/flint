@@ -55,6 +55,8 @@ describe('ArchivePanel', () => {
     h.items = [
       item({}),
       item({ archiveId: 'r1', kind: 'room', id: 'r1', title: 'A room' }),
+      item({ archiveId: 'as1', kind: 'assistant', id: 'as1', title: 'An assistant' }),
+      item({ archiveId: 'images-s1', kind: 'studio', id: 's1', title: 'A cat picture' }),
     ]
     h.list.mockImplementation(async () => h.items)
     h.purge.mockResolvedValue(undefined)
@@ -75,6 +77,17 @@ describe('ArchivePanel', () => {
     fireEvent.click(screen.getAllByText('archive:kind.room')[0])
     expect(screen.queryByText('A thread')).toBeNull()
     expect(screen.getByText('A room')).toBeTruthy()
+  })
+
+  it('filters the assistant and Studio kinds, each with its own label', async () => {
+    render(<ArchivePanel />)
+    await screen.findByText('A thread')
+    fireEvent.click(screen.getAllByText('archive:kind.assistant')[0])
+    expect(screen.getByText('An assistant')).toBeTruthy()
+    expect(screen.queryByText('A cat picture')).toBeNull()
+    fireEvent.click(screen.getAllByText('archive:kind.studio')[0])
+    expect(screen.getByText('A cat picture')).toBeTruthy()
+    expect(screen.queryByText('An assistant')).toBeNull()
   })
 
   it('restores an item from its context menu', async () => {

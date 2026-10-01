@@ -690,7 +690,7 @@ export type VoiceStatusResult = { ready: boolean }
 /** `audio` is base64 16 kHz mono 16-bit WAV. */
 export type VoiceTranscribeParams = { audio: string; language?: string }
 
-export type ArchiveKindWire = 'thread' | 'room' | 'cowork' | 'project'
+export type ArchiveKindWire = 'thread' | 'room' | 'cowork' | 'project' | 'assistant' | 'studio'
 
 export type ArchiveItemWire = {
   /** `<kind>:<name in the archive>`; what restore and purge take back. */

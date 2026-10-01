@@ -32,7 +32,14 @@ import { errorText } from '@/lib/errorText'
 
 type Filter = 'all' | ArchiveKind
 
-const KINDS: ArchiveKind[] = ['thread', 'room', 'cowork', 'project']
+const KINDS: ArchiveKind[] = [
+  'thread',
+  'room',
+  'cowork',
+  'project',
+  'assistant',
+  'studio',
+]
 
 type Confirm = { type: 'one'; item: ArchivedItem } | { type: 'all' } | null
 

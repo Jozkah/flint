@@ -24,7 +24,7 @@ export type ArchiveMethods =
   | 'archive.purge'
   | 'archive.empty'
 
-const KINDS: readonly string[] = ['thread', 'room', 'cowork', 'project']
+const KINDS: readonly string[] = ['thread', 'room', 'cowork', 'project', 'assistant', 'studio']
 
 const rec = (v: unknown): Record<string, unknown> =>
   typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}

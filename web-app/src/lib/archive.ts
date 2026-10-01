@@ -5,7 +5,13 @@ import { invoke } from '@tauri-apps/api/core'
  * Thin wrappers over the Rust commands, plus the one cached flag the delete
  * paths need.
  */
-export type ArchiveKind = 'thread' | 'room' | 'cowork' | 'project'
+export type ArchiveKind =
+  | 'thread'
+  | 'room'
+  | 'cowork'
+  | 'project'
+  | 'assistant'
+  | 'studio'
 
 export type ArchivedItem = {
   archiveId: string

@@ -17,6 +17,8 @@ const FILTERS = [
   { id: 'room', label: 'Rooms' },
   { id: 'cowork', label: 'Cowork' },
   { id: 'project', label: 'Projects' },
+  { id: 'assistant', label: 'Assistants' },
+  { id: 'studio', label: 'Studio' },
 ] as const
 
 const LONG_PRESS_MS = 550
