@@ -38,6 +38,16 @@ macro_rules! invoke_commands_with_extras {
         tauri::generate_handler![
         // FS commands - Deperecate soon
         core::model_scan::scan_local_models,
+        core::diffusion::commands::diffusion_status,
+        core::diffusion::commands::diffusion_install_engine,
+        core::diffusion::commands::diffusion_download_model,
+        core::diffusion::commands::diffusion_load,
+        core::diffusion::commands::diffusion_unload,
+        core::diffusion::commands::diffusion_generate_image,
+        core::diffusion::commands::diffusion_generate_video,
+        core::diffusion::commands::diffusion_cancel,
+        core::diffusion::commands::diffusion_gallery,
+        core::diffusion::commands::diffusion_delete,
         core::filesystem::commands::join_path,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,
@@ -659,6 +669,7 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
+            core::diffusion::register(app.handle());
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(

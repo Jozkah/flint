@@ -7,6 +7,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { getProviderTitle } from '@/lib/utils'
 import { PickerDropdown, type PickerGroup } from './PickerDropdown'
 import { ModelAvatar } from '@/containers/ModelAvatar'
+import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 
 type ProviderLike = Pick<ModelProvider, 'provider' | 'models'> &
   Partial<Pick<ModelProvider, 'api_key' | 'api_key_fallbacks'>>
@@ -70,7 +71,7 @@ export function RoomModelSelect({
     .filter((p) => p.active && offersModels(p))
     .map((p) => ({
       provider: p,
-      models: p.models.filter((m) => !m.embedding),
+      models: p.models.filter((m) => !m.embedding && m.id !== VOICE_MODEL_ID),
     }))
     .filter((g) => g.models.length > 0)
 

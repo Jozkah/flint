@@ -51,7 +51,7 @@ export function secondsRemaining(
 }
 
 /** `45 s`, `12 min`, `1 h 20 min`: coarse, because the estimate is. */
-export function formatDuration(seconds: number): string {
+export function formatEta(seconds: number): string {
   if (seconds < 60) return `${Math.max(1, Math.round(seconds))} s`
   const minutes = Math.round(seconds / 60)
   if (minutes < 60) return `${minutes} min`

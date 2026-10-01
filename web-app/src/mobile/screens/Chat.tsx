@@ -11,6 +11,7 @@ import { useRpc } from '../state/rpc'
 import { useSessions } from '../state/sessions'
 import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
+import { copyToClipboard } from '@/lib/clipboard'
 
 const PAGE = 100
 
@@ -131,9 +132,8 @@ export default function Chat({ id }: { id: string }) {
                     className="ib"
                     aria-label="Copy"
                     onClick={() =>
-                      void navigator.clipboard?.writeText(m.text).then(
-                        () => toast('Copied'),
-                        () => toast('Copy failed')
+                      void copyToClipboard(m.text).then((ok) =>
+                        toast(ok ? 'Copied' : 'Copy failed')
                       )
                     }
                   >

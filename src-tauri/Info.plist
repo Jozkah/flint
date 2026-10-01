@@ -4,6 +4,9 @@
 <dict>
   <key>CFBundleIdentifier</key>
   <string>jan.ai.app</string>
+  <!-- Shown by macOS when voice input first asks to use the microphone. -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Flint uses the microphone only while you dictate a message, and turns your speech into text on this computer.</string>
   <key>CFBundleURLTypes</key>
   <array>
     <dict>

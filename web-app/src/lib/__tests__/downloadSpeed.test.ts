@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatDuration,
+  formatEta,
   secondsRemaining,
   startSpeedSample,
   updateSpeedSample,
@@ -46,12 +46,12 @@ describe('secondsRemaining', () => {
   })
 })
 
-describe('formatDuration', () => {
+describe('formatEta', () => {
   it('is coarse', () => {
-    expect(formatDuration(0)).toBe('1 s')
-    expect(formatDuration(45)).toBe('45 s')
-    expect(formatDuration(600)).toBe('10 min')
-    expect(formatDuration(3600)).toBe('1 h')
-    expect(formatDuration(4800)).toBe('1 h 20 min')
+    expect(formatEta(0)).toBe('1 s')
+    expect(formatEta(45)).toBe('45 s')
+    expect(formatEta(600)).toBe('10 min')
+    expect(formatEta(3600)).toBe('1 h')
+    expect(formatEta(4800)).toBe('1 h 20 min')
   })
 })

@@ -1871,6 +1871,86 @@ async fn proxy_request(
                 }
             }
         }
+        (hyper::Method::POST, "/images/generations") => {
+            let body_bytes = match body.collect().await {
+                Ok(c) => c.to_bytes(),
+                Err(_) => Bytes::new(),
+            };
+            let (status, payload) = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                Ok(json) => match super::images_route::generate(&json).await {
+                    Ok(done) => (StatusCode::OK, done),
+                    Err(e) => (
+                        StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        e.body(),
+                    ),
+                },
+                Err(_) => (
+                    StatusCode::BAD_REQUEST,
+                    super::images_route::ApiError {
+                        status: 400,
+                        message: "The request body must be JSON.".into(),
+                        param: Some("body"),
+                        code: "invalid_request",
+                    }
+                    .body(),
+                ),
+            };
+            let mut builder = Response::builder()
+                .status(status)
+                .header(hyper::header::CONTENT_TYPE, "application/json");
+            builder = add_cors_headers_with_host_and_origin(
+                builder,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(builder.body(full(payload.to_string())).unwrap());
+        }
+
+        (hyper::Method::POST, "/videos") => {
+            let body_bytes = match body.collect().await {
+                Ok(c) => c.to_bytes(),
+                Err(_) => Bytes::new(),
+            };
+            let outcome = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                Ok(json) => super::images_route::create_video(&json).await,
+                Err(_) => Err(super::images_route::ApiError {
+                    status: 400,
+                    message: "The request body must be JSON.".into(),
+                    param: Some("body"),
+                    code: "invalid_request",
+                }),
+            };
+            return Ok(json_response(outcome, &host_header, &origin_header, &config));
+        }
+
+        (hyper::Method::GET, video_path) if video_path.starts_with("/videos/") => {
+            let rest = &video_path["/videos/".len()..];
+            if let Some(id) = rest.strip_suffix("/content") {
+                return Ok(match super::images_route::video_content(id).await {
+                    Ok(bytes) => {
+                        let mut builder = Response::builder()
+                            .status(StatusCode::OK)
+                            .header(hyper::header::CONTENT_TYPE, "video/webm");
+                        builder = add_cors_headers_with_host_and_origin(
+                            builder,
+                            &host_header,
+                            &origin_header,
+                            &config.trusted_hosts,
+                        );
+                        builder.body(full(bytes)).unwrap()
+                    }
+                    Err(e) => json_response(Err(e), &host_header, &origin_header, &config),
+                });
+            }
+            return Ok(json_response(
+                super::images_route::get_video(rest),
+                &host_header,
+                &origin_header,
+                &config,
+            ));
+        }
+
         (hyper::Method::GET, "/models") => {
             log::debug!("Handling GET /v1/models request");
 
@@ -2521,6 +2601,33 @@ fn map_bind_error(
         .into();
     }
     Box::new(err)
+}
+
+/// A JSON response for the image and video routes: the body on success, an
+/// OpenAI-shaped error with its own status otherwise.
+fn json_response(
+    outcome: Result<serde_json::Value, super::images_route::ApiError>,
+    host_header: &str,
+    origin_header: &str,
+    config: &ProxyConfig,
+) -> Response<ResBody> {
+    let (status, payload) = match outcome {
+        Ok(body) => (StatusCode::OK, body),
+        Err(e) => (
+            StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            e.body(),
+        ),
+    };
+    let mut builder = Response::builder()
+        .status(status)
+        .header(hyper::header::CONTENT_TYPE, "application/json");
+    builder = add_cors_headers_with_host_and_origin(
+        builder,
+        host_header,
+        origin_header,
+        &config.trusted_hosts,
+    );
+    builder.body(full(payload.to_string())).unwrap()
 }
 
 pub(crate) fn add_cors_headers_with_host_and_origin(
