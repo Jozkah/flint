@@ -15,16 +15,26 @@ export const JAN_V2_VL_MODEL_HF_REPO = 'janhq/Jan-v2-VL-high-gguf'
 export const JAN_V2_VL_QUANTIZATIONS = ['q4_k_m', 'q4_k_s', 'q4_0', 'q3_k_m']
 
 /**
+ * The first model of a provider is the default for a new chat, so it is the
+ * balanced one (speed, price and intelligence), then the rest from newest. Each provider's own docs are the source
+ * of truth; a provider with a live `/models` endpoint can still refresh the
+ * list from the Providers settings.
+ */
+const ANTHROPIC_MODELS = ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-4-5', 'claude-opus-4-8', 'claude-sonnet-4-6']
+const OPENAI_MODELS = ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna', 'gpt-5', 'gpt-5-mini']
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash']
+
+/**
  * Provider model capabilities - copied from token.js package
  */
 export const providerModels = {
   openai: {
-    models: ['gpt-5', 'gpt-5-mini', 'gpt-4.5-preview', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
+    models: OPENAI_MODELS,
     supportsCompletion: true,
-    supportsStreaming: ['gpt-5', 'gpt-5-mini', 'gpt-4.5-preview', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
-    supportsJSON: ['gpt-5', 'gpt-5-mini', 'gpt-4.5-preview', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
-    supportsImages: ['gpt-5', 'gpt-5-mini', 'gpt-4.5-preview', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'],
-    supportsToolCalls: ['gpt-5', 'gpt-5-mini', 'gpt-4.5-preview', 'gpt-4.1', 'gpt-4o', 'gpt-4o-mini', 'o3-mini', 'gpt-4-turbo'],
+    supportsStreaming: OPENAI_MODELS,
+    supportsJSON: OPENAI_MODELS,
+    supportsImages: OPENAI_MODELS,
+    supportsToolCalls: OPENAI_MODELS,
     supportsN: true,
   },
   ai21: {
@@ -37,84 +47,84 @@ export const providerModels = {
     supportsN: true,
   },
   anthropic: {
-    models: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4', 'claude-opus-4', 'claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'],
+    models: ANTHROPIC_MODELS,
     supportsCompletion: true,
-    supportsStreaming: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4', 'claude-opus-4', 'claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'],
+    supportsStreaming: ANTHROPIC_MODELS,
     supportsJSON: [],
-    supportsImages: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4', 'claude-opus-4', 'claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'],
-    supportsToolCalls: ['claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-1', 'claude-sonnet-4', 'claude-opus-4', 'claude-3-7-sonnet-20250219', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'],
+    supportsImages: ANTHROPIC_MODELS,
+    supportsToolCalls: ANTHROPIC_MODELS,
     supportsN: true,
   },
   gemini: {
-    models: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
+    models: GEMINI_MODELS,
     supportsCompletion: true,
-    supportsStreaming: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
-    supportsJSON: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
-    supportsImages: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
-    supportsToolCalls: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
+    supportsStreaming: GEMINI_MODELS,
+    supportsJSON: GEMINI_MODELS,
+    supportsImages: GEMINI_MODELS,
+    supportsToolCalls: GEMINI_MODELS,
     supportsN: true,
   },
   cohere: {
-    models: ['command-a-03-2025', 'command-r-08-2024', 'command-r-plus-08-2024'],
+    models: ['command-a-plus-05-2026', 'command-a-03-2025', 'command-a-reasoning-08-2025', 'command-a-vision-07-2025', 'command-r7b-12-2024', 'command-r-08-2024', 'command-r-plus-08-2024'],
     supportsCompletion: true,
-    supportsStreaming: ['command-a-03-2025', 'command-r-08-2024', 'command-r-plus-08-2024'],
+    supportsStreaming: ['command-a-plus-05-2026', 'command-a-03-2025', 'command-a-reasoning-08-2025', 'command-a-vision-07-2025', 'command-r7b-12-2024', 'command-r-08-2024', 'command-r-plus-08-2024'],
     supportsJSON: [],
-    supportsImages: [],
-    supportsToolCalls: ['command-a-03-2025', 'command-r-08-2024', 'command-r-plus-08-2024'],
+    supportsImages: ['command-a-plus-05-2026', 'command-a-vision-07-2025'],
+    supportsToolCalls: ['command-a-plus-05-2026', 'command-a-03-2025', 'command-a-reasoning-08-2025', 'command-r7b-12-2024', 'command-r-08-2024', 'command-r-plus-08-2024'],
     supportsN: true,
   },
   bedrock: {
-    models: ['anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-haiku-20241022-v1:0', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'meta.llama3-70b-instruct-v1:0', 'meta.llama3-8b-instruct-v1:0', 'mistral.mistral-large-2402-v1:0', 'amazon.titan-text-express-v1'],
+    models: ['anthropic.claude-fable-5-1', 'anthropic.claude-opus-5-5', 'anthropic.claude-sonnet-5-5', 'anthropic.claude-haiku-4-5', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'meta.llama3-70b-instruct-v1:0', 'meta.llama3-8b-instruct-v1:0', 'mistral.mistral-large-2402-v1:0', 'amazon.titan-text-express-v1'],
     supportsCompletion: true,
-    supportsStreaming: ['anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-haiku-20241022-v1:0', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'meta.llama3-70b-instruct-v1:0', 'meta.llama3-8b-instruct-v1:0', 'mistral.mistral-large-2402-v1:0', 'amazon.titan-text-express-v1'],
+    supportsStreaming: ['anthropic.claude-fable-5-1', 'anthropic.claude-opus-5-5', 'anthropic.claude-sonnet-5-5', 'anthropic.claude-haiku-4-5', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'meta.llama3-70b-instruct-v1:0', 'meta.llama3-8b-instruct-v1:0', 'mistral.mistral-large-2402-v1:0', 'amazon.titan-text-express-v1'],
     supportsJSON: [],
-    supportsImages: ['anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-haiku-20241022-v1:0'],
-    supportsToolCalls: ['anthropic.claude-3-5-sonnet-20241022-v2:0', 'anthropic.claude-3-5-haiku-20241022-v1:0', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'mistral.mistral-large-2402-v1:0'],
+    supportsImages: ['anthropic.claude-fable-5-1', 'anthropic.claude-opus-5-5', 'anthropic.claude-sonnet-5-5', 'anthropic.claude-haiku-4-5'],
+    supportsToolCalls: ['anthropic.claude-fable-5-1', 'anthropic.claude-opus-5-5', 'anthropic.claude-sonnet-5-5', 'anthropic.claude-haiku-4-5', 'cohere.command-r-plus-v1:0', 'cohere.command-r-v1:0', 'mistral.mistral-large-2402-v1:0'],
     supportsN: true,
   },
   mistral: {
-    models: ['mistral-large-2411', 'magistral-medium-2509', 'magistral-small-2509', 'pixtral-large-2411', 'pixtral-12b-2409', 'codestral-2508', 'mistral-small-2506', 'mistral-nemo-2407', 'mistral-small-latest', 'mistral-medium-latest'],
+    models: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
     supportsCompletion: true,
-    supportsStreaming: ['mistral-large-2411', 'magistral-medium-2509', 'magistral-small-2509', 'pixtral-large-2411', 'pixtral-12b-2409', 'codestral-2508', 'mistral-small-2506', 'mistral-nemo-2407', 'mistral-small-latest', 'mistral-medium-latest'],
-    supportsJSON: ['mistral-large-2411', 'codestral-2508'],
-    supportsImages: ['magistral-medium-2509', 'magistral-small-2509', 'pixtral-large-2411', 'pixtral-12b-2409', 'mistral-small-2506', 'mistral-small-latest', 'mistral-medium-latest'],
-    supportsToolCalls: ['mistral-large-2411', 'mistral-small-2506', 'mistral-small-latest', 'mistral-medium-latest'],
+    supportsStreaming: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
+    supportsJSON: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'codestral-2508'],
+    supportsImages: ['mistral-medium-3-5-26-04', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'mistral-medium-latest', 'mistral-small-latest'],
+    supportsToolCalls: ['mistral-medium-3-5-26-04', 'mistral-small-4-0-26-03', 'mistral-large-3-25-12', 'ministral-3-14b-25-12', 'ministral-3-8b-25-12', 'ministral-3-3b-25-12', 'codestral-2508', 'mistral-medium-latest', 'mistral-small-latest'],
     supportsN: true,
   },
   groq: {
-    models: ['meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'qwen/qwen3-32b', 'openai/gpt-oss-120b', 'whisper-large-v3-turbo'],
+    models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'whisper-large-v3-turbo'],
     supportsCompletion: true,
-    supportsStreaming: ['meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905', 'qwen/qwen3-32b', 'openai/gpt-oss-120b'],
-    supportsJSON: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b'],
+    supportsStreaming: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'moonshotai/kimi-k2-instruct-0905'],
+    supportsJSON: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'],
     supportsImages: ['meta-llama/llama-4-maverick-17b-128e-instruct', 'meta-llama/llama-4-scout-17b-16e-instruct'],
     supportsToolCalls: [],
     supportsN: true,
   },
   xai: {
-    models: ['grok-4-1-fast-reasoning', 'grok-4-fast-reasoning', 'grok-3', 'grok-3-mini', 'grok-2-vision-1212', 'grok-imagine-image'],
+    models: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning', 'grok-imagine-image'],
     supportsCompletion: true,
-    supportsStreaming: ['grok-4-1-fast-reasoning', 'grok-4-fast-reasoning', 'grok-3', 'grok-3-mini', 'grok-2-vision-1212'],
-    supportsJSON: ['grok-4-1-fast-reasoning', 'grok-4-fast-reasoning', 'grok-3', 'grok-3-mini'],
-    supportsImages: ['grok-2-vision-1212'],
-    supportsToolCalls: ['grok-4-1-fast-reasoning', 'grok-4-fast-reasoning', 'grok-3', 'grok-3-mini'],
+    supportsStreaming: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'],
+    supportsJSON: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'],
+    supportsImages: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'],
+    supportsToolCalls: ['grok-4.7', 'grok-4.6', 'grok-4.5', 'grok-4.3', 'grok-4.20-0309-reasoning', 'grok-4.20-0309-non-reasoning'],
     supportsN: true,
   },
   perplexity: {
-    models: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
+    models: ['sonar', 'sonar-pro', 'sonar-reasoning-pro', 'sonar-deep-research'],
     supportsCompletion: true,
-    supportsStreaming: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
+    supportsStreaming: ['sonar', 'sonar-pro', 'sonar-reasoning-pro', 'sonar-deep-research'],
     supportsJSON: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
     supportsImages: [],
     supportsToolCalls: ['sonar', 'sonar-pro', 'sonar-reasoning-pro'],
     supportsN: true,
   },
   minimax: {
-    models: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    models: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
     supportsCompletion: true,
-    supportsStreaming: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    supportsStreaming: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
     supportsJSON: [],
     supportsImages: [],
-    supportsToolCalls: ['MiniMax-M2.7', 'MiniMax-M2.7-highspeed', 'MiniMax-M2.5', 'MiniMax-M2.5-highspeed'],
+    supportsToolCalls: ['MiniMax-M3', 'MiniMax-M2.7', 'MiniMax-M2.7-highspeed'],
     supportsN: true,
   },
   openrouter: {
@@ -127,7 +137,7 @@ export const providerModels = {
     supportsN: true,
   },
   nvidia: {
-    models: ['moonshotai/kimi-k2.5', 'minimaxai/minimax-m2.5', 'z-ai/glm5'],
+    models: ['deepseek/deepseek-v4.1-flash', 'google/gemma-4-31b-it', 'moonshotai/kimi-k2.5', 'minimaxai/minimax-m2.5', 'z-ai/glm5'],
     supportsCompletion: true,
     supportsStreaming: true,
     supportsJSON: true,
