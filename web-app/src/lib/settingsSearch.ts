@@ -132,6 +132,25 @@ export const SETTINGS_PAGES = [
     ],
   },
   {
+    id: 'schedules',
+    coverage: 'page-only',
+    coverageNote:
+      'The page lists the scheduled tasks the user created, which is runtime ' +
+      'state; there is no static setting to anchor. Reached by page title.',
+    route: route.settings.schedules,
+    titleKey: 'schedules:title',
+    group: 'core',
+    keywords: [
+      'scheduled tasks',
+      'cron',
+      'recurring',
+      'automation',
+      'timer',
+      'every day',
+      'run later',
+    ],
+  },
+  {
     id: 'permissions',
     route: route.settings.permissions,
     titleKey: 'permissions:settings.title',

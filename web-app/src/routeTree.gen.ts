@@ -26,6 +26,7 @@ import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcu
 import { Route as SettingsRemoteAccessRouteImport } from './routes/settings/remote-access'
 import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
+import { Route as SettingsSchedulesRouteImport } from './routes/settings/schedules'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
 import { Route as SettingsJevRouteImport } from './routes/settings/jev'
@@ -128,6 +129,11 @@ const SettingsPermissionsRoute = SettingsPermissionsRouteImport.update({
 const SettingsMemoryRoute = SettingsMemoryRouteImport.update({
   id: '/settings/memory',
   path: '/settings/memory',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsSchedulesRoute = SettingsSchedulesRouteImport.update({
+  id: '/settings/schedules',
+  path: '/settings/schedules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsMcpServersRoute = SettingsMcpServersRouteImport.update({
@@ -249,6 +255,7 @@ export interface FileRoutesByFullPath {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
@@ -286,6 +293,7 @@ export interface FileRoutesByTo {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
@@ -324,6 +332,7 @@ export interface FileRoutesById {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
@@ -363,6 +372,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/shortcuts'
@@ -400,6 +410,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/shortcuts'
@@ -437,6 +448,7 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
+    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
     | '/settings/shortcuts'
@@ -475,6 +487,7 @@ export interface RootRouteChildren {
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
+  SettingsSchedulesRoute: typeof SettingsSchedulesRoute
   SettingsPermissionsRoute: typeof SettingsPermissionsRoute
   SettingsRemoteAccessRoute: typeof SettingsRemoteAccessRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
@@ -605,6 +618,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/memory'
       fullPath: '/settings/memory'
       preLoaderRoute: typeof SettingsMemoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/schedules': {
+      id: '/settings/schedules'
+      path: '/settings/schedules'
+      fullPath: '/settings/schedules'
+      preLoaderRoute: typeof SettingsSchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/mcp-servers': {
@@ -763,6 +783,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,
+  SettingsSchedulesRoute: SettingsSchedulesRoute,
   SettingsPermissionsRoute: SettingsPermissionsRoute,
   SettingsRemoteAccessRoute: SettingsRemoteAccessRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
