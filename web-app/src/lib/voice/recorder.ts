@@ -49,18 +49,8 @@ export function recorderErrorFrom(error: unknown): RecorderError {
   )
 }
 
-const WORKLET_SOURCE = `
-class CaptureProcessor extends AudioWorkletProcessor {
-  process(inputs) {
-    const input = inputs[0]
-    if (input && input.length > 0 && input[0].length > 0) {
-      this.port.postMessage(input.map((channel) => channel.slice()))
-    }
-    return true
-  }
-}
-registerProcessor('flint-capture', CaptureProcessor)
-`
+/** Served from `public/`: a blob URL would be refused by the content security policy. */
+const WORKLET_URL = '/voice-capture-worklet.js'
 
 export function createBrowserRecorder(): Recorder {
   let stream: MediaStream | null = null
@@ -108,16 +98,17 @@ export function createBrowserRecorder(): Recorder {
         context = new AudioContext()
         const source = context.createMediaStreamSource(stream)
         const rate = context.sampleRate
+        let worklet: AudioWorkletNode | null = null
         if (context.audioWorklet) {
-          const url = URL.createObjectURL(
-            new Blob([WORKLET_SOURCE], { type: 'application/javascript' })
-          )
           try {
-            await context.audioWorklet.addModule(url)
-          } finally {
-            URL.revokeObjectURL(url)
+            await context.audioWorklet.addModule(WORKLET_URL)
+            worklet = new AudioWorkletNode(context, 'flint-capture')
+          } catch {
+            // No worklet in this web view: the script processor below does the job.
+            worklet = null
           }
-          const worklet = new AudioWorkletNode(context, 'flint-capture')
+        }
+        if (worklet) {
           worklet.port.onmessage = (event: MessageEvent<Float32Array[]>) =>
             report(onChunk, event.data, rate)
           source.connect(worklet)
