@@ -1,13 +1,14 @@
 // The right panel's newer tabs: "What Flint is using" for a chat, and the
 // Cowork Code and Preview tabs, read-only views of the desktop's panels.
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { CoworkFileResult } from '@/lib/remote/protocol'
 import { Empty, Kv, Pills } from '../ui/bits'
-import { compact } from '../ui/format'
+import { codeRefToken, compact } from '../ui/format'
 import { I, type IconId } from '../ui/icons'
 import { ContextCard } from '../ui/reply'
-import { act, app, closeAll, openSheet, toast, useApp } from '../state/app'
+import { act, app, client, closeAll, openSheet, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
+import { insertIntoComposer } from '../state/attachments'
 
 const SECTION_ICON: Record<string, IconId> = {
   model: 'cube',
@@ -155,6 +156,7 @@ const FILE_NOTE: Record<Exclude<CoworkFileResult['status'], 'ready'>, string> = 
 
 /** CoworkCodePanel, read-only: explorer, open-file tabs, the path toolbar,
  * the stale banner, change markers, and "Add to chat". */
+
 export function CodeTab({ id }: { id: string }) {
   const state = useApp((s) => s.code[id]) ?? { open: [], active: null }
   const changes = useRpc('cowork.changes', { id })
@@ -243,7 +245,7 @@ export function CodeTab({ id }: { id: string }) {
             </div>
           )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button type="button" className="btn sm" disabled={!range} onClick={() => { if (range) copy(`@${active}#${range}`, `Copied ${range} — paste it into the chat`); closeAll() }}>
+            <button type="button" className="btn sm" disabled={!range} onClick={() => { if (sel) { insertIntoComposer(`cowork:${id}`, codeRefToken(active, sel[0], sel[1])); toast(`Added ${range} to the message`) } closeAll() }} data-testid="code-add-to-chat">
               Add to chat{range ? ` (${range})` : ''}
             </button>
             <button type="button" className="btn sm" onClick={() => copy(active, 'Copied')}>Copy relative path</button>
@@ -257,16 +259,61 @@ export function CodeTab({ id }: { id: string }) {
 
 /** CoworkPreviewPanel: the toolbar and a framed, sandboxed preview of the
  * session's artifact; otherwise a notice. */
+/** The desktop's live app, through the server: a ticketed same-origin path,
+ * sandboxed without `allow-same-origin` (and by the server's CSP), so the
+ * page can never reach this app's storage or token. */
+export function LivePreview({ id, url }: { id: string; url: string }) {
+  const [src, setSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState<string | null>(null)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let on = true
+    setFailed(null)
+    client()
+      .rpc('preview.ticket', { id })
+      .then((r) => on && setSrc(r.path))
+      .catch((e: unknown) => on && setFailed(e instanceof Error ? e.message : 'Not available'))
+    return () => {
+      on = false
+    }
+  }, [id, nonce])
+  return (
+    <>
+      <div className="ptool">
+        <span className="mono muted" style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{url}</span>
+        <button type="button" className="ib" aria-label="Reload" onClick={() => setNonce((n) => n + 1)}><I n="rotate" size={14} /></button>
+      </div>
+      {failed ? (
+        <Empty icon={<I n="monitor" size={18} />}>{failed}. The live app runs on the computer; open it there.</Empty>
+      ) : src ? (
+        <div className="pframe">
+          <iframe key={`${src}-${nonce}`} title="Live preview" src={src} sandbox="allow-scripts allow-forms allow-popups" data-testid="live-frame" />
+        </div>
+      ) : (
+        <Empty>Loading…</Empty>
+      )}
+    </>
+  )
+}
+
 export function PreviewTab({ id }: { id: string }) {
   const [path, setPath] = useState<string | undefined>(undefined)
   const [nonce, setNonce] = useState(0)
+  const [mode, setMode] = useState<'live' | 'files'>('live')
   const { data, error, loading } = useRpc('cowork.preview', path ? { id, path } : { id })
   if (loading && !data) return <Empty>Loading…</Empty>
   if (error && !data) return <Empty>{error.message}</Empty>
+  if (data?.live && (mode === 'live' || !data.path)) {
+    return <>
+      {data.path && <Pills items={[{ id: 'live', label: 'Live app' }, { id: 'files', label: 'Files' }]} value={mode} onChange={setMode} />}
+      <LivePreview id={id} url={data.live.url} />
+    </>
+  }
   if (!data?.path) return <Empty icon={<I n="eye" size={18} />}>Nothing to preview yet. Pages, SVGs and documents the session makes show here.</Empty>
   const srcDoc = data.kind === 'html' || data.kind === 'svg' ? data.content : null
   return (
     <>
+      {data.live && <Pills items={[{ id: 'live', label: 'Live app' }, { id: 'files', label: 'Files' }]} value={mode} onChange={setMode} />}
       <div className="ptool">
         {data.artifacts.length > 1 ? (
           <select aria-label="Preview file" value={data.path} onChange={(e) => setPath(e.target.value)} style={{ flex: 1, minWidth: 0 }}>

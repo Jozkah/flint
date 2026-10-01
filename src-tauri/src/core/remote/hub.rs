@@ -19,6 +19,9 @@ use super::auth::{
     PollResult, RateLimiter,
 };
 use super::config::RemoteConfig;
+use super::preview::{PreviewTarget, TicketBook};
+use super::uploads::{Upload, UploadBook, UploadError, UploadInfo};
+use super::push::{self, Category, PushNotice, PushPrefs, Subscription, VapidKey};
 
 /// How long a phone's RPC waits for the desktop window to answer.
 pub const RPC_TIMEOUT: Duration = Duration::from_secs(30);
@@ -176,6 +179,16 @@ pub struct RemoteHub {
     fail_limiter: Mutex<RateLimiter>,
     pending: Mutex<HashMap<String, oneshot::Sender<RpcOutcome>>>,
     connected: Mutex<HashMap<String, usize>>,
+    /// Sockets whose page is showing, per device: those devices get no push.
+    visible: Mutex<HashMap<String, usize>>,
+    vapid: Mutex<Option<Arc<VapidKey>>>,
+    http: reqwest::Client,
+    /// For the live preview: loopback only, so never through a proxy.
+    local_http: reqwest::Client,
+    uploads: Mutex<UploadBook>,
+    upload_dir: Mutex<Option<PathBuf>>,
+    preview: Mutex<Option<PreviewTarget>>,
+    tickets: Mutex<TicketBook>,
     events: broadcast::Sender<OutboundEvent>,
     revoked: broadcast::Sender<String>,
     frontend: Arc<dyn Frontend>,
@@ -197,6 +210,18 @@ impl RemoteHub {
             fail_limiter: Mutex::new(RateLimiter::new(AUTH_FAIL_LIMIT, LIMIT_WINDOW)),
             pending: Mutex::new(HashMap::new()),
             connected: Mutex::new(HashMap::new()),
+            visible: Mutex::new(HashMap::new()),
+            vapid: Mutex::new(None),
+            http: reqwest::Client::new(),
+            local_http: reqwest::Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap_or_default(),
+            uploads: Mutex::new(UploadBook::default()),
+            upload_dir: Mutex::new(None),
+            preview: Mutex::new(None),
+            tickets: Mutex::new(TicketBook::default()),
             events: broadcast::channel(256).0,
             revoked: broadcast::channel(16).0,
             frontend,
@@ -256,6 +281,7 @@ impl RemoteHub {
         if let Some(d) = &removed {
             log::info!("remote: phone '{}' was unpaired", d.name);
             let _ = self.revoked.send(d.id.clone());
+            lock(&self.tickets).revoke_device(&d.id);
             self.frontend.devices_changed();
         }
         removed.is_some()
@@ -282,6 +308,25 @@ impl RemoteHub {
         }
         drop(c);
         self.frontend.devices_changed();
+    }
+
+    /// A socket's page became visible (`true`) or hidden.
+    pub fn socket_visible(&self, device_id: &str, visible: bool) {
+        let mut v = lock(&self.visible);
+        let n = v.entry(device_id.to_string()).or_default();
+        if visible {
+            *n += 1;
+        } else {
+            *n = n.saturating_sub(1);
+            if *n == 0 {
+                v.remove(device_id);
+            }
+        }
+    }
+
+    /// Whether some page of this device is open and showing.
+    pub fn is_visible(&self, device_id: &str) -> bool {
+        lock(&self.visible).get(device_id).copied().unwrap_or(0) > 0
     }
 
     pub fn connected_count(&self) -> usize {
@@ -446,6 +491,246 @@ impl RemoteHub {
 
     pub fn subscribe_events(&self) -> broadcast::Receiver<OutboundEvent> {
         self.events.subscribe()
+    }
+}
+
+/// A push to send: which device, where, and the plaintext payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PushTarget {
+    pub device_id: String,
+    pub subscription: Subscription,
+    pub payload: Value,
+    pub category: Category,
+}
+
+impl RemoteHub {
+    // -- uploads -------------------------------------------------------------
+
+    pub fn set_upload_dir(&self, dir: PathBuf) {
+        *lock(&self.upload_dir) = Some(dir);
+    }
+
+    pub fn upload_start(&self, device_id: &str, name: &str, size: u64, mime: &str) -> Result<Upload, UploadError> {
+        let root = lock(&self.upload_dir).clone().ok_or(UploadError::Io("uploads are not set up".into()))?;
+        let max = self.config().max_upload_mb;
+        lock(&self.uploads).start(&root, device_id, name, size, mime, max, Instant::now())
+    }
+
+    pub fn upload_check(&self, device_id: &str, id: &str, offset: u64, len: usize) -> Result<Upload, UploadError> {
+        lock(&self.uploads).check_chunk(device_id, id, offset, len)
+    }
+
+    pub fn upload_wrote(&self, id: &str, len: usize) -> u64 {
+        lock(&self.uploads).wrote(id, len, Instant::now())
+    }
+
+    pub fn upload_get(&self, device_id: &str, id: &str) -> Option<Upload> {
+        lock(&self.uploads).get(device_id, id).cloned()
+    }
+
+    pub fn upload_finish(&self, device_id: &str, id: &str, head: &[u8]) -> Result<UploadInfo, UploadError> {
+        lock(&self.uploads).finish(device_id, id, head)
+    }
+
+    pub fn upload_remove(&self, device_id: &str, id: &str) -> bool {
+        lock(&self.uploads).remove(device_id, id)
+    }
+
+    /// Finished uploads of a device, for the window to attach.
+    pub fn uploads_finished(&self, device_id: &str, ids: &[String]) -> Vec<Upload> {
+        lock(&self.uploads).finished(device_id, ids)
+    }
+
+    // -- preview -------------------------------------------------------------
+
+    /// The window's live preview for a session (`None` clears it).
+    pub fn set_preview(&self, target: Option<PreviewTarget>) {
+        *lock(&self.preview) = target;
+    }
+
+    pub fn preview(&self) -> Option<PreviewTarget> {
+        lock(&self.preview).clone()
+    }
+
+    /// A ticket for `device` to view `session_id`'s live preview, with the
+    /// path to load. `None` when that session has no live preview, or the
+    /// setting is off.
+    pub fn preview_ticket(&self, device_id: &str, session_id: &str) -> Option<(String, String)> {
+        if !self.config().allow_preview_proxy {
+            return None;
+        }
+        let target = self.preview().filter(|t| t.session_id == session_id)?;
+        let ticket = lock(&self.tickets).issue(device_id, session_id, Instant::now());
+        Some((ticket, target.start))
+    }
+
+    /// The origin a ticket may reach: its device still paired, its session's
+    /// preview still the registered one.
+    pub fn preview_origin_for(&self, ticket: &str) -> Option<String> {
+        if !self.config().allow_preview_proxy {
+            return None;
+        }
+        let (device, session) = lock(&self.tickets).check(ticket, Instant::now())?;
+        lock(&self.devices).get(&device)?;
+        self.preview()
+            .filter(|t| t.session_id == session)
+            .map(|t| t.origin)
+    }
+
+    /// The client for the live preview (loopback, no proxy, no redirects).
+    pub fn http(&self) -> &reqwest::Client {
+        &self.local_http
+    }
+
+    // -- push ----------------------------------------------------------------
+
+    pub fn set_vapid(&self, key: VapidKey) {
+        *lock(&self.vapid) = Some(Arc::new(key));
+    }
+
+    pub fn vapid_public_key(&self) -> Option<String> {
+        lock(&self.vapid).as_ref().map(|k| k.public_key_b64())
+    }
+
+    pub fn push_state(&self, device_id: &str) -> Option<push::DevicePush> {
+        lock(&self.devices).get(device_id).map(|d| d.push.clone())
+    }
+
+    pub fn set_subscription(&self, device_id: &str, sub: Option<Subscription>) -> bool {
+        lock(&self.devices).update_push(device_id, |p| p.subscription = sub)
+    }
+
+    pub fn set_push_prefs(&self, device_id: &str, prefs: PushPrefs) -> bool {
+        lock(&self.devices).update_push(device_id, |p| p.prefs = prefs)
+    }
+
+    /// Who gets `notice` now: subscribed devices whose switches allow it
+    /// and that have no page showing. `only` limits it to one device (tests
+    /// from Settings, which go through even while the page is open).
+    pub fn push_targets(&self, notice: &PushNotice, now_ms: u64, only: Option<&str>) -> Vec<PushTarget> {
+        let devices = lock(&self.devices);
+        devices
+            .list()
+            .iter()
+            .filter(|d| only.map_or(true, |o| o == d.id))
+            .filter_map(|d| {
+                let sub = d.push.subscription.clone()?;
+                if only.is_none() && self.is_visible(&d.id) {
+                    return None;
+                }
+                if !push::allowed(&d.push.prefs, notice.category, now_ms) {
+                    return None;
+                }
+                Some(PushTarget {
+                    device_id: d.id.clone(),
+                    subscription: sub,
+                    payload: push::payload(notice, &d.push.prefs),
+                    category: notice.category,
+                })
+            })
+            .collect()
+    }
+
+    /// Sends to each target; drops subscriptions the service says are gone.
+    pub async fn deliver(&self, targets: Vec<PushTarget>) -> Vec<(String, push::SendOutcome)> {
+        let Some(vapid) = lock(&self.vapid).clone() else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for t in targets {
+            let outcome = match push::build_request(&vapid, &t.subscription, &t.payload, t.category, now_ms()) {
+                Ok(req) => push::send(&self.http, req).await,
+                Err(e) => push::SendOutcome::Failed(e),
+            };
+            match &outcome {
+                push::SendOutcome::Gone => {
+                    log::info!("remote: push subscription for a phone expired; dropped");
+                    lock(&self.devices).update_push(&t.device_id, |p| {
+                        if p.subscription.as_ref() == Some(&t.subscription) {
+                            p.subscription = None;
+                        }
+                    });
+                }
+                push::SendOutcome::Failed(e) => log::warn!("remote: push failed: {e}"),
+                push::SendOutcome::Delivered => {}
+            }
+            out.push((t.device_id, outcome));
+        }
+        out
+    }
+
+    /// `push.*` RPCs, answered here rather than by the window. `None` for
+    /// other methods. `push.test` returns its targets for the caller to send.
+    pub fn push_rpc(&self, device: &Device, method: &str, params: &Value) -> Option<(RpcOutcome, Vec<PushTarget>)> {
+        let bad = |m: &str| Err(RpcError::new("bad_params", m));
+        let state = || self.push_state(&device.id).unwrap_or_default();
+        let r: RpcOutcome = match method {
+            "preview.ticket" => {
+                let session = params.get("id").and_then(Value::as_str).unwrap_or("");
+                match self.preview_ticket(&device.id, session) {
+                    Some((ticket, start)) => Ok(serde_json::json!({
+                        "path": format!("{}{}{ticket}{start}", super::server::API_PREFIX, super::preview::PREVIEW_PREFIX),
+                    })),
+                    None => Err(RpcError::new("not_found", "This session has no live preview on the computer")),
+                }
+            }
+            "push.vapidKey" => match self.vapid_public_key() {
+                Some(k) => Ok(serde_json::json!({ "key": k })),
+                None => Err(RpcError::new("unavailable", "Push is not set up on the computer")),
+            },
+            "push.subscribe" => {
+                match params.get("subscription").cloned().map(serde_json::from_value::<Subscription>) {
+                    Some(Ok(sub)) => match push::validate_subscription(&sub) {
+                        Ok(()) => {
+                            self.set_subscription(&device.id, Some(sub));
+                            if let Some(p) = params.get("prefs").cloned().and_then(|p| serde_json::from_value(p).ok()) {
+                                self.set_push_prefs(&device.id, p);
+                            }
+                            Ok(serde_json::json!({ "ok": true }))
+                        }
+                        Err(why) => bad(why),
+                    },
+                    _ => bad("subscription is required"),
+                }
+            }
+            "push.unsubscribe" => {
+                self.set_subscription(&device.id, None);
+                Ok(serde_json::json!({ "ok": true }))
+            }
+            "push.get" => {
+                let s = state();
+                Ok(serde_json::json!({
+                    "subscribed": s.subscription.is_some(),
+                    "available": self.vapid_public_key().is_some(),
+                    "prefs": s.prefs,
+                }))
+            }
+            "push.prefs" => match params.get("prefs").cloned().map(serde_json::from_value::<PushPrefs>) {
+                Some(Ok(p)) => {
+                    self.set_push_prefs(&device.id, p.clone());
+                    Ok(serde_json::json!({ "prefs": p }))
+                }
+                _ => bad("prefs are required"),
+            },
+            "push.test" => {
+                if state().subscription.is_none() {
+                    Err(RpcError::new("not_subscribed", "Turn on notifications on this phone first"))
+                } else {
+                    let notice = PushNotice {
+                        category: Category::Test,
+                        title: "Flint".into(),
+                        body: "Notifications from this computer work.".into(),
+                        url: "/m/".into(),
+                        tag: "flint-test".into(),
+                        request_id: None,
+                    };
+                    let t = self.push_targets(&notice, now_ms(), Some(&device.id));
+                    return Some((Ok(serde_json::json!({ "sent": t.len() })), t));
+                }
+            }
+            _ => return None,
+        };
+        Some((r, Vec::new()))
     }
 }
 

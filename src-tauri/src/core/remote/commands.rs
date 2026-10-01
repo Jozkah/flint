@@ -136,6 +136,11 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
         Arc::new(TauriFrontend(app.clone())),
         static_dir,
     ));
+    hub.set_upload_dir(get_jan_data_folder_path(app.clone()).join("uploads").join("remote"));
+    match super::push::VapidKey::load_or_create(&dir.join("vapid.json")) {
+        Ok(k) => hub.set_vapid(k),
+        Err(e) => log::warn!("remote: push notifications unavailable: {e}"),
+    }
     app.manage(RemoteState {
         hub,
         dir,
@@ -398,5 +403,83 @@ pub fn remote_rpc_respond(
 /// Pushes an event to connected phones; `topic` limits it to subscribers.
 #[tauri::command]
 pub fn remote_emit_event(state: State<'_, RemoteState>, event: Value, topic: Option<String>) {
+    // `push.notify` is for Web Push to phones that are not looking, not for
+    // sockets.
+    if event.get("type").and_then(Value::as_str) == Some("push.notify") {
+        let Ok(notice) = serde_json::from_value::<super::push::PushNotice>(event) else {
+            return;
+        };
+        let targets = state.hub.push_targets(&notice, super::auth::now_ms(), None);
+        if !targets.is_empty() {
+            let hub = state.hub.clone();
+            tauri::async_runtime::spawn(async move {
+                hub.deliver(targets).await;
+            });
+        }
+        return;
+    }
     state.hub.emit(OutboundEvent { topic, event });
+}
+
+/// A phone's finished upload, for the window to attach to a message.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedFile {
+    pub id: String,
+    pub name: String,
+    pub size: u64,
+    pub mime: String,
+    pub path: String,
+    /// Images, audio and video, as the composer passes media to a model.
+    pub data_url: Option<String>,
+}
+
+/// The finished uploads `ids` of `device_id` (only that device's).
+#[tauri::command]
+pub async fn remote_upload_take(
+    state: State<'_, RemoteState>,
+    device_id: String,
+    ids: Vec<String>,
+) -> Result<Vec<UploadedFile>, String> {
+    let ups = state.hub.uploads_finished(&device_id, &ids);
+    tauri::async_runtime::spawn_blocking(move || {
+        use base64::Engine;
+        ups.into_iter()
+            .map(|u| {
+                let mime = u.mime.clone().unwrap_or_default();
+                let media = ["image/", "audio/", "video/"].iter().any(|p| mime.starts_with(p));
+                let data_url = if media {
+                    std::fs::read(&u.path).ok().map(|b| {
+                        format!(
+                            "data:{mime};base64,{}",
+                            base64::engine::general_purpose::STANDARD.encode(b)
+                        )
+                    })
+                } else {
+                    None
+                };
+                UploadedFile {
+                    id: u.id,
+                    name: u.name,
+                    size: u.size,
+                    mime,
+                    path: u.path.to_string_lossy().into_owned(),
+                    data_url,
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// The desktop's live preview of a Cowork session (a local app URL), which
+/// paired phones may view through the server; `url: None` clears it.
+#[tauri::command]
+pub fn remote_set_preview(state: State<'_, RemoteState>, session_id: Option<String>, url: Option<String>) {
+    let target = match (session_id, url) {
+        (Some(s), Some(u)) => super::preview::PreviewTarget::new(&s, &u),
+        _ => None,
+    };
+    state.hub.set_preview(target);
 }

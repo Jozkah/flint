@@ -313,8 +313,10 @@ pub async fn delete_message<R: Runtime>(
         let lock = get_lock_for_thread(&thread_id).await;
         let _guard = lock.lock().await;
 
-        let mut messages = read_messages_from_file(&data_folder, &thread_id)?;
-        messages.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(message_id.as_str()));
+        // Out of the tree without cutting off what hangs below it (the TS
+        // `removeFromTree`): children move up to the deleted message's parent.
+        let messages = read_messages_from_file(&data_folder, &thread_id)?;
+        let messages = super::branching::remove_message(messages, &message_id);
 
         // Rewrite remaining messages
         let path = get_messages_path(&data_folder, &thread_id);

@@ -13,6 +13,7 @@ import { useRpc } from '../state/rpc'
 import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
 import { useEffect, useState } from 'react'
+import { contextPct } from '../ui/format'
 
 const STATUS: Record<SessionStatus, string> = {
   running: 'Running',
@@ -162,7 +163,7 @@ export default function Cowork({ id }: { id: string }) {
       <Composer
         placeholder="Ask me anything..."
         plus={{ for: 'cowork', id }}
-        ctx={{ pct: 0, for: 'cowork', id }}
+        ctx={{ pct: contextPct(detail.data?.context), for: 'cowork', id }}
         running={running}
         stopFor={{ kind: 'cowork', id }}
         allowWhileRunning

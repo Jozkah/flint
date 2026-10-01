@@ -1,4 +1,4 @@
-import type { MCPAuthStatus } from '@/services/mcp/types'
+import type { MCPAuthStatus, MCPServerStatus } from '@/services/mcp/types'
 import { needsAuthDetail } from '@/hooks/useMcpAuth'
 import { normalizeAppError } from '@/utils/appError'
 import { needsAuthorization, type McpTransport } from '@/lib/mcpServerProfile'
@@ -20,6 +20,8 @@ import { needsAuthorization, type McpTransport } from '@/lib/mcpServerProfile'
  * - `connected`           the backend lists it among connected servers
  * - `needs-authorization` it cannot connect until the user signs in
  * - `failed`              the last activation from this screen threw
+ * - `stopped`             enabled, not running, starts when needed (servers
+ *                         start on demand; reported by the backend)
  * - `not-connected`       enabled but not running, with no failure recorded
  *                         here (for example it stopped, or is still starting
  *                         after launch)
@@ -35,6 +37,7 @@ export type McpConnectionState =
   | 'connected'
   | 'needs-authorization'
   | 'failed'
+  | 'stopped'
   | 'not-connected'
 
 /** The one thing the user can do about a failure. */
@@ -65,6 +68,8 @@ export type McpConnectionInput = {
   enabled: boolean
   /** Whether `getConnectedServers` lists this name. */
   connected: boolean
+  /** The backend's on-demand lifecycle status, when known. */
+  lifecycle?: MCPServerStatus
   runtime?: McpServerRuntime
   authStatus?: MCPAuthStatus
   transport: McpTransport
@@ -124,6 +129,26 @@ export function deriveConnectionState(
       nextStep: 'authorize',
       switchOn: true,
     }
+  }
+  if (input.lifecycle?.state === 'starting') {
+    return { ...base, state: 'connecting', nextStep: null, switchOn: true }
+  }
+  if (input.lifecycle?.state === 'failed') {
+    const failure: McpActivationFailure = {
+      message: normalizeAppError(input.lifecycle.error),
+      needsAuth: false,
+      nextStep: stepForTransport(input.transport),
+    }
+    return {
+      ...base,
+      failure,
+      state: 'failed',
+      nextStep: failure.nextStep,
+      switchOn: true,
+    }
+  }
+  if (input.lifecycle?.state === 'stopped') {
+    return { ...base, state: 'stopped', nextStep: null, switchOn: true }
   }
   return {
     ...base,

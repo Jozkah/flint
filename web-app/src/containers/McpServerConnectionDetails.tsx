@@ -30,6 +30,7 @@ const TONE: Record<McpConnectionState, StatusTone> = {
   'needs-authorization': 'warning',
   failed: 'destructive',
   'not-connected': 'warning',
+  stopped: 'neutral',
 }
 
 function useStateLabel() {
@@ -50,6 +51,8 @@ function useStateLabel() {
         return t('mcp-servers:connection.state.failed')
       case 'not-connected':
         return t('mcp-servers:connection.state.notConnected')
+      case 'stopped':
+        return t('mcp-servers:connection.state.stopped')
     }
   }
 }

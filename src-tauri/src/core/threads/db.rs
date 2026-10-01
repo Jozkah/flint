@@ -339,10 +339,33 @@ pub async fn db_modify_message<R: Runtime>(
 /// Delete a message from database
 pub async fn db_delete_message<R: Runtime>(
     _app_handle: AppHandle<R>,
-    _thread_id: &str,
+    thread_id: &str,
     message_id: &str,
 ) -> Result<(), String> {
     let pool = get_pool().await?;
+
+    // Children move up to the deleted message's parent first (the pure
+    // `reparent_on_delete`, shared with the desktop store), then the row goes.
+    let rows = sqlx::query("SELECT data FROM messages WHERE thread_id = ?1 ORDER BY created_at ASC")
+        .bind(thread_id)
+        .fetch_all(&pool)
+        .await
+        .map_err(|e| format!("Failed to read messages: {}", e))?;
+    let messages: Vec<Value> = rows
+        .iter()
+        .filter_map(|row| serde_json::from_str(&row.get::<String, _>("data")).ok())
+        .collect();
+    for changed in super::branching::reparent_on_delete(&messages, message_id) {
+        if let Some(id) = changed.get("id").and_then(|v| v.as_str()) {
+            let data = serde_json::to_string(&changed).map_err(|e| e.to_string())?;
+            sqlx::query("UPDATE messages SET data = ?1 WHERE id = ?2")
+                .bind(&data)
+                .bind(id)
+                .execute(&pool)
+                .await
+                .map_err(|e| format!("Failed to relink messages: {}", e))?;
+        }
+    }
 
     sqlx::query("DELETE FROM messages WHERE id = ?1")
         .bind(message_id)

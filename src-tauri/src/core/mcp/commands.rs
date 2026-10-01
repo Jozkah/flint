@@ -49,6 +49,7 @@ async fn collect_mcp_tools<R: Runtime>(
     app: &AppHandle<R>,
     state: &AppState,
     server_filter: Option<HashSet<String>>,
+    start: bool,
 ) -> Result<Vec<ToolWithServer>, String> {
     let timeout_duration = tool_call_timeout(state).await;
     let mut all_tools: Vec<ToolWithServer> = Vec::new();
@@ -81,6 +82,40 @@ async fn collect_mcp_tools<R: Runtime>(
     // lock, the lock is dropped, and every server is listed at once with a short
     // limit of its own; a slow one falls back to its last-known tools below.
     let list_timeout = timeout_duration.min(MCP_LIST_TOOLS_TIMEOUT);
+
+    // Lazy start. Without `start` (settings, tools dropdown, phone listing)
+    // nothing is started: a stopped server contributes its cached tools. With
+    // `start` (a send that will use tools, an explicit listing) a stopped
+    // server is started: in the background when its cached tools can be used
+    // meanwhile, otherwise waited for, since its tools are unknown.
+    if start {
+        let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
+        let cached: HashSet<String> = state.mcp_last_known_tools.lock().await.keys().cloned().collect();
+        let mut wait_for = Vec::new();
+        for name in server_names.iter().filter(|n| !running.contains(*n)) {
+            if cached.contains(name) {
+                let (app, name) = (app.clone(), name.clone());
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = super::helpers::ensure_mcp_server_started(&app, &name).await {
+                        log::warn!("{e}");
+                    }
+                });
+            } else {
+                wait_for.push(name.clone());
+            }
+        }
+        futures_util::future::join_all(wait_for.iter().map(|name| async move {
+            if let Err(e) = super::helpers::ensure_mcp_server_started(app, name).await {
+                log::warn!("{e}");
+                let _ = app.emit(
+                    "mcp-lazy-start-failed",
+                    json!({ "server": name, "error": e }),
+                );
+            }
+        }))
+        .await;
+    }
+
     let peers: Vec<(String, Option<rmcp::Peer<rmcp::RoleClient>>)> = {
         let servers = state.mcp_servers.lock().await;
         server_names
@@ -111,8 +146,15 @@ async fn collect_mcp_tools<R: Runtime>(
                         server: server_name.clone(),
                     })
                     .collect();
-                let mut last_known = state.mcp_last_known_tools.lock().await;
-                last_known.insert(server_name.clone(), mapped.clone());
+                let changed = {
+                    let mut last_known = state.mcp_last_known_tools.lock().await;
+                    let changed = last_known.get(&server_name) != Some(&mapped);
+                    last_known.insert(server_name.clone(), mapped.clone());
+                    changed
+                };
+                if changed {
+                    super::helpers::persist_server_tools(app, &server_name, &mapped).await;
+                }
                 Some(mapped)
             }
             Some(Ok(Err(e))) => {
@@ -185,11 +227,67 @@ pub async fn activate_mcp_server<R: Runtime>(
     state: State<'_, AppState>,
     name: String,
     config: Value,
+    // Lazy start: `Some(false)` only enables the server (it starts when
+    // needed, or now if it is marked "Start with Flint"). Absent starts it now
+    // (an @mention, an import), as before.
+    start: Option<bool>,
 ) -> Result<(), String> {
     let servers: SharedMcpServers = state.mcp_servers.clone();
+    let running = servers.lock().await.contains_key(&name);
+    let registered = state.mcp_active_servers.lock().await.get(&name).cloned();
+    if let crate::core::mcp::models::RegistrationDecision::Conflict { .. } =
+        crate::core::mcp::models::registration_decision(running, registered.as_ref(), &config)
+    {
+        // A different definition is running under this name: the old path
+        // reports the conflict exactly as before.
+        return start_mcp_server(app, servers, name, config).await;
+    }
+    super::helpers::store_active_server_config(&state.mcp_active_servers, &name, &config).await;
+    super::helpers::load_persisted_tool_cache(&app).await;
+    if start == Some(false) && !super::lazy::starts_with_flint(&config) {
+        let _ = app.emit("mcp-update", json!({ "server": name }));
+        return Ok(());
+    }
+    super::helpers::ensure_mcp_server_started(&app, &name).await
+}
 
-    // Use the modified start_mcp_server that returns first attempt result
-    start_mcp_server(app, servers, name, config).await
+/// Start an enabled server now (the manual Start button).
+#[tauri::command]
+pub async fn start_mcp_server_now<R: Runtime>(app: AppHandle<R>, name: String) -> Result<(), String> {
+    super::helpers::ensure_mcp_server_started(&app, &name).await
+}
+
+/// Stop a running server but keep it enabled; it starts again when needed.
+#[tauri::command]
+pub async fn stop_mcp_server_now<R: Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), String> {
+    let config = state.mcp_active_servers.lock().await.get(&name).cloned();
+    super::helpers::stop_running_mcp_server(&app, &name, config.as_ref()).await?;
+    let _ = app.emit("mcp-update", json!({ "server": name }));
+    Ok(())
+}
+
+/// Per enabled server: stopped (starts when needed), starting, running or failed.
+#[tauri::command]
+pub async fn get_mcp_server_statuses(
+    state: State<'_, AppState>,
+) -> Result<std::collections::HashMap<String, super::lazy::ServerStatus>, String> {
+    let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
+    let starting = state.mcp_starting.lock().await.clone();
+    let names: Vec<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+    Ok(names
+        .into_iter()
+        .map(|name| {
+            let mut status = state.mcp_lazy.status(&name, running.contains(&name));
+            if status == super::lazy::ServerStatus::Stopped && starting.contains(&name) {
+                status = super::lazy::ServerStatus::Starting;
+            }
+            (name, status)
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -245,6 +343,7 @@ pub async fn deactivate_mcp_server<R: Runtime>(
         let mut last_known = state.mcp_last_known_tools.lock().await;
         last_known.remove(&name);
     }
+    state.mcp_lazy.forget(&name);
 
     // Now remove and stop the server
     let servers = state.mcp_servers.clone();
@@ -303,11 +402,12 @@ pub async fn restart_mcp_servers<R: Runtime>(
     use super::helpers::{stop_mcp_servers_with_context, ShutdownContext};
 
     let servers = state.mcp_servers.clone();
+    let was_running: HashSet<String> = servers.lock().await.keys().cloned().collect();
 
     stop_mcp_servers_with_context(&app, &state, ShutdownContext::ManualRestart).await?;
 
     // Restart only previously active servers (like cortex)
-    restart_active_mcp_servers(&app, servers).await?;
+    restart_active_mcp_servers(&app, servers, &was_running).await?;
 
     app.emit("mcp-update", "MCP servers updated")
         .map_err(|e| format!("Failed to emit event: {e}"))?;
@@ -356,8 +456,10 @@ async fn remove_mcp_server_entry(mcp_servers: &SharedMcpServers, server_name: &s
 pub async fn get_tools<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
+    // Lazy start: true when the caller is about to use the tools (a send).
+    start: Option<bool>,
 ) -> Result<Vec<ToolWithServer>, String> {
-    collect_mcp_tools(&app, &state, None).await
+    collect_mcp_tools(&app, &state, None, start.unwrap_or(false)).await
 }
 
 /// Retrieves tools from a specific subset of MCP servers by name.
@@ -367,6 +469,7 @@ pub async fn get_tools_for_servers<R: Runtime>(
     app: AppHandle<R>,
     state: State<'_, AppState>,
     server_names: Vec<String>,
+    start: Option<bool>,
 ) -> Result<Vec<ToolWithServer>, String> {
     let mut seen = HashSet::new();
     let mut unique: Vec<String> = Vec::new();
@@ -379,7 +482,7 @@ pub async fn get_tools_for_servers<R: Runtime>(
     if filter.is_empty() {
         return Ok(Vec::new());
     }
-    collect_mcp_tools(&app, &state, Some(filter)).await
+    collect_mcp_tools(&app, &state, Some(filter), start.unwrap_or(false)).await
 }
 
 /// Returns name, capability tags, and description for all enabled MCP servers
@@ -700,7 +803,8 @@ pub async fn mcp_allow_once(
 /// 5. Supports cancellation via cancellation_token
 /// 6. Returns error if no server has the requested tool or if specified server not found
 #[tauri::command]
-pub async fn call_tool(
+pub async fn call_tool<R: Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     tool_name: String,
     server_name: Option<String>,
@@ -719,6 +823,38 @@ pub async fn call_tool(
             settings.tool_output_cap(max_output_chars),
         )
     };
+    // Lazy start: the server this call needs is started first (once, shared).
+    // A start failure is this call's error, so it shows in the chat like any
+    // other MCP failure.
+    {
+        let running: HashSet<String> = state.mcp_servers.lock().await.keys().cloned().collect();
+        let enabled: HashSet<String> = state.mcp_active_servers.lock().await.keys().cloned().collect();
+        let needed: Vec<String> = match &server_name {
+            Some(server) => vec![server.clone()],
+            None => {
+                let last_known = state.mcp_last_known_tools.lock().await;
+                let owners: Vec<String> = last_known
+                    .iter()
+                    .filter(|(_, tools)| tools.iter().any(|t| t.name == tool_name))
+                    .map(|(n, _)| n.clone())
+                    .collect();
+                if owners.iter().any(|n| running.contains(n)) {
+                    Vec::new()
+                } else if owners.is_empty() {
+                    enabled.iter().cloned().collect()
+                } else {
+                    owners
+                }
+            }
+        };
+        for name in needed
+            .iter()
+            .filter(|n| enabled.contains(*n) && !running.contains(*n))
+        {
+            super::helpers::ensure_mcp_server_started(&app, name).await?;
+        }
+    }
+
     // Set up cancellation if token is provided
     let (cancel_tx, cancel_rx) = oneshot::channel::<()>();
 
@@ -777,6 +913,8 @@ pub async fn call_tool(
         }
 
         log::info!("Found tool {tool_name} in server {srv_name}");
+        // Idle shutdown never stops a server while this call is in flight.
+        let _in_flight = state.mcp_lazy.begin_call(srv_name);
 
         // AH-041. Checked here, against the server the tool was actually found
         // on -- not against `server_name`, which the request may not have set

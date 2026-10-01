@@ -1014,10 +1014,13 @@ enum ThreadsCommands {
         /// Thread ID
         id: String,
     },
-    /// Print all messages in a thread as JSON
+    /// Print a thread's messages as JSON (the conversation as shown)
     Messages {
         /// Thread ID
         thread_id: String,
+        /// Include every stored version of an edited or regenerated message
+        #[arg(long)]
+        all_versions: bool,
     },
 }
 
@@ -2818,7 +2821,10 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
         },
 
-        ThreadsCommands::Messages { thread_id } => match cli_list_messages(&thread_id) {
+        ThreadsCommands::Messages {
+            thread_id,
+            all_versions,
+        } => match cli_list_messages(&thread_id, all_versions) {
             Ok(messages) => println!("{}", serde_json::to_string_pretty(&messages).unwrap()),
             Err(e) => {
                 eprintln!("Error: {e}");

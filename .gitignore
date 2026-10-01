@@ -102,3 +102,6 @@ docs/IMPLEMENTATION_BASELINE.md
 docs/JAN_AUDIT_HANDOFF.md
 docs/SESSION_MESSAGING.md
 docs/SESSION_MESSAGING_UI_HUNKS.md
+
+# The website keeps its own lockfile (CI installs with npm ci)
+!website/package-lock.json

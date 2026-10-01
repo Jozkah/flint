@@ -21,6 +21,7 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebSearchConfig, WEB_SEARCH_PROVIDERS } from '@/hooks/useWebSearchConfig'
 import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { replyMetaOf } from './replyMeta'
+import { activePathOf, getVersionInfo, hasBranching } from '@/lib/message-branching'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -44,6 +45,44 @@ import { coworkReplyOf, roomReplyOf } from './events'
 import { appStudio } from './appStudio'
 import { mergeStudioLibrary } from './studio'
 import { streamSnapshot } from './streams'
+import { useAssistant } from '@/hooks/useAssistant'
+import { resolveModelCapabilities } from '@/lib/modelCapabilities'
+import { serverReportedLimit } from '@/lib/contextLimitRecovery'
+import { coworkWindow } from '@/lib/coworkBudget'
+import type { CoworkSession } from '@/hooks/useCoworkSessions'
+
+/** A Cowork session's context window and how much of it the last request
+ * used, resolved as the desktop's counter resolves them (minus a local
+ * runtime's live answer, which only the mounted view asks for). */
+export function coworkContextOf(session: CoworkSession): { usedTokens: number; windowTokens: number | null } | null {
+  const u = session.lastUsage
+  const used = u ? (u.total_tokens ?? (u.prompt_tokens ?? 0) + (u.completion_tokens ?? 0)) : 0
+  const providers = useModelProvider.getState()
+  const ref = session.model ?? (providers.selectedModel ? { id: providers.selectedModel.id, provider: providers.selectedProvider } : null)
+  const provider = ref ? providers.getProviderByName(ref.provider) : undefined
+  const model = ref ? provider?.models.find((m) => m.id === ref.id) : undefined
+  let windowTokens: number | null = null
+  if (model && ref) {
+    const { settings, ...metadata } = model as unknown as Record<string, unknown>
+    const learned = serverReportedLimit({ provider: ref.provider, baseUrl: (provider as { base_url?: string } | undefined)?.base_url ?? '', model: ref.id })
+    const caps = resolveModelCapabilities({
+      modelId: ref.id,
+      override: settings ? { settings } : null,
+      serverReported: learned ? { n_ctx: learned.contextTokens } : null,
+      providerMetadata: metadata,
+      localRuntime: null,
+      providerDefault: provider as unknown as Record<string, unknown>,
+    })
+    const accepted = (session.turns ?? []).reduce((m, t) => Math.max(m, t.usage?.prompt_tokens ?? 0), 0)
+    windowTokens = coworkWindow({
+      userSet: useAssistant.getState().currentAssistant?.parameters?.max_context_tokens,
+      capabilities: caps,
+      acceptedPrompt: accepted,
+    })
+  }
+  if (!used && !windowTokens) return null
+  return { usedTokens: used, windowTokens }
+}
 import { coworkToolStep, type LiveReply } from './live'
 import type {
   CoworkActivity,
@@ -143,16 +182,25 @@ export const appSources: RemoteSources = {
 
   chatMessages: async (id) => {
     if (!useThreads.getState().threads[id]) return []
-    const messages = await getServiceHub().messages().fetchMessages(id)
-    return messages.map(
-      (m): RemoteMessage => ({
+    const stored = await getServiceHub().messages().fetchMessages(id)
+    // The phone gets the conversation in force, not every edited or
+    // regenerated version, and the version position where there is one.
+    const messages = activePathOf(
+      stored,
+      useThreads.getState().threads[id]?.metadata
+    )
+    const branched = hasBranching(stored)
+    return messages.map((m): RemoteMessage => {
+      const info = branched ? getVersionInfo(stored, m) : undefined
+      return {
         id: m.id,
         role: m.role as RemoteMessage['role'],
         text: threadMessageText(m),
         createdAt: ms(m.created_at),
         ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
-      })
-    )
+        ...(info && info.count > 1 ? { versions: info } : {}),
+      }
+    })
   },
 
   coworkMessages: (id) => {
@@ -230,7 +278,9 @@ export const appSources: RemoteSources = {
 
   coworkDetail: (id) => {
     const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
-    return session ? coworkDetailOf(session) : null
+    if (!session) return null
+    const context = coworkContextOf(session)
+    return { ...coworkDetailOf(session), ...(context ? { context } : {}) }
   },
 
   approvalDetails: () =>

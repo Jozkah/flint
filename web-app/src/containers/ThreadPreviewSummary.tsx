@@ -1,5 +1,7 @@
 import { getServiceHub } from '@/hooks/useServiceHub'
-import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
+import { useThreads } from '@/hooks/useThreads'
+import { activePathOf } from '@/lib/message-branching'
 import { usePreviewSummary } from '@/hooks/usePreviewSummary'
 import { titleTranscript } from '@/lib/regenerateTitle'
 
@@ -23,10 +25,13 @@ export function ThreadPreviewSummary({
     `${threadId}\u0000${updated ?? ''}`,
     open,
     async () => {
-      let messages = useMessages.getState().getMessages(threadId)
+      let messages = getActiveMessages(threadId)
       if (messages.length === 0) {
         try {
-          messages = await getServiceHub().messages().fetchMessages(threadId)
+          messages = activePathOf(
+            await getServiceHub().messages().fetchMessages(threadId),
+            useThreads.getState().threads[threadId]?.metadata
+          )
         } catch {
           return ''
         }

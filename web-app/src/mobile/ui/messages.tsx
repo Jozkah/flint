@@ -86,6 +86,43 @@ export function UserBubble({ text }: { text: string }) {
   return <div className="ub msg">{text}</div>
 }
 
+/** `‹ 2/3 ›` on a message that has other versions; absent on a plain one. */
+export function VersionNav({
+  versions,
+  onStep,
+}: {
+  versions?: { index: number; count: number }
+  onStep: (dir: -1 | 1) => void
+}) {
+  if (!versions || versions.count < 2) return null
+  const { index, count } = versions
+  return (
+    <div className="vnav" role="group" aria-label="Message versions" data-testid="version-nav">
+      <button
+        type="button"
+        className="ib"
+        aria-label={`Previous version (showing ${index} of ${count})`}
+        disabled={index <= 1}
+        onClick={() => onStep(-1)}
+      >
+        <I n="chev" style={{ transform: 'rotate(90deg)' }} />
+      </button>
+      <span role="status" aria-live="polite" aria-label={`Version ${index} of ${count}`}>
+        {index}/{count}
+      </span>
+      <button
+        type="button"
+        className="ib"
+        aria-label={`Next version (showing ${index} of ${count})`}
+        disabled={index >= count}
+        onClick={() => onStep(1)}
+      >
+        <I n="chev" style={{ transform: 'rotate(-90deg)' }} />
+      </button>
+    </div>
+  )
+}
+
 export function ToolStep({ step }: { step: RemoteToolStep }) {
   const [open, setOpen] = useState(false)
   return (

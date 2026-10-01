@@ -143,3 +143,14 @@
 .send.dict.rec svg.i{fill:currentColor;stroke:none;width:12px;height:12px}
 @keyframes dict-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--destructive) 55%,transparent)}50%{box-shadow:0 0 0 5px transparent}}
 @media (prefers-reduced-motion:reduce){.send.dict.rec{animation:none}}
+
+/* Attachment chips in the composer (phone uploads, files on the computer). */
+.attchips { display: flex; gap: 6px; overflow-x: auto; padding: 6px 4px 2px; scrollbar-width: none; }
+.attchip { display: inline-flex; align-items: center; gap: 6px; max-width: 210px; flex: none; padding: 4px 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--card); font-size: 12px; }
+.attchip img { width: 26px; height: 26px; border-radius: 6px; object-fit: cover; }
+.attchip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.attchip small { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.attchip small.err { color: var(--destructive); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attchip.error { border-color: var(--destructive); }
+.attchip button { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 0; background: transparent; color: inherit; }
+label.opt { cursor: pointer; }

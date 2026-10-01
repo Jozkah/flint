@@ -8,13 +8,15 @@ import { App } from './App'
 import { checkPairing } from './state/pairing'
 import { RemoteClient } from './api/client'
 import { EventSocket } from './api/events'
-import { localPairingStore } from './api/storage'
+import { localPairingStore, mirrorToken } from './api/storage'
+import { idbSet, TOKEN_KEY } from './api/idb'
+import { registerServiceWorker } from './sw/register'
 import { app, handleEvent, installRuntime } from './state/app'
 import { invalidate } from './state/rpc'
 import { readPairingFragment } from './state/router'
 import { startTheme } from './theme'
 
-const store = localPairingStore()
+const store = mirrorToken(localPairingStore(), (t) => idbSet(TOKEN_KEY, t))
 const client = new RemoteClient({ store })
 const socket = new EventSocket({
   token: () => store.get()?.token ?? null,
@@ -41,6 +43,10 @@ const socket = new EventSocket({
 })
 client.setUnauthorizedHandler(() => app.set({ auth: 'unpaired' }))
 installRuntime({ client, socket })
+const syncHidden = () => socket.setHidden(document.visibilityState === 'hidden')
+document.addEventListener('visibilitychange', syncHidden)
+syncHidden()
+void registerServiceWorker()
 startTheme()
 
 const pairing = readPairingFragment(location.hash)

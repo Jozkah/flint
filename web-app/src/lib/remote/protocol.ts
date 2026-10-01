@@ -92,6 +92,13 @@ export type RemoteMessage = {
   tools?: RemoteToolStep[]
   /** A reply's footer facts, as the desktop's reply row shows them. */
   meta?: ReplyMeta
+  /**
+   * Present only when the message has other versions (an edited question, a
+   * regenerated reply): which one this is, 1-based, of how many. Older phones
+   * ignore it and show the version in force, which is all `thread.messages`
+   * sends them.
+   */
+  versions?: { index: number; count: number }
 }
 
 /** What a reply's header and footer say (#47, #61, #84). */
@@ -111,6 +118,13 @@ export type ReplyMeta = {
   draft?: { accepted: number; tokens: number }
   /** Skills the reply read (`plugin:skill` or `skill`). */
   skills?: string[]
+}
+
+/** Step a message to the previous (-1) or next (+1) version of itself. */
+export type ThreadBranchSelectParams = {
+  id: string
+  messageId: string
+  dir: -1 | 1
 }
 
 export type ThreadMessagesParams = {
@@ -207,6 +221,8 @@ export type CoworkDetail = {
   model: { id: string; provider: string } | null
   todos: CoworkTodo[]
   usage: { inputTokens: number; outputTokens: number } | null
+  /** The last request against the session's context window (the ring). */
+  context?: { usedTokens: number; windowTokens: number | null }
 }
 
 /** A waiting permission prompt, worded as the desktop's approval card. */
@@ -314,9 +330,14 @@ export type RoomMutationResult = { ok: true; id: string }
 /** Every send carries a `clientId` the phone makes once per message: a retry
  * after a dropped connection sends the same one, and the computer answers it
  * with the first result instead of sending twice. */
+/** A file the desktop would not attach, with the composer's reason. */
+export type AttachmentRejection = { name: string; reason: string; message: string }
+
 export type ChatSendParams = {
   clientId: string
   text: string
+  /** Finished uploads (`/remote/v1/upload`) to attach, by id. */
+  attachments?: string[]
   /** An existing chat; omitted (or `new: true`) starts one. */
   id?: string
   new?: boolean
@@ -333,6 +354,7 @@ export type ChatSendParams = {
 export type CoworkSendParams = {
   clientId: string
   text: string
+  attachments?: string[]
   id?: string
   new?: boolean
   /** New sessions: a folder the desktop already knows (recent folders). */
@@ -362,6 +384,8 @@ export type SendResult = {
   delivery: 'sent' | 'queued' | 'steered'
   /** The same `clientId` was seen before; this is the first answer again. */
   duplicate?: boolean
+  /** Attachments the desktop refused; the rest went with the message. */
+  rejected?: AttachmentRejection[]
 }
 
 /** `scope: 'chat'` is the desktop's "Stop all in this chat" (#33): every run,
@@ -572,6 +596,9 @@ export type CoworkPreviewResult = {
   /** The file's text (HTML, SVG, Markdown), capped. */
   content: string | null
   note?: string
+  /** The desktop shows this session's app live (a local URL); a phone can
+   * view it through the server with a `preview.ticket`. */
+  live?: { url: string }
 }
 
 export type HfVariant = { quant: string; sizeBytes: number | null; fits: boolean | null }
@@ -677,9 +704,70 @@ export type VoiceStatusResult = { ready: boolean }
 /** `audio` is base64 16 kHz mono 16-bit WAV. */
 export type VoiceTranscribeParams = { audio: string; language?: string }
 
+// ---------------------------------------------------------------------------
+// Push (answered by the server itself, not the window)
+// ---------------------------------------------------------------------------
+
+export type PushCategory =
+  | 'approval'
+  | 'runFinished'
+  | 'runFailed'
+  | 'pr'
+  | 'roomWaiting'
+  | 'synthesis'
+  | 'chatReply'
+  | 'test'
+
+export type PushNotice = {
+  category: PushCategory
+  title: string
+  body: string
+  /** In-app path, `/m/#/...`. */
+  url: string
+  /** Collapses notifications about the same thing. */
+  tag: string
+  requestId?: string
+}
+
+export type PushPrefs = {
+  approvals: boolean
+  runFinished: boolean
+  runFailed: boolean
+  pr: boolean
+  roomWaiting: boolean
+  synthesis: boolean
+  chatReply: boolean
+  hideContent: boolean
+  /** Minutes after local midnight; approvals still come through. */
+  quietHours: { enabled: boolean; start: number; end: number }
+  utcOffsetMinutes: number
+}
+
+export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } }
+
+/** What the service worker receives. */
+export type PushPayload = {
+  title: string
+  body: string
+  url: string
+  tag: string
+  category: PushCategory
+  requestId?: string
+}
+
 export type RemoteMethods = {
+  'push.vapidKey': { params: Record<string, never>; result: { key: string } }
+  'push.get': { params: Record<string, never>; result: { subscribed: boolean; available: boolean; prefs: PushPrefs } }
+  'push.subscribe': { params: { subscription: PushSubscriptionJson; prefs?: PushPrefs }; result: { ok: true } }
+  'push.unsubscribe': { params: Record<string, never>; result: { ok: true } }
+  'push.prefs': { params: { prefs: PushPrefs }; result: { prefs: PushPrefs } }
+  'push.test': { params: Record<string, never>; result: { sent: number } }
+  /** Answered by the server: a path to load the session's live preview. */
+  'preview.ticket': { params: { id: string }; result: { path: string } }
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
+  /** `ok: false` when there is no version that way or the chat is mid-reply. */
+  'thread.branch.select': { params: ThreadBranchSelectParams; result: { ok: boolean } }
   'models.list': { params: Record<string, never>; result: ModelsListResult }
   status: { params: Record<string, never>; result: StatusResult }
   'rooms.get': { params: IdParams; result: RoomDetail }
@@ -753,6 +841,9 @@ export type RemoteEvent =
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }
+  /** Not sent to sockets: the server turns it into Web Push for phones that
+   * are not looking (src-tauri/src/core/remote/push.rs). */
+  | ({ type: 'push.notify' } & PushNotice)
   /** Reply text (and reasoning) appended at `offset` of what was sent so far
    * for `messageId`. A phone that sees a gap asks `stream.get`. */
   | {
@@ -793,6 +884,8 @@ export type RemoteClientMessage =
   | { type: 'subscribe'; topics: string[] }
   | { type: 'unsubscribe'; topics: string[] }
   | { type: 'ping' }
+  /** The page was hidden or shown; a hidden page gets Web Push instead. */
+  | { type: 'visibility'; hidden: boolean }
 
 // ---------------------------------------------------------------------------
 // Pairing
