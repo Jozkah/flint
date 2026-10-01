@@ -304,6 +304,9 @@ async fn execute(
         if let Err(e) = cli_save_thread(&agent_dir_for(Path::new(&task.project)), Some(&session_id), &persist.model, &messages, None) {
             eprintln!("(could not save the transcript: {e})");
         }
+        // And a copy in the app's own thread store, so the run history can open
+        // it as an ordinary conversation.
+        save_app_copy(&PathBuf::from(&spec.data_folder), &session_id, &persist.model, &messages, spec, record);
     }
     let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(&session_id).await;
 
@@ -314,4 +317,31 @@ async fn execute(
         Stopped::TimedOut => Ending::WallClock,
         Stopped::Blocked => Ending::Blocked,
     }
+}
+
+/// Save the transcript where the app lists conversations, titled for the task
+/// and marked as scheduled so it can be told from a chat.
+fn save_app_copy(
+    data: &Path,
+    session_id: &str,
+    model: &str,
+    messages: &[serde_json::Value],
+    spec: &runner::RunSpec,
+    record: &RunRecord,
+) {
+    let when = chrono::DateTime::from_timestamp_millis(record.started_at_ms as i64)
+        .map(|t| t.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string())
+        .unwrap_or_default();
+    let metadata = serde_json::json!({
+        "scheduled": { "taskId": spec.task.id, "runId": spec.run_id },
+    });
+    if let Err(e) = cli_save_thread(data, Some(session_id), model, messages, Some(metadata)) {
+        eprintln!("(could not save the transcript for the app: {e})");
+        return;
+    }
+    let path = crate::core::threads::utils::get_thread_metadata_path(data, session_id);
+    let Ok(text) = std::fs::read_to_string(&path) else { return };
+    let Ok(mut thread) = serde_json::from_str::<serde_json::Value>(&text) else { return };
+    thread["title"] = serde_json::json!(format!("{} - {when}", spec.task.name));
+    let _ = crate::core::threads::helpers::update_thread_metadata(data, session_id, &thread);
 }
