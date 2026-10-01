@@ -25,6 +25,7 @@ import {
   extractToolContextFromContent,
   extractToolContextFromMetadata,
 } from './tokenCountToolContext'
+import { releaseImageModelForChat } from '@/lib/studio/arbiter'
 
 // TODO: Replace this with the actual provider later
 const defaultProvider = 'llamacpp'
@@ -119,6 +120,8 @@ export class DefaultModelsService implements ModelsService {
 
     const loadedModels = await engine.getLoadedModels()
     if (loadedModels.includes(model)) return undefined
+    // The image model and a chat model do not both fit on most graphics cards.
+    await releaseImageModelForChat()
 
     // Find the model configuration to get settings
     const modelConfig = provider.models.find((m) => m.id === model)

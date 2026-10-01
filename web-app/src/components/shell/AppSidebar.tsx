@@ -306,6 +306,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                     active: area === 'library',
                     testId: 'rail-library',
                   },
+                  {
+                    to: route.studio,
+                    label: 'Studio',
+                    icon: 'x-palette',
+                    active: pathname === route.studio,
+                    testId: 'nav-studio',
+                  },
                 ]}
               />
             </NavList>

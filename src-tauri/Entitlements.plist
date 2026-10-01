@@ -6,5 +6,8 @@
     <!-- Without this, MCP servers fail with "Ran out of executable memory" error -->
     <key>com.apple.security.cs.allow-jit</key>
     <true/>
+    <!-- Required by the hardened runtime for the microphone (voice input). -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
 </dict>
 </plist>

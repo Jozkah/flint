@@ -1,6 +1,7 @@
 import { predefinedProviders } from '@/constants/providers'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import { localStorageKey } from '@/constants/localStorage'
+import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 
 type ModelLike = {
   id: string
@@ -24,7 +25,12 @@ const KEYLESS_PREDEFINED_PROVIDERS = ['llamacpp', 'jan']
  * model to chat with.
  */
 export function isChatCapable(model: ModelLike): boolean {
-  return !model.embedding && !model.capabilities?.includes('embeddings')
+  // The speech model transcribes; chatting with it would only produce transcripts.
+  return (
+    !model.embedding &&
+    !model.capabilities?.includes('embeddings') &&
+    model.id !== VOICE_MODEL_ID
+  )
 }
 
 /**

@@ -62,6 +62,7 @@ import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { fitImageFileToLimit } from '@/lib/imageResize'
+import { VoiceInputButton } from '@/containers/VoiceInputButton'
 import {
   useConversationModel,
   type ModelSelection,
@@ -3754,6 +3755,28 @@ const ChatInput = memo(function ChatInput({
                   />
                 </div>
               )}
+
+              {/* Dictation: speech to text on this computer, spliced in at
+                  the caret. */}
+              <VoiceInputButton
+                composer={{
+                  getValue: () =>
+                    draftScope
+                      ? (usePrompt.getState().scoped?.[draftScope]?.prompt ?? '')
+                      : usePrompt.getState().prompt,
+                  getCaret: () =>
+                    document.activeElement === textareaRef.current
+                      ? (textareaRef.current?.selectionStart ?? null)
+                      : null,
+                  apply: (value, caret) => {
+                    setPrompt(value)
+                    // The box shows the new value on the next frame.
+                    requestAnimationFrame(() => {
+                      textareaRef.current?.setSelectionRange(caret, caret)
+                    })
+                  },
+                }}
+              />
 
               {/* A surface that owns its own stop control -- Cowork, which
                   asks how far to stop -- supplies it here, in the same slot,

@@ -25,9 +25,13 @@ import { resolveThreadModelId } from '@/lib/models'
 import { SESSION_STORAGE_PREFIX } from '@/constants/chat'
 import { route } from '@/constants/routes'
 import { remoteApi } from './api'
+import { RemoteRpcError } from './bridge'
 import { composerFor, waitForComposer } from './composer'
 import type { ApprovalScopeWire, RemoteActions } from './actions'
 import type { ModelRef, NotificationPrefs } from './protocol'
+import { resolveReplyModel } from '@/lib/resolveReplyModel'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { getLastUsedModel } from '@/utils/getModelToStart'
 
 export type Navigate = (to: { to: string; params?: Record<string, string> }) => unknown
 
@@ -89,13 +93,30 @@ export function appActions(navigate: Navigate): RemoteActions {
 
     createChat: async ({ text, model }) => {
       const providers = useModelProvider.getState()
-      const provider = model?.provider ?? providers.selectedProvider
+      // The phone's new chat names no model until one is chosen. Then the
+      // computer picks the way its own composer does: the selected model, else
+      // the default, the last used one, or whatever can answer.
+      const fallback =
+        model || providers.selectedModel
+          ? undefined
+          : resolveReplyModel({
+              providers: providers.providers,
+              preferred: useModelEvidence.getState().preferredModel,
+              lastUsed: getLastUsedModel(),
+            })
+      const provider =
+        model?.provider ?? fallback?.provider ?? providers.selectedProvider
       const modelId = resolveThreadModelId(
         provider,
-        model?.id ?? providers.selectedModel?.id,
+        model?.id ?? fallback?.model ?? providers.selectedModel?.id,
         (providers.getProviderByName(provider)?.models ?? []).map((m) => m.id)
       )
-      if (!provider || !modelId) throw new Error('No model to start a chat with')
+      if (!provider || !modelId) {
+        throw new RemoteRpcError(
+          'unavailable',
+          'No model is installed or connected on the computer to answer with.'
+        )
+      }
       const thread = await useThreads.getState().createThread({ id: modelId, provider }, text)
       // The first-message hand-off ChatInput uses: the conversation sends it
       // through its own path when it mounts.

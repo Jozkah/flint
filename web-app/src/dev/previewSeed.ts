@@ -32,6 +32,7 @@ import { useSplitConversation } from '@/hooks/useSplitConversation'
 import { useConversationGroups } from '@/lib/groups/store'
 import { projectKeyOf } from '@/lib/coworkCode'
 import { answer } from './previewTauri'
+import { seedStudioAnswers } from './previewStudio'
 import { seedRooms } from './previewRooms'
 import { seedEngine } from './previewSeedEngine'
 import { seedHuggingFacePreview } from './previewHuggingFace'
@@ -943,6 +944,7 @@ function seedCowork() {
   if (p.get('queue')) seedQueue()
   seedOrigins()
   seedCodeAnswers()
+  seedStudioAnswers()
   // The running session works in a managed worktree, and so did the units
   // run. The web build cannot ask the backend what it can confine, so the
   // answer is given here -- and given again when the page's own query fails.
