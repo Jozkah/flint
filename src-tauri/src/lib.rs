@@ -267,6 +267,9 @@ macro_rules! invoke_commands_with_extras {
         core::mcp::commands::get_mcp_configs,
         core::mcp::commands::activate_mcp_server,
         core::mcp::commands::deactivate_mcp_server,
+        core::mcp::commands::start_mcp_server_now,
+        core::mcp::commands::stop_mcp_server_now,
+        core::mcp::commands::get_mcp_server_statuses,
         core::mcp::commands::get_mcp_auth_status,
         core::mcp::commands::get_mcp_server_log,
         core::mcp::commands::authorize_mcp_server,
@@ -670,6 +673,7 @@ pub fn build_app() -> tauri::App {
             mcp_reconnect_notify: Arc::new(tokio::sync::Notify::new()),
             mcp_last_known_tools: Arc::new(Mutex::new(HashMap::new())),
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
+            mcp_lazy: Default::default(),
         })
         .setup(|app| {
             core::diffusion::register(app.handle());

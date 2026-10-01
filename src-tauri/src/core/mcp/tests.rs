@@ -373,7 +373,7 @@ async fn test_get_tools_falls_back_to_last_known_when_server_enabled_but_disconn
         );
     }
 
-    let result = get_tools(app.handle().clone(), state).await;
+    let result = get_tools(app.handle().clone(), state, None).await;
     assert!(result.is_ok());
     let tools = result.unwrap();
     assert_eq!(
@@ -414,7 +414,7 @@ async fn test_get_tools_omits_disabled_server_even_with_stale_last_known_entry()
         );
     }
 
-    let result = get_tools(app.handle().clone(), state).await;
+    let result = get_tools(app.handle().clone(), state, None).await;
     assert!(result.is_ok());
     assert!(
         result.unwrap().is_empty(),
