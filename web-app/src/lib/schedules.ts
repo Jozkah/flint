@@ -28,7 +28,13 @@ export type ScheduledTask = {
   project: string
   profile?: string | null
   policy: { allowTools: string[]; write: WriteMode }
-  budgets: { maxTurns: number; maxTokens: number; maxWallClockSecs: number }
+  budgets: {
+    maxTurns: number
+    maxTokens: number
+    maxWallClockSecs: number
+    /** Optional money ceiling in USD; needs the model's price in prices.toml. */
+    maxCostUsd?: number | null
+  }
   onBlock: OnBlock
   catchUp: CatchUp
   enabled: boolean

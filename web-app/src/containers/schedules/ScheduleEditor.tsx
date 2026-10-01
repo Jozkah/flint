@@ -450,7 +450,7 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
               <Label>{t('schedules:editor.budgets')}</Label>
               <p className="mt-1 text-xs text-muted-foreground">{t('schedules:editor.budgetsHint')}</p>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <Field label={t('schedules:editor.maxTurns')} htmlFor={`${uid}-turns`} error={err('maxTurns')}>
                 <Input
                   id={`${uid}-turns`}
@@ -478,7 +478,22 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
                   onChange={(e) => patch({ maxMinutes: e.target.value })}
                 />
               </Field>
+              <Field
+                label={t('schedules:editor.maxCostUsd')}
+                htmlFor={`${uid}-cost`}
+                error={err('maxCostUsd')}
+              >
+                <Input
+                  id={`${uid}-cost`}
+                  inputMode="decimal"
+                  value={form.maxCostUsd}
+                  placeholder={t('schedules:editor.maxCostUsdPlaceholder')}
+                  aria-invalid={errors.maxCostUsd ? true : undefined}
+                  onChange={(e) => patch({ maxCostUsd: e.target.value })}
+                />
+              </Field>
             </div>
+            <p className="text-xs text-muted-foreground">{t('schedules:editor.maxCostUsdHint')}</p>
           </section>
 
           <div className="grid gap-3 @min-[32rem]:grid-cols-2 sm:grid-cols-2">

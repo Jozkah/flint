@@ -198,6 +198,7 @@ async fn execute(
         worktree: Some(worktree),
         profile: task.profile.clone(),
         max_turns: Some(u64::from(task.budgets.max_turns)),
+        max_budget_usd: task.budgets.max_cost_usd,
         max_session_tokens: Some(task.budgets.max_tokens),
         ..Default::default()
     };
@@ -212,7 +213,7 @@ async fn execute(
     );
     let PreparedRun { args, mut body, permission_requests, mcp_task, persist, .. } = match prepared {
         Ok(p) => p,
-        Err(e) => return Ending::Failed(e),
+        Err(e) => return Ending::Failed(runner::explain_setup_failure(&e, task.budgets.max_cost_usd)),
     };
     body["allowed_tools"] = serde_json::json!(task.policy.allow_tools);
     let session_id = persist.thread_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -320,7 +321,10 @@ async fn execute(
     let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(&session_id).await;
 
     match outcome {
-        Stopped::Done(Ok(completion)) => Ending::Answered(completion_text(&completion).unwrap_or_default()),
+        Stopped::Done(Ok(completion)) => match runner::cost_stop(&completion, task.budgets.max_cost_usd) {
+            Some(why) => Ending::BudgetStopped(why),
+            None => Ending::Answered(completion_text(&completion).unwrap_or_default()),
+        },
         Stopped::Done(Err(e)) if e.kind() == ErrorKind::BudgetExhausted => Ending::BudgetStopped(e.message().to_string()),
         Stopped::Done(Err(e)) => Ending::Failed(e.message().to_string()),
         Stopped::TimedOut => Ending::WallClock,

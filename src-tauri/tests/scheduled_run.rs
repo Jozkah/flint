@@ -211,7 +211,7 @@ impl Drop for Scratch {
 }
 
 fn budgets(turns: u32, wall: u64) -> Budgets {
-    Budgets { max_turns: turns, max_tokens: 100_000, max_wall_clock_secs: wall }
+    Budgets { max_turns: turns, max_tokens: 100_000, max_wall_clock_secs: wall, max_cost_usd: None }
 }
 
 #[test]
@@ -372,4 +372,44 @@ fn a_run_stopped_at_the_time_limit_leaves_no_command_running() {
         after = sleepers();
     }
     assert!(after <= before, "{} command(s) outlived the stopped run", after.saturating_sub(before));
+}
+
+// ---- the per-task cost limit ----
+
+#[test]
+fn the_cost_limit_stops_a_run_and_says_so() {
+    let s = Scratch::new("cost");
+    let (url, served) = stub_provider(&[READ_CALL], Duration::ZERO);
+    s.configure(&url);
+    // $1,000,000 per million tokens: one stub request (7 tokens) costs $7.
+    std::fs::create_dir_all(s.data()).expect("data dir");
+    std::fs::write(
+        s.data().join("prices.toml"),
+        "[models.stub-model]
+input = 1000000.0
+output = 1000000.0
+",
+    )
+    .expect("prices");
+    let mut task = s.task(budgets(20, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.budgets.max_cost_usd = Some(1.0);
+    let (r, out) = s.run(task);
+    assert_eq!(r.status, RunStatus::BudgetStopped, "{r:?}
+{}", String::from_utf8_lossy(&out.stdout));
+    assert!(r.error.as_deref().unwrap_or("").contains("cost limit"), "{:?}", r.error);
+    assert!(served.load(Ordering::SeqCst) <= 2, "the run kept going past its ceiling");
+}
+
+#[test]
+fn a_cost_limit_on_an_unpriced_model_fails_with_the_reason() {
+    let s = Scratch::new("unpriced");
+    let (url, served) = stub_provider(&[ANSWER], Duration::ZERO);
+    s.configure(&url);
+    let mut task = s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.budgets.max_cost_usd = Some(1.0);
+    let (r, _out) = s.run(task);
+    assert_eq!(r.status, RunStatus::Failed, "{r:?}");
+    let why = r.error.unwrap_or_default();
+    assert!(why.contains("no price") && why.contains("prices.toml"), "{why}");
+    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was spent before refusing");
 }

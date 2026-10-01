@@ -41,6 +41,8 @@ export type TaskForm = {
   maxTurns: string
   maxTokens: string
   maxMinutes: string
+  /** Empty means no cost limit. */
+  maxCostUsd: string
   onBlock: OnBlock
   catchUp: CatchUp
   enabled: boolean
@@ -51,9 +53,15 @@ export const LIMITS = {
   maxTurns: 200,
   maxTokens: 5_000_000,
   maxMinutes: 360,
+  maxCostUsd: 1000,
 } as const
 
-export const DEFAULT_BUDGETS = { maxTurns: '20', maxTokens: '200000', maxMinutes: '15' }
+export const DEFAULT_BUDGETS = {
+  maxTurns: '20',
+  maxTokens: '200000',
+  maxMinutes: '15',
+  maxCostUsd: '',
+}
 
 /** Read-only tools a new task starts with. */
 export const DEFAULT_TOOLS = ['read', 'ls', 'find', 'grep']
@@ -175,6 +183,7 @@ export function taskToForm(task: ScheduledTask): TaskForm {
     maxTurns: String(task.budgets.maxTurns),
     maxTokens: String(task.budgets.maxTokens),
     maxMinutes: String(Math.max(1, Math.ceil(task.budgets.maxWallClockSecs / 60))),
+    maxCostUsd: task.budgets.maxCostUsd ? String(task.budgets.maxCostUsd) : '',
     onBlock: task.onBlock,
     catchUp: task.catchUp,
     enabled: task.enabled,
@@ -194,7 +203,8 @@ export type FormErrors = Partial<Record<
   | 'tools'
   | 'maxTurns'
   | 'maxTokens'
-  | 'maxMinutes',
+  | 'maxMinutes'
+  | 'maxCostUsd',
   string
 >>
 
@@ -230,6 +240,12 @@ export function validateForm(form: TaskForm): FormErrors {
   const minutes = wholeNumber(form.maxMinutes)
   if (minutes === null || minutes < 1 || minutes > LIMITS.maxMinutes)
     errors.maxMinutes = 'schedules:errors.minutesRange'
+  const cost = form.maxCostUsd.trim()
+  if (cost) {
+    const usd = Number(cost)
+    if (!Number.isFinite(usd) || usd <= 0 || usd > LIMITS.maxCostUsd)
+      errors.maxCostUsd = 'schedules:errors.costRange'
+  }
   return errors
 }
 
@@ -257,6 +273,7 @@ export function formToTask(
         maxTurns: Number(form.maxTurns),
         maxTokens: Number(form.maxTokens),
         maxWallClockSecs: Number(form.maxMinutes) * 60,
+        ...(form.maxCostUsd.trim() ? { maxCostUsd: Number(form.maxCostUsd) } : {}),
       },
       onBlock: form.onBlock,
       catchUp: form.catchUp,

@@ -106,6 +106,9 @@
     "maxTurns": "Turns",
     "maxTokens": "Tokens",
     "maxMinutes": "Minutes",
+    "maxCostUsd": "Cost limit (USD)",
+    "maxCostUsdPlaceholder": "No limit",
+    "maxCostUsdHint": "Optional. Needs a price for the model in prices.toml (dollars per million tokens); without one the run is refused instead of running uncapped.",
     "onBlock": "If a tool needs approval",
     "onBlockContinue": "Deny it and carry on",
     "onBlockEnd": "Deny it and end the run",
@@ -130,6 +133,7 @@
     "toolsRequired": "Allow at least one tool.",
     "turnsRange": "Turns must be 1 to 200.",
     "tokensRange": "Tokens must be 1 to 5,000,000.",
-    "minutesRange": "Minutes must be 1 to 360."
+    "minutesRange": "Minutes must be 1 to 360.",
+    "costRange": "The cost limit must be more than $0 and at most $1000, or empty."
   }
 }
