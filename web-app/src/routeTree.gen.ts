@@ -13,6 +13,7 @@ import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
 import { Route as StudioRouteImport } from './routes/studio'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as LogsRouteImport } from './routes/logs'
+import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
@@ -62,6 +63,11 @@ const OverviewRoute = OverviewRouteImport.update({
 const LogsRoute = LogsRouteImport.update({
   id: '/logs',
   path: '/logs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchiveRoute = ArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExtensionsRoute = ExtensionsRouteImport.update({
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -258,6 +265,7 @@ export interface FileRoutesByTo {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -295,6 +303,7 @@ export interface FileRoutesById {
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
+  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -333,6 +342,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -369,6 +379,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -405,6 +416,7 @@ export interface FileRouteTypes {
     | '/cowork'
     | '/extensions'
     | '/logs'
+    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -442,6 +454,7 @@ export interface RootRouteChildren {
   CoworkRoute: typeof CoworkRoute
   ExtensionsRoute: typeof ExtensionsRoute
   LogsRoute: typeof LogsRoute
+  ArchiveRoute: typeof ArchiveRoute
   OverviewRoute: typeof OverviewRoute
   StudioRoute: typeof StudioRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
@@ -501,6 +514,13 @@ declare module '@tanstack/react-router' {
       path: '/logs'
       fullPath: '/logs'
       preLoaderRoute: typeof LogsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/archive': {
+      id: '/archive'
+      path: '/archive'
+      fullPath: '/archive'
+      preLoaderRoute: typeof ArchiveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/extensions': {
@@ -722,6 +742,7 @@ const rootRouteChildren: RootRouteChildren = {
   CoworkRoute: CoworkRoute,
   ExtensionsRoute: ExtensionsRoute,
   LogsRoute: LogsRoute,
+  ArchiveRoute: ArchiveRoute,
   OverviewRoute: OverviewRoute,
   StudioRoute: StudioRoute,
   SystemMonitorRoute: SystemMonitorRoute,

@@ -313,6 +313,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
                     active: pathname === route.studio,
                     testId: 'nav-studio',
                   },
+                  {
+                    to: route.archive,
+                    label: t('archive:nav'),
+                    icon: 'x-disk',
+                    active: pathname === route.archive,
+                    testId: 'nav-archive',
+                  },
                 ]}
               />
             </NavList>

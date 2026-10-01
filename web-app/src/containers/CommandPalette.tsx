@@ -130,6 +130,13 @@ export function CommandPalette() {
         run: go(route.studio),
       },
       {
+        id: 'nav-archive',
+        section: 'navigation',
+        title: t('archive:open'),
+        keywords: ['deleted', 'restore', 'trash', 'bin'],
+        run: go(route.archive),
+      },
+      {
         id: 'nav-system-monitor',
         section: 'navigation',
         title: t('common:commandPalette.openSystemMonitor'),

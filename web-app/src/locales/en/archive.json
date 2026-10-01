@@ -42,5 +42,6 @@
   "permanentLabel": "Delete permanently instead",
   "permanentHint": "Skips the Archive. This can't be undone.",
   "moved": "Moved to the Archive",
-  "worktreeKept": "Its worktree stays until you delete the archived session. Unmerged work blocks that."
+  "worktreeKept": "Its worktree stays until you delete the archived session. Unmerged work blocks that.",
+  "open": "Open Archive"
 }
