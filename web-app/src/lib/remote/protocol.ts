@@ -92,6 +92,13 @@ export type RemoteMessage = {
   tools?: RemoteToolStep[]
   /** A reply's footer facts, as the desktop's reply row shows them. */
   meta?: ReplyMeta
+  /**
+   * Present only when the message has other versions (an edited question, a
+   * regenerated reply): which one this is, 1-based, of how many. Older phones
+   * ignore it and show the version in force, which is all `thread.messages`
+   * sends them.
+   */
+  versions?: { index: number; count: number }
 }
 
 /** What a reply's header and footer say (#47, #61, #84). */
@@ -111,6 +118,13 @@ export type ReplyMeta = {
   draft?: { accepted: number; tokens: number }
   /** Skills the reply read (`plugin:skill` or `skill`). */
   skills?: string[]
+}
+
+/** Step a message to the previous (-1) or next (+1) version of itself. */
+export type ThreadBranchSelectParams = {
+  id: string
+  messageId: string
+  dir: -1 | 1
 }
 
 export type ThreadMessagesParams = {
@@ -778,6 +792,8 @@ export type RemoteMethods = {
   'preview.ticket': { params: { id: string }; result: { path: string } }
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
+  /** `ok: false` when there is no version that way or the chat is mid-reply. */
+  'thread.branch.select': { params: ThreadBranchSelectParams; result: { ok: boolean } }
   'models.list': { params: Record<string, never>; result: ModelsListResult }
   status: { params: Record<string, never>; result: StatusResult }
   'rooms.get': { params: IdParams; result: RoomDetail }
