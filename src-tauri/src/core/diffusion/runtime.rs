@@ -203,11 +203,14 @@ fn diagnose(live: &Arc<StdMutex<Live>>) -> String {
     friendly_failure(&tail)
 }
 
+/// What a run that ran out of graphics memory reports, so it can be told apart.
+const OUT_OF_MEMORY: &str = "The graphics card ran out of memory. Try a smaller size, or close other programs that use the GPU.";
+
 /// A plain-words reason for a failure, from the engine's log.
 pub fn friendly_failure(tail: &[String]) -> String {
     let joined = tail.join("\n").to_ascii_lowercase();
     if joined.contains("out of memory") || joined.contains("failed to allocate") || joined.contains("cudamalloc failed") {
-        return "The graphics card ran out of memory. Try a smaller size, or close other programs that use the GPU.".to_string();
+        return OUT_OF_MEMORY.to_string();
     }
     if joined.contains("gpu address fault")
         || joined.contains("backend is in error state")
@@ -550,6 +553,38 @@ async fn poll_job<R: Runtime>(
     }
 }
 
+/// `run_job`, but when the graphics card runs out of memory the model is loaded
+/// again with the next lighter offload policy and the job is retried, instead of
+/// failing a run that would fit with part of the model in system memory. The
+/// policy that worked stays for the next run.
+async fn run_job_with_fallback<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    model_id: &str,
+    path: &str,
+    body: Value,
+    steps: u32,
+    batch: u32,
+) -> Result<(String, Value), String> {
+    loop {
+        let outcome = run_job(app, path, body.clone(), steps, batch, model_id).await;
+        let Err(message) = &outcome else { return outcome };
+        if message != OUT_OF_MEMORY {
+            return outcome;
+        }
+        let current = last_load()
+            .lock()
+            .ok()
+            .and_then(|l| l.as_ref().filter(|(m, _)| m == model_id).map(|(_, o)| *o))
+            .unwrap_or_default();
+        let Some(lighter) = current.lighter() else { return outcome };
+        log::info!("Image engine ran out of memory; loading {model_id} again with {lighter:?} offload");
+        unload(app).await;
+        if load(app, model_id, lighter).await.is_err() {
+            return outcome;
+        }
+    }
+}
+
 fn random_seed() -> u32 {
     rand::random::<u32>()
 }
@@ -588,13 +623,13 @@ pub async fn generate_image<R: Runtime>(
         sampling,
     };
     let started = Instant::now();
-    let (job_id, result) = run_job(
+    let (job_id, result) = run_job_with_fallback(
         app,
+        def.id,
         "/sdcpp/v1/img_gen",
         build_img_gen_request(&request),
         steps,
         count,
-        def.id,
     )
     .await?;
     let _ = app.emit(
@@ -687,7 +722,7 @@ pub async fn generate_video<R: Runtime>(
         sampling,
     };
     let started = Instant::now();
-    let (job_id, result) = run_job(app, "/sdcpp/v1/vid_gen", build_vid_gen_request(&request), steps, 1, def.id).await?;
+    let (job_id, result) = run_job_with_fallback(app, def.id, "/sdcpp/v1/vid_gen", build_vid_gen_request(&request), steps, 1).await?;
     let _ = app.emit(
         "diffusion-progress",
         ProgressEvent { job_id: job_id.clone(), phase: "saving", fraction: 0.99 },
