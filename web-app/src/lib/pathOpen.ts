@@ -87,6 +87,8 @@ export function normalizePath(raw: string): Normalized | null {
   return { path: path || '/', absolute, caseInsensitive }
 }
 
+// Control characters are exactly what this guard is meant to reject.
+// eslint-disable-next-line no-control-regex
 const FORBIDDEN = /[<>|"?*`$'(){};,=!&^%\u0000-\u001f\u007f]/
 const LINE_SUFFIX = /^(.+?):(\d+)(?::\d+)?(?:-(\d+))?$/
 // Names that read as a project rather than a file when written bare.
