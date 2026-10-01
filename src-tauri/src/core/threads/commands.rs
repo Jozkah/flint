@@ -316,6 +316,21 @@ pub async fn delete_message<R: Runtime>(
         // Out of the tree without cutting off what hangs below it (the TS
         // `removeFromTree`): children move up to the deleted message's parent.
         let messages = read_messages_from_file(&data_folder, &thread_id)?;
+        // A deleted root that the thread had selected hands the selection to
+        // the root that replaces it.
+        let meta_path = get_thread_metadata_path(&data_folder, &thread_id);
+        if let Ok(raw) = fs::read_to_string(&meta_path) {
+            if let Ok(mut thread) = serde_json::from_str::<serde_json::Value>(&raw) {
+                let change = super::branching::active_root_after_delete(
+                    &messages,
+                    &message_id,
+                    super::branching::thread_active_root(&thread).as_deref(),
+                );
+                if super::branching::apply_active_root(&mut thread, change) {
+                    update_thread_metadata(&data_folder, &thread_id, &thread)?;
+                }
+            }
+        }
         let messages = super::branching::remove_message(messages, &message_id);
 
         // Rewrite remaining messages

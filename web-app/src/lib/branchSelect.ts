@@ -2,6 +2,8 @@ import type { ThreadMessage } from '@janhq/core'
 import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
 import {
+  activeRootAfterRemoval,
+  activeRootIdOf,
   getParentId,
   getSiblings,
   withActiveChild,
@@ -34,6 +36,26 @@ export function setActiveBranch(threadId: string, node: ThreadMessage): void {
     .getMessages(threadId)
     .find((m) => m.id === parentId)
   if (parent) useMessages.getState().updateMessage(withActiveChild(parent, node.id))
+}
+
+/**
+ * Call before removing `removeIds` from a thread: if the thread's selected root
+ * is among them, point it at the root that replaces it (or clear it).
+ */
+export function repairActiveRoot(
+  threadId: string,
+  messages: ThreadMessage[],
+  removeIds: string[]
+): void {
+  const thread = useThreads.getState().threads[threadId]
+  const metadata = (thread?.metadata as Record<string, unknown> | undefined) ?? {}
+  const next = activeRootAfterRemoval(messages, removeIds, activeRootIdOf(metadata))
+  if (next === undefined) return
+  const { activeRootId: _gone, ...rest } = metadata
+  void _gone
+  useThreads.getState().updateThread(threadId, {
+    metadata: next === null ? rest : { ...rest, activeRootId: next },
+  })
 }
 
 /**

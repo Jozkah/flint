@@ -508,6 +508,51 @@ async fn test_delete_message_keeps_the_tail_of_a_branched_thread_reachable() {
 }
 
 #[tokio::test]
+async fn test_delete_message_repairs_the_selected_root_of_the_thread() {
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let mut thread = create_test_thread("Roots");
+    thread["metadata"] = json!({"activeRootId": "r1"});
+    let created = create_thread(app.handle().clone(), thread).await.unwrap();
+    let thread_id = created["id"].as_str().unwrap().to_string();
+    for (id, at, parent) in [
+        ("r1", 1, json!(null)),
+        ("a1", 2, json!("r1")),
+        ("r2", 3, json!(null)),
+    ] {
+        let message = json!({
+            "id": id, "object": "message", "thread_id": thread_id, "role": "user",
+            "content": [], "status": "sent", "created_at": at, "completed_at": at,
+            "metadata": {"parentId": parent}
+        });
+        create_message(app.handle().clone(), message).await.unwrap();
+    }
+    let active = |app: &tauri::App<MockRuntime>| {
+        let folder = get_jan_data_folder_path(app.handle().clone());
+        let raw = fs::read_to_string(get_thread_metadata_path(&folder, &thread_id)).unwrap();
+        let t: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        t["metadata"]["activeRootId"].as_str().map(str::to_string)
+    };
+
+    // A root that is not selected: the selection stays.
+    delete_message(app.handle().clone(), thread_id.clone(), "r2".to_string())
+        .await
+        .unwrap();
+    assert_eq!(active(&app).as_deref(), Some("r1"));
+
+    // The selected root: its first child takes over.
+    delete_message(app.handle().clone(), thread_id.clone(), "r1".to_string())
+        .await
+        .unwrap();
+    assert_eq!(active(&app).as_deref(), Some("a1"));
+
+    // The only root left: the selection is cleared.
+    delete_message(app.handle().clone(), thread_id.clone(), "a1".to_string())
+        .await
+        .unwrap();
+    assert_eq!(active(&app), None);
+}
+
+#[tokio::test]
 async fn test_modify_thread_assistant() {
     let (app, _data_dir) = mock_app_with_temp_data_dir();
     let app_handle = app.handle().clone();

@@ -14,7 +14,7 @@ vi.mock('@/hooks/useServiceHub', () => ({
 
 import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
-import { selectVersion } from '../branchSelect'
+import { repairActiveRoot, selectVersion } from '../branchSelect'
 import { activePathOf } from '../message-branching'
 
 let clock = 0
@@ -76,5 +76,42 @@ describe('selectVersion', () => {
     expect(selectVersion('t1', 'a1', -1)).toBeNull()
     expect(selectVersion('t1', 'a1b', 1)).toBeNull()
     expect(selectVersion('t1', 'nope', 1)).toBeNull()
+  })
+})
+
+describe('repairActiveRoot', () => {
+  const root = () => useThreads.getState().threads.t1.metadata?.activeRootId
+
+  it('moves the thread to the root that replaces the deleted one', () => {
+    useMessages.setState({
+      messages: {
+        t1: [msg('r1', 'user', null), msg('a1', 'assistant', 'r1'), msg('r2', 'user', null)],
+      },
+    })
+    useThreads.setState({
+      threads: { t1: { id: 't1', title: 't', metadata: { activeRootId: 'r1' } } as never },
+    })
+    repairActiveRoot('t1', useMessages.getState().getMessages('t1'), ['r1'])
+    expect(root()).toBe('a1')
+  })
+
+  it('clears it when the only root is deleted', () => {
+    useMessages.setState({ messages: { t1: [msg('r1', 'user', null)] } })
+    useThreads.setState({
+      threads: { t1: { id: 't1', title: 't', metadata: { activeRootId: 'r1', keep: 1 } } as never },
+    })
+    repairActiveRoot('t1', useMessages.getState().getMessages('t1'), ['r1'])
+    expect(useThreads.getState().threads.t1.metadata).toEqual({ keep: 1 })
+  })
+
+  it('leaves a non-active root deletion alone', () => {
+    useMessages.setState({
+      messages: { t1: [msg('r1', 'user', null), msg('r2', 'user', null)] },
+    })
+    useThreads.setState({
+      threads: { t1: { id: 't1', title: 't', metadata: { activeRootId: 'r1' } } as never },
+    })
+    repairActiveRoot('t1', useMessages.getState().getMessages('t1'), ['r2'])
+    expect(root()).toBe('r1')
   })
 })
