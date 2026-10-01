@@ -1504,7 +1504,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // A tool its server does not implement is no longer offered in this
     // conversation (transcript audit #11).
     for (const name of deadTools(this.threadId)) delete toolsRecord[name]
-    this.tools = toolsRecord
+    // Sorted by name: the tool list is part of the prompt, and a server that
+    // reconnects in a different order would otherwise change the prefix and
+    // throw away the model's prompt cache.
+    this.tools = Object.fromEntries(
+      Object.entries(toolsRecord).sort(([a], [b]) =>
+        a < b ? -1 : a > b ? 1 : 0
+      )
+    )
     this.toolServers = toolServers
     this.toolsCacheKey = cacheKey
   }

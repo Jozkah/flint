@@ -61,6 +61,7 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
+import { fitImageFileToLimit } from '@/lib/imageResize'
 import {
   useConversationModel,
   type ModelSelection,
@@ -1831,8 +1832,12 @@ const ChatInput = memo(function ChatInput({
   }
 
   const processImageFiles = useCallback(
-    async (files: File[], options?: ProcessImageOptions) => {
+    async (inputFiles: File[], options?: ProcessImageOptions) => {
     const maxSize = 10 * 1024 * 1024 // 10MB in bytes
+    // A large screenshot is re-encoded to fit rather than refused.
+    const files = await Promise.all(
+      Array.from(inputFiles).map((file) => fitImageFileToLimit(file, maxSize))
+    )
 
     const validFiles: File[] = []
     const textFiles: File[] = []
