@@ -108,6 +108,30 @@ async fn init_database_inner<R: Runtime>(app: &AppHandle<R>) -> Result<(), Strin
         .await
         .map_err(|e| format!("Failed to create created_at index: {}", e))?;
 
+    // Archive instead of delete: a deleted thread keeps its rows and gets a
+    // timestamp, and every listing skips it. SQLite has no ADD COLUMN IF NOT
+    // EXISTS, so an "already there" failure on a later start is expected.
+    if let Err(e) = sqlx::query("ALTER TABLE threads ADD COLUMN deleted_at INTEGER")
+        .execute(&pool)
+        .await
+    {
+        if !e.to_string().contains("duplicate column") {
+            return Err(format!("Failed to add deleted_at column: {}", e));
+        }
+    }
+
+    // Archived threads are kept for the default retention, then destroyed.
+    // The phone has no archive settings of its own, so this is the 30 days the
+    // desktop defaults to.
+    if let Err(e) = sqlx::query(
+        "DELETE FROM threads WHERE deleted_at IS NOT NULL AND deleted_at <= strftime('%s', 'now') - 30 * 86400",
+    )
+    .execute(&pool)
+    .await
+    {
+        log::warn!("could not purge old archived threads: {e}");
+    }
+
     // Store pool globally
     DB_POOL
         .get_or_init(|| Mutex::new(None))
@@ -165,7 +189,9 @@ async fn wait_until_ready<T>(
 pub async fn db_list_threads<R: Runtime>(_app_handle: AppHandle<R>) -> Result<Vec<Value>, String> {
     let pool = get_pool().await?;
 
-    let rows = sqlx::query("SELECT data FROM threads ORDER BY updated_at DESC")
+    let rows = sqlx::query(
+        "SELECT data FROM threads WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+    )
         .fetch_all(&pool)
         .await
         .map_err(|e| format!("Failed to list threads: {}", e))?;
@@ -233,8 +259,21 @@ pub async fn db_modify_thread<R: Runtime>(
 pub async fn db_delete_thread<R: Runtime>(
     _app_handle: AppHandle<R>,
     thread_id: &str,
+    archive: bool,
 ) -> Result<(), String> {
     let pool = get_pool().await?;
+
+    if archive {
+        // Kept, hidden: the rows stay until `db_purge_deleted_threads`.
+        sqlx::query(
+            "UPDATE threads SET deleted_at = strftime('%s', 'now') WHERE id = ?1 AND deleted_at IS NULL",
+        )
+        .bind(thread_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to archive thread: {}", e))?;
+        return Ok(());
+    }
 
     // Messages will be auto-deleted via CASCADE
     sqlx::query("DELETE FROM threads WHERE id = ?1")
@@ -244,6 +283,38 @@ pub async fn db_delete_thread<R: Runtime>(
         .map_err(|e| format!("Failed to delete thread: {}", e))?;
 
     Ok(())
+}
+
+/// Bring an archived thread back.
+pub async fn db_restore_thread<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    thread_id: &str,
+) -> Result<(), String> {
+    let pool = get_pool().await?;
+    sqlx::query("UPDATE threads SET deleted_at = NULL WHERE id = ?1")
+        .bind(thread_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to restore thread: {}", e))?;
+    Ok(())
+}
+
+/// Destroy archived threads deleted at or before `cutoff_secs` (all of them
+/// when `None`). Returns how many went.
+pub async fn db_purge_deleted_threads<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    cutoff_secs: Option<i64>,
+) -> Result<u64, String> {
+    let pool = get_pool().await?;
+    // Messages are removed by CASCADE.
+    let result = sqlx::query(
+        "DELETE FROM threads WHERE deleted_at IS NOT NULL AND deleted_at <= ?1",
+    )
+    .bind(cutoff_secs.unwrap_or(i64::MAX))
+    .execute(&pool)
+    .await
+    .map_err(|e| format!("Failed to purge archived threads: {}", e))?;
+    Ok(result.rows_affected())
 }
 
 /// List all messages for a thread from database

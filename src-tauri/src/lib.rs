@@ -277,6 +277,7 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::create_thread,
         core::threads::commands::modify_thread,
         core::threads::commands::delete_thread,
+        core::threads::commands::delete_thread_permanently,
         core::threads::commands::list_messages,
         core::threads::commands::create_message,
         core::threads::commands::modify_message,

@@ -162,9 +162,17 @@ export class DefaultThreadsService implements ThreadsService {
       })
   }
 
-  async deleteThread(threadId: string): Promise<void> {
+  async deleteThread(threadId: string, permanent = false): Promise<void> {
     // For temporary threads, skip deleting via conversational extension
     if (threadId === TEMPORARY_CHAT_ID) {
+      return
+    }
+
+    // "Delete permanently" skips the archive. The extension path below goes
+    // through `delete_thread`, which archives when the archive is on.
+    if (permanent) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('delete_thread_permanently', { threadId })
       return
     }
 
