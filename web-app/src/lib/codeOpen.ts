@@ -33,6 +33,11 @@ export type CodePathCheck = { ok: true } | { ok: false; reason: string }
 /** What a surface offers beside opening: a reason check and the diff view. */
 export type CodeOpenTools = {
   check?: (path: string) => CodePathCheck
+  /**
+   * Does the file exist? Asked on a click, never while rendering. Only a
+   * definite `false` stops the open; a surface that cannot tell says true.
+   */
+  exists?: (path: string) => Promise<boolean>
   /** Show this file in Changes. */
   openDiff?: (path: string) => void
   /**

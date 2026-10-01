@@ -12,9 +12,10 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 
 const convertFileSrc = vi.fn((p: string) => `asset://${p}`)
 const getJanDataFolder = vi.fn(async () => DATA_FOLDER)
+const invoke = vi.fn(async () => {})
 const hub = {
   app: () => ({ getJanDataFolder }),
-  core: () => ({ convertFileSrc }),
+  core: () => ({ convertFileSrc, invoke }),
 }
 vi.mock('@/hooks/useServiceHub', () => ({
   useServiceHub: () => hub,
@@ -349,6 +350,60 @@ describe('CoworkCodePanel', () => {
     )
   })
 
+  it('shows the head of an oversized project file instead of an empty notice', async () => {
+    listDir.mockResolvedValue(listing(fileEntry('big.txt')))
+    readFile.mockResolvedValue(
+      projectFile({
+        size: 3_600_000,
+        oversized: true,
+        preview: 'first line of the big file\n',
+      })
+    )
+    render(<Harness />)
+    await openFromExplorer('big.txt')
+
+    expect(await screen.findByTestId('code-oversized-preview')).toHaveTextContent(
+      'first line of the big file'
+    )
+    expect(
+      screen.getByText('common:codePanel.openExternallyPreview')
+    ).toBeInTheDocument()
+  })
+
+  it('does not claim a preview is shown when the oversized file has none', async () => {
+    listDir.mockResolvedValue(listing(fileEntry('big.bin')))
+    readFile.mockResolvedValue(projectFile({ size: 9_000_000, oversized: true }))
+    render(<Harness />)
+    await openFromExplorer('big.bin')
+
+    expect(
+      await screen.findByText('common:codePanel.openExternally')
+    ).toBeInTheDocument()
+    expect(screen.queryByText('common:codePanel.openExternallyPreview')).toBeNull()
+    expect(screen.queryByTestId('code-oversized-preview')).toBeNull()
+  })
+
+  it('opens a non-source file from the tree and says it is binary, with an open-externally action', async () => {
+    listDir.mockResolvedValue(listing(fileEntry('data.bin')))
+    readFile.mockResolvedValue(projectFile({ binary: true, size: 4 }))
+    invoke.mockClear()
+    render(<Harness />)
+
+    const row = await screen.findByRole('button', { name: 'data.bin' })
+    expect(row).not.toBeDisabled()
+    await userEvent.click(row)
+
+    expect(await screen.findByTestId('code-binary-notice')).toHaveTextContent(
+      'common:codePanel.binary'
+    )
+    await userEvent.click(screen.getByTestId('code-open-external'))
+    expect(invoke).toHaveBeenCalledWith('open_session_path', {
+      roots: [ROOT],
+      path: `${ROOT}/data.bin`,
+      mode: 'open',
+    })
+  })
+
   it('reports a failed read and offers to close the dead tab', async () => {
     listDir.mockResolvedValue(listing(fileEntry('gone.ts')))
     readFile.mockRejectedValue(
@@ -359,8 +414,17 @@ describe('CoworkCodePanel', () => {
 
     await openFromExplorer('gone.ts')
 
+    // A friendly sentence, not the OS error; the technical text is kept in a
+    // tooltip.
+    const missing = await screen.findByTestId('code-missing-notice')
+    expect(missing).toHaveTextContent('common:codePanel.fileMissing#gone.ts')
+    expect(missing).toHaveAttribute(
+      'title',
+      'No such file or directory (os error 2)'
+    )
+    expect(screen.queryByText(/os error 2/)).toBeNull()
     expect(
-      await screen.findByText('No such file or directory (os error 2)')
+      screen.getByRole('button', { name: 'common:codePanel.retry' })
     ).toBeInTheDocument()
 
     await userEvent.click(
@@ -709,7 +773,11 @@ describe('CoworkCodePanel — session isolation', () => {
         initial={sandboxState('session-a')}
       />
     )
-    expect(await screen.findByText('common:codePanel.binary')).toBeInTheDocument()
+    // The panel re-reads once the data folder resolves, which swaps the
+    // notice's node; assert on what is on screen when it settles.
+    await waitFor(() =>
+      expect(screen.getByText('common:codePanel.binary')).toBeInTheDocument()
+    )
   })
 
   it('shows a too-large sandbox file as a notice, not content', async () => {

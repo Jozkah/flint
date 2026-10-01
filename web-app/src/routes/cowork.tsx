@@ -60,7 +60,9 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf } from '@/lib/coworkPreview'
+import { basenameOf, resolveInRoot } from '@/lib/coworkPreview'
+import { codePathExists } from '@/lib/codePathExists'
+import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
@@ -1315,6 +1317,28 @@ export function CoworkPage() {
         : { ok: true }
     },
     [resolveToolPath, t]
+  )
+  /** Does a clicked path's file exist? Only a definite "not found" is false. */
+  const toolPathExists = useCallback(
+    (path: string) =>
+      codePathExists(resolveToolPath(path), {
+        project: async (rel) => {
+          if (!treeRoot) return
+          const dataFolder = await serviceHub.app().getJanDataFolder()
+          if (!dataFolder) return
+          await projectReadFile(dataFolder, treeRoot, rel, false)
+        },
+        sandboxMissing: async (rel) => {
+          const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
+          if (!abs) return false
+          const read = await readTextBounded(
+            serviceHub.core().convertFileSrc(abs),
+            { maxBytes: 4096 }
+          )
+          return read.status === 'missing'
+        },
+      }),
+    [resolveToolPath, treeRoot, workspacePath, serviceHub]
   )
   /**
    * A tool path as shown: relative to the sandbox or the attached folder it
@@ -5545,6 +5569,7 @@ export function CoworkPage() {
                   <CodeOpenProvider
             open={openToolPath}
             check={checkToolPath}
+            exists={toolPathExists}
             openDiff={openToolDiff}
             displayPath={displayToolPath}
             roots={pathLinkRoots}

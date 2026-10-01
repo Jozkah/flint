@@ -170,6 +170,39 @@ describe('editing in the Code panel', () => {
     expect(edits.pending[0]).toMatchObject({ path: 'app.ts', where: 'real' })
   })
 
+  it.each([
+    ['CRLF', 'a\r\nb\r\n', 'a\nB\n', 'a\r\nB\r\n'],
+    ['LF', 'a\nb\n', 'a\nB\n', 'a\nB\n'],
+    ['one-line CRLF', 'min();\r\n', 'min2();\n', 'min2();\r\n'],
+    ['mixed, mostly CRLF', 'a\r\nb\r\nc\n', 'a\nB\nc\n', 'a\r\nB\r\nc\r\n'],
+  ])(
+    'opens a %s file clean and saves it in its own line endings',
+    async (_name, disk, typed, saved) => {
+      readFile.mockResolvedValue(fileOf(disk))
+      const saveFile = vi.fn<SaveUserEdit>(async () => ({ ok: true }))
+      render(
+        <Harness initial={withTab()} access={repository} saveFile={saveFile} />
+      )
+
+      const box = await editor()
+      // Opening is not an edit: no unsaved dot, Save disabled.
+      expect(screen.queryByTestId('tab-dirty')).toBeNull()
+      expect(
+        screen.getByRole('button', { name: 'common:codePanel.save' })
+      ).toBeDisabled()
+
+      // The editor speaks LF.
+      fireEvent.change(box, { target: { value: typed } })
+      expect(screen.getByTestId('tab-dirty')).toBeInTheDocument()
+      fireEvent.click(
+        screen.getByRole('button', { name: 'common:codePanel.save' })
+      )
+      await waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1))
+      expect(saveFile.mock.calls[0][0].content).toBe(saved)
+      await waitFor(() => expect(screen.queryByTestId('tab-dirty')).toBeNull())
+    }
+  )
+
   it('saves Review only edits to the sandbox copy and says so', async () => {
     readFile.mockResolvedValue(fileOf('one'))
     const saveFile = vi.fn<SaveUserEdit>(async () => ({ ok: true }))

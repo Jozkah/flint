@@ -1,4 +1,7 @@
 import type { ReactNode } from 'react'
+import { toast } from 'sonner'
+import { useTranslation } from '@/i18n/react-i18next-compat'
+import { markPathMissing, useKnownMissing } from '@/lib/missingPaths'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import {
   openInBackground,
@@ -28,9 +31,11 @@ export function InlinePathLink({
   children?: ReactNode
 }) {
   const open = useCodeOpen()
-  const { check } = useCodeOpenTools()
+  const { check, exists } = useCodeOpenTools()
   const roots = usePathRoots()
+  const { t } = useTranslation()
   const parsed = parsePathHref(href)
+  const knownMissing = useKnownMissing(roots, parsed?.path ?? '')
   if (!parsed) return <>{children}</>
 
   const action = classifyPath(parsed, {
@@ -41,7 +46,23 @@ export function InlinePathLink({
 
   const run = (background: boolean) => {
     if (action.kind === 'code') {
-      open?.(action.path, { line: parsed.line, background })
+      // Existence is checked here, on the click: detection stays lexical, so
+      // a name in prose that looks like a file is only found wrong when used.
+      // Without a way to check (the surface offers none) the open goes ahead.
+      if (!exists) {
+        open?.(action.path, { line: parsed.line, background })
+        return
+      }
+      void exists(action.path)
+        .catch(() => true)
+        .then((found) => {
+          markPathMissing(roots, parsed.path, !found)
+          if (!found) {
+            toast.info(t('common:codePanel.pathNotFound', { name: parsed.path }))
+            return
+          }
+          open?.(action.path, { line: parsed.line, background })
+        })
     } else {
       // The Rust side re-checks containment (symlinks, case, `..`) and
       // refuses to open an executable; the webview never names a raw path to
@@ -68,9 +89,15 @@ export function InlinePathLink({
         e.preventDefault()
         run(true)
       }}
-      title={action.path}
+      title={
+        knownMissing
+          ? t('common:codePanel.pathNotFound', { name: parsed.path })
+          : action.path
+      }
+      data-missing={knownMissing ? 'true' : undefined}
       className={cn(
         'cursor-pointer text-acc-text underline decoration-dotted underline-offset-2 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring',
+        knownMissing && 'opacity-50',
         className
       )}
     >

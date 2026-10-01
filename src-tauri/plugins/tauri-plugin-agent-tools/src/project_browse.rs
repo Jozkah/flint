@@ -24,6 +24,8 @@ pub const MAX_LIST_ENTRIES: usize = 1000;
 /// friendly oversized notice instead. 1 MiB of source is already far beyond
 /// comfortable reading.
 pub const MAX_READ_BYTES: u64 = 1024 * 1024;
+/// How much of the head of an oversized file is returned for display.
+pub const PREVIEW_BYTES: usize = 16 * 1024;
 
 /// Directories that are never listed: VCS internals, dependency stores and
 /// generated output. `.git` is also a security matter — its objects can contain
@@ -78,6 +80,10 @@ pub struct ProjectFile {
     pub oversized: bool,
     /// The file looks binary (NUL byte in its head) and was not decoded.
     pub binary: bool,
+    /// The first [`PREVIEW_BYTES`] of an `oversized` text file, so the viewer
+    /// has something to show. `None` otherwise (and when the head is binary).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview: Option<String>,
 }
 
 /// Does this file name look like credentials or another secret-bearing file the
@@ -337,6 +343,7 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
             size,
             content: String::new(),
             oversized: true,
+            preview: read_head(&file),
             binary: false,
         });
     }
@@ -349,6 +356,7 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
             content: String::new(),
             oversized: false,
             binary: true,
+            preview: None,
         });
     }
     Ok(ProjectFile {
@@ -357,7 +365,25 @@ pub fn read_file(root: &str, rel: &str, allow_sensitive: bool) -> Result<Project
         content: String::from_utf8_lossy(&bytes).into_owned(),
         oversized: false,
         binary: false,
+        preview: None,
     })
+}
+
+/// The first [`PREVIEW_BYTES`] of `file` as lossy UTF-8, cut at a line break
+/// when there is one. `None` if unreadable or the head looks binary. The path
+/// is already contained by the caller.
+fn read_head(file: &Path) -> Option<String> {
+    use std::io::Read;
+    let mut buf = Vec::with_capacity(PREVIEW_BYTES);
+    std::fs::File::open(file)
+        .ok()?
+        .take(PREVIEW_BYTES as u64)
+        .read_to_end(&mut buf)
+        .ok()?;
+    if buf[..buf.len().min(8192)].contains(&0) {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
 }
 
 #[cfg(test)]
@@ -586,6 +612,8 @@ mod tests {
         assert!(over.oversized);
         assert!(over.content.is_empty());
         assert_eq!(over.size, MAX_READ_BYTES + 1);
+        assert_eq!(over.preview.as_deref().map(str::len), Some(PREVIEW_BYTES));
+        assert!(bin.preview.is_none());
     }
 
     #[test]

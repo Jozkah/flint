@@ -13,6 +13,7 @@ const NO_ROOTS: readonly string[] = []
 export const CodeOpenProvider = ({
   open,
   check,
+  exists,
   openDiff,
   displayPath,
   roots,
@@ -21,6 +22,8 @@ export const CodeOpenProvider = ({
   open: CodeOpen
   /** Why a path cannot be opened, for its tooltip. */
   check?: (path: string) => CodePathCheck
+  /** Whether a path's file exists, asked on click. */
+  exists?: (path: string) => Promise<boolean>
   /** Show a changed file in Changes. */
   openDiff?: (path: string) => void
   /** The short form a path is shown as. */
@@ -30,8 +33,8 @@ export const CodeOpenProvider = ({
   children: ReactNode
 }) => {
   const tools = useMemo(
-    () => ({ check, openDiff, displayPath }),
-    [check, openDiff, displayPath]
+    () => ({ check, exists, openDiff, displayPath }),
+    [check, exists, openDiff, displayPath]
   )
   return (
     <CodeOpenContext.Provider value={open}>
