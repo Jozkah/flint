@@ -211,6 +211,13 @@ pub struct McpSettings {
     /// Per-tool-result character cap; `0` disables it.
     #[serde(default = "default_max_tool_output_chars")]
     pub max_tool_output_chars: u64,
+    /// Minutes without calls before a lazily started server is stopped; `0` never.
+    #[serde(default = "default_idle_shutdown_minutes")]
+    pub idle_shutdown_minutes: u64,
+}
+
+fn default_idle_shutdown_minutes() -> u64 {
+    super::lazy::DEFAULT_IDLE_SHUTDOWN_MINUTES
 }
 
 impl Default for McpSettings {
@@ -225,6 +232,7 @@ impl Default for McpSettings {
             router_model_provider: String::new(),
             router_model_id: String::new(),
             max_tool_output_chars: super::constants::DEFAULT_MCP_MAX_TOOL_OUTPUT_CHARS,
+            idle_shutdown_minutes: super::lazy::DEFAULT_IDLE_SHUTDOWN_MINUTES,
         }
     }
 }

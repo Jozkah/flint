@@ -16,6 +16,11 @@ export type MCPServerConfig = {
   capabilities?: string[]
   // Short description of what the server provides, used by the intent classifier
   description?: string
+  /**
+   * Start this server when Flint starts instead of the first time it is
+   * needed. Off (absent) by default: servers start on demand.
+   */
+  startWithFlint?: boolean
 }
 
 // Define the structure of all MCP servers
@@ -39,6 +44,11 @@ export type MCPSettings = {
    * disables the cap.
    */
   maxToolOutputChars: number
+  /**
+   * Minutes without tool calls before an on-demand server is stopped again;
+   * `0` never stops it. Absent means the backend default (15).
+   */
+  idleShutdownMinutes?: number
 }
 
 export const DEFAULT_MCP_SETTINGS: MCPSettings = {

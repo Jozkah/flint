@@ -257,6 +257,8 @@ pub struct AppState {
     /// reconnecting it. Every start takes a number; a completion only counts
     /// while its number is still the current one.
     pub mcp_generation: Arc<Mutex<HashMap<String, u64>>>,
+    /// On-demand start bookkeeping: one start per server, status, idle time.
+    pub mcp_lazy: Arc<crate::core::mcp::lazy::LazyMcp>,
 }
 
 #[cfg(not(feature = "cli"))]
@@ -279,6 +281,7 @@ impl Default for AppState {
             mcp_reconnect_notify: Arc::new(Notify::new()),
             mcp_last_known_tools: Default::default(),
             mcp_generation: Default::default(),
+            mcp_lazy: Default::default(),
         }
     }
 }

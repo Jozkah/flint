@@ -97,7 +97,7 @@ export function McpDescriptionGenerator({
     if (connectedServers.includes(server)) {
       try {
         const tools = (
-          await serviceHub.mcp().getToolsForServers([server])
+          await serviceHub.mcp().getToolsForServers([server], { start: true })
         ).filter((tool) => !tool.server || tool.server === server)
         cacheServerTools(server, tools)
         return tools
