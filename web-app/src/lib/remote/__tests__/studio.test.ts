@@ -78,3 +78,14 @@ describe('studio and voice handlers', () => {
     expect(await call('voice.status', {})).toEqual({ result: { ready: false } })
   })
 })
+
+describe('library.list with Studio', () => {
+  it('merges Studio items newest first with a Studio source', async () => {
+    const { mergeStudioLibrary } = await import('../studio')
+    const cowork = [{ path: 'a.md', title: 'a', group: 'Document', label: 'MD', sessionId: 's1', sessionTitle: 'S', updatedAt: 10 }]
+    const studio = [{ id: 'v1', kind: 'video' as const, recipe: { prompt: 'Waves', createdAtMs: 20 } as never }]
+    const rows = mergeStudioLibrary(cowork, studio)
+    expect(rows.map((r) => r.title)).toEqual(['Waves', 'a'])
+    expect(rows[0]).toMatchObject({ group: 'Video', label: 'WEBM', sessionTitle: 'Studio', path: 'v1.webm', studio: { id: 'v1' } })
+  })
+})

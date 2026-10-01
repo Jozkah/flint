@@ -494,7 +494,7 @@ export function handleEvent(e: RemoteEvent) {
       if (!e.job) invalidate(['studio.'])
       break
     case 'studio.updated':
-      invalidate(['studio.status', 'studio.gallery'])
+      invalidate(['studio.status', 'studio.gallery', 'library.list'])
       break
   }
 }

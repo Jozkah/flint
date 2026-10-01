@@ -82,7 +82,7 @@ export type RemoteSources = {
   queue?: (id: string) => QueuedItem[]
   coworkChanges?: (id: string) => CoworkChanges | null
   coworkActivity?: (id: string) => CoworkActivity | null
-  library?: () => LibraryItem[]
+  library?: () => LibraryItem[] | Promise<LibraryItem[]>
   permissions?: () => Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
   notificationPrefs?: (device: string) => NotificationPrefs | null
 }
@@ -205,7 +205,7 @@ export function createRemoteHandlers(
       return activity
     },
 
-    'library.list': () => ({ items: need(src.library, 'The library')() }),
+    'library.list': async () => ({ items: await need(src.library, 'The library')() }),
 
     'sessions.list': async (params) => {
       const p = isRecord(params) ? params : {}

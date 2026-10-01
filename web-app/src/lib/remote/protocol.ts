@@ -480,6 +480,8 @@ export type LibraryItem = {
   sessionId: string
   sessionTitle: string
   updatedAt: number
+  /** Set for a Studio result: its media loads with `studio.media`. */
+  studio?: StudioItemWire
 }
 export type LibraryResult = { items: LibraryItem[] }
 

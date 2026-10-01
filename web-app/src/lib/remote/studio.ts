@@ -6,6 +6,7 @@
 
 import { RemoteRpcError, type RemoteHandlers } from './bridge'
 import type {
+  LibraryItem,
   StudioItemWire,
   StudioKindWire,
   StudioStatusResult,
@@ -189,4 +190,22 @@ export function createStudioHandlers(
       return { text: (await voice().transcribe(wav, language)).trim() }
     },
   }
+}
+
+/** Studio results as Library rows, merged with Cowork's, newest first. */
+export function mergeStudioLibrary(cowork: LibraryItem[], studio: StudioItemWire[]): LibraryItem[] {
+  const rows: LibraryItem[] = studio.map((i) => {
+    const prompt = i.recipe.prompt.replace(/\s+/g, ' ').trim() || 'Untitled'
+    return {
+      path: `${i.id}.${i.kind === 'video' ? 'webm' : 'png'}`,
+      title: prompt.length > 80 ? `${prompt.slice(0, 79)}…` : prompt,
+      group: i.kind === 'video' ? 'Video' : 'Image',
+      label: i.kind === 'video' ? 'WEBM' : 'PNG',
+      sessionId: 'studio',
+      sessionTitle: 'Studio',
+      updatedAt: i.recipe.createdAtMs,
+      studio: i,
+    }
+  })
+  return [...cowork, ...rows].sort((a, b) => b.updatedAt - a.updatedAt)
 }

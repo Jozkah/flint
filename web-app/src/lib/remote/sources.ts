@@ -41,6 +41,8 @@ import { formatChangeSummary } from '@/lib/coworkChangeSummary'
 import { artifactsFromTurns } from '@/lib/coworkArtifacts'
 import { readNotificationPrefs } from './appActions'
 import { coworkReplyOf, roomReplyOf } from './events'
+import { appStudio } from './appStudio'
+import { mergeStudioLibrary } from './studio'
 import { streamSnapshot } from './streams'
 import { coworkToolStep, type LiveReply } from './live'
 import type {
@@ -414,8 +416,8 @@ export const appSources: RemoteSources = {
     }
   },
 
-  library: () =>
-    useCoworkSessions.getState().sessions.flatMap((session) =>
+  library: async () => {
+    const cowork = useCoworkSessions.getState().sessions.flatMap((session) =>
       artifactsFromTurns(session.turns, session.folder).map((a) => ({
         path: a.path,
         title: a.title,
@@ -425,7 +427,13 @@ export const appSources: RemoteSources = {
         sessionTitle: session.title,
         updatedAt: ms(session.updated),
       }))
-    ),
+    )
+    // Studio results join the list when the gallery can be read (Windows).
+    const studio = await Promise.all([appStudio.gallery('image'), appStudio.gallery('video')])
+      .then(([a, b]) => [...a, ...b])
+      .catch(() => [])
+    return mergeStudioLibrary(cowork, studio)
+  },
 
   permissions: async () => {
     const status = await remoteApi.getStatus().catch(() => null)
