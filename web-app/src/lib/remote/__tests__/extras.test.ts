@@ -16,6 +16,7 @@ function mockExtras(over: Partial<RemoteExtras> = {}): RemoteExtras {
     setChatAssistant: vi.fn(),
     assistants: vi.fn(() => ({ assistants: [{ id: 'jan', name: 'Flint', builtIn: true }, { id: 'quartz', name: 'Quartz', builtIn: true }], routing: true })),
     forkChat: vi.fn(async (id: string) => (id === 'c1' ? 'c2' : null)),
+    selectVersion: vi.fn((_id: string, messageId: string) => messageId !== 'edge'),
     compactChat: vi.fn(() => true),
     regenerateTitle: vi.fn(async () => 'done' as const),
     clearRoom: vi.fn(async () => {}),
@@ -34,6 +35,20 @@ describe('extra handlers (#30–#87)', () => {
   beforeEach(() => {
     x = mockExtras()
     handlers = createExtraHandlers(x) as unknown as RemoteHandlers
+  })
+
+  it('steps a message to another version, and says when there is none', async () => {
+    expect(await call('thread.branch.select', { id: 'c1', messageId: 'm1', dir: -1 })).toEqual({ result: { ok: true } })
+    expect(x.selectVersion).toHaveBeenCalledWith('c1', 'm1', -1)
+    expect(await call('thread.branch.select', { id: 'c1', messageId: 'edge', dir: 1 })).toEqual({ result: { ok: false } })
+  })
+
+  it('rejects a version step with no message or a bad direction', async () => {
+    const bad = { error: expect.objectContaining({ code: 'bad_params' }) }
+    expect(await call('thread.branch.select', { id: 'c1', dir: 1 })).toEqual(bad)
+    expect(await call('thread.branch.select', { id: 'c1', messageId: 'm1', dir: 2 })).toEqual(bad)
+    expect(await call('thread.branch.select', { messageId: 'm1', dir: 1 })).toEqual(bad)
+    expect(x.selectVersion).not.toHaveBeenCalled()
   })
 
   it('reads a chat’s details, and says when there is no such chat', async () => {

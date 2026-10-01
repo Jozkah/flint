@@ -1,13 +1,13 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import type { RemoteMessage } from '@/lib/remote/protocol'
 import { TopThread } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
-import { AssistantMessage, UserBubble } from '../ui/messages'
+import { AssistantMessage, UserBubble, VersionNav } from '../ui/messages'
 import { PendingBubble, QueueBar, StreamingMessage } from '../ui/live'
 import { client, openSheet, sendMessage, toast } from '../state/app'
-import { forkFrom } from '../state/controls'
+import { forkFrom, stepVersion } from '../state/controls'
 import { effortStops, stopLabel } from '../ui/effort'
 import { useRpc } from '../state/rpc'
 import { useSessions } from '../state/sessions'
@@ -78,6 +78,16 @@ export default function Chat({ id }: { id: string }) {
   const running = session?.status === 'running' || Boolean(stream && !stream.done)
   const earlier = olderStart ?? data?.start ?? 0
 
+  // A switched version changes the path, so the pages already loaded above the
+  // newest window may belong to the version just left: start from the window.
+  const stepOf = (messageId: string) => async (dir: -1 | 1) => {
+    if (await stepVersion(id, messageId, dir)) {
+      setOlder([])
+      setOlderStart(null)
+      setSeen(null)
+    }
+  }
+
   const loadEarlier = async () => {
     if (!earlier || loadingOlder) return
     const el = ref.current
@@ -130,12 +140,17 @@ export default function Chat({ id }: { id: string }) {
         {data && allMessages.length === 0 && !pending.length && !streamShown && <Empty>No messages yet.</Empty>}
         {allMessages.map((m) =>
           m.role === 'user' ? (
-            <UserBubble key={m.id} text={m.text} />
+            <Fragment key={m.id}>
+              <UserBubble text={m.text} />
+              <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
+            </Fragment>
           ) : m.role === 'assistant' ? (
             <AssistantMessage
               key={m.id}
               m={m}
               actions={
+                <>
+                <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
                 <div className="macts">
                   <button
                     type="button"
@@ -156,6 +171,7 @@ export default function Chat({ id }: { id: string }) {
                     <I n="more" />
                   </button>
                 </div>
+                </>
               }
             />
           ) : (

@@ -6,7 +6,7 @@
 import type { ThreadMessage } from '@janhq/core'
 import { projectListDir, projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
 import { useThreads } from '@/hooks/useThreads'
-import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useAssistant, defaultAssistant } from '@/hooks/useAssistant'
@@ -40,6 +40,7 @@ import type { ScopedMemoryRetrieved } from '@/lib/memoryBinding'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { isLocalProvider } from '@/lib/utils'
 import { forkThread } from '@/lib/forkThread'
+import { BRANCH_CHANGED_EVENT, selectVersion as selectBranchVersion } from '@/lib/branchSelect'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateCoworkTitle, regenerateRoomTitle } from '@/lib/regenerateSessionTitle'
 import { canCompactChat, requestChatCompaction } from '@/lib/chatCompaction'
@@ -124,7 +125,7 @@ export const appExtras: RemoteExtras = {
     const thread = useThreads.getState().threads[id]
     if (!thread) return null
     const { ref, provider, model } = modelOf(id)
-    const messages = useMessages.getState().getMessages(id) ?? []
+    const messages = getActiveMessages(id)
 
     // Effort: ChatInput's `effortProfile` and the chat's own override.
     const profile = effortProfile(ref?.provider, model)
@@ -296,6 +297,17 @@ export const appExtras: RemoteExtras = {
   }),
 
   forkChat: (id, messageId) => forkThread(id, messageId),
+  selectVersion: (id, messageId, dir) => {
+    // A reply being written is on the path; moving it under the stream would
+    // attach the reply to the wrong version.
+    const app = useAppState.getState()
+    if (app.busyThreads[id] || app.currentStreamThreadId === id) return false
+    if (!selectBranchVersion(id, messageId, dir)) return false
+    window.dispatchEvent(
+      new CustomEvent(BRANCH_CHANGED_EVENT, { detail: { threadId: id } })
+    )
+    return true
+  },
   compactChat: (id) => requestChatCompaction(id),
 
   regenerateTitle: async (kind, id) => {

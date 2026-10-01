@@ -21,6 +21,7 @@ import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useWebSearchConfig, WEB_SEARCH_PROVIDERS } from '@/hooks/useWebSearchConfig'
 import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { replyMetaOf } from './replyMeta'
+import { activePathOf, getVersionInfo, hasBranching } from '@/lib/message-branching'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -181,16 +182,25 @@ export const appSources: RemoteSources = {
 
   chatMessages: async (id) => {
     if (!useThreads.getState().threads[id]) return []
-    const messages = await getServiceHub().messages().fetchMessages(id)
-    return messages.map(
-      (m): RemoteMessage => ({
+    const stored = await getServiceHub().messages().fetchMessages(id)
+    // The phone gets the conversation in force, not every edited or
+    // regenerated version, and the version position where there is one.
+    const messages = activePathOf(
+      stored,
+      useThreads.getState().threads[id]?.metadata
+    )
+    const branched = hasBranching(stored)
+    return messages.map((m): RemoteMessage => {
+      const info = branched ? getVersionInfo(stored, m) : undefined
+      return {
         id: m.id,
         role: m.role as RemoteMessage['role'],
         text: threadMessageText(m),
         createdAt: ms(m.created_at),
         ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
-      })
-    )
+        ...(info && info.count > 1 ? { versions: info } : {}),
+      }
+    })
   },
 
   coworkMessages: (id) => {

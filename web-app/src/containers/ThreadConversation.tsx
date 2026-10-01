@@ -33,6 +33,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
 
 import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
+import { BRANCH_CHANGED_EVENT, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
@@ -1215,7 +1217,8 @@ export function ThreadConversation({
       })
 
       if (!isAbort) {
-        const localMessages = useMessages.getState().getMessages(threadId)
+        // The titled conversation is the one on screen, not every version.
+        const localMessages = getActiveMessages(threadId)
         const currentThread = useThreads.getState().threads[threadId]
         // Once per chat, and again only when the first message was edited
         // (see lib/threadAutoTitle).
@@ -1991,25 +1994,8 @@ export function ThreadConversation({
 
   // Make `node` the active branch under its parent (or active root).
   const setActiveBranch = useCallback(
-    (node: ThreadMessage) => {
-      const parentId = getParentId(node)
-      if (!parentId) {
-        const t = useThreads.getState().threads[threadId]
-        useThreads.getState().updateThread(threadId, {
-          metadata: {
-            ...((t?.metadata as Record<string, unknown> | undefined) ?? {}),
-            activeRootId: node.id,
-          },
-        })
-        return
-      }
-      const parent = useMessages
-        .getState()
-        .getMessages(threadId)
-        .find((m) => m.id === parentId)
-      if (parent) updateMessage(withActiveChild(parent, node.id))
-    },
-    [threadId, updateMessage]
+    (node: ThreadMessage) => setActiveBranchFor(threadId, node),
+    [threadId]
   )
 
   // Rebuild the rendered conversation from the active path in the store.
@@ -2024,6 +2010,16 @@ export function ThreadConversation({
       convertThreadMessagesToUIMessages(computeActivePath(msgs, activeRootId))
     )
   }, [threadId, setChatMessages])
+
+  // A version switched from the phone: show (and send from) the new path.
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      if ((e as CustomEvent<{ threadId?: string }>).detail?.threadId === threadId)
+        syncActivePath()
+    }
+    window.addEventListener(BRANCH_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(BRANCH_CHANGED_EVENT, onChanged)
+  }, [threadId, syncActivePath])
 
   // Switch the visible version of a message (the `< n/m >` control).
   const handleSwitchVersion = useCallback(
