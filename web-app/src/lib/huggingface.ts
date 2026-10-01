@@ -76,7 +76,14 @@ export async function getHuggingFaceReadme(
   repo: string,
   token?: string
 ): Promise<string> {
-  return call<string>('readme', { repo, token })
+  return stripReadmeFrontmatter(await call<string>('readme', { repo, token }))
+}
+
+/** Drops the YAML metadata block a model card starts with; it is not prose. */
+export function stripReadmeFrontmatter(markdown: string): string {
+  return markdown
+    .replace(/^\uFEFF?---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(?:\r?\n|$)/, '')
+    .trimStart()
 }
 
 /** The first megabyte of a GGUF file, which holds its architecture keys. */

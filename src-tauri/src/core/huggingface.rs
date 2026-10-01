@@ -27,6 +27,14 @@ fn active_downloads() -> &'static Mutex<HashMap<String, CancelFlag>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// Resolves once `cancel` is set. Raced against network waits so a pause takes
+/// effect on a stalled connection instead of at the next chunk.
+async fn cancelled(cancel: &AtomicBool) {
+    while !cancel.load(Ordering::Relaxed) {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+}
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct HuggingFaceFile {
@@ -157,8 +165,12 @@ fn valid_repo_id(repo: &str) -> bool {
         && !owner.is_empty()
         && !name.is_empty()
         && [owner, name].iter().all(|part| {
-            part.chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+            // ".." and "." pass the character check but climb out of the model folder.
+            *part != ".."
+                && *part != "."
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
         })
 }
 
@@ -551,10 +563,12 @@ pub async fn huggingface_download_model<R: Runtime>(
             if existing > 0 {
                 request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
             }
-            let response = request
-                .send()
-                .await
-                .map_err(|e| format!("Hugging Face download failed: {e}"))?;
+            let response = tokio::select! {
+                sent = request.send() => {
+                    sent.map_err(|e| format!("Hugging Face download failed: {e}"))?
+                }
+                _ = cancelled(&cancel) => return Err("Download paused".to_string()),
+            };
             if !response.status().is_success() {
                 return Err(response_error(response).await);
             }
@@ -576,10 +590,17 @@ pub async fn huggingface_download_model<R: Runtime>(
             let mut downloaded = start;
             let mut stream = response.bytes_stream();
 
-            while let Some(chunk) = stream.next().await {
+            loop {
+                let next = tokio::select! {
+                    next = stream.next() => next,
+                    _ = cancelled(&cancel) => None,
+                };
                 if cancel.load(Ordering::Relaxed) {
+                    // Keep what was written so a resume continues from it.
+                    let _ = output.flush().await;
                     return Err("Download paused".to_string());
                 }
+                let Some(chunk) = next else { break };
                 let chunk = chunk.map_err(|e| format!("Hugging Face download interrupted: {e}"))?;
                 output
                     .write_all(&chunk)
@@ -632,7 +653,18 @@ pub async fn huggingface_download_model<R: Runtime>(
     }
     .await;
 
-    active_downloads().lock().await.remove(&task_id);
+    // A newer invocation for the same task id replaces our flag; only remove
+    // the entry if it is still ours, or the newer download loses its cancel
+    // handle and can no longer be paused.
+    {
+        let mut downloads = active_downloads().lock().await;
+        if downloads
+            .get(&task_id)
+            .is_some_and(|current| Arc::ptr_eq(current, &cancel))
+        {
+            downloads.remove(&task_id);
+        }
+    }
     result
 }
 

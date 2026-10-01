@@ -210,11 +210,15 @@ export async function findGgufTensors(
 
 export async function isModelSupported(
   path: string,
-  ctxSize?: number
+  ctxSize?: number,
+  cacheTypeK?: string,
+  cacheTypeV?: string
 ): Promise<'RED' | 'YELLOW' | 'GREEN'> {
   return await invoke('plugin:llamacpp|is_model_supported', {
     path,
     ctxSize,
+    cacheTypeK,
+    cacheTypeV,
   })
 }
 

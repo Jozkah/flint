@@ -55,6 +55,8 @@ pub async fn get_model_size(path: String) -> Result<u64, String> {
 pub async fn is_model_supported(
     path: String,
     ctx_size: Option<u32>,
+    cache_type_k: Option<String>,
+    cache_type_v: Option<String>,
 ) -> Result<ModelSupportStatus, String> {
     // Get model size
     let model_size = get_model_size(path.clone()).await?;
@@ -70,13 +72,23 @@ pub async fn is_model_supported(
     // Calculate KV cache size
     let kv_cache_size = if let Some(ctx_size) = ctx_size {
         log::info!("Using ctx_size: {}", ctx_size);
-        estimate_kv_cache_internal(gguf.metadata, Some(ctx_size as u64))
-            .await
+        estimate_kv_cache_internal(
+            gguf.metadata,
+            Some(ctx_size as u64),
+            cache_type_k.as_deref(),
+            cache_type_v.as_deref(),
+        )
+        .await
             .map_err(|e| e.to_string())?
             .size
     } else {
-        estimate_kv_cache_internal(gguf.metadata, None)
-            .await
+        estimate_kv_cache_internal(
+            gguf.metadata,
+            None,
+            cache_type_k.as_deref(),
+            cache_type_v.as_deref(),
+        )
+        .await
             .map_err(|e| e.to_string())?
             .size
     };
@@ -124,20 +136,32 @@ pub async fn is_model_supported(
 
     const RESERVE_BYTES: u64 = 2_288_490_189; // ~2.13 GB driver/runtime overhead
 
-    let total_system_memory: u64 = match system_info.gpus.is_empty() {
-        // No GPU: treat all RAM as the execution pool, no separate system bucket
+    // An integrated GPU has no memory of its own: its "VRAM" is a slice of
+    // system RAM. Counting it as VRAM and then adding system RAM again would
+    // count that slice twice, so only discrete GPUs form a separate pool.
+    let discrete_gpus: Vec<_> = system_info
+        .gpus
+        .iter()
+        .filter(|g| {
+            !g.vulkan_info
+                .as_ref()
+                .is_some_and(|v| v.device_type == "IntegratedGpu")
+        })
+        .collect();
+
+    let total_system_memory: u64 = match discrete_gpus.is_empty() {
+        // No discrete GPU: treat all RAM as the execution pool, no separate system bucket
         true => 0,
         false => system_info.total_memory * 1024 * 1024,
     };
 
-    // Calculate total VRAM from all GPUs
-    let total_vram: u64 = match system_info.gpus.is_empty() {
+    // Calculate total VRAM from all discrete GPUs
+    let total_vram: u64 = match discrete_gpus.is_empty() {
         true => {
-            log::info!("No GPUs detected, using total RAM as VRAM");
+            log::info!("No discrete GPUs detected, using total RAM as VRAM");
             system_info.total_memory * 1024 * 1024
         }
-        false => system_info
-            .gpus
+        false => discrete_gpus
             .iter()
             .map(|g| g.total_memory * 1024 * 1024)
             .sum::<u64>(),

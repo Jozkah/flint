@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
+  basenameNoExt,
   getProviderLogo,
   getProviderTitle,
   getDefaultProviderTitle,
@@ -443,5 +444,16 @@ describe('splitHtmlArtifacts', () => {
     const segs = splitHtmlArtifacts(content)
     expect(segs.map((s) => s.type)).toEqual(['markdown', 'svg'])
     expect(segs[1].content).toBe('<svg><circle/></svg>')
+  })
+})
+
+describe('basenameNoExt', () => {
+  it('strips the last extension', () => {
+    expect(basenameNoExt('/models/qwen.gguf')).toBe('qwen')
+    expect(basenameNoExt('/backups/llama.tar.gz')).toBe('llama')
+  })
+
+  it('returns the name unchanged when there is no extension', () => {
+    expect(basenameNoExt('/models/qwen')).toBe('qwen')
   })
 })

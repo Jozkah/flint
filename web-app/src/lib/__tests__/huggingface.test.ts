@@ -8,6 +8,7 @@ import {
   quantizationFromFilename,
   repoFromDeepLink,
   splitInfo,
+  stripReadmeFrontmatter,
   type HuggingFaceFile,
 } from '@/lib/huggingface'
 
@@ -103,5 +104,17 @@ describe('MLX weight size', () => {
   it('is unknown when any shard has no size or there are none', () => {
     expect(mlxWeightsBytes([{ name: 'a.safetensors' }])).toBeNull()
     expect(mlxWeightsBytes([{ name: 'config.json', size: 3 }])).toBeNull()
+  })
+})
+
+describe('stripReadmeFrontmatter', () => {
+  it('removes a leading YAML block and keeps the body', () => {
+    expect(
+      stripReadmeFrontmatter('---\nlicense: mit\ntags:\n- a\n---\n# Title\ntext')
+    ).toBe('# Title\ntext')
+  })
+
+  it('leaves a README without frontmatter alone', () => {
+    expect(stripReadmeFrontmatter('# Title\n---\nrule')).toBe('# Title\n---\nrule')
   })
 })
