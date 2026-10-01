@@ -51,8 +51,8 @@ describe('defaultModel', () => {
   })
 
   it('returns first model for known providers', () => {
-    expect(defaultModel('anthropic')).toBe('claude-sonnet-4-5')
-    expect(defaultModel('mistral')).toBe('mistral-large-2411')
+    expect(defaultModel('anthropic')).toBe('claude-sonnet-5-5')
+    expect(defaultModel('mistral')).toBe('mistral-medium-3-5-26-04')
   })
 
   it('handles empty string provider', () => {
@@ -80,7 +80,7 @@ describe('resolveThreadModelId', () => {
 
   it('falls back to the cloud catalogue only for cloud providers', () => {
     expect(resolveThreadModelId('anthropic', undefined, [])).toBe(
-      'claude-sonnet-4-5'
+      'claude-sonnet-5-5'
     )
   })
 })
@@ -357,35 +357,35 @@ describe('getModelCapabilities', () => {
   )
 
   it('returns completion capability for all models', () => {
-    const capabilities = getModelCapabilities('openai', 'gpt-5')
+    const capabilities = getModelCapabilities('openai', 'gpt-6-astra')
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
   })
 
   it('includes tools capability when model supports it', () => {
-    const capabilities = getModelCapabilities('openai', 'gpt-5')
+    const capabilities = getModelCapabilities('openai', 'gpt-6-astra')
     expect(capabilities).toContain(ModelCapabilities.TOOLS)
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
   })
 
   it('excludes tools capability when model does not support it', () => {
-    const capabilities = getModelCapabilities('mistral', 'mistral-nemo-2407')
+    const capabilities = getModelCapabilities('perplexity', 'sonar-deep-research')
     expect(capabilities).not.toContain(ModelCapabilities.TOOLS)
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
   })
 
   it('includes vision capability when model supports it', () => {
-    const capabilities = getModelCapabilities('openai', 'gpt-4o')
+    const capabilities = getModelCapabilities('openai', 'gpt-6-astra')
     expect(capabilities).toContain(ModelCapabilities.VISION)
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
   })
 
   it('excludes vision capability when model does not support it', () => {
-    const capabilities = getModelCapabilities('openai', 'gpt-4')
+    const capabilities = getModelCapabilities('perplexity', 'sonar')
     expect(capabilities).not.toContain(ModelCapabilities.VISION)
   })
 
   it('includes both tools and vision when model supports both', () => {
-    const capabilities = getModelCapabilities('anthropic', 'claude-sonnet-4-5')
+    const capabilities = getModelCapabilities('anthropic', 'claude-sonnet-5-5')
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
     expect(capabilities).toContain(ModelCapabilities.TOOLS)
     expect(capabilities).toContain(ModelCapabilities.VISION)
@@ -406,22 +406,39 @@ describe('getModelCapabilities', () => {
   })
 
   it('handles model not in capability list', () => {
-    const capabilities = getModelCapabilities('xai', 'grok-2-vision-1212')
+    const capabilities = getModelCapabilities('cohere', 'command-a-vision-07-2025')
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
     expect(capabilities).toContain(ModelCapabilities.VISION)
     expect(capabilities).not.toContain(ModelCapabilities.TOOLS)
   })
 
   it('returns only completion for provider with partial capability data', () => {
-    // Mistral has supportsToolCalls but no supportsImages
-    const capabilities = getModelCapabilities('mistral', 'mistral-nemo-2407')
+    // Perplexity's deep research model has no tool or image support
+    const capabilities = getModelCapabilities('perplexity', 'sonar-deep-research')
     expect(capabilities).toEqual([ModelCapabilities.COMPLETION])
   })
 
   it('handles model that supports tools but not vision', () => {
-    const capabilities = getModelCapabilities('mistral', 'mistral-large-2411')
+    const capabilities = getModelCapabilities('mistral', 'codestral-2508')
     expect(capabilities).toContain(ModelCapabilities.COMPLETION)
     expect(capabilities).toContain(ModelCapabilities.TOOLS)
     expect(capabilities).not.toContain(ModelCapabilities.VISION)
+  })
+})
+
+describe('built-in model lists', () => {
+  it('carry no retired Claude 3.x models and list the current ones', () => {
+    const claude = providerModels.anthropic.models as readonly string[]
+    expect(claude.some((m) => m.startsWith('claude-3'))).toBe(false)
+    expect(claude).toEqual(expect.arrayContaining(['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1', 'claude-haiku-4-5']))
+  })
+
+  it('give every listed model a capability answer', () => {
+    for (const [provider, config] of Object.entries(providerModels)) {
+      if (!Array.isArray(config.models)) continue
+      for (const id of config.models as readonly string[]) {
+        expect(getModelCapabilities(provider, id)).toContain(ModelCapabilities.COMPLETION)
+      }
+    }
   })
 })
