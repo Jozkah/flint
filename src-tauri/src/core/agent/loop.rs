@@ -11830,7 +11830,7 @@ mod tests {
     /// role that asks for one is refused before any gate; nothing is written.
     #[tokio::test]
     async fn a_model_cannot_call_an_export_or_audit_command_by_name() {
-        let commands = ["audit_export", "agent_events_export", "memory_export", "session_export_save"];
+        let commands = ["audit_export", "agent_events_export", "memory_export", "session_export_save", "export_save_file"];
         let offered: Vec<String> = tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas()
             .iter()
             .filter_map(|s| s["function"]["name"].as_str().map(str::to_string))

@@ -59,6 +59,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
 import { prefetchThreadMessages } from '@/lib/threadPrefetch'
+import { ExportSubmenu } from '@/components/ExportMenu'
+import { docFromThread } from '@/lib/exportDoc'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
@@ -387,6 +389,15 @@ const ThreadItem = memo(
               <GitFork className="size-4" />
               <span>{t('chat:fork.chat')}</span>
             </DropdownMenuItem>
+            <ExportSubmenu
+              build={async () => {
+                let stored = useMessages.getState().getMessages(thread.id)
+                if (stored.length === 0) {
+                  stored = await serviceHub.messages().fetchMessages(thread.id)
+                }
+                return docFromThread(thread, stored, new Date())
+              }}
+            />
             <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />

@@ -28,7 +28,10 @@ import { useSearchDialog } from '@/hooks/useSearchDialog'
 import { useProjectDialog } from '@/hooks/useProjectDialog'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { SETTINGS_PAGES } from '@/lib/settingsSearch'
+import { runExport } from '@/lib/exportAction'
+import { docFromCowork, docFromThread } from '@/lib/exportDoc'
 import {
+  exportCommands,
   rankCommands,
   type PaletteCommand,
   type PaletteSection,
@@ -143,6 +146,53 @@ export function CommandPalette() {
         run: go(route.appLogs),
       },
     ]
+    // What is on screen decides whether there is anything to export.
+    const path = typeof window === 'undefined' ? '' : window.location.pathname
+    const threadId = /\/threads\/([^/?#]+)/.exec(path)?.[1] ?? null
+    const target = threadId
+      ? 'thread'
+      : path.startsWith(route.cowork)
+        ? 'session'
+        : null
+    out.push(
+      ...exportCommands(
+        target,
+        (format) => t(`common:export.command.${format}`),
+        (kind, format) => {
+          const choice = { format, view: 'default' as const }
+          if (kind === 'thread' && threadId) {
+            void runExport(
+              async () => {
+                const { useMessages } = await import('@/hooks/useMessages')
+                const thread = useThreads.getState().threads[threadId]
+                return docFromThread(
+                  thread ?? { id: threadId },
+                  useMessages.getState().getMessages(threadId),
+                  new Date()
+                )
+              },
+              choice,
+              t
+            )
+          } else {
+            void runExport(
+              async () => {
+                const { useCoworkSessions } = await import(
+                  '@/hooks/useCoworkSessions'
+                )
+                const state = useCoworkSessions.getState()
+                const session = state.sessions.find(
+                  (s) => s.id === state.currentId
+                )
+                return session ? docFromCowork(session, new Date()) : null
+              },
+              choice,
+              t
+            )
+          }
+        }
+      )
+    )
     for (const page of SETTINGS_PAGES) {
       out.push({
         id: `settings-${page.id}`,
@@ -165,7 +215,7 @@ export function CommandPalette() {
       })
     }
     return out
-  }, [t, navigate, threads])
+  }, [t, navigate, threads, open])
 
   const results = useMemo(
     () => rankCommands(commands, query),

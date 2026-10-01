@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
+import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
+import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
@@ -118,6 +120,7 @@ import { Button } from '@/components/ui/button'
 import {
   CircleAlert,
   Columns2,
+  Download,
   Loader2,
   MoreHorizontal,
   PanelRight,
@@ -2634,6 +2637,12 @@ export function ThreadConversation({
   // What acts on the conversation, plus whatever the surrounding layout adds.
   // The model sits under the composer (on a phone, on the conversation's own
   // header row).
+  const buildExportDoc = () =>
+    docFromThread(
+      thread ?? { id: threadId },
+      useMessages.getState().getMessages(threadId),
+      new Date()
+    )
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
@@ -2658,6 +2667,7 @@ export function ThreadConversation({
                 <PanelRight className="size-4" />
                 <span>{t('context:details')}</span>
               </DropdownMenuItem>
+              <ExportSubmenu build={buildExportDoc} />
               {extra && (
                 <DropdownMenuItem
                   onSelect={() => useSplitConversation.getState().addPane()}
@@ -2666,6 +2676,24 @@ export function ThreadConversation({
                   <span>{t('chat:split.open')}</span>
                 </DropdownMenuItem>
               )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {!isSplit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-[30px] max-sm:hidden"
+                aria-label={t('common:export.header')}
+                data-testid="export-thread-header"
+              >
+                <Download className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <ExportItems build={buildExportDoc} />
             </DropdownMenuContent>
           </DropdownMenu>
         )}
