@@ -59,6 +59,7 @@ import {
 } from '@/lib/huggingface'
 import { startGgufBundle } from '@/lib/huggingfaceStart'
 import { coworkTurnsOf } from './sources'
+import { currentLivePreview } from './preview'
 import type { RemoteExtras } from './extras'
 import type {
   ChatDetails,
@@ -358,7 +359,9 @@ export const appExtras: RemoteExtras = {
       .map((a) => relativeToRoot(folder, a.path))
       .filter((p) => ['html', 'svg', 'markdown', 'text'].includes(previewKindFor(p)))
     const chosen = path ?? [...artifacts].reverse().find((p) => previewKindFor(p) === 'html') ?? artifacts[artifacts.length - 1] ?? null
-    const empty: CoworkPreviewResult = { artifacts, path: chosen, kind: null, content: null }
+    const lp = currentLivePreview()
+    const live = lp?.sessionId === id ? { live: { url: lp.url } } : {}
+    const empty: CoworkPreviewResult = { artifacts, path: chosen, kind: null, content: null, ...live }
     if (!chosen) return empty
     const raw = previewKindFor(chosen)
     const kind: CoworkPreviewResult['kind'] = raw === 'html' || raw === 'svg' || raw === 'markdown' || raw === 'text' || raw === 'image' ? raw : 'other'

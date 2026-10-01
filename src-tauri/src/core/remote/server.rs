@@ -7,12 +7,20 @@
 //! - `DELETE /remote/v1/me`           unpair the calling device
 //! - `POST   /remote/v1/rpc`          `{id, method, params}` -> `{id, result}|{id, error}`
 //! - `GET    /remote/v1/events`       WebSocket of desktop events
+//! - `POST   /remote/v1/upload`       chunked attachment upload (see `upload`)
+//! - `GET    /remote/v1/preview/...`  the session's live preview, proxied
 //! - `GET    /m/...`                  the phone app's static files
+//!
+//! `push.*` RPCs (VAPID key, subscribe, switches, test) are answered here, not
+//! by the window; see `push.rs`.
 //!
 //! Everything but the two pairing routes and `/m/` needs
 //! `Authorization: Bearer <token>`. The WebSocket takes the token in
 //! `Sec-WebSocket-Protocol` (`flint-auth.<token>`) or as its first message,
 //! never in the URL, where it would end up in logs and history.
+//!
+//! The live preview (`preview.rs`) is the one exception to the origin rule:
+//! its sandboxed pages send `Origin: null`, accepted on preview requests only.
 //!
 //! Browser defences: the `Host` header must name this listener (so a DNS
 //! rebinding page cannot reach it under its own name), and a request that
@@ -46,7 +54,9 @@ use tokio_tungstenite::WebSocketStream;
 
 use super::auth::Device;
 use super::hub::{event_matches, ClaimError, RemoteHub, RpcReject};
+use super::preview;
 use super::static_files;
+use super::uploads::{UploadError, CHUNK_SIZE};
 
 pub const API_PREFIX: &str = "/remote/v1";
 pub const WS_PROTOCOL: &str = "flint-remote.v1";
@@ -104,8 +114,10 @@ fn with_security_headers(mut resp: Resp) -> Resp {
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
-    h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
-    h.insert("x-frame-options", HeaderValue::from_static("DENY"));
+    h.entry("referrer-policy")
+        .or_insert(HeaderValue::from_static("no-referrer"));
+    h.entry("x-frame-options")
+        .or_insert(HeaderValue::from_static("DENY"));
     h.entry(header::CACHE_CONTROL)
         .or_insert(HeaderValue::from_static("no-store"));
     resp
@@ -235,7 +247,11 @@ async fn route(
         .headers()
         .get(header::ORIGIN)
         .and_then(|v| v.to_str().ok());
-    if !listener.origin_allowed(origin) {
+    // The live preview runs sandboxed (an opaque origin), so its own requests
+    // say `Origin: null`. Only preview requests may.
+    let preview_req = preview_request(&req);
+    let null_ok = preview_req.is_some() && origin == Some("null");
+    if !null_ok && !listener.origin_allowed(origin) {
         return error(
             StatusCode::FORBIDDEN,
             "cross_origin",
@@ -252,6 +268,13 @@ async fn route(
 
     let path = req.uri().path().to_string();
     let method = req.method().clone();
+
+    if let Some((ticket, upstream, outside)) = preview_req {
+        if method != Method::GET && method != Method::HEAD {
+            return error(StatusCode::METHOD_NOT_ALLOWED, "method", "Method not allowed");
+        }
+        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https).await;
+    }
 
     if path == "/" || path == "/m" {
         return Response::builder()
@@ -332,6 +355,24 @@ async fn route(
                     json_resp(StatusCode::OK, json!({ "ok": true }))
                 }
                 (Method::POST, "/rpc") => rpc(&hub, &device, req.into_body()).await,
+                (Method::POST, "/upload") => upload_start(&hub, &device, req.into_body()).await,
+                (method, a) if a.starts_with("/upload/") => {
+                    let rest = &a["/upload/".len()..];
+                    let offset = req
+                        .uri()
+                        .query()
+                        .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("offset=")))
+                        .and_then(|v| v.parse::<u64>().ok());
+                    match (method, rest.split_once('/')) {
+                        (Method::PUT, None) => upload_chunk(&hub, &device, rest, offset, req.into_body()).await,
+                        (Method::POST, Some((id, "finish"))) => upload_finish(&hub, &device, id).await,
+                        (Method::DELETE, None) => {
+                            let ok = hub.upload_remove(&device.id, rest);
+                            json_resp(StatusCode::OK, json!({ "ok": ok }))
+                        }
+                        _ => error(StatusCode::NOT_FOUND, "not_found", "Not found"),
+                    }
+                }
                 (_, "/events") => error(
                     StatusCode::UPGRADE_REQUIRED,
                     "upgrade",
@@ -343,7 +384,7 @@ async fn route(
     }
 }
 
-async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
+async fn rpc(hub: &Arc<RemoteHub>, device: &Device, body: Incoming) -> Resp {
     let bytes = match read_bytes(body, MAX_VOICE_BODY).await {
         Ok(b) => b,
         Err(r) => return r,
@@ -356,6 +397,18 @@ async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
         Err(r) => return r,
     };
     let id = body.id;
+    if let Some((outcome, targets)) = hub.push_rpc(device, &body.method, &body.params) {
+        if !targets.is_empty() {
+            let h = hub.clone();
+            tokio::spawn(async move {
+                h.deliver(targets).await;
+            });
+        }
+        return match outcome {
+            Ok(result) => json_resp(StatusCode::OK, json!({ "id": id, "result": result })),
+            Err(e) => json_resp(StatusCode::OK, json!({ "id": id, "error": e })),
+        };
+    }
     match hub.rpc(device, &body.method, body.params).await {
         Ok(Ok(result)) => json_resp(StatusCode::OK, json!({ "id": id, "result": result })),
         Ok(Err(e)) => json_resp(StatusCode::OK, json!({ "id": id, "error": e })),
@@ -374,6 +427,233 @@ async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
             "Flint did not answer in time",
         ),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Uploads (see uploads.rs)
+// ---------------------------------------------------------------------------
+
+fn upload_error(e: UploadError) -> Resp {
+    let status = match e {
+        UploadError::TooLarge(_) | UploadError::Overflow => StatusCode::PAYLOAD_TOO_LARGE,
+        UploadError::NotFound => StatusCode::NOT_FOUND,
+        UploadError::BadOffset(_) | UploadError::Incomplete => StatusCode::CONFLICT,
+        UploadError::Rejected(_) | UploadError::Empty => StatusCode::UNPROCESSABLE_ENTITY,
+        UploadError::TooMany => StatusCode::TOO_MANY_REQUESTS,
+        UploadError::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    let mut body = json!({ "error": { "code": e.code(), "message": e.message() } });
+    if let UploadError::BadOffset(at) = e {
+        body["received"] = json!(at);
+    }
+    json_resp(status, body)
+}
+
+#[derive(Deserialize)]
+struct UploadStart {
+    name: String,
+    size: u64,
+    #[serde(default)]
+    mime: String,
+}
+
+async fn upload_start(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
+    let b: UploadStart = match read_json(body, MAX_PAIR_BODY).await {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    match hub.upload_start(&device.id, &b.name, b.size, &b.mime) {
+        Ok(u) => {
+            log::info!("remote: phone '{}' is uploading a file ({} bytes)", device.name, u.size);
+            json_resp(
+                StatusCode::OK,
+                json!({ "uploadId": u.id, "name": u.name, "chunkSize": CHUNK_SIZE }),
+            )
+        }
+        Err(e) => upload_error(e),
+    }
+}
+
+fn append_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)?.write_all(bytes)
+}
+
+async fn upload_chunk(hub: &RemoteHub, device: &Device, id: &str, offset: Option<u64>, body: Incoming) -> Resp {
+    let bytes = match read_bytes(body, CHUNK_SIZE).await {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let Some(offset) = offset else {
+        return error(StatusCode::BAD_REQUEST, "bad_request", "offset is required");
+    };
+    let up = match hub.upload_check(&device.id, id, offset, bytes.len()) {
+        Ok(u) => u,
+        Err(e) => return upload_error(e),
+    };
+    let path = up.path.clone();
+    let len = bytes.len();
+    let wrote = tokio::task::spawn_blocking(move || append_private(&path, &bytes)).await;
+    match wrote {
+        Ok(Ok(())) => json_resp(StatusCode::OK, json!({ "received": hub.upload_wrote(id, len) })),
+        Ok(Err(e)) => upload_error(UploadError::Io(e.to_string())),
+        Err(e) => upload_error(UploadError::Io(e.to_string())),
+    }
+}
+
+async fn upload_finish(hub: &RemoteHub, device: &Device, id: &str) -> Resp {
+    let Some(up) = hub.upload_get(&device.id, id) else {
+        return upload_error(UploadError::NotFound);
+    };
+    let path = up.path.clone();
+    let head = tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let mut buf = vec![0u8; 512];
+        let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut buf)).unwrap_or(0);
+        buf.truncate(n);
+        buf
+    })
+    .await
+    .unwrap_or_default();
+    match hub.upload_finish(&device.id, id, &head) {
+        Ok(info) => json_resp(StatusCode::OK, serde_json::to_value(info).unwrap_or(Value::Null)),
+        Err(e) => upload_error(e),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Live preview (see preview.rs)
+// ---------------------------------------------------------------------------
+
+/// `(ticket, upstream path and query, outside the ticketed path)` when
+/// `req` is for the live preview: under `/remote/v1/preview/<ticket>/`, or
+/// any other path outside the app and the API that a preview page asked for
+/// (a dev server's absolute paths, `/src/main.tsx`), known by its `Referer`
+/// (the ticketed page) or, failing that, the preview cookie.
+fn preview_request<B>(req: &Request<B>) -> Option<(String, String, bool)> {
+    let path = req.uri().path();
+    let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
+    if let Some(api) = path.strip_prefix(API_PREFIX) {
+        let (ticket, rest) = preview::split_preview_path(api)?;
+        return Some((ticket.to_string(), format!("{rest}{query}"), false));
+    }
+    if path == "/" || path == "/m" || path.starts_with("/m/") {
+        return None;
+    }
+    let from_referer = req
+        .headers()
+        .get(header::REFERER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|r| url::Url::parse(r).ok())
+        .and_then(|u| {
+            let api = u.path().strip_prefix(API_PREFIX)?.to_string();
+            preview::split_preview_path(&api).map(|(t, _)| t.to_string())
+        });
+    let ticket = from_referer.or_else(|| {
+        req.headers()
+            .get(header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(preview::ticket_from_cookie)
+            .map(str::to_string)
+    })?;
+    Some((ticket, format!("{path}{query}"), true))
+}
+
+/// Headers every preview response carries: sandboxed (an opaque origin),
+/// framed only by the phone app, readable by that opaque origin (module
+/// scripts are CORS requests), and sending its full URL as `Referer` to this
+/// listener so absolute paths find their ticket.
+fn preview_headers(b: hyper::http::response::Builder) -> hyper::http::response::Builder {
+    b.header("content-security-policy", preview::SANDBOX_CSP)
+        .header("x-frame-options", "SAMEORIGIN")
+        .header("referrer-policy", "same-origin")
+        .header("access-control-allow-origin", "null")
+        .header(header::CACHE_CONTROL, "no-store")
+}
+
+async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool) -> Resp {
+    let Some(origin) = hub.preview_origin_for(ticket) else {
+        return error(StatusCode::NOT_FOUND, "not_found", "This preview has ended");
+    };
+    // An absolute path a preview page asked for: send it under its ticket,
+    // so what it loads in turn names the ticket too.
+    if outside {
+        return preview_headers(Response::builder().status(StatusCode::TEMPORARY_REDIRECT))
+            .header(header::LOCATION, format!("{API_PREFIX}{}{ticket}{upstream}", preview::PREVIEW_PREFIX))
+            .body(Full::new(Bytes::new()))
+            .expect("static response parts are valid");
+    }
+    let set_cookie = true;
+    let Some(url) = preview::upstream_url(&origin, upstream) else {
+        return error(StatusCode::FORBIDDEN, "forbidden", "Forbidden");
+    };
+    let req = if head { hub.http().head(&url) } else { hub.http().get(&url) };
+    let resp = match req
+        .timeout(Duration::from_secs(30))
+        .header("accept-encoding", "identity")
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(_) => return error(StatusCode::BAD_GATEWAY, "unreachable", "The preview's app is not answering on the computer"),
+    };
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let mut out = Response::builder().status(status);
+    for name in preview::PASS_HEADERS {
+        if let Some(v) = resp.headers().get(*name).and_then(|v| v.to_str().ok()) {
+            out = out.header(*name, v);
+        }
+    }
+    if status.is_redirection() {
+        if let Some(loc) = resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|l| preview::rewrite_location(&origin, l, ticket))
+        {
+            out = out.header(header::LOCATION, loc);
+        }
+    }
+    out = preview_headers(out);
+    if set_cookie {
+        out = out.header(
+            header::SET_COOKIE,
+            format!(
+                "{}={ticket}; Path=/; HttpOnly; SameSite={}; Max-Age={}",
+                preview::COOKIE,
+                if https { "None; Secure" } else { "Lax" },
+                preview::TICKET_TTL.as_secs()
+            ),
+        );
+    }
+    if resp.content_length().is_some_and(|n| n as usize > preview::MAX_PREVIEW_BODY) {
+        return error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "Too large to preview on a phone");
+    }
+    let body = if head {
+        Bytes::new()
+    } else {
+        let mut buf = Vec::new();
+        let mut stream = resp.bytes_stream();
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(c) if buf.len() + c.len() <= preview::MAX_PREVIEW_BODY => buf.extend_from_slice(&c),
+                Ok(_) => return error(StatusCode::PAYLOAD_TOO_LARGE, "too_large", "Too large to preview on a phone"),
+                Err(_) => return error(StatusCode::BAD_GATEWAY, "unreachable", "The preview's app stopped answering"),
+            }
+        }
+        Bytes::from(buf)
+    };
+    out.body(Full::new(body)).unwrap_or_else(|_| error(StatusCode::BAD_GATEWAY, "bad_gateway", "Bad response"))
 }
 
 async fn serve_static(hub: &RemoteHub, rel: &str) -> Resp {
@@ -403,7 +683,10 @@ async fn serve_static(hub: &RemoteHub, rel: &str) -> Resp {
     match static_files::resolve(root, rel) {
         Ok(path) => match tokio::fs::read(&path).await {
             Ok(bytes) => {
-                let is_index = path.file_name().is_some_and(|n| n == "index.html");
+                // The service worker too: its updates must not wait on a cache.
+                let is_index = path
+                    .file_name()
+                    .is_some_and(|n| n == "index.html" || n == "sw.js");
                 Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, static_files::content_type(&path))
@@ -518,6 +801,8 @@ enum ClientMessage {
     Auth { token: String },
     Subscribe { topics: Vec<String> },
     Unsubscribe { topics: Vec<String> },
+    /// The page was hidden or shown (`document.visibilityState`).
+    Visibility { hidden: bool },
     Ping,
 }
 
@@ -558,6 +843,8 @@ async fn run_socket<S>(
     };
 
     hub.socket_opened(&device.id);
+    hub.socket_visible(&device.id, true);
+    let mut shown = true;
     let mut events = hub.subscribe_events();
     let mut revoked = hub.subscribe_revocations();
     let mut topics: HashSet<String> = HashSet::new();
@@ -593,6 +880,12 @@ async fn run_socket<S>(
                 Some(Ok(Message::Text(t))) => match serde_json::from_str::<ClientMessage>(&t) {
                     Ok(ClientMessage::Subscribe { topics: t }) => topics.extend(t.into_iter().take(64)),
                     Ok(ClientMessage::Unsubscribe { topics: t }) => t.iter().for_each(|x| { topics.remove(x); }),
+                    Ok(ClientMessage::Visibility { hidden }) => {
+                        if hidden == shown {
+                            shown = !hidden;
+                            hub.socket_visible(&device.id, shown);
+                        }
+                    }
                     Ok(ClientMessage::Ping) => {
                         alive = ws.send(Message::Text(json!({ "type": "pong" }).to_string().into())).await.is_ok();
                     }
@@ -602,6 +895,9 @@ async fn run_socket<S>(
                 Some(Ok(_)) => {}
             },
         }
+    }
+    if shown {
+        hub.socket_visible(&device.id, false);
     }
     hub.socket_closed(&device.id);
 }

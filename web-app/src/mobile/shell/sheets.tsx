@@ -15,6 +15,7 @@ import { ACCESS_MODES, COWORK_MODES } from './labels'
 import { copyToClipboard } from '@/lib/clipboard'
 import { StudioItemSheet, StudioSettingsSheet, VoiceSetupSheet } from './studioSheets'
 import type { StudioItemWire } from '@/lib/remote/protocol'
+import { addDeskFile, addFiles, attachKey, insertIntoComposer, MAX_FILES } from '../state/attachments'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
@@ -241,9 +242,19 @@ function PlusSheet({ props }: { props: Props }) {
   }
   const active = (tools.data?.servers ?? []).filter((x) => x.active).length
   const d = details.data
-  const add: [IconId, string][] = [['image', 'Photo library'], ['file', 'Add files or images'], ['folder', 'Files on the computer'], ['at', 'Reference a file (@)']]
+  const key = attachKey({ for: target === 'chat' || target === 'cowork' ? target : 'home', id })
+  const pick = (files: FileList | null) => {
+    closeSheet()
+    if (files?.length) void addFiles(key, Array.from(files))
+  }
+  const computer = useApp((s) => s.computerName) ?? 'the computer'
+  const deskNote = cowork && id ? undefined : 'Cowork sessions only: they have a folder'
   return <><Title>Add</Title>
-    {add.map(([icon, label]) => <div key={label} className="opt" aria-disabled="true"><I n={icon} /><span className="tx"><b>{label}</b><small>Attach on the computer for now</small></span></div>)}
+    <FilePick icon="image" label="Photo library" accept="image/*" multiple onPick={pick} testId="add-photos" />
+    <FilePick icon="camera" label="Take photo" accept="image/*" capture="environment" onPick={pick} testId="add-camera" />
+    <FilePick icon="file" label="Add files" sub={`Up to ${MAX_FILES} per message`} multiple onPick={pick} testId="add-files" />
+    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'attach', key })} data-testid="add-desk"><I n="folder" /><span className="tx"><b>Files on {computer}</b><small>{deskNote ?? 'Browse the session folder (read-only)'}</small></span></button>
+    <button type="button" className="opt" disabled={!!deskNote} aria-disabled={!!deskNote} onClick={() => openSheet('files', { id, pick: 'ref', key })} data-testid="add-ref"><I n="at" /><span className="tx"><b>Reference a file (@)</b><small>{deskNote ?? 'Inserts @path into the message'}</small></span></button>
     <div className="ssec">Options</div>
     <Go lead={<FlintMark size={26} />} title="Assistant" sub={cowork ? 'Flint' : d ? (d.assistant.auto ? 'Auto · Jev picks per turn' : d.assistant.name) : 'Auto · Jev picks per turn'} sheet="assistant" props={props} />
     <Go icon="sliders" title="Sampling" sub="Defaults from the model" sheet="params" />
@@ -290,7 +301,8 @@ function TokensSheet({ props }: { props: Props }) {
     : undefined
   if (target === 'cowork') {
     const u = cowork.data?.usage
-    return <><Title>Context</Title>{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
+    const c = cowork.data?.context
+    return <><Title>Context</Title>{c?.windowTokens ? <Kv k="Context window" v={`${c.usedTokens.toLocaleString()} of ${c.windowTokens.toLocaleString()} tokens (${Math.round((c.usedTokens / c.windowTokens) * 100)}%)`} /> : null}{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
   }
   if (target !== 'chat') return <><Title>Context</Title><ContextCard c={null} /></>
   return <><Title>Context</Title><ContextCard c={d?.context ?? null} speed={d?.speed} onCompact={compactNow} />
@@ -356,18 +368,28 @@ function ModelGoneSheet({ props }: { props: Props }) {
 }
 
 /** The Code tab's project explorer: the session folder, a level at a time. */
+/** A row that opens the phone's file picker (or camera). */
+function FilePick({ icon, label, sub, accept, capture, multiple, onPick, testId }: { icon: IconId; label: string; sub?: string; accept?: string; capture?: 'environment' | 'user'; multiple?: boolean; onPick: (f: FileList | null) => void; testId: string }) {
+  return <label className="opt" data-testid={testId}><I n={icon} /><span className="tx"><b>{label}</b>{sub && <small>{sub}</small>}</span>
+    <input type="file" hidden accept={accept} capture={capture} multiple={multiple} onChange={(e) => { onPick(e.target.files); e.target.value = '' }} /></label>
+}
+
 function FilesSheet({ props }: { props: Props }) {
   const id = str(props.id) ?? ''
+  const pickMode = str(props.pick)
+  const key = str(props.key) ?? `cowork:${id}`
   const [path, setPath] = useState(str(props.path) ?? '')
   const { data, error, loading } = useRpc('cowork.files', { id, path }, Boolean(id))
   const open = (rel: string) => {
+    if (pickMode === 'attach') { addDeskFile(key, rel); closeSheet(); return }
+    if (pickMode === 'ref') { insertIntoComposer(key, `@${rel}`); closeSheet(); return }
     const cur = app.get().code[id] ?? { open: [], active: null }
     app.set((s) => ({ code: { ...s.code, [id]: { open: cur.open.includes(rel) ? cur.open : [...cur.open, rel], active: rel } } }))
     closeSheet()
     openDrawer('right', 'code')
   }
   const up = path.split('/').slice(0, -1).join('/')
-  return <><Title sub={data?.root ?? undefined}>Project explorer</Title>
+  return <><Title sub={data?.root ?? undefined}>{pickMode === 'attach' ? 'Attach a file' : pickMode === 'ref' ? 'Reference a file' : 'Project explorer'}</Title>
     {path && <Opt title=".." sub={path} lead={<I n="back" />} onClick={() => setPath(up)} />}
     {loading && !data && <p className="sh">Loading…</p>}
     {error && <p className="sh">{error.message}</p>}

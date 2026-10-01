@@ -11,6 +11,10 @@ export type RemoteConfig = {
   keyPath: string | null
   allowApprovals: boolean
   allowAlwaysAllow: boolean
+  /** Largest file a phone may upload, MiB. */
+  maxUploadMb?: number
+  /** Paired phones may view the Cowork session's live preview. */
+  allowPreviewProxy?: boolean
 }
 
 export type RemoteServeInfo = {
@@ -59,6 +63,16 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
   return invoke<T>(cmd, args)
 }
 
+/** A phone's finished upload, as `remote_upload_take` returns it. */
+export type RemoteUploadedFile = {
+  id: string
+  name: string
+  size: number
+  mime: string
+  path: string
+  dataUrl: string | null
+}
+
 export const remoteApi = {
   getStatus: () => invoke<RemoteStatus>('remote_get_status'),
   setConfig: (config: RemoteConfig) =>
@@ -75,6 +89,10 @@ export const remoteApi = {
   ) => invoke<boolean>('remote_rpc_respond', { id, ...reply }),
   emitEvent: (event: unknown, topic?: string) =>
     invoke<void>('remote_emit_event', { event, topic: topic ?? null }),
+  takeUploads: (deviceId: string, ids: string[]) =>
+    invoke<RemoteUploadedFile[]>('remote_upload_take', { deviceId, ids }),
+  setPreview: (sessionId: string | null, url: string | null) =>
+    invoke<void>('remote_set_preview', { sessionId, url }),
 }
 
 export type RemoteApi = typeof remoteApi

@@ -3,6 +3,7 @@
 import type { CSSProperties } from 'react'
 import {
   Activity,
+  Camera,
   Cpu,
   Download,
   Eraser,
@@ -127,6 +128,7 @@ const ICONS = {
   check: Check,
   chev: ChevronDown,
   chevl: ChevronLeft,
+  camera: Camera,
   chevr: ChevronRight,
   clip: Paperclip,
   clock: Clock,

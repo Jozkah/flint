@@ -9,6 +9,7 @@ import { Grp, IRow } from '../ui/ios'
 import { act, app, back, client, go, openSheet, setTheme, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel } from '../state/sessions'
+import PushSettings from './PushSettings'
 
 const readOnly = (label: ReactNode, val?: ReactNode, sub = 'Change on the computer') => <IRow label={label} val={val} sub={sub} />
 
@@ -17,7 +18,7 @@ function NotifyRows() {
   const prefs = data?.notifications ?? DEFAULT_NOTIFY
   const flip = (k: keyof NotificationPrefs) => () =>
     void act('settings.set', { key: 'notifications', value: { ...prefs, [k]: !prefs[k] } }).then(() => invalidate(['settings.get']))
-  return <Grp cap="Notify me when">
+  return <Grp cap="In the app" foot="What the Notifications list shows while Flint is open on this phone.">
     <IRow label="An approval is waiting" sw={prefs.approvals} onClick={flip('approvals')} />
     <IRow label="A run finishes" sw={prefs.runFinished} onClick={flip('runFinished')} />
     <IRow label="A run fails or stops" sw={prefs.errors} onClick={flip('errors')} />
@@ -115,7 +116,7 @@ const PAGES: Record<string, Page> = {
   about: ['About Flint', (s) => <><div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0' }}><FlintMark size={72} /><b style={{ fontSize: 20 }}>Flint</b><span className="muted">Version {s?.version ?? VERSION}</span></div><Grp><IRow label="Phone app" val={VERSION} /><IRow label="Fork of Jan" val="janhq/jan" /></Grp></>],
   computer: ['Computer', () => <ComputerPage />],
   remote: ['Remote access', (s) => <RemotePage s={s} />],
-  notifs: ['Notifications', () => <><NotifyRows /><Grp foot="Push notifications while the PWA is closed are not enabled yet.">{readOnly('Background push', 'Not available', 'No inactive control')}</Grp></>],
+  notifs: ['Notifications', () => <><PushSettings /><NotifyRows /></>],
   appearance: ['Appearance', () => <AppearancePage />],
   sound: ['Sound & haptics', () => <OnComputer what="Sounds and haptics" />],
   reasoning: ['Reasoning & thinking', () => <ReasoningPage />],

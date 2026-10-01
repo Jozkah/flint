@@ -9,7 +9,7 @@
 //         FLINT_REMOTE_URL=https://100.64.0.2:1340 yarn dev:mobile
 //
 // Nothing here may pull in Tauri: the page runs in a phone's browser.
-import { defineConfig, type Plugin } from 'vite'
+import { build, defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -68,8 +68,9 @@ function sharedAssets(): Plugin {
     },
     // Build: copy them next to the bundle, and name the page index.html,
     // which is what the server looks for.
-    closeBundle() {
+    async closeBundle() {
       if (!fs.existsSync(OUT_DIR)) return
+      await buildServiceWorker()
       const page = path.join(OUT_DIR, 'mobile.html')
       if (fs.existsSync(page)) fs.renameSync(page, path.join(OUT_DIR, 'index.html'))
       for (const rel of SHARED_ASSETS) {
@@ -77,6 +78,28 @@ function sharedAssets(): Plugin {
       }
     },
   }
+}
+
+/** The service worker, as one classic script at /m/sw.js (no hash, no
+ * imports): its URL is its identity, and Firefox and older Safari cannot run
+ * module workers. */
+async function buildServiceWorker() {
+  await build({
+    configFile: false,
+    logLevel: 'warn',
+    resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+    build: {
+      outDir: OUT_DIR,
+      emptyOutDir: false,
+      target: ['es2020', 'safari15'],
+      lib: {
+        entry: path.resolve(__dirname, 'src/mobile/sw/sw.ts'),
+        formats: ['iife'],
+        name: 'flintSw',
+        fileName: () => 'sw.js',
+      },
+    },
+  })
 }
 
 /** The desktop refuses requests whose Origin is not its own listener; the dev

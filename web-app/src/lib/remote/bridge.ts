@@ -27,7 +27,9 @@ export type RemoteHandler<M extends RemoteMethod> = (
   ctx: RemoteHandlerContext
 ) => Promise<RemoteMethods[M]['result']> | RemoteMethods[M]['result']
 
-export type RemoteHandlers = { [M in RemoteMethod]: RemoteHandler<M> }
+/** `push.*` and `preview.ticket` are answered by the server itself and never reaches the window. */
+export type ServerMethod = Extract<RemoteMethod, `push.${string}` | 'preview.ticket'>
+export type RemoteHandlers = { [M in Exclude<RemoteMethod, ServerMethod>]: RemoteHandler<M> }
 
 export type RemoteReply = { result: unknown } | { error: RemoteError }
 
@@ -67,7 +69,7 @@ export async function dispatchRemoteRpc(
       error: { code: 'unknown_method', message: `Unknown method ${req.method}` },
     }
   }
-  const handler = handlers[req.method as RemoteMethod] as (
+  const handler = handlers[req.method as keyof RemoteHandlers] as (
     params: unknown,
     ctx: RemoteHandlerContext
   ) => unknown
