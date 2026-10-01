@@ -63,6 +63,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { getLastUsedModel } from '@/utils/getModelToStart'
 import { ChevronsUpDown } from 'lucide-react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
 
 type DropdownModelProviderProps = {
   model?: ThreadModel
@@ -488,6 +489,8 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       provider.models.forEach((modelItem) => {
         // Skip embedding models - they can't be used for chat
         if (modelItem.embedding) return
+        // The dictation model transcribes speech; it is not for chatting.
+        if (modelItem.id === VOICE_MODEL_ID) return
 
         // Only an unconfigured built-in template is hidden. See `offersModels`.
         if (!offersModels(provider)) return
