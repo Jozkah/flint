@@ -14,6 +14,20 @@ import { downloadedBytes, parseDownloadTask } from '@/lib/studio/helpers'
 
 type Job = { kind: StudioKind; phase: string; fraction: number; startedAt: number }
 
+/** What this session has asked for, newest first: the Activity list on the page. */
+export type StudioActivity = {
+  id: number
+  kind: StudioKind
+  prompt: string
+  status: 'done' | 'failed' | 'stopped'
+  error?: string
+  durationMs: number
+  at: number
+}
+
+const ACTIVITY_LIMIT = 12
+let activityId = 0
+
 type StudioState = {
   status: StudioStatus | null
   error: string | null
@@ -21,13 +35,15 @@ type StudioState = {
   download: { modelId: string; bytes: number; total: number } | null
   gallery: Record<StudioKind, GalleryItem[]>
   job: Job | null
+  jobPrompt: string
+  activity: StudioActivity[]
   refresh: () => Promise<void>
   refreshGallery: (kind: StudioKind) => Promise<void>
   installEngine: (build: EngineBuild) => Promise<void>
   downloadModel: (model: StudioModel) => Promise<void>
   load: (modelId: string) => Promise<void>
   unload: () => Promise<void>
-  generate: (kind: StudioKind, run: () => Promise<unknown>) => Promise<boolean>
+  generate: (kind: StudioKind, prompt: string, run: () => Promise<unknown>) => Promise<boolean>
   cancel: () => Promise<void>
   remove: (kind: StudioKind, id: string) => Promise<void>
   clearError: () => void
@@ -76,6 +92,8 @@ export const useStudio = create<StudioState>((set, get) => ({
   download: null,
   gallery: { image: [], video: [] },
   job: null,
+  jobPrompt: '',
+  activity: [],
 
   refresh: async () => {
     listenOnce()
@@ -140,17 +158,31 @@ export const useStudio = create<StudioState>((set, get) => ({
     }
   },
 
-  generate: async (kind, run) => {
+  generate: async (kind, prompt, run) => {
     if (get().job) return false
-    set({ error: null, job: { kind, phase: 'queued', fraction: 0, startedAt: Date.now() } })
+    const startedAt = Date.now()
+    set({ error: null, jobPrompt: prompt, job: { kind, phase: 'queued', fraction: 0, startedAt } })
+    const log = (status: StudioActivity['status'], error?: string) =>
+      set((s) => ({
+        activity: [
+          { id: ++activityId, kind, prompt, status, error, durationMs: Date.now() - startedAt, at: Date.now() },
+          ...s.activity,
+        ].slice(0, ACTIVITY_LIMIT),
+      }))
     try {
       await getServiceHub().models().stopAllModels().catch(() => undefined)
       await run()
       await get().refreshGallery(kind)
+      log('done')
       return true
     } catch (error) {
       const text = message(error)
-      if (text !== 'Cancelled.') set({ error: text })
+      if (text === 'Cancelled.') {
+        log('stopped')
+      } else {
+        set({ error: text })
+        log('failed', text)
+      }
       return false
     } finally {
       set({ job: null })

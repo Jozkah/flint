@@ -2,21 +2,35 @@ import type { StudioFile } from '@/lib/studio/studio'
 
 /** Pure pieces of the Studio page, kept out of the component so they can be tested. */
 
-export const IMAGE_SIZES: Array<{ label: string; width: number; height: number }> = [
-  { label: 'Square 1024', width: 1024, height: 1024 },
-  { label: 'Square 768', width: 768, height: 768 },
-  { label: 'Square 512', width: 512, height: 512 },
-  { label: 'Landscape 1344 × 768', width: 1344, height: 768 },
-  { label: 'Portrait 768 × 1344', width: 768, height: 1344 },
+export type StudioSize = { label: string; short: string; width: number; height: number }
+
+export const IMAGE_SIZES: StudioSize[] = [
+  { label: 'Square 1024', short: 'Square', width: 1024, height: 1024 },
+  { label: 'Square 768', short: 'Small square', width: 768, height: 768 },
+  { label: 'Square 512', short: 'Tiny square', width: 512, height: 512 },
+  { label: 'Landscape 1344 × 768', short: 'Wide', width: 1344, height: 768 },
+  { label: 'Portrait 768 × 1344', short: 'Tall', width: 768, height: 1344 },
 ]
 
-export const VIDEO_SIZES: Array<{ label: string; width: number; height: number }> = [
-  { label: '832 × 480', width: 832, height: 480 },
-  { label: '960 × 544', width: 960, height: 544 },
-  { label: '1280 × 704', width: 1280, height: 704 },
-  { label: 'Square 704', width: 704, height: 704 },
-  { label: 'Portrait 480 × 832', width: 480, height: 832 },
+export const VIDEO_SIZES: StudioSize[] = [
+  { label: '832 × 480', short: '832 × 480', width: 832, height: 480 },
+  { label: '960 × 544', short: '960 × 544', width: 960, height: 544 },
+  { label: '1280 × 704', short: '1280 × 704', width: 1280, height: 704 },
+  { label: 'Square 704', short: 'Square', width: 704, height: 704 },
+  { label: 'Portrait 480 × 832', short: 'Tall', width: 480, height: 832 },
 ]
+
+/** The chosen shape for a recipe's size, or the first one when it is not on the list. */
+export function sizeIndexOf(sizes: StudioSize[], width: number, height: number): number {
+  const i = sizes.findIndex((s) => s.width === width && s.height === height)
+  return i === -1 ? 0 : i
+}
+
+/** Prompts to try, shown while the box is empty. */
+export const EXAMPLE_PROMPTS: Record<'image' | 'video', string[]> = {
+  image: ['A lighthouse on a cliff at sunrise, oil painting', 'A fox in a snowy forest, soft light', 'Isometric city at night, neon'],
+  video: ['A cat walking through a rainy alley, cinematic', 'Waves rolling onto a black beach', 'Steam rising from a coffee cup'],
+}
 
 /** Clip lengths offered, in seconds. */
 export const VIDEO_SECONDS = [1, 2, 3, 5]
