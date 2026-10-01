@@ -30,6 +30,7 @@ import {
   setSnapshot,
   settlePending,
 } from './live'
+import { clearAttachments, outgoing } from './attachments'
 
 export type Notice = {
   id: string
@@ -303,12 +304,27 @@ export async function sendMessage(
   const kind: SessionKind = method === 'chat.send' ? 'chat' : method === 'cowork.send' ? 'cowork' : 'room'
   const clientId = opts.clientId ?? newClientId()
   const target = 'id' in params && params.id ? params.id : 'new'
+  // Files picked in this composer go with the message (rooms take none).
+  const key = target === 'new' ? 'new' : `${kind}:${target}`
+  if (kind !== 'room' && !opts.clientId) {
+    const out = outgoing(key)
+    if (!out.ok) {
+      toast(out.why)
+      return undefined
+    }
+    if (out.any) {
+      const text = [params.text, ...out.refs].filter(Boolean).join(out.refs.length ? ' ' : '')
+      params = { ...params, text, ...(out.uploadIds.length ? { attachments: out.uploadIds } : {}) } as SendParams
+    }
+  }
   if (!opts.clientId) addPending({ clientId, kind, id: target, text: params.text })
   let last: unknown
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       const result = (await client().rpc(method, { ...params, clientId } as never)) as SendResult
       settlePending(clientId, result)
+      if (kind !== 'room' && !opts.clientId) clearAttachments(key)
+      for (const r of result.rejected ?? []) toast(`${r.name}: ${r.message}`)
       if (result.delivery === 'queued') toast('Queued · sends when the current run ends')
       else if (result.delivery === 'steered') toast('Steering · goes to the run at its next step')
       invalidate(['sessions.list', 'thread.queue', 'status'])

@@ -314,9 +314,14 @@ export type RoomMutationResult = { ok: true; id: string }
 /** Every send carries a `clientId` the phone makes once per message: a retry
  * after a dropped connection sends the same one, and the computer answers it
  * with the first result instead of sending twice. */
+/** A file the desktop would not attach, with the composer's reason. */
+export type AttachmentRejection = { name: string; reason: string; message: string }
+
 export type ChatSendParams = {
   clientId: string
   text: string
+  /** Finished uploads (`/remote/v1/upload`) to attach, by id. */
+  attachments?: string[]
   /** An existing chat; omitted (or `new: true`) starts one. */
   id?: string
   new?: boolean
@@ -333,6 +338,7 @@ export type ChatSendParams = {
 export type CoworkSendParams = {
   clientId: string
   text: string
+  attachments?: string[]
   id?: string
   new?: boolean
   /** New sessions: a folder the desktop already knows (recent folders). */
@@ -362,6 +368,8 @@ export type SendResult = {
   delivery: 'sent' | 'queued' | 'steered'
   /** The same `clientId` was seen before; this is the first answer again. */
   duplicate?: boolean
+  /** Attachments the desktop refused; the rest went with the message. */
+  rejected?: AttachmentRejection[]
 }
 
 /** `scope: 'chat'` is the desktop's "Stop all in this chat" (#33): every run,

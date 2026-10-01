@@ -4,6 +4,30 @@ import { I } from '../ui/icons'
 import { DictateButton, insertInto } from '../ui/dictate'
 import { openSheet } from '../state/app'
 import type { ComposerModel } from '../state/app'
+import { attachKey, attachments, removeAttachment, type PhoneAttachment } from '../state/attachments'
+
+const EMPTY: PhoneAttachment[] = []
+
+/** The files waiting in a composer, each with remove. */
+export function AttachmentChips({ k }: { k: string }) {
+  const list = attachments.use((s) => s.by[k] ?? EMPTY)
+  if (!list.length) return null
+  return (
+    <div className="attchips" data-testid="attach-chips">
+      {list.map((a) => (
+        <span key={a.localId} className={`attchip ${a.status}`} title={a.error ?? a.name}>
+          {a.preview ? <img src={a.preview} alt="" /> : <I n={a.desk ? 'monitor' : 'file'} />}
+          <span className="nm">{a.name}</span>
+          {a.status === 'uploading' && <small>{Math.round(a.progress * 100)}%</small>}
+          {a.status === 'error' && <small className="err">{a.error ?? 'Failed'}</small>}
+          <button type="button" aria-label={`Remove ${a.name}`} onClick={() => removeAttachment(k, a.localId)}>
+            <I n="x" size={12} />
+          </button>
+        </span>
+      ))}
+    </div>
+  )
+}
 
 export function Composer({
   placeholder,
@@ -45,6 +69,11 @@ export function Composer({
 }) {
   const [text, setText] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
+  // Rooms (with `top`) take no attachments.
+  const key = top === undefined ? attachKey(plus ?? { for: 'home' }) : null
+  const files = attachments.use((s) => (key ? (s.by[key] ?? EMPTY) : EMPTY))
+  const hasFiles = files.some((a) => a.status !== 'error')
+  const insert = attachments.use((s) => s.insert)
 
   const grow = () => {
     const el = ref.current
@@ -60,9 +89,26 @@ export function Composer({
     requestAnimationFrame(grow)
   }, [seed])
 
+  // An @ reference or "Add to chat" asked for this composer.
+  const textRef = useRef(text)
+  textRef.current = text
+  useEffect(() => {
+    if (!insert || !key || insert.key !== key) return
+    const cur = textRef.current
+    const el = ref.current
+    const at = el?.selectionStart ?? cur.length
+    const before = cur.slice(0, at)
+    const pad = before && !/\s$/.test(before) ? ' ' : ''
+    insertInto(el, cur, (v) => {
+      setText(v)
+      requestAnimationFrame(grow)
+    }, `${pad}${insert.text} `)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [insert?.n])
+
   const send = async () => {
     const v = text.trim()
-    if (!v) return
+    if (!v && !hasFiles) return
     const sent = await onSend(v)
     // Keep what was typed unless the computer took it.
     if (sent) {
@@ -75,6 +121,7 @@ export function Composer({
     <div className="composer">
       <div className="cbox">
         {top}
+        {key && <AttachmentChips k={key} />}
         <textarea
           ref={ref}
           rows={1}
@@ -127,14 +174,14 @@ export function Composer({
               }, words)
             }
           />
-          {running && !(allowWhileRunning && text.trim()) ? (
+          {running && !(allowWhileRunning && (text.trim() || hasFiles)) ? (
             <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label="Stop…">
               <I n="sq" />
             </button>
           ) : (
             <button
               type="button"
-              className={`send${text.trim() ? '' : ' off'}`}
+              className={`send${text.trim() || hasFiles ? '' : ' off'}`}
               onClick={() => void send()}
               aria-label="Send Message"
             >
