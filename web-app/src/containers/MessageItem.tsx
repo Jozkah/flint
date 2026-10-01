@@ -21,8 +21,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
-  ChevronLeft,
-  ChevronRight,
   Copy,
   GitFork,
   Loader,
@@ -52,6 +50,7 @@ const REVEAL_ACTIONS =
 const ACTION_BUTTON =
   'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { VersionSwitcher } from './message/VersionSwitcher'
 import { shouldAnimateEntry } from '@/lib/messageEntry'
 import {
   CHAT_STATUS,
@@ -685,29 +684,12 @@ export const MessageItem = memo(
 
     const versionNav =
       versionInfo && versionInfo.count > 1 && onSwitchVersion ? (
-        <div className="flex items-center gap-0.5 text-muted-foreground">
-          <button
-            type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-            disabled={versionInfo.index <= 1}
-            onClick={() => onSwitchVersion(message.id, -1)}
-            title="Previous version"
-          >
-            <ChevronLeft className="size-3.5" />
-          </button>
-          <span className="tabular-nums">
-            {versionInfo.index}/{versionInfo.count}
-          </span>
-          <button
-            type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-            disabled={versionInfo.index >= versionInfo.count}
-            onClick={() => onSwitchVersion(message.id, 1)}
-            title="Next version"
-          >
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
+        <VersionSwitcher
+          messageId={message.id}
+          index={versionInfo.index}
+          count={versionInfo.count}
+          onSwitch={onSwitchVersion}
+        />
       ) : null
 
     const compactionRecord = metadata?.compaction as
