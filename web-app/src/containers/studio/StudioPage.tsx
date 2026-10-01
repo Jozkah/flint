@@ -48,6 +48,7 @@ import {
   VIDEO_SECONDS,
   VIDEO_SIZES,
   customSize,
+  downloadProgressText,
   durationText,
   estimateVideoMs,
   framesForSeconds,
@@ -306,8 +307,11 @@ function ModelBlock({ model }: { model: StudioModel }) {
         <div className="space-y-1.5">
           <Progress value={percent} />
           <p className="text-xs text-muted-foreground">
-            {formatModelBytes(download.bytes)} of{' '}
-            {formatModelBytes(download.total)}
+            {downloadProgressText(
+              download.bytes,
+              download.total,
+              formatModelBytes
+            )}
           </p>
         </div>
       )}
