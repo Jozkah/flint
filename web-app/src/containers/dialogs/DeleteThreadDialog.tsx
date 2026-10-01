@@ -16,10 +16,11 @@ import { Trash2 } from 'lucide-react'
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { undoableDelete } from '@/lib/undoableAction'
 import { route } from '@/constants/routes'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 
 interface DeleteThreadDialogProps {
   thread: Thread
-  onDelete: (threadId: string) => void
+  onDelete: (threadId: string, permanent?: boolean) => void
   onDropdownClose?: () => void
   variant?: 'default' | 'project'
   open?: boolean
@@ -40,6 +41,7 @@ export function DeleteThreadDialog({
   const navigate = useNavigate()
   const [internalOpen, setInternalOpen] = useState(false)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const archiveOn = useArchiveEnabled()
 
   const isControlled = open !== undefined
   const isOpen = isControlled ? !!open : internalOpen
@@ -64,7 +66,10 @@ export function DeleteThreadDialog({
     // Hidden at once, deleted after the undo window unless Undo is pressed.
     undoableDelete({
       id: thread.id,
-      message: t('common:toast.deleteThread.title'),
+      message:
+        archiveOn
+          ? t('archive:moved')
+          : t('common:toast.deleteThread.title'),
       description: t('common:toast.deleteThread.undoHint'),
       undoLabel: t('common:undo'),
       run: () => onDelete(thread.id),
@@ -94,9 +99,13 @@ export function DeleteThreadDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{t('common:deleteThread')}</DialogTitle>
+          <DialogTitle>
+            {archiveOn ? t('archive:moveTitle') : t('common:deleteThread')}
+          </DialogTitle>
           <DialogDescription>
-            {t('common:dialogs.deleteThread.description')}
+            {archiveOn
+              ? t('archive:moveBody', { title: thread.title || t('common:newThread') })
+              : t('common:dialogs.deleteThread.description')}
           </DialogDescription>
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <DialogClose asChild>
@@ -116,7 +125,9 @@ export function DeleteThreadDialog({
               className="w-full sm:w-auto"
               aria-label={`${t('common:delete')} ${thread.title || t('common:newThread')}`}
             >
-              {t('common:delete')}
+              {archiveOn
+                ? t('archive:moveButton')
+                : t('common:delete')}
             </Button>
           </DialogFooter>
         </DialogHeader>

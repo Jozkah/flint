@@ -1,4 +1,7 @@
 pub mod agent;
+// Archive instead of delete; desktop-only like rooms.
+#[cfg(not(feature = "cli"))]
+pub mod archive;
 pub mod app;
 // Local image and video generation (stable-diffusion.cpp sidecar); desktop-only.
 #[cfg(not(feature = "cli"))]

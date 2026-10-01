@@ -54,6 +54,7 @@ export function crumbForPath(pathname: string): Crumb {
       dynamic: 'session',
     }
   if (path === route.artifacts) return { ...ws, currentKey: 'common:appRail.library' }
+  if (path === route.archive) return { ...ws, currentKey: 'archive:nav' }
   if (path === route.rooms) return { ...ws, currentKey: 'common:appRail.rooms' }
   if (path.startsWith(`${route.rooms}/`))
     return {

@@ -1,3 +1,4 @@
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { route } from '@/constants/routes'
@@ -171,6 +172,7 @@ function RoomsList() {
     }
   }
 
+  const archiveOn = useArchiveEnabled()
   const confirmDelete = async () => {
     const target = toDelete
     setToDelete(null)
@@ -533,9 +535,13 @@ function RoomsList() {
       <Dialog open={toDelete !== null} onOpenChange={(open) => !open && setToDelete(null)}>
         <DialogContent showCloseButton={false} className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t('rooms:delete.title')}</DialogTitle>
+            <DialogTitle>
+              {archiveOn ? t('archive:moveTitle') : t('rooms:delete.title')}
+            </DialogTitle>
             <DialogDescription>
-              {t('rooms:delete.description', { title: toDelete?.title || t('rooms:list.untitled') })}
+              {archiveOn
+                ? t('archive:moveBody', { title: toDelete?.title || t('rooms:list.untitled') })
+                : t('rooms:delete.description', { title: toDelete?.title || t('rooms:list.untitled') })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -543,7 +549,9 @@ function RoomsList() {
               {t('rooms:delete.cancel')}
             </Button>
             <Button variant="destructive" onClick={() => void confirmDelete()}>
-              {t('rooms:delete.confirm')}
+              {archiveOn
+                ? t('archive:moveButton')
+                : t('rooms:delete.confirm')}
             </Button>
           </DialogFooter>
         </DialogContent>

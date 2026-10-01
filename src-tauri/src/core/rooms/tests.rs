@@ -599,6 +599,37 @@ fn delete_removes_the_room_directory() {
 }
 
 #[test]
+fn archive_hides_the_room_and_restore_brings_it_back_intact() {
+    use crate::core::archive::store as archive;
+    let (dir, store) = new_store();
+    store.save(room("r1"), 1).unwrap();
+    store.append("r1", message("r1", "m1", "hi")).unwrap();
+
+    store.archive(dir.path(), "r1").unwrap();
+    assert!(store.list().unwrap().is_empty());
+    assert_eq!(store.get("r1").unwrap_err().code, RoomErrorCode::NotFound);
+    let items = archive::list(dir.path());
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].meta.title, "Room r1");
+    assert_eq!(items[0].meta.kind, archive::Kind::Room);
+
+    archive::restore(dir.path(), archive::Kind::Room, &items[0].archive_id).unwrap();
+    let back = store.get("r1").unwrap();
+    assert_eq!(back.room.id, "r1");
+    assert_eq!(back.journal.len(), 1, "the journal comes back with the room");
+
+    // Same refusals as delete.
+    assert_eq!(
+        store.archive(dir.path(), "nope").unwrap_err().code,
+        RoomErrorCode::NotFound
+    );
+    assert_eq!(
+        store.archive(dir.path(), "..").unwrap_err().code,
+        RoomErrorCode::InvalidId
+    );
+}
+
+#[test]
 fn errors_serialize_as_code_and_message() {
     let err = RoomError::new(RoomErrorCode::StaleRevision, "rev moved");
     assert_eq!(

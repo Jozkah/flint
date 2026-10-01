@@ -30,6 +30,9 @@ src-tauri/resources/bin
 OpenCode.md
 Claude.md
 archive/
+# ...but not the app's own archive code
+!src-tauri/src/core/archive/
+!web-app/src/containers/archive/
 .cache/
 .jan/
 

@@ -281,6 +281,7 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::create_thread,
         core::threads::commands::modify_thread,
         core::threads::commands::delete_thread,
+        core::threads::commands::delete_thread_permanently,
         core::threads::commands::list_messages,
         core::threads::commands::create_message,
         core::threads::commands::modify_message,
@@ -294,7 +295,17 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
+        core::rooms::commands::room_delete_permanently,
         core::rooms::commands::room_clear_journal,
+        // Archive (delete moves here first)
+        core::archive::commands::archive_list,
+        core::archive::commands::archive_disk_usage,
+        core::archive::commands::archive_put,
+        core::archive::commands::archive_restore,
+        core::archive::commands::archive_purge,
+        core::archive::commands::archive_empty,
+        core::archive::commands::archive_get_settings,
+        core::archive::commands::archive_set_settings,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
@@ -705,6 +716,28 @@ pub fn build_app() -> tauri::App {
                     "background jobs: {} left by an earlier process were settled",
                     settled.len()
                 );
+            }
+            // Archive: idle threads move first, before the window lists
+            // threads (off by default, so this normally reads nothing); items
+            // past their retention are deleted off the main thread.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let moved = core::archive::auto_archive_idle_threads(
+                    &data_folder,
+                    core::archive::store::now_ms(),
+                );
+                if moved > 0 {
+                    log::info!("archive: {moved} idle thread(s) moved to the archive");
+                }
+                std::thread::spawn(move || {
+                    let report = core::archive::sweep_expired(
+                        &data_folder,
+                        core::archive::store::now_ms(),
+                    );
+                    if report.purged > 0 {
+                        log::info!("archive: {} expired item(s) deleted", report.purged);
+                    }
+                });
             }
             // Request snapshots and usage counts are bounded rather than kept
             // forever. Off the main thread: a large log is a rewrite, and the

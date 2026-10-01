@@ -374,8 +374,8 @@ async fn test_modify_and_delete_thread() {
         .unwrap();
     fs::write(scratch.join("work.txt"), b"x").unwrap();
 
-    // Delete the thread
-    delete_thread(app.handle().clone(), thread_id.clone())
+    // Delete the thread for good (the archive is skipped).
+    delete_thread_permanently(app.handle().clone(), thread_id.clone())
         .await
         .unwrap();
     assert!(!scratch.exists(), "a deleted thread's scratch dir must go with it");
@@ -397,6 +397,92 @@ async fn test_modify_and_delete_thread() {
     }
 
     // Clean up
+}
+
+// With the archive on, delete moves the thread aside and keeps what was
+// recorded about it; restoring returns it, and only a purge destroys it.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tokio::test]
+async fn test_delete_thread_archives_and_keeps_records_until_purge() {
+    use crate::core::archive::{self, store};
+
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    assert!(store::read_settings(&jan_data).enabled, "archive is on by default");
+
+    let created = create_thread(app.handle().clone(), create_test_thread("Keep me"))
+        .await
+        .unwrap();
+    let thread_id = created["id"].as_str().unwrap().to_string();
+    let snap = tauri_plugin_agent_tools::snapshot::capture(
+        &json!({ "model": "m", "messages": [{ "role": "user", "content": "hi" }] }),
+        &tauri_plugin_agent_tools::snapshot::Identity {
+            session: thread_id.clone(),
+            ..Default::default()
+        },
+    );
+    tauri_plugin_agent_tools::snapshot::append(&jan_data, &snap);
+    let scratch = tauri_plugin_agent_tools::workspace::ensure_scratch_dir(&thread_id)
+        .await
+        .unwrap();
+
+    delete_thread(app.handle().clone(), thread_id.clone())
+        .await
+        .unwrap();
+
+    // Gone from the list, present in the archive, records and scratch kept.
+    let listed = list_threads(app.handle().clone()).await.unwrap();
+    assert!(listed.iter().all(|t| t["id"] != thread_id));
+    let items = store::list(&jan_data);
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].meta.title, "Keep me");
+    assert!(scratch.exists(), "scratch dir is removed only at purge");
+    assert_eq!(
+        tauri_plugin_agent_tools::snapshot::by_session(&jan_data, &thread_id).len(),
+        1,
+        "request records are removed only at purge"
+    );
+
+    // Restore puts it back.
+    store::restore(&jan_data, store::Kind::Thread, &items[0].archive_id).unwrap();
+    let listed = list_threads(app.handle().clone()).await.unwrap();
+    assert!(listed.iter().any(|t| t["id"] == thread_id));
+
+    // Archive again, then purge: now everything goes.
+    delete_thread(app.handle().clone(), thread_id.clone())
+        .await
+        .unwrap();
+    let mut hook = |m: &store::ArchiveMeta, d: &std::path::Path| {
+        archive::purge_cleanup(&jan_data, m, d)
+    };
+    store::purge_with(&jan_data, store::Kind::Thread, &thread_id, &mut hook).unwrap();
+    assert!(store::list(&jan_data).is_empty());
+    assert!(!scratch.exists());
+    assert!(tauri_plugin_agent_tools::snapshot::by_session(&jan_data, &thread_id).is_empty());
+}
+
+// Turned off, delete is the old delete.
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[tokio::test]
+async fn test_delete_thread_with_archive_off_destroys() {
+    use crate::core::archive::store;
+
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let jan_data = get_jan_data_folder_path(app.handle().clone());
+    store::write_settings(
+        &jan_data,
+        &store::ArchiveSettings { enabled: false, ..Default::default() },
+    )
+    .unwrap();
+    let created = create_thread(app.handle().clone(), create_test_thread("Gone"))
+        .await
+        .unwrap();
+    let thread_id = created["id"].as_str().unwrap().to_string();
+    delete_thread(app.handle().clone(), thread_id.clone())
+        .await
+        .unwrap();
+    assert!(store::list(&jan_data).is_empty());
+    assert!(!get_thread_dir(&jan_data, &thread_id).exists());
 }
 
 #[tokio::test]

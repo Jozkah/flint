@@ -741,6 +741,32 @@ export type PushPayload = {
   requestId?: string
 }
 
+export type ArchiveKindWire = 'thread' | 'room' | 'cowork' | 'project'
+
+export type ArchiveItemWire = {
+  /** `<kind>:<name in the archive>`; what restore and purge take back. */
+  key: string
+  kind: ArchiveKindWire
+  title: string
+  /** Milliseconds since the epoch. */
+  archivedAt: number
+  sizeBytes: number
+}
+
+export type ArchiveListResult = {
+  items: ArchiveItemWire[]
+  /** Days an archived item is kept before it is deleted; 0 keeps it for good. */
+  retentionDays: number
+}
+
+export type ArchiveKeyParams = { key: string }
+
+export type ArchiveEmptyResult = {
+  purged: number
+  /** Items a guard kept (a Cowork session whose worktree holds unmerged work). */
+  blocked: { title: string; reason: string }[]
+}
+
 export type RemoteMethods = {
   'push.vapidKey': { params: Record<string, never>; result: { key: string } }
   'push.get': { params: Record<string, never>; result: { subscribed: boolean; available: boolean; prefs: PushPrefs } }
@@ -801,6 +827,11 @@ export type RemoteMethods = {
   'studio.media': { params: StudioItemParams; result: { dataUrl: string } }
   'studio.remix': { params: StudioItemParams; result: { started: true } }
   'studio.delete': { params: StudioItemParams; result: { ok: true } }
+  /** The archive of deleted items; a phone can list, restore and delete them for good. */
+  'archive.list': { params: Record<string, never>; result: ArchiveListResult }
+  'archive.restore': { params: ArchiveKeyParams; result: { ok: true } }
+  'archive.purge': { params: ArchiveKeyParams; result: { ok: true } }
+  'archive.empty': { params: { kind?: ArchiveKindWire }; result: ArchiveEmptyResult }
   'voice.status': { params: Record<string, never>; result: VoiceStatusResult }
   'voice.transcribe': { params: VoiceTranscribeParams; result: { text: string } }
 }
