@@ -373,3 +373,29 @@ export function mergeEmbedResponses(
 
   return aggregated
 }
+
+/**
+ * What is wrong with a model file before loading it, or null when it looks
+ * usable. A partial download leaves a file that exists but is shorter than it
+ * should be, and loading it fails with an error that does not say why.
+ */
+export function modelFileProblem(file: {
+  label: string
+  path: string
+  exists: boolean
+  size?: number
+  expectedSize?: number
+}): string | null {
+  if (!file.exists) {
+    return `The ${file.label} file is missing: ${file.path}. It may have been moved, deleted or never finished downloading.`
+  }
+  if (
+    typeof file.size === 'number' &&
+    typeof file.expectedSize === 'number' &&
+    file.expectedSize > 0 &&
+    file.size < file.expectedSize
+  ) {
+    return `The ${file.label} file is incomplete (${file.size} of ${file.expectedSize} bytes): ${file.path}. Download it again.`
+  }
+  return null
+}
