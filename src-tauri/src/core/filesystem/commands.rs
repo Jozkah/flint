@@ -336,6 +336,35 @@ pub async fn open_dialog(
     Ok(result.map(|file| serde_json::Value::String(file.path().to_string_lossy().to_string())))
 }
 
+/// Split a dialog's default path into the folder to open in and, when it names
+/// a file, the file name to suggest. Handing a full file path to
+/// `set_directory` made the system dialog show "Untitled" instead of the name.
+fn split_default_path(path: &str) -> (std::path::PathBuf, Option<String>) {
+    let path = std::path::Path::new(path);
+    if path.is_dir() || path.to_string_lossy().ends_with(['/', '\\']) {
+        return (path.to_path_buf(), None);
+    }
+    match (path.parent(), path.file_name().and_then(|n| n.to_str())) {
+        (Some(parent), Some(name)) if !name.is_empty() => {
+            (parent.to_path_buf(), Some(name.to_string()))
+        }
+        _ => (path.to_path_buf(), None),
+    }
+}
+
+fn apply_default_path(dialog: AsyncFileDialog, default_path: &str) -> AsyncFileDialog {
+    let (dir, name) = split_default_path(default_path);
+    let dialog = if dir.as_os_str().is_empty() {
+        dialog
+    } else {
+        dialog.set_directory(&dir)
+    };
+    match name {
+        Some(name) => dialog.set_file_name(name),
+        None => dialog,
+    }
+}
+
 #[tauri::command]
 pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<String>, String> {
     // Test-only, as for `open_dialog`: the harness scripts the answer.
@@ -349,7 +378,7 @@ pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<St
     if let Some(opts) = options {
         // Set default path
         if let Some(path) = opts.default_path {
-            dialog = dialog.set_directory(&path);
+            dialog = apply_default_path(dialog, &path);
         }
 
         // Set filters
@@ -363,4 +392,40 @@ pub async fn save_dialog(options: Option<DialogOpenOptions>) -> Result<Option<St
 
     let result = dialog.save_file().await;
     Ok(result.map(|file| file.path().to_string_lossy().to_string()))
+}
+
+#[cfg(test)]
+mod default_path_tests {
+    use super::split_default_path;
+
+    #[test]
+    fn a_folder_is_used_as_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let (folder, name) = split_default_path(dir.path().to_str().unwrap());
+        assert_eq!(folder, dir.path());
+        assert_eq!(name, None);
+    }
+
+    #[test]
+    fn a_file_path_becomes_a_folder_and_a_suggested_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("memory-export.json");
+        let (folder, name) = split_default_path(file.to_str().unwrap());
+        assert_eq!(folder, dir.path());
+        assert_eq!(name.as_deref(), Some("memory-export.json"));
+    }
+
+    #[test]
+    fn a_trailing_separator_means_a_folder_even_if_missing() {
+        let (folder, name) = split_default_path("/no/such/place/");
+        assert_eq!(folder, std::path::Path::new("/no/such/place/"));
+        assert_eq!(name, None);
+    }
+
+    #[test]
+    fn a_bare_file_name_is_only_a_suggestion() {
+        let (folder, name) = split_default_path("export.json");
+        assert!(folder.as_os_str().is_empty());
+        assert_eq!(name.as_deref(), Some("export.json"));
+    }
 }
