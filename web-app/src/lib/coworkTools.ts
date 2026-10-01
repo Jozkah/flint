@@ -13,6 +13,7 @@ import type {
   ComponentReport,
   ToolSchema,
 } from '@janhq/tauri-plugin-agent-tools-api'
+import { isBrowserActionTool } from '@/lib/browserAgent'
 import {
   SESSION_MESSAGING_TOOLS,
   STOP_SESSION_TOOL_NAME,
@@ -33,6 +34,15 @@ export const PLAN_DENIED_TOOLS = new Set([
   'skill_write',
   'task',
 ])
+
+/**
+ * Browser tools that act on a page (click, type, press, select). Review mode
+ * changes nothing, so they are withheld there and refused by the dispatcher.
+ * Kept apart from PLAN_DENIED_TOOLS: those go through the edit-consent policy,
+ * which has nothing to say about a web page, and the browser tools ask for
+ * their own approval (lib/browserAgent.ts).
+ */
+export const isReviewDeniedBrowserTool = isBrowserActionTool
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
@@ -387,6 +397,7 @@ export function allowedToolNames(
 ): string[] {
   return names.filter((name) => {
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) return false
+    if (opts.planMode && isReviewDeniedBrowserTool(name)) return false
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) return false
     if (name === TASK_TOOL_NAME && !opts.allowSubagents) return false
     return true
@@ -472,6 +483,7 @@ export function coworkToolsFromSchemas(
   for (const s of schemas) {
     const name = s.function.name
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) continue
+    if (opts.planMode && isReviewDeniedBrowserTool(name)) continue
     // Review (plan) mode changes nothing, and stopping another session's run
     // is a change. Withheld here and refused by the dispatcher too.
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) continue

@@ -32,6 +32,12 @@ import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
+import {
+  BROWSER_TOOL_NAMES,
+  browserAgentSchemas,
+  isBrowserTool,
+  runBrowserAgentTool,
+} from '@/lib/browserAgent'
 
 /**
  * The built-in agent tools the desktop can dispatch.
@@ -69,6 +75,9 @@ export const AGENT_TOOL_NAMES = new Set([
   'request_access',
   'list_plugins',
   'open_in_browser',
+  // Read and drive the built-in browser pane. Answered by the desktop, and
+  // gated there (domain prompt, action approval): see lib/browserAgent.ts.
+  ...BROWSER_TOOL_NAMES,
   // The host's git and gh, outside the sandbox (tools/git_tool.rs). Reads run
   // without asking; everything else is put to the user by the dispatcher
   // (see `gitApproval`), and a push or pull request every time.
@@ -214,6 +223,7 @@ export async function getAgentToolSchemas(
     projectRoot ?? '',
     (reported ?? []).map((r) => `${r.component}:${r.state}`),
     scope ?? 'thread',
+    useAgentToolsConfig.getState().browserAgentEnabled,
   ])
   if (schemaCache && schemaCacheKey === key && statusCache) return schemaCache
   const [advertised] = await Promise.all([
@@ -224,9 +234,13 @@ export async function getAgentToolSchemas(
     getSandboxStatus(),
   ])
   if (!advertised) return schemaCache ?? []
-  schemaCache = advertised.schemas.filter((s) =>
+  const builtin = advertised.schemas.filter((s) =>
     AGENT_TOOL_NAMES.has(s.function.name)
   )
+  // The browser tools are the desktop's own: Rust's list does not carry them.
+  schemaCache = useAgentToolsConfig.getState().browserAgentEnabled
+    ? [...builtin, ...(browserAgentSchemas() as unknown as ToolSchema[])]
+    : builtin
   schemaCacheKey = key
   omittedCache = advertised.omitted.filter((o) => AGENT_TOOL_NAMES.has(o.name))
   return schemaCache
@@ -386,6 +400,12 @@ export type AgentToolOptions = {
   signal?: AbortSignal
   /** Shown in a `request_access` prompt: which conversation or task is asking. */
   taskLabel?: string
+  /**
+   * Nobody is watching this run (Cowork's auto mode, a scheduled task). The
+   * browser tools then never ask: a site is opened only if a saved rule or the
+   * project's allowed domains already cover it.
+   */
+  unattended?: boolean
   /** Shown in a `request_access` prompt when a subagent or child is asking. */
   origin?: string
   /**
@@ -404,6 +424,20 @@ export async function executeAgentTool(
   try {
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
+
+    if (isBrowserTool(toolName)) {
+      // The built-in browser pane: prompts, policy and the page itself.
+      const r = await runBrowserAgentTool(toolName, input, threadId, {
+        callId: options.callId,
+        signal: options.signal,
+        runId: options.undoRun,
+        projectRoot: options.readOnlyProject,
+        unattended: options.unattended,
+        origin: options.origin,
+        taskLabel: options.taskLabel,
+      })
+      return 'error' in r ? { error: r.error } : { content: r.content }
+    }
 
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return { error: 'Flint data folder is unavailable' }

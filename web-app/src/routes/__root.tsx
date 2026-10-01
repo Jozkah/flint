@@ -27,6 +27,7 @@ import GlobalError from '@/containers/GlobalError'
 import { GlobalEventHandler } from '@/providers/GlobalEventHandler'
 import { ServiceHubProvider } from '@/providers/ServiceHubProvider'
 import { WebPreviewHost } from '@/containers/WebPreviewHost'
+import { BrowserDomainDialog } from '@/containers/BrowserDomainDialog'
 import { WindowControls } from '@/components/WindowControls'
 import { AppSidebar } from '@/components/shell/AppSidebar'
 import { TopHeader } from '@/components/shell/TopHeader'
@@ -98,6 +99,7 @@ const AppLayout = () => {
             </div>
           </main>
           <WebPreviewHost />
+          <BrowserDomainDialog />
         </div>
       </HeaderSlotProvider>
     </ShellNavProvider>

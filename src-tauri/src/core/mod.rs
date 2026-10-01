@@ -9,6 +9,9 @@ pub mod diffusion;
 // "Verify in browser": a separate, confined browser; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod browser_verify;
+// The agent's tools for the built-in browser pane; desktop-only like web_preview.
+#[cfg(not(feature = "cli"))]
+pub mod browser_agent;
 pub mod compat_env;
 // Jev (TypeSafe) decision support: optional, off by default; desktop-only.
 #[cfg(not(feature = "cli"))]
