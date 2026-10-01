@@ -1,4 +1,5 @@
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 
 /**
  * The "delete permanently" choice in a delete dialog. Unchecked by default:
@@ -12,6 +13,8 @@ export function PermanentDeleteOption({
   onChange: (checked: boolean) => void
 }) {
   const { t } = useTranslation()
+  const archiveOn = useArchiveEnabled()
+  if (!archiveOn) return null
   return (
     <label
       className="flex items-start gap-2 text-sm"

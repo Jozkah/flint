@@ -291,6 +291,7 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
+        core::rooms::commands::room_delete_permanently,
         core::rooms::commands::room_clear_journal,
         // Archive (delete moves here first)
         core::archive::commands::archive_list,

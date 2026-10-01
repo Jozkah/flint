@@ -1,3 +1,4 @@
+import { archiveApi, archiveEnabled } from '@/lib/archive'
 import { create } from 'zustand'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useThreads } from '@/hooks/useThreads'
@@ -11,7 +12,12 @@ type ThreadManagementState = {
   addFolder: (name: string, assistantId?: string) => Promise<ThreadFolder>
   updateFolder: (id: string, name: string, assistantId?: string) => Promise<void>
   deleteFolder: (id: string) => Promise<void>
-  deleteFolderWithThreads: (id: string) => Promise<void>
+  /**
+   * Delete a project and its threads. They move to the archive (the project
+   * record too, so restoring it brings the threads back into it) unless
+   * `permanent` is set.
+   */
+  deleteFolderWithThreads: (id: string, permanent?: boolean) => Promise<void>
   getFolderById: (id: string) => ThreadFolder | undefined
   getProjectById: (id: string) => Promise<ThreadFolder | undefined>
 }
@@ -55,7 +61,7 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
     set({ folders: await projectsService.getProjects() })
   },
 
-  deleteFolderWithThreads: async (id) => {
+  deleteFolderWithThreads: async (id, permanent = false) => {
     const threadsState = useThreads.getState()
     const home = useConversationGroups.getState().state.surfaces.home
     const projectThreads = Object.values(threadsState.threads).filter(
@@ -64,11 +70,26 @@ export const useThreadManagementStore = create<ThreadManagementState>()((set, ge
 
     // Delete threads from backend first
     const serviceHub = getServiceHub()
+    // The project record is archived with the ids of its threads, so a
+    // restore can put the threads back into a project of the same name.
+    const folder = get().folders.find((f) => f.id === id)
     for (const thread of projectThreads) {
-      await serviceHub.threads().deleteThread(thread.id)
+      if (permanent) await serviceHub.threads().deleteThread(thread.id, true)
+      else await serviceHub.threads().deleteThread(thread.id)
     }
     for (const thread of projectThreads) {
-      threadsState.deleteThread(thread.id)
+      if (permanent) threadsState.deleteThread(thread.id, true)
+      else threadsState.deleteThread(thread.id)
+    }
+    if (!permanent && folder && (await archiveEnabled())) {
+      try {
+        await archiveApi.put('project', id, folder.name, {
+          folder,
+          threadIds: projectThreads.map((t) => t.id),
+        })
+      } catch (e) {
+        console.warn('[Projects] Failed to archive the project record:', e)
+      }
     }
     await get().deleteFolder(id)
   },

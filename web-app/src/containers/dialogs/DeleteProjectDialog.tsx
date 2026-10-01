@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useThreads } from '@/hooks/useThreads'
 import { useThreadManagement } from '@/hooks/useThreadManagement'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
+import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
 
 interface DeleteProjectDialogProps {
   open: boolean
@@ -30,6 +32,8 @@ export function DeleteProjectDialog({
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
   const threads = useThreads((state) => state.threads)
   const { deleteFolderWithThreads } = useThreadManagement()
+  const archiveOn = useArchiveEnabled()
+  const [permanent, setPermanent] = useState(false)
 
   const threadCount = useMemo(() => {
     if (!projectId) return 0
@@ -43,7 +47,9 @@ export function DeleteProjectDialog({
     if (!projectId) return
 
     try {
-      await deleteFolderWithThreads(projectId)
+      if (archiveOn && permanent) await deleteFolderWithThreads(projectId, true)
+      else await deleteFolderWithThreads(projectId)
+      setPermanent(false)
       toast.success(
         projectName
           ? t('projects.deleteProjectDialog.successWithName', { projectName })
@@ -70,12 +76,15 @@ export function DeleteProjectDialog({
         <DialogHeader>
           <DialogTitle>{t('projects.deleteProjectDialog.title')}</DialogTitle>
           <DialogDescription>
-            {hasThreads
+            {archiveOn
+              ? t('archive:moveBody', { title: projectName ?? '' })
+              : hasThreads
               ? t('projects.deleteProjectDialog.permanentDelete')
               : t('projects.deleteProjectDialog.deleteEmptyProject', {
                   projectName,
                 })}
           </DialogDescription>
+          <PermanentDeleteOption checked={permanent} onChange={setPermanent} />
         </DialogHeader>
         <DialogFooter>
           <Button
@@ -94,7 +103,9 @@ export function DeleteProjectDialog({
               projectName: projectName || t('projects.title').toLowerCase(),
             })}
           >
-            {t('projects.deleteProjectDialog.deleteButton')}
+            {archiveOn && !permanent
+              ? t('archive:moveButton')
+              : t('projects.deleteProjectDialog.deleteButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -72,6 +72,20 @@ export const archiveApi = {
     invoke<ArchiveSettings>('archive_set_settings', { settings }),
 }
 
+/**
+ * Destroy what was just archived. "Delete permanently" on a room or a Cowork
+ * session archives it like any delete and then purges the newest archived copy
+ * of that id, so those paths need no second delete route. A purge a guard
+ * refuses (a Cowork session with unmerged work) throws its reason and the
+ * item stays archived.
+ */
+export async function purgeArchived(kind: ArchiveKind, id: string): Promise<void> {
+  const hit = (await archiveApi.list())
+    .filter((i) => i.kind === kind && i.id === id)
+    .sort((a, b) => b.archivedAt - a.archivedAt)[0]
+  if (hit) await archiveApi.purge(kind, hit.archiveId)
+}
+
 let cached: boolean | null = null
 
 /**

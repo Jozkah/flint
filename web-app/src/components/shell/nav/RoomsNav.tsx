@@ -40,6 +40,9 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
+import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
+import { purgeArchived } from '@/lib/archive'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { openInSplit, reportSplitResult } from '@/lib/splitView'
@@ -188,6 +191,8 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     id: string
     title: string
   } | null>(null)
+  const archiveOn = useArchiveEnabled()
+  const [permanent, setPermanent] = useState(false)
   const runningRoomIds = useRoomsStore((s) => s.runningRoomIds)
   const visibleRooms = expanded
     ? summaries
@@ -240,6 +245,8 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     if (!pendingDelete) return
     try {
       await api.deleteRoom(pendingDelete.id)
+      // "Delete permanently" archives like any delete, then purges that copy.
+      if (archiveOn && permanent) await purgeArchived('room', pendingDelete.id)
       await api.loadSummaries()
       if (pendingDelete.id === currentRoomId) {
         navigate({ to: route.rooms })
@@ -248,6 +255,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       toast.error(normalizeError(err)?.message ?? 'Failed to delete room')
     }
     setPendingDelete(null)
+    setPermanent(false)
   }
 
   return (
@@ -317,19 +325,28 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('common:shell.deleteRoomTitle')}</DialogTitle>
+            <DialogTitle>
+              {archiveOn
+                ? t('archive:moveTitle')
+                : t('common:shell.deleteRoomTitle')}
+            </DialogTitle>
             <DialogDescription>
-              {t('common:shell.deleteRoomBody', {
-                title: pendingDelete?.title,
-              })}
+              {archiveOn
+                ? t('archive:moveBody', { title: pendingDelete?.title })
+                : t('common:shell.deleteRoomBody', {
+                    title: pendingDelete?.title,
+                  })}
             </DialogDescription>
           </DialogHeader>
+          <PermanentDeleteOption checked={permanent} onChange={setPermanent} />
           <DialogFooter>
             <Button variant="surface" onClick={() => setPendingDelete(null)}>
               {t('common:cancel')}
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              {t('common:delete')}
+              {archiveOn && !permanent
+                ? t('archive:moveButton')
+                : t('common:delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
