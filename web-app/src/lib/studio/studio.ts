@@ -34,6 +34,10 @@ export type StudioModel = {
   max_side: number
   installed: boolean
   totalBytes: number
+  /** Added from Discover, so it can be removed. */
+  custom?: boolean
+  /** The family a custom model belongs to. */
+  family?: string | null
 }
 
 export type StudioResident = { model_id: string; kind: StudioKind; busy: boolean }
@@ -74,6 +78,17 @@ export type Generated = {
   duration_ms: number
 }
 
+/** A kind of model Discover can add, with what else it downloads. */
+export type StudioFamily = {
+  id: string
+  label: string
+  description: string
+  hints: string[]
+  minSide: number
+  maxSide: number
+  companionBytes: number
+}
+
 export type EngineBuild = 'win-vulkan-x64' | 'win-cuda12-x64' | 'win-cpu-x64'
 
 export const studioApi = {
@@ -108,6 +123,18 @@ export const studioApi = {
   cancel: () => invoke<void>('diffusion_cancel'),
   gallery: (kind: StudioKind) => invoke<GalleryItem[]>('diffusion_gallery', { kind }),
   remove: (kind: StudioKind, id: string) => invoke<void>('diffusion_delete', { kind, id }),
+  families: () => invoke<StudioFamily[]>('diffusion_families'),
+  guessFamily: (repo: string, filename: string) =>
+    invoke<string | null>('diffusion_guess_family', { repo, filename }),
+  addCustomModel: (params: {
+    repo: string
+    filename: string
+    family: string
+    displayName?: string
+    license?: string
+    token?: string
+  }) => invoke<StudioModel>('diffusion_add_custom_model', { params }),
+  removeCustomModel: (modelId: string) => invoke<void>('diffusion_remove_custom_model', { modelId }),
   /** Pictures a hosted provider made, kept in the gallery beside local ones. */
   saveExternalImages: (params: {
     prompt: string

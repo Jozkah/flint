@@ -96,6 +96,8 @@ type Form = {
   customHeight: string
   /** `provider/model` of a hosted image model, or empty for the model on this computer. */
   cloud: string
+  /** The local model chosen, or empty for the first one of the kind. */
+  localModel: string
   count: number
   seconds: number
   accepted: boolean
@@ -111,6 +113,7 @@ const EMPTY_FORM: Form = {
   customWidth: '1024',
   customHeight: '1024',
   cloud: '',
+  localModel: '',
   count: 1,
   seconds: VIDEO_SECONDS[VIDEO_SECONDS.length - 1],
   accepted: false,
@@ -272,13 +275,20 @@ function EngineSetup() {
 }
 
 /** The model on the left: what it is, whether it is ready, and the one button to get it ready. */
-function ModelBlock({ model }: { model: StudioModel }) {
+function ModelBlock({
+  model,
+  onRemoved,
+}: {
+  model: StudioModel
+  onRemoved: () => void
+}) {
   const status = useStudio((s) => s.status)
   const download = useStudio((s) => s.download)
   const job = useStudio((s) => s.job)
   const downloadModel = useStudio((s) => s.downloadModel)
   const load = useStudio((s) => s.load)
   const unload = useStudio((s) => s.unload)
+  const removeCustomModel = useStudio((s) => s.removeCustomModel)
   const [loading, setLoading] = useState(false)
   const resident = status?.resident?.model_id === model.id
   const downloading = download?.modelId === model.id
@@ -352,6 +362,20 @@ function ModelBlock({ model }: { model: StudioModel }) {
         <p className="text-xs text-muted-foreground">
           Install the image engine above to use this model.
         </p>
+      )}
+      {model.custom && (
+        <button
+          type="button"
+          disabled={!!job || resident}
+          onClick={async () => {
+            await removeCustomModel(model.id)
+            onRemoved()
+          }}
+          title="Takes it off this list. Its downloaded files stay on disk."
+          className="self-start rounded-md text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+        >
+          Remove from Studio
+        </button>
       )}
     </div>
   )
@@ -455,6 +479,11 @@ function Settings({
 }) {
   const job = useStudio((s) => s.job)
   const hosted = targets.find((t) => t.key === form.cloud)
+  const allModels = useStudio((s) => s.status?.models)
+  const localModels = useMemo(
+    () => allModels?.filter((m) => m.kind === kind) ?? [],
+    [allModels, kind]
+  )
   const { hardware } = useFitContext()
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
   const warning =
@@ -473,17 +502,20 @@ function Settings({
     <Frame className="motion-safe:animate-rise-in" style={rise(0)}>
       <FrameHeader title="Settings" />
       <FrameBody className="gap-4 p-3.5">
-        {kind === 'image' && (
-          <Field label="Where to make it">
+        {(kind === 'image' || localModels.length > 1) && (
+          <Field label={kind === 'image' ? 'Where to make it' : 'Model'}>
             <div className="flex flex-wrap gap-1.5">
-              <Option
-                pressed={!hosted}
-                disabled={running}
-                onClick={() => setForm({ cloud: '' })}
-                title="Runs on this computer"
-              >
-                This computer
-              </Option>
+              {localModels.map((m) => (
+                <Option
+                  key={m.id}
+                  pressed={!hosted && m.id === model.id}
+                  disabled={running}
+                  onClick={() => setForm({ cloud: '', localModel: m.id })}
+                  title={`${m.display_name} runs on this computer`}
+                >
+                  {m.display_name}
+                </Option>
+              ))}
               {targets.map((t) => (
                 <Option
                   key={t.key}
@@ -510,7 +542,12 @@ function Settings({
             ) : null}
           </Field>
         )}
-        {!hosted && <ModelBlock model={model} />}
+        {!hosted && (
+          <ModelBlock
+            model={model}
+            onRemoved={() => setForm({ localModel: '' })}
+          />
+        )}
         <Field label="Shape">
           <div className="flex flex-wrap gap-1.5">
             {sizes.map((s, i) => (
@@ -1157,16 +1194,20 @@ export function StudioPage() {
     void refreshGallery('video')
   }, [refresh, refreshGallery])
 
-  const model = useMemo(
-    () => status?.models.find((m) => m.kind === kind),
-    [status, kind]
-  )
+  const model = useMemo(() => {
+    const ofKind = status?.models.filter((m) => m.kind === kind) ?? []
+    return ofKind.find((m) => m.id === form.localModel) ?? ofKind[0]
+  }, [status, kind, form.localModel])
 
   // The sizes differ between images and video, so the chosen shape starts over.
   const changeKind = (next: StudioKind) => {
     setViewing(null)
     setKind(next)
-    setForm({ sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0, cloud: '' })
+    setForm({
+      sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0,
+      cloud: '',
+      localModel: '',
+    })
   }
 
   const remix = (item: GalleryItem) => {
@@ -1176,6 +1217,9 @@ export function StudioPage() {
       negative: item.recipe.negativePrompt,
       seed: '',
       cloud: targets.some((t) => t.key === item.recipe.modelId)
+        ? item.recipe.modelId
+        : '',
+      localModel: status?.models.some((m) => m.id === item.recipe.modelId)
         ? item.recipe.modelId
         : '',
       // The exact size it was made at: a standard shape when it is one,

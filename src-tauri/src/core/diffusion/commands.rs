@@ -2,6 +2,7 @@
 
 use super::args::Offload;
 use super::catalog::{self, Backend, Kind, ModelDef};
+use super::custom::{self, CustomModel, Family};
 use super::engine;
 use super::gallery::{self, GalleryItem};
 use super::runtime::{self, Generated, ImageParams, ResidentInfo, VideoParams};
@@ -15,6 +16,10 @@ pub struct ModelStatus {
     pub def: ModelDef,
     pub installed: bool,
     pub total_bytes: u64,
+    /// Added from Discover, so it can be removed.
+    pub custom: bool,
+    /// The family a custom model belongs to.
+    pub family: Option<&'static str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -29,12 +34,14 @@ pub struct Status {
 
 #[tauri::command]
 pub async fn diffusion_status<R: Runtime>(app: tauri::AppHandle<R>) -> Result<Status, String> {
-    let models = catalog::MODELS
-        .iter()
+    let models = catalog::all_models()
+        .into_iter()
         .map(|def| ModelStatus {
             def: *def,
             installed: runtime::model_installed(&app, def),
             total_bytes: def.total_bytes(),
+            custom: custom::is_custom(def.id),
+            family: custom::family_of(def.id),
         })
         .collect();
     Ok(Status {
@@ -226,4 +233,102 @@ pub async fn diffusion_save_external_images<R: Runtime>(
         paths.push(saved.path.to_string_lossy().into_owned());
     }
     Ok(Generated { job_id, seed: 0, ids, paths, duration_ms: params.duration_ms })
+}
+
+/// The families a model from Discover can belong to, with what each also downloads.
+#[tauri::command]
+pub fn diffusion_families() -> Vec<FamilyInfo> {
+    custom::FAMILIES
+        .iter()
+        .map(|f| FamilyInfo { family: *f, companion_bytes: f.companion_bytes() })
+        .collect()
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FamilyInfo {
+    #[serde(flatten)]
+    pub family: Family,
+    pub companion_bytes: u64,
+}
+
+/// The family a repo and file most likely belong to, for the picker's default.
+#[tauri::command]
+pub fn diffusion_guess_family(repo: String, filename: String) -> Option<&'static str> {
+    custom::guess_family(&repo, &filename)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddCustomModel {
+    pub repo: String,
+    pub filename: String,
+    pub family: String,
+    pub display_name: Option<String>,
+    pub license: Option<String>,
+    pub token: Option<String>,
+}
+
+/// Add a diffusion model from Hugging Face to Studio. The file is looked up on
+/// Hugging Face for its size and checksum, so what gets downloaded later is
+/// verified against what the repository publishes; nothing is downloaded here.
+#[tauri::command]
+pub async fn diffusion_add_custom_model<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    params: AddCustomModel,
+) -> Result<ModelStatus, String> {
+    let AddCustomModel { repo, filename, family, display_name, license, token } = params;
+    custom::family(&family).ok_or("That model family is not supported.")?;
+    let files = crate::core::huggingface::huggingface_model_files(repo.clone(), token).await?;
+    let file = files
+        .into_iter()
+        .find(|f| f.name == filename)
+        .ok_or("That file is not in the repository.")?;
+    let size = file.size.unwrap_or(0);
+    if let Some(problem) = custom::weights_file_problem(&filename, size) {
+        return Err(problem.to_string());
+    }
+    let sha256 = file
+        .sha256
+        .map(|s| s.to_ascii_lowercase())
+        .filter(|s| s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit()))
+        .ok_or("Hugging Face does not publish a checksum for that file, so it cannot be verified.")?;
+    let name = display_name
+        .map(|n| n.trim().chars().take(80).collect::<String>())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| filename.rsplit('/').next().unwrap_or(&filename).to_string());
+    let license = license
+        .map(|l| l.trim().chars().take(40).collect::<String>())
+        .filter(|l| !l.is_empty())
+        .unwrap_or_else(|| "See the model page".to_string());
+    let record = CustomModel {
+        id: custom::id_for(&repo, &filename),
+        display_name: name,
+        family,
+        repo,
+        filename,
+        size,
+        sha256,
+        license,
+    };
+    let def = custom::add(&app, record)?;
+    Ok(ModelStatus {
+        def: *def,
+        installed: runtime::model_installed(&app, def),
+        total_bytes: def.total_bytes(),
+        custom: true,
+        family: custom::family_of(def.id),
+    })
+}
+
+/// Forget a model added from Discover. Its downloaded files stay on disk.
+#[tauri::command]
+pub async fn diffusion_remove_custom_model<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    model_id: String,
+) -> Result<(), String> {
+    if runtime::resident_info().await.is_some_and(|r| r.model_id == model_id) {
+        runtime::unload(&app).await;
+    }
+    custom::remove(&app, &model_id)
 }

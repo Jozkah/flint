@@ -32,6 +32,8 @@ import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { HuggingFaceAvatar } from '@/containers/HuggingFaceAvatar'
+import { Segmented } from '@/components/ui/segmented'
+import { StudioDiscover } from '@/containers/studio/StudioDiscover'
 import { cn } from '@/lib/utils'
 import { HuggingFaceDownloadAction } from '@/containers/HuggingFaceDownloadAction'
 import { route } from '@/constants/routes'
@@ -151,6 +153,8 @@ function ModelDiscoverRoute() {
   const [format, setFormat] = useState<HuggingFaceFormat>(
     IS_MACOS ? 'all' : 'gguf'
   )
+  // What is being looked for: models that chat, or models that make pictures.
+  const [source, setSource] = useState<'models' | 'studio'>('models')
   const [includeGated, setIncludeGated] = useState(true)
   const [downloadedOnly, setDownloadedOnly] = useState(false)
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
@@ -170,6 +174,11 @@ function ModelDiscoverRoute() {
   }, [query])
 
   useEffect(() => {
+    // Picture models have their own search (StudioDiscover).
+    if (source === 'studio') {
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     setError(null)
@@ -214,7 +223,7 @@ function ModelDiscoverRoute() {
     return () => {
       cancelled = true
     }
-  }, [debouncedQuery, token, format])
+  }, [debouncedQuery, token, format, source])
 
   const installedIds = useMemo(() => {
     const ids = new Set<string>()
@@ -371,7 +380,7 @@ function ModelDiscoverRoute() {
                   </Chip>
                 </div>
                 <h1 className="mt-1 text-2xl leading-tight font-medium tracking-[-0.01em]">
-                  Discover local models
+                  {source === 'studio' ? 'Discover image models' : 'Discover local models'}
                 </h1>
                 <p className="mt-1 hidden max-w-2xl text-[13px] text-secondary-foreground [@media(min-height:700px)]:block">
                   Search, compare and download models that run on this device.
@@ -380,6 +389,17 @@ function ModelDiscoverRoute() {
                 </p>
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+            <Segmented<'models' | 'studio'>
+              aria-label="What to look for"
+              className="min-w-[260px]"
+              options={[
+                { value: 'models', label: 'Chat models' },
+                { value: 'studio', label: 'Images' },
+              ]}
+              value={source}
+              onValueChange={setSource}
+            />
             <Button variant="outline" size="sm" asChild>
               <a
                 href="https://huggingface.co/models"
@@ -389,6 +409,7 @@ function ModelDiscoverRoute() {
                 Open Hugging Face <ExternalLink className="size-3.5" />
               </a>
             </Button>
+            </div>
           </div>
 
           <div className="relative">
@@ -416,6 +437,7 @@ function ModelDiscoverRoute() {
             )}
           </div>
 
+          {source === 'models' && (
           <div className="flex flex-wrap items-center gap-2 text-xs">
             {MODALITY_PILLS.map(({ value, label, Icon: PillIcon }) => (
               <button
@@ -475,9 +497,13 @@ function ModelDiscoverRoute() {
               ))}
             </select>
           </div>
+          )}
         </div>
       </header>
 
+      {source === 'studio' ? (
+        <StudioDiscover query={debouncedQuery} token={token} />
+      ) : (
       <main ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
         <div className="mx-auto w-full max-w-6xl">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -836,6 +862,7 @@ function ModelDiscoverRoute() {
           )}
         </div>
       </main>
+      )}
     </div>
   )
 }

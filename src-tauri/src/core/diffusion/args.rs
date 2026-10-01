@@ -16,6 +16,8 @@ pub struct ModelFiles {
     pub llm: Option<PathBuf>,
     /// The text encoder for the Wan family (`--t5xxl`).
     pub t5xxl: Option<PathBuf>,
+    /// The CLIP-L text encoder FLUX.1 takes beside its T5 (`--clip_l`).
+    pub clip_l: Option<PathBuf>,
 }
 
 /// Where the weights sit while generating, trading speed for memory.
@@ -86,6 +88,10 @@ pub fn build_server_args(
     if let Some(t5) = &files.t5xxl {
         args.push("--t5xxl".into());
         args.push(path_arg(t5));
+    }
+    if let Some(clip) = &files.clip_l {
+        args.push("--clip_l".into());
+        args.push(path_arg(clip));
     }
     args.extend([
         "--listen-ip".into(),
@@ -257,6 +263,7 @@ mod tests {
             vae: "C:\\m\\ae.safetensors".into(),
             llm: Some("C:\\m\\Qwen3-4B-Instruct-2507-Q4_K_M.gguf".into()),
             t5xxl: None,
+            clip_l: None,
         }
     }
 
@@ -294,6 +301,24 @@ mod tests {
         let args = build_server_args(&wan, 1, Path::new("s"), Offload::None, None, &[]);
         assert!(pairs(&args).contains(&("--t5xxl", "C:\\m\\umt5.gguf")));
         assert!(!args.contains(&"--llm".to_string()));
+    }
+
+    #[test]
+    fn flux_passes_its_clip_encoder_beside_the_t5() {
+        let flux = ModelFiles {
+            diffusion_model: "m/flux.gguf".into(),
+            vae: "m/ae.safetensors".into(),
+            llm: None,
+            t5xxl: Some("m/t5.gguf".into()),
+            clip_l: Some("m/clip_l.safetensors".into()),
+        };
+        let args = build_server_args(&flux, 9, Path::new("s"), Offload::None, None, &[]);
+        let at = args.iter().position(|a| a == "--clip_l").expect("--clip_l");
+        assert_eq!(args[at + 1], "m/clip_l.safetensors");
+        assert!(args.contains(&"--t5xxl".to_string()));
+        // The others do not get one.
+        let plain = build_server_args(&files(), 9, Path::new("s"), Offload::None, None, &[]);
+        assert!(!plain.contains(&"--clip_l".to_string()));
     }
 
     #[test]
