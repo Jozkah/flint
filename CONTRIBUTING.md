@@ -2,7 +2,7 @@
 
 Thank you for considering a contribution to Flint.
 
-Flint is a private, local-first AI workspace for the desktop: chat with local or cloud models, and let an agent work on your files and projects with your approval. It is an independent fork of [Jan](https://github.com/janhq/jan), so much of the architecture below is shared with upstream, and internal package names still use the `@janhq/` scope.
+Flint is a local-first AI workspace for the desktop: chat with local or cloud models, and let an agent work on your files and projects with your approval. It is an independent fork of [Jan](https://github.com/janhq/jan), so much of the architecture below is shared with upstream, and internal package names still use the `@janhq/` scope.
 
 ## Quick Links to Component Guides
 
@@ -123,6 +123,7 @@ flint/
 │   └── vector-db-extension/
 ├── packages/agent-sdk/   # Agent SDK
 ├── docs/                 # Build guide, feature list, screenshots
+├── website/              # Marketing site (Vite + React, separate npm project)
 ├── e2e/, autoqa/         # End-to-end and automated testing
 ├── scripts/              # Build utilities
 │

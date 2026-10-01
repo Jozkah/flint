@@ -1,3 +1,4 @@
+import type { MCPServerStatus } from '@/services/mcp/types'
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
@@ -261,6 +262,10 @@ function MCPServersDesktop() {
     clearAuth,
   } = useMcpAuth(Object.keys(mcpServers))
 
+  /** On-demand lifecycle per enabled server (stopped/starting/running/failed). */
+  const [lifecycle, setLifecycle] = useState<Record<string, MCPServerStatus>>(
+    {}
+  )
   const refreshConnectedServers = useCallback(() => {
     serviceHub
       .mcp()
@@ -269,6 +274,9 @@ function MCPServersDesktop() {
       .catch((error) =>
         console.error('Failed to refresh connected MCP servers:', error)
       )
+    Promise.resolve(serviceHub.mcp().getServerStatuses?.())
+      .then((next) => setLifecycle(next ?? {}))
+      .catch(() => {})
   }, [serviceHub])
   const setErrorMessage = useAppState((state) => state.setErrorMessage)
 
@@ -353,7 +361,16 @@ function MCPServersDesktop() {
   const serviceHubRef = useRef(serviceHub)
   serviceHubRef.current = serviceHub
   // Server names may contain spaces ("Flint Browser MCP"), so join on NUL.
-  const connectedKey = connectedServers.join('\u0000')
+  // Enabled servers are listed too: a stopped one (servers start on demand)
+  // reports its last known tools without being started.
+  const connectedKey = Array.from(
+    new Set([
+      ...connectedServers,
+      ...Object.entries(mcpServers)
+        .filter(([, cfg]) => cfg.active)
+        .map(([name]) => name),
+    ])
+  ).join('\u0000')
 
   useEffect(() => {
     let cancelled = false
@@ -669,6 +686,49 @@ function MCPServersDesktop() {
     }
   }
 
+  /** Manual Start: starts now, and lists fresh tools; errors are shown. */
+  const startNow = async (serverKey: string) => {
+    try {
+      await serviceHub.mcp().startMCPServer(serverKey)
+    } catch (error) {
+      setErrorMessage({
+        message: normalizeAppError(error),
+        subtitle: t('mcp-servers:checkParams'),
+      })
+    } finally {
+      refreshConnectedServers()
+    }
+  }
+
+  /** Manual Stop: the server stays on and starts again when needed. */
+  const stopNow = async (serverKey: string) => {
+    try {
+      await serviceHub.mcp().stopMCPServer(serverKey)
+    } catch (error) {
+      console.error(`Failed to stop MCP server ${serverKey}:`, error)
+    } finally {
+      refreshConnectedServers()
+    }
+  }
+
+  const setStartWithFlint = async (
+    serverKey: string,
+    config: MCPServerConfig,
+    startWithFlint: boolean
+  ) => {
+    const next = { ...config, startWithFlint }
+    editServer(serverKey, next)
+    syncServers()
+    if (config.active) {
+      // Refresh the backend's registration so idle shutdown sees the flag;
+      // turning it on also starts the server now.
+      await Promise.resolve(
+        serviceHub.mcp().activateMCPServer(serverKey, next, { start: false })
+      ).catch(() => {})
+      refreshConnectedServers()
+    }
+  }
+
   const toggleServer = (
     serverKey: string,
     active: boolean,
@@ -787,6 +847,7 @@ function MCPServersDesktop() {
         installed: true,
         enabled: !!config.active,
         connected: connectedServers.includes(key),
+        lifecycle: lifecycle[key],
         runtime: runtime[key],
         authStatus,
         transport: profile.transport,
@@ -969,7 +1030,8 @@ function MCPServersDesktop() {
 
   const renderServer = ([key, config]: [string, MCPServerConfig], index: number) => {
     const { authStatus, profile, snapshot } = snapshotFor(key, config)
-    const toolNames = snapshot.connected ? serverTools[key] : undefined
+    const toolNames =
+      snapshot.connected || snapshot.enabled ? serverTools[key] : undefined
     const expanded = expandedServers.has(key)
     const off = snapshot.state === 'disabled' || snapshot.state === 'not-installed'
     const color = serverColor(serverEntries.findIndex(([k]) => k === key))
@@ -1157,6 +1219,41 @@ function MCPServersDesktop() {
                     onClearAuth={() => void handleClearAuth(key)}
                   />
                 </>
+              )}
+            </div>
+          )}
+          {snapshot.enabled && (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+              data-testid={`mcp-lifecycle-${idSafe}`}
+            >
+              <label className="flex items-center gap-2">
+                <Switch
+                  checked={!!config.startWithFlint}
+                  aria-label={t('mcp-servers:lifecycle.startWithFlint')}
+                  onCheckedChange={(checked) =>
+                    void setStartWithFlint(key, config, checked)
+                  }
+                />
+                <span>{t('mcp-servers:lifecycle.startWithFlint')}</span>
+              </label>
+              {snapshot.connected ? (
+                <button
+                  type="button"
+                  className="rounded-md border border-border px-2 py-0.5 text-fg-2 hover:bg-secondary"
+                  onClick={() => void stopNow(key)}
+                >
+                  {t('mcp-servers:lifecycle.stop')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={snapshot.state === 'connecting'}
+                  className="rounded-md border border-border px-2 py-0.5 text-fg-2 hover:bg-secondary disabled:opacity-50"
+                  onClick={() => void startNow(key)}
+                >
+                  {t('mcp-servers:lifecycle.start')}
+                </button>
               )}
             </div>
           )}

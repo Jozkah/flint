@@ -1,0 +1,34 @@
+{
+  "name": "flint-website",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Marketing site for Flint. Independent of the desktop app's build.",
+  "scripts": {
+    "assets": "node scripts/assets.mjs",
+    "release": "node scripts/release.mjs",
+    "predev": "node scripts/assets.mjs && node scripts/release.mjs && node scripts/changelog.mjs",
+    "dev": "vite",
+    "prebuild": "node scripts/assets.mjs && node scripts/release.mjs && node scripts/changelog.mjs",
+    "build": "tsc --noEmit && vite build && vite build --ssr src/entry-server.tsx --outDir dist-ssr && node scripts/prerender.mjs",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test scripts/verify.test.mjs",
+    "changelog": "node scripts/changelog.mjs"
+  },
+  "dependencies": {
+    "react": "19.2.1",
+    "react-dom": "19.2.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.17",
+    "@types/node": "^22.20.4",
+    "@types/react": "19.1.8",
+    "@types/react-dom": "19.1.6",
+    "@vitejs/plugin-react": "4.6.0",
+    "sharp": "0.34.5",
+    "tailwindcss": "4.1.17",
+    "typescript": "5.9.2",
+    "vite": "6.3.2"
+  }
+}
