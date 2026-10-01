@@ -285,6 +285,44 @@ pub async fn db_delete_thread<R: Runtime>(
     Ok(())
 }
 
+/// Archived (soft-deleted) threads, newest first: id, the thread JSON, when it
+/// was archived (seconds) and how many bytes its messages take.
+pub async fn db_list_deleted_threads<R: Runtime>(
+    _app_handle: AppHandle<R>,
+) -> Result<Vec<(String, Value, i64, u64)>, String> {
+    let pool = get_pool().await?;
+    let rows = sqlx::query(
+        "SELECT t.id AS id, t.data AS data, t.deleted_at AS deleted_at,          (SELECT COALESCE(SUM(LENGTH(m.data)), 0) FROM messages m WHERE m.thread_id = t.id) AS bytes          FROM threads t WHERE t.deleted_at IS NOT NULL ORDER BY t.deleted_at DESC",
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| format!("Failed to list archived threads: {}", e))?;
+    let mut out = Vec::new();
+    for row in &rows {
+        let id: String = row.get("id");
+        let data: String = row.get("data");
+        let at: i64 = row.get("deleted_at");
+        let bytes: i64 = row.get("bytes");
+        let value: Value = serde_json::from_str(&data).unwrap_or(Value::Null);
+        out.push((id, value, at, bytes.max(0) as u64));
+    }
+    Ok(out)
+}
+
+/// Destroy one archived thread. A live thread is never touched.
+pub async fn db_purge_thread<R: Runtime>(
+    _app_handle: AppHandle<R>,
+    thread_id: &str,
+) -> Result<(), String> {
+    let pool = get_pool().await?;
+    sqlx::query("DELETE FROM threads WHERE id = ?1 AND deleted_at IS NOT NULL")
+        .bind(thread_id)
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Failed to purge archived thread: {}", e))?;
+    Ok(())
+}
+
 /// Bring an archived thread back.
 pub async fn db_restore_thread<R: Runtime>(
     _app_handle: AppHandle<R>,
