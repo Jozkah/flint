@@ -30,6 +30,7 @@ pub mod rpc;
 pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
+pub mod schedule;
 pub mod secrets;
 mod secret_input;
 pub mod stream_input;
