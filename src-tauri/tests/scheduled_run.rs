@@ -214,7 +214,11 @@ fn a_run_answers_and_its_record_says_so() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(r.status, RunStatus::Succeeded, "{r:?}");
     assert_eq!(r.summary.as_deref(), Some("nothing changed overnight"));
-    assert!(r.session_id.is_some(), "the transcript is linked");
+    let session = r.session_id.clone().expect("the transcript is linked");
+    let thread = std::fs::read_to_string(s.data().join("threads").join(&session).join("thread.json"))
+        .expect("the app can list the run as a conversation");
+    assert!(thread.contains("Nightly digest"), "titled for the task: {thread}");
+    assert!(thread.contains("\"scheduled\""), "marked as scheduled: {thread}");
     assert!(r.ended_at_ms.is_some());
     assert_eq!(r.spend.input_tokens, 9);
     assert_eq!(r.spend.output_tokens, 4);
