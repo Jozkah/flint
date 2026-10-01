@@ -677,7 +677,64 @@ export type VoiceStatusResult = { ready: boolean }
 /** `audio` is base64 16 kHz mono 16-bit WAV. */
 export type VoiceTranscribeParams = { audio: string; language?: string }
 
+// ---------------------------------------------------------------------------
+// Push (answered by the server itself, not the window)
+// ---------------------------------------------------------------------------
+
+export type PushCategory =
+  | 'approval'
+  | 'runFinished'
+  | 'runFailed'
+  | 'pr'
+  | 'roomWaiting'
+  | 'synthesis'
+  | 'chatReply'
+  | 'test'
+
+export type PushNotice = {
+  category: PushCategory
+  title: string
+  body: string
+  /** In-app path, `/m/#/...`. */
+  url: string
+  /** Collapses notifications about the same thing. */
+  tag: string
+  requestId?: string
+}
+
+export type PushPrefs = {
+  approvals: boolean
+  runFinished: boolean
+  runFailed: boolean
+  pr: boolean
+  roomWaiting: boolean
+  synthesis: boolean
+  chatReply: boolean
+  hideContent: boolean
+  /** Minutes after local midnight; approvals still come through. */
+  quietHours: { enabled: boolean; start: number; end: number }
+  utcOffsetMinutes: number
+}
+
+export type PushSubscriptionJson = { endpoint: string; keys: { p256dh: string; auth: string } }
+
+/** What the service worker receives. */
+export type PushPayload = {
+  title: string
+  body: string
+  url: string
+  tag: string
+  category: PushCategory
+  requestId?: string
+}
+
 export type RemoteMethods = {
+  'push.vapidKey': { params: Record<string, never>; result: { key: string } }
+  'push.get': { params: Record<string, never>; result: { subscribed: boolean; available: boolean; prefs: PushPrefs } }
+  'push.subscribe': { params: { subscription: PushSubscriptionJson; prefs?: PushPrefs }; result: { ok: true } }
+  'push.unsubscribe': { params: Record<string, never>; result: { ok: true } }
+  'push.prefs': { params: { prefs: PushPrefs }; result: { prefs: PushPrefs } }
+  'push.test': { params: Record<string, never>; result: { sent: number } }
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
   'models.list': { params: Record<string, never>; result: ModelsListResult }
@@ -753,6 +810,9 @@ export type RemoteEvent =
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }
+  /** Not sent to sockets: the server turns it into Web Push for phones that
+   * are not looking (src-tauri/src/core/remote/push.rs). */
+  | ({ type: 'push.notify' } & PushNotice)
   /** Reply text (and reasoning) appended at `offset` of what was sent so far
    * for `messageId`. A phone that sees a gap asks `stream.get`. */
   | {
@@ -793,6 +853,8 @@ export type RemoteClientMessage =
   | { type: 'subscribe'; topics: string[] }
   | { type: 'unsubscribe'; topics: string[] }
   | { type: 'ping' }
+  /** The page was hidden or shown; a hidden page gets Web Push instead. */
+  | { type: 'visibility'; hidden: boolean }
 
 // ---------------------------------------------------------------------------
 // Pairing

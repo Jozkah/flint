@@ -9,7 +9,8 @@
 // the exposure instead: the page loads scripts only from its own origin
 // (CSP in the built page), renders no third-party content, never puts the
 // token in a URL, and the desktop can revoke it at any time (Settings >
-// Remote access), after which it is useless.
+// Remote access), after which it is useless. The service worker needs it
+// too (notification actions), so a copy lives in IndexedDB; see idb.ts.
 
 export const PAIRING_KEY = 'flint-remote'
 
@@ -116,6 +117,26 @@ export function memoryPairingStore(initial: Pairing | null = null): PairingStore
     },
     clear: () => {
       value = null
+    },
+  }
+}
+
+/** Mirrors the token into IndexedDB for the service worker (see idb.ts). */
+export function mirrorToken(
+  store: PairingStore,
+  write: (token: string | null) => void | Promise<void>
+): PairingStore {
+  const current = store.get()
+  void write(current?.token ?? null)
+  return {
+    get: () => store.get(),
+    set(p) {
+      store.set(p)
+      void write(p.token)
+    },
+    clear() {
+      store.clear()
+      void write(null)
     },
   }
 }

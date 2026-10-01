@@ -420,7 +420,10 @@ async fn serve_static(hub: &RemoteHub, rel: &str) -> Resp {
     match static_files::resolve(root, rel) {
         Ok(path) => match tokio::fs::read(&path).await {
             Ok(bytes) => {
-                let is_index = path.file_name().is_some_and(|n| n == "index.html");
+                // The service worker too: its updates must not wait on a cache.
+                let is_index = path
+                    .file_name()
+                    .is_some_and(|n| n == "index.html" || n == "sw.js");
                 Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, static_files::content_type(&path))

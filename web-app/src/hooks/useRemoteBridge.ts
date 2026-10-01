@@ -8,6 +8,7 @@ import { appActions } from '@/lib/remote/appActions'
 import { appExtras } from '@/lib/remote/appExtras'
 import { appStudio, appVoice, startStudioForwarding } from '@/lib/remote/appStudio'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
+import { startPushForwarding } from '@/lib/remote/push'
 import {
   REMOTE_EVENT_DEVICES_CHANGED,
   REMOTE_EVENT_PAIRING_REQUEST,
@@ -23,6 +24,7 @@ import { useRemoteAccess } from '@/hooks/useRemoteAccess'
  */
 export function useRemoteBridge() {
   const connected = useRemoteAccess((s) => s.status?.connectedDevices ?? 0)
+  const pushable = useRemoteAccess((s) => !!s.status?.running && (s.status?.pairedDevices ?? 0) > 0)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -68,4 +70,11 @@ export function useRemoteBridge() {
     const stops = [startRemoteEventForwarding(emit), startStudioForwarding(emit)]
     return () => stops.forEach((stop) => stop())
   }, [connected])
+
+  // Web Push: while any phone is paired, whether or not it is connected. The
+  // server sends only to phones that are not looking.
+  useEffect(() => {
+    if (!IS_TAURI || !pushable) return
+    return startPushForwarding((event) => void remoteApi.emitEvent(event).catch(() => {}))
+  }, [pushable])
 }
