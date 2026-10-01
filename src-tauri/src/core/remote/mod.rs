@@ -17,8 +17,11 @@ pub mod commands;
 pub mod config;
 pub mod hub;
 pub mod server;
+pub mod push;
 pub mod static_files;
 pub mod tls;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod push_tests;

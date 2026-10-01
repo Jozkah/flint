@@ -7,7 +7,12 @@
 //! - `DELETE /remote/v1/me`           unpair the calling device
 //! - `POST   /remote/v1/rpc`          `{id, method, params}` -> `{id, result}|{id, error}`
 //! - `GET    /remote/v1/events`       WebSocket of desktop events
+//! - `POST   /remote/v1/upload`       chunked attachment upload (see `upload`)
+//! - `GET    /remote/v1/preview/...`  the session's live preview, proxied
 //! - `GET    /m/...`                  the phone app's static files
+//!
+//! `push.*` RPCs (VAPID key, subscribe, switches, test) are answered here, not
+//! by the window; see `push.rs`.
 //!
 //! Everything but the two pairing routes and `/m/` needs
 //! `Authorization: Bearer <token>`. The WebSocket takes the token in
@@ -343,7 +348,7 @@ async fn route(
     }
 }
 
-async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
+async fn rpc(hub: &Arc<RemoteHub>, device: &Device, body: Incoming) -> Resp {
     let bytes = match read_bytes(body, MAX_VOICE_BODY).await {
         Ok(b) => b,
         Err(r) => return r,
@@ -356,6 +361,18 @@ async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
         Err(r) => return r,
     };
     let id = body.id;
+    if let Some((outcome, targets)) = hub.push_rpc(device, &body.method, &body.params) {
+        if !targets.is_empty() {
+            let h = hub.clone();
+            tokio::spawn(async move {
+                h.deliver(targets).await;
+            });
+        }
+        return match outcome {
+            Ok(result) => json_resp(StatusCode::OK, json!({ "id": id, "result": result })),
+            Err(e) => json_resp(StatusCode::OK, json!({ "id": id, "error": e })),
+        };
+    }
     match hub.rpc(device, &body.method, body.params).await {
         Ok(Ok(result)) => json_resp(StatusCode::OK, json!({ "id": id, "result": result })),
         Ok(Err(e)) => json_resp(StatusCode::OK, json!({ "id": id, "error": e })),
@@ -518,6 +535,8 @@ enum ClientMessage {
     Auth { token: String },
     Subscribe { topics: Vec<String> },
     Unsubscribe { topics: Vec<String> },
+    /// The page was hidden or shown (`document.visibilityState`).
+    Visibility { hidden: bool },
     Ping,
 }
 
@@ -558,6 +577,8 @@ async fn run_socket<S>(
     };
 
     hub.socket_opened(&device.id);
+    hub.socket_visible(&device.id, true);
+    let mut shown = true;
     let mut events = hub.subscribe_events();
     let mut revoked = hub.subscribe_revocations();
     let mut topics: HashSet<String> = HashSet::new();
@@ -593,6 +614,12 @@ async fn run_socket<S>(
                 Some(Ok(Message::Text(t))) => match serde_json::from_str::<ClientMessage>(&t) {
                     Ok(ClientMessage::Subscribe { topics: t }) => topics.extend(t.into_iter().take(64)),
                     Ok(ClientMessage::Unsubscribe { topics: t }) => t.iter().for_each(|x| { topics.remove(x); }),
+                    Ok(ClientMessage::Visibility { hidden }) => {
+                        if hidden == shown {
+                            shown = !hidden;
+                            hub.socket_visible(&device.id, shown);
+                        }
+                    }
                     Ok(ClientMessage::Ping) => {
                         alive = ws.send(Message::Text(json!({ "type": "pong" }).to_string().into())).await.is_ok();
                     }
@@ -602,6 +629,9 @@ async fn run_socket<S>(
                 Some(Ok(_)) => {}
             },
         }
+    }
+    if shown {
+        hub.socket_visible(&device.id, false);
     }
     hub.socket_closed(&device.id);
 }

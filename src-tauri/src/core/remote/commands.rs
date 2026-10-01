@@ -136,6 +136,10 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
         Arc::new(TauriFrontend(app.clone())),
         static_dir,
     ));
+    match super::push::VapidKey::load_or_create(&dir.join("vapid.json")) {
+        Ok(k) => hub.set_vapid(k),
+        Err(e) => log::warn!("remote: push notifications unavailable: {e}"),
+    }
     app.manage(RemoteState {
         hub,
         dir,
@@ -398,5 +402,20 @@ pub fn remote_rpc_respond(
 /// Pushes an event to connected phones; `topic` limits it to subscribers.
 #[tauri::command]
 pub fn remote_emit_event(state: State<'_, RemoteState>, event: Value, topic: Option<String>) {
+    // `push.notify` is for Web Push to phones that are not looking, not for
+    // sockets.
+    if event.get("type").and_then(Value::as_str) == Some("push.notify") {
+        let Ok(notice) = serde_json::from_value::<super::push::PushNotice>(event) else {
+            return;
+        };
+        let targets = state.hub.push_targets(&notice, super::auth::now_ms(), None);
+        if !targets.is_empty() {
+            let hub = state.hub.clone();
+            tauri::async_runtime::spawn(async move {
+                hub.deliver(targets).await;
+            });
+        }
+        return;
+    }
     state.hub.emit(OutboundEvent { topic, event });
 }
