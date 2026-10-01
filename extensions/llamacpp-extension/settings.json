@@ -12,6 +12,18 @@
     }
   },
   {
+    "key": "extra_args",
+    "title": "Additional arguments",
+    "description": "Extra llama-server options, e.g. --rope-scaling yarn --no-warmup. Applied to every model and written after the settings above, so they win. Server address, credentials and model file options are ignored.",
+    "controllerType": "input",
+    "controllerProps": {
+      "value": "",
+      "placeholder": "Eg. --rope-scaling yarn --yarn-orig-ctx 32768",
+      "type": "text",
+      "textAlign": "right"
+    }
+  },
+  {
     "key": "models_max",
     "title": "Max Concurrently Loaded Models",
     "description": "Maximum number of models the router will keep loaded at once. 0 = unlimited.",
