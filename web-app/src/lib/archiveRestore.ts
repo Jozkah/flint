@@ -5,6 +5,8 @@ import { useRoomsStore } from '@/lib/rooms/store'
 import { useConversationGroups } from '@/lib/groups/store'
 import { restoreCoworkSession } from '@/lib/coworkSessionLifecycle'
 import { archiveApi, type ArchivedItem } from '@/lib/archive'
+import { useAssistant } from '@/hooks/useAssistant'
+import { useStudio } from '@/hooks/useStudio'
 
 /** Re-read the thread list after threads came back from the archive. */
 async function reloadThreads(): Promise<void> {
@@ -44,6 +46,24 @@ export async function restoreArchived(item: ArchivedItem): Promise<void> {
         )
         throw new Error('A session with this id already exists')
       }
+      return
+    }
+    case 'assistant': {
+      const assistant = restored.payload as Assistant | undefined
+      const live = useAssistant.getState().assistants.some((a) => a.id === assistant?.id)
+      if (!assistant || live) {
+        // The backend already released it; put it back so nothing is lost.
+        await archiveApi.put('assistant', item.id, item.title, restored.payload, restored.extra)
+        throw new Error('An assistant with this id already exists')
+      }
+      useAssistant.getState().addAssistant(assistant)
+      return
+    }
+    case 'studio': {
+      await Promise.all([
+        useStudio.getState().refreshGallery('image'),
+        useStudio.getState().refreshGallery('video'),
+      ])
       return
     }
     case 'project': {

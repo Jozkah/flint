@@ -24,6 +24,7 @@ import { useFitContext } from '@/hooks/useFitContext'
 import { cn } from '@/lib/utils'
 import { formatModelBytes } from '@/lib/huggingface'
 import { formatEta } from '@/lib/downloadSpeed'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import {
   EXAMPLE_PROMPTS,
   IMAGE_SIZES,
@@ -631,6 +632,7 @@ function Activity({ kind }: { kind: StudioKind }) {
 /** A video opens in a dialog with its own controls: the image viewer is for pictures. */
 export function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClose: () => void }) {
   const remove = useStudio((s) => s.remove)
+  const archiveOn = useArchiveEnabled()
   if (!item) return null
   const r = item.recipe
   return (
@@ -664,7 +666,7 @@ export function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClo
               onClose()
             }}
           >
-            <Trash2 className="size-4" /> Delete
+            <Trash2 className="size-4" /> {archiveOn ? 'Move to Archive' : 'Delete'}
           </Button>
         </div>
       </DialogContent>
@@ -683,6 +685,7 @@ function Gallery({
 }) {
   const items = useStudio((s) => s.gallery[kind])
   const remove = useStudio((s) => s.remove)
+  const archiveOn = useArchiveEnabled()
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(3)}>
       <FrameHeader
@@ -736,8 +739,8 @@ function Gallery({
                       </button>
                       <button
                         type="button"
-                        title="Delete"
-                        aria-label="Delete"
+                        title={archiveOn ? 'Move to Archive' : 'Delete'}
+                        aria-label={archiveOn ? 'Move to Archive' : 'Delete'}
                         onClick={() => void remove(item.kind, item.id)}
                         className="grid size-6 place-items-center rounded-md bg-white/15 transition-colors hover:bg-white/30 focus-visible:ring-2 focus-visible:ring-white/70 focus-visible:outline-hidden pointer-coarse:size-9"
                       >

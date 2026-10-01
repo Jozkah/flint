@@ -17,7 +17,9 @@
     "thread": "Threads",
     "room": "Rooms",
     "cowork": "Cowork",
-    "project": "Projects"
+    "project": "Projects",
+    "assistant": "Assistants",
+    "studio": "Studio"
   },
   "empty": "Empty archive",
   "none": "Nothing in the archive",
@@ -45,5 +47,6 @@
   "deletePermanently": "Delete permanently",
   "menuLabel": "Archived item actions",
   "retentionNote": "Archived items are deleted for good after {{days}} days.",
-  "retentionNever": "Archived items stay until you delete them."
+  "retentionNever": "Archived items stay until you delete them.",
+  "moveGeneric": "This item moves to the Archive. You can restore it from there."
 }

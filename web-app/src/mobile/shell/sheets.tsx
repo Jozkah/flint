@@ -15,8 +15,8 @@ import { ACCESS_MODES, COWORK_MODES } from './labels'
 import { copyToClipboard } from '@/lib/clipboard'
 import { StudioItemSheet, StudioSettingsSheet, VoiceSetupSheet } from './studioSheets'
 import type { ArchiveItemWire, StudioItemWire } from '@/lib/remote/protocol'
-import { addDeskFile, addFiles, attachKey, insertIntoComposer, MAX_FILES } from '../state/attachments'
 import { archiveChanged } from '../state/archive'
+import { addDeskFile, addFiles, attachKey, insertIntoComposer, MAX_FILES } from '../state/attachments'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)

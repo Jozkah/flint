@@ -5,12 +5,12 @@
 import type { OpenerService } from './types'
 
 export class DefaultOpenerService implements OpenerService {
-  async revealItemInDir(path: string, _roots?: readonly string[]): Promise<void> {
+  async revealItemInDir(path: string): Promise<void> {
     console.log('revealItemInDir called with path:', path)
     // No-op - not implemented in default service
   }
 
-  async openPath(path: string, _roots?: readonly string[]): Promise<void> {
+  async openPath(path: string): Promise<void> {
     console.log('openPath called with path:', path)
     // No-op - not implemented in default service
   }

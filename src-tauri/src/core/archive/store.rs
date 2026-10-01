@@ -43,10 +43,21 @@ pub enum Kind {
     Room,
     Cowork,
     Project,
+    /// An assistant (agent profile); a payload.
+    Assistant,
+    /// A generated image or video: its media file and recipe.
+    Studio,
 }
 
 impl Kind {
-    pub const ALL: [Kind; 4] = [Kind::Thread, Kind::Room, Kind::Cowork, Kind::Project];
+    pub const ALL: [Kind; 6] = [
+        Kind::Thread,
+        Kind::Room,
+        Kind::Cowork,
+        Kind::Project,
+        Kind::Assistant,
+        Kind::Studio,
+    ];
 
     pub fn as_str(self) -> &'static str {
         match self {
@@ -54,6 +65,8 @@ impl Kind {
             Kind::Room => "room",
             Kind::Cowork => "cowork",
             Kind::Project => "project",
+            Kind::Assistant => "assistant",
+            Kind::Studio => "studio",
         }
     }
 
@@ -69,7 +82,7 @@ impl Kind {
         match self {
             Kind::Thread => Some(data.join(THREADS_DIR)),
             Kind::Room => Some(data.join(ROOMS_DIR)),
-            Kind::Cowork | Kind::Project => None,
+            Kind::Cowork | Kind::Project | Kind::Assistant | Kind::Studio => None,
         }
     }
 }
@@ -79,6 +92,8 @@ impl Kind {
 pub enum Storage {
     Dir,
     Payload,
+    /// Loose files from a gallery folder; `extra.gallery` says which.
+    Files,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -358,6 +373,72 @@ pub fn archive_payload(
     Ok(name)
 }
 
+/// The gallery folders a Studio result can come from, and the only ones a
+/// restore will write to.
+const GALLERIES: [&str; 2] = ["images", "videos"];
+const GALLERY_EXTS: [&str; 3] = ["png", "webm", "json"];
+
+/// Move one generated result (its media file and its recipe) out of
+/// `<data>/<gallery>/` into the archive. `id` is the gallery's file stem.
+pub fn archive_studio(
+    data: &Path,
+    gallery: &str,
+    id: &str,
+    title: &str,
+) -> Result<String, String> {
+    check_id(id)?;
+    if !GALLERIES.contains(&gallery) {
+        return Err(format!("unknown gallery {gallery:?}"));
+    }
+    let src = data.join(gallery);
+    let files: Vec<PathBuf> = GALLERY_EXTS
+        .iter()
+        .map(|ext| src.join(format!("{id}.{ext}")))
+        .filter(|p| p.is_file())
+        .collect();
+    if files.is_empty() {
+        return Err(format!("{gallery} item {id} not found"));
+    }
+    let dir = kind_dir(data, Kind::Studio);
+    fs::create_dir_all(&dir).map_err(|e| format!("create archive: {e}"))?;
+    let name = free_name(&dir, &format!("{gallery}-{id}"))?;
+    let dst = dir.join(&name);
+    fs::create_dir_all(&dst).map_err(|e| format!("create archive: {e}"))?;
+    let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let result = (|| -> Result<(), String> {
+        for file in &files {
+            let to = dst.join(file.file_name().ok_or("bad file name")?);
+            move_file(file, &to)?;
+            moved.push((file.clone(), to));
+        }
+        let mut meta = make_meta(
+            Kind::Studio,
+            id,
+            title,
+            Storage::Files,
+            Some(serde_json::json!({ "gallery": gallery })),
+        );
+        meta.origin = format!("{gallery}/{id}");
+        write_meta(&dst, &meta)
+    })();
+    if let Err(e) = result {
+        for (from, to) in moved.into_iter().rev() {
+            let _ = move_file(&to, &from);
+        }
+        let _ = fs::remove_dir_all(&dst);
+        return Err(e);
+    }
+    Ok(name)
+}
+
+fn move_file(from: &Path, to: &Path) -> Result<(), String> {
+    if fs::rename(from, to).is_ok() {
+        return Ok(());
+    }
+    fs::copy(from, to).map_err(|e| format!("move {}: {e}", from.display()))?;
+    fs::remove_file(from).map_err(|e| format!("move {}: {e}", from.display()))
+}
+
 /// Every archived item, newest first. Items whose meta cannot be read are
 /// skipped (they are still on disk, and `purge` can remove them by name).
 pub fn list(data: &Path) -> Vec<ArchivedItem> {
@@ -433,6 +514,50 @@ pub fn restore(data: &Path, kind: Kind, archive_id: &str) -> Result<Restored, St
             fs::create_dir_all(&live).map_err(|e| format!("restore: {e}"))?;
             move_dir(&dir, &dst)?;
             let _ = fs::remove_file(dst.join(META_FILE));
+            Ok(Restored {
+                kind,
+                id: meta.id,
+                title: meta.title,
+                payload: None,
+                extra: meta.extra,
+            })
+        }
+        Storage::Files => {
+            let gallery = meta
+                .extra
+                .as_ref()
+                .and_then(|e| e.get("gallery"))
+                .and_then(Value::as_str)
+                .filter(|g| GALLERIES.contains(g))
+                .ok_or_else(|| "this archived item has no gallery to return to".to_string())?
+                .to_string();
+            let live = data.join(&gallery);
+            let mut files = Vec::new();
+            for entry in fs::read_dir(&dir).map_err(|e| format!("restore: {e}"))?.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name == META_FILE {
+                    continue;
+                }
+                // Only the files an archive of this id can hold go back.
+                let ok = GALLERY_EXTS
+                    .iter()
+                    .any(|ext| name == format!("{}.{ext}", meta.id));
+                if !ok {
+                    return Err(format!("unexpected file {name} in an archived result"));
+                }
+                if live.join(&name).exists() {
+                    return Err(format!(
+                        "a result named {} already exists, so \"{}\" was not restored",
+                        meta.id, meta.title
+                    ));
+                }
+                files.push(name);
+            }
+            fs::create_dir_all(&live).map_err(|e| format!("restore: {e}"))?;
+            for name in &files {
+                move_file(&dir.join(name), &live.join(name))?;
+            }
+            fs::remove_dir_all(&dir).map_err(|e| format!("restore: {e}"))?;
             Ok(Restored {
                 kind,
                 id: meta.id,
@@ -797,6 +922,108 @@ mod tests {
         let s = read_settings(d.path());
         assert!(!s.enabled);
         assert_eq!(s.auto_archive_thread_days, 7);
+    }
+
+    fn result(data: &Path, gallery: &str, id: &str) {
+        let dir = data.join(gallery);
+        fs::create_dir_all(&dir).unwrap();
+        let ext = if gallery == "videos" { "webm" } else { "png" };
+        fs::write(dir.join(format!("{id}.{ext}")), b"media").unwrap();
+        fs::write(dir.join(format!("{id}.json")), b"{}").unwrap();
+    }
+
+    #[test]
+    fn studio_results_archive_restore_and_purge() {
+        let d = data();
+        result(d.path(), "images", "17-job-00");
+        let name = archive_studio(d.path(), "images", "17-job-00", "a cat").unwrap();
+        assert_eq!(name, "images-17-job-00");
+        assert!(!d.path().join("images/17-job-00.png").exists());
+        assert!(!d.path().join("images/17-job-00.json").exists());
+        let items = list(d.path());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].meta.kind, Kind::Studio);
+        assert_eq!(items[0].meta.storage, Storage::Files);
+        assert!(items[0].size_bytes > 0);
+
+        restore(d.path(), Kind::Studio, &name).unwrap();
+        assert!(d.path().join("images/17-job-00.png").exists());
+        assert!(d.path().join("images/17-job-00.json").exists());
+        assert!(list(d.path()).is_empty());
+
+        archive_studio(d.path(), "images", "17-job-00", "a cat").unwrap();
+        purge_with(d.path(), Kind::Studio, &name, &mut allow).unwrap();
+        assert!(list(d.path()).is_empty());
+        assert!(!d.path().join("images/17-job-00.png").exists());
+    }
+
+    #[test]
+    fn studio_collisions_get_a_suffix_and_videos_use_their_own_folder() {
+        let d = data();
+        result(d.path(), "videos", "9-v");
+        let first = archive_studio(d.path(), "videos", "9-v", "clip").unwrap();
+        result(d.path(), "videos", "9-v");
+        let second = archive_studio(d.path(), "videos", "9-v", "clip again").unwrap();
+        assert_eq!((first.as_str(), second.as_str()), ("videos-9-v", "videos-9-v-2"));
+        restore(d.path(), Kind::Studio, &second).unwrap();
+        assert!(d.path().join("videos/9-v.webm").exists());
+        // The other copy cannot overwrite the live one.
+        let err = restore(d.path(), Kind::Studio, &first).unwrap_err();
+        assert!(err.contains("already exists"), "{err}");
+        assert_eq!(list(d.path()).len(), 1);
+    }
+
+    #[test]
+    fn studio_archive_refuses_bad_ids_galleries_and_missing_results() {
+        let d = data();
+        result(d.path(), "images", "ok");
+        for bad in ["../x", "a/b", "", ".hidden"] {
+            assert!(archive_studio(d.path(), "images", bad, "t").is_err(), "{bad}");
+        }
+        assert!(archive_studio(d.path(), "../etc", "ok", "t").is_err());
+        assert!(archive_studio(d.path(), "images", "nope", "t").is_err());
+        assert!(d.path().join("images/ok.png").exists());
+    }
+
+    #[test]
+    fn a_tampered_studio_meta_cannot_restore_elsewhere() {
+        let d = data();
+        result(d.path(), "images", "ok");
+        let name = archive_studio(d.path(), "images", "ok", "t").unwrap();
+        let p = d.path().join(".archive/studio").join(&name).join("meta.json");
+        let mut meta: Value = serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+        meta["extra"]["gallery"] = json!("../../escape");
+        fs::write(&p, meta.to_string()).unwrap();
+        assert!(restore(d.path(), Kind::Studio, &name).is_err());
+        assert!(!d.path().join("escape").exists());
+    }
+
+    #[test]
+    fn assistants_are_payload_items_that_round_trip_and_collide_safely() {
+        let d = data();
+        let a = json!({"id": "helper", "name": "Helper", "instructions": "be brief"});
+        let first = archive_payload(d.path(), Kind::Assistant, "helper", "Helper", &a, None).unwrap();
+        let second = archive_payload(d.path(), Kind::Assistant, "helper", "Helper v2", &a, None).unwrap();
+        assert_eq!((first.as_str(), second.as_str()), ("helper", "helper-2"));
+        assert_eq!(list(d.path()).iter().filter(|i| i.meta.kind == Kind::Assistant).count(), 2);
+        let back = restore(d.path(), Kind::Assistant, &second).unwrap();
+        assert_eq!(back.payload, Some(a));
+        assert_eq!(back.title, "Helper v2");
+        purge_with(d.path(), Kind::Assistant, &first, &mut allow).unwrap();
+        assert!(list(d.path()).is_empty());
+        assert!(archive_payload(d.path(), Kind::Assistant, "../x", "t", &json!({}), None).is_err());
+    }
+
+    #[test]
+    fn sweep_covers_the_new_kinds() {
+        let d = data();
+        result(d.path(), "images", "old");
+        archive_studio(d.path(), "images", "old", "t").unwrap();
+        archive_payload(d.path(), Kind::Assistant, "a", "A", &json!({}), None).unwrap();
+        let now = now_ms() + 31 * 86_400_000;
+        let report = sweep(d.path(), 30, now, &mut allow);
+        assert_eq!(report.purged, 2);
+        assert!(list(d.path()).is_empty());
     }
 
     #[test]
