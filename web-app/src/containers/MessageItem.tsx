@@ -1033,7 +1033,7 @@ export const MessageItem = memo(
                 navigator.clipboard.writeText(getFullTextContent())
               }
             >
-              <Copy className="mr-2 size-4" />
+              <Copy className="size-4" />
               {t('chat:actions.copy')}
             </DropdownMenuItem>
 
@@ -1043,7 +1043,7 @@ export const MessageItem = memo(
 
             {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
               <DropdownMenuItem onClick={handleRegenerate}>
-                <RefreshCw className="mr-2 size-4" />
+                <RefreshCw className="size-4" />
                 {t('chat:actions.regenerate')}
               </DropdownMenuItem>
             )}
@@ -1054,7 +1054,7 @@ export const MessageItem = memo(
               canContinue &&
               !isStreaming && (
                 <DropdownMenuItem onClick={handleContinue}>
-                  <Play className="mr-2 size-4" />
+                  <Play className="size-4" />
                   {t('chat:actions.continue')}
                 </DropdownMenuItem>
               )}
@@ -1066,7 +1066,7 @@ export const MessageItem = memo(
                   className="text-destructive focus:text-destructive"
                   onClick={handleDelete}
                 >
-                  <Trash2 className="mr-2 size-4" />
+                  <Trash2 className="size-4" />
                   {t('chat:actions.delete')}
                 </DropdownMenuItem>
               </>
