@@ -146,6 +146,27 @@ describe('MessageItem', () => {
     pendingApprovalsRef.current = {}
   })
 
+  it.each([
+    ['a settled message', false, 'ready'],
+    ['the last, in-progress message', true, 'streaming'],
+  ])('right-click on %s opens the menu anchored at the pointer', async (_n, last, status) => {
+    const { container } = render(
+      <MessageItem
+        message={makeMsg() as any}
+        isFirstMessage
+        isLastMessage={last}
+        status={status as any}
+      />
+    )
+    const row = container.querySelector('[data-role="assistant"]') as HTMLElement
+    row.getBoundingClientRect = () => ({ left: 10, top: 20, width: 500, height: 300, right: 510, bottom: 320, x: 10, y: 20, toJSON() {} }) as DOMRect
+    fireEvent.contextMenu(row, { clientX: 110, clientY: 70 })
+    const anchor = screen.getByTestId('message-menu-anchor')
+    expect(anchor.style.left).toBe('100px')
+    expect(anchor.style.top).toBe('50px')
+    expect(await screen.findByRole('menu')).toBeTruthy()
+  })
+
   it('renders assistant text via RenderMarkdown', () => {
     render(
       <MessageItem

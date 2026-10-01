@@ -159,7 +159,7 @@ const SessionItem = memo(function SessionItem({
         summary={summary}
         summaryKey={`${session.id}\u0000${session.updated}`}
         transcript={() => coworkTranscript(session.id)}
-        suppressed={menuOpen}
+        suppressed={menuOpen || activityOpen}
       >
         <NavButton
           size="sub"

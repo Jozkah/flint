@@ -180,10 +180,18 @@ export const MessageItem = memo(
       index: number
     } | null>(null)
     const [ctxMenuOpen, setCtxMenuOpen] = useState(false)
+    // Where the menu opens: the pointer, in the message's own coordinates. The
+    // menu's anchor used to be an unpositioned sr-only span, which sat after
+    // the message's content, so the menu opened at the bottom of the message
+    // (and for the last one, at the very end of the transcript, under the
+    // composer) instead of at the pointer.
+    const [ctxPoint, setCtxPoint] = useState({ x: 0, y: 0 })
 
     const openContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      const box = e.currentTarget.getBoundingClientRect()
+      setCtxPoint({ x: e.clientX - box.left, y: e.clientY - box.top })
       setCtxMenuOpen(true)
     }, [])
 
@@ -709,7 +717,7 @@ export const MessageItem = memo(
       <div
         data-role={message.role}
         className={cn(
-          'group/message mb-3 w-full',
+          'group/message relative mb-3 w-full',
           // A different assistant took over: a rule and some air mark the change.
           switchedFrom && 'mt-4 border-t-[0.8px] border-border pt-4',
           animateIn && 'motion-safe:animate-msg-in',
@@ -1012,7 +1020,12 @@ export const MessageItem = memo(
         {/* Right-click context menu */}
         <DropdownMenu open={ctxMenuOpen} onOpenChange={setCtxMenuOpen}>
           <DropdownMenuTrigger asChild>
-            <span className="sr-only">Message actions</span>
+            <span
+              aria-hidden
+              data-testid="message-menu-anchor"
+              className="pointer-events-none absolute size-0"
+              style={{ left: ctxPoint.x, top: ctxPoint.y }}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem

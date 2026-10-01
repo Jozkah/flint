@@ -180,6 +180,14 @@ const ThreadItem = memo(
     }
 
     const [groupMenuOpen, setGroupMenuOpen] = useState(false)
+    // The peek must not show while the row's menu or one of its dialogs is up.
+    // Closing it is not enough: Radix keeps `previewOpen` true, so the card
+    // came back the moment the menu closed (a picked item, the delete dialog).
+    const previewBlocked =
+      menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen
+    useEffect(() => {
+      if (previewBlocked) setPreviewOpen(false)
+    }, [previewBlocked])
 
     /**
      * Numbered like the design's group picker: while "Move to group" is open,
@@ -292,7 +300,7 @@ const ThreadItem = memo(
             closeDelay={80}
             // Shut while the row's menu is open; it used to open over the menu
             // and hide its submenus.
-            open={previewOpen && !menuOpen}
+            open={previewOpen && !previewBlocked}
             onOpenChange={setPreviewOpen}
           >
             <HoverCardTrigger asChild>
@@ -317,7 +325,7 @@ const ThreadItem = memo(
             <HoverCardContent side="right" align="start" sideOffset={10} className="w-80 max-w-[calc(100vw-2rem)] p-3">
               {/* The written summary is asked for here, when the card opens. */}
               <ThreadPreviewSummary
-                open={previewOpen && !menuOpen}
+                open={previewOpen && !previewBlocked}
                 threadId={thread.id}
                 updated={thread.updated}
                 fallback={lastUserMessageText}

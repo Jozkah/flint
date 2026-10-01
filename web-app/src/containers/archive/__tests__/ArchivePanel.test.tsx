@@ -144,6 +144,8 @@ describe('ArchivePanel', () => {
     const row = screen.getAllByTestId('archive-item')[0]
     fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
     const menu = screen.getByRole('menu')
+    expect(document.activeElement?.textContent).toBe('archive:preview')
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(document.activeElement?.textContent).toBe('archive:restore')
     fireEvent.keyDown(menu, { key: 'ArrowDown' })
     expect(document.activeElement?.textContent).toBe('archive:deletePermanently')
@@ -170,5 +172,28 @@ describe('ArchivePanel', () => {
     h.items = []
     render(<ArchivePanel />)
     expect(await screen.findByText('archive:none')).toBeTruthy()
+  })
+})
+
+describe('ArchivePanel preview and menu placement', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    h.list.mockResolvedValue([item({})])
+  })
+
+  it('previews an item from its eye button, read-only', async () => {
+    render(<ArchivePanel />)
+    await screen.findByText('A thread')
+    fireEvent.click(screen.getByTestId('archive-preview-button'))
+    expect(await screen.findByTestId('archive-preview')).toHaveTextContent('A thread')
+    expect(h.restore).not.toHaveBeenCalled()
+    expect(h.purge).not.toHaveBeenCalled()
+  })
+
+  it('has a Preview item in the context menu', async () => {
+    render(<ArchivePanel />)
+    fireEvent.contextMenu(await screen.findByTestId('archive-item'), { clientX: 5, clientY: 5 })
+    fireEvent.click(screen.getByRole('menuitem', { name: 'archive:preview' }))
+    expect(await screen.findByTestId('archive-preview')).toBeTruthy()
   })
 })

@@ -48,5 +48,13 @@
   "menuLabel": "Archived item actions",
   "retentionNote": "Archived items are deleted for good after {{days}} days.",
   "retentionNever": "Archived items stay until you delete them.",
-  "moveGeneric": "This item moves to the Archive. You can restore it from there."
+  "moveGeneric": "This item moves to the Archive. You can restore it from there.",
+  "preview": "Preview",
+  "previewTitle": "Archived {{kind}}",
+  "previewNote": "Flint can show the details of an archived item, not its contents. Restore it to read the contents.",
+  "previewKind": "Kind",
+  "previewArchived": "Archived",
+  "previewSize": "Size",
+  "previewOrigin": "Was at",
+  "previewClose": "Close"
 }

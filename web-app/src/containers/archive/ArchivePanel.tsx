@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
@@ -28,6 +29,7 @@ import {
 } from '@/lib/archive'
 import { restoreArchived } from '@/lib/archiveRestore'
 import { ArchiveContextMenu } from '@/containers/archive/ArchiveContextMenu'
+import { ArchivePreviewDialog } from '@/containers/archive/ArchivePreviewDialog'
 import { errorText } from '@/lib/errorText'
 
 type Filter = 'all' | ArchiveKind
@@ -65,6 +67,7 @@ export function ArchivePanel() {
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [busy, setBusy] = useState(false)
   const [menu, setMenu] = useState<{ item: ArchivedItem; x: number; y: number } | null>(null)
+  const [previewing, setPreviewing] = useState<ArchivedItem | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
   const refresh = useCallback(async () => {
@@ -278,6 +281,16 @@ export function ArchivePanel() {
                 <Button
                   size="sm"
                   variant="ghost"
+                  aria-label={t('archive:preview')}
+                  title={t('archive:preview')}
+                  data-testid="archive-preview-button"
+                  onClick={() => setPreviewing(item)}
+                >
+                  <Eye className="size-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
                   disabled={busy}
                   aria-label={t('archive:menuLabel')}
                   aria-haspopup="menu"
@@ -299,6 +312,11 @@ export function ArchivePanel() {
           x={menu.x}
           y={menu.y}
           onClose={closeMenu}
+          onPreview={() => {
+            const { item } = menu
+            setMenu(null)
+            setPreviewing(item)
+          }}
           onRestore={() => {
             const { item } = menu
             setMenu(null)
@@ -311,6 +329,8 @@ export function ArchivePanel() {
           }}
         />
       )}
+
+      <ArchivePreviewDialog item={previewing} onClose={() => setPreviewing(null)} />
 
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
