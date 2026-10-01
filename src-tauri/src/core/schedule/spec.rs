@@ -28,6 +28,7 @@ pub const SCHEMA_VERSION: u32 = 1;
 pub const MAX_TURNS_LIMIT: u32 = 200;
 pub const MAX_TOKENS_LIMIT: u64 = 5_000_000;
 pub const MAX_WALL_CLOCK_LIMIT_SECS: u64 = 6 * 60 * 60;
+pub const MAX_COST_USD_LIMIT: f64 = 1000.0;
 
 pub const MAX_NAME_CHARS: usize = 120;
 pub const MAX_PROMPT_CHARS: usize = 20_000;
@@ -190,16 +191,21 @@ pub struct Policy {
 }
 
 /// Limits a run may not pass; every one is required.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Budgets {
     pub max_turns: u32,
     pub max_tokens: u64,
     pub max_wall_clock_secs: u64,
+    /// Optional money ceiling in USD, metered against `prices.toml`. A model
+    /// with no declared price cannot be metered, so the run is refused with
+    /// that reason rather than run uncapped.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_cost_usd: Option<f64>,
 }
 
 /// One scheduled task.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Task {
     pub id: String,
@@ -369,6 +375,14 @@ impl Budgets {
         if self.max_wall_clock_secs > MAX_WALL_CLOCK_LIMIT_SECS {
             return Err(bad(format!("at most {} hours of running time", MAX_WALL_CLOCK_LIMIT_SECS / 3600)));
         }
+        if let Some(usd) = self.max_cost_usd {
+            if !usd.is_finite() || usd <= 0.0 {
+                return Err(bad("the cost limit must be more than $0"));
+            }
+            if usd > MAX_COST_USD_LIMIT {
+                return Err(bad(format!("the cost limit is at most ${MAX_COST_USD_LIMIT}")));
+            }
+        }
         Ok(())
     }
 }
@@ -388,7 +402,7 @@ pub(crate) mod fixtures {
             project: std::env::temp_dir().to_string_lossy().to_string(),
             profile: None,
             policy: Policy { allow_tools: vec!["read".into(), "grep".into()], write: WriteMode::ReadOnly },
-            budgets: Budgets { max_turns: 12, max_tokens: 50_000, max_wall_clock_secs: 600 },
+            budgets: Budgets { max_turns: 12, max_tokens: 50_000, max_wall_clock_secs: 600, max_cost_usd: None },
             on_block: OnBlock::Continue,
             catch_up: CatchUp::Once,
             enabled: true,
@@ -463,10 +477,26 @@ mod tests {
             Budgets { max_turns: MAX_TURNS_LIMIT + 1, ..x.budgets },
             Budgets { max_tokens: MAX_TOKENS_LIMIT + 1, ..x.budgets },
             Budgets { max_wall_clock_secs: MAX_WALL_CLOCK_LIMIT_SECS + 1, ..x.budgets },
+            Budgets { max_cost_usd: Some(0.0), ..x.budgets },
+            Budgets { max_cost_usd: Some(-1.0), ..x.budgets },
+            Budgets { max_cost_usd: Some(f64::NAN), ..x.budgets },
+            Budgets { max_cost_usd: Some(MAX_COST_USD_LIMIT + 1.0), ..x.budgets },
         ] {
             x.budgets = zeroed;
             assert!(x.validate().is_err(), "{zeroed:?}");
         }
+    }
+
+    #[test]
+    fn a_cost_limit_is_optional_and_round_trips() {
+        let mut x = task("a");
+        assert!(x.budgets.max_cost_usd.is_none());
+        let v = serde_json::to_value(&x).unwrap();
+        assert!(v["budgets"].get("maxCostUsd").is_none(), "absent when unset");
+        x.budgets.max_cost_usd = Some(2.5);
+        x.validate().unwrap();
+        let back: Task = serde_json::from_value(serde_json::to_value(&x).unwrap()).unwrap();
+        assert_eq!(back.budgets.max_cost_usd, Some(2.5));
     }
 
     #[test]

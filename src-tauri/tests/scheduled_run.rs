@@ -186,10 +186,19 @@ impl Scratch {
             data_folder: self.data().to_string_lossy().to_string(),
         };
         let path = write_spec(&store, &spec).expect("write spec");
-        let out = self
+        // Output goes to files, not pipes: a command the run left behind
+        // would hold a pipe open and make `output()` wait for it, turning a
+        // leak into a hang instead of a failed assertion.
+        let log = self.root.join("child.log");
+        let file = std::fs::File::create(&log).expect("child log");
+        let status = self
             .command(&["cli", "schedule", "run-spec", "--spec", path.to_str().expect("utf-8 path")])
-            .output()
+            .stdout(file.try_clone().expect("clone log"))
+            .stderr(file)
+            .status()
             .expect("run the child");
+        let text = std::fs::read(&log).unwrap_or_default();
+        let out = Output { status, stdout: text.clone(), stderr: text };
         let after = store.get_run(&task.id, &record.id).expect("read run").expect("the record exists");
         (after, out)
     }
@@ -202,7 +211,7 @@ impl Drop for Scratch {
 }
 
 fn budgets(turns: u32, wall: u64) -> Budgets {
-    Budgets { max_turns: turns, max_tokens: 100_000, max_wall_clock_secs: wall }
+    Budgets { max_turns: turns, max_tokens: 100_000, max_wall_clock_secs: wall, max_cost_usd: None }
 }
 
 #[test]
@@ -282,4 +291,180 @@ fn a_run_with_an_unknown_model_fails_into_its_record() {
     let (r, _out) = s.run(t);
     assert!(r.status.is_ended(), "{r:?}");
     assert_ne!(r.status, RunStatus::Running);
+}
+
+// ---- a stopped run leaves no process behind ----
+
+#[cfg(windows)]
+const SLEEP_COMMAND: &str = "powershell -NoProfile -Command Start-Sleep -Seconds 987";
+#[cfg(not(windows))]
+const SLEEP_COMMAND: &str = "sleep 987";
+
+/// How many processes have the sleep (987 seconds, a length no other test
+/// uses) on their command line.
+fn sleepers() -> usize {
+    #[cfg(windows)]
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*Start-Sleep -Seconds 987*' -and $_.Name -eq 'powershell.exe' } | Measure-Object).Count",
+        ])
+        .output();
+    #[cfg(not(windows))]
+    let out = Command::new("sh")
+        .args(["-c", "pgrep -fc 'sleep 987' || true"])
+        .output();
+    out.ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_run_stopped_at_the_time_limit_leaves_no_command_running() {
+    let s = Scratch::new("orphan");
+    // A worktree run needs a repository with a commit to branch from.
+    let vcs = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(s.project()).output().expect("run the version-control tool");
+        assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    vcs(&["init", "-q"]);
+    vcs(&["-c", "user.name=t", "-c", "user.email=t@t", "add", "."]);
+    vcs(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+
+    // The model calls bash with a long sleep, then the clock stops the run.
+    let call: &'static str = Box::leak(
+        format!(
+            concat!(
+                "data: {{\"id\":\"s-4\",\"object\":\"chat.completion.chunk\",\"created\":1,",
+                "\"model\":\"stub-model\",\"choices\":[{{\"index\":0,\"delta\":{{\"role\":\"assistant\",",
+                "\"tool_calls\":[{{\"index\":0,\"id\":\"call-4\",\"type\":\"function\",\"function\":",
+                "{{\"name\":\"bash\",\"arguments\":{args}}}}}]}},\"finish_reason\":null}}]}}\n\n",
+                "data: {{\"id\":\"s-4\",\"object\":\"chat.completion.chunk\",\"created\":1,",
+                "\"model\":\"stub-model\",\"choices\":[{{\"index\":0,\"delta\":{{}},",
+                "\"finish_reason\":\"tool_calls\"}}],",
+                "\"usage\":{{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}}}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            args = serde_json::Value::String(serde_json::json!({ "command": SLEEP_COMMAND }).to_string())
+        )
+        .into_boxed_str(),
+    );
+    let replies: &'static [&'static str] = Box::leak(vec![call].into_boxed_slice());
+    let (url, _served) = stub_provider(replies, Duration::ZERO);
+    s.configure(&url);
+    let mut task = s.task(budgets(6, 4), OnBlock::Continue, WriteMode::Worktree);
+    task.policy.allow_tools = vec!["bash".into()];
+    let before = sleepers();
+    let (r, out) = s.run(task);
+    assert_eq!(r.status, RunStatus::BudgetStopped, "{r:?}\n{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        r.error.as_deref().unwrap_or("").contains("time limit"),
+        "the run must have been stopped by the clock, not finished: {r:?}"
+    );
+    // Give the OS a moment to reap, then nothing may still be sleeping.
+    let mut after = sleepers();
+    for _ in 0..20 {
+        if after <= before {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+        after = sleepers();
+    }
+    assert!(after <= before, "{} command(s) outlived the stopped run", after.saturating_sub(before));
+}
+
+// ---- the per-task cost limit ----
+
+#[test]
+fn the_cost_limit_stops_a_run_and_says_so() {
+    let s = Scratch::new("cost");
+    let (url, served) = stub_provider(&[READ_CALL], Duration::ZERO);
+    s.configure(&url);
+    // $1,000,000 per million tokens: one stub request (7 tokens) costs $7.
+    std::fs::create_dir_all(s.data()).expect("data dir");
+    std::fs::write(
+        s.data().join("prices.toml"),
+        "[models.stub-model]
+input = 1000000.0
+output = 1000000.0
+",
+    )
+    .expect("prices");
+    let mut task = s.task(budgets(20, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.budgets.max_cost_usd = Some(1.0);
+    let (r, out) = s.run(task);
+    assert_eq!(r.status, RunStatus::BudgetStopped, "{r:?}
+{}", String::from_utf8_lossy(&out.stdout));
+    assert!(r.error.as_deref().unwrap_or("").contains("cost limit"), "{:?}", r.error);
+    assert!(served.load(Ordering::SeqCst) <= 2, "the run kept going past its ceiling");
+}
+
+#[test]
+fn a_cost_limit_on_an_unpriced_model_fails_with_the_reason() {
+    let s = Scratch::new("unpriced");
+    let (url, served) = stub_provider(&[ANSWER], Duration::ZERO);
+    s.configure(&url);
+    let mut task = s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.budgets.max_cost_usd = Some(1.0);
+    let (r, _out) = s.run(task);
+    assert_eq!(r.status, RunStatus::Failed, "{r:?}");
+    let why = r.error.unwrap_or_default();
+    assert!(why.contains("no price") && why.contains("prices.toml"), "{why}");
+    assert_eq!(served.load(Ordering::SeqCst), 0, "nothing was spent before refusing");
+}
+
+// ---- flint cli schedule tick (what the OS scheduler runs) ----
+
+#[test]
+fn tick_starts_a_due_task_and_the_run_finishes() {
+    let s = Scratch::new("tick");
+    let (url, _served) = stub_provider(&[ANSWER], Duration::ZERO);
+    s.configure(&url);
+    let store = Store::new(&s.data());
+    let mut task = s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly);
+    task.schedule = Schedule::Cron { expr: "* * * * *".into() };
+    task.catch_up = CatchUp::Once;
+    let task = store.save_task(task).expect("task is valid");
+    // Last seen ten minutes ago, so a run is owed.
+    store
+        .merge_watermarks(&[(task.id.clone(), chrono::Utc::now() - chrono::Duration::minutes(10))].into())
+        .expect("watermark");
+
+    let out = s
+        .command(&["cli", "schedule", "tick", "--data", s.data().to_str().expect("utf-8 path")])
+        .output()
+        .expect("run the tick");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 started"), "{}", String::from_utf8_lossy(&out.stdout));
+
+    let mut finished = None;
+    for _ in 0..120 {
+        let runs = store.list_runs(&task.id, 5).expect("runs");
+        if let Some(r) = runs.into_iter().find(|r| r.status.is_ended()) {
+            finished = Some(r);
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    let r = finished.expect("the detached run never finished");
+    assert_eq!(r.status, RunStatus::Succeeded, "{r:?}");
+    // Every minute is also due right now, so the on-time fire covers the missed ones.
+    assert_ne!(r.trigger, Trigger::Manual);
+}
+
+#[test]
+fn tick_does_nothing_while_the_app_holds_the_tick_lock() {
+    let s = Scratch::new("ticklock");
+    let store = Store::new(&s.data());
+    let task = store.save_task(s.task(budgets(6, 60), OnBlock::Continue, WriteMode::ReadOnly)).expect("valid");
+    let held = store.try_lock_tick().expect("take the lock as the app would");
+    let out = s
+        .command(&["cli", "schedule", "tick", "--data", s.data().to_str().expect("utf-8 path"), "--json"])
+        .output()
+        .expect("run the tick");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(v["lockedOut"], true, "{v}");
+    assert!(store.list_runs(&task.id, 5).expect("runs").is_empty());
+    drop(held);
 }

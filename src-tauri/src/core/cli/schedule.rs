@@ -78,6 +78,42 @@ pub fn list(json: bool) -> Result<(), HarnessError> {
     Ok(())
 }
 
+/// `flint cli schedule tick`: what the app's 30-second driver does, once. The
+/// OS-scheduler entry runs this. It takes the same tick lock as the app, so
+/// when the app is open and ticking too, whichever gets the lock starts the
+/// run and the other does nothing.
+pub fn tick(data: Option<&str>, json: bool) -> Result<(), HarnessError> {
+    if let Some(dir) = data {
+        std::env::set_var("JAN_DATA_FOLDER", dir);
+    }
+    let data = data_folder();
+    let store = Store::new(&data);
+    let report = runner::tick(&store, &data, &SupervisorLauncher, chrono::Utc::now());
+    if json {
+        println!(
+            "{}",
+            serde_json::json!({
+                "started": report.started.iter().map(|r| &r.id).collect::<Vec<_>>(),
+                "skipped": report.skipped.len(),
+                "lockedOut": report.locked_out,
+                "errors": report.errors,
+            })
+        );
+    } else if report.locked_out {
+        println!("Another process is ticking; nothing to do.");
+    } else {
+        println!("{} started, {} skipped", report.started.len(), report.skipped.len());
+        for e in &report.errors {
+            eprintln!("{e}");
+        }
+    }
+    if report.errors.is_empty() {
+        Ok(())
+    } else {
+        Err(HarnessError::new(ErrorKind::Io, report.errors.join("; ")).at(Stage::Startup))
+    }
+}
+
 /// `flint cli schedule runs <id>`
 pub fn runs(task_id: &str, limit: usize, json: bool) -> Result<(), HarnessError> {
     let store = Store::new(&data_folder());
@@ -198,6 +234,7 @@ async fn execute(
         worktree: Some(worktree),
         profile: task.profile.clone(),
         max_turns: Some(u64::from(task.budgets.max_turns)),
+        max_budget_usd: task.budgets.max_cost_usd,
         max_session_tokens: Some(task.budgets.max_tokens),
         ..Default::default()
     };
@@ -212,7 +249,7 @@ async fn execute(
     );
     let PreparedRun { args, mut body, permission_requests, mcp_task, persist, .. } = match prepared {
         Ok(p) => p,
-        Err(e) => return Ending::Failed(e),
+        Err(e) => return Ending::Failed(runner::explain_setup_failure(&e, task.budgets.max_cost_usd)),
     };
     body["allowed_tools"] = serde_json::json!(task.policy.allow_tools);
     let session_id = persist.thread_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
@@ -281,6 +318,15 @@ async fn execute(
         }
     };
     drop(tx);
+    // Dropping the run future stops what it was awaiting, not the shell
+    // commands it had started: a `sleep` or a build would outlive the stop.
+    // This process exists only for this run, so everything under it is the
+    // run's. Every ending, not only the stopped ones: a command the model
+    // backgrounded must not outlive a run that finished either.
+    let reaped = tauri_plugin_agent_tools::tools::proc::kill_descendants(std::process::id());
+    if reaped > 0 {
+        eprintln!("(scheduled run: stopped {reaped} process(es) the run had left behind)");
+    }
     let (observed, conversation) = drain.await.unwrap_or_else(|_| (Observer::new(OnBlock::Continue), None));
     *obs = observed;
 
@@ -311,7 +357,10 @@ async fn execute(
     let _ = tauri_plugin_agent_tools::workspace::remove_scratch_dir(&session_id).await;
 
     match outcome {
-        Stopped::Done(Ok(completion)) => Ending::Answered(completion_text(&completion).unwrap_or_default()),
+        Stopped::Done(Ok(completion)) => match runner::cost_stop(&completion, task.budgets.max_cost_usd) {
+            Some(why) => Ending::BudgetStopped(why),
+            None => Ending::Answered(completion_text(&completion).unwrap_or_default()),
+        },
         Stopped::Done(Err(e)) if e.kind() == ErrorKind::BudgetExhausted => Ending::BudgetStopped(e.message().to_string()),
         Stopped::Done(Err(e)) => Ending::Failed(e.message().to_string()),
         Stopped::TimedOut => Ending::WallClock,

@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tauri::{AppHandle, Runtime};
 
+use super::os_scheduler;
 use super::runner::{self, SupervisorLauncher};
 use super::spec::{new_task_id, parse_timezone, Schedule, Task};
 use super::store::{RunRecord, Store, Trigger};
@@ -213,6 +214,67 @@ pub fn schedule_tools() -> Vec<ToolView> {
             .to_string(),
         })
         .collect()
+}
+
+// ---- run when the app is closed ----
+
+fn os_install<R: Runtime>(app: &AppHandle<R>, interval: Option<u32>) -> Result<(os_scheduler::Install, PathBuf), String> {
+    let exe = tauri_plugin_agent_tools::worker::supervisor_binary().map_err(|e| e.message().to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "this user has no home folder".to_string())?;
+    Ok((
+        os_scheduler::Install::new(
+            exe,
+            data_folder(app),
+            interval.unwrap_or(os_scheduler::DEFAULT_INTERVAL_MINUTES),
+        ),
+        home,
+    ))
+}
+
+/// Whether the OS-scheduler entry is installed, and what installing it would
+/// do. Never changes anything.
+#[tauri::command]
+pub async fn schedule_os_status<R: Runtime>(
+    app_handle: AppHandle<R>,
+    interval_minutes: Option<u32>,
+) -> Result<os_scheduler::OsStatus, String> {
+    let (install, home) = os_install(&app_handle, interval_minutes)?;
+    blocking(move || Ok(os_scheduler::status(os_scheduler::Platform::current(), &install, &home, &os_scheduler::SystemInstaller, None)))
+        .await
+}
+
+/// Install the entry (opt-in; the page asks first and shows the preview).
+#[tauri::command]
+pub async fn schedule_os_enable<R: Runtime>(
+    app_handle: AppHandle<R>,
+    interval_minutes: Option<u32>,
+) -> Result<os_scheduler::OsStatus, String> {
+    let (install, home) = os_install(&app_handle, interval_minutes)?;
+    blocking(move || {
+        let platform = os_scheduler::Platform::current();
+        let installer = os_scheduler::SystemInstaller;
+        let result = os_scheduler::enable(platform, &install, &home, &installer);
+        let detail = result.err();
+        Ok(os_scheduler::status(platform, &install, &home, &installer, detail))
+    })
+    .await
+}
+
+/// Remove the entry and every file it wrote.
+#[tauri::command]
+pub async fn schedule_os_disable<R: Runtime>(
+    app_handle: AppHandle<R>,
+    interval_minutes: Option<u32>,
+) -> Result<os_scheduler::OsStatus, String> {
+    let (install, home) = os_install(&app_handle, interval_minutes)?;
+    blocking(move || {
+        let platform = os_scheduler::Platform::current();
+        let installer = os_scheduler::SystemInstaller;
+        let result = os_scheduler::disable(platform, &install, &home, &installer);
+        let detail = result.err();
+        Ok(os_scheduler::status(platform, &install, &home, &installer, detail))
+    })
+    .await
 }
 
 #[cfg(test)]

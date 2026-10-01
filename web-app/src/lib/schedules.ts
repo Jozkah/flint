@@ -28,7 +28,13 @@ export type ScheduledTask = {
   project: string
   profile?: string | null
   policy: { allowTools: string[]; write: WriteMode }
-  budgets: { maxTurns: number; maxTokens: number; maxWallClockSecs: number }
+  budgets: {
+    maxTurns: number
+    maxTokens: number
+    maxWallClockSecs: number
+    /** Optional money ceiling in USD; needs the model's price in prices.toml. */
+    maxCostUsd?: number | null
+  }
   onBlock: OnBlock
   catchUp: CatchUp
   enabled: boolean
@@ -116,3 +122,23 @@ export const schedulePreview = (
 export const scheduleTimeZones = () => invoke<string[]>('schedule_time_zones')
 
 export const scheduleTools = () => invoke<ScheduleTool[]>('schedule_tools')
+
+/** The OS-scheduler entry that runs due tasks while the app is closed. */
+export type OsSchedulerStatus = {
+  platform: 'windows' | 'mac_os' | 'linux'
+  platformLabel: string
+  installed: boolean
+  intervalMinutes: number
+  /** What installing writes and runs, one line each. */
+  preview: string[]
+  /** The line the OS scheduler executes each time. */
+  tickCommand: string
+  /** Why the last attempt did not work, if it did not. */
+  detail?: string | null
+}
+
+export const scheduleOsStatus = () => invoke<OsSchedulerStatus>('schedule_os_status', {})
+
+export const scheduleOsEnable = () => invoke<OsSchedulerStatus>('schedule_os_enable', {})
+
+export const scheduleOsDisable = () => invoke<OsSchedulerStatus>('schedule_os_disable', {})

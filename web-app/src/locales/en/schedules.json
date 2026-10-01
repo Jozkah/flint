@@ -9,6 +9,20 @@
   "saveFailed": "Could not save the task",
   "deleteFailed": "Could not delete the task",
   "runFailed": "Could not start the run",
+  "os": {
+    "title": "Run when Flint is closed",
+    "description": "Optional. Adds an entry to your computer's own scheduler that starts due tasks every few minutes, so a task still runs when Flint is not open.",
+    "switch": "Run scheduled tasks while Flint is closed",
+    "on": "On. {{platform}} checks every {{minutes}} minutes and starts any task that is due, even when Flint is closed.",
+    "off": "Off. Tasks run only while Flint is open. A run missed while it was closed follows the task's catch-up setting when Flint next opens.",
+    "caveat": "It runs only while you are logged in and the computer is awake, and it never starts the same run twice when Flint is open too.",
+    "runs": "It runs:",
+    "confirmTitle": "Add an entry to {{platform}}?",
+    "confirmBody": "This writes the files and runs the commands below, and nothing else.",
+    "confirmUndo": "Turning the switch off removes the entry and every file listed here.",
+    "install": "Add entry",
+    "failed": "Could not change the scheduler entry"
+  },
   "unavailable": "Scheduled tasks are only available in the desktop app.",
   "list": {
     "nextRun": "Next run {{when}}",
@@ -106,6 +120,9 @@
     "maxTurns": "Turns",
     "maxTokens": "Tokens",
     "maxMinutes": "Minutes",
+    "maxCostUsd": "Cost limit (USD)",
+    "maxCostUsdPlaceholder": "No limit",
+    "maxCostUsdHint": "Optional. Needs a price for the model in prices.toml (dollars per million tokens); without one the run is refused instead of running uncapped.",
     "onBlock": "If a tool needs approval",
     "onBlockContinue": "Deny it and carry on",
     "onBlockEnd": "Deny it and end the run",
@@ -116,6 +133,10 @@
     "enabled": "Enabled",
     "save": "Save task",
     "saving": "Saving"
+  },
+  "warnings": {
+    "disabled": "This task is switched off, so it will not run until you turn it on.",
+    "neverFires": "This schedule has no future run time (for example, a date that does not exist), so the task will never run."
   },
   "errors": {
     "nameRequired": "Give the task a name.",
@@ -130,6 +151,7 @@
     "toolsRequired": "Allow at least one tool.",
     "turnsRange": "Turns must be 1 to 200.",
     "tokensRange": "Tokens must be 1 to 5,000,000.",
-    "minutesRange": "Minutes must be 1 to 360."
+    "minutesRange": "Minutes must be 1 to 360.",
+    "costRange": "The cost limit must be more than $0 and at most $1000, or empty."
   }
 }

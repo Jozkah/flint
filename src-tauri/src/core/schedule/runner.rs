@@ -396,6 +396,32 @@ pub fn finish(record: &mut RunRecord, obs: &Observer, ending: Ending, ended_ms: 
     }
 }
 
+/// Whether a finished completion was cut short by the cost ceiling, and the
+/// reason to record if so. The loop ends such a run with an answer and
+/// `finish_reason: "budget_exceeded"`, not an error, so it is read here.
+pub fn cost_stop(completion: &serde_json::Value, limit: Option<f64>) -> Option<String> {
+    let reason = completion.pointer("/choices/0/finish_reason").and_then(|v| v.as_str())?;
+    if reason != "budget_exceeded" {
+        return None;
+    }
+    Some(match limit {
+        Some(usd) => format!("stopped: the ${usd:.2} cost limit was reached"),
+        None => "stopped: the cost limit was reached".to_string(),
+    })
+}
+
+/// A setup failure, with what a person needs to fix it when the cost limit is
+/// the reason: a limit cannot be metered for a model with no price.
+pub fn explain_setup_failure(error: &str, limit: Option<f64>) -> String {
+    if limit.is_some() && error.contains("no price is declared") {
+        format!(
+            "the task has a cost limit but its model has no price, so spend cannot be metered.              Set the model's price in prices.toml, or remove the limit. ({error})"
+        )
+    } else {
+        error.to_string()
+    }
+}
+
 /// The contentless line a notification carries.
 pub fn notification_line(status: RunStatus) -> String {
     let tag = match status {
@@ -656,6 +682,24 @@ mod tests {
             assert!(r.ended_at_ms.is_some());
             assert_eq!(r.blocked_on, vec!["write (write): a.txt"]);
         }
+    }
+
+    #[test]
+    fn a_cost_ceiling_stop_is_told_from_a_finished_answer() {
+        let stopped = serde_json::json!({"choices":[{"finish_reason":"budget_exceeded","message":{"content":"partial"}}]});
+        let done = serde_json::json!({"choices":[{"finish_reason":"stop","message":{"content":"done"}}]});
+        assert_eq!(cost_stop(&stopped, Some(0.5)).unwrap(), "stopped: the $0.50 cost limit was reached");
+        assert!(cost_stop(&done, Some(0.5)).is_none());
+        assert!(cost_stop(&serde_json::json!({}), None).is_none());
+    }
+
+    #[test]
+    fn an_unpriced_model_with_a_cost_limit_gets_a_clear_reason() {
+        let raw = "cannot cap spend for m: no price is declared for it in prices.toml";
+        let msg = explain_setup_failure(raw, Some(1.0));
+        assert!(msg.contains("no price") && msg.contains("prices.toml") && msg.contains("remove the limit"));
+        assert_eq!(explain_setup_failure(raw, None), raw, "without a limit the error is untouched");
+        assert_eq!(explain_setup_failure("other", Some(1.0)), "other");
     }
 
     #[test]

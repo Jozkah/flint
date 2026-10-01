@@ -3,6 +3,7 @@ import {
   formToCron,
   formToSchedule,
   formToTask,
+  neverRunsWarnings,
   newTaskForm,
   parseTime,
   scheduleToForm,
@@ -135,6 +136,21 @@ describe('validation', () => {
     expect(validateForm(valid({ maxMinutes: '' })).maxMinutes).toBeDefined()
   })
 
+  it('treats the cost limit as optional but bounded', () => {
+    expect(validateForm(valid({ maxCostUsd: '' })).maxCostUsd).toBeUndefined()
+    expect(validateForm(valid({ maxCostUsd: '2.5' })).maxCostUsd).toBeUndefined()
+    for (const bad of ['0', '-1', 'free', '1000.01']) {
+      expect(validateForm(valid({ maxCostUsd: bad })).maxCostUsd, bad).toBeDefined()
+    }
+    const made = formToTask(valid({ maxCostUsd: '2.5' }))
+    if (!('task' in made)) throw new Error('expected a task')
+    expect(made.task.budgets.maxCostUsd).toBe(2.5)
+    expect(taskToForm(made.task).maxCostUsd).toBe('2.5')
+    const none = formToTask(valid())
+    if (!('task' in none)) throw new Error('expected a task')
+    expect('maxCostUsd' in none.task.budgets).toBe(false)
+  })
+
   it('checks the schedule fields of the chosen preset only', () => {
     expect(
       validateForm(valid({ schedule: form({ preset: 'weekly', days: [] }) })).days
@@ -186,5 +202,27 @@ describe('form to task', () => {
     const made = formToTask(valid())
     if (!('task' in made)) throw new Error('expected a task')
     for (const v of Object.values(made.task.budgets)) expect(v).toBeGreaterThan(0)
+  })
+})
+
+describe('warnings for a task that will never run', () => {
+  it('flags a switched-off task but not an enabled one', () => {
+    expect(neverRunsWarnings(valid(), null)).toEqual([])
+    expect(neverRunsWarnings(valid({ enabled: false }), null)).toEqual([
+      'schedules:warnings.disabled',
+    ])
+  })
+
+  it('flags a schedule the backend says never fires, and only that error', () => {
+    expect(neverRunsWarnings(valid(), 'this schedule never fires')).toEqual([
+      'schedules:warnings.neverFires',
+    ])
+    expect(neverRunsWarnings(valid(), 'the minute range 61-61 is outside 0-59')).toEqual([])
+  })
+
+  it('can raise both at once', () => {
+    expect(
+      neverRunsWarnings(valid({ enabled: false }), 'this schedule never fires')
+    ).toHaveLength(2)
   })
 })

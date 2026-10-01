@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Icon } from '@/components/ui/icon'
+import { OsSchedulerCard } from '@/containers/schedules/OsSchedulerCard'
 import { ScheduleEditor } from '@/containers/schedules/ScheduleEditor'
 import { ScheduleTaskRow } from '@/containers/schedules/ScheduleTaskRow'
 import { useSchedules } from '@/containers/schedules/useSchedules'
@@ -69,6 +70,7 @@ function SchedulesContent() {
             ))
           )}
         </Card>
+        <OsSchedulerCard />
         <p className="text-xs text-muted-foreground">{t('schedules:unattendedNote')}</p>
       </SettingsPageBody>
 

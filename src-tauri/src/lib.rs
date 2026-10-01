@@ -319,6 +319,9 @@ macro_rules! invoke_commands_with_extras {
         core::schedule::commands::schedule_to_cron,
         core::schedule::commands::schedule_time_zones,
         core::schedule::commands::schedule_tools,
+        core::schedule::commands::schedule_os_status,
+        core::schedule::commands::schedule_os_enable,
+        core::schedule::commands::schedule_os_disable,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
