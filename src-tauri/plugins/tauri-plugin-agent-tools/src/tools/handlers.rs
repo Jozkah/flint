@@ -669,6 +669,11 @@ pub(crate) async fn execute_text(
                 "message": "The browser is opened by the Flint desktop app; this surface                             cannot open one. Give the user the address instead.",
             }),
         ),
+        // Reaching this arm means the call came from a surface with no browser
+        // pane (the CLI, a durable job, an MCP peer). It is refused plainly and
+        // never forwarded: a headless run must not drive, or silently skip, a
+        // browser that is not there.
+        name if crate::tools::is_browser_tool(name) => crate::tools::browser_unavailable_result(),
         other => format!("ERROR: unknown built-in tool '{other}'"),
     }
 }
