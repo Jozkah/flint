@@ -6,7 +6,7 @@
 import type { ThreadMessage } from '@janhq/core'
 import { projectListDir, projectReadFile } from '@janhq/tauri-plugin-agent-tools-api'
 import { useThreads } from '@/hooks/useThreads'
-import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useAssistant, defaultAssistant } from '@/hooks/useAssistant'
@@ -124,7 +124,7 @@ export const appExtras: RemoteExtras = {
     const thread = useThreads.getState().threads[id]
     if (!thread) return null
     const { ref, provider, model } = modelOf(id)
-    const messages = useMessages.getState().getMessages(id) ?? []
+    const messages = getActiveMessages(id)
 
     // Effort: ChatInput's `effortProfile` and the chat's own override.
     const profile = effortProfile(ref?.provider, model)

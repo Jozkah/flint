@@ -26,7 +26,7 @@ import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
-import { useMessages } from '@/hooks/useMessages'
+import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useTokensCount } from '@/hooks/useTokensCount'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -158,7 +158,7 @@ function StateChip({ state, label }: { state: string; label: string }) {
  */
 function ContextWindowMeter({ threadId }: { threadId: string }) {
   const { t } = useTranslation()
-  const threadMessages = useMessages((s) => s.messages?.[threadId])
+  const threadMessages = useActiveMessages(threadId)
   const { tokenCount, maxTokens, percentage } = useTokensCount(
     threadMessages ?? [],
     { threadId }

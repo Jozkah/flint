@@ -106,7 +106,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
-import { useMessages } from '@/hooks/useMessages'
+import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
 import { McpExtensionToolLoader } from './McpExtensionToolLoader'
 import {
@@ -789,11 +789,7 @@ const ChatInput = memo(function ChatInput({
   )
 
   // Get current thread messages for token counting
-  const threadMessages = useMessages(
-    useShallow((state) =>
-      currentThreadId ? state.messages[currentThreadId] : []
-    )
-  )
+  const threadMessages = useActiveMessages(currentThreadId)
 
   const maxRows = 10
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024

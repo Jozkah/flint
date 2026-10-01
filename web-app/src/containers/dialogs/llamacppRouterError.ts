@@ -1,5 +1,6 @@
 import { useAppState } from '@/hooks/useAppState'
 import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { useModelProvider } from '@/hooks/useModelProvider'
 
 // Router errors are only user-facing when they could have killed an in-flight
@@ -26,7 +27,7 @@ export function stampErrorOnLastUserMessage(
 ) {
   const threadId = useAppState.getState().currentStreamThreadId
   if (!threadId) return
-  const messages = useMessages.getState().getMessages(threadId)
+  const messages = getActiveMessages(threadId)
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m.role !== 'user') continue

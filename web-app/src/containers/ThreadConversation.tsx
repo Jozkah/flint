@@ -31,6 +31,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
 
 import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
 import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
@@ -1209,7 +1210,8 @@ export function ThreadConversation({
       })
 
       if (!isAbort) {
-        const localMessages = useMessages.getState().getMessages(threadId)
+        // The titled conversation is the one on screen, not every version.
+        const localMessages = getActiveMessages(threadId)
         const currentThread = useThreads.getState().threads[threadId]
         // Once per chat, and again only when the first message was edited
         // (see lib/threadAutoTitle).

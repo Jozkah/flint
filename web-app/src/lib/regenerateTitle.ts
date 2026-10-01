@@ -1,7 +1,8 @@
 import type { ThreadMessage } from '@janhq/core'
 import { getServiceHub } from '@/hooks/useServiceHub'
-import { useMessages } from '@/hooks/useMessages'
 import { useThreads } from '@/hooks/useThreads'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
+import { activePathOf } from '@/lib/message-branching'
 import { regenerateThreadTitle } from '@/lib/thread-title-summarizer'
 import { AUTO_TITLE_SOURCE_KEY, firstUserText } from '@/lib/threadAutoTitle'
 
@@ -60,10 +61,13 @@ export type RegenerateResult = 'done' | 'empty' | 'failed'
  * not run over the result on the next reply.
  */
 export async function regenerateTitle(threadId: string): Promise<RegenerateResult> {
-  let messages = useMessages.getState().getMessages(threadId)
+  let messages = getActiveMessages(threadId)
   if (messages.length === 0) {
     try {
-      messages = await getServiceHub().messages().fetchMessages(threadId)
+      messages = activePathOf(
+        await getServiceHub().messages().fetchMessages(threadId),
+        useThreads.getState().threads[threadId]?.metadata
+      )
     } catch {
       return 'failed'
     }
