@@ -164,6 +164,21 @@ describe('model-factory deep coverage', () => {
       expect(result.providerMetadata.promptTokens).toBe(221)
     })
 
+    it('extractMetadata reports speculative draft acceptance only when a draft ran', async () => {
+      const ext = await getExtractor()
+      const withDraft = await ext.extractMetadata({
+        parsedBody: { timings: { predicted_n: 90, draft_n: 40, draft_n_accepted: 30 } },
+      })
+      expect(withDraft.providerMetadata.draftTokens).toBe(40)
+      expect(withDraft.providerMetadata.draftAccepted).toBe(30)
+      const without = await ext.extractMetadata({
+        parsedBody: { timings: { predicted_n: 90, draft_n: 0, draft_n_accepted: 0 } },
+      })
+      expect(without.providerMetadata.draftTokens).toBeUndefined()
+      const none = await ext.extractMetadata({ parsedBody: { timings: { predicted_n: 90 } } })
+      expect(none.providerMetadata.draftTokens).toBeUndefined()
+    })
+
     it('createStreamExtractor processes chunks and builds metadata', async () => {
       const ext = await getExtractor()
       const s = ext.createStreamExtractor()

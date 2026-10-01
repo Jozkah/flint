@@ -2218,6 +2218,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     let tokensPerSecond = 0
     let promptPerSecond = 0
+    let draftTokens = 0
+    let draftAccepted = 0
     // Per step, with the provider's raw usage: the `finish` part's total has
     // already been summed by the SDK and no longer says whether a cache count
     // was reported or defaulted to zero.
@@ -2302,6 +2304,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           promptPerSecond =
             (part.providerMetadata?.providerMetadata
               ?.promptPerSecond as number) || 0
+          draftTokens =
+            (part.providerMetadata?.providerMetadata
+              ?.draftTokens as number) || 0
+          draftAccepted =
+            (part.providerMetadata?.providerMetadata
+              ?.draftAccepted as number) || 0
         }
 
         // Add usage and token speed to metadata on finish
@@ -2425,6 +2433,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 : undefined,
               tokenCount: outputTokens,
               durationMs,
+              ...(draftTokens > 0
+                ? { draftTokens, draftAccepted: Math.min(draftAccepted, draftTokens) }
+                : {}),
             },
           }
         }

@@ -10,7 +10,7 @@ import {
 import { readTokenUsage } from '@/lib/tokenUsage'
 import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
 import { CacheReuseBadge } from '@/components/CacheReuseBadge'
-import { isMeaningfulSpeed } from '@/lib/tokenSpeed'
+import { draftAcceptancePercent, isMeaningfulSpeed } from '@/lib/tokenSpeed'
 import { cacheStatus } from '@/lib/tokenUsage'
 import {
   Tooltip,
@@ -23,6 +23,8 @@ interface TokenSpeedMeta {
   promptSpeed?: number
   tokenCount?: number
   durationMs?: number
+  draftTokens?: number
+  draftAccepted?: number
 }
 
 interface TokenSpeedIndicatorProps {
@@ -70,6 +72,7 @@ export const TokenSpeedIndicator = memo(
       : 0
     const displaySpeed = Math.round(rawSpeed)
     const promptSpeed = persisted?.promptSpeed
+    const draftPercent = persisted ? draftAcceptancePercent(persisted) : null
 
     if (
       displaySpeed === 0 &&
@@ -98,6 +101,15 @@ export const TokenSpeedIndicator = memo(
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">Reading</span>
               <span className="font-mono">{promptSpeed.toFixed(2)} tps</span>
+            </div>
+          )}
+          {draftPercent !== null && (
+            <div className="flex items-center justify-between gap-4">
+              <span className="text-muted-foreground">Draft accepted</span>
+              <span className="font-mono">
+                {draftPercent}% ({persisted?.draftAccepted ?? 0}/
+                {persisted?.draftTokens ?? 0})
+              </span>
             </div>
           )}
           {hasBreakdown ? (
