@@ -41,6 +41,7 @@ import {
   recordHuggingFaceInstall,
 } from '@/lib/huggingfaceRegistry'
 import { cn } from '@/lib/utils'
+import { formatDuration, secondsRemaining } from '@/lib/downloadSpeed'
 import type { SpecDraftKind } from '@janhq/core'
 
 function draftKind(filename?: string): SpecDraftKind | undefined {
@@ -198,7 +199,18 @@ export function HuggingFaceDownloadAction({
                   : `${percent}%`}
             </span>
             {!compact && task.total && (
-              <span className="shrink-0 tabular-nums">{formatModelBytes(task.downloaded)} / {formatModelBytes(task.total)}</span>
+              <span className="shrink-0 tabular-nums">
+                {formatModelBytes(task.downloaded)} / {formatModelBytes(task.total)}
+                {task.status === 'downloading' && task.bytesPerSecond
+                  ? ` · ${formatModelBytes(task.bytesPerSecond)}/s${
+                      secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) !== null
+                        ? ` · ${formatDuration(
+                            secondsRemaining(task.downloaded, task.total, task.bytesPerSecond) as number
+                          )} left`
+                        : ''
+                    }`
+                  : ''}
+              </span>
             )}
           </div>
           <Progress value={task.progress * 100} className="h-1.5" />
