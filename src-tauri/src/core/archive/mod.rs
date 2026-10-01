@@ -10,6 +10,47 @@ use std::path::Path;
 
 use store::{ArchiveMeta, Kind};
 
+/// What a startup pass did.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct StartupReport {
+    pub auto_archived: usize,
+    pub purged: usize,
+    pub blocked: usize,
+}
+
+/// Archive threads that have sat idle past the configured age. Cheap when the
+/// setting is off (the default): nothing is read. Meant to run before the
+/// window lists threads, so the list never names a thread that has just moved.
+pub fn auto_archive_idle_threads(data: &Path, now: u64) -> usize {
+    let settings = store::read_settings(data);
+    if !settings.enabled {
+        return 0;
+    }
+    store::auto_archive_threads(data, settings.auto_archive_thread_days, now).len()
+}
+
+/// Delete archived items older than the configured retention. Items a guard
+/// refuses (a Cowork session whose worktree holds unmerged work) stay and are
+/// retried on the next start.
+pub fn sweep_expired(data: &Path, now: u64) -> StartupReport {
+    let settings = store::read_settings(data);
+    let mut hook = |m: &ArchiveMeta, d: &Path| purge_cleanup(data, m, d);
+    let report = store::sweep(data, settings.auto_delete_days, now, &mut hook);
+    for b in &report.blocked {
+        log::info!(
+            "archived {} \"{}\" kept past its retention: {}",
+            b.kind.as_str(),
+            b.title,
+            b.reason
+        );
+    }
+    StartupReport {
+        auto_archived: 0,
+        purged: report.purged,
+        blocked: report.blocked.len(),
+    }
+}
+
 /// What destroying an archived item also destroys, run before its directory is
 /// removed. A refusal keeps the item: nothing is half-purged.
 pub fn purge_cleanup(data: &Path, meta: &ArchiveMeta, _dir: &Path) -> Result<(), String> {
@@ -122,6 +163,51 @@ mod tests {
     fn purge(data: &Path) -> Result<(), String> {
         let mut hook = |m: &ArchiveMeta, d: &Path| purge_cleanup(data, m, d);
         store::purge_with(data, Kind::Cowork, "session-1", &mut hook)
+    }
+
+    #[test]
+    fn startup_archives_idle_threads_and_purges_expired_items() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path();
+        let day = 86_400_000u64;
+        let now = store::now_ms() + 100 * day;
+        let thread = |id: &str| {
+            let t = data.join("threads").join(id);
+            std::fs::create_dir_all(&t).unwrap();
+            std::fs::write(t.join("thread.json"), json!({"id": id, "updated": 1.0}).to_string())
+                .unwrap();
+        };
+        thread("idle");
+
+        // Off by default: nothing moves.
+        assert_eq!(auto_archive_idle_threads(data, now), 0);
+        store::write_settings(
+            data,
+            &store::ArchiveSettings {
+                enabled: true,
+                auto_delete_days: 30,
+                auto_archive_thread_days: 30,
+            },
+        )
+        .unwrap();
+        assert_eq!(auto_archive_idle_threads(data, now), 1);
+        assert_eq!(store::list(data).len(), 1);
+
+        // Now old enough to expire: archived "now", swept 31 days later.
+        assert_eq!(sweep_expired(data, store::now_ms()).purged, 0);
+        let report = sweep_expired(data, store::now_ms() + 31 * day);
+        assert_eq!(report.purged, 1);
+        assert!(store::list(data).is_empty());
+
+        // With the archive off, idle threads are left alone.
+        thread("idle2");
+        store::write_settings(
+            data,
+            &store::ArchiveSettings { enabled: false, auto_delete_days: 30, auto_archive_thread_days: 30 },
+        )
+        .unwrap();
+        assert_eq!(auto_archive_idle_threads(data, now), 0);
+        assert!(data.join("threads/idle2").exists());
     }
 
     #[test]

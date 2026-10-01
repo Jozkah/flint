@@ -710,6 +710,28 @@ pub fn build_app() -> tauri::App {
                     settled.len()
                 );
             }
+            // Archive: idle threads move first, before the window lists
+            // threads (off by default, so this normally reads nothing); items
+            // past their retention are deleted off the main thread.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let moved = core::archive::auto_archive_idle_threads(
+                    &data_folder,
+                    core::archive::store::now_ms(),
+                );
+                if moved > 0 {
+                    log::info!("archive: {moved} idle thread(s) moved to the archive");
+                }
+                std::thread::spawn(move || {
+                    let report = core::archive::sweep_expired(
+                        &data_folder,
+                        core::archive::store::now_ms(),
+                    );
+                    if report.purged > 0 {
+                        log::info!("archive: {} expired item(s) deleted", report.purged);
+                    }
+                });
+            }
             // Request snapshots and usage counts are bounded rather than kept
             // forever. Off the main thread: a large log is a rewrite, and the
             // window should not wait for it.
