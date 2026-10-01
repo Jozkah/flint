@@ -2,6 +2,7 @@ pub mod commands;
 pub mod group_folders;
 pub mod helpers;
 pub mod models;
+pub mod session_path;
 
 #[cfg(test)]
 mod scope_tests;

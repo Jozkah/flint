@@ -42,10 +42,20 @@ export function InlinePathLink({
   const run = (background: boolean) => {
     if (action.kind === 'code') {
       open?.(action.path, { line: parsed.line, background })
-    } else if (action.kind === 'open') {
-      void getServiceHub().opener().openPath(action.path)
     } else {
-      void getServiceHub().opener().revealItemInDir(action.path)
+      // The Rust side re-checks containment (symlinks, case, `..`) and
+      // refuses to open an executable; the webview never names a raw path to
+      // the opener plugin.
+      void getServiceHub()
+        .core()
+        .invoke('open_session_path', {
+          roots: [...roots],
+          path: action.path,
+          mode: action.kind === 'open' ? 'open' : 'reveal',
+        })
+        .catch((error: unknown) =>
+          console.error('Could not open path:', error)
+        )
     }
   }
 

@@ -64,6 +64,7 @@ macro_rules! invoke_commands_with_extras {
         core::filesystem::commands::open_dialog,
         core::filesystem::commands::save_dialog,
         core::filesystem::group_folders::inspect_group_folders,
+        core::filesystem::session_path::open_session_path,
         // App configuration commands
         core::app::commands::get_app_configurations,
         core::app::commands::get_user_home_path,

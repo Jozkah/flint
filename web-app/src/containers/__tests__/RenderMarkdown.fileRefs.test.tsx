@@ -1,12 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 
-const opener = vi.hoisted(() => ({
-  openPath: vi.fn(async () => {}),
-  revealItemInDir: vi.fn(async () => {}),
-}))
+const core = vi.hoisted(() => ({ invoke: vi.fn(async () => {}) }))
 vi.mock('@/hooks/useServiceHub', async (orig) => ({
   ...(await orig<typeof import('@/hooks/useServiceHub')>()),
-  getServiceHub: () => ({ opener: () => opener }),
+  getServiceHub: () => ({ core: () => core }),
 }))
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -77,10 +74,18 @@ describe('RenderMarkdown file references', () => {
     it('opens a folder and reveals an executable inside the folders (Chat)', async () => {
       withRoots('Out: `C:\\work\\proj\\dist` and `C:\\work\\proj\\dist\\app.exe`')
       await userEvent.click(await screen.findByRole('button', { name: 'C:\\work\\proj\\dist' }))
-      expect(opener.openPath).toHaveBeenCalledWith('C:\\work\\proj\\dist')
+      expect(core.invoke).toHaveBeenCalledWith('open_session_path', {
+        roots: ['C:\\work\\proj'],
+        path: 'C:\\work\\proj\\dist',
+        mode: 'open',
+      })
       await userEvent.click(screen.getByRole('button', { name: 'C:\\work\\proj\\dist\\app.exe' }))
-      expect(opener.revealItemInDir).toHaveBeenCalledWith('C:\\work\\proj\\dist\\app.exe')
-      expect(opener.openPath).toHaveBeenCalledTimes(1)
+      expect(core.invoke).toHaveBeenLastCalledWith('open_session_path', {
+        roots: ['C:\\work\\proj'],
+        path: 'C:\\work\\proj\\dist\\app.exe',
+        mode: 'reveal',
+      })
+      expect(core.invoke).toHaveBeenCalledTimes(2)
     })
 
     it('keeps paths outside the folders, relative paths in Chat, and non-paths as plain code', async () => {
