@@ -70,9 +70,16 @@ import { DEFAULT_SESSION_TITLE, isSessionEmpty } from '@/lib/coworkSessionStart'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { usePrompt } from '@/hooks/usePrompt'
 import { openInSplit, reportSplitResult } from '@/lib/splitView'
-import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
+import {
+  archiveCoworkSession,
+  deleteCoworkSession,
+} from '@/lib/coworkSessionLifecycle'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
+import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
+import { purgeArchived } from '@/lib/archive'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { errorText } from '@/lib/errorText'
 import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
@@ -458,6 +465,8 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   } | null>(null)
   // Whether deleting it also removes its worktree and branch (default: keep).
   const [removeWorktree, setRemoveWorktree] = useState(false)
+  const archiveOn = useArchiveEnabled()
+  const [permanentDelete, setPermanentDelete] = useState(false)
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSession = (groupId?: string) => {
@@ -593,21 +602,46 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
 
   const confirmDelete = async () => {
     if (pendingDelete) {
-      if (removeWorktree) {
-        const removed = await removeSessionWorktree(pendingDelete.id)
-        // A worktree that could not be removed keeps its session, so the
-        // work stays reachable from somewhere.
-        if (!removed.ok) {
-          toast.error(removed.reason)
-          return
-        }
+      const id = pendingDelete.id
+      // Archived first (when the archive is on): the session is kept, and the
+      // worktree choice is deferred to the purge, which refuses while the
+      // worktree holds unmerged work. "Delete permanently" archives and then
+      // purges; if that purge is refused the session stays archived and the
+      // reason is shown.
+      let archived = false
+      try {
+        archived = await archiveCoworkSession(id, removeWorktree)
+      } catch (e) {
+        toast.error(t('archive:deleteFailed'), { description: errorText(e) })
+        return
       }
-      useCoworkParallel.getState().forgetSession(pendingDelete.id)
-      // Stops the session's run -- only that one -- and drops everything held
-      // for it (janhq/jan#8905).
-      deleteCoworkSession(pendingDelete.id)
+      if (archived) {
+        useCoworkParallel.getState().forgetSession(id)
+        if (permanentDelete) {
+          try {
+            await purgeArchived('cowork', id)
+          } catch (e) {
+            toast.error(t('archive:deleteFailed'), { description: errorText(e) })
+          }
+        }
+      } else {
+        if (removeWorktree) {
+          const removed = await removeSessionWorktree(id)
+          // A worktree that could not be removed keeps its session, so the
+          // work stays reachable from somewhere.
+          if (!removed.ok) {
+            toast.error(removed.reason)
+            return
+          }
+        }
+        useCoworkParallel.getState().forgetSession(id)
+        // Stops the session's run -- only that one -- and drops everything held
+        // for it (janhq/jan#8905).
+        deleteCoworkSession(id)
+      }
     }
     setRemoveWorktree(false)
+    setPermanentDelete(false)
     setPendingDelete(null)
   }
 
@@ -719,15 +753,30 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('common:deleteSessionTitle')}</DialogTitle>
+            <DialogTitle>
+              {archiveOn
+                ? t('archive:moveTitle')
+                : t('common:deleteSessionTitle')}
+            </DialogTitle>
             <DialogDescription>
-              {t('common:deleteSessionBody', { title: pendingDelete?.title })}
+              {archiveOn
+                ? t('archive:moveBody', { title: pendingDelete?.title })
+                : t('common:deleteSessionBody', { title: pendingDelete?.title })}
             </DialogDescription>
           </DialogHeader>
           <SessionWorktreeDeleteChoice
             sessionId={pendingDelete?.id ?? null}
             remove={removeWorktree}
             onChange={setRemoveWorktree}
+          />
+          {archiveOn && removeWorktree && (
+            <p className="text-xs text-muted-foreground">
+              {t('archive:worktreeKept')}
+            </p>
+          )}
+          <PermanentDeleteOption
+            checked={permanentDelete}
+            onChange={setPermanentDelete}
           />
           <DialogFooter>
             <Button
@@ -742,7 +791,9 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               size="sm"
               onClick={() => void confirmDelete()}
             >
-              {t('common:delete')}
+              {archiveOn && !permanentDelete
+                ? t('archive:moveButton')
+                : t('common:delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

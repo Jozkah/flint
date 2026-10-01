@@ -283,7 +283,14 @@ type CoworkSessionsState = {
     draft?: string
   }) => { id: string; parked: boolean }
   selectSession: (id: string) => void
-  deleteSession: (id: string) => void
+  /**
+   * Remove a session. Its prompt snapshots and other records go too, unless
+   * `keepRecords` says the session is only being archived (they are removed
+   * when the archived session is finally deleted).
+   */
+  deleteSession: (id: string, opts?: { keepRecords?: boolean }) => void
+  /** Put an archived session back; a session with that id already there wins. */
+  restoreSession: (session: CoworkSession) => boolean
   /**
    * Fork a session at a turn, producing an independent one. AH-201.
    *
@@ -574,9 +581,18 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
         return { ok: true, id }
       },
 
-      deleteSession: (id) =>
+      restoreSession: (session) => {
+        if (get().sessions.some((x) => x.id === session.id)) return false
+        set((s) => ({
+          sessions: [session, ...s.sessions],
+          currentId: session.id,
+        }))
+        return true
+      },
+
+      deleteSession: (id, opts) =>
         set((s) => {
-          void deletePromptSnapshots(id)
+          if (!opts?.keepRecords) void deletePromptSnapshots(id)
           const sessions = s.sessions.filter((x) => x.id !== id)
           const currentId =
             s.currentId === id ? (sessions[0]?.id ?? null) : s.currentId
