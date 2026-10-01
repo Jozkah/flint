@@ -173,6 +173,107 @@ async function existingFilePath(value: string): Promise<string | null> {
   }
 }
 
+/**
+ * Options a user may not set through free-form arguments: they would move the
+ * server off its loopback address, replace its credentials, or change which
+ * model files it opens, all of which Flint owns.
+ */
+const BLOCKED_EXTRA_ARGS = new Set([
+  'host',
+  'port',
+  'api-key',
+  'api-key-file',
+  'path',
+  'api-prefix',
+  'ssl-key-file',
+  'ssl-cert-file',
+  'model',
+  'model-url',
+  'hf-repo',
+  'hf-file',
+  'hf-token',
+  'models-dir',
+  'models-preset',
+  'models-max',
+  'models-autoload',
+  'slot-save-path',
+  'webui',
+  'webui-config',
+  'webui-config-file',
+])
+
+function splitArgs(text: string): string[] {
+  const tokens: string[] = []
+  let current = ''
+  let quote: '"' | "'" | null = null
+  let started = false
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (quote) {
+      if (ch === quote) quote = null
+      else current += ch
+    } else if (ch === '"' || ch === "'") {
+      quote = ch
+      started = true
+    } else if (/\s/.test(ch)) {
+      if (started || current) tokens.push(current)
+      current = ''
+      started = false
+    } else {
+      current += ch
+      started = true
+    }
+  }
+  if (started || current) tokens.push(current)
+  return tokens
+}
+
+/**
+ * Turn a free-form llama-server argument string into preset INI lines.
+ *
+ * `--rope-scaling yarn` becomes `rope-scaling = yarn`, a bare `--flag` becomes
+ * `flag = true`, and `--key=value` is accepted. Quotes group a value that has
+ * spaces; a backslash is kept as is, so a Windows path survives. Options the
+ * server must not be redirected with are dropped and reported in `skipped`.
+ */
+export function extraArgsToIni(text: unknown): {
+  lines: string[]
+  skipped: string[]
+} {
+  const lines: string[] = []
+  const skipped: string[] = []
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    return { lines, skipped }
+  }
+  const tokens = splitArgs(text)
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i]
+    if (!token.startsWith('-')) continue
+    const body = token.replace(/^--?/, '')
+    if (!/^[A-Za-z][A-Za-z0-9-]*(=|$)/.test(body)) continue
+    const eq = body.indexOf('=')
+    let key = eq === -1 ? body : body.slice(0, eq)
+    let value: string | undefined = eq === -1 ? undefined : body.slice(eq + 1)
+    // A single-dash short flag has no INI key; only long options are supported.
+    if (!token.startsWith('--')) {
+      skipped.push(token)
+      if (eq === -1 && tokens[i + 1] && !tokens[i + 1].startsWith('-')) i++
+      continue
+    }
+    key = key.toLowerCase()
+    if (value === undefined && tokens[i + 1] && !tokens[i + 1].startsWith('-')) {
+      value = tokens[i + 1]
+      i++
+    }
+    if (BLOCKED_EXTRA_ARGS.has(key)) {
+      skipped.push(`--${key}`)
+      continue
+    }
+    lines.push(`${key} = ${escapeIniValue(value ?? 'true')}`)
+  }
+  return { lines, skipped }
+}
+
 function escapeIniValue(v: string): string {
   // INI values for llama-server are read as strings; trim surrounding whitespace
   // and strip stray newlines that would break parsing.
@@ -545,6 +646,10 @@ export async function generatePreset(
   ) {
     lines.push(`keep = ${Math.floor(config.keep)}`)
   }
+  // Free-form options come last, so they win over the settings above when both
+  // name the same one. Options the server must not be redirected with are
+  // dropped (see BLOCKED_EXTRA_ARGS).
+  lines.push(...extraArgsToIni(config.extra_args).lines)
   lines.push('')
 
   // ---------- per-model sections ----------

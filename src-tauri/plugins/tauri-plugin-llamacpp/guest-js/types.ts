@@ -70,6 +70,7 @@ export interface GgufMetadata {
  */
 export type LlamacppConfig = {
   llamacpp_env: string
+  extra_args: string
   models_max: string | number
   timeout: number
   fit: boolean

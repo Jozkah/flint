@@ -47,7 +47,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(async (_cmd: string, args: { path: string }) => modelYamls[args.path]),
 }))
 
-import { generatePreset, threadCacheDir } from './preset'
+import { generatePreset, threadCacheDir, extraArgsToIni } from './preset'
 
 const CONFIG = {} as any
 
@@ -970,5 +970,50 @@ describe('generatePreset KV cache and speculative guards', () => {
     expect(ini).toContain('spec-type = draft-dflash')
     expect(ini).toContain('temperature = 0')
     expect(ini).not.toContain('temperature = 0.7')
+  })
+})
+
+describe('extraArgsToIni', () => {
+  it('turns long options into preset keys', () => {
+    expect(
+      extraArgsToIni('--rope-scaling yarn --no-warmup --yarn-orig-ctx=32768').lines
+    ).toEqual(['rope-scaling = yarn', 'no-warmup = true', 'yarn-orig-ctx = 32768'])
+  })
+
+  it('keeps a quoted value with spaces and a Windows path intact', () => {
+    expect(
+      extraArgsToIni('--chat-template-file "C:\\My Models\\t.jinja" --alias \'a b\'')
+        .lines
+    ).toEqual([
+      'chat-template-file = C:\\My Models\\t.jinja',
+      'alias = a b',
+    ])
+  })
+
+  it('drops options that would redirect the server, and says so', () => {
+    const out = extraArgsToIni('--host 0.0.0.0 --api-key x --port 1 --threads 4')
+    expect(out.lines).toEqual(['threads = 4'])
+    expect(out.skipped).toEqual(['--host', '--api-key', '--port'])
+  })
+
+  it('ignores short flags and stray values', () => {
+    const out = extraArgsToIni('-ngl 99 stray --threads 2')
+    expect(out.lines).toEqual(['threads = 2'])
+    expect(out.skipped).toEqual(['-ngl'])
+  })
+
+  it('returns nothing for empty or non-string input', () => {
+    expect(extraArgsToIni('').lines).toEqual([])
+    expect(extraArgsToIni(undefined).lines).toEqual([])
+  })
+})
+
+describe('generatePreset extra_args', () => {
+  it('writes the options at the end of the global section', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', { extra_args: '--rope-scaling yarn' } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    const global = ini.slice(ini.indexOf('[*]'), ini.indexOf('[m]'))
+    expect(global.trimEnd().endsWith('rope-scaling = yarn')).toBe(true)
   })
 })

@@ -111,6 +111,7 @@ const PRESET_AFFECTING_KEYS = new Set<string>([
   'fit_target',
   'fit_ctx',
   'flash_attn',
+  'extra_args',
   'cache_type_k',
   'cache_type_v',
   'parallel',
