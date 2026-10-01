@@ -669,6 +669,7 @@ pub fn build_app() -> tauri::App {
             mcp_generation: Arc::new(Mutex::new(HashMap::new())),
         })
         .setup(|app| {
+            core::diffusion::register(app.handle());
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(

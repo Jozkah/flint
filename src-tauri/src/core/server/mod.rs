@@ -3,6 +3,8 @@
 #[cfg(not(feature = "cli"))]
 pub mod commands;
 pub mod converters;
+#[cfg(not(feature = "cli"))]
+pub mod images_route;
 pub mod provider_secrets;
 #[cfg(not(feature = "cli"))]
 pub mod proxy;

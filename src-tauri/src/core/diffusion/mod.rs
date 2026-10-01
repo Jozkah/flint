@@ -4,6 +4,20 @@
 //! driven over HTTP on a loopback port. It is a separate process and not linked
 //! into the llama.cpp worker, which keeps the two engines' GPU libraries apart.
 
+use std::sync::OnceLock;
+
+/// The running app, so the local API server (which has no app handle of its own)
+/// can reach the image engine.
+static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+pub fn register(app: &tauri::AppHandle) {
+    let _ = APP.set(app.clone());
+}
+
+pub fn app() -> Option<&'static tauri::AppHandle> {
+    APP.get()
+}
+
 pub mod args;
 pub mod catalog;
 pub mod commands;

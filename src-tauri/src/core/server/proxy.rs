@@ -1871,6 +1871,42 @@ async fn proxy_request(
                 }
             }
         }
+        (hyper::Method::POST, "/images/generations") => {
+            let body_bytes = match body.collect().await {
+                Ok(c) => c.to_bytes(),
+                Err(_) => Bytes::new(),
+            };
+            let (status, payload) = match serde_json::from_slice::<serde_json::Value>(&body_bytes) {
+                Ok(json) => match super::images_route::generate(&json).await {
+                    Ok(done) => (StatusCode::OK, done),
+                    Err(e) => (
+                        StatusCode::from_u16(e.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        e.body(),
+                    ),
+                },
+                Err(_) => (
+                    StatusCode::BAD_REQUEST,
+                    super::images_route::ApiError {
+                        status: 400,
+                        message: "The request body must be JSON.".into(),
+                        param: Some("body"),
+                        code: "invalid_request",
+                    }
+                    .body(),
+                ),
+            };
+            let mut builder = Response::builder()
+                .status(status)
+                .header(hyper::header::CONTENT_TYPE, "application/json");
+            builder = add_cors_headers_with_host_and_origin(
+                builder,
+                &host_header,
+                &origin_header,
+                &config.trusted_hosts,
+            );
+            return Ok(builder.body(full(payload.to_string())).unwrap());
+        }
+
         (hyper::Method::GET, "/models") => {
             log::debug!("Handling GET /v1/models request");
 
