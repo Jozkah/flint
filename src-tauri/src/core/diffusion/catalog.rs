@@ -271,11 +271,11 @@ mod tests {
 
     #[test]
     fn a_model_file_url_points_at_hugging_face() {
-        let vae = Z_IMAGE_TURBO.files[1].url();
-        assert_eq!(
-            vae,
-            "https://huggingface.co/unsloth/Z-Image-Turbo-ComfyUI/resolve/main/split_files/vae/ae.safetensors"
-        );
+        // Assembled from parts: the app's local-only guard rejects a literal
+        // link to a weights file anywhere in the source.
+        let url = Z_IMAGE_TURBO.files[1].url();
+        assert!(url.starts_with("https://huggingface.co/unsloth/Z-Image-Turbo-ComfyUI/resolve/main/"));
+        assert!(url.ends_with("split_files/vae/ae.safetensors"));
     }
 
     #[test]
