@@ -134,6 +134,10 @@
     "save": "Save task",
     "saving": "Saving"
   },
+  "warnings": {
+    "disabled": "This task is switched off, so it will not run until you turn it on.",
+    "neverFires": "This schedule has no future run time (for example, a date that does not exist), so the task will never run."
+  },
   "errors": {
     "nameRequired": "Give the task a name.",
     "promptRequired": "Write what the task should do.",

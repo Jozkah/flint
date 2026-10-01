@@ -35,6 +35,7 @@ import {
   formToCron,
   formToSchedule,
   formToTask,
+  neverRunsWarnings,
   newTaskForm,
   taskToForm,
   toCronForm,
@@ -521,6 +522,17 @@ export function ScheduleEditor({ open, task, onClose, onSave }: Props) {
               </select>
             </Field>
           </div>
+
+          {neverRunsWarnings(form, preview.error).map((key) => (
+            <p
+              key={key}
+              role="status"
+              data-testid="never-runs-warning"
+              className="rounded-md border-[0.8px] border-border bg-card px-3 py-2 text-xs text-warning"
+            >
+              {t(key)}
+            </p>
+          ))}
 
           <div className="flex items-center justify-between">
             <Label htmlFor={`${uid}-enabled`}>{t('schedules:editor.enabled')}</Label>

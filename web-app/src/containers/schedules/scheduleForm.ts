@@ -249,6 +249,26 @@ export function validateForm(form: TaskForm): FormErrors {
   return errors
 }
 
+/**
+ * Reasons a task that would save fine will still never run, as i18n keys. Not
+ * errors: the person may mean it (a task kept switched off), so they are shown
+ * beside the form and never block saving.
+ *
+ * `previewError` is what the backend said when asked for the next runs of the
+ * schedule as it stands now.
+ */
+export function neverRunsWarnings(
+  form: TaskForm,
+  previewError: string | null
+): string[] {
+  const out: string[] = []
+  if (!form.enabled) out.push('schedules:warnings.disabled')
+  if (previewError && /never fires/i.test(previewError)) {
+    out.push('schedules:warnings.neverFires')
+  }
+  return out
+}
+
 /** The task to save, or the errors that stop the form from making one. */
 export function formToTask(
   form: TaskForm

@@ -129,6 +129,25 @@ describe('ScheduleEditor', () => {
     expect(onClose).toHaveBeenCalled()
   })
 
+  it('warns when the task is switched off', async () => {
+    const user = userEvent.setup()
+    render(<ScheduleEditor open task={null} onClose={() => {}} onSave={vi.fn()} />)
+    expect(screen.queryByTestId('never-runs-warning')).not.toBeInTheDocument()
+    await user.click(screen.getByRole('switch'))
+    expect(await screen.findByTestId('never-runs-warning')).toHaveTextContent('switched off')
+  })
+
+  it('warns when the schedule has no future run time', async () => {
+    const user = userEvent.setup()
+    preview.mockRejectedValue('this schedule never fires')
+    render(<ScheduleEditor open task={null} onClose={() => {}} onSave={vi.fn()} />)
+    await user.click(screen.getByRole('button', { name: 'Edit as cron' }))
+    const cron = screen.getByLabelText('Cron expression')
+    await user.clear(cron)
+    await user.type(cron, '0 0 31 2 *')
+    expect(await screen.findByTestId('never-runs-warning')).toHaveTextContent('no future run time')
+  })
+
   it('has an English message for every error the form can raise', () => {
     const blank = { ...newTaskForm({ timezone: '' }), allowTools: [], maxTurns: '0', maxTokens: '0', maxMinutes: '0' }
     const keys = Object.values({

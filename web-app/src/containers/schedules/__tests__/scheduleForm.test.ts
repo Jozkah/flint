@@ -3,6 +3,7 @@ import {
   formToCron,
   formToSchedule,
   formToTask,
+  neverRunsWarnings,
   newTaskForm,
   parseTime,
   scheduleToForm,
@@ -201,5 +202,27 @@ describe('form to task', () => {
     const made = formToTask(valid())
     if (!('task' in made)) throw new Error('expected a task')
     for (const v of Object.values(made.task.budgets)) expect(v).toBeGreaterThan(0)
+  })
+})
+
+describe('warnings for a task that will never run', () => {
+  it('flags a switched-off task but not an enabled one', () => {
+    expect(neverRunsWarnings(valid(), null)).toEqual([])
+    expect(neverRunsWarnings(valid({ enabled: false }), null)).toEqual([
+      'schedules:warnings.disabled',
+    ])
+  })
+
+  it('flags a schedule the backend says never fires, and only that error', () => {
+    expect(neverRunsWarnings(valid(), 'this schedule never fires')).toEqual([
+      'schedules:warnings.neverFires',
+    ])
+    expect(neverRunsWarnings(valid(), 'the minute range 61-61 is outside 0-59')).toEqual([])
+  })
+
+  it('can raise both at once', () => {
+    expect(
+      neverRunsWarnings(valid({ enabled: false }), 'this schedule never fires')
+    ).toHaveLength(2)
   })
 })
