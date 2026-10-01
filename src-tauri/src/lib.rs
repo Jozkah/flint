@@ -291,6 +291,15 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
         core::rooms::commands::room_clear_journal,
+        // Archive (delete moves here first)
+        core::archive::commands::archive_list,
+        core::archive::commands::archive_disk_usage,
+        core::archive::commands::archive_put,
+        core::archive::commands::archive_restore,
+        core::archive::commands::archive_purge,
+        core::archive::commands::archive_empty,
+        core::archive::commands::archive_get_settings,
+        core::archive::commands::archive_set_settings,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
