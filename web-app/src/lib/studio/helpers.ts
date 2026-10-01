@@ -4,26 +4,61 @@ import type { StudioFile } from '@/lib/studio/studio'
 
 export type StudioSize = { label: string; short: string; width: number; height: number }
 
+/** Sides are multiples of 16, which is what the engine accepts. */
+const snap = (n: number) => Math.max(16, Math.round(n / 16) * 16)
+
+/**
+ * A standard shape at about `area` pixels: `ratio` is width over height. The
+ * same picture area at every shape, so a wide picture costs what a square one
+ * does and none of them is much slower or hungrier than the others.
+ */
+export function sizeFor(ratioW: number, ratioH: number, area: number): { width: number; height: number } {
+  const width = snap(Math.sqrt((area * ratioW) / ratioH))
+  return { width, height: snap(area / width) }
+}
+
+const shape = (name: string, ratioW: number, ratioH: number, area: number): StudioSize => {
+  const { width, height } = sizeFor(ratioW, ratioH, area)
+  return { label: `${name} ${ratioW}:${ratioH} · ${width} × ${height}`, short: `${ratioW}:${ratioH}`, width, height }
+}
+
+const IMAGE_AREA = 1024 * 1024
+const VIDEO_AREA = 832 * 480
+
 export const IMAGE_SIZES: StudioSize[] = [
-  { label: 'Square 1024', short: 'Square', width: 1024, height: 1024 },
-  { label: 'Square 768', short: 'Small square', width: 768, height: 768 },
-  { label: 'Square 512', short: 'Tiny square', width: 512, height: 512 },
-  { label: 'Landscape 1344 × 768', short: 'Wide', width: 1344, height: 768 },
-  { label: 'Portrait 768 × 1344', short: 'Tall', width: 768, height: 1344 },
+  shape('Square', 1, 1, IMAGE_AREA),
+  shape('Landscape', 4, 3, IMAGE_AREA),
+  shape('Portrait', 3, 4, IMAGE_AREA),
+  shape('Photo', 3, 2, IMAGE_AREA),
+  shape('Tall photo', 2, 3, IMAGE_AREA),
+  shape('Widescreen', 16, 9, IMAGE_AREA),
+  shape('Vertical', 9, 16, IMAGE_AREA),
+  shape('Cinema', 21, 9, IMAGE_AREA),
 ]
 
 export const VIDEO_SIZES: StudioSize[] = [
-  { label: '832 × 480', short: '832 × 480', width: 832, height: 480 },
-  { label: '960 × 544', short: '960 × 544', width: 960, height: 544 },
-  { label: '1280 × 704', short: '1280 × 704', width: 1280, height: 704 },
-  { label: 'Square 704', short: 'Square', width: 704, height: 704 },
-  { label: 'Portrait 480 × 832', short: 'Tall', width: 480, height: 832 },
+  shape('Widescreen', 16, 9, VIDEO_AREA),
+  shape('Vertical', 9, 16, VIDEO_AREA),
+  shape('Square', 1, 1, VIDEO_AREA),
+  shape('Landscape', 4, 3, VIDEO_AREA),
+  shape('Portrait', 3, 4, VIDEO_AREA),
+  shape('Cinema', 21, 9, VIDEO_AREA),
 ]
 
-/** The chosen shape for a recipe's size, or the first one when it is not on the list. */
+/**
+ * The shape on the list closest to a size: an exact match when there is one,
+ * else the nearest proportions, so a picture made with an older size list still
+ * remixes at about the shape it had.
+ */
 export function sizeIndexOf(sizes: StudioSize[], width: number, height: number): number {
-  const i = sizes.findIndex((s) => s.width === width && s.height === height)
-  return i === -1 ? 0 : i
+  const exact = sizes.findIndex((s) => s.width === width && s.height === height)
+  if (exact !== -1) return exact
+  const target = Math.log(width / height)
+  let best = 0
+  sizes.forEach((s, i) => {
+    if (Math.abs(Math.log(s.width / s.height) - target) < Math.abs(Math.log(sizes[best].width / sizes[best].height) - target)) best = i
+  })
+  return best
 }
 
 /** Prompts to try, shown while the box is empty. */
