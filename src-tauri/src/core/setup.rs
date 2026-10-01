@@ -233,6 +233,18 @@ pub fn setup_mcp<R: Runtime>(app: &App<R>) {
     let state = app.state::<AppState>();
     let servers = state.mcp_servers.clone();
     let app_handle = app.handle().clone();
+    // Lazy start: paths that only hold the server map (Cowork agent loop, the
+    // local API server's tool execution) start enabled servers through this.
+    {
+        let hook_app = app_handle.clone();
+        crate::core::mcp::lazy::install_ensure_all_hook(Box::new(move || {
+            let app = hook_app.clone();
+            Box::pin(async move {
+                crate::core::mcp::helpers::ensure_all_enabled_started(&app).await;
+            })
+        }));
+    }
+    crate::core::mcp::helpers::spawn_idle_shutdown_loop(app_handle.clone());
     tauri::async_runtime::spawn(async move {
         use crate::core::mcp::lockfile::cleanup_all_stale_locks;
 

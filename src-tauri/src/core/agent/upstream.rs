@@ -1235,6 +1235,9 @@ pub(crate) async fn collect_mcp_openai_tools(
     ),
     String,
 > {
+    // Lazy start: enabled servers that are not running are started first
+    // (no-op outside the desktop app).
+    crate::core::mcp::lazy::ensure_enabled_started().await;
     let timeout_duration = mcp_settings.lock().await.tool_call_timeout_duration();
     let servers = mcp_servers.lock().await;
 

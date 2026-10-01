@@ -7,8 +7,11 @@
 import { useEffect, useRef } from 'react'
 import type { SessionKind } from './protocol'
 
+/** Media as the composer hands it to its submit (data URLs). */
+export type ComposerFile = { type: string; mediaType: string; url: string }
+
 export type ComposerEntry = {
-  send: (text: string) => void | Promise<void>
+  send: (text: string, files?: ComposerFile[]) => void | Promise<void>
   stop?: () => void
 }
 
@@ -86,7 +89,7 @@ export function useRemoteComposer(
   useEffect(() => {
     if (!id) return
     return registerComposer(kind, id, {
-      send: (text) => ref.current.send(text),
+      send: (text, files) => ref.current.send(text, files),
       stop: () => ref.current.stop?.(),
     })
   }, [kind, id])

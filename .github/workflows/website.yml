@@ -1,0 +1,70 @@
+name: Website
+
+# Builds the marketing site and publishes it to GitHub Pages (https://jozkah.github.io/flint/).
+# Scoped so desktop app changes never rebuild it. A release rebuilds it too, because the
+# download buttons are resolved from the latest release at build time.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'docs/screenshots/**'
+      - 'src-tauri/icons/icon.png'
+      - '.github/workflows/website.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - 'docs/screenshots/**'
+      - 'src-tauri/icons/icon.png'
+      - '.github/workflows/website.yml'
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+concurrency:
+  group: website-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Switching to a custom domain only needs these two values (and a CNAME file in website/public).
+          SITE_BASE: /flint/
+          SITE_URL: https://jozkah.github.io/flint/
+      - run: npm test
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
+        with:
+          path: website/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

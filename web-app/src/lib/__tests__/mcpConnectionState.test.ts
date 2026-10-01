@@ -111,3 +111,42 @@ describe('deriveConnectionState', () => {
     expect(runtimeCleared()).toEqual({ activating: false, failure: null })
   })
 })
+
+describe('deriveConnectionState – on-demand lifecycle', () => {
+  it('an enabled, stopped server reads as stopped (starts when needed)', () => {
+    const s = deriveConnectionState(
+      input({ enabled: true, lifecycle: { state: 'stopped' } })
+    )
+    expect(s.state).toBe('stopped')
+    expect(s.switchOn).toBe(true)
+    expect(s.nextStep).toBeNull()
+  })
+
+  it('a lazy start in flight reads as connecting', () => {
+    expect(
+      deriveConnectionState(input({ enabled: true, lifecycle: { state: 'starting' } }))
+        .state
+    ).toBe('connecting')
+  })
+
+  it('a failed lazy start shows the backend error', () => {
+    const s = deriveConnectionState(
+      input({ enabled: true, lifecycle: { state: 'failed', error: 'spawn npx ENOENT' } })
+    )
+    expect(s.state).toBe('failed')
+    expect(s.failure?.message).toContain('ENOENT')
+    expect(s.nextStep).toBe('check-command')
+  })
+
+  it('a running server is connected whatever the lifecycle says', () => {
+    expect(
+      deriveConnectionState(
+        input({ enabled: true, connected: true, lifecycle: { state: 'running' } })
+      ).state
+    ).toBe('connected')
+  })
+
+  it('without a lifecycle the old not-connected state stays', () => {
+    expect(deriveConnectionState(input({ enabled: true })).state).toBe('not-connected')
+  })
+})

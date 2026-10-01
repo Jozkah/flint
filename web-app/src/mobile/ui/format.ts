@@ -63,3 +63,16 @@ export function guessDeviceName(ua: string = globalThis.navigator?.userAgent ?? 
   if (/Android/.test(ua)) return 'Android phone'
   return 'Phone'
 }
+
+/** How full a context window is, 0-100; 0 when the window is not known. */
+export function contextPct(c: { usedTokens: number; windowTokens: number | null } | null | undefined): number {
+  if (!c?.windowTokens) return 0
+  return Math.min(100, Math.max(0, (c.usedTokens / c.windowTokens) * 100))
+}
+
+/** The desktop code viewer's reference form (lib/coworkCode codeRefToken),
+ * which the desktop's prompt parser resolves to exactly those lines. */
+export const codeRefToken = (path: string, a: number, b: number) => {
+  const [s, e] = a <= b ? [a, b] : [b, a]
+  return s === e ? `@${path}:${s}` : `@${path}:${s}-${e}`
+}

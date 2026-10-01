@@ -2,10 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   downloadedBytes,
   durationText,
+  estimateVideoMs,
   framesForSeconds,
   parseDownloadTask,
   parseSeed,
+  IMAGE_SIZES,
+  VIDEO_SIZES,
   phaseLabel,
+  sizeFor,
+  sizeIndexOf,
   videoMemoryWarning,
 } from '@/lib/studio/helpers'
 
@@ -73,5 +78,44 @@ describe('text helpers', () => {
     expect(durationText(3400)).toBe('3 s')
     expect(durationText(80_000)).toBe('1 min 20 s')
     expect(durationText(120_000)).toBe('2 min')
+  })
+})
+
+describe('estimateVideoMs', () => {
+  const last = { width: 832, height: 480, frames: 49, steps: 30, durationMs: 600_000 }
+
+  it('has no estimate without a clip to scale from', () => {
+    expect(estimateVideoMs(undefined, { width: 832, height: 480, frames: 49, steps: 30 })).toBeNull()
+    expect(estimateVideoMs({ ...last, durationMs: 0 }, { width: 832, height: 480, frames: 49, steps: 30 })).toBeNull()
+  })
+
+  it('repeats the time for the same work and scales with frames and size', () => {
+    expect(estimateVideoMs(last, { width: 832, height: 480, frames: 49, steps: 30 })).toBe(600_000)
+    expect(estimateVideoMs(last, { width: 832, height: 480, frames: 98, steps: 30 })).toBe(1_200_000)
+    expect(estimateVideoMs(last, { width: 416, height: 240, frames: 49, steps: 30 })).toBe(150_000)
+  })
+})
+
+describe('shapes', () => {
+  it('makes standard proportions in multiples of 16 at about the same area', () => {
+    expect(sizeFor(1, 1, 1024 * 1024)).toEqual({ width: 1024, height: 1024 })
+    expect(sizeFor(16, 9, 1024 * 1024)).toEqual({ width: 1360, height: 768 })
+    expect(sizeFor(9, 16, 1024 * 1024)).toEqual({ width: 768, height: 1360 })
+    for (const s of [...IMAGE_SIZES, ...VIDEO_SIZES]) {
+      expect(s.width % 16).toBe(0)
+      expect(s.height % 16).toBe(0)
+    }
+  })
+
+  it('keeps every shape inside what the models accept', () => {
+    for (const s of IMAGE_SIZES) expect(Math.max(s.width, s.height)).toBeLessThanOrEqual(2048)
+    for (const s of VIDEO_SIZES) expect(Math.max(s.width, s.height)).toBeLessThanOrEqual(1280)
+  })
+
+  it('finds the nearest shape for a size from an older list', () => {
+    const wide = sizeIndexOf(IMAGE_SIZES, 1344, 768)
+    expect(IMAGE_SIZES[wide].short).toBe('16:9')
+    expect(sizeIndexOf(IMAGE_SIZES, 99999, 1)).toBe(IMAGE_SIZES.findIndex((s) => s.short === '21:9'))
+    expect(sizeIndexOf(IMAGE_SIZES, 1024, 1024)).toBe(0)
   })
 })

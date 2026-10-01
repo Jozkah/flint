@@ -117,6 +117,16 @@ export class EventSocket {
     }
   }
 
+  private hidden = false
+
+  /** The page was hidden or shown: the server sends Web Push only while no
+   * page of this phone is showing. */
+  setHidden(hidden: boolean) {
+    if (hidden === this.hidden) return
+    this.hidden = hidden
+    this.send({ type: 'visibility', hidden })
+  }
+
   followed(): string[] {
     return [...this.topics.keys()]
   }
@@ -171,6 +181,7 @@ export class EventSocket {
         ready = true
         this.attempt = 0
         if (this.topics.size) this.send({ type: 'subscribe', topics: [...this.topics.keys()] })
+        if (this.hidden) this.send({ type: 'visibility', hidden: true })
         this.o.onState('connected')
         this.startPing()
       } else if (msg.type === 'event') {

@@ -160,9 +160,13 @@ export type ServiceHub = {
     >
   }
   mcp(): {
-    getTools(): Promise<MCPTool[]>
+    /** `start`: start enabled servers that are not running (on demand). */
+    getTools(options?: { start?: boolean }): Promise<MCPTool[]>
     /** TauriMCPService only */
-    getToolsForServers?(serverNames: string[]): Promise<MCPTool[]>
+    getToolsForServers?(
+      serverNames: string[],
+      options?: { start?: boolean }
+    ): Promise<MCPTool[]>
     /** TauriMCPService only */
     getServerSummaries?(): Promise<
       Array<{ name: string; capabilities: string[]; description: string }>
@@ -1399,9 +1403,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             mcpTools = await mcpOrchestrator.getRelevantTools(
               this.lastUserMessage,
               {
-                getTools: () => mcpService.getTools(),
+                // The router decides from server summaries, then only the
+                // servers it selects are started (on demand).
+                getTools: () => mcpService.getTools({ start: true }),
                 getToolsForServers: (names) =>
-                  mcpService.getToolsForServers!(names),
+                  mcpService.getToolsForServers!(names, { start: true }),
                 getServerSummaries: () => Promise.resolve(summaries),
               },
               disabledToolKeys,
@@ -1414,7 +1420,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             this.frozenRoutedSig = routedSig
           }
         } else {
-          mcpTools = await mcpService.getTools()
+          // A send that uses tools starts enabled servers on demand.
+          mcpTools = await mcpService.getTools({ start: true })
         }
 
         if (Array.isArray(mcpTools) && mcpTools.length > 0) {
