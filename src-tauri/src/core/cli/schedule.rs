@@ -281,6 +281,15 @@ async fn execute(
         }
     };
     drop(tx);
+    // Dropping the run future stops what it was awaiting, not the shell
+    // commands it had started: a `sleep` or a build would outlive the stop.
+    // This process exists only for this run, so everything under it is the
+    // run's. Every ending, not only the stopped ones: a command the model
+    // backgrounded must not outlive a run that finished either.
+    let reaped = tauri_plugin_agent_tools::tools::proc::kill_descendants(std::process::id());
+    if reaped > 0 {
+        eprintln!("(scheduled run: stopped {reaped} process(es) the run had left behind)");
+    }
     let (observed, conversation) = drain.await.unwrap_or_else(|_| (Observer::new(OnBlock::Continue), None));
     *obs = observed;
 

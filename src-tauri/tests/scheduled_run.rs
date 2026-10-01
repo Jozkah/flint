@@ -186,10 +186,19 @@ impl Scratch {
             data_folder: self.data().to_string_lossy().to_string(),
         };
         let path = write_spec(&store, &spec).expect("write spec");
-        let out = self
+        // Output goes to files, not pipes: a command the run left behind
+        // would hold a pipe open and make `output()` wait for it, turning a
+        // leak into a hang instead of a failed assertion.
+        let log = self.root.join("child.log");
+        let file = std::fs::File::create(&log).expect("child log");
+        let status = self
             .command(&["cli", "schedule", "run-spec", "--spec", path.to_str().expect("utf-8 path")])
-            .output()
+            .stdout(file.try_clone().expect("clone log"))
+            .stderr(file)
+            .status()
             .expect("run the child");
+        let text = std::fs::read(&log).unwrap_or_default();
+        let out = Output { status, stdout: text.clone(), stderr: text };
         let after = store.get_run(&task.id, &record.id).expect("read run").expect("the record exists");
         (after, out)
     }
@@ -282,4 +291,85 @@ fn a_run_with_an_unknown_model_fails_into_its_record() {
     let (r, _out) = s.run(t);
     assert!(r.status.is_ended(), "{r:?}");
     assert_ne!(r.status, RunStatus::Running);
+}
+
+// ---- a stopped run leaves no process behind ----
+
+#[cfg(windows)]
+const SLEEP_COMMAND: &str = "powershell -NoProfile -Command Start-Sleep -Seconds 987";
+#[cfg(not(windows))]
+const SLEEP_COMMAND: &str = "sleep 987";
+
+/// How many processes have the sleep (987 seconds, a length no other test
+/// uses) on their command line.
+fn sleepers() -> usize {
+    #[cfg(windows)]
+    let out = Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "(Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*Start-Sleep -Seconds 987*' -and $_.Name -eq 'powershell.exe' } | Measure-Object).Count",
+        ])
+        .output();
+    #[cfg(not(windows))]
+    let out = Command::new("sh")
+        .args(["-c", "pgrep -fc 'sleep 987' || true"])
+        .output();
+    out.ok()
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse::<usize>().ok())
+        .unwrap_or(0)
+}
+
+#[test]
+fn a_run_stopped_at_the_time_limit_leaves_no_command_running() {
+    let s = Scratch::new("orphan");
+    // A worktree run needs a repository with a commit to branch from.
+    let vcs = |args: &[&str]| {
+        let out = Command::new("git").args(args).current_dir(s.project()).output().expect("run the version-control tool");
+        assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    };
+    vcs(&["init", "-q"]);
+    vcs(&["-c", "user.name=t", "-c", "user.email=t@t", "add", "."]);
+    vcs(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]);
+
+    // The model calls bash with a long sleep, then the clock stops the run.
+    let call: &'static str = Box::leak(
+        format!(
+            concat!(
+                "data: {{\"id\":\"s-4\",\"object\":\"chat.completion.chunk\",\"created\":1,",
+                "\"model\":\"stub-model\",\"choices\":[{{\"index\":0,\"delta\":{{\"role\":\"assistant\",",
+                "\"tool_calls\":[{{\"index\":0,\"id\":\"call-4\",\"type\":\"function\",\"function\":",
+                "{{\"name\":\"bash\",\"arguments\":{args}}}}}]}},\"finish_reason\":null}}]}}\n\n",
+                "data: {{\"id\":\"s-4\",\"object\":\"chat.completion.chunk\",\"created\":1,",
+                "\"model\":\"stub-model\",\"choices\":[{{\"index\":0,\"delta\":{{}},",
+                "\"finish_reason\":\"tool_calls\"}}],",
+                "\"usage\":{{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}}}\n\n",
+                "data: [DONE]\n\n",
+            ),
+            args = serde_json::Value::String(serde_json::json!({ "command": SLEEP_COMMAND }).to_string())
+        )
+        .into_boxed_str(),
+    );
+    let replies: &'static [&'static str] = Box::leak(vec![call].into_boxed_slice());
+    let (url, _served) = stub_provider(replies, Duration::ZERO);
+    s.configure(&url);
+    let mut task = s.task(budgets(6, 4), OnBlock::Continue, WriteMode::Worktree);
+    task.policy.allow_tools = vec!["bash".into()];
+    let before = sleepers();
+    let (r, out) = s.run(task);
+    assert_eq!(r.status, RunStatus::BudgetStopped, "{r:?}\n{}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        r.error.as_deref().unwrap_or("").contains("time limit"),
+        "the run must have been stopped by the clock, not finished: {r:?}"
+    );
+    // Give the OS a moment to reap, then nothing may still be sleeping.
+    let mut after = sleepers();
+    for _ in 0..20 {
+        if after <= before {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+        after = sleepers();
+    }
+    assert!(after <= before, "{} command(s) outlived the stopped run", after.saturating_sub(before));
 }
