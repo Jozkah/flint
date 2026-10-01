@@ -149,6 +149,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The Local API Server answers "no model is running" and "the engine is not answering" with a JSON error that has a `code` and a `Retry-After`, keeps 502 for an unreachable remote provider, finds an MLX model when a client writes `.` as `_`, and explains a port the system refuses (Windows reserved ranges) instead of showing a bare error.
 - The Local API Server's timeout now limits silence rather than the whole request, so a long generation from a large local model is no longer cut off mid-stream.
 - The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
+- Loading a model whose file was moved, deleted or only partly downloaded now fails with that reason, naming the file, instead of the loader's own error.
 
 ### Release infrastructure
 
