@@ -150,6 +150,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The Local API Server's timeout now limits silence rather than the whole request, so a long generation from a large local model is no longer cut off mid-stream.
 - The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
 - Loading a model whose file was moved, deleted or only partly downloaded now fails with that reason, naming the file, instead of the loader's own error.
+- An image over the 10 MB attachment limit, such as a large PNG screenshot, is re-encoded to fit instead of being refused. The tool list sent to the model is sorted by name, so an MCP server reconnecting in a different order no longer discards the prompt cache.
+- A reply's token details show **Draft accepted**, for example `75% (30/40)`, when speculative decoding (MTP, DFlash or EAGLE-3) ran, so you can see whether a draft is paying off.
 
 ### Release infrastructure
 
