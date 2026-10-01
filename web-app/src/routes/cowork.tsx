@@ -2625,6 +2625,7 @@ export function CoworkPage() {
           ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
           : t('common:selectModel')
       )
+      onRefused?.()
       return
     }
     // Without tool calling the transport drops the tool set silently, and the
@@ -2632,6 +2633,7 @@ export function CoworkPage() {
     // toolless "agent" run is worse than no run.
     if (!selectedModel.capabilities?.includes('tools')) {
       toast.error(t('common:modelNoTools', { model: selectedModel.id }))
+      onRefused?.()
       return
     }
     // A restored session may remember Managed worktree while its process-local
@@ -2640,6 +2642,7 @@ export function CoworkPage() {
     if (access === 'managed-worktree' && effective.destination !== 'managed') {
       const key = effectiveDowngradeKey(effective)
       if (key) toast.error(t(key))
+      onRefused?.()
       return
     }
     // Another session's message is not what this session is about.
@@ -2649,7 +2652,6 @@ export function CoworkPage() {
       store.setTitle(sid, placeholder)
       autoTitleCoworkSession(sid, slashTitle(text), placeholder)
     }
-      onRefused?.()
     // Work profiles (off unless the user turned them on): the new message
     // picks how the run approaches it -- Jev decides when its suggestions are
     // on, a keyword match otherwise, and a profile picked by hand is kept.
@@ -2657,7 +2659,6 @@ export function CoworkPage() {
       await chooseWorkProfile(
         sid,
         text,
-      onRefused?.()
         workProfileAsker(useJevSettings.getState().rerankMode)
       )
     }
@@ -2666,7 +2667,6 @@ export function CoworkPage() {
      * A managed worktree still being the thing this session recorded.
      *
      * Checked before the run rather than trusted from the record, because
-      onRefused?.()
      * everything that invalidates one happens outside Flint: the directory
      * deleted, the branch moved by someone working in it, the repository
      * re-cloned at the same path. Writing into a stale binding is how a run
@@ -2682,6 +2682,7 @@ export function CoworkPage() {
         useCoworkWorktrees.getState().forget(sid)
         useCoworkSessions.getState().setAccess(sid, 'review-only')
         toast.error(t(`common:coworkAccess.worktreeState.${health}`))
+        onRefused?.()
         return
       }
     }
@@ -2706,7 +2707,6 @@ export function CoworkPage() {
     recordEvents([
       {
         id: `run:${runId}:started`,
-        onRefused?.()
         session: sid,
         run: runId,
         kind: 'run.started',
