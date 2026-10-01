@@ -929,3 +929,46 @@ describe('threadCacheDir separator handling', () => {
     expect(ini).toContain(`slot-save-path = ${threadCacheDir(WIN_EXT)}`)
   })
 })
+
+describe('generatePreset KV cache and speculative guards', () => {
+  it('keeps the V cache at f16 when flash attention is explicitly off', async () => {
+    setupModel('m', {})
+    await generatePreset(
+      '/p',
+      '/jan',
+      { flash_attn: 'off', cache_type_k: 'q8_0', cache_type_v: 'q8_0' } as any
+    )
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('cache-type-k = q8_0')
+    expect(ini).not.toContain('cache-type-v')
+  })
+
+  it('emits the quantized V cache when flash attention is auto', async () => {
+    setupModel('m', {})
+    await generatePreset('/p', '/jan', { cache_type_v: 'q8_0' } as any)
+    expect(writtenFiles['/p/router.preset.ini']).toContain('cache-type-v = q8_0')
+  })
+
+  it('overrides an inherited quantized V cache for a model that turns flash attention off', async () => {
+    setupModel('m', { flash_attn: 'off' })
+    await generatePreset('/p', '/jan', { cache_type_v: 'q8_0' } as any)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('cache-type-v = q8_0')
+    expect(ini).toContain('cache-type-v = f16')
+  })
+
+  it('defaults to greedy sampling for a DFlash draft', async () => {
+    setupModel('qwen', {
+      mtp: true,
+      mtp_layers: 0,
+      mtp_model_path: 'models/qwen/draft.gguf',
+      spec_type: 'draft-dflash',
+      temperature: 0.7,
+    })
+    await generatePreset('/p', '/jan', CONFIG)
+    const ini = writtenFiles['/p/router.preset.ini']
+    expect(ini).toContain('spec-type = draft-dflash')
+    expect(ini).toContain('temperature = 0')
+    expect(ini).not.toContain('temperature = 0.7')
+  })
+})
