@@ -307,6 +307,18 @@ macro_rules! invoke_commands_with_extras {
         core::archive::commands::archive_empty,
         core::archive::commands::archive_get_settings,
         core::archive::commands::archive_set_settings,
+        // Scheduled tasks
+        core::schedule::commands::schedules_list,
+        core::schedule::commands::schedule_save,
+        core::schedule::commands::schedule_delete,
+        core::schedule::commands::schedule_set_enabled,
+        core::schedule::commands::schedule_run_now,
+        core::schedule::commands::schedule_runs,
+        core::schedule::commands::schedule_cancel_run,
+        core::schedule::commands::schedule_preview,
+        core::schedule::commands::schedule_to_cron,
+        core::schedule::commands::schedule_time_zones,
+        core::schedule::commands::schedule_tools,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
@@ -885,6 +897,9 @@ pub fn build_app() -> tauri::App {
             #[cfg(desktop)]
             setup::setup_jan_cli(app.handle().clone(), stored_version != app_version);
             setup::setup_theme_listener(app)?;
+            // Scheduled tasks: catch-up pass now, then a tick every 30s.
+            #[cfg(desktop)]
+            core::schedule::driver::start(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())
