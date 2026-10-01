@@ -30,6 +30,7 @@ import {
   VIDEO_SECONDS,
   VIDEO_SIZES,
   durationText,
+  estimateVideoMs,
   framesForSeconds,
   parseSeed,
   phaseLabel,
@@ -268,6 +269,16 @@ function Settings({
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
   const warning = kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
   const running = !!job
+  const lastClip = useStudio((s) => s.gallery.video[0]?.recipe)
+  const guess =
+    kind === 'video'
+      ? estimateVideoMs(lastClip, {
+          width: sizes[Math.min(form.sizeIndex, sizes.length - 1)].width,
+          height: sizes[Math.min(form.sizeIndex, sizes.length - 1)].height,
+          frames: framesForSeconds(form.seconds, model.video?.fps ?? 24),
+          steps: model.defaults.steps,
+        })
+      : null
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(0)}>
       <FrameHeader title="Settings" />
@@ -303,6 +314,11 @@ function Settings({
               ))}
             </div>
           </Field>
+        )}
+        {guess !== null && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            About {durationText(guess)}, from your last clip.
+          </p>
         )}
         <Field label="Seed">
           <Input

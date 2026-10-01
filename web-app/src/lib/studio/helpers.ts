@@ -83,6 +83,23 @@ export function videoMemoryWarning(totalMemoryMb: number | undefined): string | 
   return `This computer has about ${gb} GB of memory. Video generation needs a lot, and on a machine like this one clip can take hours because it runs out of memory and swaps to disk.`
 }
 
+type Workload = { width: number; height: number; frames: number | null; steps: number }
+
+/**
+ * About how long a clip will take, scaled from one the person already made on
+ * this computer: time grows with pixels, frames and steps. Null when there is
+ * nothing to scale from, because a guess with no basis is worse than none.
+ */
+export function estimateVideoMs(
+  previous: (Workload & { durationMs: number }) | undefined,
+  next: Workload
+): number | null {
+  if (!previous || previous.durationMs <= 0) return null
+  const work = (w: Workload) => w.width * w.height * Math.max(1, w.frames ?? 1) * Math.max(1, w.steps)
+  const ratio = work(next) / work(previous)
+  return Number.isFinite(ratio) && ratio > 0 ? Math.round(previous.durationMs * ratio) : null
+}
+
 const PHASES: Record<string, string> = {
   queued: 'Waiting',
   encoding: 'Reading the prompt',
