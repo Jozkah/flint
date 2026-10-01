@@ -2,9 +2,12 @@ import { useMemo, type ReactNode } from 'react'
 import {
   CodeOpenContext,
   CodeOpenToolsContext,
+  PathRootsContext,
   type CodeOpen,
   type CodePathCheck,
 } from '@/lib/codeOpen'
+
+const NO_ROOTS: readonly string[] = []
 
 /** Supplies the code-panel opener to the tool widgets below a transcript. */
 export const CodeOpenProvider = ({
@@ -12,6 +15,7 @@ export const CodeOpenProvider = ({
   check,
   openDiff,
   displayPath,
+  roots,
   children,
 }: {
   open: CodeOpen
@@ -21,6 +25,8 @@ export const CodeOpenProvider = ({
   openDiff?: (path: string) => void
   /** The short form a path is shown as. */
   displayPath?: (path: string) => string
+  /** The folders absolute paths in a reply may open from. */
+  roots?: readonly string[]
   children: ReactNode
 }) => {
   const tools = useMemo(
@@ -30,7 +36,9 @@ export const CodeOpenProvider = ({
   return (
     <CodeOpenContext.Provider value={open}>
       <CodeOpenToolsContext.Provider value={tools}>
-        {children}
+        <PathRootsContext.Provider value={roots ?? NO_ROOTS}>
+          {children}
+        </PathRootsContext.Provider>
       </CodeOpenToolsContext.Provider>
     </CodeOpenContext.Provider>
   )

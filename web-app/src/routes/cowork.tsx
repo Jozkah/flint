@@ -1330,6 +1330,15 @@ export function CoworkPage() {
       ]),
     [resolveToolPath, extraFolders, workspacePath, treeRoot]
   )
+  // The folders a path in a reply may open from: sandbox, project tree,
+  // attached folder and extras.
+  const pathLinkRoots = useMemo(
+    () =>
+      [workspacePath, treeRoot, folder, ...extraFolders].filter(
+        (r): r is string => typeof r === 'string' && r.length > 0
+      ),
+    [workspacePath, treeRoot, folder, extraFolders]
+  )
   /** Show a changed file in Changes. */
   const openToolDiff = useCallback(
     (path: string) => setRail({ kind: 'diff', focusPath: path }),
@@ -5538,6 +5547,7 @@ export function CoworkPage() {
             check={checkToolPath}
             openDiff={openToolDiff}
             displayPath={displayToolPath}
+            roots={pathLinkRoots}
           >
                     {windowStart > 0 && (
                       <div className="flex justify-center pb-3">

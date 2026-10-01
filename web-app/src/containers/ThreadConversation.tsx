@@ -150,7 +150,8 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
-import { chatFolderToolOptions } from '@/lib/chatFolders'
+import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
+import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import {
   deadToolNote,
@@ -378,6 +379,8 @@ export function ThreadConversation({
 
   // Subscribe directly to the thread data to ensure updates when model changes
   const thread = useThreads(useShallow((state) => state.threads[threadId]))
+  // Paths in a reply link only when inside the folders attached to this chat.
+  const chatPathRoots = useMemo(() => chatFoldersOf(thread), [thread])
 
   // This conversation's model: in a split pane its own thread's, otherwise
   // the global picker, exactly as before.
@@ -2691,6 +2694,7 @@ export function ThreadConversation({
   }, [localThreadMessages])
 
   return (
+    <PathRootsContext.Provider value={chatPathRoots}>
     <div
       className={cn(
         'flex h-full min-h-0 flex-col',
@@ -3074,5 +3078,6 @@ export function ThreadConversation({
         </div>
       </div>
     </div>
+    </PathRootsContext.Provider>
   )
 }
