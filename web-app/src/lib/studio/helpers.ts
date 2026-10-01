@@ -61,7 +61,7 @@ export function parseDownloadTask(taskId: string): { modelId: string; index: num
 }
 
 /** Memory below which a video can take hours, because it swaps to disk. */
-export const VIDEO_COMFORT_MB = 32 * 1024
+export const VIDEO_COMFORT_MB = 30 * 1024
 
 export function videoMemoryWarning(totalMemoryMb: number | undefined): string | null {
   if (!totalMemoryMb || totalMemoryMb >= VIDEO_COMFORT_MB) return null

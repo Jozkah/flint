@@ -415,6 +415,7 @@ export function StudioPage() {
         actions={
           <Segmented<StudioKind>
             aria-label="What to make"
+            className="min-w-[200px]"
             options={[
               { value: 'image', label: 'Images' },
               { value: 'video', label: 'Video' },
