@@ -693,6 +693,10 @@ struct HttpModelInvoker {
     /// the provider's usage records can be looked up by session (upstream
     /// #9034, see [`crate::core::agent::correlation`]). `None` sends nothing.
     client_request_id: Option<String>,
+    /// Hide Secrets, when it is on for this process: every request is filtered
+    /// just before it leaves, and the completion is mapped back. `None` = off,
+    /// and then nothing in the request or the reply changes.
+    secrets: Option<Arc<crate::core::agent::secrets::SecretFilter>>,
 }
 
 /// The converter a model's provider needs, and the wire API it speaks: one
@@ -765,8 +769,11 @@ impl ModelInvoker for HttpModelInvoker {
         // URL + credential have already been resolved from that qualifier, so
         // the body must carry the bare model id - providers like OpenCode GO
         // reject a provider-qualified id with "model not supported".
-        #[allow(unused_assignments)]
-        let mut normalized = request.clone();
+        // Hide Secrets: filtered just before it leaves, mapped back on return.
+        let mut normalized = match &self.secrets {
+            Some(filter) => filter.filter_request(request),
+            None => request.clone(),
+        };
         if let Some(model) = normalized.get("model").and_then(|m| m.as_str()) {
             let pc = self.provider_configs.lock().await;
             let bare = crate::core::agent::upstream::strip_provider_prefix(model, &pc);
@@ -935,6 +942,14 @@ impl ModelInvoker for HttpModelInvoker {
                     "error": e.to_wire(),
                 }),
             ),
+        }
+        if self.secrets.is_some() {
+            // The model saw placeholders; the tool and the saved thread get the
+            // real values back. The next request hides them again.
+            return out.map(|mut c| {
+                crate::core::agent::secrets::restore_completion(&mut c);
+                c
+            });
         }
         out
     }
@@ -5506,6 +5521,7 @@ async fn orchestrate_inner(
     )
     .await;
     let http_model = HttpModelInvoker {
+        secrets: crate::core::agent::secrets::for_run(),
         provenance,
         // AH-191/AH-192: read once per run. A quotas.toml that will not parse
         // refuses the run here rather than being ignored, which is the only
@@ -5933,6 +5949,7 @@ pub(crate) async fn compact_history(
     )
     .await;
     let model = HttpModelInvoker {
+        secrets: crate::core::agent::secrets::for_run(),
         provenance,
         // The run this compaction belongs to is judged at every turn of its
         // own (AH-191/AH-192). Stopping a compaction against a ceiling would
@@ -6018,6 +6035,7 @@ pub(crate) async fn evaluate_goal(
     )
     .await;
     let model = HttpModelInvoker {
+        secrets: crate::core::agent::secrets::for_run(),
         provenance,
         // As above: this is a helper dispatch inside a run already judged.
         quota: None,
