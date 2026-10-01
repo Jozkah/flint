@@ -58,6 +58,9 @@ import { SamplerPopover } from '@/containers/SamplerPopover'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import { useModelProvider } from '@/hooks/useModelProvider'
+import { useModelEvidence } from '@/hooks/useModelEvidence'
+import { getLastUsedModel } from '@/utils/getModelToStart'
+import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import {
   useConversationModel,
   type ModelSelection,
@@ -889,6 +892,8 @@ const ChatInput = memo(function ChatInput({
     (state) => state.transferAttachments
   )
   const getProviderByName = useModelProvider((state) => state.getProviderByName)
+  const allProviders = useModelProvider((state) => state.providers)
+  const preferredModel = useModelEvidence((state) => state.preferredModel)
 
   const ingestingDocs = attachments.some(
     (a) => a.type === 'document' && a.processing
@@ -1003,6 +1008,26 @@ const ChatInput = memo(function ChatInput({
       }
     }
     if (!selectedModel && !slashCommands.isBuiltin(typed)) {
+      // Nothing is selected yet: pick the model that should answer and send
+      // once it shows, rather than stopping at a message. A model that went
+      // away is the user's to replace, so that case keeps its own message.
+      if (!unavailableModel) {
+        const pick = resolveReplyModel({
+          providers: allProviders,
+          preferred: preferredModel,
+          lastUsed: getLastUsedModel(),
+        })
+        if (pick) {
+          pendingSendRef.current = {
+            typed,
+            modelId: pick.model,
+            at: Date.now(),
+            options: { steer, allowNoWeb, capabilityAsked },
+          }
+          selectModelProvider(pick.provider, pick.model)
+          return
+        }
+      }
       setMessage(
         unavailableModel
           ? `${unavailableModel} is no longer available. Pick another model in the model menu.`

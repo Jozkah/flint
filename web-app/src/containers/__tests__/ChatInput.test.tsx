@@ -78,14 +78,16 @@ let selectedModelOverride: any = {
 }
 let selectedProviderOverride: any = 'llamacpp'
 const getProviderByNameMock = vi.fn()
+const selectModelProviderMock = vi.fn()
+let providersOverride: any[] = []
 const updateProviderMock = vi.fn()
 vi.mock('@/hooks/useModelProvider', () => ({
   useModelProvider: (selector: any) =>
     selector({
       selectedModel: selectedModelOverride,
       selectedProvider: selectedProviderOverride,
-      providers: [],
-      selectModelProvider: vi.fn(),
+      providers: providersOverride,
+      selectModelProvider: selectModelProviderMock,
       updateProvider: updateProviderMock,
       getProviderByName: getProviderByNameMock,
     }),
@@ -641,6 +643,28 @@ describe('ChatInput', () => {
     expect(
       screen.getByText('Please select a model to start chatting.')
     ).toBeInTheDocument()
+  })
+
+  it('picks a model on send instead of stopping when none is selected', () => {
+    selectedModelOverride = null
+    selectModelProviderMock.mockClear()
+    providersOverride = [
+      { provider: 'llamacpp', models: [{ id: 'big-70B' }, { id: 'small-3B' }] },
+    ]
+    promptState = 'hi'
+    try {
+      renderInput({ onSubmit: vi.fn() })
+      fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+      expect(selectModelProviderMock).toHaveBeenCalledWith(
+        'llamacpp',
+        'small-3B'
+      )
+      expect(
+        screen.queryByText('Please select a model to start chatting.')
+      ).not.toBeInTheDocument()
+    } finally {
+      providersOverride = []
+    }
   })
 
   it("sends with the surface's own model while the global picker is empty", async () => {
