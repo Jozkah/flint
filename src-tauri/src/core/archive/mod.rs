@@ -104,7 +104,7 @@ pub fn purge_cleanup(data: &Path, meta: &ArchiveMeta, _dir: &Path) -> Result<(),
             }
             Ok(())
         }
-        Kind::Room | Kind::Project => Ok(()),
+        Kind::Room | Kind::Project | Kind::Assistant | Kind::Studio => Ok(()),
     }
 }
 
