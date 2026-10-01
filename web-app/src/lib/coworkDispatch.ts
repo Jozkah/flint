@@ -807,7 +807,27 @@ async function routeCoworkTool(
         // Auto mode has nobody to ask: they then run only on sites a saved
         // rule or the project's allowed domains already cover.
         ...(isBrowserTool(toolName)
-          ? { signal, unattended: ctx.mode === 'auto' }
+          ? {
+              signal,
+              unattended: ctx.mode === 'auto',
+              // Through Cowork's own prompt, as for an edit: the session's
+              // grants apply, a subagent is named, and stopping the run
+              // withdraws the question.
+              approve: ({ context, url, alwaysAsk }) =>
+                ctx.onApprove
+                  ? unlessStopped(
+                      ctx.onApprove(
+                        call.toolCallId,
+                        toolName,
+                        call.input,
+                        url ? `Page: ${url}` : undefined,
+                        signal,
+                        alwaysAsk ? { alwaysAsk: true, reason: context } : undefined
+                      ),
+                      signal
+                    )
+                  : Promise.resolve(false),
+            }
           : {}),
         // Live command output for the terminal card, as the chat surface
         // does: raw, so it keeps the colours the model-facing result (which
