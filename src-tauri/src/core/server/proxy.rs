@@ -3180,8 +3180,12 @@ fn upstream_client(timeout_secs: Option<u64>) -> reqwest::Result<Client> {
     let mut builder = Client::builder()
         .redirect(crate::core::net::transport::same_origin_redirects());
     if let Some(secs) = timeout_secs {
+        // The limit is on silence, not on the whole request: a long prefill and
+        // a long generation from a big local model are one request that keeps
+        // sending, and a total timeout cut it off mid-stream.
         builder = builder
-            .timeout(std::time::Duration::from_secs(secs))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .read_timeout(std::time::Duration::from_secs(secs))
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(std::time::Duration::from_secs(30));
     }
