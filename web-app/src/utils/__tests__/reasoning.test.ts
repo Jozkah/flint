@@ -14,6 +14,16 @@ describe('removeReasoningContent', () => {
     expect(removeReasoningContent(input)).toBe('final answer')
   })
 
+  it('strips every closed <think> block, not only the first', () => {
+    const input = '<think>a</think>one <think>b</think>two'
+    expect(removeReasoningContent(input)).toBe('one two')
+  })
+
+  it('strips closed blocks but keeps text after a later unclosed one', () => {
+    const input = '<think>a</think>kept <think>never closed'
+    expect(removeReasoningContent(input)).toBe('kept <think>never closed')
+  })
+
   it('strips multiline <think> block', () => {
     const input = '<think>line1\nline2\nline3</think>result'
     expect(removeReasoningContent(input)).toBe('result')

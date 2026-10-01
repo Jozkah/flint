@@ -1,9 +1,15 @@
 use crate::types::{SystemInfo, SystemUsage};
 use sysinfo::System;
 
+// Hardware probes block (GPU enumeration, a CPU sampling sleep, and on Windows a
+// performance-counter query that can pump COM messages). A synchronous command
+// runs on the main thread, where that froze the window, so each one runs on a
+// blocking thread like `get_system_snapshot` does.
 #[tauri::command]
-pub fn get_system_info() -> SystemInfo {
-    crate::get_system_info()
+pub async fn get_system_info() -> SystemInfo {
+    tauri::async_runtime::spawn_blocking(crate::get_system_info)
+        .await
+        .expect("system info task panicked")
 }
 
 /// Detailed snapshot for the System Monitor page (drives, network
@@ -21,7 +27,13 @@ pub fn refresh_system_info() {
 }
 
 #[tauri::command]
-pub fn get_system_usage() -> SystemUsage {
+pub async fn get_system_usage() -> SystemUsage {
+    tauri::async_runtime::spawn_blocking(sample_system_usage)
+        .await
+        .expect("system usage task panicked")
+}
+
+fn sample_system_usage() -> SystemUsage {
     let mut system = System::new();
     system.refresh_memory();
 

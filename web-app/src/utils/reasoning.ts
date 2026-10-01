@@ -20,13 +20,12 @@ function getReasoning(
  * @returns
  */
 export function removeReasoningContent(content: string): string {
-  // Reasoning content should not be sent to the model
+  // Reasoning content should not be sent to the model. Every closed block goes,
+  // not only the first. A block that was never closed is left alone: it may be
+  // the whole reply of a cut-off turn, or text that merely mentions the tag.
   if (content.includes('<think>')) {
-    const match = content.match(/<think>([\s\S]*?)<\/think>/)
-    if (match?.index !== undefined) {
-      const splitIndex = match.index + match[0].length
-      content = content.slice(splitIndex).trim()
-    }
+    const stripped = content.replace(/<think>[\s\S]*?<\/think>/g, '')
+    if (stripped !== content) content = stripped.trim()
   }
   if (content.includes('<|channel|>analysis<|message|>')) {
     const match = content.match(
