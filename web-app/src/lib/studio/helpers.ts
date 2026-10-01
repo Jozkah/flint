@@ -132,6 +132,16 @@ export function downloadedBytes(
   return done + Math.min(currentBytes, current?.size ?? currentBytes)
 }
 
+/**
+ * The line under a download's bar. Nothing has arrived yet in the first moments
+ * (the request is still going out), and a byte count of zero must not read as
+ * an "unknown size" next to a size that is known.
+ */
+export function downloadProgressText(bytes: number, total: number, format: (n: number) => string): string {
+  if (bytes <= 0) return total > 0 ? `Starting… ${format(total)} to download` : 'Starting…'
+  return total > 0 ? `${format(bytes)} of ${format(total)}` : format(bytes)
+}
+
 /** `diffusion:z-image-turbo:2` is file 2 of that model; anything else is not ours. */
 export function parseDownloadTask(taskId: string): { modelId: string; index: number } | null {
   const match = /^diffusion:(.+):(\d+)$/.exec(taskId)

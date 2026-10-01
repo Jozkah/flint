@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   downloadedBytes,
+  downloadProgressText,
   durationText,
   estimateVideoMs,
   framesForSeconds,
@@ -140,5 +141,19 @@ describe('custom resolution', () => {
     expect(customSize('1280', '720', { min: 256, max: 2048 }, 1024)).toEqual({ width: 1280, height: 720 })
     expect(customSize('', 'x', { min: 256, max: 2048 }, 1024)).toEqual({ width: 1024, height: 1024 })
     expect(customSize('3000', '64', { min: 256, max: 1280 }, 1024)).toEqual({ width: 1280, height: 256 })
+  })
+})
+
+describe('downloadProgressText', () => {
+  const fmt = (n: number) => `${n} B`
+
+  it('says it is starting while nothing has arrived, never "unknown size"', () => {
+    expect(downloadProgressText(0, 100, fmt)).toBe('Starting… 100 B to download')
+    expect(downloadProgressText(0, 0, fmt)).toBe('Starting…')
+  })
+
+  it('shows progress against the total once bytes arrive', () => {
+    expect(downloadProgressText(40, 100, fmt)).toBe('40 B of 100 B')
+    expect(downloadProgressText(40, 0, fmt)).toBe('40 B')
   })
 })
