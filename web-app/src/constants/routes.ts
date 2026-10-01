@@ -30,6 +30,7 @@ export const route = {
     web_search: '/settings/web-search',
     agent_tools: '/settings/agent-tools',
     memory: '/settings/memory',
+    schedules: '/settings/schedules',
     permissions: '/settings/permissions',
     hardware: '/settings/hardware',
     assistant: '/settings/assistant',
