@@ -60,6 +60,8 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { ExportSubmenu } from '@/components/ExportMenu'
+import { docFromUIMessage } from '@/lib/exportDoc'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -1039,6 +1041,10 @@ export const MessageItem = memo(
               <Copy className="mr-2 size-4" />
               {t('chat:actions.copy')}
             </DropdownMenuItem>
+
+            <ExportSubmenu
+              build={() => docFromUIMessage(message, undefined, new Date())}
+            />
 
             {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
               <DropdownMenuItem onClick={handleRegenerate}>

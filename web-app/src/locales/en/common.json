@@ -232,6 +232,26 @@
     "user": "you",
     "unknownAgent": "an unknown agent (recorded before Flint kept this)"
   },
+  "export": {
+    "menu": "Export",
+    "markdown": "Markdown",
+    "markdownFull": "Markdown with tool details",
+    "obsidian": "Obsidian note",
+    "pdf": "PDF (print)",
+    "image": "Image (PNG)",
+    "header": "Export this chat",
+    "saved": "Exported to {{path}}.",
+    "printOpened": "Print dialog opened. Choose Save as PDF to keep a file.",
+    "redacted": "{{count}} credential(s) were left out.",
+    "failed": "Could not export: {{reason}}",
+    "nothing": "There is nothing to export here.",
+    "command": {
+      "markdown": "Export current chat as Markdown",
+      "obsidian": "Export current chat as Obsidian note",
+      "pdf": "Export current chat as PDF",
+      "image": "Export current chat as image"
+    }
+  },
   "exportSession": "Export session…",
   "importSession": "Import session…",
   "sessionExported": "Session exported. {{count}} credential(s) were left out.",

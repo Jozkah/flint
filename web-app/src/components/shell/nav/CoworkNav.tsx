@@ -79,6 +79,8 @@ import { FileActivityDialog } from '@/containers/dialogs/FileActivityDialog'
 import SkillsManagerDialog from '@/containers/dialogs/SkillsManagerDialog'
 import { loadToolActivity } from '@/lib/toolActivity'
 import { buildBundle, exportBundle, openBundle } from '@/lib/sessionBundle'
+import { ExportSubmenu } from '@/components/ExportMenu'
+import { docFromCowork } from '@/lib/exportDoc'
 import {
   describeRestoreItem,
   exportHandoff,
@@ -287,6 +289,12 @@ const SessionItem = memo(function SessionItem({
             <Download />
             <span>{t('common:exportSession')}</span>
           </DropdownMenuItem>
+          {/* Readable copies of the conversation: Markdown, Obsidian, PDF and
+              image. Unlike the session export above these cannot be imported
+              back, and they omit tool bodies and machine paths by default. */}
+          <ExportSubmenu
+            build={() => docFromCowork(session, new Date())}
+          />
           {/* AH-210. The same export, plus which folder (by name, branch and
               commit) and which model, so another computer can continue it.
               Paths from this machine are replaced before anything is
