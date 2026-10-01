@@ -6,7 +6,7 @@ import type { PushPrefs } from '@/lib/remote/protocol'
 import { Grp, IRow } from '../ui/ios'
 import { act, describeError, toast } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
-import { DEFAULT_PUSH, disablePush, enablePush, minToTime, pushSupport, timeToMin, withOffset, type PushSupport } from '../state/push'
+import { DEFAULT_PUSH, disablePush, enablePush, minToTime, pushSupport, supportText, timeToMin, withOffset, type PushSupport } from '../state/push'
 
 const TYPES: [keyof PushPrefs, string][] = [
   ['approvals', 'An approval is waiting'],
@@ -18,14 +18,6 @@ const TYPES: [keyof PushPrefs, string][] = [
   ['chatReply', 'A chat reply finishes'],
 ]
 
-export function supportText(s: PushSupport): string | null {
-  if (s.ok) return null
-  if (s.why === 'ios-home-screen')
-    return 'On iPhone and iPad, notifications need iOS 16.4 or later and Flint added to the Home Screen: Share > Add to Home Screen, then open it from there.'
-  if (s.why === 'insecure')
-    return 'Notifications need a trusted HTTPS address: Tailscale with its certificate, or a certificate you installed. A self-signed certificate on home Wi-Fi does not count, even after you accept it.'
-  return 'This browser does not support web notifications.'
-}
 
 export default function PushSettings({ support = pushSupport() }: { support?: PushSupport }) {
   const { data } = useRpc('push.get', {}, support.ok)

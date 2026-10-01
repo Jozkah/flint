@@ -106,3 +106,62 @@ fn tickets_expire_and_go_with_the_device() {
     b.revoke_device("d1");
     assert!(b.check(&t, now).is_none());
 }
+
+mod http {
+    use std::sync::Arc;
+
+    use super::super::auth::DeviceStore;
+    use super::super::hub::*;
+
+    struct NoWindow;
+    impl Frontend for NoWindow {
+        fn rpc(&self, _: &RpcRequestEvent) -> bool {
+            false
+        }
+        fn pairing_request(&self, _: &PairingRequestEvent) {}
+        fn devices_changed(&self) {}
+    }
+
+    #[tokio::test]
+    async fn preview_needs_a_live_ticket_and_upload_needs_a_token() {
+        let hub = Arc::new(RemoteHub::new(Default::default(), DeviceStore::in_memory(), Arc::new(NoWindow), None));
+        let server = super::super::server::start(hub.clone(), "127.0.0.1:0".parse().unwrap(), None, None)
+            .await
+            .unwrap();
+        let base = format!("http://127.0.0.1:{}", server.addr.port());
+        let c = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build().unwrap();
+        // No ticket: nothing to proxy.
+        let r = c.get(format!("{base}/remote/v1/preview/nope/")).send().await.unwrap();
+        assert_eq!(r.status(), 404);
+        // A sandboxed page's Origin: null is accepted only on preview paths.
+        let r = c.post(format!("{base}/remote/v1/upload")).header("origin", "null").body("{}").send().await.unwrap();
+        assert_eq!(r.status(), 403);
+        let r = c.post(format!("{base}/remote/v1/upload")).body("{}").send().await.unwrap();
+        assert_eq!(r.status(), 401);
+        // An absolute path with a ticket in the Referer is sent under it.
+        hub.set_preview(super::super::preview::PreviewTarget::new("s1", "http://127.0.0.1:9/"));
+        let start = hub.start_pairing();
+        let claim = hub.claim_pairing("127.0.0.1".parse().unwrap(), &start.code, "P").unwrap();
+        let dev = hub.confirm_pairing(&claim.request_id, true).unwrap().unwrap();
+        let (ticket, _) = hub.preview_ticket(&dev.id, "s1").unwrap();
+        let r = c
+            .get(format!("{base}/src/main.tsx?v=1"))
+            .header("referer", format!("{base}/remote/v1/preview/{ticket}/"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 307);
+        assert_eq!(
+            r.headers()["location"].to_str().unwrap(),
+            format!("/remote/v1/preview/{ticket}/src/main.tsx?v=1")
+        );
+        assert!(r.headers()["content-security-policy"].to_str().unwrap().starts_with("sandbox"));
+        // Nothing listens on :9, so the proxy says so rather than hanging.
+        let r = c.get(format!("{base}/remote/v1/preview/{ticket}/")).header("origin", "null").send().await.unwrap();
+        assert_eq!(r.status(), 502);
+        hub.revoke(&dev.id);
+        let r = c.get(format!("{base}/remote/v1/preview/{ticket}/")).send().await.unwrap();
+        assert_eq!(r.status(), 404);
+        server.stop();
+    }
+}

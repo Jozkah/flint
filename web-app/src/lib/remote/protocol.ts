@@ -207,6 +207,8 @@ export type CoworkDetail = {
   model: { id: string; provider: string } | null
   todos: CoworkTodo[]
   usage: { inputTokens: number; outputTokens: number } | null
+  /** The last request against the session's context window (the ring). */
+  context?: { usedTokens: number; windowTokens: number | null }
 }
 
 /** A waiting permission prompt, worded as the desktop's approval card. */
@@ -580,6 +582,9 @@ export type CoworkPreviewResult = {
   /** The file's text (HTML, SVG, Markdown), capped. */
   content: string | null
   note?: string
+  /** The desktop shows this session's app live (a local URL); a phone can
+   * view it through the server with a `preview.ticket`. */
+  live?: { url: string }
 }
 
 export type HfVariant = { quant: string; sizeBytes: number | null; fits: boolean | null }
@@ -743,6 +748,8 @@ export type RemoteMethods = {
   'push.unsubscribe': { params: Record<string, never>; result: { ok: true } }
   'push.prefs': { params: { prefs: PushPrefs }; result: { prefs: PushPrefs } }
   'push.test': { params: Record<string, never>; result: { sent: number } }
+  /** Answered by the server: a path to load the session's live preview. */
+  'preview.ticket': { params: { id: string }; result: { path: string } }
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
   'models.list': { params: Record<string, never>; result: ModelsListResult }

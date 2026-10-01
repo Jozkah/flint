@@ -27,8 +27,8 @@ export type RemoteHandler<M extends RemoteMethod> = (
   ctx: RemoteHandlerContext
 ) => Promise<RemoteMethods[M]['result']> | RemoteMethods[M]['result']
 
-/** `push.*` is answered by the server itself and never reaches the window. */
-export type ServerMethod = Extract<RemoteMethod, `push.${string}`>
+/** `push.*` and `preview.ticket` are answered by the server itself and never reaches the window. */
+export type ServerMethod = Extract<RemoteMethod, `push.${string}` | 'preview.ticket'>
 export type RemoteHandlers = { [M in Exclude<RemoteMethod, ServerMethod>]: RemoteHandler<M> }
 
 export type RemoteReply = { result: unknown } | { error: RemoteError }

@@ -101,3 +101,12 @@ export async function disablePush(): Promise<void> {
     await client().rpc('push.unsubscribe', {})
   }
 }
+
+export function supportText(s: PushSupport): string | null {
+  if (s.ok) return null
+  if (s.why === 'ios-home-screen')
+    return 'On iPhone and iPad, notifications need iOS 16.4 or later and Flint added to the Home Screen: Share > Add to Home Screen, then open it from there.'
+  if (s.why === 'insecure')
+    return 'Notifications need a trusted HTTPS address: Tailscale with its certificate, or a certificate you installed. A self-signed certificate on home Wi-Fi does not count, even after you accept it.'
+  return 'This browser does not support web notifications.'
+}

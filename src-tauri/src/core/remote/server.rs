@@ -19,6 +19,9 @@
 //! `Sec-WebSocket-Protocol` (`flint-auth.<token>`) or as its first message,
 //! never in the URL, where it would end up in logs and history.
 //!
+//! The live preview (`preview.rs`) is the one exception to the origin rule:
+//! its sandboxed pages send `Origin: null`, accepted on preview requests only.
+//!
 //! Browser defences: the `Host` header must name this listener (so a DNS
 //! rebinding page cannot reach it under its own name), and a request that
 //! carries an `Origin` must come from this listener's own origin. Nothing is
@@ -111,7 +114,8 @@ fn with_security_headers(mut resp: Resp) -> Resp {
         "x-content-type-options",
         HeaderValue::from_static("nosniff"),
     );
-    h.insert("referrer-policy", HeaderValue::from_static("no-referrer"));
+    h.entry("referrer-policy")
+        .or_insert(HeaderValue::from_static("no-referrer"));
     h.entry("x-frame-options")
         .or_insert(HeaderValue::from_static("DENY"));
     h.entry(header::CACHE_CONTROL)
@@ -265,11 +269,11 @@ async fn route(
     let path = req.uri().path().to_string();
     let method = req.method().clone();
 
-    if let Some((ticket, upstream, from_cookie)) = preview_req {
+    if let Some((ticket, upstream, outside)) = preview_req {
         if method != Method::GET && method != Method::HEAD {
             return error(StatusCode::METHOD_NOT_ALLOWED, "method", "Method not allowed");
         }
-        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, !from_cookie, listener.https).await;
+        return proxy_preview(&hub, &ticket, &upstream, method == Method::HEAD, outside, listener.https).await;
     }
 
     if path == "/" || path == "/m" {
@@ -531,10 +535,11 @@ async fn upload_finish(hub: &RemoteHub, device: &Device, id: &str) -> Resp {
 // Live preview (see preview.rs)
 // ---------------------------------------------------------------------------
 
-/// `(ticket, upstream path and query, came from the cookie)` when `req` is
-/// for the live preview: under `/remote/v1/preview/<ticket>/`, or any other
-/// path outside the app and the API that carries the preview cookie (a dev
-/// server's absolute paths).
+/// `(ticket, upstream path and query, outside the ticketed path)` when
+/// `req` is for the live preview: under `/remote/v1/preview/<ticket>/`, or
+/// any other path outside the app and the API that a preview page asked for
+/// (a dev server's absolute paths, `/src/main.tsx`), known by its `Referer`
+/// (the ticketed page) or, failing that, the preview cookie.
 fn preview_request<B>(req: &Request<B>) -> Option<(String, String, bool)> {
     let path = req.uri().path();
     let query = req.uri().query().map(|q| format!("?{q}")).unwrap_or_default();
@@ -545,18 +550,50 @@ fn preview_request<B>(req: &Request<B>) -> Option<(String, String, bool)> {
     if path == "/" || path == "/m" || path.starts_with("/m/") {
         return None;
     }
-    let ticket = req
+    let from_referer = req
         .headers()
-        .get(header::COOKIE)
+        .get(header::REFERER)
         .and_then(|v| v.to_str().ok())
-        .and_then(preview::ticket_from_cookie)?;
-    Some((ticket.to_string(), format!("{path}{query}"), true))
+        .and_then(|r| url::Url::parse(r).ok())
+        .and_then(|u| {
+            let api = u.path().strip_prefix(API_PREFIX)?.to_string();
+            preview::split_preview_path(&api).map(|(t, _)| t.to_string())
+        });
+    let ticket = from_referer.or_else(|| {
+        req.headers()
+            .get(header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(preview::ticket_from_cookie)
+            .map(str::to_string)
+    })?;
+    Some((ticket, format!("{path}{query}"), true))
 }
 
-async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, set_cookie: bool, https: bool) -> Resp {
+/// Headers every preview response carries: sandboxed (an opaque origin),
+/// framed only by the phone app, readable by that opaque origin (module
+/// scripts are CORS requests), and sending its full URL as `Referer` to this
+/// listener so absolute paths find their ticket.
+fn preview_headers(b: hyper::http::response::Builder) -> hyper::http::response::Builder {
+    b.header("content-security-policy", preview::SANDBOX_CSP)
+        .header("x-frame-options", "SAMEORIGIN")
+        .header("referrer-policy", "same-origin")
+        .header("access-control-allow-origin", "null")
+        .header(header::CACHE_CONTROL, "no-store")
+}
+
+async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool, outside: bool, https: bool) -> Resp {
     let Some(origin) = hub.preview_origin_for(ticket) else {
         return error(StatusCode::NOT_FOUND, "not_found", "This preview has ended");
     };
+    // An absolute path a preview page asked for: send it under its ticket,
+    // so what it loads in turn names the ticket too.
+    if outside {
+        return preview_headers(Response::builder().status(StatusCode::TEMPORARY_REDIRECT))
+            .header(header::LOCATION, format!("{API_PREFIX}{}{ticket}{upstream}", preview::PREVIEW_PREFIX))
+            .body(Full::new(Bytes::new()))
+            .expect("static response parts are valid");
+    }
+    let set_cookie = true;
     let Some(url) = preview::upstream_url(&origin, upstream) else {
         return error(StatusCode::FORBIDDEN, "forbidden", "Forbidden");
     };
@@ -587,11 +624,7 @@ async fn proxy_preview(hub: &RemoteHub, ticket: &str, upstream: &str, head: bool
             out = out.header(header::LOCATION, loc);
         }
     }
-    out = out
-        .header("content-security-policy", preview::SANDBOX_CSP)
-        // Framed by the phone app (same origin), nowhere else.
-        .header("x-frame-options", "SAMEORIGIN")
-        .header(header::CACHE_CONTROL, "no-store");
+    out = preview_headers(out);
     if set_cookie {
         out = out.header(
             header::SET_COOKIE,

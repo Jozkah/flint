@@ -183,6 +183,8 @@ pub struct RemoteHub {
     visible: Mutex<HashMap<String, usize>>,
     vapid: Mutex<Option<Arc<VapidKey>>>,
     http: reqwest::Client,
+    /// For the live preview: loopback only, so never through a proxy.
+    local_http: reqwest::Client,
     uploads: Mutex<UploadBook>,
     upload_dir: Mutex<Option<PathBuf>>,
     preview: Mutex<Option<PreviewTarget>>,
@@ -211,6 +213,11 @@ impl RemoteHub {
             visible: Mutex::new(HashMap::new()),
             vapid: Mutex::new(None),
             http: reqwest::Client::new(),
+            local_http: reqwest::Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .unwrap_or_default(),
             uploads: Mutex::new(UploadBook::default()),
             upload_dir: Mutex::new(None),
             preview: Mutex::new(None),
@@ -570,8 +577,9 @@ impl RemoteHub {
             .map(|t| t.origin)
     }
 
+    /// The client for the live preview (loopback, no proxy, no redirects).
     pub fn http(&self) -> &reqwest::Client {
-        &self.http
+        &self.local_http
     }
 
     // -- push ----------------------------------------------------------------

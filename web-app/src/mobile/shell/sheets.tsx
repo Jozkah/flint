@@ -301,7 +301,8 @@ function TokensSheet({ props }: { props: Props }) {
     : undefined
   if (target === 'cowork') {
     const u = cowork.data?.usage
-    return <><Title>Context</Title>{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
+    const c = cowork.data?.context
+    return <><Title>Context</Title>{c?.windowTokens ? <Kv k="Context window" v={`${c.usedTokens.toLocaleString()} of ${c.windowTokens.toLocaleString()} tokens (${Math.round((c.usedTokens / c.windowTokens) * 100)}%)`} /> : null}{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
   }
   if (target !== 'chat') return <><Title>Context</Title><ContextCard c={null} /></>
   return <><Title>Context</Title><ContextCard c={d?.context ?? null} speed={d?.speed} onCompact={compactNow} />

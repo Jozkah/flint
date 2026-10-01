@@ -9,6 +9,7 @@ import { appExtras } from '@/lib/remote/appExtras'
 import { appStudio, appVoice, startStudioForwarding } from '@/lib/remote/appStudio'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
 import { startPushForwarding } from '@/lib/remote/push'
+import { startPreviewForwarding } from '@/lib/remote/preview'
 import {
   REMOTE_EVENT_DEVICES_CHANGED,
   REMOTE_EVENT_PAIRING_REQUEST,
@@ -75,6 +76,11 @@ export function useRemoteBridge() {
   // server sends only to phones that are not looking.
   useEffect(() => {
     if (!IS_TAURI || !pushable) return
-    return startPushForwarding((event) => void remoteApi.emitEvent(event).catch(() => {}))
+    const stops = [
+      startPushForwarding((event) => void remoteApi.emitEvent(event).catch(() => {})),
+      // The Cowork live preview a phone may view through the server.
+      startPreviewForwarding((p) => void remoteApi.setPreview(p?.sessionId ?? null, p?.url ?? null).catch(() => {})),
+    ]
+    return () => stops.forEach((stop) => stop())
   }, [pushable])
 }
