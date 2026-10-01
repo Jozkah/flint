@@ -258,6 +258,8 @@ vi.mock('@/containers/ChatInput', () => ({
   default: (props: any) => (
     <div data-testid="composer">
       {props.surfaceControls}
+      {props.belowLeft}
+      {props.modelControl}
       <button data-testid="submit" onClick={() => props.onSubmit(h.text)}>
         send
       </button>

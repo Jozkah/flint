@@ -29,6 +29,8 @@ type ModelSettingProps = {
   /** Controlled open state, so other surfaces can open the settings. */
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** No button of its own: the sheet is opened from elsewhere via `open`. */
+  hideTrigger?: boolean
 }
 
 export function ModelSetting({
@@ -36,6 +38,7 @@ export function ModelSetting({
   provider,
   open,
   onOpenChange,
+  hideTrigger = false,
 }: ModelSettingProps) {
   const { updateProvider } = useModelProvider()
   const { t } = useTranslation()
@@ -256,18 +259,20 @@ export function ModelSetting({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="text-muted-foreground pointer-coarse:size-11"
-          aria-label={t('common:modelSettings.title', {
-            modelId: getModelDisplayName(model),
-          })}
-        >
-          <SlidersHorizontal aria-hidden />
-        </Button>
-      </SheetTrigger>
+      {!hideTrigger && (
+        <SheetTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground pointer-coarse:size-11"
+            aria-label={t('common:modelSettings.title', {
+              modelId: getModelDisplayName(model),
+            })}
+          >
+            <SlidersHorizontal aria-hidden />
+          </Button>
+        </SheetTrigger>
+      )}
       {/* The Atelier inspector: paper, 360px beside the page on desktop, the
           whole screen on a phone. */}
       <SheetContent className="w-full max-w-none gap-0 border-l border-border bg-card sm:w-[var(--inspector-w)] sm:max-w-[var(--inspector-w)]">

@@ -89,12 +89,6 @@ function Index() {
               composer's own picker, which used to ask for this, is not
               rendered, so without it nothing was ever selected. */}
           {/* On a phone the model sits on the frame's header row instead. */}
-          {!isPhone && (
-            <DropdownModelProvider
-              model={threadModel}
-              useLastUsedModel={!threadModel}
-            />
-          )}
           <NewTemporaryChatButton />
         </PageHeaderRow>
       </HeaderPage>
@@ -162,6 +156,16 @@ function Index() {
               showSpeedToken={false}
               model={threadModel}
               initialMessage={true}
+              groupOptions
+              modelControl={
+                isPhone ? undefined : (
+                  <DropdownModelProvider
+                    variant="quiet"
+                    model={threadModel}
+                    useLastUsedModel={!threadModel}
+                  />
+                )
+              }
             />
           </div>
         </FrameBody>

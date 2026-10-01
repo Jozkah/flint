@@ -135,15 +135,14 @@ function ProjectPageContent() {
               {t('projects.collectionHint')}
             </p>
           </div>
-          <div className="min-w-0 shrink">
-            <DropdownModelProvider />
-          </div>
         </div>
         <div className="grid w-full grid-cols-1 gap-4 min-[1100px]:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-w-0 flex-col gap-4">
             <ChatInput
               showSpeedToken={false}
               initialMessage={true}
+              groupOptions
+              modelControl={<DropdownModelProvider variant="quiet" />}
               projectId={projectId}
               projectAssistantId={project.assistantId}
             />

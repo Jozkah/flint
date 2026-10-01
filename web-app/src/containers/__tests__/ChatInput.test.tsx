@@ -598,9 +598,11 @@ describe('ChatInput', () => {
   // chat was last open must not take its Reasoning control away.
   it('keeps the Reasoning control in Cowork while the current chat is in agent mode', () => {
     agentModeOn = true
+    // A model that sizes its own thinking has no effort bar, so the menu is
+    // its reasoning control.
     const modelSelection = {
-      selectedProvider: 'llamacpp',
-      selectedModel: { id: 'model-a', capabilities: ['tools'] },
+      selectedProvider: 'google',
+      selectedModel: { id: 'gemini-3-pro', capabilities: ['tools'] },
     }
     const { unmount } = renderInput({ modelSelection })
     expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
@@ -613,6 +615,21 @@ describe('ChatInput', () => {
     expect(
       screen.getByRole('button', { name: /^Reasoning:/ })
     ).toBeInTheDocument()
+  })
+
+  // The effort bar under the composer replaces the Reasoning menu wherever the
+  // model has one, so the two are never on screen together.
+  it('has no Reasoning menu for a model that has the effort bar', () => {
+    renderInput({
+      modelSelection: {
+        selectedProvider: 'llamacpp',
+        selectedModel: { id: 'model-a', capabilities: ['tools'] },
+      },
+      slashSurface: 'cowork',
+      modelOverrideScope: 'session-1',
+    })
+    expect(screen.queryByRole('button', { name: /^Reasoning:/ })).toBeNull()
+    expect(screen.getByTestId('composer-effort')).toBeInTheDocument()
   })
 
   it('shows "please select a model" inline message when no model selected', () => {

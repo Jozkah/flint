@@ -5,7 +5,12 @@ import {
   isThinkingBudgetLevelKey,
   type ThinkingBudgetLevelKey,
 } from './thinkingBudget'
-import { isOpenAICompatibleReasoningProvider } from './modelEffort'
+import {
+  clampEffort,
+  effortProfile,
+  isOpenAICompatibleReasoningProvider,
+  isThinkingOff,
+} from './modelEffort'
 
 type ReasoningChoice = 'auto' | 'on' | 'off' | undefined
 
@@ -125,7 +130,15 @@ export function buildReasoningProviderOptions(
     // reasoningSummary surfaces the (otherwise hidden) reasoning as summary
     // parts — it requires the Responses API, which model-factory selects when
     // an effort level is set.
-    const effort = level ? LEVEL_TO_OPENAI_EFFORT[level] : undefined
+    // Off is `none`, where the model takes it; the others always reason.
+    if (isThinkingOff(model) && effortProfile(providerId, model).canDisable) {
+      return { openai: { reasoningEffort: 'none' } }
+    }
+    // Clamped to what this model takes: `xhigh` is a 400 before gpt-5.2.
+    const takes = effortProfile(providerId, model).levels
+    const picked =
+      level && level !== 'unlimited' ? clampEffort(level, takes) : null
+    const effort = picked ? LEVEL_TO_OPENAI_EFFORT[picked] : undefined
     return effort
       ? { openai: { reasoningEffort: effort, reasoningSummary: 'auto' } }
       : undefined
@@ -152,9 +165,17 @@ export function buildReasoningProviderOptions(
 export function buildReasoningBodyParams(
   providerId: string | null | undefined,
   model: Model | null | undefined
-): Record<string, string> | undefined {
+): Record<string, unknown> | undefined {
   if (!isOpenAICompatibleReasoningProvider(providerId, model)) return undefined
+  const { levels, canDisable } = effortProfile(providerId, model)
+  // Switched off: the template switch every compatible server reads, and no
+  // effort, since there is nothing to size.
+  if (canDisable && isThinkingOff(model)) {
+    return { chat_template_kwargs: { enable_thinking: false } }
+  }
   const level = readBudgetLevel(model)
   if (!level || level === 'unlimited') return undefined
-  return { reasoning_effort: level }
+  // Clamped to what this model takes (gpt-oss has no `xhigh`).
+  const sent = clampEffort(level, levels)
+  return sent ? { reasoning_effort: sent } : undefined
 }

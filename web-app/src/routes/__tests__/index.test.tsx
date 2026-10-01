@@ -40,9 +40,10 @@ vi.mock('@/hooks/useTools', () => ({
 }))
 
 vi.mock('@/containers/ChatInput', () => ({
-  default: ({ model, initialMessage }: any) => (
+  default: ({ model, initialMessage, modelControl }: any) => (
     <div data-testid="chat-input" data-initial={String(initialMessage)}>
       {model ? model.id : 'no-model'}
+      {modelControl}
     </div>
   ),
 }))

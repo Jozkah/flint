@@ -6097,6 +6097,10 @@ export function CoworkPage() {
                 // Assistant, sampling, web search and reasoning behind one
                 // Options button: the Cowork row stays quiet.
                 groupOptions
+                // Under the composer, as Claude lays it out: what the run may
+                // do on the left; the effort and the model on the right.
+                belowLeft={!paneChrome ? runControls('quiet') : undefined}
+                modelControl={!paneChrome ? quietModelSelector : undefined}
                 surfaceControls={
                   <>
                     {paneChrome ? sessionControls : phone ? workspacePill : null}
@@ -6112,24 +6116,6 @@ export function CoworkPage() {
                   </>
                 }
               />
-              {!paneChrome && (
-                // Under the composer, as Claude lays it out: what the run may
-                // do on the left, the model on the right. Wraps, never clips.
-                <div
-                  data-testid="cowork-run-controls"
-                  className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
-                >
-                  {/* The run controls stay on one line; the model takes the
-                      rest and truncates its name, and only when not even a
-                      short name fits does it drop to a line of its own. */}
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    {runControls('quiet')}
-                  </div>
-                  <div className="ml-auto flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
-                    {quietModelSelector}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
           </FrameBody>

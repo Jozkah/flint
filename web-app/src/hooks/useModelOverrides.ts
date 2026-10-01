@@ -11,7 +11,11 @@ import {
   type ModelOverrides,
   type ModelSettingValue,
 } from '@/lib/modelOverrides'
-import { EFFORT_SETTING_KEY, supportsEffort } from '@/lib/modelEffort'
+import {
+  EFFORT_SETTING_KEY,
+  effortProfile,
+  supportsEffort,
+} from '@/lib/modelEffort'
 
 /**
  * Each chat's model-setting overrides, keyed by thread id.
@@ -112,7 +116,12 @@ export const useModelOverrides = create<ModelOverridesState>()(
           const pruned = pruneOverrides(
             current,
             (key) =>
-              key === EFFORT_SETTING_KEY && !supportsEffort(providerId, model)
+              (key === EFFORT_SETTING_KEY &&
+                !supportsEffort(providerId, model)) ||
+              // Off is set from the effort bar, and only a model that can be
+              // told not to think has one.
+              (key === 'reasoning' &&
+                !effortProfile(providerId, model).canDisable)
           )
           if (pruned === current) return { byThread: s.byThread }
           return {

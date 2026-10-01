@@ -1222,7 +1222,12 @@
   },
   "reasoningEffort": {
     "label": "Reasoning effort",
+    "short": "Effort",
     "modelDefault": "Model default",
+    "faster": "Faster",
+    "smarter": "Smarter",
+    "off": "Off",
+    "recommended": "Recommended",
     "reset": "Reset to global",
     "resetAll": "Reset to global defaults",
     "overridden": "Set for this chat"

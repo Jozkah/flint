@@ -211,8 +211,9 @@ vi.mock('@/containers/DropdownModelProvider', () => ({
 }))
 
 vi.mock('@/containers/ChatInput', () => ({
-  default: ({ onSubmit, onStop, chatStatus }: any) => (
+  default: ({ onSubmit, onStop, chatStatus, modelControl }: any) => (
     <div data-testid="chat-input">
+      {modelControl}
       <span data-testid="chat-status">{chatStatus}</span>
       <button
         data-testid="chat-send"

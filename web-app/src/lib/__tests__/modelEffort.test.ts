@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   EFFORT_LEVELS,
   EFFORT_SETTING_KEY,
+  clampEffort,
   effortLabel,
   effortOf,
+  effortProfile,
   isEffortLevel,
   supportedEffortLevels,
   supportsEffort,
@@ -37,10 +39,111 @@ const reasoningModel = (id: string, reasoning: boolean, effort?: string): Model 
   }) as unknown as Model
 
 describe('which levels a provider actually honours', () => {
-  it('offers all four for OpenAI, which maps each to a distinct effort', () => {
-    expect(supportedEffortLevels('openai', model('gpt-5'))).toEqual(
-      EFFORT_LEVELS
-    )
+  it('offers OpenAI the levels its generation takes', () => {
+    // `xhigh` arrived with gpt-5.2 and the codex-max models.
+    for (const id of ['gpt-5', 'gpt-5.1', 'o3', 'o4-mini']) {
+      expect(supportedEffortLevels('openai', model(id)), id).toEqual([
+        'low',
+        'medium',
+        'high',
+      ])
+    }
+    for (const id of ['gpt-5.2', 'gpt-5.5', 'gpt-5.1-codex-max']) {
+      expect(supportedEffortLevels('openai', model(id)), id).toEqual(
+        EFFORT_LEVELS
+      )
+    }
+  })
+
+  it('marks the level each model runs at when none is chosen', () => {
+    expect(effortProfile('openai', model('gpt-5')).recommended).toBe('medium')
+    expect(
+      effortProfile('anthropic', model('claude-opus-4-5')).recommended
+    ).toBe('medium')
+    expect(
+      effortProfile('pxa', reasoningModel('pxa-qwen3.8-27b', false)).recommended
+    ).toBe('medium')
+    // llama.cpp defaults to an unbounded budget; the highest stop is nearest.
+    expect(effortProfile('llamacpp', model('qwen3')).recommended).toBe('xhigh')
+    expect(effortProfile('google', model('gemini-3-pro'))).toEqual({
+      levels: [],
+      recommended: null,
+      canDisable: false,
+    })
+  })
+
+  it('knows which models can be told not to think', () => {
+    const can = (p: string, m: Model) => effortProfile(p, m).canDisable
+    expect(can('llamacpp', model('qwen3'))).toBe(true)
+    expect(can('anthropic', model('claude-opus-4-5'))).toBe(true)
+    expect(can('openai', model('gpt-5.1'))).toBe(true)
+    expect(can('openai', model('gpt-5.2'))).toBe(true)
+    // These always reason.
+    expect(can('openai', model('gpt-5'))).toBe(false)
+    expect(can('openai', model('o3'))).toBe(false)
+    expect(can('openai', model('gpt-5.1-codex'))).toBe(false)
+    expect(can('vllm', reasoningModel('gpt-oss-120b', true))).toBe(false)
+    expect(can('pxa', reasoningModel('pxa-qwen3.8-27b', false))).toBe(true)
+  })
+
+  it('turns thinking off in the request where the model can be told to', () => {
+    const off = (m: Model): Model =>
+      ({
+        ...(m as unknown as Record<string, unknown>),
+        settings: { reasoning: { controller_props: { value: 'off' } } },
+      }) as unknown as Model
+    // Compatible server: the template switch, and no effort.
+    expect(
+      buildReasoningBodyParams('pxa', off(reasoningModel('pxa-qwen3.8-27b', false)))
+    ).toEqual({ chat_template_kwargs: { enable_thinking: false } })
+    // OpenAI: `none`, from gpt-5.1.
+    expect(
+      buildReasoningProviderOptions('openai', off(model('gpt-5.1')))
+    ).toEqual({ openai: { reasoningEffort: 'none' } })
+    // A model that always reasons ignores Off rather than sending a 400.
+    expect(
+      buildReasoningProviderOptions('openai', off(model('gpt-5')))
+    ).toBeUndefined()
+    expect(
+      buildReasoningBodyParams('vllm', off(reasoningModel('gpt-oss-120b', true)))
+    ).toBeUndefined()
+  })
+
+  it('takes gpt-oss to `high` and no further, wherever it is hosted', () => {
+    expect(
+      supportedEffortLevels('vllm', reasoningModel('gpt-oss-120b', true))
+    ).toEqual(['low', 'medium', 'high'])
+  })
+
+  it('clamps a level the model does not take to the nearest it does', () => {
+    expect(clampEffort('xhigh', ['low', 'medium', 'high'])).toBe('high')
+    expect(clampEffort('medium', ['low', 'medium', 'high'])).toBe('medium')
+    expect(clampEffort('low', ['medium', 'high'])).toBe('medium')
+    expect(clampEffort('high', [])).toBeNull()
+  })
+
+  it('never sends a level the model does not take', () => {
+    const withLevel = (m: Model, level: string): Model =>
+      ({
+        ...(m as unknown as Record<string, unknown>),
+        settings: {
+          [EFFORT_SETTING_KEY]: { controller_props: { value: level } },
+        },
+      }) as unknown as Model
+    expect(
+      buildReasoningBodyParams(
+        'vllm',
+        withLevel(reasoningModel('gpt-oss-120b', true), 'xhigh')
+      )
+    ).toEqual({ reasoning_effort: 'high' })
+    expect(
+      JSON.stringify(
+        buildReasoningProviderOptions(
+          'openai',
+          withLevel(model('gpt-5'), 'xhigh')
+        )
+      )
+    ).toContain('"reasoningEffort":"high"')
   })
 
   it('offers all four for llama.cpp, which sizes a budget from each', () => {
@@ -99,6 +202,20 @@ describe('which levels a provider actually honours', () => {
       []
     )
     expect(supportsEffort('pxa', reasoningModel('pxa-7b', false))).toBe(false)
+  })
+
+  it('offers all four for a hand-added server whose model id names a reasoning family', () => {
+    // A custom OpenAI-compatible server never carries the `reasoning` tag the
+    // catalogue gives a hosted model; the id is the only signal it has.
+    for (const id of ['pxa-qwen3.8-27b', 'Qwen3-32B', 'deepseek-r1']) {
+      expect(
+        supportedEffortLevels('Qwen 3.8 500k (8080)', reasoningModel(id, false)),
+        id
+      ).toEqual(EFFORT_LEVELS)
+    }
+    expect(
+      supportedEffortLevels('pxa', reasoningModel('llama-3.1-8b', false))
+    ).toEqual([])
   })
 
   it('offers none for mistral/xai even when the model reasons', () => {
