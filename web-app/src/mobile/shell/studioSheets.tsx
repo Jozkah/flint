@@ -162,15 +162,27 @@ export function StudioItemSheet({ item }: { item?: StudioItemWire }) {
 }
 
 export function VoiceSetupSheet() {
+  const check = async () => {
+    try {
+      const r = await client().rpc('voice.status', {})
+      invalidate(['voice.status'])
+      if (r.ready) {
+        closeSheet()
+        toast('Voice input is ready')
+      } else toast('Not set up yet')
+    } catch {
+      toast("Can't reach your computer")
+    }
+  }
   return (
     <>
       <Grab />
-      <h3>Set up dictation on the computer</h3>
+      <h3>Set up voice input on your computer</h3>
       <p className="sh">
-        Your words are turned into text by a voice model on your computer. Open Flint there, press the microphone in any message box and follow the setup. Then dictation works from this phone too.
+        Your words are turned into text by a voice model on your computer. On the computer, open Flint, press the microphone beside Send in any message box and follow the setup to download the voice model. Then dictation works from this phone too.
       </p>
-      <button type="button" className="btn" onClick={() => { invalidate(['voice.status']); closeSheet() }}>
-        Done
+      <button type="button" className="btn pri" onClick={() => void check()}>
+        Check again
       </button>
     </>
   )

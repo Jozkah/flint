@@ -139,4 +139,7 @@
 .gi{all:unset;cursor:pointer;aspect-ratio:1;border-radius:10px;position:relative;overflow:hidden;background:var(--accent);display:block}
 .gi img,.gi video,.film img{width:100%;height:100%;object-fit:cover;display:block}
 .gi span{position:absolute;left:6px;bottom:6px;font-size:11px;color:#fff;background:#0008;padding:2px 6px;border-radius:5px}
-.ib.rec{color:var(--destructive);background:color-mix(in srgb,var(--destructive) 14%,transparent)}
+.send.dict.rec{background:var(--destructive);color:#fff;animation:dict-pulse 1.2s ease-in-out infinite}
+.send.dict.rec svg.i{fill:currentColor;stroke:none;width:12px;height:12px}
+@keyframes dict-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--destructive) 55%,transparent)}50%{box-shadow:0 0 0 5px transparent}}
+@media (prefers-reduced-motion:reduce){.send.dict.rec{animation:none}}

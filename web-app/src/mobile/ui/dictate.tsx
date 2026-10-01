@@ -87,6 +87,7 @@ export function DictateButton({
   }
 
   const begin = async () => {
+    if (!status.data?.ready) return openSheet('voicesetup')
     const why = micUnavailable()
     if (why) return toast(why)
     const recorder = createBrowserRecorder()
@@ -123,14 +124,11 @@ export function DictateButton({
   }, [phase])
   useEffect(() => () => void rec.current?.recorder.stop(), [])
 
-  // Not set up on the computer (or a computer without dictation): no button.
-  if (!status.data?.ready) return null
-
   const label = phase === 'recording' ? 'Stop dictating' : phase === 'sending' ? 'Transcribing…' : 'Dictate'
   return (
     <button
       type="button"
-      className={`ib${phase === 'recording' ? ' rec' : ''}`}
+      className={`send dict${phase === 'recording' ? ' rec' : ''}`}
       aria-label={label}
       title={phase === 'recording' ? 'Press to keep, Escape to discard' : label}
       disabled={phase === 'sending'}
@@ -138,7 +136,7 @@ export function DictateButton({
       style={style}
       onClick={() => void (phase === 'recording' ? finish() : phase === 'idle' ? begin() : undefined)}
     >
-      <I n={phase === 'sending' ? 'loader' : 'mic'} />
+      <I n={phase === 'sending' ? 'loader' : phase === 'recording' ? 'sq' : 'mic'} />
     </button>
   )
 }

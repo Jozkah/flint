@@ -133,10 +133,9 @@ export default function Studio() {
             <button type="button" className="ib" aria-label="Settings" onClick={() => openSheet('studioset')}>
               <I n="sliders" />
             </button>
-            <span className="muted" style={{ fontSize: 11.5 }} data-testid="studio-summary">
+            <span className="muted" style={{ fontSize: 11.5, marginRight: 'auto' }} data-testid="studio-summary">
               {studioSummary(kind, form, s?.sizes[kind])}
             </span>
-            <span style={{ marginLeft: 'auto' }} />
             <DictateButton insert={(words) => insertInto(ref.current, prompt, setPrompt, words)} />
             <button type="button" className={`send${prompt.trim() && !job ? '' : ' off'}`} aria-label="Make" onClick={() => void make()}>
               <I n="up" />

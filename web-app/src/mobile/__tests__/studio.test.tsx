@@ -72,6 +72,16 @@ describe('phone Studio', () => {
     expect(client.rpc).toHaveBeenCalledWith('studio.remix', { kind: 'image', id: 'a1' })
   })
 
+  it('the mic shows when voice is not set up and opens the setup sheet', async () => {
+    client = useFixtures({ 'studio.status': status, 'studio.gallery': { items: [] }, 'voice.status': { ready: false } })
+    resetApp({ name: 'studio' })
+    render(<Shell />)
+    fireEvent.click(await screen.findByTestId('dictate', {}, T))
+    expect(await screen.findByText('Set up voice input on your computer', {}, T)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    await waitFor(() => expect(client.rpc).toHaveBeenCalledWith('voice.status', {}))
+  })
+
   it('pure helpers', () => {
     expect(insertAt('hello world', 5, 5, 'big')).toEqual({ value: 'hello big world', caret: 9 })
     expect(insertAt('', 0, 0, 'hi')).toEqual({ value: 'hi', caret: 2 })
