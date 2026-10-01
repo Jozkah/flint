@@ -27,6 +27,7 @@ import {
   type ArchiveSettings,
 } from '@/lib/archive'
 import { restoreArchived } from '@/lib/archiveRestore'
+import { ArchiveContextMenu } from '@/containers/archive/ArchiveContextMenu'
 import { errorText } from '@/lib/errorText'
 
 type Filter = 'all' | ArchiveKind
@@ -56,6 +57,8 @@ export function ArchivePanel() {
   const [filter, setFilter] = useState<Filter>('all')
   const [confirm, setConfirm] = useState<Confirm>(null)
   const [busy, setBusy] = useState(false)
+  const [menu, setMenu] = useState<{ item: ArchivedItem; x: number; y: number } | null>(null)
+  const closeMenu = useCallback(() => setMenu(null), [])
 
   const refresh = useCallback(async () => {
     try {
@@ -236,6 +239,20 @@ export function ArchivePanel() {
             {visible.map((item) => (
               <li
                 key={`${item.kind}/${item.archiveId}`}
+                tabIndex={0}
+                data-testid="archive-item"
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  setMenu({ item, x: e.clientX, y: e.clientY })
+                }}
+                onKeyDown={(e) => {
+                  // The menu key and Shift+F10 open it at the row.
+                  if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                    e.preventDefault()
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({ item, x: r.left + 24, y: r.top + r.height / 2 })
+                  }
+                }}
                 className="flex flex-wrap items-center gap-3 border-t border-dashed border-border px-3 py-2.5"
               >
                 <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -253,25 +270,40 @@ export function ArchivePanel() {
                 <Chip>{kindLabel(item.kind)}</Chip>
                 <Button
                   size="sm"
-                  variant="secondary"
-                  disabled={busy}
-                  onClick={() => void restore(item)}
-                >
-                  {t('archive:restore')}
-                </Button>
-                <Button
-                  size="sm"
                   variant="ghost"
                   disabled={busy}
-                  onClick={() => setConfirm({ type: 'one', item })}
+                  aria-label={t('archive:menuLabel')}
+                  aria-haspopup="menu"
+                  onClick={(e) => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setMenu({ item, x: r.left, y: r.bottom })
+                  }}
                 >
-                  {t('archive:deleteForever')}
+                  …
                 </Button>
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      {menu && (
+        <ArchiveContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={closeMenu}
+          onRestore={() => {
+            const { item } = menu
+            setMenu(null)
+            void restore(item)
+          }}
+          onDelete={() => {
+            const { item } = menu
+            setMenu(null)
+            setConfirm({ type: 'one', item })
+          }}
+        />
+      )}
 
       <Dialog open={confirm !== null} onOpenChange={(o) => !o && setConfirm(null)}>
         <DialogContent>
@@ -296,7 +328,7 @@ export function ArchivePanel() {
               size="sm"
               onClick={() => void runConfirmed()}
             >
-              {t('archive:deleteForever')}
+              {t('archive:deletePermanently')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,4 @@
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
-import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
-import { purgeArchived } from '@/lib/archive'
 import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { route } from '@/constants/routes'
@@ -175,17 +173,13 @@ function RoomsList() {
   }
 
   const archiveOn = useArchiveEnabled()
-  const [permanent, setPermanent] = useState(false)
   const confirmDelete = async () => {
     const target = toDelete
-    setPermanent(false)
     setToDelete(null)
     if (!target) return
     setError(null)
     try {
       await api.deleteRoom(target.id)
-      // "Delete permanently" archives like any delete, then purges that copy.
-      if (archiveOn && permanent) await purgeArchived('room', target.id)
       await api.loadSummaries()
     } catch (err) {
       setError(normalizeError(err))
@@ -550,13 +544,12 @@ function RoomsList() {
                 : t('rooms:delete.description', { title: toDelete?.title || t('rooms:list.untitled') })}
             </DialogDescription>
           </DialogHeader>
-          <PermanentDeleteOption checked={permanent} onChange={setPermanent} />
           <DialogFooter>
             <Button variant="surface" onClick={() => setToDelete(null)}>
               {t('rooms:delete.cancel')}
             </Button>
             <Button variant="destructive" onClick={() => void confirmDelete()}>
-              {archiveOn && !permanent
+              {archiveOn
                 ? t('archive:moveButton')
                 : t('rooms:delete.confirm')}
             </Button>

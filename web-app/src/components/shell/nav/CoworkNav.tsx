@@ -75,8 +75,6 @@ import {
   deleteCoworkSession,
 } from '@/lib/coworkSessionLifecycle'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
-import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
-import { purgeArchived } from '@/lib/archive'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { errorText } from '@/lib/errorText'
@@ -466,7 +464,6 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
   // Whether deleting it also removes its worktree and branch (default: keep).
   const [removeWorktree, setRemoveWorktree] = useState(false)
   const archiveOn = useArchiveEnabled()
-  const [permanentDelete, setPermanentDelete] = useState(false)
 
   const goCowork = useCallback(() => navigate({ to: route.cowork }), [navigate])
   const newSession = (groupId?: string) => {
@@ -605,9 +602,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       const id = pendingDelete.id
       // Archived first (when the archive is on): the session is kept, and the
       // worktree choice is deferred to the purge, which refuses while the
-      // worktree holds unmerged work. "Delete permanently" archives and then
-      // purges; if that purge is refused the session stays archived and the
-      // reason is shown.
+      // worktree holds unmerged work. Permanent deletion is on the Archive page.
       let archived = false
       try {
         archived = await archiveCoworkSession(id, removeWorktree)
@@ -617,13 +612,6 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       }
       if (archived) {
         useCoworkParallel.getState().forgetSession(id)
-        if (permanentDelete) {
-          try {
-            await purgeArchived('cowork', id)
-          } catch (e) {
-            toast.error(t('archive:deleteFailed'), { description: errorText(e) })
-          }
-        }
       } else {
         if (removeWorktree) {
           const removed = await removeSessionWorktree(id)
@@ -641,7 +629,6 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
       }
     }
     setRemoveWorktree(false)
-    setPermanentDelete(false)
     setPendingDelete(null)
   }
 
@@ -774,10 +761,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               {t('archive:worktreeKept')}
             </p>
           )}
-          <PermanentDeleteOption
-            checked={permanentDelete}
-            onChange={setPermanentDelete}
-          />
+
           <DialogFooter>
             <Button
               variant="ghost"
@@ -791,7 +775,7 @@ export function CoworkNav({ icon }: { icon?: React.ReactNode }) {
               size="sm"
               onClick={() => void confirmDelete()}
             >
-              {archiveOn && !permanentDelete
+              {archiveOn
                 ? t('archive:moveButton')
                 : t('common:delete')}
             </Button>

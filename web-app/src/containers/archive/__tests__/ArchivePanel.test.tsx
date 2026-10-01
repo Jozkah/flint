@@ -77,10 +77,11 @@ describe('ArchivePanel', () => {
     expect(screen.getByText('A room')).toBeTruthy()
   })
 
-  it('restores an item', async () => {
+  it('restores an item from its context menu', async () => {
     render(<ArchivePanel />)
     await screen.findByText('A thread')
-    fireEvent.click(screen.getAllByText('archive:restore')[0])
+    fireEvent.contextMenu(screen.getAllByTestId('archive-item')[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'archive:restore' }))
     await waitFor(() => expect(h.restore).toHaveBeenCalledTimes(1))
     expect(h.restore.mock.calls[0][0].archiveId).toBe('a')
   })
@@ -88,11 +89,11 @@ describe('ArchivePanel', () => {
   it('asks before deleting forever, then purges that item', async () => {
     render(<ArchivePanel />)
     await screen.findByText('A thread')
-    fireEvent.click(screen.getAllByText('archive:deleteForever')[0])
+    fireEvent.contextMenu(screen.getAllByTestId('archive-item')[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'archive:deletePermanently' }))
     expect(h.purge).not.toHaveBeenCalled()
     // The dialog's own confirm button.
-    const confirm = await screen.findAllByText('archive:deleteForever')
-    fireEvent.click(confirm[confirm.length - 1])
+    fireEvent.click(await screen.findByRole('button', { name: 'archive:deletePermanently' }))
     await waitFor(() => expect(h.purge).toHaveBeenCalledWith('thread', 'a'))
   })
 
@@ -100,9 +101,9 @@ describe('ArchivePanel', () => {
     h.purge.mockRejectedValue(new Error('keeps its worktree'))
     render(<ArchivePanel />)
     await screen.findByText('A thread')
-    fireEvent.click(screen.getAllByText('archive:deleteForever')[0])
-    const confirm = await screen.findAllByText('archive:deleteForever')
-    fireEvent.click(confirm[confirm.length - 1])
+    fireEvent.contextMenu(screen.getAllByTestId('archive-item')[0])
+    fireEvent.click(screen.getByRole('menuitem', { name: 'archive:deletePermanently' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'archive:deletePermanently' }))
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
   })
 
@@ -115,14 +116,28 @@ describe('ArchivePanel', () => {
     await screen.findByText('A thread')
     fireEvent.click(screen.getByText('archive:empty'))
     expect(h.empty).not.toHaveBeenCalled()
-    const confirm = await screen.findAllByText('archive:deleteForever')
-    fireEvent.click(confirm[confirm.length - 1])
+    fireEvent.click(await screen.findByRole('button', { name: 'archive:deletePermanently' }))
     await waitFor(() => expect(h.empty).toHaveBeenCalledWith(undefined))
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith('archive:blocked:Work', {
         description: 'unmerged',
       })
     )
+  })
+
+  it('opens the menu from the keyboard (Shift+F10 and the menu key) and closes on Escape', async () => {
+    render(<ArchivePanel />)
+    await screen.findByText('A thread')
+    const row = screen.getAllByTestId('archive-item')[0]
+    fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
+    const menu = screen.getByRole('menu')
+    expect(document.activeElement?.textContent).toBe('archive:restore')
+    fireEvent.keyDown(menu, { key: 'ArrowDown' })
+    expect(document.activeElement?.textContent).toBe('archive:deletePermanently')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(screen.queryByRole('menu')).toBeNull()
+    fireEvent.keyDown(row, { key: 'ContextMenu' })
+    expect(screen.getByRole('menu')).toBeTruthy()
   })
 
   it('saves the settings', async () => {

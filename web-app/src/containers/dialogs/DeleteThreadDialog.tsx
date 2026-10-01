@@ -17,7 +17,6 @@ import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import { undoableDelete } from '@/lib/undoableAction'
 import { route } from '@/constants/routes'
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
-import { PermanentDeleteOption } from '@/containers/archive/PermanentDeleteOption'
 
 interface DeleteThreadDialogProps {
   thread: Thread
@@ -43,7 +42,6 @@ export function DeleteThreadDialog({
   const [internalOpen, setInternalOpen] = useState(false)
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
   const archiveOn = useArchiveEnabled()
-  const [permanent, setPermanent] = useState(false)
 
   const isControlled = open !== undefined
   const isOpen = isControlled ? !!open : internalOpen
@@ -65,19 +63,17 @@ export function DeleteThreadDialog({
   const handleDelete = () => {
     setOpenSafe(false)
     onDropdownClose?.()
-    const destroy = archiveOn && permanent
     // Hidden at once, deleted after the undo window unless Undo is pressed.
     undoableDelete({
       id: thread.id,
       message:
-        archiveOn && !permanent
+        archiveOn
           ? t('archive:moved')
           : t('common:toast.deleteThread.title'),
       description: t('common:toast.deleteThread.undoHint'),
       undoLabel: t('common:undo'),
-      run: () => (destroy ? onDelete(thread.id, true) : onDelete(thread.id)),
+      run: () => onDelete(thread.id),
     })
-    setPermanent(false)
     if (variant !== 'project') {
       setTimeout(() => {
         navigate({ to: route.home })
@@ -111,9 +107,6 @@ export function DeleteThreadDialog({
               ? t('archive:moveBody', { title: thread.title || t('common:newThread') })
               : t('common:dialogs.deleteThread.description')}
           </DialogDescription>
-          {archiveOn && (
-            <PermanentDeleteOption checked={permanent} onChange={setPermanent} />
-          )}
           <DialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
             <DialogClose asChild>
               <Button
@@ -132,7 +125,7 @@ export function DeleteThreadDialog({
               className="w-full sm:w-auto"
               aria-label={`${t('common:delete')} ${thread.title || t('common:newThread')}`}
             >
-              {archiveOn && !permanent
+              {archiveOn
                 ? t('archive:moveButton')
                 : t('common:delete')}
             </Button>
