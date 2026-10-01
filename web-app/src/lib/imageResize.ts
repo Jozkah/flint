@@ -43,3 +43,69 @@ export async function shrinkImageDataUrl(dataUrl: string): Promise<string> {
     return dataUrl
   }
 }
+
+/** Longest sides and qualities tried, largest and best first, to get under a size limit. */
+const LIMIT_SIDES = [2560, 2048, 1600, 1280, 1024]
+const LIMIT_QUALITIES = [0.9, 0.75]
+
+export type EncodeImage = (
+  file: File,
+  maxSide: number,
+  quality: number
+) => Promise<Blob | null>
+
+/** Decode `file` into a canvas no larger than `maxSide` and encode it as WebP (JPEG if WebP is not offered). */
+export const encodeWithCanvas: EncodeImage = async (file, maxSide, quality) => {
+  if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') {
+    return null
+  }
+  const bitmap = await createImageBitmap(file)
+  try {
+    const scale = fitScale(bitmap.width, bitmap.height, maxSide)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale))
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale))
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const toBlob = (type: string) =>
+      new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality))
+    const webp = await toBlob('image/webp')
+    if (webp && webp.type === 'image/webp') return webp
+    return await toBlob('image/jpeg')
+  } finally {
+    bitmap.close?.()
+  }
+}
+
+/**
+ * An image over the attachment size limit, re-encoded smaller so it can be
+ * attached instead of refused. A large screenshot is often a PNG far over the
+ * limit that a model would read just as well at a lower resolution. Returns the
+ * file untouched when it is already within the limit, is not an image, or
+ * cannot be brought under it (it is then refused as too large, as before).
+ */
+export async function fitImageFileToLimit(
+  file: File,
+  maxBytes: number,
+  encode: EncodeImage = encodeWithCanvas
+): Promise<File> {
+  if (!file.type.startsWith('image/') || file.size <= maxBytes) return file
+  // An animation would be flattened to its first frame.
+  if (file.type === 'image/gif') return file
+  try {
+    for (const side of LIMIT_SIDES) {
+      for (const quality of LIMIT_QUALITIES) {
+        const blob = await encode(file, side, quality)
+        if (blob && blob.size <= maxBytes) {
+          const ext = blob.type === 'image/jpeg' ? 'jpg' : 'webp'
+          const stem = file.name.replace(/\.[^./\\]+$/, '') || 'image'
+          return new File([blob], `${stem}.${ext}`, { type: blob.type })
+        }
+      }
+    }
+  } catch {
+    // An image the browser cannot decode is left for validation to refuse.
+  }
+  return file
+}
