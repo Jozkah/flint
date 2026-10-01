@@ -145,6 +145,10 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The model-fit check uses the KV cache type a model is configured with instead of assuming f16, and no longer counts an integrated GPU's memory twice.
 - A quantized V cache is held at f16 when flash attention is off, which llama.cpp cannot load, and a DFlash draft defaults to greedy sampling.
 - The Anthropic `/messages` endpoint merges scattered system and developer messages into one leading system message, which strict chat templates such as Qwen3's require.
+- An image returned by an MCP tool (a screenshot tool, for one) no longer floods a local model's context as base64 text. For llama.cpp and MLX it is replaced by a note in what the model reads and, for a model that can see, attached again as an image. Remote providers and the stored conversation are unchanged.
+- The Local API Server answers "no model is running" and "the engine is not answering" with a JSON error that has a `code` and a `Retry-After`, keeps 502 for an unreachable remote provider, finds an MLX model when a client writes `.` as `_`, and explains a port the system refuses (Windows reserved ranges) instead of showing a bare error.
+- The Local API Server's timeout now limits silence rather than the whole request, so a long generation from a large local model is no longer cut off mid-stream.
+- The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
 
 ### Release infrastructure
 
