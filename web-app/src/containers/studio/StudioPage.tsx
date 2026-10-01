@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { Download, Film, ImageIcon, Loader, RefreshCw, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { ArrowLeftRight, Download, Film, ImageIcon, Loader, RefreshCw, Sparkles, Square, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
@@ -29,12 +29,15 @@ import {
   IMAGE_SIZES,
   VIDEO_SECONDS,
   VIDEO_SIZES,
+  customSize,
   durationText,
   estimateVideoMs,
   framesForSeconds,
   parseSeed,
+  parseSide,
   phaseLabel,
   sizeIndexOf,
+  snapSide,
   videoMemoryWarning,
 } from '@/lib/studio/helpers'
 import {
@@ -56,20 +59,36 @@ type Form = {
   prompt: string
   negative: string
   seed: string
+  /** The index of a standard shape, or `CUSTOM` for the two boxes. */
   sizeIndex: number
+  customWidth: string
+  customHeight: string
   count: number
   seconds: number
   accepted: boolean
 }
+
+const CUSTOM = -1
 
 const EMPTY_FORM: Form = {
   prompt: '',
   negative: '',
   seed: '',
   sizeIndex: 0,
+  customWidth: '1024',
+  customHeight: '1024',
   count: 1,
   seconds: VIDEO_SECONDS[VIDEO_SECONDS.length - 1],
   accepted: false,
+}
+
+/** The size the form asks for: a standard shape, or the two boxes snapped into range. */
+function chosenSize(kind: StudioKind, model: StudioModel, form: Form): { width: number; height: number } {
+  if (form.sizeIndex === CUSTOM) {
+    return customSize(form.customWidth, form.customHeight, { min: model.min_side, max: model.max_side }, 1024)
+  }
+  const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
+  return sizes[Math.min(Math.max(form.sizeIndex, 0), sizes.length - 1)]
 }
 
 const rise = (index: number) => ({ animationDelay: `${40 + Math.min(index, 10) * 35}ms` })
@@ -256,6 +275,63 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+/** Width and height boxes. A box is snapped into range when it is left, so what is shown is what runs. */
+function CustomSize({
+  kind,
+  model,
+  form,
+  setForm,
+  disabled,
+}: {
+  kind: StudioKind
+  model: StudioModel
+  form: Form
+  setForm: (patch: Partial<Form>) => void
+  disabled: boolean
+}) {
+  const settle = (key: 'customWidth' | 'customHeight') => {
+    const typed = parseSide(form[key])
+    setForm({ [key]: String(snapSide(typed ?? 1024, model.min_side, model.max_side)) })
+  }
+  const box = (key: 'customWidth' | 'customHeight', label: string) => (
+    <Input
+      value={form[key]}
+      inputMode="numeric"
+      disabled={disabled}
+      aria-label={label}
+      onChange={(e) => setForm({ [key]: e.target.value.replace(/\D/g, '').slice(0, 5) })}
+      onBlur={() => settle(key)}
+      onKeyDown={(e) => e.key === 'Enter' && settle(key)}
+      className="min-w-0 text-center tabular-nums"
+    />
+  )
+  return (
+    <div className="flex flex-col gap-2 motion-safe:animate-rise-in">
+      <div className="flex items-center gap-1.5">
+        {box('customWidth', 'Width in pixels')}
+        <span aria-hidden className="text-xs text-muted-foreground">
+          ×
+        </span>
+        {box('customHeight', 'Height in pixels')}
+        <button
+          type="button"
+          title="Swap width and height"
+          aria-label="Swap width and height"
+          disabled={disabled}
+          onClick={() => setForm({ customWidth: form.customHeight, customHeight: form.customWidth })}
+          className="grid size-8 shrink-0 place-items-center rounded-md border-[0.8px] border-border bg-card text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:opacity-50 pointer-coarse:size-11"
+        >
+          <ArrowLeftRight className="size-3.5" />
+        </button>
+      </div>
+      <p className="text-xs leading-snug text-muted-foreground">
+        Multiples of 16, from {model.min_side} to {model.max_side} pixels.
+        {kind === 'video' ? ' Big clips need a lot of memory.' : ' Big pictures need more memory and time.'}
+      </p>
+    </div>
+  )
+}
+
 function Settings({
   kind,
   model,
@@ -276,8 +352,7 @@ function Settings({
   const guess =
     kind === 'video'
       ? estimateVideoMs(lastClip, {
-          width: sizes[Math.min(form.sizeIndex, sizes.length - 1)].width,
-          height: sizes[Math.min(form.sizeIndex, sizes.length - 1)].height,
+          ...chosenSize(kind, model, form),
           frames: framesForSeconds(form.seconds, model.video?.fps ?? 24),
           steps: model.defaults.steps,
         })
@@ -301,7 +376,18 @@ function Settings({
                 {s.short}
               </Option>
             ))}
+            <Option
+              title="Type your own width and height"
+              pressed={form.sizeIndex === CUSTOM}
+              disabled={running}
+              onClick={() => setForm({ sizeIndex: CUSTOM })}
+            >
+              Custom
+            </Option>
           </div>
+          {form.sizeIndex === CUSTOM && (
+            <CustomSize kind={kind} model={model} form={form} setForm={setForm} disabled={running} />
+          )}
         </Field>
         {kind === 'image' ? (
           <Field label="Images">
@@ -395,8 +481,7 @@ function Stage({
   const generate = useStudio((s) => s.generate)
   const cancel = useStudio((s) => s.cancel)
   const { hardware } = useFitContext()
-  const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
-  const size = sizes[Math.min(form.sizeIndex, sizes.length - 1)]
+  const size = chosenSize(kind, model, form)
   const warning = kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
   const ready = status?.resident?.model_id === model.id
   const running = job?.kind === kind
@@ -781,7 +866,7 @@ export function StudioPage() {
   const changeKind = (next: StudioKind) => {
     setViewing(null)
     setKind(next)
-    setForm({ sizeIndex: 0 })
+    setForm({ sizeIndex: form.sizeIndex === CUSTOM ? CUSTOM : 0 })
   }
 
   const remix = (item: GalleryItem) => {
@@ -790,7 +875,15 @@ export function StudioPage() {
       prompt: item.recipe.prompt,
       negative: item.recipe.negativePrompt,
       seed: '',
-      sizeIndex: sizeIndexOf(sizes, item.recipe.width, item.recipe.height),
+      // The exact size it was made at: a standard shape when it is one,
+      // else the custom boxes, so a remix never quietly changes the size.
+      ...(sizes.some((s) => s.width === item.recipe.width && s.height === item.recipe.height)
+        ? { sizeIndex: sizeIndexOf(sizes, item.recipe.width, item.recipe.height) }
+        : {
+            sizeIndex: CUSTOM,
+            customWidth: String(item.recipe.width),
+            customHeight: String(item.recipe.height),
+          }),
     })
     promptRef.current?.focus()
     promptRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })

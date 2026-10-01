@@ -45,6 +45,35 @@ export const VIDEO_SIZES: StudioSize[] = [
   shape('Cinema', 21, 9, VIDEO_AREA),
 ]
 
+/** A side the person typed, in whole pixels, or null when it is not a number. */
+export function parseSide(text: string): number | null {
+  const trimmed = text.trim()
+  return /^\d{1,5}$/.test(trimmed) ? Number(trimmed) : null
+}
+
+/** A side snapped to a multiple of 16 and kept inside what the model accepts. */
+export function snapSide(value: number, min: number, max: number): number {
+  const snapped = Math.round(value / 16) * 16
+  const lowest = Math.ceil(min / 16) * 16
+  const highest = Math.floor(max / 16) * 16
+  return Math.min(highest, Math.max(lowest, snapped))
+}
+
+/**
+ * The size for the two boxes of a custom resolution. Anything that is not a
+ * number falls back to `fallback`, so a half-typed box never starts a run at a
+ * size nobody chose.
+ */
+export function customSize(
+  widthText: string,
+  heightText: string,
+  limits: { min: number; max: number },
+  fallback: number
+): { width: number; height: number } {
+  const side = (text: string) => snapSide(parseSide(text) ?? fallback, limits.min, limits.max)
+  return { width: side(widthText), height: side(heightText) }
+}
+
 /**
  * The shape on the list closest to a size: an exact match when there is one,
  * else the nearest proportions, so a picture made with an older size list still
