@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Eye } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
   DEFAULT_ARCHIVE_SETTINGS,
   formatBytes,
   setArchiveEnabled,
+  useArchiveRevision,
   type ArchiveKind,
   type ArchivedItem,
   type ArchiveSettings,
@@ -70,27 +71,50 @@ export function ArchivePanel() {
   const [previewing, setPreviewing] = useState<ArchivedItem | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
 
+  // Only the newest request may write: a slower, older list must not replace
+  // a newer one (it would show a stale, possibly empty, archive).
+  const requestRef = useRef(0)
+  const tRef = useRef(t)
+  tRef.current = t
+  const revision = useArchiveRevision((s) => s.revision)
+
   const refresh = useCallback(async () => {
+    const request = ++requestRef.current
     try {
       const [list, bytes] = await Promise.all([
         archiveApi.list(),
         archiveApi.diskUsage(),
       ])
+      if (request !== requestRef.current) return
       setItems(list)
       setUsage(bytes)
     } catch (e) {
+      if (request !== requestRef.current) return
       setItems([])
-      toast.error(t('archive:loadFailed'), { description: errorText(e) })
+      toast.error(tRef.current('archive:loadFailed'), {
+        description: errorText(e),
+      })
     }
-  }, [t])
+  }, [])
 
+  // On mount, and again whenever an archive, restore or purge finishes.
   useEffect(() => {
     void refresh()
+  }, [refresh, revision])
+
+  // The window may have been in the background while something archived.
+  useEffect(() => {
+    const onFocus = () => void refresh()
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
+
+  useEffect(() => {
     archiveApi
       .getSettings()
       .then(setSettings)
       .catch(() => undefined)
-  }, [refresh])
+  }, [])
 
   const save = async (next: ArchiveSettings) => {
     const previous = settings

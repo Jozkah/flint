@@ -41,7 +41,24 @@ export function notifySessionRemoved(sessionId: string): void {
   safe('remove', () => removalMailbox.remove(sessionId))
 }
 
-const registrationKey = (s: CoworkSession) =>
+const archivedSessions = new Set<string>()
+
+/**
+ * The session is leaving the list because it was archived, not deleted. The
+ * backend tombstone for a deleted id can never be registered again, so an
+ * archived session must not get one or a restore could not register it.
+ */
+export function notifySessionArchived(sessionId: string): void {
+  if (!removedSessions.has(sessionId)) archivedSessions.add(sessionId)
+}
+
+/** The session is back in the list (a restore): forget any removal state. */
+export function notifySessionRestored(sessionId: string): void {
+  archivedSessions.delete(sessionId)
+  removedSessions.delete(sessionId)
+}
+
+const registrationKey =(s: CoworkSession) =>
   JSON.stringify([s.title, s.folder ?? null])
 
 export function createPresenceSync(
@@ -100,6 +117,8 @@ export function createPresenceSync(
       if (timer) clearTimeout(timer)
       pending.delete(s.id)
       registered.delete(s.id)
+      // Archived, not deleted: no tombstone (see notifySessionArchived).
+      if (archivedSessions.delete(s.id)) continue
       notifySessionRemoved(s.id)
     }
   }
@@ -176,6 +195,7 @@ export function createPresenceSync(
 export const __presenceTesting = {
   reset: () => {
     removedSessions.clear()
+    archivedSessions.clear()
     removalMailbox = sessionMailbox
   },
   setRemovalMailbox: (mailbox: PresenceMailbox) => {

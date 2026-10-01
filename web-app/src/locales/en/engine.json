@@ -47,7 +47,8 @@
     "title": "Providers",
     "onDevice": "On this device",
     "remote": "Remote",
-    "modelsCount": "{{count}} models",
+    "modelsCount_one": "{{count}} model",
+    "modelsCount_other": "{{count}} models",
     "notSetUp": "not set up",
     "custom": "Custom provider",
     "customHint": "OpenAI- or Anthropic-compatible"

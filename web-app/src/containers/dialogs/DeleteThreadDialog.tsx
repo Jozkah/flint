@@ -28,6 +28,13 @@ interface DeleteThreadDialogProps {
   withoutTrigger?: boolean
 }
 
+/** Whether the current page is showing this thread (its page, or a split). */
+export function isOpenInView(threadId: string): boolean {
+  if (typeof window === 'undefined' || !threadId) return false
+  const { pathname, search } = window.location
+  return `${pathname}${search}`.includes(threadId)
+}
+
 export function DeleteThreadDialog({
   thread,
   onDelete,
@@ -74,7 +81,9 @@ export function DeleteThreadDialog({
       undoLabel: t('common:undo'),
       run: () => onDelete(thread.id),
     })
-    if (variant !== 'project') {
+    // Leave only when the deleted chat is the one on screen: deleting another
+    // row from the sidebar (on Archive, Settings...) must not move the user.
+    if (variant !== 'project' && isOpenInView(thread.id)) {
       setTimeout(() => {
         navigate({ to: route.home })
       }, 0)

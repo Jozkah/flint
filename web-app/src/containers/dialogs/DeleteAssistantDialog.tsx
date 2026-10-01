@@ -15,12 +15,15 @@ interface DeleteAssistantDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
+  /** Named in the archive confirmation, so it says which assistant moves. */
+  assistantName?: string
 }
 
 export function DeleteAssistantDialog({
   open,
   onOpenChange,
   onConfirm,
+  assistantName,
 }: DeleteAssistantDialogProps) {
   const { t } = useTranslation()
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
@@ -50,7 +53,9 @@ export function DeleteAssistantDialog({
           </DialogTitle>
           <DialogDescription>
             {archiveOn
-              ? t('archive:moveGeneric')
+              ? assistantName
+                ? t('archive:moveBody', { title: assistantName })
+                : t('archive:moveGeneric')
               : t('assistants:deleteConfirmationDesc')}
           </DialogDescription>
         </DialogHeader>

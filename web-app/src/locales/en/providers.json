@@ -182,7 +182,8 @@
   },
   "removeProvider": {
     "confirmTitle": "Remove {{provider}}?",
-    "confirmDescription": "{{provider}} and its {{count}} models will be removed from Flint, along with its saved API key.",
+    "confirmDescription_one": "{{provider}} and its {{count}} model will be removed from Flint, along with its saved API key.",
+    "confirmDescription_other": "{{provider}} and its {{count}} models will be removed from Flint, along with its saved API key.",
     "keepsHistory": "Chats, sessions, rooms and assistants that use its models keep their history; the model shows as unavailable.",
     "cancel": "Cancel",
     "remove": "Remove",

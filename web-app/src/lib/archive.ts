@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { create } from 'zustand'
 
 /**
  * The archive: deleting moves an item here first (src-tauri core/archive).
@@ -57,8 +58,51 @@ export const DEFAULT_ARCHIVE_SETTINGS: ArchiveSettings = {
   autoArchiveThreadDays: 0,
 }
 
+/**
+ * Bumped whenever the archive's contents may have changed (an archive, restore
+ * or purge finished). The Archive page refetches on it.
+ */
+export const useArchiveRevision = create<{ revision: number }>(() => ({
+  revision: 0,
+}))
+
+const bumpArchive = () =>
+  useArchiveRevision.setState((s) => ({ revision: s.revision + 1 }))
+
+const inflight = new Set<Promise<unknown>>()
+
+/**
+ * Register archive work that runs in the background (a delete that moves a
+ * thread into the archive is fire-and-forget: the UI drops the row at once).
+ * Anyone listing the archive can then `settleArchiveWork()` first instead of
+ * reading the folder halfway through the move, and the page refetches when it
+ * ends.
+ */
+export function trackArchiveWork<T>(work: Promise<T>): Promise<T> {
+  const tracked = work.finally(() => {
+    inflight.delete(tracked)
+    bumpArchive()
+  })
+  inflight.add(tracked)
+  // The caller keeps the original rejection; this copy must not go unhandled.
+  tracked.catch(() => undefined)
+  return tracked
+}
+
+/** Resolves once every tracked archive operation has finished. */
+export async function settleArchiveWork(): Promise<void> {
+  while (inflight.size > 0) {
+    await Promise.allSettled([...inflight])
+  }
+}
+
+const changes = <T>(call: Promise<T>): Promise<T> => trackArchiveWork(call)
+
 export const archiveApi = {
-  list: () => invoke<ArchivedItem[]>('archive_list'),
+  list: async () => {
+    await settleArchiveWork()
+    return invoke<ArchivedItem[]>('archive_list')
+  },
   diskUsage: () => invoke<number>('archive_disk_usage'),
   put: (
     kind: ArchiveKind,
@@ -66,13 +110,14 @@ export const archiveApi = {
     title: string,
     payload: unknown,
     extra?: unknown
-  ) => invoke<string>('archive_put', { kind, id, title, payload, extra }),
+  ) =>
+    changes(invoke<string>('archive_put', { kind, id, title, payload, extra })),
   restore: (kind: ArchiveKind, archiveId: string) =>
-    invoke<Restored>('archive_restore', { kind, archiveId }),
+    changes(invoke<Restored>('archive_restore', { kind, archiveId })),
   purge: (kind: ArchiveKind, archiveId: string) =>
-    invoke<void>('archive_purge', { kind, archiveId }),
+    changes(invoke<void>('archive_purge', { kind, archiveId })),
   empty: (kind?: ArchiveKind) =>
-    invoke<PurgeReport>('archive_empty', { kind: kind ?? null }),
+    changes(invoke<PurgeReport>('archive_empty', { kind: kind ?? null })),
   getSettings: () => invoke<ArchiveSettings>('archive_get_settings'),
   setSettings: (settings: ArchiveSettings) =>
     invoke<ArchiveSettings>('archive_set_settings', { settings }),

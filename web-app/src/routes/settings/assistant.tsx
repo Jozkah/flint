@@ -232,6 +232,7 @@ function AssistantContent() {
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         onConfirm={confirmDelete}
+        assistantName={assistants.find((a) => a.id === deletingId)?.name}
       />
     </div>
   )

@@ -198,7 +198,12 @@ type ChatInputProps = {
   projectAssistantId?: string
   onSubmit?: (
     text: string,
-    files?: Array<{ type: string; mediaType: string; url: string }>
+    files?: Array<{ type: string; mediaType: string; url: string }>,
+    /**
+     * Call when the send is refused before anything started (no tool-calling
+     * model, say): the composer then gets its text and attachments back.
+     */
+    onRefused?: () => void
   ) => void
   onStop?: () => void
   chatStatus?: ChatStatus
@@ -407,6 +412,9 @@ const ChatInput = memo(function ChatInput({
     draftScope ? (state.scoped?.[draftScope]?.prompt ?? '') : ''
   )
   const prompt = draftScope ? scopedPrompt : mainPrompt
+  // The draft as of the last render, for a refused send's restore (below).
+  const latestPromptRef = useRef(prompt)
+  latestPromptRef.current = prompt
   const setMainPrompt = usePrompt((state) => state.setPrompt)
   const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
   const setPrompt = useCallback(
@@ -1168,7 +1176,21 @@ const ChatInput = memo(function ChatInput({
         }))
       const files = [...imageFiles, ...audioFiles, ...videoFiles]
 
-      onSubmit(effectivePrompt, files.length > 0 ? files : undefined)
+      const sentAttachments = attachments
+      onSubmit(effectivePrompt, files.length > 0 ? files : undefined, () => {
+        // After the clear below, which a synchronous refusal would precede.
+        queueMicrotask(() => {
+          // Not over something typed since. The render that follows the clear
+          // may not have happened yet, so the sent text counts as empty too.
+          const now = latestPromptRef.current
+          if (!now || now === typed) setPrompt(typed)
+          if (sentAttachments.length > 0) {
+            setAttachmentsForThread(attachmentsKey, (prev) =>
+              prev.length > 0 ? prev : sentAttachments
+            )
+          }
+        })
+      })
       setPrompt('')
       clearAttachmentsForThread(attachmentsKey)
     } else {

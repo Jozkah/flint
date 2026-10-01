@@ -7,7 +7,11 @@ import { useCoworkOrigins } from '@/hooks/useCoworkOrigins'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
-import { notifySessionRemoved } from '@/lib/mailboxPresence'
+import {
+  notifySessionArchived,
+  notifySessionRemoved,
+  notifySessionRestored,
+} from '@/lib/mailboxPresence'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { archiveApi, archiveEnabled } from '@/lib/archive'
@@ -46,7 +50,10 @@ export function deleteCoworkSession(
   // The origin ledger describes a run whose transcript is about to be gone.
   useCoworkOrigins.getState().forget(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.
-  notifySessionRemoved(id)
+  // An archive is not a delete: a tombstone would block registering the
+  // session again after a restore.
+  if (opts?.keepRecords) notifySessionArchived(id)
+  else notifySessionRemoved(id)
   useSessionMessaging.getState().forget(id)
 }
 
@@ -96,5 +103,6 @@ export function restoreCoworkSession(payload: unknown, extra: unknown): boolean 
           }
     )
   }
+  notifySessionRestored(session.id)
   return useCoworkSessions.getState().restoreSession(session)
 }

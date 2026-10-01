@@ -71,6 +71,23 @@ describe('ArchivePanel', () => {
     expect(screen.getByTestId('archive-usage').textContent).toContain('archive:usage')
   })
 
+  it('refetches when an archive finishes, and ignores an older slower list', async () => {
+    const { act } = await import('@testing-library/react')
+    const { useArchiveRevision } = await import('@/lib/archive')
+    let releaseStale: (v: unknown[]) => void = () => {}
+    h.list.mockImplementationOnce(
+      () => new Promise<unknown[]>((r) => (releaseStale = r))
+    )
+    render(<ArchivePanel />)
+    // The first (stale) list is still pending; an archive finishes meanwhile.
+    h.items = [item({ title: 'Fresh chat' })]
+    act(() => useArchiveRevision.setState((s) => ({ revision: s.revision + 1 })))
+    expect(await screen.findByText('Fresh chat')).toBeTruthy()
+    await act(async () => releaseStale([]))
+    expect(screen.getByText('Fresh chat')).toBeTruthy()
+    expect(screen.queryByText('archive:none')).toBeNull()
+  })
+
   it('filters by kind', async () => {
     render(<ArchivePanel />)
     await screen.findByText('A thread')

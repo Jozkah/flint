@@ -252,3 +252,25 @@ describe('clearSessions', () => {
     spy.mockRestore()
   })
 })
+
+describe('ensureSession during a render', () => {
+  it('does not notify subscribers synchronously, only right after', async () => {
+    const listener = vi.fn()
+    const off = useChatSessions.subscribe(listener)
+    const chat = makeChat()
+    const transport = {} as never
+    const got = useChatSessions
+      .getState()
+      .ensureSession('r1', transport, () => chat as never, 'T')
+    // Readable at once (the caller needs the Chat), but nobody is notified
+    // while the component is still rendering.
+    expect(got).toBe(chat)
+    expect(useChatSessions.getState().sessions['r1']?.chat).toBe(chat)
+    expect(useChatSessions.getState().activeConversationId).toBe('r1')
+    expect(listener).not.toHaveBeenCalled()
+    await Promise.resolve()
+    expect(listener).toHaveBeenCalledTimes(1)
+    expect(useChatSessions.getState().sessions['r1']?.chat).toBe(chat)
+    off()
+  })
+})

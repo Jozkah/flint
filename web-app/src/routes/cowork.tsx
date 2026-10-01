@@ -2545,7 +2545,11 @@ export function CoworkPage() {
     hidden = false,
     // Files attached to this message: documents staged in the composer, and
     // the media it passed along. Without this they were dropped on send.
-    attachmentInput?: CoworkAttachmentInput
+    attachmentInput?: CoworkAttachmentInput,
+    // Called when the request is refused before a run starts (no usable model,
+    // a model that cannot call tools, a stale worktree), so the composer can
+    // give the draft back instead of losing it.
+    onRefused?: () => void
   ) => {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
@@ -2645,6 +2649,7 @@ export function CoworkPage() {
       store.setTitle(sid, placeholder)
       autoTitleCoworkSession(sid, slashTitle(text), placeholder)
     }
+      onRefused?.()
     // Work profiles (off unless the user turned them on): the new message
     // picks how the run approaches it -- Jev decides when its suggestions are
     // on, a keyword match otherwise, and a profile picked by hand is kept.
@@ -2652,6 +2657,7 @@ export function CoworkPage() {
       await chooseWorkProfile(
         sid,
         text,
+      onRefused?.()
         workProfileAsker(useJevSettings.getState().rerankMode)
       )
     }
@@ -2660,6 +2666,7 @@ export function CoworkPage() {
      * A managed worktree still being the thing this session recorded.
      *
      * Checked before the run rather than trusted from the record, because
+      onRefused?.()
      * everything that invalidates one happens outside Flint: the directory
      * deleted, the branch moved by someone working in it, the repository
      * re-cloned at the same path. Writing into a stale binding is how a run
@@ -2699,6 +2706,7 @@ export function CoworkPage() {
     recordEvents([
       {
         id: `run:${runId}:started`,
+        onRefused?.()
         session: sid,
         run: runId,
         kind: 'run.started',
@@ -4659,7 +4667,11 @@ export function CoworkPage() {
   const runRequestRef = useRef(runRequest)
   runRequestRef.current = runRequest
 
-  const handleSubmit = (text: string, files?: SubmittedFile[]) => {
+  const handleSubmit = (
+    text: string,
+    files?: SubmittedFile[],
+    onRefused?: () => void
+  ) => {
     // Read the staged documents now: the composer clears them as soon as this
     // returns.
     const sid = session?.id
@@ -4671,7 +4683,13 @@ export function CoworkPage() {
       : []
     const hasFiles = docs.length > 0 || (files?.length ?? 0) > 0
     const body = text.trim() || !hasFiles ? text : 'Please look at the attached file(s).'
-    void runRequest(body, undefined, false, hasFiles ? { docs, files } : undefined)
+    void runRequest(
+      body,
+      undefined,
+      false,
+      hasFiles ? { docs, files } : undefined,
+      onRefused
+    )
   }
   // A paired phone's message to the session in view takes the same path.
   useRemoteComposer('cowork', session?.id, handleSubmit)

@@ -114,3 +114,29 @@ describe('DeleteMessageDialog names', () => {
     expect(screen.getAllByRole('button', { name: 'common:deleteMessage', hidden: true })).toHaveLength(1)
   })
 })
+
+describe('DeleteThreadDialog navigation', () => {
+  it('only counts the thread whose page is open as in view', async () => {
+    const { isOpenInView } = await import('../DeleteThreadDialog')
+    window.history.pushState({}, '', '/archive')
+    expect(isOpenInView('thread-abc')).toBe(false)
+    window.history.pushState({}, '', '/threads/thread-xyz')
+    expect(isOpenInView('thread-abc')).toBe(false)
+    window.history.pushState({}, '', '/threads/thread-abc')
+    expect(isOpenInView('thread-abc')).toBe(true)
+    window.history.pushState({}, '', '/')
+  })
+})
+
+describe('DeleteAssistantDialog archive confirmation', () => {
+  it('names the assistant that moves to the Archive', async () => {
+    vi.resetModules()
+    vi.doMock('@/hooks/useArchiveEnabled', () => ({ useArchiveEnabled: () => true }))
+    const { DeleteAssistantDialog: Dialog } = await import('../DeleteAssistantDialog')
+    render(
+      <Dialog open onOpenChange={() => {}} onConfirm={() => {}} assistantName="Helper" />
+    )
+    expect(await screen.findByText('archive:moveBody')).toBeTruthy()
+    vi.doUnmock('@/hooks/useArchiveEnabled')
+  })
+})

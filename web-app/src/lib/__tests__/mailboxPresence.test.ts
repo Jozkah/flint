@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPresenceSync, notifySessionRemoved, __presenceTesting } from '../mailboxPresence'
+import {
+  createPresenceSync,
+  notifySessionArchived,
+  notifySessionRemoved,
+  notifySessionRestored,
+  __presenceTesting,
+} from '../mailboxPresence'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 
@@ -72,6 +78,28 @@ describe('mailbox presence', () => {
     useCoworkSessions.getState().deleteSession('A')
     vi.advanceTimersByTime(100)
     expect(mailbox.remove).toHaveBeenCalledTimes(1)
+    expect(mailbox.remove).toHaveBeenCalledWith('A')
+  })
+
+  it('does not tombstone an archived session, and registers it again on restore', () => {
+    vi.advanceTimersByTime(100)
+    mailbox.register.mockClear()
+    const archived = useCoworkSessions.getState().sessions[0]
+    notifySessionArchived('A')
+    useCoworkSessions.getState().deleteSession('A', { keepRecords: true })
+    vi.advanceTimersByTime(100)
+    expect(mailbox.remove).not.toHaveBeenCalled()
+
+    notifySessionRestored('A')
+    useCoworkSessions.getState().restoreSession(archived)
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+    })
+    // A real delete afterwards still tombstones.
+    useCoworkSessions.getState().deleteSession('A')
     expect(mailbox.remove).toHaveBeenCalledWith('A')
   })
 

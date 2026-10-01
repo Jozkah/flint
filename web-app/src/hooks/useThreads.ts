@@ -12,6 +12,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
+import { trackArchiveWork } from '@/lib/archive'
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -112,7 +113,7 @@ const deleteThreadBackend = (threadId: string, permanent?: boolean) => {
   const done = permanent
     ? threads.deleteThread(threadId, true)
     : threads.deleteThread(threadId)
-  void Promise.resolve(done).catch((e) =>
+  void trackArchiveWork(Promise.resolve(done)).catch((e) =>
     console.warn(`[Threads] Failed to delete thread ${threadId}:`, e)
   )
 }

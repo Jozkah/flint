@@ -62,11 +62,26 @@ describe('VersionSwitcher', () => {
       <VersionSwitcher messageId="m" index={1} count={3} onSwitch={onSwitch} />
     )
     const group = screen.getByRole('group')
-    expect(screen.getByRole('button', { name: /^Previous version/ })).toBeDisabled()
+    const prev = screen.getByRole('button', { name: /^Previous version/ })
+    expect(prev).toHaveAttribute('aria-disabled', 'true')
     fireEvent.keyDown(group, { key: 'ArrowLeft' })
+    fireEvent.click(prev)
     rerender(<VersionSwitcher messageId="m" index={3} count={3} onSwitch={onSwitch} />)
-    expect(screen.getByRole('button', { name: /^Next version/ })).toBeDisabled()
+    const next = screen.getByRole('button', { name: /^Next version/ })
+    expect(next).toHaveAttribute('aria-disabled', 'true')
     fireEvent.keyDown(screen.getByRole('group'), { key: 'ArrowRight' })
+    fireEvent.click(next)
     expect(onSwitch).not.toHaveBeenCalled()
+  })
+
+  it('keeps focus on the button when it reaches an end, so the arrows keep working', () => {
+    const { rerender } = render(
+      <VersionSwitcher messageId="m" index={2} count={2} onSwitch={vi.fn()} />
+    )
+    const prev = screen.getByRole('button', { name: /^Previous version/ })
+    prev.focus()
+    rerender(<VersionSwitcher messageId="m" index={1} count={2} onSwitch={vi.fn()} />)
+    expect(prev).toHaveFocus()
+    expect(prev).not.toBeDisabled()
   })
 })
