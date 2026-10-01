@@ -118,6 +118,7 @@ import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
+import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
 import { paramsSettings } from '@/lib/predefinedParams'
@@ -531,6 +532,9 @@ export function stripRetryErrorWrapper(message: string): string {
   if (m) return m[1]
   return message.replace(RETRY_PREFIX_RE, '')
 }
+
+/** Providers that run a model on this machine, with a small context. */
+const LOCAL_ENGINE_PROVIDERS = new Set(['llamacpp', 'mlx'])
 
 export function stripUnsupportedImageParts(
   messages: UIMessage[],
@@ -2095,15 +2099,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         )
       }
     }
+    // A local model reads a tool result as text, so an image in one (an MCP
+    // screenshot tool) would arrive as its full base64 and flood the context.
+    // The image is swapped for a note and, for a model that can see, attached
+    // again as an image. Remote providers have the room and are left alone.
+    const attachmentsReady = LOCAL_ENGINE_PROVIDERS.has(providerId ?? '')
+      ? prepareToolResultImagesForModel(withInlineAttachments, {
+          supportsVision: modelSupportsVision,
+        })
+      : withInlineAttachments
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(
           this.encodeVideoAttachments(
             this.encodeAudioAttachments(
-              stripUnsupportedImageParts(
-                withInlineAttachments,
-                modelSupportsVision
-              )
+              stripUnsupportedImageParts(attachmentsReady, modelSupportsVision)
             )
           )
         )
