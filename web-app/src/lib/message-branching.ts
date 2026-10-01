@@ -354,3 +354,43 @@ export const makeSibling = (
     metadata: { ...sourceMeta, parentId: getParentId(source) },
   }
 }
+
+/** The root the thread has selected, from its metadata (`undefined` ⇒ newest). */
+export const activeRootIdOf = (
+  threadMetadata: Record<string, unknown> | undefined | null
+): string | undefined => {
+  const id = threadMetadata?.activeRootId
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * The conversation the user is looking at, given the thread's metadata. Every
+ * reader that wants "the chat" (token counts, titles, previews, the phone,
+ * export) goes through this rather than reading the stored list, which also
+ * holds the versions that are not on screen.
+ */
+export const activePathOf = (
+  messages: ThreadMessage[],
+  threadMetadata?: Record<string, unknown> | null
+): ThreadMessage[] =>
+  computeActivePath(messages, activeRootIdOf(threadMetadata))
+
+/**
+ * Every root-to-leaf path of the tree, oldest branch first; the active path is
+ * one of them. A thread with no branching is one path.
+ */
+export const allBranchPaths = (
+  messages: ThreadMessage[]
+): ThreadMessage[][] => {
+  if (!hasBranching(messages)) return messages.length ? [messages] : []
+  const paths: ThreadMessage[][] = []
+  const walk = (node: ThreadMessage, trail: ThreadMessage[]) => {
+    if (trail.some((t) => t.id === node.id)) return
+    const next = [...trail, node]
+    const kids = childrenOf(messages, node.id)
+    if (kids.length === 0) paths.push(next)
+    else kids.forEach((k) => walk(k, next))
+  }
+  childrenOf(messages, null).forEach((r) => walk(r, []))
+  return paths.length ? paths : [messages]
+}
