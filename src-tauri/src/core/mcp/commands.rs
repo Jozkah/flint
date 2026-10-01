@@ -28,6 +28,10 @@ async fn tool_call_timeout(state: &AppState) -> Duration {
     state.mcp_settings.lock().await.tool_call_timeout_duration()
 }
 
+/// How long one server may take to list its tools before its last-known tools
+/// are used instead. Short, because every send waits on it.
+const MCP_LIST_TOOLS_TIMEOUT: Duration = Duration::from_secs(8);
+
 /// Shared implementation for listing MCP tools.
 ///
 /// - `server_filter: None` — every enabled server (same behavior as `get_tools`).
@@ -71,18 +75,31 @@ async fn collect_mcp_tools<R: Runtime>(
         }
     };
 
-    for server_name in server_names {
-        // Snapshot the live service's list_all_tools() future while holding the
-        // lock, but resolve it after dropping the guard so a slow/hanging
-        // server doesn't hold `mcp_servers` locked for other callers.
-        let maybe_list_result = {
-            let servers = state.mcp_servers.lock().await;
-            match servers.get(&server_name) {
-                Some(service) => Some(timeout(timeout_duration, service.list_all_tools()).await),
+    // Listing waits on each server, and one that never answers used to hold the
+    // `mcp_servers` lock and delay every server after it by the full tool-call
+    // timeout, which froze sending a message. The peers are copied out under the
+    // lock, the lock is dropped, and every server is listed at once with a short
+    // limit of its own; a slow one falls back to its last-known tools below.
+    let list_timeout = timeout_duration.min(MCP_LIST_TOOLS_TIMEOUT);
+    let peers: Vec<(String, Option<rmcp::Peer<rmcp::RoleClient>>)> = {
+        let servers = state.mcp_servers.lock().await;
+        server_names
+            .iter()
+            .map(|name| (name.clone(), servers.get(name).map(|s| s.peer().clone())))
+            .collect()
+    };
+    let listed = futures_util::future::join_all(peers.into_iter().map(
+        |(name, peer)| async move {
+            let result = match peer {
+                Some(peer) => Some(timeout(list_timeout, peer.list_all_tools()).await),
                 None => None,
-            }
-        };
+            };
+            (name, result)
+        },
+    ))
+    .await;
 
+    for (server_name, maybe_list_result) in listed {
         let fresh_tools = match maybe_list_result {
             Some(Ok(Ok(tools))) => {
                 let mapped: Vec<ToolWithServer> = tools
