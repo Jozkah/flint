@@ -259,7 +259,10 @@ describe('the outcome of a run', () => {
     expect(checks).toHaveTextContent('results:checks.outcome.failed')
     expect(checks).toHaveTextContent('cargo build')
     expect(checks).not.toHaveTextContent('results:checks.none')
-    expect(region()).toHaveTextContent('results:unresolved.checkFailed')
+    // A failed check is reported in the Checks section and the headline; the
+    // Unresolved section does not repeat it.
+    expect(region()).toHaveTextContent('results:headline.completedChecksFailed')
+    expect(region()).not.toHaveTextContent('results:unresolved.checkFailed')
     // Summarised from the record: one of two passed, the other failed with
     // its exit code. Nothing claims the whole set passed.
     const summary = screen.getByTestId('cowork-verification-summary')
