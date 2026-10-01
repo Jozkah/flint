@@ -34,7 +34,7 @@ import { MessageItem } from '@/containers/MessageItem'
 
 import { useMessages } from '@/hooks/useMessages'
 import { getActiveMessages } from '@/hooks/useActiveMessages'
-import { BRANCH_CHANGED_EVENT, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
+import { BRANCH_CHANGED_EVENT, repairActiveRoot, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
@@ -2190,6 +2190,7 @@ export function ThreadConversation({
       const stored = useMessages.getState().getMessages(threadId)
       const branched = hasBranching(stored)
       for (const m of removeFromTree(stored, [messageId])) updateMessage(m)
+      repairActiveRoot(threadId, stored, [messageId])
       deleteMessage(threadId, messageId)
       useMessageErrors.getState().clearError(messageId)
 

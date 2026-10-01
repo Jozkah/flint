@@ -464,6 +464,31 @@ pub async fn db_delete_message<R: Runtime>(
         .iter()
         .filter_map(|row| serde_json::from_str(&row.get::<String, _>("data")).ok())
         .collect();
+    // A deleted root the thread had selected hands the selection on.
+    if let Some(row) = sqlx::query("SELECT data FROM threads WHERE id = ?1")
+        .bind(thread_id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| format!("Failed to read thread: {}", e))?
+    {
+        let raw: String = row.get("data");
+        if let Ok(mut thread) = serde_json::from_str::<Value>(&raw) {
+            let change = super::branching::active_root_after_delete(
+                &messages,
+                message_id,
+                super::branching::thread_active_root(&thread).as_deref(),
+            );
+            if super::branching::apply_active_root(&mut thread, change) {
+                let data = serde_json::to_string(&thread).map_err(|e| e.to_string())?;
+                sqlx::query("UPDATE threads SET data = ?1 WHERE id = ?2")
+                    .bind(&data)
+                    .bind(thread_id)
+                    .execute(&pool)
+                    .await
+                    .map_err(|e| format!("Failed to update thread: {}", e))?;
+            }
+        }
+    }
     for changed in super::branching::reparent_on_delete(&messages, message_id) {
         if let Some(id) = changed.get("id").and_then(|v| v.as_str()) {
             let data = serde_json::to_string(&changed).map_err(|e| e.to_string())?;

@@ -160,6 +160,61 @@ pub fn reparent_on_delete(messages: &[Value], remove_id: &str) -> Vec<Value> {
     order.into_iter().filter_map(|id| writes.remove(&id)).collect()
 }
 
+/// The thread metadata `activeRootId`, as stored.
+pub fn thread_active_root(thread: &Value) -> Option<String> {
+    thread
+        .pointer("/metadata/activeRootId")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+/// Which root the thread should point at once `remove_id` is deleted, when its
+/// `activeRootId` is that message: the deleted root first reparented child,
+/// else the newest root left, else nothing.
+///
+/// `None` leaves `activeRootId` alone; `Some(None)` clears it.
+pub fn active_root_after_delete(
+    messages: &[Value],
+    remove_id: &str,
+    active_root: Option<&str>,
+) -> Option<Option<String>> {
+    if active_root != Some(remove_id) {
+        return None;
+    }
+    let promoted: HashSet<String> = reparent_on_delete(messages, remove_id)
+        .iter()
+        .map(|m| id_of(m).to_string())
+        .collect();
+    let after = remove_message(messages.to_vec(), remove_id);
+    let roots = children_of(&after, None);
+    let pick = roots
+        .iter()
+        .find(|m| promoted.contains(id_of(m)))
+        .or_else(|| roots.last())
+        .map(|m| id_of(m).to_string());
+    Some(pick)
+}
+
+/// Write an `active_root_after_delete` answer into a thread JSON. Returns
+/// whether the thread changed.
+pub fn apply_active_root(thread: &mut Value, change: Option<Option<String>>) -> bool {
+    let Some(change) = change else {
+        return false;
+    };
+    if !thread.get("metadata").map_or(false, Value::is_object) {
+        thread["metadata"] = json!({});
+    }
+    match change {
+        Some(id) => thread["metadata"]["activeRootId"] = Value::String(id),
+        None => {
+            if let Some(meta) = thread["metadata"].as_object_mut() {
+                meta.remove("activeRootId");
+            }
+        }
+    }
+    true
+}
+
 /// `messages` without `remove_id`, its children and their parent repaired.
 pub fn remove_message(messages: Vec<Value>, remove_id: &str) -> Vec<Value> {
     let writes: HashMap<String, Value> = reparent_on_delete(&messages, remove_id)
@@ -290,6 +345,60 @@ mod tests {
     fn deleting_a_leaf_changes_nothing_else() {
         assert!(reparent_on_delete(&branched(), "u2").is_empty());
         assert_eq!(ids(&remove_message(branched(), "u2")), vec!["u1", "a1", "a1b"]);
+    }
+
+    fn root_tree() -> Vec<Value> {
+        vec![
+            msg("r1", 1, Some(None), None),
+            msg("a1", 2, Some(Some("r1")), None),
+            msg("r2", 3, Some(None), None),
+        ]
+    }
+
+    #[test]
+    fn deleting_the_active_root_follows_it_to_its_first_child() {
+        assert_eq!(
+            active_root_after_delete(&root_tree(), "r1", Some("r1")),
+            Some(Some("a1".to_string()))
+        );
+    }
+
+    #[test]
+    fn deleting_a_childless_active_root_picks_the_newest_root() {
+        let m = vec![
+            msg("r1", 1, Some(None), None),
+            msg("r2", 2, Some(None), None),
+            msg("r3", 3, Some(None), None),
+        ];
+        assert_eq!(
+            active_root_after_delete(&m, "r1", Some("r1")),
+            Some(Some("r3".to_string()))
+        );
+    }
+
+    #[test]
+    fn deleting_the_only_root_clears_the_selection() {
+        let m = vec![msg("r1", 1, Some(None), None)];
+        assert_eq!(active_root_after_delete(&m, "r1", Some("r1")), Some(None));
+    }
+
+    #[test]
+    fn deleting_a_root_that_is_not_selected_changes_nothing() {
+        assert_eq!(active_root_after_delete(&root_tree(), "r2", Some("r1")), None);
+        assert_eq!(active_root_after_delete(&root_tree(), "a1", Some("r1")), None);
+        assert_eq!(active_root_after_delete(&root_tree(), "r1", None), None);
+    }
+
+    #[test]
+    fn the_thread_json_is_updated_or_cleared() {
+        let mut t = json!({"id": "t", "metadata": {"activeRootId": "r1", "keep": 1}});
+        assert!(apply_active_root(&mut t, Some(Some("a1".into()))));
+        assert_eq!(thread_active_root(&t).as_deref(), Some("a1"));
+        assert!(apply_active_root(&mut t, Some(None)));
+        assert_eq!(t["metadata"], json!({"keep": 1}));
+        assert!(!apply_active_root(&mut t, None));
+        let mut bare = json!({"id": "t"});
+        assert!(apply_active_root(&mut bare, Some(None)));
     }
 
     #[test]

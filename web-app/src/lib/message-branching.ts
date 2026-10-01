@@ -262,6 +262,30 @@ export const removeFromTree = (
 }
 
 /**
+ * Which root the thread should point at once `removeIds` are gone, when the
+ * thread's `activeRootId` is one of them. Removing a root promotes its children
+ * to roots (see `removeFromTree`), so the selection follows to the first child
+ * that took its place, else the newest root left, else nothing.
+ *
+ * `undefined` means leave `activeRootId` alone; `null` means clear it.
+ */
+export const activeRootAfterRemoval = (
+  messages: ThreadMessage[],
+  removeIds: Iterable<string>,
+  activeRootId: string | undefined
+): string | null | undefined => {
+  const removed = new Set(removeIds)
+  if (!activeRootId || !removed.has(activeRootId)) return undefined
+  const promoted = new Map(removeFromTree(messages, removed).map((m) => [m.id, m]))
+  const after = messages
+    .filter((m) => !removed.has(m.id))
+    .map((m) => promoted.get(m.id) ?? m)
+  const roots = after.filter((m) => rawParent(m) === null).sort(byCreatedAt)
+  const reparented = roots.find((m) => promoted.has(m.id))
+  return (reparented ?? roots[roots.length - 1])?.id ?? null
+}
+
+/**
  * Re-attach messages whose `parentId` names a message that is gone -- threads
  * already damaged by the delete path `removeFromTree` now handles. Each is
  * hung off the nearest earlier surviving message by `created_at`, which is the

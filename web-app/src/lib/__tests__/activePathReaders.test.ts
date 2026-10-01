@@ -4,6 +4,7 @@ import {
   activePathOf,
   activeRootIdOf,
   allBranchPaths,
+  activeRootAfterRemoval,
 } from '../message-branching'
 
 let clock = 0
@@ -78,5 +79,34 @@ describe('allBranchPaths', () => {
   it('does not loop on a parent cycle', () => {
     const m = [msg('x', 'user', 'y'), msg('y', 'assistant', 'x')]
     expect(() => allBranchPaths(m)).not.toThrow()
+  })
+})
+
+describe('activeRootAfterRemoval', () => {
+  // r1 (selected) -> a1 -> u2, and a second root r2.
+  const tree = () => [
+    msg('r1', 'user', null),
+    msg('a1', 'assistant', 'r1'),
+    msg('u2', 'user', 'a1'),
+    msg('r2', 'user', null),
+  ]
+
+  it('follows the selection to the child that took the deleted root place', () => {
+    expect(activeRootAfterRemoval(tree(), ['r1'], 'r1')).toBe('a1')
+  })
+
+  it('falls back to the newest remaining root when the root had no children', () => {
+    const m = [msg('r1', 'user', null), msg('r2', 'user', null), msg('r3', 'user', null)]
+    expect(activeRootAfterRemoval(m, ['r1'], 'r1')).toBe('r3')
+  })
+
+  it('clears the selection when the only root goes', () => {
+    expect(activeRootAfterRemoval([msg('r1', 'user', null)], ['r1'], 'r1')).toBeNull()
+  })
+
+  it('leaves the selection alone when another message is removed', () => {
+    expect(activeRootAfterRemoval(tree(), ['a1'], 'r1')).toBeUndefined()
+    expect(activeRootAfterRemoval(tree(), ['r2'], 'r1')).toBeUndefined()
+    expect(activeRootAfterRemoval(tree(), ['r1'], undefined)).toBeUndefined()
   })
 })
