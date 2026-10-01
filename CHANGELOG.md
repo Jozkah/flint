@@ -155,6 +155,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Adding a self-hosted OpenAI-compatible server by its bare address, such as `http://host:8000`, now finds its models: the model list is also tried under `/v1` when the first address answers 404, and pasted spaces and trailing slashes are ignored.
 - Editing a message you sent with images keeps the images instead of dropping them.
 - The copy buttons for API keys and secrets show "copied" only once the clipboard write has succeeded.
+- Added **voice input**: a microphone beside Send dictates into the message box, with the words spliced in at the caret phrase by phrase while you talk. Speech is turned into text on this computer by Voxtral Mini 3B, a one-time download of about 3 GB that runs next to your chat model and unloads a few minutes after you stop. Press the microphone again to keep the text, or Escape to throw the dictation away.
+- A chat started from the phone with no model chosen now picks one on the computer, as the desktop does, and says so plainly when nothing can answer. The phone's copy buttons say "Copy failed" instead of staying silent when the connection has no clipboard, and a phone's chat history no longer shows a model's reasoning.
 - A reply's token details show **Draft accepted**, for example `75% (30/40)`, when speculative decoding (MTP, DFlash or EAGLE-3) ran, so you can see whether a draft is paying off.
 
 ### Release infrastructure
