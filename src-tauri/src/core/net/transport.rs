@@ -110,6 +110,17 @@ fn endpoint_of(url: &str) -> Result<(String, u16), String> {
     Ok((host, port))
 }
 
+/// Whether `host` is this machine. A proxy configured for the system or the
+/// environment (a VPN client, `HTTP_PROXY`) must not carry a request to a local
+/// engine: it either cannot reach it or sends the model's traffic elsewhere.
+fn is_loopback_host(host: &str) -> bool {
+    let host = host.trim_matches(|c| c == '[' || c == ']');
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+}
+
 fn client_for(host: &str, port: u16) -> Result<Client, String> {
     // AH-190: clients built under another CA bundle are not reused.
     static BUILT_FOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -123,8 +134,12 @@ fn client_for(host: &str, port: u16) -> Result<Client, String> {
     if let Some(existing) = clients().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Ok(existing);
     }
+    let mut builder = Client::builder();
+    if is_loopback_host(host) {
+        builder = builder.no_proxy();
+    }
     let client = crate::core::net::tls::apply12(
-        Client::builder()
+        builder
             .dns_resolver(Arc::new(EndpointResolver {
                 port,
                 cache: resolver::shared().clone(),
@@ -704,6 +719,16 @@ pub async fn send_stream<S: ChunkSink>(req: ProviderRequest, sink: S) -> Result<
 // installs is global, so tests that install one must not overlap.
 #[allow(clippy::await_holding_lock)]
 mod tests {
+    #[test]
+    fn loopback_hosts_are_told_from_remote_ones() {
+        for host in ["localhost", "LOCALHOST", "127.0.0.1", "127.1.2.3", "::1", "[::1]"] {
+            assert!(super::is_loopback_host(host), "{host}");
+        }
+        for host in ["example.com", "192.168.1.5", "100.64.0.2", "0.0.0.0", "localhost.example.com"] {
+            assert!(!super::is_loopback_host(host), "{host}");
+        }
+    }
+
     use super::*;
 
     #[tokio::test]
