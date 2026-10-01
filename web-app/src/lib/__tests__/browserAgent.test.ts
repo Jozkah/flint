@@ -16,6 +16,7 @@ import {
 } from '@/lib/browserAgent'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
+import { useBrowserShots } from '@/hooks/useBrowserShots'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 const approve = vi.fn()
@@ -248,6 +249,35 @@ describe('first visit', () => {
   })
 })
 
+describe('screenshot', () => {
+  it('is a read tool: no action approval, and the picture goes to the card, not the model', async () => {
+    invoke.mockResolvedValueOnce({
+      ...ok,
+      content: '<untrusted_web_content id=a kind=screenshot url="https://example.com/">saved</untrusted_web_content id=a>',
+      image: 'QUJD',
+    })
+    const r = await runBrowserAgentTool('browser_screenshot', {}, 't', { callId: 'shot-1' })
+    expect(r).toEqual({ content: expect.stringContaining('saved') })
+    expect(JSON.stringify(r)).not.toContain('QUJD')
+    expect(useBrowserShots.getState().shots['shot-1']).toBe('QUJD')
+    expect(approve).not.toHaveBeenCalled()
+    expect(invoke.mock.calls[0][1].request.tool).toBe('screenshot')
+  })
+
+  it('reports an unsupported platform as the tool error', async () => {
+    invoke.mockResolvedValueOnce({ status: 'error', reason: 'browser_screenshot is not supported on this platform yet' })
+    expect(await runBrowserAgentTool('browser_screenshot', {}, 't', { callId: 'shot-2' })).toEqual({
+      error: expect.stringContaining('not supported on this platform'),
+    })
+    expect(useBrowserShots.getState().shots['shot-2']).toBeUndefined()
+  })
+
+  it('says in its description that the image is untrusted', () => {
+    const d = browserAgentSchemas().find((s) => s.function.name === 'browser_screenshot')!.function.description
+    expect(d).toContain('untrusted page content')
+  })
+})
+
 describe('actions', () => {
   it('ask for the normal tool approval before anything is sent', async () => {
     approve.mockResolvedValueOnce(false)
@@ -357,7 +387,7 @@ describe('actions', () => {
 })
 
 describe('schemas and helpers', () => {
-  it('advertise the seven tools, each saying page content is untrusted', () => {
+  it('advertise the eight tools, each saying page content is untrusted', () => {
     const schemas = browserAgentSchemas()
     expect(schemas.map((s) => s.function.name).sort()).toEqual(
       [...BROWSER_TOOL_NAMES].sort()

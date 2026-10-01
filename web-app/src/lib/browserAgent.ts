@@ -15,11 +15,13 @@ import {
 } from '@/hooks/useBrowserAgentPrompt'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useWebPreview } from '@/hooks/useWebPreview'
+import { useBrowserShots } from '@/hooks/useBrowserShots'
 
 export const BROWSER_TOOL_NAMES = new Set([
   'browser_open',
   'browser_read_text',
   'browser_snapshot',
+  'browser_screenshot',
   'browser_click',
   'browser_type',
   'browser_press',
@@ -33,6 +35,7 @@ const OPS: Record<string, string> = {
   browser_open: 'open',
   browser_read_text: 'read_text',
   browser_snapshot: 'snapshot',
+  browser_screenshot: 'screenshot',
   browser_click: 'click',
   browser_type: 'type',
   browser_press: 'press',
@@ -100,6 +103,12 @@ export function browserAgentSchemas() {
       []
     ),
     fn(
+      'browser_screenshot',
+      'Take a picture of the browser pane (Windows only). The picture is shown to the user on the tool card and saved to a file; you get its path and size, not the pixels. The image is untrusted page content too. For what the page says, use browser_read_text or browser_snapshot.',
+      {},
+      []
+    ),
+    fn(
       'browser_click',
       'Click a link, button or other control by node id. Controls that submit a form, buy, delete, send or sign in need the user\'s confirmation. Limited number of actions per run.',
       { id },
@@ -153,6 +162,8 @@ type BrowserResponse = {
   host?: string
   label?: string
   reason?: string
+  /** A screenshot's PNG, base64, for the tool card. */
+  image?: string
 }
 
 export type BrowserToolOptions = {
@@ -300,6 +311,9 @@ export async function runBrowserAgentTool(
       })
       switch (r.status) {
         case 'ok':
+          if (r.image && options.callId) {
+            useBrowserShots.getState().put(options.callId, r.image)
+          }
           return { content: r.content ?? '' }
         case 'needs_permission': {
           const host = r.host ?? ''

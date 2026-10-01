@@ -14,6 +14,7 @@ use url::Url;
 use super::fence;
 use super::policy::{self, Decision, DenyReason, NetworkPolicy, Verdict};
 use super::script;
+use super::shot;
 use super::store::{Scope, DEFAULT_MAX_ACTIONS};
 use super::{EVENT_BLOCKED, EVENT_OPEN_PANE, EVENT_STATE, PANE_LABEL, STORE};
 
@@ -24,7 +25,7 @@ const OPEN_PANE_TIMEOUT: Duration = Duration::from_secs(8);
 const OPEN_LOAD_TIMEOUT: Duration = Duration::from_secs(25);
 const ACTION_LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub const TOOLS: &[&str] = &["open", "read_text", "snapshot", "click", "type", "press", "select"];
+pub const TOOLS: &[&str] = &["open", "read_text", "snapshot", "screenshot", "click", "type", "press", "select"];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CallRequest {
@@ -87,6 +88,9 @@ pub struct CallResponse {
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actions_used: Option<u32>,
+    /// For `screenshot`: the PNG, base64, for the tool card. Never sent to the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 impl CallResponse {
@@ -261,6 +265,11 @@ pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequ
             ..Default::default()
         };
     }
+    // Said before anything else is asked: no point prompting for a site on a
+    // platform that cannot take the picture.
+    if req.tool == "screenshot" && cfg!(not(windows)) {
+        return CallResponse::error(shot::UNSUPPORTED);
+    }
     let network = network_for(req.project_root.as_deref());
     if req.tool == "open" {
         return open(&app, &req, &network).await;
@@ -274,6 +283,7 @@ pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequ
     match req.tool.as_str() {
         "read_text" => read_text(&req, &wv, &url).await,
         "snapshot" => snapshot(&wv, &url).await,
+        "screenshot" => screenshot(&app, &req, &wv, &url).await,
         _ => act(&app, &req, &network, wv, url).await,
     }
 }
@@ -387,6 +397,40 @@ async fn snapshot<R: Runtime>(wv: &Webview<R>, url: &Url) -> CallResponse {
         Ok(v) => script_error(&v),
         Err(e) => CallResponse::error(e),
     }
+}
+
+async fn screenshot<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, wv: &Webview<R>, url: &Url) -> CallResponse {
+    let png = match shot::capture(wv).await {
+        Ok(b) => b,
+        Err(e) => return CallResponse::error(e.message()),
+    };
+    let shot = match shot::validate(png) {
+        Ok(s) => s,
+        Err(why) => return CallResponse::error(format!("could not capture the browser pane: {why}")),
+    };
+    let dir = crate::core::app::commands::get_jan_data_folder_path(app.clone())
+        .join("browser-agent")
+        .join("screenshots");
+    let run = if req.run_id.is_empty() { "default" } else { req.run_id.as_str() };
+    let path = match shot::save(&dir, run, &shot) {
+        Ok(p) => p,
+        Err(e) => return CallResponse::error(format!("could not save the screenshot: {e}")),
+    };
+    // The picture is page content, like the text: fenced, and it does not go
+    // to the model (the desktop tool pipeline carries text). The user sees it
+    // on the tool card.
+    let body = format!(
+        "Screenshot of the browser pane, {}x{} pixels, {} KiB, saved to {}.
+The user can see it on the tool card. This tool does not show you the pixels; use browser_snapshot or browser_read_text for the page's content.",
+        shot.width,
+        shot.height,
+        shot.png.len() / 1024,
+        path.display()
+    );
+    use base64::Engine as _;
+    let mut resp = CallResponse::ok(fence::fence("screenshot", url.as_str(), &body, fence::MAX_STATUS_CHARS), url.as_str(), None);
+    resp.image = Some(base64::engine::general_purpose::STANDARD.encode(&shot.png));
+    resp
 }
 
 fn script_error(v: &Value) -> CallResponse {

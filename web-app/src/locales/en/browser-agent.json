@@ -9,6 +9,7 @@
       "browser_open": "open this page",
       "browser_read_text": "read this page",
       "browser_snapshot": "look at this page's controls",
+      "browser_screenshot": "take a picture of this page",
       "browser_click": "click on this page",
       "browser_type": "type on this page",
       "browser_press": "press a key on this page",
@@ -51,6 +52,9 @@
     "added": "Rule saved",
     "addFailed": "Could not save the rule: {{error}}",
     "forgetGrants": "Forget this session's approvals"
+  },
+  "card": {
+    "screenshot": "Screenshot of the browser pane"
   },
   "pane": {
     "driving": "Assistant is using this browser",
