@@ -1070,6 +1070,8 @@
     "noProject": "Attach a project folder to browse its code here.",
     "attachProject": "Attach project",
     "tooLarge": "This file is too large to display ({{size}}).",
+    "openExternally": "Open it in another app to see all of it. Only the start is shown below.",
+    "fileMissing": "{{name}} is not in this session's files (not found).",
     "binary": "This file looks binary and cannot be displayed.",
     "sensitive": "This file looks like credentials and was not opened.",
     "openAnyway": "Open anyway",

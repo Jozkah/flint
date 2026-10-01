@@ -96,7 +96,13 @@ export default defineConfig(() => {
         : undefined,
       watch: {
         // 3. tell vite to ignore watching `src-tauri`
-        ignored: ['**/src-tauri/**'],
+        ignored: [
+          '**/src-tauri/**',
+          // Test files are not part of the app graph; editing one made vite
+          // full-reload the webview.
+          '**/__tests__/**',
+          '**/*.test.{ts,tsx}',
+        ],
         usePolling: true
       },
     },

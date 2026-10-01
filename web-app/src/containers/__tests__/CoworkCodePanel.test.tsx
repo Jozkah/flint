@@ -682,6 +682,57 @@ describe('CoworkCodePanel — session isolation', () => {
     expect(screen.queryByText('common:codePanel.detached')).toBeNull()
   })
 
+  it('says a missing sandbox file is missing instead of a bare 404', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 404, headers: { get: () => '0' } })
+    render(
+      <Harness
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(
+      (await screen.findAllByText(/common:codePanel\.fileMissing/)).length
+    ).toBeGreaterThan(0)
+  })
+
+  it('refuses a binary sandbox file', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      headers: { get: () => '3' },
+      text: async () => 'ab c',
+    })
+    render(
+      <Harness
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    expect(await screen.findByText('common:codePanel.binary')).toBeInTheDocument()
+  })
+
+  it('shows a too-large sandbox file as a notice, not content', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      headers: { get: () => String(50 * 1024 * 1024) },
+      text: async () => 'never read',
+    })
+    render(
+      <Harness
+        workspacePath={WS_A}
+        sessionKey="session-a"
+        initial={sandboxState('session-a')}
+      />
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryAllByText('common:codePanel.openExternally').length
+      ).toBeGreaterThan(0)
+    )
+    expect(screen.queryByText('never read')).toBeNull()
+  })
+
   it('keeps this session’s sandbox tabs when the project changes', async () => {
     // A project switch inside one session must not disturb session-owned tabs.
     fetchMock.mockResolvedValue(textResponse('workspace bytes'))

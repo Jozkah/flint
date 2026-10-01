@@ -69,6 +69,7 @@ import {
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
+import { readTextBounded } from '@/lib/boundedRead'
 import { errorText } from '@/lib/errorText'
 import { changedLines, collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { useTheme } from '@/hooks/useTheme'
@@ -126,7 +127,7 @@ type FileState =
   /** The project this tab came from is no longer attached. */
   | { status: 'detached' }
   | { status: 'ready'; content: string }
-  | { status: 'oversized'; size: number }
+  | { status: 'oversized'; size: number; preview?: string }
   | { status: 'binary' }
   | { status: 'denied' }
   | { status: 'sensitive' }
@@ -388,6 +389,15 @@ export function CoworkCodePanel({
    */
   const rootIdentity = `${projectKey ?? ''}\u0000${sessionKey ?? ''}\u0000${workspacePath ?? ''}`
   const generation = useRef(0)
+  /** In-flight sandbox reads by tab id, aborted when superseded or on unmount. */
+  const readAborts = useRef(new Map<string, AbortController>())
+  useEffect(() => {
+    const aborts = readAborts.current
+    return () => {
+      for (const c of aborts.values()) c.abort()
+      aborts.clear()
+    }
+  }, [rootIdentity])
   const currentGen = useRef(0)
   const lastRootIdentity = useRef<string | undefined>(undefined)
   if (lastRootIdentity.current !== rootIdentity) {
@@ -497,18 +507,39 @@ export function CoworkCodePanel({
         if (!workspacePath) return null
         const abs = resolveInRoot(workspacePath, copy ?? tab.path)
         if (!abs) return { status: 'error', message: t('common:preview.outside') }
-        try {
-          const res = await fetch(getServiceHub().core().convertFileSrc(abs))
-          if (!res.ok) throw new Error(String(res.status))
-          const size = Number(res.headers.get('content-length') ?? 0)
-          if (size > MAX_CODE_FILE_BYTES) return { status: 'oversized', size }
-          const content = await res.text()
-          if (content.length > MAX_CODE_FILE_BYTES) {
-            return { status: 'oversized', size: content.length }
-          }
-          return { status: 'ready', content }
-        } catch (e) {
-          return { status: 'error', message: messageOf(e) }
+        const id = tabId(tab)
+        // A newer read of the same tab supersedes this one.
+        readAborts.current.get(id)?.abort()
+        const controller = new AbortController()
+        readAborts.current.set(id, controller)
+        const read = await readTextBounded(
+          getServiceHub().core().convertFileSrc(abs),
+          { signal: controller.signal }
+        )
+        if (readAborts.current.get(id) === controller) {
+          readAborts.current.delete(id)
+        }
+        switch (read.status) {
+          case 'ready':
+            return { status: 'ready', content: read.content }
+          case 'oversized':
+            return {
+              status: 'oversized',
+              size: read.size,
+              preview: read.preview,
+            }
+          case 'binary':
+            return { status: 'binary' }
+          case 'missing':
+            return {
+              status: 'error',
+              message: t('common:codePanel.fileMissing', { name: tab.path }),
+            }
+          default:
+            // An aborted read was replaced or the roots changed: record nothing.
+            return read.message === 'aborted'
+              ? null
+              : { status: 'error', message: read.message }
         }
       }
 
@@ -933,12 +964,15 @@ export function CoworkCodePanel({
     const abs = resolveInRoot(workspacePath, agentCopy)
     if (!abs) return
     let alive = true
-    void fetch(getServiceHub().core().convertFileSrc(abs))
-      .then((res) => (res.ok ? res.text() : null))
-      .then((text) => alive && setAgentCopyText(text))
-      .catch(() => {})
+    const controller = new AbortController()
+    void readTextBounded(getServiceHub().core().convertFileSrc(abs), {
+      signal: controller.signal,
+    }).then((read) => {
+      if (alive) setAgentCopyText(read.status === 'ready' ? read.content : null)
+    })
     return () => {
       alive = false
+      controller.abort()
     }
   }, [agentCopy, workspacePath])
   const agentHunks = useMemo(
@@ -1733,9 +1767,22 @@ export function CoworkCodePanel({
             </div>
           ) : activeFile.status === 'oversized' ? (
             <Notice>
-              {t('common:codePanel.tooLarge', {
-                size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
-              })}
+              <span className="block">
+                {t('common:codePanel.tooLarge', {
+                  size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
+                })}
+              </span>
+              <span className="mt-1 block text-muted-foreground">
+                {t('common:codePanel.openExternally')}
+              </span>
+              {activeFile.preview ? (
+                <pre
+                  data-testid="code-oversized-preview"
+                  className="mt-3 max-h-64 overflow-auto rounded-md bg-code-bg p-2 text-left font-mono text-xs"
+                >
+                  {activeFile.preview.slice(0, 16384)}
+                </pre>
+              ) : null}
             </Notice>
           ) : activeFile.status === 'binary' ? (
             <Notice>{t('common:codePanel.binary')}</Notice>

@@ -1,0 +1,7 @@
+# tauri dev restarts the app (killing the session) on any change under the
+# watched tree. Installing JS deps or rebuilding plugin guest bindings touches
+# these without changing any Rust source.
+node_modules
+**/node_modules/**
+plugins/**/dist-js/**
+plugins/**/guest-js/**
