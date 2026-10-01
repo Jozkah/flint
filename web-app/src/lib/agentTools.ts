@@ -37,6 +37,7 @@ import {
   browserAgentSchemas,
   isBrowserTool,
   runBrowserAgentTool,
+  type BrowserToolOptions,
 } from '@/lib/browserAgent'
 
 /**
@@ -406,6 +407,8 @@ export type AgentToolOptions = {
    * project's allowed domains already cover it.
    */
   unattended?: boolean
+  /** Cowork's own question-asker, so browser actions are asked like its edits. */
+  approve?: BrowserToolOptions['approve']
   /** Shown in a `request_access` prompt when a subagent or child is asking. */
   origin?: string
   /**
@@ -435,6 +438,7 @@ export async function executeAgentTool(
         unattended: options.unattended,
         origin: options.origin,
         taskLabel: options.taskLabel,
+        approve: options.approve,
       })
       return 'error' in r ? { error: r.error } : { content: r.content }
     }

@@ -166,6 +166,22 @@ export type BrowserToolOptions = {
   unattended?: boolean
   taskLabel?: string
   origin?: string
+  /**
+   * How this surface puts a question to the user. Cowork passes its own
+   * `onApprove`, so a browser action is asked exactly like its edits and
+   * commands (and a subagent's, with the subagent named). Left out, the shared
+   * approval store is used directly, which is what chat does.
+   */
+  approve?: (request: BrowserApproval) => Promise<boolean>
+}
+
+export type BrowserApproval = {
+  /** Why the user is being asked, in a sentence. */
+  context: string
+  /** The page involved, in full. */
+  url?: string
+  /** Ask even if a standing grant would answer (submit-like controls). */
+  alwaysAsk: boolean
 }
 
 type ToolResult = { content: string } | { error: string }
@@ -245,9 +261,12 @@ export async function runBrowserAgentTool(
   const callId = options.callId ?? `${toolName}-${Date.now()}`
   const ask = (
     context: string,
-    alwaysAsk: boolean
+    alwaysAsk: boolean,
+    url?: string
   ): Promise<boolean> =>
-    useToolApprovalRequests
+    options.approve
+      ? options.approve({ context, alwaysAsk, url })
+      : useToolApprovalRequests
       .getState()
       .requestApproval(callId, toolName, threadId, undefined, {
         input,
@@ -266,7 +285,8 @@ export async function runBrowserAgentTool(
         page
           ? `Acts on the page open in the browser pane: ${page}`
           : 'Acts on the page open in the browser pane.',
-        false
+        false,
+        page || undefined
       )
       if (!ok) return { error: 'The user declined this browser action.' }
     }
@@ -308,7 +328,8 @@ export async function runBrowserAgentTool(
           }
           const ok = await ask(
             `Confirm: ${r.label ? `"${r.label}"` : 'this control'} on ${r.url ?? 'the page'} - ${r.reason ?? 'it changes something on the site'}. Asked every time.`,
-            true
+            true,
+            r.url
           )
           if (!ok) return { error: 'The user declined this action.' }
           confirmed = true
