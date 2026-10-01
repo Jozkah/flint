@@ -48,6 +48,7 @@ import { errorText } from '@/lib/errorText'
 import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 import { AttributionSettings } from '@/containers/AttributionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
+import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -400,6 +401,7 @@ function AgentToolsContent() {
         </Card>
 
         <CompactionPolicySettings />
+        <BrowserAgentSettings />
         <Card
           title={t('settings:agentTools.memories')}
           aside={addButton('memory')}

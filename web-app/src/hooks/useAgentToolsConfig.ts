@@ -9,6 +9,16 @@ type AgentToolsConfigState = {
   /** Open the sandboxed shell's network namespace. */
   bashNetworkEnabled: boolean
   setBashNetworkEnabled: (value: boolean) => void
+  /**
+   * Let the assistant read and drive the built-in browser pane
+   * (browser_open, browser_snapshot, ...). Off by default: every site still
+   * asks the first time, but the tools also cost context in every request.
+   */
+  browserAgentEnabled: boolean
+  setBrowserAgentEnabled: (value: boolean) => void
+  /** Clicks, keystrokes and selections one run may make in the browser pane. */
+  browserAgentMaxActions: number
+  setBrowserAgentMaxActions: (value: number) => void
 }
 
 /**
@@ -28,6 +38,17 @@ export const useAgentToolsConfig = create<AgentToolsConfigState>()(
       setAgentToolsEnabled: (agentToolsEnabled) => set({ agentToolsEnabled }),
       bashNetworkEnabled: true,
       setBashNetworkEnabled: (bashNetworkEnabled) => set({ bashNetworkEnabled }),
+      browserAgentEnabled: false,
+      setBrowserAgentEnabled: (browserAgentEnabled) =>
+        set({ browserAgentEnabled }),
+      browserAgentMaxActions: 40,
+      setBrowserAgentMaxActions: (value) =>
+        set({
+          browserAgentMaxActions: Math.min(
+            200,
+            Math.max(1, Math.round(Number.isFinite(value) ? value : 40))
+          ),
+        }),
     }),
     {
       name: localStorageKey.settingAgentTools,

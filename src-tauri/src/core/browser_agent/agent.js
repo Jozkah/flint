@@ -283,7 +283,7 @@
           }
           return;
         } else {
-          var t = suppress ? '' : ownText(node);
+          var t = suppress || tag === 'LABEL' ? '' : ownText(node);
           if (t) push(depth, 'text "' + t.replace(/"/g, "'") + '"');
         }
 

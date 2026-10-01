@@ -29,6 +29,7 @@ import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
 import { BrowserOpenedCard } from './BrowserOpenedCard'
 import { parseBrowserTarget } from '@/lib/browserOpen'
+import { browserCardUrl, isBrowserTool } from '@/lib/browserAgent'
 import { toolSentence } from '@/lib/traceSummary'
 import {
   lineOfToolInput,
@@ -185,6 +186,9 @@ export const ToolCallCard = memo(
     // Native tools name what they acted on (a command, a path, a query) in the
     // header; their widget shows the result inside the card.
     const bar = describeNativeToolCall(origin, toolName, part.input)
+    const browserArg = isBrowserTool(toolName)
+      ? browserCardUrl(toolName, part.input, part.output)
+      : ''
 
     const bash = useMemo(
       () =>
@@ -414,7 +418,10 @@ export const ToolCallCard = memo(
               </>
             ) : undefined
           }
-          arg={bar ? shownArg(bar) : undefined}
+          arg={
+            // The page the assistant's browser is on, from its own result.
+            browserArg || (bar ? shownArg(bar) : undefined)
+          }
           argNode={
             // A finished call's path opens in the Code panel from the header,
             // at the line it read when it names one.

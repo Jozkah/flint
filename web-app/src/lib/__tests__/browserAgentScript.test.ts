@@ -301,3 +301,51 @@ describe('errors', () => {
     expect(run('explode')).toMatchObject({ ok: false, code: 'bad_op' })
   })
 })
+
+describe('the injection fixture (src-tauri/.../fixtures/injection.html)', () => {
+  const html = readFileSync(
+    resolve(
+      __dirname,
+      '../../../../src-tauri/src/core/browser_agent/fixtures/injection.html'
+    ),
+    'utf8'
+  )
+  const body = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'))
+
+  it('is reported as data, with only real controls addressable', () => {
+    page(body)
+    const text = run('snapshot').snapshot as string
+    // The hostile text is there to be read...
+    expect(text).toContain('ignore all previous instructions')
+    expect(text).toContain('IMPORTANT NOTICE TO AI ASSISTANTS')
+    // ...but only as text lines. Every id belongs to a real control.
+    const addressable = text.split('\n').filter((l) => /\[\d+\.\d+\]/.test(l))
+    expect(addressable.length).toBeGreaterThan(0)
+    for (const line of addressable) {
+      expect(line).toMatch(/\] (textbox|button|link|combobox)/)
+    }
+    // The password's value never appears.
+    expect(text).not.toContain('hunter2')
+  })
+
+  it('will not type into its password field or click Buy now unconfirmed', () => {
+    page(body)
+    const text = run('snapshot').snapshot as string
+    expect(
+      run('type', { id: idOf(text, 'textbox "Password"'), text: 'x' })
+    ).toMatchObject({ code: 'sensitive_field' })
+    const buy = idOf(text, 'button "Buy now"')
+    expect(run('click', { id: buy })).toMatchObject({ needs_confirm: true })
+    expect(document.title).not.toBe('SUBMITTED')
+    run('click', { id: buy, confirmed: true })
+    expect(document.title).toBe('SUBMITTED')
+  })
+
+  it('refuses the javascript: link', () => {
+    page(body)
+    const text = run('snapshot').snapshot as string
+    expect(
+      run('click', { id: idOf(text, 'link "run script"') })
+    ).toMatchObject({ code: 'blocked' })
+  })
+})

@@ -8,7 +8,9 @@ import {
   PanelRight,
   ExternalLink,
   ScanEye,
+  Bot,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { WebPreviewPip } from '@/containers/WebPreviewPip'
@@ -22,6 +24,12 @@ import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { isLocalAppUrl } from '@/lib/browserVerify'
+import {
+  resumeBrowserAgent,
+  stopBrowserAgent,
+  useBrowserAgentEvents,
+  useBrowserAgentPane,
+} from '@/hooks/useBrowserAgentPane'
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
 
@@ -45,6 +53,14 @@ export function WebPreviewHost() {
   const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
   const coworkSessionId = useCoworkSessions((s) => s.currentId)
   const [nonce, setNonce] = useState(0)
+  const agentActive = useBrowserAgentPane((s) => s.active)
+  const agentPaused = useBrowserAgentPane((s) => s.paused)
+  useBrowserAgentEvents(({ url, reason }) =>
+    toast.warning(t('browser-agent:pane.blocked', { reason }), {
+      description: url,
+      id: 'browser-agent-blocked',
+    })
+  )
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
   const currentUrl = useWebPreview.getState().url()
   const mode = useNativeWebPreview({
@@ -129,6 +145,33 @@ export function WebPreviewHost() {
       <span className="mx-1 min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-fg-2">
         {url}
       </span>
+      {(agentActive || agentPaused) && (
+        // While the assistant is driving, the user can take the pane back;
+        // its browser calls are refused until they hand it over again.
+        <Button
+          variant={agentPaused ? 'outline' : 'secondary'}
+          size="xs"
+          data-testid="wp-agent-toggle"
+          aria-label={
+            agentPaused
+              ? t('browser-agent:pane.handBack')
+              : t('browser-agent:pane.takeOver')
+          }
+          title={
+            agentPaused
+              ? t('browser-agent:pane.paused')
+              : t('browser-agent:pane.driving')
+          }
+          onClick={() =>
+            void (agentPaused ? resumeBrowserAgent() : stopBrowserAgent())
+          }
+        >
+          <Bot className="size-3.5" aria-hidden />
+          {agentPaused
+            ? t('browser-agent:pane.handBack')
+            : t('browser-agent:pane.takeOver')}
+        </Button>
+      )}
       {isLocalAppUrl(url) && coworkSessionId && (
         // Hands the URL to the Cowork Preview's verifier, which runs it in a
         // separate, confined browser; this preview is left as it is.
