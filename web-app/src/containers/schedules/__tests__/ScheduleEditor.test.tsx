@@ -108,7 +108,8 @@ describe('ScheduleEditor', () => {
 
     await user.type(screen.getByLabelText('Name'), 'Morning digest')
     await user.type(screen.getByLabelText('What should it do?'), 'Summarise the repo.')
-    await user.selectOptions(screen.getByLabelText('Model'), screen.getByRole('option', { name: 'GPT X' }))
+    await user.click(screen.getByLabelText('Model'))
+    await user.click(await screen.findByRole('menuitemradio', { name: /^GPT X/ }))
     await user.click(screen.getByRole('button', { name: 'Choose folder' }))
     await screen.findByText('C:/work/repo')
     await user.click(await screen.findByLabelText(/^write/))
