@@ -24,6 +24,8 @@ export class RemoteCallError extends Error {
   }
 }
 
+export type UploadInfo = { uploadId: string; name: string; size: number; mime: string }
+
 export type Me = { id: string; name: string; pairedAt: number }
 
 export type ClientOptions = {
@@ -138,6 +140,52 @@ export class RemoteClient {
     )
     if (reply?.error) throw new RemoteCallError(reply.error.code, reply.error.message)
     return reply?.result as RemoteMethods[M]['result']
+  }
+
+  /** Uploads a file in 1 MiB chunks, resuming where the computer says it
+   * got to after a dropped chunk. Resolves with the computer's checked type. */
+  async upload(
+    file: Blob & { name: string },
+    onProgress?: (fraction: number) => void
+  ): Promise<UploadInfo> {
+    const start = await this.request<{ uploadId: string; chunkSize: number }>('/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: file.name, size: file.size, mime: file.type }),
+    })
+    const id = start.uploadId
+    const step = Math.max(64 * 1024, Math.min(start.chunkSize || 1024 * 1024, 1024 * 1024))
+    let offset = 0
+    let retries = 0
+    while (offset < file.size) {
+      const chunk = file.slice(offset, offset + step)
+      try {
+        const r = await this.request<{ received: number }>(`/upload/${id}?offset=${offset}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: chunk,
+        })
+        offset = r.received
+        retries = 0
+      } catch (e) {
+        if (!(e instanceof RemoteCallError) || retries >= 3) throw e
+        if (e.code === 'bad_offset' || e.code === 'network' || e.code === 'timeout') {
+          retries++
+          // Where the computer actually is: its 409 says, else start of chunk.
+          const at = /byte (\d+)/.exec(e.message)
+          if (at) offset = Number(at[1])
+          continue
+        }
+        throw e
+      }
+      onProgress?.(file.size ? offset / file.size : 1)
+    }
+    return this.request<UploadInfo>(`/upload/${id}/finish`, { method: 'POST' })
+  }
+
+  /** Drops an upload the user removed before sending. */
+  async cancelUpload(id: string): Promise<void> {
+    await this.request(`/upload/${id}`, { method: 'DELETE' }).catch(() => undefined)
   }
 
   me(): Promise<Me> {

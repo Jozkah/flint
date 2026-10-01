@@ -95,6 +95,9 @@ pub struct Device {
     pub token_hash: String,
     pub paired_at: u64,
     pub last_seen: Option<u64>,
+    /// Web Push subscription and switches; dropped with the device.
+    #[serde(default)]
+    pub push: super::push::DevicePush,
 }
 
 /// What the desktop UI is shown about a device: no hash.
@@ -170,6 +173,7 @@ impl DeviceStore {
             token_hash: hash_token(&token),
             paired_at: now_ms(),
             last_seen: None,
+            push: Default::default(),
         };
         self.devices.push(device.clone());
         self.save();
@@ -202,6 +206,20 @@ impl DeviceStore {
         if dirty {
             self.save();
         }
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Device> {
+        self.devices.iter().find(|d| d.id == id)
+    }
+
+    /// Changes a device's push setup and saves. False when it is gone.
+    pub fn update_push(&mut self, id: &str, f: impl FnOnce(&mut super::push::DevicePush)) -> bool {
+        let Some(d) = self.devices.iter_mut().find(|d| d.id == id) else {
+            return false;
+        };
+        f(&mut d.push);
+        self.save();
+        true
     }
 
     /// Deletes the device. Returns it so the caller can close its sockets.

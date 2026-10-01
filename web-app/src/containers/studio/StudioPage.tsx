@@ -30,6 +30,7 @@ import {
   VIDEO_SECONDS,
   VIDEO_SIZES,
   durationText,
+  estimateVideoMs,
   framesForSeconds,
   parseSeed,
   phaseLabel,
@@ -75,6 +76,7 @@ const rise = (index: number) => ({ animationDelay: `${40 + Math.min(index, 10) *
 
 /** A pressable option, like the chips in the design: 28px, a hairline, pressed = filled. */
 function Option({
+  title,
   pressed,
   disabled,
   onClick,
@@ -82,6 +84,7 @@ function Option({
   className,
 }: {
   pressed: boolean
+  title?: string
   disabled?: boolean
   onClick: () => void
   children: React.ReactNode
@@ -90,6 +93,7 @@ function Option({
   return (
     <button
       type="button"
+      title={title}
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
@@ -195,16 +199,16 @@ function ModelBlock({ model }: { model: StudioModel }) {
 
   return (
     <div className="flex flex-col gap-2.5">
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-col items-start gap-2">
+        <Chip tone={resident ? 'ok' : 'neutral'} dot>
+          {resident ? 'Loaded' : model.installed ? 'Ready' : 'Not downloaded'}
+        </Chip>
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-medium text-foreground">{model.display_name}</p>
+          <p className="text-[13px] leading-snug font-medium text-foreground">{model.display_name}</p>
           <p className="mt-1 text-xs text-muted-foreground">
             {formatModelBytes(model.totalBytes)} · {model.license}
           </p>
         </div>
-        <Chip tone={resident ? 'ok' : 'neutral'} dot>
-          {resident ? 'Loaded' : model.installed ? 'Ready' : 'Not downloaded'}
-        </Chip>
       </div>
       {downloading && (
         <div className="space-y-1.5">
@@ -268,6 +272,16 @@ function Settings({
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
   const warning = kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
   const running = !!job
+  const lastClip = useStudio((s) => s.gallery.video[0]?.recipe)
+  const guess =
+    kind === 'video'
+      ? estimateVideoMs(lastClip, {
+          width: sizes[Math.min(form.sizeIndex, sizes.length - 1)].width,
+          height: sizes[Math.min(form.sizeIndex, sizes.length - 1)].height,
+          frames: framesForSeconds(form.seconds, model.video?.fps ?? 24),
+          steps: model.defaults.steps,
+        })
+      : null
   return (
     <Frame className="motion-safe:animate-rise-in" style={rise(0)}>
       <FrameHeader title="Settings" />
@@ -276,7 +290,13 @@ function Settings({
         <Field label="Shape">
           <div className="flex flex-wrap gap-1.5">
             {sizes.map((s, i) => (
-              <Option key={s.label} pressed={form.sizeIndex === i} disabled={running} onClick={() => setForm({ sizeIndex: i })}>
+              <Option
+                key={s.label}
+                title={s.label}
+                pressed={form.sizeIndex === i}
+                disabled={running}
+                onClick={() => setForm({ sizeIndex: i })}
+              >
                 <ShapeGlyph width={s.width} height={s.height} />
                 {s.short}
               </Option>
@@ -303,6 +323,11 @@ function Settings({
               ))}
             </div>
           </Field>
+        )}
+        {guess !== null && (
+          <p className="-mt-2 text-xs text-muted-foreground">
+            About {durationText(guess)}, from your last clip.
+          </p>
         )}
         <Field label="Seed">
           <Input
@@ -414,7 +439,12 @@ function Stage({
       <FrameBody className="gap-3 p-3">
         <div
           className="relative mx-auto w-full overflow-hidden rounded-lg bg-muted"
-          style={{ aspectRatio: `${size.width} / ${size.height}`, maxHeight: '62vh' }}
+          // Nothing made yet: a compact stage, not a tall empty square.
+          style={
+            latest
+              ? { aspectRatio: `${size.width} / ${size.height}`, maxHeight: '62vh' }
+              : { height: 'min(44vh, 360px)' }
+          }
         >
           {latest ? (
             kind === 'video' && !running ? (

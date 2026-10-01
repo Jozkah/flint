@@ -8,8 +8,10 @@ import { DEFAULT_MCP_SETTINGS } from '@/hooks/useMCPServers'
 import type { MCPServerConfig, MCPServers, MCPSettings } from '@/hooks/useMCPServers'
 import type {
   MCPAuthStatus,
+  ListToolsOptions,
   MCPConfig,
   MCPForgetReason,
+  MCPServerStatus,
   MCPTrustReport,
   ServerSummary,
 } from './types'
@@ -97,11 +99,20 @@ export class TauriMCPService extends DefaultMCPService {
     }
   }
 
-  async getTools(): Promise<MCPTool[]> {
+  async getTools(options?: ListToolsOptions): Promise<MCPTool[]> {
+    // Plain listings stay on the existing bridge; a listing that may start
+    // servers on demand passes the flag through.
+    if (options?.start) return invoke('get_tools', { start: true })
     return window.core?.api?.getTools()
   }
 
-  async getToolsForServers(serverNames: string[]): Promise<MCPTool[]> {
+  async getToolsForServers(
+    serverNames: string[],
+    options?: ListToolsOptions
+  ): Promise<MCPTool[]> {
+    if (options?.start) {
+      return invoke('get_tools_for_servers', { serverNames, start: true })
+    }
     return invoke('get_tools_for_servers', { serverNames })
   }
 
@@ -196,8 +207,27 @@ export class TauriMCPService extends DefaultMCPService {
     return await window.core?.api?.cancelToolCall({ cancellationToken })
   }
 
-  async activateMCPServer(name: string, config: MCPServerConfig): Promise<void> {
+  async activateMCPServer(
+    name: string,
+    config: MCPServerConfig,
+    options?: { start?: boolean }
+  ): Promise<void> {
+    if (options?.start === false) {
+      return await invoke('activate_mcp_server', { name, config, start: false })
+    }
     return await invoke('activate_mcp_server', { name, config })
+  }
+
+  async startMCPServer(name: string): Promise<void> {
+    await invoke('start_mcp_server_now', { name })
+  }
+
+  async stopMCPServer(name: string): Promise<void> {
+    await invoke('stop_mcp_server_now', { name })
+  }
+
+  async getServerStatuses(): Promise<Record<string, MCPServerStatus>> {
+    return (await invoke('get_mcp_server_statuses')) ?? {}
   }
 
   async deactivateMCPServer(name: string): Promise<void> {

@@ -12,6 +12,7 @@ pub mod helpers;
 // Both the desktop path (`mcp::helpers`) and the CLI path (`cli::mcp`) go
 // through it, so it must not be gated to one of them.
 pub mod launch;
+pub mod lazy;
 // The lock files are addressed through `AppHandle::path()`, so this module is
 // desktop-only; the CLI does not run the AppHandle-driven server lifecycle.
 #[cfg(not(feature = "cli"))]

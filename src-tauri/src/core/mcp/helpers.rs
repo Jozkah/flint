@@ -95,41 +95,41 @@ pub async fn run_mcp_commands<R: Runtime>(
 
     log::trace!("MCP Servers: {server_map:#?}");
 
-    // Collect handles for initial server startup
+    // Lazy start: every enabled server is registered (so it counts as enabled
+    // and its cached tools show), but only servers marked "Start with Flint"
+    // are started now. The rest start the first time something needs them.
     let mut startup_handles = Vec::new();
-
+    let app_state = app.state::<AppState>();
     for (name, config) in server_map {
         if extract_active_status(config) == Some(false) {
             log::trace!("Server {name} is not active, skipping.");
             continue;
         }
+        store_active_server_config(&app_state.mcp_active_servers, name, config).await;
+    }
+    load_persisted_tool_cache(app).await;
+
+    for (name, config) in server_map {
+        if extract_active_status(config) == Some(false)
+            || !super::lazy::starts_with_flint(config)
+        {
+            continue;
+        }
 
         let app_clone = app.clone();
-        let servers_clone = servers_state.clone();
         let name_clone = name.clone();
-        let config_clone = config.clone();
 
-        // Spawn task for initial startup attempt
         let handle = tauri::async_runtime::spawn(async move {
-            // Only wait for the initial startup attempt, not the monitoring
-            let result = start_mcp_server(
-                app_clone.clone(),
-                servers_clone.clone(),
-                name_clone.clone(),
-                config_clone.clone(),
-            )
-            .await;
-
-            // If initial startup failed, we still want to continue with other servers
+            let result = ensure_mcp_server_started(&app_clone, &name_clone).await;
             if let Err(e) = &result {
                 log::error!("Initial startup failed for MCP server {name_clone}: {e}");
             }
-
             (name_clone, result)
         });
 
         startup_handles.push(handle);
     }
+    let _ = &servers_state;
 
     // Wait for all initial startup attempts to complete
     let mut successful_count = 0;
@@ -968,12 +968,26 @@ fn emit_mcp_update_event<R: Runtime>(app: &AppHandle<R>, name: &str) {
 }
 
 /// Restart only servers that were previously active (like cortex restart behavior)
+///
+/// Lazy start: only servers that were running before the restart (`was_running`)
+/// or are marked "Start with Flint" start again; the rest stay stopped until
+/// needed.
 pub async fn restart_active_mcp_servers<R: Runtime>(
     app: &AppHandle<R>,
     servers_state: SharedMcpServers,
+    was_running: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
     let app_state = app.state::<AppState>();
-    let active_servers = app_state.mcp_active_servers.lock().await;
+    let active_servers: HashMap<String, Value> = app_state
+        .mcp_active_servers
+        .lock()
+        .await
+        .iter()
+        .filter(|(name, config)| {
+            was_running.contains(*name) || super::lazy::starts_with_flint(config)
+        })
+        .map(|(n, c)| (n.clone(), c.clone()))
+        .collect();
 
     log::info!(
         "Restarting {} previously active MCP servers",
@@ -1534,4 +1548,227 @@ mod stderr_log_tests {
         assert!(text.contains("ERROR boot failed"), "{text}");
         assert!(text.contains("exiting"), "{text}");
     }
+}
+
+// ---- On-demand (lazy) start ------------------------------------------------
+
+fn tool_cache_path<R: Runtime>(app: &AppHandle<R>) -> std::path::PathBuf {
+    get_jan_data_folder_path(app.clone()).join(super::lazy::TOOL_CACHE_FILE)
+}
+
+/// Load persisted tool schemas for the enabled servers into
+/// `mcp_last_known_tools`, so tool names show without starting anything.
+pub async fn load_persisted_tool_cache<R: Runtime>(app: &AppHandle<R>) {
+    let app_state = app.state::<AppState>();
+    let cache = super::lazy::read_tool_cache(&tool_cache_path(app));
+    let configs = app_state.mcp_active_servers.lock().await.clone();
+    let usable = super::lazy::usable_cached_tools(&cache, &configs);
+    let mut last_known = app_state.mcp_last_known_tools.lock().await;
+    for (name, tools) in usable {
+        last_known.entry(name).or_insert(tools);
+    }
+}
+
+/// Persist the freshly listed tools of `name` (only when they changed).
+pub async fn persist_server_tools<R: Runtime>(
+    app: &AppHandle<R>,
+    name: &str,
+    tools: &[crate::core::mcp::models::ToolWithServer],
+) {
+    let app_state = app.state::<AppState>();
+    let Some(config) = app_state.mcp_active_servers.lock().await.get(name).cloned() else {
+        return;
+    };
+    let path = tool_cache_path(app);
+    let mut cache = super::lazy::read_tool_cache(&path);
+    let entry = super::lazy::CachedServerTools {
+        identity: crate::core::mcp::models::definition_identity(&config),
+        tools: tools.to_vec(),
+    };
+    if cache.get(name) == Some(&entry) {
+        return;
+    }
+    cache.insert(name.to_string(), entry);
+    if let Err(e) = super::lazy::write_tool_cache(&path, &cache) {
+        log::warn!("Failed to persist MCP tool cache: {e}");
+    }
+}
+
+/// List a running server's tools, remember them and persist them.
+pub async fn refresh_server_tools<R: Runtime>(app: &AppHandle<R>, name: &str) {
+    let app_state = app.state::<AppState>();
+    let peer = {
+        let servers = app_state.mcp_servers.lock().await;
+        servers.get(name).map(|s| s.peer().clone())
+    };
+    let Some(peer) = peer else { return };
+    if let Ok(Ok(tools)) = timeout(Duration::from_secs(8), peer.list_all_tools()).await {
+        let mapped: Vec<crate::core::mcp::models::ToolWithServer> = tools
+            .into_iter()
+            .map(|tool| crate::core::mcp::models::ToolWithServer {
+                name: tool.name.to_string(),
+                description: tool.description.as_ref().map(|d| d.to_string()),
+                input_schema: Value::Object((*tool.input_schema).clone()),
+                server: name.to_string(),
+            })
+            .collect();
+        app_state
+            .mcp_last_known_tools
+            .lock()
+            .await
+            .insert(name.to_string(), mapped.clone());
+        persist_server_tools(app, name, &mapped).await;
+    }
+}
+
+/// Start an enabled server if it is not running: once, shared by concurrent
+/// callers. Remote (http/sse) servers connect here too; no process is spawned
+/// for them. Emits `mcp-update` so the UI status follows.
+pub async fn ensure_mcp_server_started<R: Runtime>(
+    app: &AppHandle<R>,
+    name: &str,
+) -> Result<(), String> {
+    let app_state = app.state::<AppState>();
+    let config = app_state
+        .mcp_active_servers
+        .lock()
+        .await
+        .get(name)
+        .cloned()
+        .ok_or_else(|| format!("MCP server '{name}' is not enabled"))?;
+    let servers = app_state.mcp_servers.clone();
+    if servers.lock().await.contains_key(name) {
+        app_state.mcp_lazy.touch(name);
+        return Ok(());
+    }
+    let lazy = app_state.mcp_lazy.clone();
+    let mut started_here = false;
+    let result = lazy
+        .ensure(
+            name,
+            || {
+                let servers = servers.clone();
+                let name = name.to_string();
+                async move { servers.lock().await.contains_key(&name) }
+            },
+            || {
+                started_here = true;
+                emit_mcp_update_event(app, name);
+                let (app, servers, name) = (app.clone(), servers.clone(), name.to_string());
+                async move {
+                    log::info!("Starting MCP server {name} on demand");
+                    start_mcp_server(app.clone(), servers.clone(), name.clone(), config).await?;
+                    // A start already in flight elsewhere (boot, a toggle)
+                    // returns at once; wait for it to finish.
+                    let app_state = app.state::<AppState>();
+                    for _ in 0..240 {
+                        if servers.lock().await.contains_key(&name) {
+                            return Ok(());
+                        }
+                        if !app_state.mcp_starting.lock().await.contains(&name) {
+                            break;
+                        }
+                        sleep(Duration::from_millis(250)).await;
+                    }
+                    if servers.lock().await.contains_key(&name) {
+                        Ok(())
+                    } else {
+                        Err(format!("MCP server '{name}' did not start"))
+                    }
+                }
+            },
+        )
+        .await;
+    if started_here {
+        if result.is_ok() {
+            refresh_server_tools(app, name).await;
+        }
+        emit_mcp_update_event(app, name);
+    }
+    result.map_err(|e| format!("MCP server '{name}' failed to start: {e}"))
+}
+
+/// Start every enabled server that is not running, concurrently.
+pub async fn ensure_all_enabled_started<R: Runtime>(app: &AppHandle<R>) {
+    let names: Vec<String> = {
+        let app_state = app.state::<AppState>();
+        let active = app_state.mcp_active_servers.lock().await;
+        active.keys().cloned().collect()
+    };
+    futures_util::future::join_all(names.iter().map(|name| async move {
+        if let Err(e) = ensure_mcp_server_started(app, name).await {
+            log::warn!("{e}");
+        }
+    }))
+    .await;
+}
+
+/// Stop a running server but keep it enabled (idle stop, manual Stop).
+/// Its last-known tools stay, so it keeps showing and restarts when needed.
+pub async fn stop_running_mcp_server<R: Runtime>(
+    app: &AppHandle<R>,
+    name: &str,
+    config: Option<&Value>,
+) -> Result<bool, String> {
+    let app_state = app.state::<AppState>();
+    {
+        let mut generations = app_state.mcp_generation.lock().await;
+        let next = generations.get(name).copied().unwrap_or(0) + 1;
+        generations.insert(name.to_string(), next);
+    }
+    abort_mcp_monitor(&app_state.mcp_monitoring_tasks, name).await;
+    app_state.mcp_lazy.forget(name);
+    let Some(service) = app_state.mcp_servers.lock().await.remove(name) else {
+        return Ok(false);
+    };
+    log::info!("Stopping MCP server {name}...");
+    let cancelled = service.cancel().await.map_err(|e| e.to_string());
+    let child_pid = app_state.mcp_server_pids.lock().await.remove(name);
+    super::launch::release_folder_grants(config, child_pid);
+    if name == "Jan Browser MCP" {
+        let port = config
+            .and_then(|c| c.get("env"))
+            .and_then(|envs| envs.get("BRIDGE_PORT"))
+            .and_then(|port| port.as_str())
+            .and_then(|port_str| port_str.parse::<u16>().ok());
+        if let Some(port) = port {
+            terminate_browser_mcp(child_pid, port).await;
+            if let Err(e) = crate::core::mcp::lockfile::delete_lock_file(app, port) {
+                log::warn!("Failed to delete lock file for port {port}: {e}");
+            }
+        }
+    }
+    cancelled?;
+    Ok(true)
+}
+
+/// Stop servers that have had no calls for the configured idle time.
+/// Servers marked "Start with Flint" are kept warm.
+pub fn spawn_idle_shutdown_loop<R: Runtime>(app: AppHandle<R>) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            sleep(Duration::from_secs(60)).await;
+            let app_state = app.state::<AppState>();
+            let minutes = app_state.mcp_settings.lock().await.idle_shutdown_minutes;
+            if minutes == 0 {
+                continue;
+            }
+            let running: Vec<String> = app_state.mcp_servers.lock().await.keys().cloned().collect();
+            let active = app_state.mcp_active_servers.lock().await.clone();
+            let candidates: Vec<String> = running
+                .into_iter()
+                .filter(|n| !active.get(n).is_some_and(super::lazy::starts_with_flint))
+                .collect();
+            let idle = app_state.mcp_lazy.idle_servers(
+                &candidates,
+                Duration::from_secs(minutes * 60),
+                std::time::Instant::now(),
+            );
+            for name in idle {
+                log::info!("MCP server {name} idle for {minutes} min; stopping until needed");
+                let _ = stop_running_mcp_server(&app, &name, active.get(&name)).await;
+                emit_mcp_update_event(&app, &name);
+            }
+        }
+    });
 }

@@ -32,6 +32,10 @@ import type { ModelRef, NotificationPrefs } from './protocol'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
 import { useModelEvidence } from '@/hooks/useModelEvidence'
 import { getLastUsedModel } from '@/utils/getModelToStart'
+import { useChatAttachments } from '@/hooks/useChatAttachments'
+import { useAttachments } from '@/hooks/useAttachments'
+import { i18n } from '@/i18n/react-i18next-compat'
+import { planAttachments } from './attachments'
 
 export type Navigate = (to: { to: string; params?: Record<string, string> }) => unknown
 
@@ -81,6 +85,9 @@ async function backendStop(args: { session?: string; run?: string }): Promise<{ 
   })
 }
 
+/** Documents a phone staged per conversation, until its send. */
+const phoneStaged = new Map<string, Set<string>>()
+
 export function appActions(navigate: Navigate): RemoteActions {
   const chatModelOf = (id: string): ModelRef | undefined => {
     const m = useThreads.getState().threads[id]?.model
@@ -91,7 +98,7 @@ export function appActions(navigate: Navigate): RemoteActions {
     chatExists: (id) => Boolean(useThreads.getState().threads[id]),
     chatBusy: (id) => Boolean(useAppState.getState().busyThreads[id]),
 
-    createChat: async ({ text, model }) => {
+    createChat: async ({ text, model, files, docs }) => {
       const providers = useModelProvider.getState()
       // The phone's new chat names no model until one is chosen. Then the
       // computer picks the way its own composer does: the selected model, else
@@ -118,11 +125,13 @@ export function appActions(navigate: Navigate): RemoteActions {
         )
       }
       const thread = await useThreads.getState().createThread({ id: modelId, provider }, text)
+      // Documents wait in the composer's store, as if attached there.
+      if (docs?.length) useChatAttachments.getState().setAttachments(thread.id, (prev) => [...prev, ...docs])
       // The first-message hand-off ChatInput uses: the conversation sends it
       // through its own path when it mounts.
       sessionStorage.setItem(
         `${SESSION_STORAGE_PREFIX.INITIAL_MESSAGE}${thread.id}`,
-        JSON.stringify({ text, files: [] })
+        JSON.stringify({ text, files: files ?? [] })
       )
       navigate({ to: route.threadsDetail, params: { threadId: thread.id } })
       return thread.id
@@ -192,11 +201,48 @@ export function appActions(navigate: Navigate): RemoteActions {
       if (!composerFor('cowork', id)) navigate({ to: route.cowork })
     },
 
-    sendViaComposer: async (kind, id, text) => {
+    sendViaComposer: async (kind, id, text, files) => {
       const entry = await waitForComposer(kind, id)
       if (!entry) return false
-      await entry.send(text)
+      await entry.send(text, files)
+      // Cowork's submit reads staged documents but does not clear them (its
+      // composer does); take back what the phone staged so it is not resent.
+      const staged = phoneStaged.get(id)
+      if (kind === 'cowork' && staged) {
+        useChatAttachments.getState().setAttachments(id, (prev) => prev.filter((a) => !a.path || !staged.has(a.path)))
+      }
+      phoneStaged.delete(id)
       return true
+    },
+
+    prepareAttachments: async (deviceId, target, ids) => {
+      const uploads = await remoteApi.takeUploads(deviceId, ids)
+      const ref =
+        target.model ??
+        (target.id
+          ? target.kind === 'chat'
+            ? chatModelOf(target.id)
+            : useCoworkSessions.getState().sessions.find((s) => s.id === target.id)?.model
+          : undefined)
+      const providers = useModelProvider.getState()
+      const model = ref
+        ? providers.getProviderByName(ref.provider)?.models.find((m) => m.id === ref.id)
+        : providers.selectedModel
+      const caps = model?.capabilities ?? []
+      return planAttachments(
+        uploads,
+        { vision: caps.includes('vision'), audio: caps.includes('audio'), video: caps.includes('video') },
+        (key) => i18n.t(key) as string,
+        target.kind === 'cowork' ? 'inline' : useAttachments.getState().parseMode
+      )
+    },
+
+    stageDocs: (id, docs) => {
+      phoneStaged.set(id, new Set(docs.map((d) => d.path ?? '')))
+      useChatAttachments.getState().setAttachments(id, (prev) => [
+        ...prev,
+        ...docs.filter((d) => !prev.some((x) => x.path === d.path)),
+      ])
     },
 
     enqueue: (queueId, text, steer) =>

@@ -3,6 +3,9 @@
 // and then calls `RemoteActions`, which the app implements with the very
 // functions its own controls call (see `appActions.ts`). Tests supply mocks.
 
+import type { Attachment } from '@/types/attachment'
+import type { SubmittedFile } from '@/lib/coworkAttachments'
+import type { PlannedAttachments } from './attachments'
 import { RemoteRpcError, type RemoteHandlers } from './bridge'
 import { createIdempotencyCache, type IdempotencyCache } from './idempotency'
 import type {
@@ -33,7 +36,7 @@ export type RemoteActions = {
   chatBusy(id: string): boolean
   /** The desktop composer's new-chat path: create the thread with `model`,
    * hand it the first message and open it. Returns the new id. */
-  createChat(input: { text: string; model?: ModelRef }): Promise<string>
+  createChat(input: { text: string; model?: ModelRef; files?: SubmittedFile[]; docs?: Attachment[] }): Promise<string>
   setWebSearch(on: boolean): void
   /** The composer's Reasoning Auto/On/Off, for the chat's model. */
   setChatReasoning(chatId: string | null, mode: ReasoningMode, model?: ModelRef): void
@@ -56,7 +59,16 @@ export type RemoteActions = {
   open(kind: SessionKind, id: string): void
   /** Sends through the conversation's own composer, once it is mounted.
    * False when it did not mount in time. */
-  sendViaComposer(kind: 'chat' | 'cowork', id: string, text: string): Promise<boolean>
+  sendViaComposer(kind: 'chat' | 'cowork', id: string, text: string, files?: SubmittedFile[]): Promise<boolean>
+  /** A phone's finished uploads, checked as the composer checks attachments
+   * for the conversation's model. */
+  prepareAttachments?(
+    deviceId: string,
+    target: { kind: 'chat' | 'cowork'; id: string | null; model?: ModelRef },
+    uploadIds: string[]
+  ): Promise<PlannedAttachments>
+  /** Stages documents in the conversation's composer, read at send time. */
+  stageDocs?(id: string, docs: Attachment[]): void
   /** The desktop composer's busy path: queue, or steer (Ctrl+Enter). */
   enqueue(queueId: string, text: string, steer: boolean): void
   /** Stop current task, as the desktop's Stop does. Returns whether a run
@@ -106,11 +118,24 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined)
 
-function textOf(p: Record<string, unknown>): string {
+function textOf(p: Record<string, unknown>, allowEmpty = false): string {
   const text = typeof p.text === 'string' ? p.text.trim() : ''
+  if (!text && allowEmpty) return ''
   if (!text) throw new RemoteRpcError('bad_params', 'The message is empty')
   if (text.length > MAX_TEXT) throw new RemoteRpcError('bad_params', 'The message is too long')
   return text
+}
+
+const NO_ATTACHMENTS: PlannedAttachments = { files: [], docs: [], rejected: [] }
+
+/** Upload ids named by a send: at most ten, each a hex id. */
+function uploadIdsOf(p: Record<string, unknown>): string[] {
+  const raw = p.attachments
+  if (raw === undefined) return []
+  if (!Array.isArray(raw) || raw.length > 10 || !raw.every((x) => typeof x === 'string' && /^[0-9a-f]{32}$/.test(x))) {
+    throw new RemoteRpcError('bad_params', 'attachments must be up to 10 upload ids')
+  }
+  return raw as string[]
 }
 
 function clientIdOf(p: Record<string, unknown>): string {
@@ -161,27 +186,59 @@ export function createActionHandlers(
     id: string,
     text: string,
     steer: boolean,
-    busy: () => boolean
+    busy: () => boolean,
+    att: PlannedAttachments = NO_ATTACHMENTS
   ): Promise<SendResult> => {
+    const attaching = att.files.length + att.docs.length > 0
+    if (busy() && attaching) {
+      throw new RemoteRpcError('busy', 'Wait for the reply to finish to send files')
+    }
     if (busy()) {
       a.enqueue(id, text, steer)
       a.open(kind, id)
       return { kind, id, delivery: steer ? 'steered' : 'queued' }
     }
     a.open(kind, id)
+    if (att.docs.length) a.stageDocs?.(id, att.docs)
     // The desktop may have started a run while the view mounted.
-    const sent = await a.sendViaComposer(kind, id, text)
+    const sent = att.files.length
+      ? await a.sendViaComposer(kind, id, text, att.files)
+      : await a.sendViaComposer(kind, id, text)
     if (!sent) {
       throw new RemoteRpcError('unavailable', "Flint's window didn't open that conversation in time")
     }
-    return { kind, id, delivery: 'sent' }
+    return { kind, id, delivery: 'sent', ...(att.rejected.length ? { rejected: att.rejected } : {}) }
   }
+
+  /** Uploads named by a send, or nothing. Every file refused and no text:
+   * the send fails with the reasons. */
+  const prepare = async (
+    deviceId: string,
+    target: { kind: 'chat' | 'cowork'; id: string | null; model?: ModelRef },
+    p: Record<string, unknown>,
+    text: string
+  ): Promise<PlannedAttachments> => {
+    const ids = uploadIdsOf(p)
+    if (!ids.length) return NO_ATTACHMENTS
+    if (!a.prepareAttachments) throw new RemoteRpcError('not_implemented', 'Attachments from phones are not available')
+    const att = await a.prepareAttachments(deviceId, target, ids)
+    const found = att.files.length + att.docs.length + att.rejected.length
+    if (found < ids.length) {
+      throw new RemoteRpcError('not_found', 'An attachment is gone; add it again')
+    }
+    if (!text && att.files.length + att.docs.length === 0) {
+      throw new RemoteRpcError('rejected', att.rejected.map((r) => `${r.name}: ${r.message}`).join(' · '))
+    }
+    return att
+  }
+  const textWith = (text: string, att: PlannedAttachments) =>
+    text || (att.files.length + att.docs.length ? 'Please look at the attached file(s).' : text)
 
   return {
     'chat.send': (params, ctx) => {
       const p = (isRecord(params) ? params : {}) as Partial<ChatSendParams> & Record<string, unknown>
       const clientId = clientIdOf(p)
-      const text = textOf(p)
+      const text = textOf(p, uploadIdsOf(p).length > 0)
       const id = str(p.id)
       const isNew = p.new === true || !id
       if (!isNew && !a.chatExists(id)) throw new RemoteRpcError('not_found', 'No such chat')
@@ -189,20 +246,26 @@ export function createActionHandlers(
       const model = modelOf(p.model)
       return cache.once(`${ctx.device.id}:chat:${clientId}`, async () => {
         if (typeof p.webSearch === 'boolean') a.setWebSearch(p.webSearch)
+        const att = await prepare(ctx.device.id, { kind: 'chat', id: isNew ? null : id, model }, p, text)
         if (isNew) {
           if (reasoning) a.setChatReasoning(null, reasoning, model)
-          const newId = await a.createChat({ text, model })
-          return { kind: 'chat', id: newId, delivery: 'sent' } satisfies SendResult
+          const newId = await a.createChat({
+            text: textWith(text, att),
+            model,
+            ...(att.files.length ? { files: att.files } : {}),
+            ...(att.docs.length ? { docs: att.docs } : {}),
+          })
+          return { kind: 'chat', id: newId, delivery: 'sent', ...(att.rejected.length ? { rejected: att.rejected } : {}) } satisfies SendResult
         }
         if (reasoning) a.setChatReasoning(id, reasoning)
-        return deliver('chat', id, text, p.steer === true, () => a.chatBusy(id))
+        return deliver('chat', id, textWith(text, att), p.steer === true, () => a.chatBusy(id), att)
       })
     },
 
     'cowork.send': (params, ctx) => {
       const p = (isRecord(params) ? params : {}) as Partial<CoworkSendParams> & Record<string, unknown>
       const clientId = clientIdOf(p)
-      const text = textOf(p)
+      const text = textOf(p, uploadIdsOf(p).length > 0)
       const id = str(p.id)
       const isNew = p.new === true || !id
       if (!isNew && !a.coworkExists(id)) throw new RemoteRpcError('not_found', 'No such session')
@@ -217,9 +280,10 @@ export function createActionHandlers(
       }
       const model = modelOf(p.model)
       return cache.once(`${ctx.device.id}:cowork:${clientId}`, async () => {
+        const att = await prepare(ctx.device.id, { kind: 'cowork', id: isNew ? null : id, model }, p, text)
         const sid = isNew ? a.createCowork({ folder, mode, model }) : id
         if (!isNew && mode) a.setCoworkMode(sid, mode)
-        return deliver('cowork', sid, text, p.steer === true, () => a.coworkBusy(sid))
+        return deliver('cowork', sid, textWith(text, att), p.steer === true, () => a.coworkBusy(sid), att)
       })
     },
 

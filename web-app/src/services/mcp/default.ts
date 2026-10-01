@@ -9,6 +9,7 @@ import type {
   MCPConfig,
   MCPAuthStatus,
   MCPForgetReason,
+  MCPServerStatus,
   MCPTrustReport,
   ServerSummary,
   ToolCallWithCancellationResult,
@@ -143,6 +144,18 @@ export class DefaultMCPService implements MCPService {
   async activateMCPServer(name: string, config: MCPServerConfig): Promise<void> {
     console.log('activateMCPServer called:', { name, config })
     // No-op - not implemented in default service
+  }
+
+  async startMCPServer(name: string): Promise<void> {
+    void name
+  }
+
+  async stopMCPServer(name: string): Promise<void> {
+    void name
+  }
+
+  async getServerStatuses(): Promise<Record<string, MCPServerStatus>> {
+    return {}
   }
 
   async deactivateMCPServer(name: string): Promise<void> {

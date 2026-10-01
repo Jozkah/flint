@@ -257,7 +257,7 @@ export async function buildMcpTools(
     // servers whose calls it will allow. Advertising by anything else risks
     // offering a tool that is then refused mid-turn (rooms never prompt).
     ;[mcpTools, report] = await Promise.all([
-      mcp.getTools(),
+      mcp.getTools({ start: true }),
       mcp.trustReport().catch(() => ({ trusted: [], invalidated: [] })),
     ])
   } catch {

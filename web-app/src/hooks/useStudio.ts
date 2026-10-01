@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { listen } from '@tauri-apps/api/event'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { allowNotifications, notifyInBackground } from '@/lib/notify'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import {
   studioApi,
@@ -126,9 +127,11 @@ export const useStudio = create<StudioState>((set, get) => ({
   },
 
   downloadModel: async (model) => {
+    void allowNotifications()
     set({ error: null, download: { modelId: model.id, bytes: 0, total: model.totalBytes } })
     try {
       await studioApi.downloadModel(model.id, useGeneralSetting.getState().huggingfaceToken)
+      notifyInBackground(`${model.display_name} is downloaded`)
     } catch (error) {
       set({ error: message(error) })
     } finally {
@@ -161,6 +164,7 @@ export const useStudio = create<StudioState>((set, get) => ({
   generate: async (kind, prompt, run) => {
     if (get().job) return false
     const startedAt = Date.now()
+    void allowNotifications()
     set({ error: null, jobPrompt: prompt, job: { kind, phase: 'queued', fraction: 0, startedAt } })
     const log = (status: StudioActivity['status'], error?: string) =>
       set((s) => ({
@@ -174,6 +178,7 @@ export const useStudio = create<StudioState>((set, get) => ({
       await run()
       await get().refreshGallery(kind)
       log('done')
+      notifyInBackground(kind === 'video' ? 'Your video is ready' : 'Your image is ready', prompt)
       return true
     } catch (error) {
       const text = message(error)
