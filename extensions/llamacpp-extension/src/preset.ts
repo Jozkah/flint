@@ -124,6 +124,28 @@ const SPEC_TYPES = new Set([
 ])
 const DEFAULT_SPEC_TYPE = 'draft-mtp'
 
+/** KV cache types that are not block-quantized. */
+const UNQUANTIZED_CACHE_TYPES = new Set(['f32', 'f16', 'bf16'])
+
+function isQuantizedCacheType(type: unknown): type is string {
+  return (
+    typeof type === 'string' &&
+    type.length > 0 &&
+    !UNQUANTIZED_CACHE_TYPES.has(type)
+  )
+}
+
+/**
+ * llama.cpp cannot quantize the V cache without flash attention (it fails the
+ * context creation), so an explicit flash-attn=off wins and V stays at f16.
+ */
+function valueCacheNeedsFlashAttention(
+  flashAttn: unknown,
+  cacheTypeV: unknown
+): boolean {
+  return flashAttn === 'off' && isQuantizedCacheType(cacheTypeV)
+}
+
 /**
  * A built-in template name (`chatml`, `llama3`, ...) as opposed to a template
  * body. `--chat-template` takes either, but `--chat-template-file` reads its
@@ -278,7 +300,8 @@ export async function generatePreset(
   if (
     typeof config.cache_type_v === 'string' &&
     config.cache_type_v.length > 0 &&
-    config.cache_type_v !== 'f16'
+    config.cache_type_v !== 'f16' &&
+    !valueCacheNeedsFlashAttention(config.flash_attn, config.cache_type_v)
   ) {
     lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
   }
@@ -626,12 +649,36 @@ export async function generatePreset(
     ) {
       lines.push(`cache-type-k = ${escapeIniValue(mc.cache_type_k)}`)
     }
-    if (
-      typeof mc.cache_type_v === 'string' &&
-      mc.cache_type_v.length > 0 &&
-      mc.cache_type_v !== 'f16'
-    ) {
-      lines.push(`cache-type-v = ${escapeIniValue(mc.cache_type_v)}`)
+    {
+      const effectiveFlashAttn = mc.flash_attn ?? config.flash_attn
+      const effectiveV =
+        typeof mc.cache_type_v === 'string' && mc.cache_type_v.length > 0
+          ? mc.cache_type_v
+          : config.cache_type_v
+      if (valueCacheNeedsFlashAttention(effectiveFlashAttn, effectiveV)) {
+        // Overrides a quantized global value this model would inherit.
+        if (
+          isQuantizedCacheType(config.cache_type_v) &&
+          config.flash_attn !== 'off'
+        ) {
+          lines.push('cache-type-v = f16')
+        }
+      } else if (
+        typeof mc.cache_type_v === 'string' &&
+        mc.cache_type_v.length > 0 &&
+        mc.cache_type_v !== 'f16'
+      ) {
+        lines.push(`cache-type-v = ${escapeIniValue(mc.cache_type_v)}`)
+      } else if (
+        mc.cache_type_v === undefined &&
+        config.flash_attn === 'off' &&
+        mc.flash_attn === 'on' &&
+        isQuantizedCacheType(config.cache_type_v)
+      ) {
+        // The global value was withheld because flash attention is off
+        // globally; this model turns it on, so it gets the global value back.
+        lines.push(`cache-type-v = ${escapeIniValue(config.cache_type_v)}`)
+      }
     }
     if (typeof mc.parallel === 'number' && mc.parallel > 0) {
       lines.push(`parallel = ${mc.parallel + reservedBackgroundSlots}`)
@@ -678,6 +725,7 @@ export async function generatePreset(
 
     // MTP either lives in the main gguf (mtp_layers > 0) or ships as a separate
     // draft gguf (mtp_model_path), which is passed to the engine as the draft.
+    let dflashActive = false
     const hasMtpModel =
       typeof mc.mtp_model_path === 'string' && mc.mtp_model_path.length > 0
     const hasMtpLayers =
@@ -688,6 +736,12 @@ export async function generatePreset(
           ? mc.spec_type
           : DEFAULT_SPEC_TYPE
       lines.push(`spec-type = ${specType}`)
+      // A DFlash draft only keeps its speed-up under greedy verification, so
+      // the server default is temperature 0 (a request may still override it).
+      if (specType === 'draft-dflash') {
+        dflashActive = true
+        lines.push('temperature = 0')
+      }
       if (hasMtpModel) {
         const mtpAbs = await joinPath([janDataFolderPath, mc.mtp_model_path!])
         lines.push(`spec-draft-model = ${escapeIniValue(mtpAbs)}`)
@@ -736,6 +790,7 @@ export async function generatePreset(
     for (const [yamlKey, iniKey, upstreamDefault] of samplingIniKeys) {
       const v = mc[yamlKey]
       if (typeof v !== 'number' || !Number.isFinite(v)) continue
+      if (dflashActive && iniKey === 'temperature') continue
       if (upstreamDefault !== null && v === upstreamDefault) continue
       // Upstream throws on a negative window rather than clamping, which aborts
       // the load; a legacy -1 from the old "-1 = full context" UI must not reach
