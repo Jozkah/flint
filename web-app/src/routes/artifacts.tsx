@@ -43,6 +43,11 @@ import { artifactsFromTurns, type CoworkArtifact } from '@/lib/coworkArtifacts'
 import { extensionOf, previewKindFor, resolveInRoot } from '@/lib/coworkPreview'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { cn, formatBytes } from '@/lib/utils'
+import { useStudio } from '@/hooks/useStudio'
+import { studioLibraryEntries } from '@/lib/studio/library'
+import type { GalleryItem } from '@/lib/studio/studio'
+import { ImageViewer } from '@/components/ImageViewer'
+import { VideoDialog } from '@/containers/studio/StudioPage'
 
 export const Route = createFileRoute(route.artifacts as any)({
   beforeLoad: () => ensureCoworkEnabled(),
@@ -101,6 +106,8 @@ type Row = CoworkArtifact & {
   folder: string | null
   updated: number
   root: string | null
+  /** Set for a Studio result (source "Studio"), which opens in its viewer. */
+  studio?: GalleryItem
 }
 
 const rowKey = (row: Pick<Row, 'sessionId' | 'path'>) =>
@@ -268,9 +275,18 @@ function ArtifactsPage() {
     useMemo(() => sessions.map((s) => s.id), [sessions])
   )
 
+  // Studio's results join the list; the gallery is read once on the way in.
+  const studioImages = useStudio((s) => s.gallery.image)
+  const studioVideos = useStudio((s) => s.gallery.video)
+  useEffect(() => {
+    void useStudio.getState().refreshGallery('image').catch(() => {})
+    void useStudio.getState().refreshGallery('video').catch(() => {})
+  }, [])
+  const [viewing, setViewing] = useState<GalleryItem | null>(null)
+
   const rows = useMemo<Row[]>(
-    () =>
-      sessions.flatMap((session) => {
+    () => [
+      ...sessions.flatMap((session) => {
         const root = workspaces[session.id] ?? null
         const writes = writesOf(session.turns)
         return artifactsFromTurns(session.turns, root).map((artifact) => ({
@@ -284,7 +300,23 @@ function ArtifactsPage() {
           root,
         }))
       }),
-    [sessions, workspaces]
+      ...studioLibraryEntries([...studioImages, ...studioVideos]).map(
+        (e): Row => ({
+          path: e.path,
+          title: e.title,
+          group: e.group,
+          label: e.label,
+          kind: e.group === 'Video' ? 'video' : 'image',
+          sessionId: `studio:${e.item.kind}`,
+          sessionTitle: 'Studio',
+          folder: null,
+          updated: e.updated,
+          root: e.root,
+          studio: e.item,
+        })
+      ),
+    ].sort((a, b) => (b.updated || 0) - (a.updated || 0)),
+    [sessions, workspaces, studioImages, studioVideos]
   )
 
   const shown = useMemo(() => {
@@ -314,6 +346,7 @@ function ArtifactsPage() {
 
   const open = useCallback(
     (row: Row) => {
+      if (row.studio) return setViewing(row.studio)
       useCoworkSessions.getState().selectSession(row.sessionId)
       useCoworkRun.getState().requestPreview(row.sessionId, row.path)
       navigate({ to: route.cowork })
@@ -324,6 +357,7 @@ function ArtifactsPage() {
   /** The session that made the artifact, without opening a preview. */
   const goToSession = useCallback(
     (row: Row) => {
+      if (row.studio) return void navigate({ to: route.studio as never })
       useCoworkSessions.getState().selectSession(row.sessionId)
       navigate({ to: route.cowork })
     },
@@ -517,6 +551,18 @@ function ArtifactsPage() {
           </>
         )}
       </EnginePage>
+      {viewing?.kind === 'image' && (
+        <ImageViewer
+          images={[{ url: convertFileSrc(viewing.path), name: `studio-${viewing.recipe.seed}` }]}
+          index={0}
+          onIndexChange={() => {}}
+          onClose={() => setViewing(null)}
+        />
+      )}
+      <VideoDialog
+        item={viewing?.kind === 'video' ? viewing : null}
+        onClose={() => setViewing(null)}
+      />
     </div>
   )
 }
@@ -1044,7 +1090,7 @@ function ArtifactInspector({
               {row.sessionTitle}
             </b>
             <small className="text-xs text-muted-foreground">
-              {t('common:artifactCoworkSession')}
+              {row.studio ? 'Studio' : t('common:artifactCoworkSession')}
               {updated ? ` · ${updated}` : ''}
             </small>
           </div>

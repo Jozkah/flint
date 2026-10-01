@@ -53,6 +53,9 @@ pub const WS_PROTOCOL: &str = "flint-remote.v1";
 const WS_AUTH_PREFIX: &str = "flint-auth.";
 const MAX_RPC_BODY: usize = 256 * 1024;
 const MAX_PAIR_BODY: usize = 4 * 1024;
+/// `voice.transcribe` carries a recording (base64 WAV, about 2.5 minutes).
+const MAX_VOICE_BODY: usize = 6 * 1024 * 1024;
+const VOICE_METHOD: &str = "voice.transcribe";
 /// A socket that has not authenticated by then is closed.
 const WS_AUTH_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -149,20 +152,42 @@ pub fn ws_protocols(headers: &HeaderMap) -> (Option<String>, bool) {
     (token, ours)
 }
 
-async fn read_json<T: for<'de> Deserialize<'de>>(body: Incoming, limit: usize) -> Result<T, Resp> {
-    let bytes = Limited::new(body, limit)
+fn too_large() -> Resp {
+    error(
+        StatusCode::PAYLOAD_TOO_LARGE,
+        "too_large",
+        "Request body too large",
+    )
+}
+
+async fn read_bytes(body: Incoming, limit: usize) -> Result<Bytes, Resp> {
+    Ok(Limited::new(body, limit)
         .collect()
         .await
-        .map_err(|_| {
-            error(
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "too_large",
-                "Request body too large",
-            )
-        })?
-        .to_bytes();
-    serde_json::from_slice(&bytes)
+        .map_err(|_| too_large())?
+        .to_bytes())
+}
+
+fn parse_json<T: for<'de> Deserialize<'de>>(bytes: &[u8]) -> Result<T, Resp> {
+    serde_json::from_slice(bytes)
         .map_err(|_| error(StatusCode::BAD_REQUEST, "bad_request", "Malformed JSON"))
+}
+
+async fn read_json<T: for<'de> Deserialize<'de>>(body: Incoming, limit: usize) -> Result<T, Resp> {
+    parse_json(&read_bytes(body, limit).await?)
+}
+
+/// Only `voice.transcribe` may use the larger cap; every other call keeps
+/// the usual one.
+fn body_fits(bytes: &[u8]) -> bool {
+    if bytes.len() <= MAX_RPC_BODY {
+        return true;
+    }
+    #[derive(Deserialize)]
+    struct MethodOnly {
+        method: String,
+    }
+    serde_json::from_slice::<MethodOnly>(bytes).is_ok_and(|m| m.method == VOICE_METHOD)
 }
 
 #[derive(Deserialize)]
@@ -319,7 +344,14 @@ async fn route(
 }
 
 async fn rpc(hub: &RemoteHub, device: &Device, body: Incoming) -> Resp {
-    let body: RpcBody = match read_json(body, MAX_RPC_BODY).await {
+    let bytes = match read_bytes(body, MAX_VOICE_BODY).await {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if !body_fits(&bytes) {
+        return too_large();
+    }
+    let body: RpcBody = match parse_json(&bytes) {
         Ok(b) => b,
         Err(r) => return r,
     };
@@ -676,4 +708,19 @@ pub async fn start(
         addr: bound,
         shutdown: tx,
     })
+}
+
+#[cfg(test)]
+mod body_cap_tests {
+    use super::*;
+
+    #[test]
+    fn only_voice_transcribe_may_exceed_the_usual_cap() {
+        let pad = "a".repeat(MAX_RPC_BODY);
+        let voice = format!(r#"{{"id":"1","method":"voice.transcribe","params":{{"audio":"{pad}"}}}}"#);
+        let other = format!(r#"{{"id":"1","method":"chat.send","params":{{"text":"{pad}"}}}}"#);
+        assert!(body_fits(voice.as_bytes()));
+        assert!(!body_fits(other.as_bytes()));
+        assert!(body_fits(br#"{"id":"1","method":"chat.send","params":{}}"#));
+    }
 }

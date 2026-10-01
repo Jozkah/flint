@@ -6,7 +6,9 @@ import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
 import { AssistantMessage, UserBubble } from '../ui/messages'
 import { PendingBubble, QueueBar, StreamingMessage } from '../ui/live'
-import { act, app, client, openSheet, sendMessage, toast, useApp } from '../state/app'
+import { client, openSheet, sendMessage, toast } from '../state/app'
+import { forkFrom } from '../state/controls'
+import { effortStops, stopLabel } from '../ui/effort'
 import { useRpc } from '../state/rpc'
 import { useSessions } from '../state/sessions'
 import { pendingFor, prunePending, useLive } from '../state/live'
@@ -33,7 +35,8 @@ export default function Chat({ id }: { id: string }) {
   const session = sessions.find((s) => s.id === id)
   const { data, loading, error } = useRpc('thread.messages', { id, kind: 'chat', limit: PAGE })
   const queue = useRpc('thread.queue', { id })
-  const composer = useApp((s) => s.composer)
+  const details = useRpc('chat.details', { id })
+  const det = details.data
   const stream = useLive((s) => s.streams[id])
   const pendingAll = useLive((s) => s.pending)
   const [older, setOlder] = useState<RemoteMessage[]>([])
@@ -117,6 +120,13 @@ export default function Chat({ id }: { id: string }) {
         )}
         {loading && !data && <Loading />}
         {error && !data && <Empty>{error.message}</Empty>}
+        {det?.modelMissing && (
+          <div className="notice" data-testid="model-gone">
+            <b>A model is no longer available</b>
+            <span>{det.model?.name ?? 'This chat’s model'} was removed from the computer.</span>
+            <button type="button" className="btn sm" onClick={() => openSheet('modelgone', { id, name: det.model?.name })}>Choose a model</button>
+          </div>
+        )}
         {data && allMessages.length === 0 && !pending.length && !streamShown && <Empty>No messages yet.</Empty>}
         {allMessages.map((m) =>
           m.role === 'user' ? (
@@ -139,7 +149,10 @@ export default function Chat({ id }: { id: string }) {
                   >
                     <I n="copy" />
                   </button>
-                  <button type="button" className="ib" aria-label="Message actions" onClick={() => openSheet('msgmenu', { id: m.id })}>
+                  <button type="button" className="ib" aria-label="Fork chat from here" onClick={() => void forkFrom(id, m.id)}>
+                    <I n="fork" />
+                  </button>
+                  <button type="button" className="ib" aria-label="Message actions" onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text })}>
                     <I n="more" />
                   </button>
                 </div>
@@ -159,31 +172,27 @@ export default function Chat({ id }: { id: string }) {
         placeholder="Ask me anything..."
         model={undefined}
         modelFor="chat"
-        extra={
-          <>
-            <button type="button" className="ib" onClick={() => openSheet('tools')} aria-label="Tools">
-              <I n="wrench" />
-            </button>
-            <button
-              type="button"
-              className={`ib${composer.web ? ' on' : ''}`}
-              aria-label="Web Search"
-              aria-pressed={composer.web}
-              onClick={() => {
-                const web = !app.get().composer.web
-                app.set((s) => ({ composer: { ...s.composer, web } }))
-                void act('settings.set', { key: 'webSearch', value: web })
-              }}
-            >
-              <I n="globe" />
-            </button>
-          </>
-        }
+        plus={{ for: 'chat', id }}
+        ctx={{ pct: det?.context?.windowTokens ? (det.context.usedTokens / det.context.windowTokens) * 100 : 0, for: 'chat', id }}
         running={running}
         stopFor={{ kind: 'chat', id }}
         allowWhileRunning
         onSend={async (text) => (await sendMessage('chat.send', { id, text })) !== undefined}
       />
+      <div className="runrow">
+        {det?.effort && (
+          <button type="button" className="rq" data-testid="effort-button" onClick={() => openSheet('effort', { id })}>
+            {stopLabel(effortStops(det.effort).shown)}
+          </button>
+        )}
+        <button type="button" className="rq" onClick={() => openSheet('profile', { id })}>
+          <I n="wand" size={13} />
+          {det?.assistant.auto ? 'Auto' : (det?.assistant.name ?? 'Auto')}
+        </button>
+        <button type="button" className="rq rm2" onClick={() => openSheet('model', { for: 'chat', id })}>
+          <span>{det?.model?.name ?? 'Model'}</span>
+        </button>
+      </div>
     </>
   )
 }

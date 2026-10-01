@@ -599,7 +599,7 @@ function Activity({ kind }: { kind: StudioKind }) {
 }
 
 /** A video opens in a dialog with its own controls: the image viewer is for pictures. */
-function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClose: () => void }) {
+export function VideoDialog({ item, onClose }: { item: GalleryItem | null; onClose: () => void }) {
   const remove = useStudio((s) => s.remove)
   if (!item) return null
   const r = item.recipe

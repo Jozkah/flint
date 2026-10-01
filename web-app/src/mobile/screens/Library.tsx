@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { TopMain } from '../shell/TopBar'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
-import { go } from '../state/app'
+import { go, openSheet } from '../state/app'
+import { Media } from '../ui/studio'
 import { useRpc } from '../state/rpc'
 import { ago } from '../ui/format'
 
-/** What Cowork runs produced, as the desktop's Library lists it. Opening a
+/** What Cowork runs and Studio produced, as the desktop's Library lists it. Opening a
  * file happens on the computer; a row goes to the session that wrote it. */
 export default function Library() {
   const { data, loading, error } = useRpc('library.list', {})
@@ -20,7 +21,7 @@ export default function Library() {
       <div className="scroll">
         <div className="ph">
           <h2>Library</h2>
-          <p>Everything your Cowork runs produced.</p>
+          <p>Everything your Cowork runs and Studio produced.</p>
         </div>
         <div className="sin" style={{ marginBottom: 10 }}>
           <I n="search" />
@@ -38,9 +39,15 @@ export default function Library() {
                   key={`${a.sessionId}:${a.path}`}
                   type="button"
                   className="row"
-                  onClick={() => go({ name: 'cowork', id: a.sessionId })}
+                  onClick={() => (a.studio ? openSheet('studioitem', { item: a.studio }) : go({ name: 'cowork', id: a.sessionId }))}
                 >
-                  <I n="file" />
+                  {a.studio ? (
+                    <span className="gi" style={{ width: 34, height: 34, flex: 'none', borderRadius: 7 }} aria-hidden>
+                      <Media item={a.studio} />
+                    </span>
+                  ) : (
+                    <I n="file" />
+                  )}
                   <span className="tx">
                     <b>{a.title}</b>
                     <small>

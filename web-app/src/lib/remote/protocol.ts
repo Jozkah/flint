@@ -90,6 +90,27 @@ export type RemoteMessage = {
   authorModel?: string
   /** Tool calls the message made, in order (Cowork). */
   tools?: RemoteToolStep[]
+  /** A reply's footer facts, as the desktop's reply row shows them. */
+  meta?: ReplyMeta
+}
+
+/** What a reply's header and footer say (#47, #61, #84). */
+export type ReplyMeta = {
+  /** The assistant that answered (Quartz, Coal, ...), when not Flint. */
+  assistant?: string
+  /** The model that answered. */
+  model?: string
+  /** Generation speed, tokens per second. */
+  tokensPerSecond?: number
+  /** Prompt reading speed, tokens per second. */
+  promptPerSecond?: number
+  outputTokens?: number
+  /** The prompt cache: reused (some input read from it), none, or not reported. */
+  cache?: 'reused' | 'none'
+  /** Speculative decoding: how many drafted tokens were kept. */
+  draft?: { accepted: number; tokens: number }
+  /** Skills the reply read (`plugin:skill` or `skill`). */
+  skills?: string[]
 }
 
 export type ThreadMessagesParams = {
@@ -201,7 +222,7 @@ export type RemoteApproval = {
   why?: string
   consequences: string[]
   /** In the server's words (`always` is gated by "Allow 'Always allow' from phones"). */
-  scopes: { scope: 'once' | 'thread' | 'always'; label: string; explanation: string; broader: boolean }[]
+  scopes: { scope: 'once' | 'thread' | 'always' | 'temporary'; label: string; explanation: string; broader: boolean }[]
   argumentsJson: string
   requestedAt?: number
 }
@@ -236,6 +257,10 @@ export type SettingsSnapshot = {
   proxy: { enabled: boolean; url: string; verifySsl: boolean; noProxy: string }
   /** Jev's two opt-ins, in the desktop's words (`off`, `auto`, ...). */
   jev: { skills: string; rerank: string } | null
+  /** Settings › Jev › Automatic choices (#47); changed on the computer. */
+  automation?: { routeAssistants: boolean; activateSkills: boolean }
+  /** Search providers the computer offers, and whether each needs a key (#58). */
+  webSearchProviders?: { id: string; name: string; needsKey: boolean; configured: boolean }[]
   agentTools: boolean | null
   mcpServers: { total: number; active: number }
   providers: { total: number; active: number }
@@ -339,7 +364,11 @@ export type SendResult = {
   duplicate?: boolean
 }
 
-export type RunStopParams = { kind: SessionKind; id: string; all?: false } | { all: true }
+/** `scope: 'chat'` is the desktop's "Stop all in this chat" (#33): every run,
+ * tool, command and agent under the conversation. */
+export type RunStopParams =
+  | { kind: SessionKind; id: string; all?: false; scope?: 'task' | 'chat' }
+  | { all: true }
 export type RunStopResult = { stopped: number }
 
 export type RoomControlParams = {
@@ -354,7 +383,10 @@ export type RoomControlParams = {
 export type ApprovalRespondParams = {
   requestId: string
   decision: 'allow' | 'deny'
-  scope?: 'once' | 'thread' | 'always'
+  /** `temporary`: the desktop's "Allow all temporarily" for routine Git
+   * remote operations in this conversation (#45), offered only when the
+   * approval lists it. */
+  scope?: 'once' | 'thread' | 'always' | 'temporary'
 }
 /** `gone`: nothing waits under that id any more -- it was answered on the
  * computer (or another phone), or its run ended. */
@@ -448,10 +480,203 @@ export type LibraryItem = {
   sessionId: string
   sessionTitle: string
   updatedAt: number
+  /** Set for a Studio result: its media loads with `studio.media`. */
+  studio?: StudioItemWire
 }
 export type LibraryResult = { items: LibraryItem[] }
 
+
+// ---------------------------------------------------------------------------
+// Desktop updates #30–#87: chat details, effort, assistants, code/preview,
+// Hugging Face
+// ---------------------------------------------------------------------------
+
+export type EffortLevelWire = 'low' | 'medium' | 'high' | 'xhigh'
+export type EffortChoiceWire = EffortLevelWire | 'off'
+
+/** One kind of thing in the context window (lib/contextBreakdown.ts). */
+export type ContextSegmentWire = { id: string; label: string; tokens: number; color: string }
+
+export type ContextWindowWire = {
+  usedTokens: number
+  windowTokens: number | null
+  autoCompactOn: boolean
+  /** Held back for compaction to run in. */
+  buffer: number
+  segments: ContextSegmentWire[]
+}
+
+/** One card of "What Flint is using" (containers/WhatJanIsUsing.tsx). */
+export type UsingSection = {
+  id: 'model' | 'instructions' | 'attachments' | 'memory' | 'tools' | 'payload'
+  title: string
+  items: { label: string; detail?: string; state: string }[]
+  empty?: string
+}
+
+export type ChatDetails = {
+  id: string
+  model: { id: string; provider: string; name: string } | null
+  /** The chat's model was removed from the computer. */
+  modelMissing: boolean
+  /** `auto`: still on Flint, so Jev may route each turn. */
+  assistant: { id: string; name: string; auto: boolean }
+  effort: {
+    levels: EffortLevelWire[]
+    recommended: EffortLevelWire | null
+    canDisable: boolean
+    value: EffortChoiceWire | null
+    overridden: boolean
+  } | null
+  context: ContextWindowWire | null
+  speed: { last: number | null; average: number | null }
+  lastRequest: { inputTokens?: number; outputTokens?: number; cachedInputTokens?: number } | null
+  sections: UsingSection[]
+  /** MCP servers the conversation mentioned that are not running. */
+  serversOff: string[]
+  files: { name: string; state: string }[]
+  /** "Compact session" works while the chat is open on the computer. */
+  canCompact: boolean
+}
+
+export type ChatEffortParams = { id: string; choice: EffortChoiceWire | null }
+export type ChatAssistantParams = { id: string; assistant: string }
+export type ChatForkParams = { id: string; messageId?: string }
+export type TitleRegenerateParams = { kind: SessionKind; id: string }
+export type TitleRegenerateResult = { result: 'done' | 'empty' | 'busy' | 'failed' }
+
+export type AssistantInfo = { id: string; name: string; description?: string; builtIn: boolean }
+export type AssistantsResult = { assistants: AssistantInfo[]; routing: boolean }
+
+export type RoomClearParams = { id: string; scope: 'chat' | 'knowledge' | 'everything' }
+
+export type ProjectEntryWire = { name: string; relPath: string; isDir: boolean }
+export type CoworkFilesParams = { id: string; path?: string }
+export type CoworkFilesResult = { root: string | null; entries: ProjectEntryWire[]; truncated: boolean }
+export type CoworkFileParams = { id: string; path: string }
+export type CoworkFileResult = {
+  path: string
+  status: 'ready' | 'oversized' | 'binary' | 'sensitive' | 'denied' | 'missing'
+  content: string
+  /** Line numbers (1-based) the session added or changed. */
+  changed: Record<number, 'add' | 'mod'>
+  language: string
+  /** Files the session wrote, for the open-file tabs. */
+  touched: string[]
+}
+export type CoworkPreviewResult = {
+  /** Previewable files the session made, newest last. */
+  artifacts: string[]
+  path: string | null
+  kind: 'html' | 'svg' | 'markdown' | 'text' | 'image' | 'other' | null
+  /** The file's text (HTML, SVG, Markdown), capped. */
+  content: string | null
+  note?: string
+}
+
+export type HfVariant = { quant: string; sizeBytes: number | null; fits: boolean | null }
+export type HfModelCard = {
+  repo: string
+  author: string | null
+  downloads: number
+  likes: number
+  tags: string[]
+  pipelineTag: string | null
+  installed: boolean
+  variants: HfVariant[]
+}
+export type HfSearchParams = { query?: string; modality?: 'all' | 'text' | 'vision' | 'audio' | 'code' | 'embeddings' }
+export type HfSearchResult = { models: HfModelCard[]; device: { name: string; vramBytes: number } | null }
+export type HfDownloadParams = { repo: string; quant?: string }
+export type DownloadTaskWire = {
+  id: string
+  label: string
+  status: string
+  progress: number
+  downloaded: number
+  total: number | null
+  bytesPerSecond: number | null
+}
+
 /** Every method a phone may call, with its params and result. */
+
+// ---------------------------------------------------------------------------
+// Studio and dictation (the desktop runs both; phones drive them)
+// ---------------------------------------------------------------------------
+
+export type StudioKindWire = 'image' | 'video'
+export type StudioModelWire = {
+  id: string
+  name: string
+  kind: StudioKindWire
+  installed: boolean
+  totalBytes: number
+  /** Frames a second, for a video model. */
+  fps: number | null
+}
+export type StudioJobWire = {
+  kind: StudioKindWire
+  prompt: string
+  phase: string
+  fraction: number
+  startedAt: number
+  /** How many images this job makes (1 for a video). */
+  count: number
+}
+export type StudioActivityWire = {
+  id: number
+  kind: StudioKindWire
+  prompt: string
+  status: 'making' | 'done' | 'failed' | 'stopped'
+  error?: string
+  durationMs: number
+  at: number
+}
+export type StudioStatusResult = {
+  supported: boolean
+  engineTag: string
+  engineBackend: string | null
+  models: StudioModelWire[]
+  resident: { modelId: string; kind: StudioKindWire; busy: boolean } | null
+  job: StudioJobWire | null
+  download: { modelId: string; bytes: number; total: number } | null
+  activity: StudioActivityWire[]
+  /** Set when video would swap on this computer; must be acknowledged. */
+  memoryWarning: string | null
+  memoryGb: number | null
+  error: string | null
+  sizes: Record<StudioKindWire, { label: string; short: string }[]>
+  videoSeconds: number[]
+}
+export type StudioRecipeWire = {
+  prompt: string
+  negativePrompt: string
+  width: number
+  height: number
+  seed: number
+  modelName: string
+  frames: number | null
+  fps: number | null
+  createdAtMs: number
+  durationMs: number
+}
+export type StudioItemWire = { id: string; kind: StudioKindWire; recipe: StudioRecipeWire }
+export type StudioGenerateParams = {
+  kind: StudioKindWire
+  prompt: string
+  negative?: string
+  sizeIndex?: number
+  count?: number
+  seconds?: number
+  seed?: number
+  /** The phone showed the low-memory warning and the user accepted it. */
+  memoryAcknowledged?: boolean
+}
+export type StudioItemParams = { kind: StudioKindWire; id: string }
+export type VoiceStatusResult = { ready: boolean }
+/** `audio` is base64 16 kHz mono 16-bit WAV. */
+export type VoiceTranscribeParams = { audio: string; language?: string }
+
 export type RemoteMethods = {
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
@@ -480,6 +705,32 @@ export type RemoteMethods = {
   'settings.set': { params: SettingsSetParams; result: { ok: true } }
   /** `scope: 'always'` needs "Allow 'Always allow' from phones" (checked by the server too). */
   'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
+  'chat.details': { params: IdParams; result: ChatDetails }
+  'chat.effort': { params: ChatEffortParams; result: { ok: true } }
+  'chat.assistant': { params: ChatAssistantParams; result: { ok: true } }
+  'chat.fork': { params: ChatForkParams; result: { id: string } }
+  'chat.compact': { params: IdParams; result: { started: boolean } }
+  'title.regenerate': { params: TitleRegenerateParams; result: TitleRegenerateResult }
+  'assistants.list': { params: Record<string, never>; result: AssistantsResult }
+  'room.clear': { params: RoomClearParams; result: { ok: true } }
+  'cowork.files': { params: CoworkFilesParams; result: CoworkFilesResult }
+  'cowork.file': { params: CoworkFileParams; result: CoworkFileResult }
+  'cowork.preview': { params: { id: string; path?: string }; result: CoworkPreviewResult }
+  'hf.search': { params: HfSearchParams; result: HfSearchResult }
+  'hf.download': { params: HfDownloadParams; result: { ok: true; id: string } }
+  'models.downloads': { params: Record<string, never>; result: { tasks: DownloadTaskWire[] } }
+  'studio.status': { params: Record<string, never>; result: StudioStatusResult }
+  'studio.load': { params: { modelId: string }; result: { ok: true } }
+  'studio.unload': { params: Record<string, never>; result: { ok: true } }
+  'studio.download': { params: { modelId: string }; result: { ok: true } }
+  'studio.generate': { params: StudioGenerateParams; result: { started: true } }
+  'studio.stop': { params: Record<string, never>; result: { ok: true } }
+  'studio.gallery': { params: { kind: StudioKindWire }; result: { items: StudioItemWire[] } }
+  'studio.media': { params: StudioItemParams; result: { dataUrl: string } }
+  'studio.remix': { params: StudioItemParams; result: { started: true } }
+  'studio.delete': { params: StudioItemParams; result: { ok: true } }
+  'voice.status': { params: Record<string, never>; result: VoiceStatusResult }
+  'voice.transcribe': { params: VoiceTranscribeParams; result: { text: string } }
 }
 
 export type RemoteMethod = keyof RemoteMethods
@@ -521,6 +772,10 @@ export type RemoteEvent =
   | { type: 'stream.done'; kind: SessionKind; id: string; messageId: string }
   /** Messages, queue or details of a conversation changed. */
   | { type: 'thread.updated'; kind: SessionKind; id: string }
+  /** Studio's job moved on (progress), throttled to a few a second. */
+  | { type: 'studio.progress'; job: StudioJobWire | null }
+  /** Studio's models, gallery or activity changed; read `studio.status`. */
+  | { type: 'studio.updated' }
 
 /** Conversation-scoped events go to sockets subscribed to this topic. */
 export const threadTopic = (id: string) => `thread:${id}`

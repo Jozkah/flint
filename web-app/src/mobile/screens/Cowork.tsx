@@ -1,19 +1,18 @@
-import type { SessionStatus } from '@/lib/remote/protocol'
+import type { RemoteMessage, SessionStatus } from '@/lib/remote/protocol'
 import { TopThread } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { accessLabel, modeLabel } from '../shell/labels'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
-import { compact } from '../ui/format'
 import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
 import { ChangeBars, WhatChanged } from '../ui/changes'
 import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
-import { openDrawer, openSheet, sendMessage } from '../state/app'
+import { client, openDrawer, openSheet, sendMessage, toast, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { pendingFor, prunePending, useLive } from '../state/live'
 import { useFollow, useStickToBottom } from '../ui/hooks'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 const STATUS: Record<SessionStatus, string> = {
   running: 'Running',
@@ -26,12 +25,25 @@ const STATUS: Record<SessionStatus, string> = {
 export default function Cowork({ id }: { id: string }) {
   const detail = useRpc('cowork.get', { id })
   const msgs = useRpc('thread.messages', { id, kind: 'cowork', limit: 100 })
+  const [older, setOlder] = useState<RemoteMessage[]>([])
+  const [olderStart, setOlderStart] = useState<number | null>(null)
+  const compacting = useApp((s) => Boolean(s.compacting[id]))
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
   const changes = useRpc('cowork.changes', { id })
   const queue = useRpc('thread.queue', { id })
   const d = detail.data
-  const messages = msgs.data?.messages ?? []
+  const messages = [...older, ...(msgs.data?.messages ?? []).filter((m) => !older.some((o) => o.id === m.id))]
+  const earlier = olderStart ?? msgs.data?.start ?? 0
+  const showEarlier = async () => {
+    try {
+      const page = await client().rpc('thread.messages', { id, kind: 'cowork', before: earlier, limit: 100 })
+      setOlder((cur) => [...page.messages.filter((m) => !cur.some((c) => c.id === m.id)), ...cur])
+      setOlderStart(page.start)
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not load earlier messages')
+    }
+  }
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
   const stream = useLive((s) => s.streams[id])
   const pending = pendingFor(
@@ -56,7 +68,6 @@ export default function Cowork({ id }: { id: string }) {
   const access = accessLabel(d?.access ?? 'review-only')
   const stepCount = messages.reduce((n, m) => n + (m.tools?.length ?? 0), 0)
   const models = useRpc('models.list', {})
-  const settings = useRpc('settings.get', {})
   const modelName = d?.model
     ? (models.data?.models.find((m) => m.id === d.model?.id && m.provider === d.model.provider)?.name ?? d.model.id)
     : 'Model'
@@ -96,7 +107,11 @@ export default function Cowork({ id }: { id: string }) {
         {(detail.loading || msgs.loading) && !msgs.data && <Loading />}
         {detail.error && !d && <Empty>{detail.error.message}</Empty>}
         {msgs.data && messages.length === 0 && <Empty>Nothing in this session yet.</Empty>}
-        {msgs.data && msgs.data.start > 0 && <div className="compact">{msgs.data.start} earlier messages on the computer</div>}
+        {earlier > 0 && (
+          <button type="button" className="btn ghost" style={{ alignSelf: 'center', margin: '4px 0 12px' }} onClick={() => void showEarlier()}>
+            Show {earlier} earlier {earlier === 1 ? 'message' : 'messages'}
+          </button>
+        )}
         {messages.map((m) => {
           if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />
           if (m.role !== 'assistant') return null
@@ -122,6 +137,12 @@ export default function Cowork({ id }: { id: string }) {
         {resolved.map(([rid, r]) => (
           <ResolvedLine key={rid} r={r} />
         ))}
+        {compacting && (
+          <div className="compacting" role="status">
+            <I n="loader" spin size={14} />
+            Compacting the conversation…
+          </div>
+        )}
         {changes.data && !running && <WhatChanged c={changes.data} />}
         {changes.data && <ChangeBars c={changes.data} />}
       </div>
@@ -140,21 +161,8 @@ export default function Cowork({ id }: { id: string }) {
       <QueueBar items={queue.data?.items ?? []} />
       <Composer
         placeholder="Ask me anything..."
-        extra={
-          <>
-            <button type="button" className="mp" onClick={() => openSheet('cwoptions', { id })}>
-              <I n="opts" size={15} />
-              <span>Options</span>
-            </button>
-            {settings.data?.webSearch.enabled && (
-              <span className="optnote">
-                <I n="globe" size={12} />
-                Web search
-              </span>
-            )}
-          </>
-        }
-        tokens={d?.usage ? compact(d.usage.inputTokens + d.usage.outputTokens) : undefined}
+        plus={{ for: 'cowork', id }}
+        ctx={{ pct: 0, for: 'cowork', id }}
         running={running}
         stopFor={{ kind: 'cowork', id }}
         allowWhileRunning

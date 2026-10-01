@@ -108,4 +108,6 @@ export const studioApi = {
   cancel: () => invoke<void>('diffusion_cancel'),
   gallery: (kind: StudioKind) => invoke<GalleryItem[]>('diffusion_gallery', { kind }),
   remove: (kind: StudioKind, id: string) => invoke<void>('diffusion_delete', { kind, id }),
+  /** A gallery item's media as a `data:` URL (for phones; the desktop shows files directly). */
+  media: (kind: StudioKind, id: string) => invoke<string>('diffusion_media', { kind, id }),
 }

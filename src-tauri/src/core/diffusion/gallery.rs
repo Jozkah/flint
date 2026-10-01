@@ -176,6 +176,30 @@ fn delete_in(dir: &Path, id: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The largest result handed to a phone as a data URL.
+pub const MAX_MEDIA_BYTES: u64 = 48 * 1024 * 1024;
+
+/// One result's media as a `data:` URL. The id must be one the gallery made,
+/// so it can only name a file inside the gallery folder.
+pub fn media_data_url<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind, id: &str) -> Result<String, String> {
+    media_in(&dir_for(app, kind), id)
+}
+
+fn media_in(dir: &Path, id: &str) -> Result<String, String> {
+    use base64::Engine as _;
+    if id.is_empty() || id != file_safe(id) {
+        return Err("That is not a gallery item.".to_string());
+    }
+    let path = media_file(dir, id).ok_or_else(|| "That item is gone.".to_string())?;
+    let size = std::fs::metadata(&path).map_err(|e| format!("Could not read it: {e}"))?.len();
+    if size > MAX_MEDIA_BYTES {
+        return Err("That file is too large to send to a phone.".to_string());
+    }
+    let mime = if path.extension().and_then(|e| e.to_str()) == Some("webm") { "video/webm" } else { "image/png" };
+    let bytes = std::fs::read(&path).map_err(|e| format!("Could not read it: {e}"))?;
+    Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +262,15 @@ mod tests {
         assert!(delete_in(dir.path(), "../x").is_err());
         assert!(delete_in(dir.path(), "a/b").is_err());
         assert!(delete_in(dir.path(), "").is_err());
+    }
+
+    #[test]
+    fn media_is_a_data_url_and_refuses_a_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("1-a.png"), b"png").unwrap();
+        assert_eq!(media_in(dir.path(), "1-a").unwrap(), "data:image/png;base64,cG5n");
+        assert!(media_in(dir.path(), "../1-a").is_err());
+        assert!(media_in(dir.path(), "missing").is_err());
     }
 
     #[test]

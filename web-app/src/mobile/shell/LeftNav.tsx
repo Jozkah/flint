@@ -162,6 +162,12 @@ export function LeftNav() {
             <b style={{ fontWeight: 400 }}>Library</b>
           </span>
         </button>
+        <button type="button" className={`row${act('studio')}`} onClick={() => go({ name: 'studio' })}>
+          <D n="x-palette" />
+          <span className="tx">
+            <b style={{ fontWeight: 400 }}>Studio</b>
+          </span>
+        </button>
 
         <div className="ng">
           <span>Engine</span>

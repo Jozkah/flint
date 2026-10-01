@@ -65,9 +65,9 @@ export class RemoteClient {
 
   private async request<T>(
     path: string,
-    init: Omit<RequestInit, 'headers'> & { auth?: boolean; headers?: Record<string, string> } = {}
+    init: Omit<RequestInit, 'headers'> & { auth?: boolean; headers?: Record<string, string>; timeoutMs?: number } = {}
   ): Promise<T> {
-    const { auth = true, headers = {}, ...rest } = init
+    const { auth = true, headers = {}, timeoutMs = this.timeoutMs, ...rest } = init
     const h: Record<string, string> = { Accept: 'application/json', ...headers }
     if (auth) {
       const token = this.token
@@ -80,7 +80,7 @@ export class RemoteClient {
     const timer = setTimeout(() => {
       timedOut = true
       abort?.abort()
-    }, this.timeoutMs)
+    }, timeoutMs)
     try {
       res = await this.fetchImpl(this.base + path, {
         ...rest,
@@ -132,6 +132,8 @@ export class RemoteClient {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, method, params: params ?? {} }),
+        // Transcription can run long on the computer (its own cap is 150 s).
+        ...(method === 'voice.transcribe' ? { timeoutMs: 160_000 } : {}),
       }
     )
     if (reply?.error) throw new RemoteCallError(reply.error.code, reply.error.message)

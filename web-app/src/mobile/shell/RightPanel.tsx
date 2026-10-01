@@ -8,6 +8,7 @@ import { invalidate, useRpc } from '../state/rpc'
 import { accessLabel, modeLabel } from './labels'
 import { roomAct } from '../state/controls'
 import { ActivityList, ChangesList } from '../ui/changes'
+import { ChatUsage, ChatUsing, CodeTab, PreviewTab } from './panels'
 
 function Header({ title }: { title: string }) {
   return <><div className="dpad" /><div style={{ display: 'flex', alignItems: 'center', padding: '4px 8px 8px 14px', gap: 6 }}><b style={{ flex: 1, fontSize: 15 }}>{title}</b><button type="button" className="ib" onClick={closeAll} aria-label="Close"><I n="x" /></button></div></>
@@ -17,9 +18,6 @@ function Tabs({ tabs, current }: { tabs: [string, IconId, string][]; current: st
   return <div className="rtabs" role="tablist">{tabs.map(([id, icon, label]) => <button key={id} type="button" role="tab" aria-selected={current === id} onClick={() => app.set({ rightTab: id })}><I n={icon} />{label}</button>)}</div>
 }
 
-function Soon({ what }: { what: string }) {
-  return <Empty icon={<I n="monitor" size={18} />}>{what} are shown on the computer for now.</Empty>
-}
 
 const COWORK_TABS: [string, IconId, string][] = [
   ['changes', 'plus', 'Changes'], ['activity', 'activity', 'Activity'], ['timeline', 'timeline', 'Timeline'], ['progress', 'todo', 'Progress'], ['code', 'code', 'Code'], ['preview', 'eye', 'Preview'], ['details', 'info', 'Details'],
@@ -44,13 +42,13 @@ function CoworkPanel({ id, tab }: { id: string; tab: string }) {
   else if (tab === 'details') body = d ? <><div className="card2"><h4><I n="info" />Session details</h4><Kv k="Folder" v={d.group ?? 'None'} /><Kv k="Mode" v={modeLabel(d.mode)?.label ?? d.mode} /><Kv k="Changes go to" v={accessLabel(d.access)?.label ?? d.access} /><Kv k="Model" v={d.model ? (models.data?.models.find((m) => m.id === d.model?.id)?.name ?? d.model.id) : 'Not chosen yet'} /><Kv k="Tool calls" v={String(steps.length)} /></div>{d.usage && <div className="card2"><h4><I n="gauge" />Usage</h4><Kv k="Last run" v={`${compact(d.usage.inputTokens + d.usage.outputTokens)} tokens`} /><Kv k="Input" v={d.usage.inputTokens.toLocaleString()} /><Kv k="Output" v={d.usage.outputTokens.toLocaleString()} /></div>}</> : <Empty>Loading…</Empty>
   else if (tab === 'changes') body = changes.data ? <ChangesList c={changes.data} /> : changes.error ? <Empty>{changes.error.message}</Empty> : <Empty>Loading…</Empty>
   else if (tab === 'activity') body = activity.data ? <ActivityList a={activity.data} /> : activity.error ? <Empty>{activity.error.message}</Empty> : <Empty>Loading…</Empty>
-  else if (tab === 'code') body = <Soon what="Files and code" />
-  else body = <Soon what="Previews" />
+  else if (tab === 'code') body = <CodeTab id={id} />
+  else body = <PreviewTab id={id} />
   return <><Header title="Output" /><Tabs tabs={COWORK_TABS} current={tab} /><div className="rbody">{body}</div></>
 }
 
-function ChatPanel({ tab }: { tab: string }) {
-  return <><Header title="This chat" /><Tabs tabs={[[ 'using', 'eye', 'What Flint is using' ], [ 'usage', 'gauge', 'Usage' ]]} current={tab} /><div className="rbody"><Soon what={tab === 'using' ? 'The chat model, instructions, memory and tools' : 'Context and speed figures'} /></div></>
+function ChatPanel({ id, tab }: { id: string; tab: string }) {
+  return <><Header title="This chat" /><Tabs tabs={[[ 'using', 'eye', 'What Flint is using' ], [ 'usage', 'gauge', 'Context' ]]} current={tab} /><div className="rbody">{tab === 'usage' ? <ChatUsage id={id} /> : <ChatUsing id={id} />}</div></>
 }
 
 async function updateRoom(id: string, patch: RoomUpdateParams['patch'], done = 'Room updated.') {
@@ -95,6 +93,6 @@ export function RightPanel() {
   const tab = useApp((s) => s.rightTab)
   if (route.name === 'cowork') return <CoworkPanel id={route.id} tab={tab && COWORK_TABS.some((t) => t[0] === tab) ? tab : 'details'} />
   if (route.name === 'room') return <RoomPanel id={route.id} tab={tab === 'participants' || tab === 'rsettings' ? tab : 'discussion'} />
-  if (route.name === 'chat') return <ChatPanel tab={tab === 'usage' ? 'usage' : 'using'} />
+  if (route.name === 'chat') return <ChatPanel id={route.id} tab={tab === 'usage' ? 'usage' : 'using'} />
   return null
 }

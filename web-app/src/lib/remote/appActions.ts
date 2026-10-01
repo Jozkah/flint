@@ -11,6 +11,7 @@ import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { useDirectEditGrants } from '@/hooks/useDirectEditGrants'
 import {
   allApprovalRequests,
+  canTemporarilyAllowGit,
   useToolApprovalRequests,
 } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
@@ -35,6 +36,7 @@ import { getLastUsedModel } from '@/utils/getModelToStart'
 export type Navigate = (to: { to: string; params?: Record<string, string> }) => unknown
 
 const SCOPE_WIRE = {
+  'allow-git-temporary': 'temporary',
   'allow-once': 'once',
   'allow-thread': 'thread',
   'allow-always': 'always',
@@ -70,12 +72,13 @@ function setModelSetting(model: ModelRef, key: string, title: string, value: unk
 }
 
 /** Emergency stop in the backend (CoworkStopMenu's `agent_emergency_stop`). */
-async function backendStop(args: { session?: string; run?: string }) {
-  if (!IS_TAURI) return
+async function backendStop(args: { session?: string; run?: string }): Promise<{ stopped?: number } | null> {
+  if (!IS_TAURI) return null
   const { invoke } = await import('@tauri-apps/api/core')
-  await invoke('agent_emergency_stop', args).catch((e) =>
+  return invoke<{ stopped?: number }>('agent_emergency_stop', args).catch((e) => {
     console.warn('remote: emergency stop failed', e)
-  )
+    return null
+  })
 }
 
 export function appActions(navigate: Navigate): RemoteActions {
@@ -226,6 +229,23 @@ export function appActions(navigate: Navigate): RemoteActions {
       return true
     },
 
+    // CoworkStopMenu's "Stop all in this chat": the local abort, then the
+    // backend stop scoped to the whole session rather than one run.
+    stopConversation: async (kind, id) => {
+      if (kind === 'room') {
+        if (!useRoomsStore.getState().runningRoomIds.includes(id)) return 0
+        await roomController.stop(id)
+        return 1
+      }
+      if (kind === 'chat') {
+        composerFor('chat', id)?.stop?.()
+      } else if (useCoworkRun.getState().runs[id]) {
+        holdQueueThenStop([id], () => abortRun(id))
+      }
+      const result = await backendStop({ session: id })
+      return typeof result?.stopped === 'number' ? result.stopped : 0
+    },
+
     stopAll: async () => {
       let count = 0
       holdQueueThenStop(Object.keys(useMessageQueue.getState().queues), () => {
@@ -243,6 +263,10 @@ export function appActions(navigate: Navigate): RemoteActions {
       const scopes: ApprovalScopeWire[] = describePermissionRequest(entry).scopesOffered.map(
         (s) => SCOPE_WIRE[s]
       )
+      // The desktop card's "Allow all temporarily" (#45), when it may cover this call.
+      if (canTemporarilyAllowGit(entry.toolName, entry.input, entry.threadIsEphemeral === true)) {
+        scopes.push('temporary')
+      }
       return { toolCallId: entry.toolCallId, scopes }
     },
 

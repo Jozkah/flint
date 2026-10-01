@@ -151,3 +151,14 @@ pub async fn diffusion_delete<R: Runtime>(
 ) -> Result<(), String> {
     gallery::delete(&app, kind, &id)
 }
+
+#[tauri::command]
+pub async fn diffusion_media<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    kind: Kind,
+    id: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || gallery::media_data_url(&app, kind, &id))
+        .await
+        .map_err(|e| format!("Could not read the item: {e}"))?
+}

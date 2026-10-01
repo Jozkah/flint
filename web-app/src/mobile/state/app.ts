@@ -16,6 +16,7 @@ import type {
 import { RemoteCallError, type Me, type RemoteClient } from '../api/client'
 import type { ConnectionState, EventSocket } from '../api/events'
 import { createStore } from './store'
+import { studioJob } from './studio'
 import { hashToRoute, routeToHash, type HomeMode, type Route } from './router'
 import { invalidate, peekRpc, refresh } from './rpc'
 import {
@@ -61,6 +62,10 @@ export type AppState = {
   computerName: string | null
   theme: ThemePref
   homeMode: HomeMode
+  /** Conversations this phone asked to compact, until the computer answers. */
+  compacting: Record<string, true>
+  /** The Code tab's open files per Cowork session, and the one shown. */
+  code: Record<string, { open: string[]; active: string | null }>
   composer: {
     model: ComposerModel | null
     web: boolean
@@ -97,6 +102,8 @@ export const initialState = (): AppState => ({
   computerName: null,
   theme: readTheme(),
   homeMode: 'chat',
+  compacting: {},
+  code: {},
   composer: {
     model: null,
     web: true,
@@ -455,7 +462,13 @@ export function handleEvent(e: RemoteEvent) {
       invalidate([
         'thread.queue',
         e.kind === 'room' ? 'rooms.get' : e.kind === 'cowork' ? 'cowork.get' : 'sessions.list',
+        'chat.details',
       ])
+      if (app.get().compacting[e.id]) {
+        const compacting = { ...app.get().compacting }
+        delete compacting[e.id]
+        app.set({ compacting })
+      }
       void refresh([threadKey(e.id)])
       break
     case 'run.started':
@@ -475,6 +488,13 @@ export function handleEvent(e: RemoteEvent) {
       break
     case 'notification':
       addNotice({ kind: 'info', title: e.title, body: e.body })
+      break
+    case 'studio.progress':
+      studioJob.set({ job: e.job })
+      if (!e.job) invalidate(['studio.'])
+      break
+    case 'studio.updated':
+      invalidate(['studio.status', 'studio.gallery', 'library.list'])
       break
   }
 }

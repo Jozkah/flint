@@ -6,6 +6,8 @@ import type { UIMessage } from 'ai'
 import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
 import { createActionHandlers, type RemoteActions } from './actions'
 import { handleMobileMutation } from './mobileMutations'
+import { createExtraHandlers, type RemoteExtras } from './extras'
+import { createStudioHandlers, type RemoteStudio, type RemoteVoice } from './studio'
 import type {
   AppearanceResult,
   CoworkActivity,
@@ -80,7 +82,7 @@ export type RemoteSources = {
   queue?: (id: string) => QueuedItem[]
   coworkChanges?: (id: string) => CoworkChanges | null
   coworkActivity?: (id: string) => CoworkActivity | null
-  library?: () => LibraryItem[]
+  library?: () => LibraryItem[] | Promise<LibraryItem[]>
   permissions?: () => Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
   notificationPrefs?: (device: string) => NotificationPrefs | null
 }
@@ -136,10 +138,18 @@ function need<T>(fn: T | undefined, what: string): T {
   return fn
 }
 
-export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions): RemoteHandlers {
+export function createRemoteHandlers(
+  src: RemoteSources,
+  actions?: RemoteActions,
+  extras?: RemoteExtras,
+  studio?: RemoteStudio,
+  voice?: RemoteVoice
+): RemoteHandlers {
   const actionHandlers = actions ? createActionHandlers(actions) : undefined
   return {
     ...plannedHandlers,
+    ...createExtraHandlers(extras),
+    ...createStudioHandlers(studio, voice),
     ...(actionHandlers ?? {}),
 
     // First-class Room mutations. These deliberately reuse the exact Room
@@ -195,7 +205,7 @@ export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions
       return activity
     },
 
-    'library.list': () => ({ items: need(src.library, 'The library')() }),
+    'library.list': async () => ({ items: await need(src.library, 'The library')() }),
 
     'sessions.list': async (params) => {
       const p = isRecord(params) ? params : {}
