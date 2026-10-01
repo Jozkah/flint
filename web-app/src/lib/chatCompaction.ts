@@ -116,3 +116,8 @@ export function requestChatCompaction(threadId: string): boolean {
   void fn()
   return true
 }
+
+/** Whether the chat is open on the desktop, so a compaction can run now. */
+export function canCompactChat(threadId: string): boolean {
+  return compactors.has(threadId)
+}

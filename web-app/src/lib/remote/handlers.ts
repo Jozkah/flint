@@ -6,6 +6,7 @@ import type { UIMessage } from 'ai'
 import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
 import { createActionHandlers, type RemoteActions } from './actions'
 import { handleMobileMutation } from './mobileMutations'
+import { createExtraHandlers, type RemoteExtras } from './extras'
 import type {
   AppearanceResult,
   CoworkActivity,
@@ -136,10 +137,15 @@ function need<T>(fn: T | undefined, what: string): T {
   return fn
 }
 
-export function createRemoteHandlers(src: RemoteSources, actions?: RemoteActions): RemoteHandlers {
+export function createRemoteHandlers(
+  src: RemoteSources,
+  actions?: RemoteActions,
+  extras?: RemoteExtras
+): RemoteHandlers {
   const actionHandlers = actions ? createActionHandlers(actions) : undefined
   return {
     ...plannedHandlers,
+    ...createExtraHandlers(extras),
     ...(actionHandlers ?? {}),
 
     // First-class Room mutations. These deliberately reuse the exact Room

@@ -1,13 +1,16 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import type { NotificationPrefs, RemoteApproval, RemoteModel, SessionKind } from '@/lib/remote/protocol'
+import type { EffortChoiceWire, NotificationPrefs, RemoteApproval, RemoteModel, ReplyMeta, SessionKind } from '@/lib/remote/protocol'
 import { Avatar, Empty, FlintMark, Grab, Kv, Opt, Sw } from '../ui/bits'
 import { I, type IconId } from '../ui/icons'
-import { act, app, client, closeSheet, go, openSheet, toast, useApp } from '../state/app'
+import { act, app, client, closeSheet, go, openDrawer, openSheet, toast, useApp } from '../state/app'
 import { invalidate, useRpc } from '../state/rpc'
 import { reachLabel, useSessions } from '../state/sessions'
 import { respond } from '../ui/respond'
 import { usePhonePermissions } from '../ui/hooks'
-import { DEFAULT_NOTIFY, roomAct } from '../state/controls'
+import { DEFAULT_NOTIFY, forkFrom, regenerateTitleOf, roomAct } from '../state/controls'
+import { ContextCard } from '../ui/reply'
+import { effortStops, stopLabel } from '../ui/effort'
+import { ASSISTANT_ICON } from '../ui/assistants'
 import { ACCESS_MODES, COWORK_MODES } from './labels'
 
 type Props = Record<string, unknown>
@@ -98,7 +101,10 @@ function AccessSheet({ props }: { props: Props }) {
 function StopSheet({ props }: { props: Props }) {
   const kind = str(props.kind) as SessionKind | undefined
   const id = str(props.id)
-  return <><Title>Stop…</Title><Action icon="sq" label="Stop current task" run={() => { if (kind && id) void act('run.stop', { kind, id }, 'Stopped.') }} /><Action icon="alert" label="Stop all activity" danger run={() => void act('run.stop', { all: true }, 'Stopped everything.')} /></>
+  return <><Title>Stop…</Title>
+    <Action icon="sq" label="Stop current task" sub="Ends this response and everything under it. Other sessions keep running." run={() => { if (kind && id) void act('run.stop', { kind, id }, 'Stopped this task.') }} />
+    {kind && id && <Action icon="sq" label="Stop all in this chat" danger sub="Ends every run, tool, command and agent in this chat." run={() => { if (window.confirm('Stop all activity in this chat?')) void act('run.stop', { kind, id, scope: 'chat' }).then((r) => { if (r) toast(`Stopped chat activity (${r.stopped} stopped).`) }) }} />}
+    <Action icon="alert" label="Stop all activity" danger sub="Ends every run, tool, command and agent everywhere in Flint." run={() => { if (window.confirm('Stop everything?')) void act('run.stop', { all: true }, 'Stopped everything.') }} /></>
 }
 
 function PermDetailsSheet({ props }: { props: Props }) {
@@ -170,33 +176,213 @@ function copyId(props: Props) {
   const id = str(props.id); if (!id) return
   void navigator.clipboard?.writeText(id).then(() => toast('ID copied'), () => toast('Copy failed'))
 }
+function Group({ children }: { children: ReactNode }) {
+  return <div className="mgrp">{children}</div>
+}
 function ThreadMenu({ props }: { props: Props }) {
   const id = str(props.id)
   const rename = () => { if (!id) return; const title = window.prompt('Chat name', str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'thread.rename', id, title: title.trim() }, 'Renamed.') }
   const remove = () => { if (id && window.confirm('Delete this chat?')) void mobileMutation({ mobileOp: 'thread.delete', id }, 'Chat deleted.').then(() => go({ name: 'home' })) }
-  return <><Title>{str(props.title) ?? 'Chat'}</Title><Action icon="edit" label="Rename" run={rename} /><Action icon="pin" label="Pin / unpin" run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, 'Updated.') }} /><DesktopOnly title="Move to group" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><Action icon="trash" label="Delete" danger run={remove} /></>
+  return <><Title>{str(props.title) ?? 'Chat'}</Title>
+    <Group><Action icon="pin" label="Pin" run={() => { if (id) void mobileMutation({ mobileOp: 'thread.pin', id }, 'Updated.') }} /><Action icon="edit" label="Rename" run={rename} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('chat', id) }} /></Group>
+    <Group><Action icon="fork" label="Fork chat" run={() => { if (id) void forkFrom(id) }} /><DesktopOnly title="Move to group" /></Group>
+    <Group><DesktopOnly title="Open in split view" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /></Group>
+    <Group><Action icon="trash" label="Delete" danger run={remove} /></Group></>
 }
 function SessionMenu({ props }: { props: Props }) {
   const id = str(props.id)
-  return <><Title>{str(props.title) ?? 'Cowork session'}</Title><Action icon="branch" label="Fork this session" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /><DesktopOnly title="Export session" /><DesktopOnly title="File activity" /><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><Action icon="trash" label="Delete session" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></>
+  return <><Title>{str(props.title) ?? 'Cowork session'}</Title>
+    <Group><Action icon="file" label="File activity" run={() => openDrawer('right', 'activity')} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('cowork', id) }} /><DesktopOnly title="Open in split view" /></Group>
+    <Group><DesktopOnly title="Move to group" /><Action icon="fork" label="Fork" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /></Group>
+    <Group><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><DesktopOnly title="Hand off" /></Group>
+    <Group><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></Group></>
+}
+function RoomMenu({ props }: { props: Props }) {
+  const id = str(props.id)
+  return <><Title>{str(props.title) ?? 'Room'}</Title>
+    <Group><Action icon="pause" label="Pause" run={() => roomAct(props, 'pause', 'Paused.')} /><Action icon="play" label="Resume" run={() => roomAct(props, 'resume', 'Resumed.')} /><Action icon="vote" label="Call vote" run={() => openSheet('vote', props)} /><Action icon="file" label="Synthesize" run={() => roomAct(props, 'synthesize', 'Asked for a synthesis.')} /><Action icon="sq" label="Stop room" run={() => roomAct(props, 'stop', 'Stopped.')} /></Group>
+    <Group><DesktopOnly title="Open in split view" /><DesktopOnly title="Move to group" /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('room', id) }} /></Group>
+    <Group><button type="button" className="opt" onClick={() => openSheet('clearroom', props)}><I n="erase" /><span className="tx"><b>Clear this room…</b></span></button><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></Group></>
+}
+function ClearRoomSheet({ props }: { props: Props }) {
+  const id = str(props.id)
+  const [scope, setScope] = useState<'chat' | 'knowledge' | 'everything'>('chat')
+  return <><Title>Clear this room</Title>
+    <Opt title="Chat only" sub="Every message, vote and synthesis. Keeps what participants learned." selected={scope === 'chat'} onClick={() => setScope('chat')} />
+    <Opt title="Chat and knowledge" sub="Also the run counters and round, so it starts over from the objective." selected={scope === 'knowledge'} onClick={() => setScope('knowledge')} />
+    <Opt title="Everything, including cache" sub="Also its scratch workspaces." selected={scope === 'everything'} onClick={() => setScope('everything')} />
+    <button type="button" className="btn dan big" disabled={!id} onClick={() => { closeSheet(); if (id) void act('room.clear', { id, scope }, 'Room cleared.').then(() => invalidate(['rooms.get', 'thread.messages'])) }}>Clear</button></>
+}
+
+function Chevron() {
+  return <I n="chevr" style={{ color: 'var(--muted-foreground)' }} />
+}
+function Go({ icon, lead, title, sub, sheet, props }: { icon?: IconId; lead?: ReactNode; title: string; sub?: ReactNode; sheet: string; props?: Props }) {
+  return <button type="button" className="opt" onClick={() => openSheet(sheet, props)}>{lead ?? (icon && <I n={icon} />)}<span className="tx"><b>{title}</b>{sub && <small>{sub}</small>}</span><Chevron /></button>
+}
+
+/** The composer's "+" (#76): what to add, then the options. */
+function PlusSheet({ props }: { props: Props }) {
+  const target = str(props.for) ?? 'home'
+  const id = str(props.id)
+  const cowork = target === 'cowork'
+  const settings = useRpc('settings.get', {})
+  const tools = useRpc('tools.list', {})
+  const details = useRpc('chat.details', { id: id ?? '' }, target === 'chat' && Boolean(id))
+  const homeWeb = useApp((s) => s.composer.web)
+  const web = target === 'home' ? homeWeb : (settings.data?.webSearch.enabled ?? false)
+  const provider = settings.data?.webSearchProviders?.find((p) => p.id === settings.data?.webSearch.provider)?.name ?? settings.data?.webSearch.provider ?? 'Web'
+  const toggleWeb = () => {
+    if (target === 'home') { app.set((s) => ({ composer: { ...s.composer, web: !s.composer.web } })); return }
+    void act('settings.set', { key: 'webSearch', value: !web }, !web ? 'Web search on' : 'Web search off').then(() => invalidate(['settings.get']))
+  }
+  const active = (tools.data?.servers ?? []).filter((x) => x.active).length
+  const d = details.data
+  const add: [IconId, string][] = [['image', 'Photo library'], ['file', 'Add files or images'], ['folder', 'Files on the computer'], ['at', 'Reference a file (@)']]
+  return <><Title>Add</Title>
+    {add.map(([icon, label]) => <div key={label} className="opt" aria-disabled="true"><I n={icon} /><span className="tx"><b>{label}</b><small>Attach on the computer for now</small></span></div>)}
+    <div className="ssec">Options</div>
+    <Go lead={<FlintMark size={26} />} title="Assistant" sub={cowork ? 'Flint' : d ? (d.assistant.auto ? 'Auto · Jev picks per turn' : d.assistant.name) : 'Auto · Jev picks per turn'} sheet="assistant" props={props} />
+    <Go icon="sliders" title="Sampling" sub="Defaults from the model" sheet="params" />
+    <Go icon="wrench" title="Tools" sub={tools.data ? `${active} enabled` : undefined} sheet="tools" />
+    <button type="button" className={`row${web ? ' on' : ''}`} style={{ padding: '9px 10px' }} aria-pressed={web} onClick={toggleWeb} data-testid="plus-web"><I n="globe" /><span className="tx"><b>Web search</b><small>{provider}</small></span><Sw on={web} /></button>
+    {target === 'chat' && d?.effort
+      ? <Go icon="bulb" title="Reasoning" sub="Effort is under the composer" sheet="effort" props={{ id }} />
+      : <Go icon="bulb" title="Reasoning" sheet="reason" props={{ for: target, id }} />}
+    {cowork && <Go icon="slash" title="Commands & skills" sheet="skills" />}</>
+}
+
+/** ComposerEffort's bar: Faster ↔ Smarter, Off only where the model can stop thinking. */
+function EffortSheet({ props }: { props: Props }) {
+  const id = str(props.id) ?? ''
+  const { data } = useRpc('chat.details', { id }, Boolean(id))
+  const e = data?.effort
+  if (!e) return <><Title>Effort</Title><p className="sh">This model sizes its own thinking.</p></>
+  const { stops, shown } = effortStops(e)
+  const i = Math.max(0, stops.indexOf(shown))
+  const at = stops.length > 1 ? i / (stops.length - 1) : 0
+  const choose = (choice: EffortChoiceWire | null, label: string) => void act('chat.effort', { id, choice }, label).then(() => invalidate(['chat.details']))
+  return <><Grab />
+    <div className="kv" style={{ background: 'none', border: 0, padding: 0 }}><h3>Effort</h3>{e.overridden && <button type="button" className="btn sm ghost" onClick={() => choose(null, 'Effort reset')}>Reset</button>}</div>
+    <div className="kv" style={{ background: 'none', border: 0, padding: 0, fontSize: 12 }}><span>Faster</span><span>Smarter</span></div>
+    <div className="etrack" role="radiogroup" aria-label="Effort">
+      {stops.map((x, j) => <button key={x} type="button" role="radio" aria-checked={j === i} className="estop" aria-label={stopLabel(x)} onClick={() => choose(x, `Effort: ${stopLabel(x)}`)}><i /></button>)}
+      <span className="ethumb" style={{ left: `calc(${at * 100}% - ${at * 28}px)` }} />
+    </div>
+    <div className="elabels">{stops.map((x) => <span key={x}>{stopLabel(x)}{x === e.recommended && <small>Recommended</small>}</span>)}</div>
+    <p className="sh">{e.canDisable ? `${data?.model?.name ?? 'This model'} can turn thinking off. ` : ''}Applies to this chat.</p></>
+}
+
+/** The context ring's card, and the last reply's figures. */
+function TokensSheet({ props }: { props: Props }) {
+  const target = str(props.for) ?? 'home'
+  const id = str(props.id) ?? ''
+  const details = useRpc('chat.details', { id }, target === 'chat' && Boolean(id))
+  const cowork = useRpc('cowork.get', { id }, target === 'cowork' && Boolean(id))
+  const msgs = useRpc('thread.messages', { id, kind: 'chat', limit: 100 }, target === 'chat' && Boolean(id))
+  const d = details.data
+  const last = [...(msgs.data?.messages ?? [])].reverse().find((m) => m.role === 'assistant')?.meta
+  const compactNow = d?.canCompact
+    ? () => { closeSheet(); app.set((s) => ({ compacting: { ...s.compacting, [id]: true } })); void act('chat.compact', { id }, 'Compacting the conversation…') }
+    : undefined
+  if (target === 'cowork') {
+    const u = cowork.data?.usage
+    return <><Title>Context</Title>{u ? <><Kv k="Input" v={`${u.inputTokens.toLocaleString()} tokens`} /><Kv k="Output" v={`${u.outputTokens.toLocaleString()} tokens`} /></> : <p className="sh">Nothing sent yet.</p>}<DesktopOnly title="Compact session" sub="Cowork sessions compact on the computer." /></>
+  }
+  if (target !== 'chat') return <><Title>Context</Title><ContextCard c={null} /></>
+  return <><Title>Context</Title><ContextCard c={d?.context ?? null} speed={d?.speed} onCompact={compactNow} />
+    {last && <><div className="ssec">Last reply</div>
+      {last.tokensPerSecond ? <Kv k="Generation" v={`${last.tokensPerSecond.toFixed(1)} t/s`} /> : null}
+      {last.promptPerSecond ? <Kv k="Reading" v={`${last.promptPerSecond.toFixed(0)} t/s`} /> : null}
+      {last.draft ? <Kv k="Draft accepted" v={`${Math.round((last.draft.accepted / last.draft.tokens) * 100)}% of ${last.draft.tokens}`} /> : null}
+      {last.cache ? <Kv k="Prompt cache" v={last.cache === 'reused' ? 'Cache reused' : 'Not reused'} /> : null}</>}
+    {d && !d.canCompact && <DesktopOnly title="Compact session" sub="Open the chat on the computer to compact it." />}</>
+}
+
+function ReplyStatsSheet({ props }: { props: Props }) {
+  const m = props.meta as ReplyMeta | undefined
+  return <><Title>Last reply</Title>
+    {m?.tokensPerSecond ? <Kv k="Generation" v={`${m.tokensPerSecond.toFixed(1)} t/s`} /> : null}
+    {m?.promptPerSecond ? <Kv k="Reading" v={`${m.promptPerSecond.toFixed(0)} t/s`} /> : null}
+    {m?.outputTokens ? <Kv k="Tokens" v={m.outputTokens.toLocaleString()} /> : null}
+    {m?.cache ? <Kv k="Prompt cache" v={m.cache === 'reused' ? 'Cache reused' : 'Not reused'} /> : null}
+    {m?.draft ? <Kv k="Draft accepted" v={`${Math.round((m.draft.accepted / m.draft.tokens) * 100)}% of ${m.draft.tokens}`} /> : null}
+    {m?.model ? <Kv k="Model" v={<span className="mono">{m.model}</span>} /> : null}</>
+}
+
+function SkillsUsedSheet({ props }: { props: Props }) {
+  const skills = Array.isArray(props.skills) ? (props.skills as string[]) : []
+  return <><Title>Used {skills.length} {skills.length === 1 ? 'skill' : 'skills'}</Title>
+    {skills.map((name) => { const [plugin, skill] = name.includes(':') ? name.split(':', 2) : [null, name]; return <div key={name} className="opt"><span className="tx"><b>{plugin && <span className="muted">{plugin}:</span>}{skill}</b></span></div> })}</>
+}
+
+const ASSISTANT_SUB: Record<string, string> = { jan: 'Default', quartz: 'Code and review', coal: 'Research and reading', blaze: 'Writing and drafts', redstone: 'Automation and tools' }
+/** The assistant picker (#47): Auto lets Jev route each turn, else Flint. */
+function AssistantSheet({ props }: { props: Props }) {
+  const target = str(props.for) ?? 'home'
+  const id = str(props.id)
+  const list = useRpc('assistants.list', {})
+  const details = useRpc('chat.details', { id: id ?? '' }, target === 'chat' && Boolean(id))
+  if (target !== 'chat' || !id) {
+    return <><Title>Assistant</Title><Opt title="Flint" sub={target === 'cowork' ? 'This Cowork session' : 'Auto · Jev picks per turn once the chat starts'} selected lead={<FlintMark size={26} />} onClick={closeSheet} /><DesktopOnly title="Choose another assistant" sub={target === 'cowork' ? 'Cowork assistants are chosen on the computer.' : 'Pick one in the chat after sending the first message.'} /></>
+  }
+  const cur = details.data?.assistant
+  const pick = (assistant: string, label: string) => { closeSheet(); void act('chat.assistant', { id, assistant }, label).then(() => invalidate(['chat.details'])) }
+  const all = list.data?.assistants ?? []
+  return <><Title>Assistant</Title>
+    <Opt title="Auto" sub={list.data?.routing === false ? 'Automatic routing is off in Settings › Jev' : 'Jev routes each turn to the right assistant, else Flint'} selected={Boolean(cur?.auto)} lead={<span className="pico"><I n="wand" /></span>} onClick={() => pick('auto', 'Assistant: Auto')} />
+    {all.map((a) => { const icon = ASSISTANT_ICON[a.name]; return <Opt key={a.id} title={a.name} sub={a.description || ASSISTANT_SUB[a.id]} selected={!cur?.auto && cur?.id === a.id} lead={a.id === 'jan' ? <FlintMark size={26} /> : <span className="pico" style={icon ? { color: icon[1] } : undefined}><I n={icon?.[0] ?? 'sparkles'} /></span>} onClick={() => pick(a.id, `Assistant: ${a.name}`)} /> })}
+    <Go icon="sliders" title="Parameters" sheet="params" /></>
+}
+
+function MsgMenu({ props }: { props: Props }) {
+  const id = str(props.id)
+  const messageId = str(props.messageId)
+  const text = str(props.text) ?? ''
+  return <><Title>Message actions</Title>
+    <Action icon="copy" label="Copy" run={() => void navigator.clipboard?.writeText(text).then(() => toast('Copied'), () => toast('Copy failed'))} />
+    <Action icon="fork" label="Fork chat from here" run={() => { if (id) void forkFrom(id, messageId) }} />
+    <DesktopOnly title="Edit, regenerate or delete" sub="These change the conversation on the computer." /></>
+}
+
+function ModelGoneSheet({ props }: { props: Props }) {
+  const id = str(props.id)
+  return <><Title sub={`${str(props.name) ?? 'The model'} was removed from the computer.`}>A model is no longer available</Title>
+    <Opt title="This chat" sub="Choose a model to continue" selected onClick={() => openSheet('model', { for: 'chat', id })} />
+    <button type="button" className="btn pri big" onClick={() => openSheet('model', { for: 'chat', id })}>Choose a model</button></>
+}
+
+/** The Code tab's project explorer: the session folder, a level at a time. */
+function FilesSheet({ props }: { props: Props }) {
+  const id = str(props.id) ?? ''
+  const [path, setPath] = useState(str(props.path) ?? '')
+  const { data, error, loading } = useRpc('cowork.files', { id, path }, Boolean(id))
+  const open = (rel: string) => {
+    const cur = app.get().code[id] ?? { open: [], active: null }
+    app.set((s) => ({ code: { ...s.code, [id]: { open: cur.open.includes(rel) ? cur.open : [...cur.open, rel], active: rel } } }))
+    closeSheet()
+    openDrawer('right', 'code')
+  }
+  const up = path.split('/').slice(0, -1).join('/')
+  return <><Title sub={data?.root ?? undefined}>Project explorer</Title>
+    {path && <Opt title=".." sub={path} lead={<I n="back" />} onClick={() => setPath(up)} />}
+    {loading && !data && <p className="sh">Loading…</p>}
+    {error && <p className="sh">{error.message}</p>}
+    {data && !data.root && <p className="sh">This session has no folder.</p>}
+    {data?.entries.map((e) => <Opt key={e.relPath} title={e.name} lead={<I n={e.isDir ? 'folder' : 'file'} />} onClick={() => (e.isDir ? setPath(e.relPath) : open(e.relPath))} />)}
+    {data?.truncated && <p className="sh">More files are in this folder than the phone lists.</p>}</>
 }
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
-  model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu,
-  roommenu: ({ props }) => <><Title>{str(props.title) ?? 'Room'}</Title><Action icon="pause" label="Pause" run={() => roomAct(props, 'pause', 'Paused.')} /><Action icon="play" label="Resume" run={() => roomAct(props, 'resume', 'Resumed.')} /><Action icon="vote" label="Call vote" run={() => openSheet('vote', props)} /><Action icon="file" label="Synthesize" run={() => roomAct(props, 'synthesize', 'Asked for a synthesis.')} /><Action icon="sq" label="Stop room" run={() => roomAct(props, 'stop', 'Stopped.')} /><Action icon="trash" label="Delete room" danger run={() => { const id = str(props.id); if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></>,
-  cwoptions: ({ props }) => <><Title>This Cowork session</Title><DesktopOnly title="Assistant" /><DesktopOnly title="Sampling / parameters" /><DesktopOnly title="Reasoning" sub="Cowork reasoning follows persisted desktop session/model settings." /><DesktopOnly title="Commands & skills" /><Opt title="Tools" lead={<I n="wrench" />} onClick={() => openSheet('tools', props)} /></>,
-  attach: () => <><Title>Add to this message</Title><DesktopOnly title="Attachments" sub="Attach files/images from the computer; phone attachment transfer is not enabled." /></>,
-  assistant: () => <><Title>Assistant</Title><Opt title="Flint" sub="Default" selected lead={<FlintMark size={26} />} onClick={closeSheet} /><DesktopOnly title="Choose another assistant" /></>,
+  model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu, roommenu: RoomMenu, clearroom: ClearRoomSheet, plus: PlusSheet, attach: PlusSheet, cwoptions: PlusSheet, effort: EffortSheet, tokens: TokensSheet, replystats: ReplyStatsSheet, skillsused: SkillsUsedSheet, assistant: AssistantSheet, msgmenu: MsgMenu, modelgone: ModelGoneSheet, files: FilesSheet,
   params: () => <><Title>Parameters</Title><DesktopOnly title="Output, context, compaction and sampling" /></>,
   skills: () => <><Title>Commands & skills</Title><DesktopOnly title="Commands & skills" sub="Run or configure these on the computer." /></>,
-  msgmenu: () => <><Title>Message actions</Title><DesktopOnly title="Additional message actions" sub="Copy is available directly on each assistant message. Edit/regenerate/branch/delete are not exposed remotely." /></>,
   coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,
   chatfilter: () => <><Title>Show</Title><Opt title="All" selected onClick={closeSheet} /><DesktopOnly title="Active filter" /></>,
   workspace: ({ props }) => <><Title>Workspace</Title><Kv k="Folder" v={str(props.folder) ?? str(props.group) ?? 'None'} /><DesktopOnly title="Change folder" sub="Changing an existing session workspace requires desktop confirmation." />{str(props.folder) && <Action icon="copy" label="Copy path" run={() => void navigator.clipboard?.writeText(str(props.folder)!).then(() => toast('Path copied'), () => toast('Copy failed'))} />}</>,
   temp: () => <><Title>Temporary chat</Title><DesktopOnly title="Temporary chat" sub="Temporary history is not exposed by the current remote protocol." /></>,
   profile: () => <><Title>Work profile</Title><DesktopOnly title="Work profile" sub="Persisted Cowork profiles are selected on the computer." /></>,
   worktree: ({ props }) => <><Title>Session worktree</Title><Kv k="Branch" v={str(props.branch) ?? 'Working copy'} /><Kv k="Path" v={str(props.path) ?? '—'} /><DesktopOnly title="Apply / merge changes" sub="Applying changes to the attached folder requires desktop confirmation." /></>,
-  tokens: ({ props }) => <><Title>Token usage</Title><Kv k="Last run" v={typeof props.used === 'number' ? `${props.used.toLocaleString()} tokens` : 'Not reported'} /></>,
 }
 export function SheetBody({ name, props }: { name: string; props: Props }) {
   const Cmp = SHEETS[name]

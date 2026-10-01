@@ -20,7 +20,7 @@ import type {
   SessionKind,
 } from './protocol'
 
-export type ApprovalScopeWire = 'once' | 'thread' | 'always'
+export type ApprovalScopeWire = 'once' | 'thread' | 'always' | 'temporary'
 
 export type RoomAddress =
   | { kind: 'room' }
@@ -64,6 +64,9 @@ export type RemoteActions = {
   stop(kind: SessionKind, id: string): Promise<boolean>
   /** "Stop all activity"; how many runs it reached. */
   stopAll(): Promise<number>
+  /** "Stop all in this chat" (#33): the conversation's run and everything
+   * under it; how many processes it stopped. */
+  stopConversation?(kind: SessionKind, id: string): Promise<number>
 
   // -- Approvals -------------------------------------------------------------
   /** A waiting prompt, with the scopes its card offers. */
@@ -71,7 +74,7 @@ export type RemoteActions = {
   resolveApproval(
     toolCallId: string,
     requestId: string,
-    decision: 'allow-once' | 'allow-thread' | 'allow-always' | 'deny'
+    decision: 'allow-once' | 'allow-thread' | 'allow-always' | 'allow-git-temporary' | 'deny'
   ): void
   /** Settings › Remote access, as the window reads it. */
   permissions(): Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
@@ -136,6 +139,7 @@ const WIRE_DECISION = {
   once: 'allow-once',
   thread: 'allow-thread',
   always: 'allow-always',
+  temporary: 'allow-git-temporary',
 } as const
 
 type ActionMethods =
@@ -226,6 +230,10 @@ export function createActionHandlers(
       const id = str(p.id)
       if (!id || !['chat', 'cowork', 'room'].includes(kind)) {
         throw new RemoteRpcError('bad_params', 'kind and id are required')
+      }
+      if (p.scope === 'chat') {
+        if (!a.stopConversation) throw new RemoteRpcError('not_implemented', 'Stopping a whole chat is not available from phones yet')
+        return { stopped: await a.stopConversation(kind, id) }
       }
       return { stopped: (await a.stop(kind, id)) ? 1 : 0 }
     },

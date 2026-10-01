@@ -9,8 +9,8 @@ export function Composer({
   model,
   modelFor,
   extra,
-  tokens,
-  tokenPct = 0,
+  plus,
+  ctx,
   running,
   onSend,
   top,
@@ -27,8 +27,10 @@ export function Composer({
   model?: ComposerModel | null
   modelFor?: string
   extra?: ReactNode
-  tokens?: string
-  tokenPct?: number
+  /** What the "+" sheet adds to and configures (#76): one button, one sheet. */
+  plus?: { for: 'home' | 'chat' | 'cowork'; id?: string }
+  /** The context ring: only the circle, tapped for the Context window card. */
+  ctx?: { pct: number; for: 'home' | 'chat' | 'cowork'; id?: string }
   /** A run is going: the send button becomes Stop… */
   running?: boolean
   onSend: (text: string) => Promise<boolean | void> | boolean | void
@@ -91,7 +93,7 @@ export function Composer({
         />
         <div className="crow">
           {top === undefined && (
-            <button type="button" className="ib" onClick={() => openSheet('attach')} aria-label="Attachments">
+            <button type="button" className="ib" onClick={() => openSheet('plus', plus ?? { for: 'home' })} aria-label="Add and options">
               <I n="plus" />
             </button>
           )}
@@ -103,10 +105,15 @@ export function Composer({
             </button>
           )}
           {extra}
-          {tokens !== undefined ? (
-            <button type="button" className="tok tokb" onClick={() => openSheet('tokens')} aria-label="Token usage">
-              <span className="ring" style={{ ['--p' as string]: `${tokenPct}%` }} />
-              {tokens}
+          {ctx ? (
+            <button
+              type="button"
+              className="tokr"
+              onClick={() => openSheet('tokens', ctx)}
+              aria-label={`Context window: ${Math.round(ctx.pct)}% used`}
+              data-testid="context-ring"
+            >
+              <span className="ring" style={{ ['--p' as string]: `${Math.min(100, Math.max(0, ctx.pct))}%` }} />
             </button>
           ) : (
             <span className="tok" />

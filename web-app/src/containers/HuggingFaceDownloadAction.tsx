@@ -27,8 +27,6 @@ import { useModelProvider } from '@/hooks/useModelProvider'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { ExtensionManager } from '@/lib/extension'
 import {
-  chooseDraft,
-  chooseMmproj,
   formatModelBytes,
   isMlxRuntimeFile,
   mlxModelId,
@@ -42,16 +40,7 @@ import {
 } from '@/lib/huggingfaceRegistry'
 import { cn } from '@/lib/utils'
 import { formatDuration, secondsRemaining } from '@/lib/downloadSpeed'
-import type { SpecDraftKind } from '@janhq/core'
-
-function draftKind(filename?: string): SpecDraftKind | undefined {
-  const lower = filename?.toLowerCase() ?? ''
-  if (lower.includes('dspark')) return 'dspark'
-  if (lower.includes('dflash')) return 'dflash'
-  if (lower.includes('eagle')) return 'eagle3'
-  if (lower.includes('mtp') || lower.includes('draft')) return 'mtp'
-  return undefined
-}
+import { startGgufBundle } from '@/lib/huggingfaceStart'
 
 export type HuggingFaceDownloadActionProps = {
   repo: string
@@ -134,49 +123,16 @@ export function HuggingFaceDownloadAction({
       }
 
       if (!group) throw new Error('No GGUF variant selected.')
-      const mmproj = chooseMmproj(groups)
-      const draft = chooseDraft(groups, group)
-      const bundleFiles = [
-        ...group.files,
-        ...(mmproj?.files ?? []),
-        ...(draft?.files ?? []),
-      ]
-      await startHuggingFaceBundle({
-        id: bundleId,
+      await startGgufBundle({
+        bundleId,
         repo,
-        label: modelId,
-        files: bundleFiles,
+        revision,
+        modelId,
+        group,
+        groups,
         token,
-        onComplete: async (paths) => {
-          const mainPath = paths[0]
-          if (!mainPath) throw new Error('The GGUF download finished without a model file.')
-          const mmprojOffset = group.files.length
-          const draftOffset = mmprojOffset + (mmproj?.files.length ?? 0)
-          const mmprojPath = mmproj ? paths[mmprojOffset] : undefined
-          const draftPath = draft ? paths[draftOffset] : undefined
-          if (updateAvailable) {
-            await serviceHub.models().deleteModel(modelId, 'llamacpp').catch(() => {})
-          }
-          await serviceHub.models().pullModel(
-            modelId,
-            mainPath,
-            group.primary.sha256 ?? undefined,
-            group.primary.size ?? undefined,
-            mmprojPath,
-            mmproj?.primary.sha256 ?? undefined,
-            mmproj?.primary.size ?? undefined,
-            draftPath,
-            draftKind(draft?.primary.name)
-          )
-          recordHuggingFaceInstall({
-            modelId,
-            repo,
-            revision,
-            files: bundleFiles.map((file) => file.name),
-            installedAt: Date.now(),
-            provider: 'llamacpp',
-          })
-        },
+        replace: updateAvailable,
+        models: serviceHub.models(),
       })
     } catch (error) {
       toast.error('Could not start model download', {

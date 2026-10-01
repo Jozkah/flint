@@ -18,7 +18,9 @@ import { getProviderTitle, isLocalProvider } from '@/lib/utils'
 import { useHardware } from '@/hooks/useHardware'
 import { useLocalApiServer } from '@/hooks/useLocalApiServer'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
+import { useWebSearchConfig, WEB_SEARCH_PROVIDERS } from '@/hooks/useWebSearchConfig'
+import { useAutomationSettings } from '@/hooks/useAutomationSettings'
+import { replyMetaOf } from './replyMeta'
 import { useProxyConfig } from '@/hooks/useProxyConfig'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
@@ -66,7 +68,7 @@ const snapshotOf = (kind: SessionKind, id: string, r: LiveReply | null): StreamS
     : null
 
 /** A session's committed turns, and the live lane while it runs. */
-function coworkTurnsOf(id: string) {
+export function coworkTurnsOf(id: string) {
   const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
   if (!session) return null
   const run = useCoworkRun.getState()
@@ -145,6 +147,7 @@ export const appSources: RemoteSources = {
         role: m.role as RemoteMessage['role'],
         text: threadMessageText(m),
         createdAt: ms(m.created_at),
+        ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
       })
     )
   },
@@ -301,6 +304,18 @@ export const appSources: RemoteSources = {
         noProxy: proxy.noProxy,
       },
       jev: { skills: jev.skillMode, rerank: jev.rerankMode },
+      automation: {
+        routeAssistants: useAutomationSettings.getState().routeAssistants,
+        activateSkills: useAutomationSettings.getState().activateSkills,
+      },
+      webSearchProviders: WEB_SEARCH_PROVIDERS.map((p) => ({
+        id: p.id,
+        name: p.label,
+        needsKey: !p.noSetup && !p.keyless,
+        configured: Boolean(
+          p.noSetup || web.apiKeys[p.id] || (p.requiresEndpoint && web.endpoints[p.id])
+        ),
+      })),
       agentTools: useAgentToolsConfig.getState().agentToolsEnabled,
       mcpServers: {
         total: servers.length,

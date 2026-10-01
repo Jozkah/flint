@@ -6,6 +6,8 @@ import type { RemoteMessage, RemoteToolStep } from '@/lib/remote/protocol'
 import { FlintMark } from './bits'
 import { clock, toolLabel } from './format'
 import { I } from './icons'
+import { ASSISTANT_ICON } from './assistants'
+import { ReplyRow } from './reply'
 
 /** Inline `code` and @mentions inside a line of text. */
 function inline(text: string): ReactNode[] {
@@ -147,9 +149,15 @@ export function ToolTimeline({ steps, after }: { steps: RemoteToolStep[]; after?
 export function AssistantHeader({ name = 'Flint', model, at }: { name?: string; model?: string; at?: number }) {
   return (
     <div className="ah">
-      <span className="fm">
-        <FlintMark />
-      </span>
+      {ASSISTANT_ICON[name] ? (
+        <span className="fm" style={{ color: ASSISTANT_ICON[name][1] }} data-assistant={name}>
+          <I n={ASSISTANT_ICON[name][0]} size={14} />
+        </span>
+      ) : (
+        <span className="fm">
+          <FlintMark />
+        </span>
+      )}
       <b>{name}</b>
       {model && (
         <>
@@ -178,10 +186,11 @@ export function AssistantMessage({
 }) {
   return (
     <div className="msg">
-      <AssistantHeader model={model} at={m.createdAt} />
+      <AssistantHeader name={m.meta?.assistant ?? 'Flint'} model={model ?? m.meta?.model} at={m.createdAt} />
       {timeline && m.tools && m.tools.length > 0 && <ToolTimeline steps={m.tools} />}
       {m.text && <Prose text={m.text} />}
       {actions}
+      <ReplyRow meta={m.meta} />
     </div>
   )
 }

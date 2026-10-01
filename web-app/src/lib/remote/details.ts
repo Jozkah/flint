@@ -4,6 +4,7 @@
 
 import type { UIMessage } from 'ai'
 import { toolKind } from '@/lib/toolKind'
+import { canTemporarilyAllowGit } from '@/hooks/useToolApprovalRequests'
 import { mainArgOf, toolCallFailed } from '@/lib/activityDetail'
 import {
   describePermissionRequest,
@@ -201,7 +202,13 @@ export function approvalOf(
     scopes: req.scopesOffered.flatMap((scope) => {
       const e = req.scopeExplanations[scope]
       return e ? [{ scope: SCOPE_WIRE[scope], label: say(e.label), explanation: say(e.explanation), broader: e.broader }] : []
-    }),
+    }).concat(
+      // The desktop card's "Allow all temporarily" (#45), offered for routine
+      // Git remote operations only.
+      canTemporarilyAllowGit(pending.toolName, pending.input, pending.threadIsEphemeral === true)
+        ? [{ scope: 'temporary' as const, label: t('permissions:scope.allowGitTemporary'), explanation: t('permissions:scope.allowGitTemporaryExplanation'), broader: true }]
+        : []
+    ),
     argumentsJson: req.technicalDetails.argumentsJson,
     ...(pending.requestedAt ? { requestedAt: pending.requestedAt } : {}),
   }
