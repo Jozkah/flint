@@ -19,6 +19,8 @@ use super::auth::{
     PollResult, RateLimiter,
 };
 use super::config::RemoteConfig;
+use super::preview::{PreviewTarget, TicketBook};
+use super::uploads::{Upload, UploadBook, UploadError, UploadInfo};
 use super::push::{self, Category, PushNotice, PushPrefs, Subscription, VapidKey};
 
 /// How long a phone's RPC waits for the desktop window to answer.
@@ -181,6 +183,10 @@ pub struct RemoteHub {
     visible: Mutex<HashMap<String, usize>>,
     vapid: Mutex<Option<Arc<VapidKey>>>,
     http: reqwest::Client,
+    uploads: Mutex<UploadBook>,
+    upload_dir: Mutex<Option<PathBuf>>,
+    preview: Mutex<Option<PreviewTarget>>,
+    tickets: Mutex<TicketBook>,
     events: broadcast::Sender<OutboundEvent>,
     revoked: broadcast::Sender<String>,
     frontend: Arc<dyn Frontend>,
@@ -205,6 +211,10 @@ impl RemoteHub {
             visible: Mutex::new(HashMap::new()),
             vapid: Mutex::new(None),
             http: reqwest::Client::new(),
+            uploads: Mutex::new(UploadBook::default()),
+            upload_dir: Mutex::new(None),
+            preview: Mutex::new(None),
+            tickets: Mutex::new(TicketBook::default()),
             events: broadcast::channel(256).0,
             revoked: broadcast::channel(16).0,
             frontend,
@@ -264,6 +274,7 @@ impl RemoteHub {
         if let Some(d) = &removed {
             log::info!("remote: phone '{}' was unpaired", d.name);
             let _ = self.revoked.send(d.id.clone());
+            lock(&self.tickets).revoke_device(&d.id);
             self.frontend.devices_changed();
         }
         removed.is_some()
@@ -486,6 +497,83 @@ pub struct PushTarget {
 }
 
 impl RemoteHub {
+    // -- uploads -------------------------------------------------------------
+
+    pub fn set_upload_dir(&self, dir: PathBuf) {
+        *lock(&self.upload_dir) = Some(dir);
+    }
+
+    pub fn upload_start(&self, device_id: &str, name: &str, size: u64, mime: &str) -> Result<Upload, UploadError> {
+        let root = lock(&self.upload_dir).clone().ok_or(UploadError::Io("uploads are not set up".into()))?;
+        let max = self.config().max_upload_mb;
+        lock(&self.uploads).start(&root, device_id, name, size, mime, max, Instant::now())
+    }
+
+    pub fn upload_check(&self, device_id: &str, id: &str, offset: u64, len: usize) -> Result<Upload, UploadError> {
+        lock(&self.uploads).check_chunk(device_id, id, offset, len)
+    }
+
+    pub fn upload_wrote(&self, id: &str, len: usize) -> u64 {
+        lock(&self.uploads).wrote(id, len, Instant::now())
+    }
+
+    pub fn upload_get(&self, device_id: &str, id: &str) -> Option<Upload> {
+        lock(&self.uploads).get(device_id, id).cloned()
+    }
+
+    pub fn upload_finish(&self, device_id: &str, id: &str, head: &[u8]) -> Result<UploadInfo, UploadError> {
+        lock(&self.uploads).finish(device_id, id, head)
+    }
+
+    pub fn upload_remove(&self, device_id: &str, id: &str) -> bool {
+        lock(&self.uploads).remove(device_id, id)
+    }
+
+    /// Finished uploads of a device, for the window to attach.
+    pub fn uploads_finished(&self, device_id: &str, ids: &[String]) -> Vec<Upload> {
+        lock(&self.uploads).finished(device_id, ids)
+    }
+
+    // -- preview -------------------------------------------------------------
+
+    /// The window's live preview for a session (`None` clears it).
+    pub fn set_preview(&self, target: Option<PreviewTarget>) {
+        *lock(&self.preview) = target;
+    }
+
+    pub fn preview(&self) -> Option<PreviewTarget> {
+        lock(&self.preview).clone()
+    }
+
+    /// A ticket for `device` to view `session_id`'s live preview, with the
+    /// path to load. `None` when that session has no live preview, or the
+    /// setting is off.
+    pub fn preview_ticket(&self, device_id: &str, session_id: &str) -> Option<(String, String)> {
+        if !self.config().allow_preview_proxy {
+            return None;
+        }
+        let target = self.preview().filter(|t| t.session_id == session_id)?;
+        let ticket = lock(&self.tickets).issue(device_id, session_id, Instant::now());
+        Some((ticket, target.start))
+    }
+
+    /// The origin a ticket may reach: its device still paired, its session's
+    /// preview still the registered one.
+    pub fn preview_origin_for(&self, ticket: &str) -> Option<String> {
+        if !self.config().allow_preview_proxy {
+            return None;
+        }
+        let (device, session) = lock(&self.tickets).check(ticket, Instant::now())?;
+        lock(&self.devices).get(&device)?;
+        self.preview()
+            .filter(|t| t.session_id == session)
+            .map(|t| t.origin)
+    }
+
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
     // -- push ----------------------------------------------------------------
 
     pub fn set_vapid(&self, key: VapidKey) {
@@ -569,6 +657,15 @@ impl RemoteHub {
         let bad = |m: &str| Err(RpcError::new("bad_params", m));
         let state = || self.push_state(&device.id).unwrap_or_default();
         let r: RpcOutcome = match method {
+            "preview.ticket" => {
+                let session = params.get("id").and_then(Value::as_str).unwrap_or("");
+                match self.preview_ticket(&device.id, session) {
+                    Some((ticket, start)) => Ok(serde_json::json!({
+                        "path": format!("{}{}{ticket}{start}", super::server::API_PREFIX, super::preview::PREVIEW_PREFIX),
+                    })),
+                    None => Err(RpcError::new("not_found", "This session has no live preview on the computer")),
+                }
+            }
             "push.vapidKey" => match self.vapid_public_key() {
                 Some(k) => Ok(serde_json::json!({ "key": k })),
                 None => Err(RpcError::new("unavailable", "Push is not set up on the computer")),

@@ -46,6 +46,11 @@ pub struct RemoteConfig {
     /// Phones may grant "Always allow". Off by default: a standing grant from
     /// a device in someone's pocket is the broadest thing a phone could do.
     pub allow_always_allow: bool,
+    /// Largest file a phone may upload as an attachment, in MiB.
+    pub max_upload_mb: u32,
+    /// The Cowork session's live preview (a localhost dev server) may be
+    /// proxied to paired phones.
+    pub allow_preview_proxy: bool,
 }
 
 impl Default for RemoteConfig {
@@ -58,6 +63,8 @@ impl Default for RemoteConfig {
             key_path: None,
             allow_approvals: true,
             allow_always_allow: false,
+            max_upload_mb: 25,
+            allow_preview_proxy: true,
         }
     }
 }
@@ -79,6 +86,9 @@ impl RemoteConfig {
     pub fn validate(&self) -> Result<(), String> {
         if self.port < 1024 {
             return Err("Port must be between 1024 and 65535".into());
+        }
+        if !(1..=200).contains(&self.max_upload_mb) {
+            return Err("The upload limit must be between 1 and 200 MB".into());
         }
         match (&self.cert_path, &self.key_path) {
             (Some(c), Some(k)) if !c.trim().is_empty() && !k.trim().is_empty() => Ok(()),

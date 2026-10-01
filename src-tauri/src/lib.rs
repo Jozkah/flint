@@ -642,6 +642,8 @@ pub fn build_app() -> tauri::App {
         core::remote::commands::remote_revoke_device,
         core::remote::commands::remote_rpc_respond,
         core::remote::commands::remote_emit_event,
+        core::remote::commands::remote_upload_take,
+        core::remote::commands::remote_set_preview,
     ]);
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
