@@ -6292,7 +6292,7 @@ export function CoworkPage() {
               if (!absolute) return
               void serviceHub
                 .opener()
-                .openPath(absolute)
+                .openPath(absolute, pathLinkRoots)
                 .catch((e) => toast.error(errorText(e)))
             }}
             // The tree the changes are in, not the one the session is

@@ -16,7 +16,7 @@
     "core:app:allow-set-app-theme",
     "core:window:allow-set-focus",
     "os:default",
-    "opener:default",
+    "opener:allow-default-urls",
     "log:default",
     "core:webview:allow-create-webview-window",
     "opener:allow-open-url",

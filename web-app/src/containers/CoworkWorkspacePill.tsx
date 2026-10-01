@@ -334,7 +334,7 @@ export function CoworkWorkspacePill({
                 variant="surface"
                 size="sm"
                 className="flex-1"
-                onClick={() => void serviceHub.opener().openPath(folder)}
+                onClick={() => void serviceHub.opener().openPath(folder, [folder, ...(extraFolders ?? [])])}
               >
                 <FolderOpen size={14} aria-hidden />
                 {t('common:workspace.open')}
@@ -343,7 +343,7 @@ export function CoworkWorkspacePill({
                 variant="surface"
                 size="sm"
                 className="flex-1"
-                onClick={() => void serviceHub.opener().revealItemInDir(folder)}
+                onClick={() => void serviceHub.opener().revealItemInDir(folder, [folder, ...(extraFolders ?? [])])}
               >
                 <ExternalLink size={14} aria-hidden />
                 {t('common:workspace.reveal')}

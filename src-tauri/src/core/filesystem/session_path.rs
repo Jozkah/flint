@@ -9,6 +9,12 @@
 //! inside the folder that points outside is refused, and drive letters and
 //! UNC names compare case-insensitively on Windows.
 //!
+//! Flint's own data folder (logs, the memory store, session sandboxes,
+//! artifacts, worktrees) is always allowed, and the backend derives it itself:
+//! a caller opening one of those passes no roots at all, so a compromised
+//! webview cannot widen what the app-owned callers may reach. `roots` only
+//! carries the user's own attached folders.
+//!
 //! Executables are never launched: `open` of one is refused, `reveal` (show in
 //! the file manager) is allowed.
 
@@ -105,8 +111,16 @@ pub fn resolve_session_path(
     Ok(target)
 }
 
-/// Open or reveal `path` when it is inside one of `roots` (the session's or
-/// thread's folders). The webview never gets to name an arbitrary path.
+/// The roots a request may use: the caller's folders plus Flint's data folder.
+pub fn allowed_roots(caller: &[String], data_folder: &Path) -> Vec<String> {
+    let mut all: Vec<String> = caller.to_vec();
+    all.push(data_folder.to_string_lossy().into_owned());
+    all
+}
+
+/// Open or reveal `path` when it is inside one of `roots` (the user's attached
+/// folders) or Flint's own data folder. The webview never gets to name an
+/// arbitrary path.
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn open_session_path<R: tauri::Runtime>(
@@ -116,6 +130,8 @@ pub async fn open_session_path<R: tauri::Runtime>(
     mode: OpenMode,
 ) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
+    let data_folder = crate::core::app::commands::get_jan_data_folder_path(app.clone());
+    let roots = allowed_roots(&roots, &data_folder);
     let target = tauri::async_runtime::spawn_blocking(move || {
         resolve_session_path(&roots, &path, mode)
     })
@@ -229,6 +245,38 @@ mod tests {
             assert!(resolve_session_path(&roots, &p, OpenMode::Open).is_err(), "{name}");
             assert!(resolve_session_path(&roots, &p, OpenMode::Reveal).is_ok(), "{name}");
         }
+    }
+
+    #[test]
+    fn the_data_folder_is_always_allowed_and_nothing_else_is_added() {
+        let f = fixture();
+        // App-owned callers pass no roots: the backend's data folder decides.
+        let roots = allowed_roots(&[], &f.proj);
+        assert!(resolve_session_path(&roots, &s(&f.proj.join("src").join("a.ts")), OpenMode::Open).is_ok());
+        assert!(resolve_session_path(&roots, &s(&f.proj), OpenMode::Reveal).is_ok());
+        assert!(resolve_session_path(&roots, &s(&f.sibling.join("a.ts")), OpenMode::Open).is_err());
+        assert!(resolve_session_path(&roots, &s(&f.outside), OpenMode::Reveal).is_err());
+    }
+
+    #[test]
+    fn app_owned_executables_are_still_reveal_only() {
+        let f = fixture();
+        let roots = allowed_roots(&[], &f.proj);
+        let exe = s(&f.proj.join("run.exe"));
+        assert!(resolve_session_path(&roots, &exe, OpenMode::Open).is_err());
+        assert!(resolve_session_path(&roots, &exe, OpenMode::Reveal).is_ok());
+    }
+
+    #[test]
+    fn a_link_out_of_the_data_folder_is_refused() {
+        let f = fixture();
+        let link = f.proj.join("escape");
+        if !make_dir_link(&f.outside, &link) {
+            eprintln!("skipping: cannot create a symlink or junction here");
+            return;
+        }
+        let roots = allowed_roots(&[], &f.proj);
+        assert!(resolve_session_path(&roots, &s(&link.join("s.txt")), OpenMode::Reveal).is_err());
     }
 
     #[test]

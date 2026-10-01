@@ -214,12 +214,12 @@ export function CoworkPreviewPanel({ root, path, onClose, verify }: Props) {
               {iconButton(
                 t('common:artifactOpenExternal'),
                 SquareArrowOutUpRight,
-                () => void serviceHub.opener().openPath(abs)
+                () => void serviceHub.opener().openPath(abs, root ? [root] : [])
               )}
               {iconButton(
                 t('common:artifactShowInFolder'),
                 FolderOpen,
-                () => void serviceHub.opener().revealItemInDir(abs)
+                () => void serviceHub.opener().revealItemInDir(abs, root ? [root] : [])
               )}
             </>
           )}

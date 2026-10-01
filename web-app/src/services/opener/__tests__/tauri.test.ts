@@ -3,43 +3,53 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openPath: vi.fn(),
   revealItemInDir: vi.fn(),
+  openUrl: vi.fn(),
 }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
 
+import { invoke } from '@tauri-apps/api/core'
 import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { TauriOpenerService } from '../tauri'
 import { DefaultOpenerService } from '../default'
 
 describe('TauriOpenerService', () => {
   beforeEach(() => {
+    vi.mocked(invoke).mockReset()
     vi.mocked(revealItemInDir).mockReset()
     vi.mocked(openPath).mockReset()
   })
 
   it('extends DefaultOpenerService', () => {
-    const svc = new TauriOpenerService()
-    expect(svc).toBeInstanceOf(DefaultOpenerService)
+    expect(new TauriOpenerService()).toBeInstanceOf(DefaultOpenerService)
   })
 
-  it('revealItemInDir delegates to the opener plugin, which is native per OS', async () => {
-    vi.mocked(revealItemInDir).mockResolvedValueOnce(undefined)
-    const svc = new TauriOpenerService()
-    await svc.revealItemInDir('/tmp/x')
-    expect(revealItemInDir).toHaveBeenCalledWith('/tmp/x')
+  it('revealItemInDir goes through the contained backend command, not the plugin', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined)
+    await new TauriOpenerService().revealItemInDir('/tmp/x', ['/tmp'])
+    expect(invoke).toHaveBeenCalledWith('open_session_path', {
+      roots: ['/tmp'],
+      path: '/tmp/x',
+      mode: 'reveal',
+    })
+    expect(revealItemInDir).not.toHaveBeenCalled()
   })
 
-  it('openPath delegates to the opener plugin', async () => {
-    vi.mocked(openPath).mockResolvedValueOnce(undefined)
-    const svc = new TauriOpenerService()
-    await svc.openPath('/tmp/x')
-    expect(openPath).toHaveBeenCalledWith('/tmp/x')
+  it('openPath goes through the backend with no roots by default', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined)
+    await new TauriOpenerService().openPath('/tmp/x')
+    expect(invoke).toHaveBeenCalledWith('open_session_path', {
+      roots: [],
+      path: '/tmp/x',
+      mode: 'open',
+    })
+    expect(openPath).not.toHaveBeenCalled()
   })
 
-  it('revealItemInDir logs and rethrows when invoke rejects', async () => {
-    const err = new Error('boom')
-    vi.mocked(revealItemInDir).mockRejectedValueOnce(err)
+  it('logs and rethrows when the backend refuses', async () => {
+    const err = 'path is outside the session folders'
+    vi.mocked(invoke).mockRejectedValueOnce(err)
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const svc = new TauriOpenerService()
-    await expect(svc.revealItemInDir('/tmp/x')).rejects.toBe(err)
+    await expect(new TauriOpenerService().openPath('/etc')).rejects.toBe(err)
     expect(spy).toHaveBeenCalled()
     spy.mockRestore()
   })
