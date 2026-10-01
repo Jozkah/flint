@@ -8,6 +8,7 @@ import {
   estimateTokensFromText,
   getProxyConfig,
   truncateToTokenBudget,
+  modelFileProblem,
 } from './util'
 import { getBackendSecret, getBackendSetting } from './backend-settings'
 
@@ -766,5 +767,25 @@ describe('resolveSpecDraftKind', () => {
     expect(
       resolveSpecDraftKind({ 'general.architecture': 'dflash' }, { hint: 'mtp' })
     ).toBe('dflash')
+  })
+})
+
+describe('modelFileProblem', () => {
+  const base = { label: 'model', path: '/m/a.gguf' }
+
+  it('reports a missing file', () => {
+    expect(modelFileProblem({ ...base, exists: false })).toContain('is missing')
+  })
+
+  it('reports a file shorter than it should be', () => {
+    const msg = modelFileProblem({ ...base, exists: true, size: 10, expectedSize: 100 })
+    expect(msg).toContain('incomplete')
+    expect(msg).toContain('10 of 100')
+  })
+
+  it('accepts a complete file, and one with no recorded size', () => {
+    expect(modelFileProblem({ ...base, exists: true, size: 100, expectedSize: 100 })).toBeNull()
+    expect(modelFileProblem({ ...base, exists: true, size: 5 })).toBeNull()
+    expect(modelFileProblem({ ...base, exists: true, size: 5, expectedSize: 0 })).toBeNull()
   })
 })

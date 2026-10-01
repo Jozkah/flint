@@ -45,6 +45,7 @@ import {
   resolveSpecDraftKind,
   detectTemplateKwargsFromChatTemplate,
   getDefaultEmbeddingModelId,
+  modelFileProblem,
   setDefaultEmbeddingModelId,
   type EmbedBatchResult,
 } from './util'
@@ -2052,6 +2053,8 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
       )
     }
 
+    await this.preflightModelFiles(modelId)
+
     if (!isEmbedding) {
       await this.evictChatIfAtCapacity(modelId)
     }
@@ -2066,6 +2069,62 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     } catch (error) {
       logger.error('Error in load command:\n', error)
       throw error
+    }
+  }
+
+  /**
+   * Fail with a plain reason when a model's file is gone or cut short, instead
+   * of the loader's own error, which names neither. Anything that cannot be
+   * read here is left for the load itself to report.
+   */
+  private async preflightModelFiles(modelId: string): Promise<void> {
+    let config: ModelConfig & { model_size_bytes?: number }
+    let dataFolder: string
+    try {
+      dataFolder = await getJanDataFolderPath()
+      config = await invoke<ModelConfig & { model_size_bytes?: number }>(
+        'read_yaml',
+        {
+          path: await joinPath([
+            await this.getProviderPath(),
+            'models',
+            modelId,
+            'model.yml',
+          ]),
+        }
+      )
+    } catch {
+      return
+    }
+    if (!config || typeof config !== 'object') return
+
+    const files: Array<{ label: string; path?: string; expected?: number }> = [
+      { label: 'model', path: config.model_path, expected: config.model_size_bytes },
+      {
+        label: 'multimodal projector',
+        path: config.mmproj_path,
+        expected: config.mmproj_size_bytes,
+      },
+    ]
+    for (const file of files) {
+      if (!file.path) continue
+      const full = await joinPath([dataFolder, file.path])
+      let exists = false
+      let size: number | undefined
+      try {
+        exists = await fs.existsSync(full)
+        if (exists) size = (await fs.fileStat(full))?.size
+      } catch {
+        continue
+      }
+      const problem = modelFileProblem({
+        label: file.label,
+        path: full,
+        exists,
+        size,
+        expectedSize: file.expected,
+      })
+      if (problem) throw new Error(problem)
     }
   }
 
