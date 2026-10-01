@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
+import { Route as StudioRouteImport } from './routes/studio'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
@@ -46,6 +47,11 @@ import { Route as SettingsProvidersProviderNameRouteImport } from './routes/sett
 const SystemMonitorRoute = SystemMonitorRouteImport.update({
   id: '/system-monitor',
   path: '/system-monitor',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StudioRoute = StudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OverviewRoute = OverviewRouteImport.update({
@@ -217,6 +223,7 @@ export interface FileRoutesByFullPath {
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
+  '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
@@ -252,6 +259,7 @@ export interface FileRoutesByTo {
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
+  '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
@@ -288,6 +296,7 @@ export interface FileRoutesById {
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
   '/overview': typeof OverviewRoute
+  '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
   '/hub/$modelId': typeof HubModelIdRoute
   '/local-api-server/logs': typeof LocalApiServerLogsRoute
@@ -325,6 +334,7 @@ export interface FileRouteTypes {
     | '/extensions'
     | '/logs'
     | '/overview'
+    | '/studio'
     | '/system-monitor'
     | '/hub/$modelId'
     | '/local-api-server/logs'
@@ -360,6 +370,7 @@ export interface FileRouteTypes {
     | '/extensions'
     | '/logs'
     | '/overview'
+    | '/studio'
     | '/system-monitor'
     | '/hub/$modelId'
     | '/local-api-server/logs'
@@ -395,6 +406,7 @@ export interface FileRouteTypes {
     | '/extensions'
     | '/logs'
     | '/overview'
+    | '/studio'
     | '/system-monitor'
     | '/hub/$modelId'
     | '/local-api-server/logs'
@@ -431,6 +443,7 @@ export interface RootRouteChildren {
   ExtensionsRoute: typeof ExtensionsRoute
   LogsRoute: typeof LogsRoute
   OverviewRoute: typeof OverviewRoute
+  StudioRoute: typeof StudioRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
   HubModelIdRoute: typeof HubModelIdRoute
   LocalApiServerLogsRoute: typeof LocalApiServerLogsRoute
@@ -467,6 +480,13 @@ declare module '@tanstack/react-router' {
       path: '/system-monitor'
       fullPath: '/system-monitor'
       preLoaderRoute: typeof SystemMonitorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/studio': {
+      id: '/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof StudioRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/overview': {
@@ -703,6 +723,7 @@ const rootRouteChildren: RootRouteChildren = {
   ExtensionsRoute: ExtensionsRoute,
   LogsRoute: LogsRoute,
   OverviewRoute: OverviewRoute,
+  StudioRoute: StudioRoute,
   SystemMonitorRoute: SystemMonitorRoute,
   HubModelIdRoute: HubModelIdRoute,
   LocalApiServerLogsRoute: LocalApiServerLogsRoute,

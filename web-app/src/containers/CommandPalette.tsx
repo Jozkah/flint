@@ -123,6 +123,13 @@ export function CommandPalette() {
         run: go(route.artifacts),
       },
       {
+        id: 'nav-studio',
+        section: 'navigation',
+        title: 'Open Studio',
+        keywords: ['image', 'video', 'generate', 'picture', 'draw'],
+        run: go(route.studio),
+      },
+      {
         id: 'nav-system-monitor',
         section: 'navigation',
         title: t('common:commandPalette.openSystemMonitor'),
