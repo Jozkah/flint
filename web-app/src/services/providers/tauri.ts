@@ -24,6 +24,7 @@ import {
   isEndpointError,
   parseModelList,
 } from '@/lib/endpointDiagnostics'
+import { modelsUrlCandidates } from '@/lib/modelsUrl'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
@@ -189,10 +190,18 @@ export class TauriProvidersService extends DefaultProvidersService {
 
         ensureAnthropicHeaders(provider, headers)
 
-        const response = await fetchTauri(`${provider.base_url}/models`, {
+        // The address as typed, then `/v1` when it carries no version of its
+        // own and the first place answers 404.
+        const candidates = modelsUrlCandidates(provider.base_url)
+        let modelsUrl = candidates[0]
+        let response = await fetchTauri(modelsUrl, {
           method: 'GET',
           headers,
         })
+        if (response.status === 404 && candidates.length > 1) {
+          modelsUrl = candidates[1]
+          response = await fetchTauri(modelsUrl, { method: 'GET', headers })
+        }
 
         lastStatus = response.status
         lastStatusText = response.statusText
@@ -212,7 +221,7 @@ export class TauriProvidersService extends DefaultProvidersService {
           throw new EndpointError(
             describeEndpointFailure({
               provider: provider.provider,
-              url: `${provider.base_url}/models`,
+              url: modelsUrl,
               method: 'GET',
               status: response.status,
               statusText: response.statusText,

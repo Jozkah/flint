@@ -151,6 +151,10 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
 - Loading a model whose file was moved, deleted or only partly downloaded now fails with that reason, naming the file, instead of the loader's own error.
 - An image over the 10 MB attachment limit, such as a large PNG screenshot, is re-encoded to fit instead of being refused. The tool list sent to the model is sorted by name, so an MCP server reconnecting in a different order no longer discards the prompt cache.
+- A WebP image sent to a local vision model is converted to PNG first, because llama.cpp cannot read WebP and the image was failing or dropped.
+- Adding a self-hosted OpenAI-compatible server by its bare address, such as `http://host:8000`, now finds its models: the model list is also tried under `/v1` when the first address answers 404, and pasted spaces and trailing slashes are ignored.
+- Editing a message you sent with images keeps the images instead of dropping them.
+- The copy buttons for API keys and secrets show "copied" only once the clipboard write has succeeded.
 - A reply's token details show **Draft accepted**, for example `75% (30/40)`, when speculative decoding (MTP, DFlash or EAGLE-3) ran, so you can see whether a draft is paying off.
 
 ### Release infrastructure

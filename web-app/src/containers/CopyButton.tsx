@@ -7,13 +7,14 @@ import {
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Copy, CopyCheck } from 'lucide-react'
 import { useState } from 'react'
+import { copyToClipboard } from '@/lib/clipboard'
 
 export const CopyButton = ({ text }: { text: string }) => {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(text)
+  const handleCopy = async () => {
+    if (!(await copyToClipboard(text))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

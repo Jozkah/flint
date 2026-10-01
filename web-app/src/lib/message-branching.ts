@@ -329,9 +329,17 @@ export const makeSibling = (
   source: ThreadMessage,
   opts: { id: string; createdAt: number; text?: string }
 ): ThreadMessage => {
+  // An edit replaces the text and keeps the images: they live only in the
+  // content, so rebuilding it from the new text alone lost them for good.
+  // Reasoning and tool calls belong to an answer the edit just invalidated.
   const content: ThreadContent[] =
     opts.text !== undefined
-      ? [{ type: ContentType.Text, text: { value: opts.text, annotations: [] } }]
+      ? [
+          { type: ContentType.Text, text: { value: opts.text, annotations: [] } },
+          ...source.content
+            .filter((c) => c.type === ContentType.Image)
+            .map((c) => ({ ...c })),
+        ]
       : source.content.map((c) => ({ ...c }))
   const sourceMeta = { ...(source.metadata ?? {}) } as Record<string, unknown>
   delete sourceMeta.activeChildId

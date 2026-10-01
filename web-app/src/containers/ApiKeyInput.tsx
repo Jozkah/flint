@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Eye, EyeOff, Copy, CopyCheck } from 'lucide-react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/lib/clipboard'
 
 interface ApiKeyInputProps {
   showError?: boolean
@@ -64,9 +65,9 @@ export function ApiKeyInput({
     }
   }
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!inputValue) return
-    navigator.clipboard.writeText(inputValue)
+    if (!(await copyToClipboard(inputValue))) return
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
