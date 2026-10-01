@@ -74,7 +74,10 @@ describe('what reaches the model', () => {
     })
 
     expect(text).not.toContain('Prefer small commits.')
-    expect(text).not.toContain('CLAUDE.md')
+    // The safety rule names CLAUDE.md as an example of project guidance. What
+    // must not appear is the file itself as a block of instructions.
+    expect(text).not.toMatch(/<project_instructions[^>]*CLAUDE\.md/)
+    expect(text).not.toContain('precedence=')
   })
 
   it('contains the instructions once the user switches it on', () => {
@@ -287,7 +290,7 @@ describe('normal chat', () => {
   it('is untouched by a folder full of Claude configuration', () => {
     const text = prompt({ compatInstructions: [] })
 
-    expect(text).not.toContain('CLAUDE.md')
+    expect(text).not.toMatch(/<project_instructions[^>]*CLAUDE\.md/)
     expect(text).not.toContain('precedence=')
   })
 })
