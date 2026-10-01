@@ -14,26 +14,34 @@ export type ExportChoice = {
   format: ExportFormat
   view: ExportView
   labelKey: string
+  /** Nest the other versions of edited or regenerated messages (threads only). */
+  allVersions?: boolean
 }
 
 export const EXPORT_CHOICES: readonly ExportChoice[] = [
   { id: 'markdown', format: 'markdown', view: 'default', labelKey: 'common:export.markdown' },
   { id: 'markdown-full', format: 'markdown', view: 'verbose', labelKey: 'common:export.markdownFull' },
   { id: 'obsidian', format: 'obsidian', view: 'default', labelKey: 'common:export.obsidian' },
+  { id: 'markdown-versions', format: 'markdown', view: 'default', labelKey: 'common:export.markdownVersions', allVersions: true },
+  { id: 'obsidian-versions', format: 'obsidian', view: 'default', labelKey: 'common:export.obsidianVersions', allVersions: true },
   { id: 'pdf', format: 'pdf', view: 'default', labelKey: 'common:export.pdf' },
   { id: 'image', format: 'image', view: 'default', labelKey: 'common:export.image' },
 ]
 
-export type BuildDoc = () => ExportDoc | null | Promise<ExportDoc | null>
+export type BuildOptions = { allVersions: boolean }
+
+export type BuildDoc = (
+  options: BuildOptions
+) => ExportDoc | null | Promise<ExportDoc | null>
 
 export async function runExport(
   build: BuildDoc,
-  choice: Pick<ExportChoice, 'format' | 'view'>,
+  choice: Pick<ExportChoice, 'format' | 'view' | 'allVersions'>,
   t: Translate
 ): Promise<void> {
   let doc: ExportDoc | null
   try {
-    doc = await build()
+    doc = await build({ allVersions: choice.allVersions === true })
   } catch (e) {
     toast.error(
       t('common:export.failed', { reason: e instanceof Error ? e.message : String(e) })
@@ -47,9 +55,11 @@ export async function runExport(
   const out = await exportDocument(doc, choice.format, { view: choice.view })
   if (out.ok) {
     const saved =
-      out.path === null
+      out.kind === 'print'
         ? t('common:export.printOpened')
-        : t('common:export.saved', { path: out.path })
+        : out.kind === 'html'
+          ? t('common:export.htmlSaved', { path: out.path })
+          : t('common:export.saved', { path: out.path })
     toast.success(
       out.redactions > 0
         ? `${saved} ${t('common:export.redacted', { count: out.redactions })}`

@@ -15,11 +15,18 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { EXPORT_CHOICES, runExport, type BuildDoc } from '@/lib/exportAction'
 
 /** The format entries on their own, for a menu that already has its heading. */
-export function ExportItems({ build }: { build: BuildDoc }) {
+export function ExportItems({
+  build,
+  versions = false,
+}: {
+  build: BuildDoc
+  /** Offer the "all versions" entries; for a chat, which can have them. */
+  versions?: boolean
+}) {
   const { t } = useTranslation()
   return (
     <>
-      {EXPORT_CHOICES.map((choice) => (
+      {EXPORT_CHOICES.filter((c) => versions || !c.allVersions).map((choice) => (
         <DropdownMenuItem
           key={choice.id}
           data-testid={`export-${choice.id}`}
@@ -35,7 +42,13 @@ export function ExportItems({ build }: { build: BuildDoc }) {
 }
 
 /** "Export" with the formats in a submenu. */
-export function ExportSubmenu({ build }: { build: BuildDoc }) {
+export function ExportSubmenu({
+  build,
+  versions = false,
+}: {
+  build: BuildDoc
+  versions?: boolean
+}) {
   const { t } = useTranslation()
   return (
     <DropdownMenuSub>
@@ -44,7 +57,7 @@ export function ExportSubmenu({ build }: { build: BuildDoc }) {
         <span>{t('common:export.menu')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
-        <ExportItems build={build} />
+        <ExportItems build={build} versions={versions} />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

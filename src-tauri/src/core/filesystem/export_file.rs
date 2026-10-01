@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 pub const MAX_EXPORT_BYTES: usize = 50 * 1024 * 1024;
 
 /// The extensions an export may be written with.
-const ALLOWED_EXT: [&str; 3] = ["md", "pdf", "png"];
+const ALLOWED_EXT: [&str; 4] = ["md", "pdf", "png", "html"];
 
 /// Names Windows reserves regardless of extension.
 const RESERVED: [&str; 22] = [
@@ -27,14 +27,14 @@ pub struct ExportSaveReport {
     pub redactions: usize,
 }
 
-/// `md`, `pdf` or `png` (any case, optional leading dot); anything else is refused.
+/// `md`, `pdf`, `png` or `html` (any case, optional leading dot); anything else is refused.
 pub fn validate_ext(ext: &str) -> Result<&'static str, String> {
     let wanted = ext.trim().trim_start_matches('.').to_ascii_lowercase();
     ALLOWED_EXT
         .iter()
         .copied()
         .find(|allowed| *allowed == wanted)
-        .ok_or_else(|| format!("exports can be saved as md, pdf or png, not {ext:?}"))
+        .ok_or_else(|| format!("exports can be saved as md, pdf, png or html, not {ext:?}"))
 }
 
 /// A file name that is legal on Windows, macOS and Linux, ending in `.ext`.
@@ -111,7 +111,7 @@ fn write_atomically(path: &Path, body: &[u8]) -> Result<(), String> {
 
 /// Save an export to a file the user picks. `None` means the user cancelled.
 ///
-/// Text (Markdown) has credentials redacted here as well as in the renderer,
+/// Text (Markdown or HTML) has credentials redacted here as well as in the renderer,
 /// so a secret that slipped past the first pass is still not written.
 #[tauri::command]
 pub async fn export_save_file(
@@ -159,7 +159,8 @@ mod tests {
         assert_eq!(validate_ext("md"), Ok("md"));
         assert_eq!(validate_ext(".PDF"), Ok("pdf"));
         assert_eq!(validate_ext(" png "), Ok("png"));
-        for bad in ["exe", "html", "md.exe", "", "../md", "bat"] {
+        assert_eq!(validate_ext("HTML"), Ok("html"));
+        for bad in ["exe", "htm", "svg", "md.exe", "", "../md", "bat"] {
             assert!(validate_ext(bad).is_err(), "{bad}");
         }
     }

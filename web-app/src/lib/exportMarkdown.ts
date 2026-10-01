@@ -13,7 +13,7 @@
  */
 import { parseFileRefs } from '@/lib/coworkFileRefs'
 
-export type ExportScope = 'thread' | 'session' | 'message'
+export type ExportScope = 'thread' | 'branch' | 'session' | 'message'
 
 export type ExportView = 'default' | 'verbose'
 
@@ -33,6 +33,11 @@ export type ExportMessage = {
   /** How many images were attached; their data is never exported. */
   images?: number
   tools?: ExportTool[]
+  /**
+   * Other versions of this message (an edit or a regeneration), each with what
+   * followed it. Nested under the message in the output.
+   */
+  alternatives?: ExportMessage[][]
   /** Epoch milliseconds. */
   at?: number
 }
@@ -43,6 +48,8 @@ export type ExportDoc = {
   /** ISO 8601, supplied by the caller so rendering stays pure. */
   exportedAt: string
   model?: string
+  /** Which branch of a branched thread this is, 1-based. */
+  branch?: { index: number; count: number }
   messages: ExportMessage[]
 }
 
@@ -56,12 +63,14 @@ const ROLE_LABEL: Record<ExportMessage['role'], string> = {
 
 const SCOPE_TAG: Record<ExportScope, string> = {
   thread: 'chat',
+  branch: 'chat',
   session: 'cowork',
   message: 'message',
 }
 
 const SCOPE_TYPE: Record<ExportScope, string> = {
   thread: 'chat',
+  branch: 'chat-branch',
   session: 'cowork-session',
   message: 'chat-message',
 }
@@ -81,7 +90,7 @@ const RESERVED_NAMES = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i
  */
 export function exportFileName(
   title: string,
-  ext: 'md' | 'pdf' | 'png'
+  ext: 'md' | 'pdf' | 'png' | 'html'
 ): string {
   let stem = (title ?? '')
     .replace(/[<>:"/\\|?*]/g, '-')
@@ -224,12 +233,21 @@ function renderMessage(
   }
 
   if (parts.length === 1) parts.push('_(no text)_')
+  m.alternatives?.forEach((alt, i) => {
+    const inner = alt.map((x) => renderMessage(x, view, flavor)).join('\n\n')
+    const quoted = inner
+      .split('\n')
+      .map((line) => (line ? `> ${line}` : '>'))
+      .join('\n')
+    parts.push(`> **Other version ${i + 1} of this message**\n>\n${quoted}`)
+  })
   return parts.join('\n\n')
 }
 
 function header(doc: ExportDoc): string {
   const line = ['Exported from Flint', doc.exportedAt.slice(0, 10)]
   if (doc.model) line.push(oneLine(doc.model))
+  if (doc.branch) line.push(`Branch ${doc.branch.index} of ${doc.branch.count}`)
   return `> ${line.join(' · ')}`
 }
 
@@ -290,6 +308,7 @@ export function renderObsidian(
   ]
   if (doc.model) front.push(`model: ${yamlString(oneLine(doc.model))}`)
   front.push(`messages: ${doc.messages.length}`)
+  if (doc.branch) front.push(`branch: ${doc.branch.index}`, `branches: ${doc.branch.count}`)
   front.push('tags:')
   for (const tag of tags) {
     const clean = tag.split('/').map(tagSegment).filter(Boolean).join('/')

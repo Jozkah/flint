@@ -5,7 +5,13 @@
  */
 import type { UIMessage } from 'ai'
 import type { ThreadMessage } from '@janhq/core'
-import { computeActivePath } from '@/lib/message-branching'
+import {
+  activePathOf,
+  allBranchPaths,
+  getSiblings,
+  hasBranching,
+  pickActiveChild,
+} from '@/lib/message-branching'
 import { extractFilesFromPrompt } from '@/lib/fileMetadata'
 import type { CoworkTurn } from '@/types/coworkSession'
 import type { ExportDoc, ExportMessage, ExportTool } from '@/lib/exportMarkdown'
@@ -19,25 +25,71 @@ export type ExportThread = {
   id: string
   title?: string
   model?: { id?: string } | null
+  metadata?: Record<string, unknown> | null
 }
 
-/** The shown branch of a chat thread. Empty text-less system rows are dropped. */
+export type ThreadDocOptions = {
+  /** Nest the other versions of each edited or regenerated message. */
+  allVersions?: boolean
+}
+
+const isTurn = (m: ThreadMessage) => m.role === 'user' || m.role === 'assistant'
+
+/** A version and what followed it on its own active line. */
+function lineFrom(all: ThreadMessage[], start: ThreadMessage): ThreadMessage[] {
+  const line: ThreadMessage[] = []
+  const seen = new Set<string>()
+  for (let n: ThreadMessage | undefined = start; n && !seen.has(n.id); ) {
+    seen.add(n.id)
+    line.push(n)
+    n = pickActiveChild(all, n)
+  }
+  return line
+}
+
+/**
+ * A chat thread. By default the branch on screen: the stored list also holds
+ * every edited and regenerated version, and exporting them all in a row would
+ * read as a conversation that never happened. `allVersions` keeps the shown
+ * branch and nests the other versions under the message they replace. System
+ * and tool rows are dropped.
+ */
 export function docFromThread(
   thread: ExportThread,
   messages: readonly ThreadMessage[],
-  now: Date
+  now: Date,
+  options: ThreadDocOptions = {}
 ): ExportDoc {
+  const all = [...messages]
+  const branched = hasBranching(all)
+  const path = activePathOf(all, thread.metadata)
   const out: ExportMessage[] = []
-  for (const m of computeActivePath([...messages])) {
-    if (m.role !== 'user' && m.role !== 'assistant') continue
-    out.push(fromStored(m))
+  for (const m of path) {
+    if (!isTurn(m)) continue
+    const entry = fromStored(m)
+    if (options.allVersions && branched) {
+      const others = getSiblings(all, m)
+        .filter((x) => x.id !== m.id)
+        .map((v) => lineFrom(all, v).filter(isTurn).map(fromStored))
+        .filter((alt) => alt.length > 0)
+      if (others.length) entry.alternatives = others
+    }
+    out.push(entry)
+  }
+  let branch: ExportDoc['branch']
+  if (branched && !options.allVersions) {
+    const paths = allBranchPaths(all)
+    const leaf = path[path.length - 1]?.id
+    const at = paths.findIndex((p) => p[p.length - 1]?.id === leaf)
+    if (paths.length > 1 && at >= 0) branch = { index: at + 1, count: paths.length }
   }
   return {
     title: titleOf(thread.title),
-    scope: 'thread',
+    scope: branch ? 'branch' : 'thread',
     exportedAt: now.toISOString(),
     model: thread.model?.id,
     messages: out,
+    ...(branch ? { branch } : {}),
   }
 }
 
