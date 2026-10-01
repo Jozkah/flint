@@ -136,10 +136,10 @@ describe('Cowork request reasoning', () => {
   })
 
   it("exposes the session's native reasoning options for its subagents", () => {
-    provide('openai', { id: 'gpt-5', settings: { thinking_budget_tokens: setting('low') } })
+    provide('openai', { id: 'gpt-5.2', settings: { thinking_budget_tokens: setting('low') } })
     useModelOverrides.getState().setForThread('session-1', 'thinking_budget_tokens', 'xhigh')
     const t = new CoworkChatTransport('session-1', {
-      model: { provider: 'openai', id: 'gpt-5' },
+      model: { provider: 'openai', id: 'gpt-5.2' },
     } as never)
     expect(t.reasoningProviderOptions()).toEqual({
       openai: { reasoningEffort: 'xhigh', reasoningSummary: 'auto' },

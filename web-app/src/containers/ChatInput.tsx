@@ -63,12 +63,13 @@ import {
   type ModelSelection,
 } from '@/hooks/useConversationPane'
 import { useTokensCount } from '@/hooks/useTokensCount'
-import { ReasoningEffortSlider } from '@/containers/ReasoningEffortSlider'
+import { ComposerEffort } from '@/containers/ComposerEffort'
 import {
   EFFORT_SETTING_KEY,
   effortOf,
-  isOpenAICompatibleReasoningProvider,
-  supportedEffortLevels,
+  effortProfile,
+  isThinkingOff,
+  type EffortChoice,
 } from '@/lib/modelEffort'
 import { isOverridden, resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
@@ -234,6 +235,14 @@ type ChatInputProps = {
    * behind one Options button (Cowork), for a quieter row. */
   groupOptions?: boolean
   /**
+   * The model selector, docked under the composer at the right. The reasoning
+   * effort control, when the model has one, sits to its left. Absent, the
+   * effort control still shows (alone) so it is reachable on every surface.
+   */
+  modelControl?: ReactNode
+  /** Controls under the composer at the left (Cowork's mode and access). */
+  belowLeft?: ReactNode
+  /**
    * Replaces the default stop button while streaming.
    *
    * Cowork supplies one control that asks how far to stop; without this slot
@@ -342,6 +351,8 @@ const ChatInput = memo(function ChatInput({
   referenceSources,
   surfaceControls,
   groupOptions = false,
+  modelControl,
+  belowLeft,
   stopControl,
   tokenSource,
   hideTokenCounter,
@@ -2699,6 +2710,100 @@ const ChatInput = memo(function ChatInput({
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
 
+  const updateModelSetting = (
+    settingKey: string,
+    title: string,
+    controllerType: string,
+    value: unknown
+  ) => {
+    if (!selectedProvider || !selectedModel) return
+    const providerObj = getProviderByName(selectedProvider)
+    if (!providerObj) return
+    const modelIndex = providerObj.models.findIndex(
+      (m) => m.id === selectedModel.id
+    )
+    if (modelIndex === -1) return
+    const existing = selectedModel.settings?.[settingKey] ?? {
+      key: settingKey,
+      title,
+      description: '',
+      controller_type: controllerType,
+      controller_props: { value },
+    }
+    const updatedModel = {
+      ...selectedModel,
+      settings: {
+        ...selectedModel.settings,
+        [settingKey]: {
+          ...existing,
+          controller_props: {
+            ...(existing.controller_props ?? {}),
+            value,
+          },
+        },
+      },
+    } as Model
+    const updatedModels = [...providerObj.models]
+    updatedModels[modelIndex] = updatedModel
+    updateProvider(selectedProvider, {
+      models: updatedModels,
+    })
+    // selectedModel is a snapshot, not a live derivation — re-select to
+    // refresh it so the dropdown UI and the chat transport both observe the
+    // new value. A surface that supplies its own model (Cowork) re-derives it
+    // from the providers, and must not move the global picker.
+    if (!modelSelection) {
+      selectModelProvider(selectedProvider, selectedModel.id)
+    }
+  }
+
+  // Which discrete effort levels this provider will act on. Empty for
+  // providers that size their own thinking, in which case the control is not
+  // shown at all — see `supportedEffortLevels`.
+  const {
+    levels: effortLevels,
+    recommended: effortRecommended,
+    canDisable: effortCanDisable,
+  } = effortProfile(selectedProvider, selectedModel)
+  // What this chat will actually send: its own override where it has one, the
+  // global model setting otherwise.
+  const resolvedForEffort = resolveModel(selectedModel, chatOverrides)
+  const currentEffort: EffortChoice | null =
+    effortCanDisable && isThinkingOff(resolvedForEffort)
+      ? 'off'
+      : effortOf(resolvedForEffort)
+  const effortOverridden =
+    isOverridden(chatOverrides, EFFORT_SETTING_KEY) ||
+    isOverridden(chatOverrides, 'reasoning')
+  /**
+   * Store a setting.
+   *
+   * Per chat once a chat exists. On the new-chat screen there is no thread
+   * yet, and the control still has to work — so it writes the global model
+   * setting there.
+   */
+  const setChatSetting = (
+    key: string,
+    title: string,
+    value: 'auto' | 'off' | string
+  ) => {
+    if (overrideScope) {
+      setThreadOverride(overrideScope, key, value)
+      return
+    }
+    updateModelSetting(key, title, 'dropdown', value)
+  }
+  /** Choose a stop: a level, or Off where the model can be told not to think. */
+  const setEffort = (choice: EffortChoice) => {
+    if (choice === 'off') {
+      setChatSetting('reasoning', 'Reasoning', 'off')
+      return
+    }
+    // Picking a level ends Off; the effort says how hard from there.
+    if (currentEffort === 'off') setChatSetting('reasoning', 'Reasoning', 'auto')
+    setChatSetting(EFFORT_SETTING_KEY, 'Reasoning Effort', choice)
+  }
+
   return (
     <div className="relative" data-composer>
       <div className="relative">
@@ -3379,16 +3484,16 @@ const ChatInput = memo(function ChatInput({
 
                 {/* Cowork has no chat agent mode of its own; the flag read
                     above belongs to whichever chat thread was last open. */}
+                {/* The effort bar (under the composer) is the reasoning control
+                    wherever the model has one; this menu is only for models
+                    that size their own thinking and so have no bar. */}
                 {(!effectiveAgentMode || slashSurface === 'cowork') &&
+                  effortLevels.length === 0 &&
                   (selectedProvider === 'llamacpp' ||
                     selectedProvider === 'google' ||
                     selectedProvider === 'gemini' ||
                     selectedProvider === 'anthropic' ||
-                    selectedProvider === 'openai' ||
-                    isOpenAICompatibleReasoningProvider(
-                      selectedProvider,
-                      selectedModel
-                    )) &&
+                    selectedProvider === 'openai') &&
                   (() => {
                     // The token-budget submenu only applies to local llama.cpp
                     // (budget resolved against live n_ctx). Cloud providers size
@@ -3396,10 +3501,7 @@ const ChatInput = memo(function ChatInput({
                           const showThinkingBudget =
                             selectedProvider === 'llamacpp'
                     // Auto/On/Off writes the `reasoning` setting, which only the
-                    // first-party providers wire into a request. A remote
-                    // OpenAI-compatible model reaches this menu solely for the
-                    // effort bar, so it must not show reasoning items that would
-                    // do nothing.
+                    // first-party providers wire into a request.
                     const showReasoningModes =
                       selectedProvider === 'llamacpp' ||
                       selectedProvider === 'google' ||
@@ -3413,106 +3515,6 @@ const ChatInput = memo(function ChatInput({
                               | 'on'
                               | 'off'
                               | undefined) ?? 'auto'
-                    const updateModelSetting = (
-                      settingKey: string,
-                      title: string,
-                      controllerType: string,
-                      value: unknown
-                    ) => {
-                      if (!selectedProvider || !selectedModel) return
-                            const providerObj =
-                              getProviderByName(selectedProvider)
-                      if (!providerObj) return
-                      const modelIndex = providerObj.models.findIndex(
-                        (m) => m.id === selectedModel.id
-                      )
-                      if (modelIndex === -1) return
-                            const existing = selectedModel.settings?.[
-                              settingKey
-                            ] ?? {
-                        key: settingKey,
-                        title,
-                        description: '',
-                        controller_type: controllerType,
-                        controller_props: { value },
-                      }
-                      const updatedModel = {
-                        ...selectedModel,
-                        settings: {
-                          ...selectedModel.settings,
-                          [settingKey]: {
-                            ...existing,
-                            controller_props: {
-                              ...(existing.controller_props ?? {}),
-                              value,
-                            },
-                          },
-                        },
-                      } as Model
-                      const updatedModels = [...providerObj.models]
-                      updatedModels[modelIndex] = updatedModel
-                      updateProvider(selectedProvider, {
-                        models: updatedModels,
-                      })
-                      // selectedModel is a snapshot, not a live derivation —
-                      // re-select to refresh it so the dropdown UI and the
-                      // chat transport both observe the new value. A surface
-                      // that supplies its own model (Cowork) re-derives it
-                      // from the providers, and must not move the global
-                      // picker.
-                      if (!modelSelection) {
-                              selectModelProvider(
-                                selectedProvider,
-                                selectedModel.id
-                              )
-                      }
-                    }
-
-                    // Providers that honour a discrete reasoning effort get the
-                    // stepped bar. Which levels exist is the provider's answer,
-                    // not a guess: see `supportedEffortLevels`. The value is
-                    // stored per chat, over the global model configuration.
-                    // Which discrete effort levels this provider will act
-                    // on. Empty for providers that size their own thinking, in
-                    // which case the bar is not shown at all — see
-                    // `supportedEffortLevels`.
-                    const effortLevels = supportedEffortLevels(
-                      selectedProvider,
-                      selectedModel
-                    )
-                    // What this chat will actually send: its own override
-                    // where it has one, the global model setting otherwise.
-                    const currentEffort = effortOf(
-                      resolveModel(selectedModel, chatOverrides)
-                    )
-                    const effortOverridden = isOverridden(
-                      chatOverrides,
-                      EFFORT_SETTING_KEY
-                    )
-                    /**
-                     * Store the chosen level.
-                     *
-                     * Per chat once a chat exists. On the new-chat screen there
-                     * is no thread yet, and the control still has to work — so
-                     * it writes the global model setting there, which is what
-                     * the menu it replaced always did.
-                     */
-                    const setEffort = (level: string) => {
-                      if (overrideScope) {
-                        setThreadOverride(
-                          overrideScope,
-                          EFFORT_SETTING_KEY,
-                          level
-                        )
-                        return
-                      }
-                      updateModelSetting(
-                        EFFORT_SETTING_KEY,
-                        'Reasoning Effort',
-                        'dropdown',
-                        level
-                      )
-                    }
                     const setReasoning = (value: 'auto' | 'on' | 'off') =>
                       updateModelSetting(
                         'reasoning',
@@ -3595,30 +3597,6 @@ const ChatInput = memo(function ChatInput({
                                 align="start"
                                 className="w-64"
                               >
-                          {effortLevels.length > 0 && (
-                            <>
-                              <div className="px-2 py-1.5">
-                                <ReasoningEffortSlider
-                                  levels={effortLevels}
-                                  value={currentEffort}
-                                  overridden={effortOverridden}
-                                  onChange={setEffort}
-                                  onReset={
-                                    overrideScope && effortOverridden
-                                      ? () =>
-                                          clearThreadOverride(
-                                            overrideScope,
-                                            EFFORT_SETTING_KEY
-                                          )
-                                      : undefined
-                                  }
-                                />
-                              </div>
-                                    {showReasoningModes && (
-                                      <DropdownMenuSeparator />
-                                    )}
-                            </>
-                          )}
                           {showReasoningModes && (
                             <>
                               <DropdownMenuItem
@@ -3807,6 +3785,47 @@ const ChatInput = memo(function ChatInput({
           </div>
         </div>
       </div>
+
+      {/* Under the composer, as Claude lays it out: what the run may do on the
+          left; the reasoning effort and the model on the right. Wraps, never
+          clips. */}
+      {(belowLeft || modelControl || effortLevels.length > 0) && (
+        <div
+          data-testid="composer-model-row"
+          className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-1"
+        >
+          {belowLeft && (
+            <div className="flex shrink-0 items-center gap-0.5">
+              {belowLeft}
+            </div>
+          )}
+          <div className="ml-auto flex min-w-0 max-w-full items-center justify-end gap-1">
+            {effortLevels.length > 0 && (
+              <ComposerEffort
+                levels={effortLevels}
+                value={currentEffort}
+                recommended={effortRecommended}
+                canDisable={effortCanDisable}
+                overridden={effortOverridden}
+                onChange={setEffort}
+                onReset={
+                  overrideScope && effortOverridden
+                    ? () => {
+                        clearThreadOverride(overrideScope, EFFORT_SETTING_KEY)
+                        clearThreadOverride(overrideScope, 'reasoning')
+                      }
+                    : undefined
+                }
+              />
+            )}
+            {modelControl && (
+              <div className="flex min-w-24 max-w-64 flex-1 basis-24 justify-end">
+                {modelControl}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {webOffPrompt !== null && (
         <div

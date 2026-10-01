@@ -58,13 +58,23 @@ const NATIVELY_WIRED_REASONING_PROVIDERS = new Set([
 ])
 
 /**
+ * Model families that reason on demand and take `reasoning_effort`, matched by
+ * id. A custom or self-hosted OpenAI-compatible server (llama.cpp, vLLM,
+ * LiteLLM, a proxy) is added by hand and never carries the `reasoning`
+ * capability tag the catalogue gives a hosted model, so the id is the only
+ * signal there is for it.
+ */
+const REASONING_MODEL_ID =
+  /(^|[/:_.-])(qwen-?3|qwq|deepseek-?r1|r1|gpt-?oss|o[134](-|$)|magistral|glm-?4\.?[5-9]|kimi-?k2|minimax-?m|nemotron|phi-?4-?reasoning|reasoning|thinking)/i
+
+/**
  * A remote provider reached through the OpenAI-compatible factory whose model
- * declares the `reasoning` capability, so `reasoning_effort` in the request
- * body is honoured. This is the honest signal — a discrete effort only belongs
- * on screen where the model actually reasons on demand, and the capability tag
- * is how the rest of the app already gates reasoning-only affordances. Sending
- * the field to a model that ignores it would be a control that does nothing (or
- * a strict server that rejects the unknown field).
+ * reasons on demand, so `reasoning_effort` in the request body is honoured:
+ * the model declares the `reasoning` capability, or its id names a reasoning
+ * family (see `REASONING_MODEL_ID`). A discrete effort only belongs on screen
+ * where the model actually reasons on demand. Sending the field to a model
+ * that ignores it would be a control that does nothing (or a strict server
+ * that rejects the unknown field).
  */
 export function isOpenAICompatibleReasoningProvider(
   providerId: string | null | undefined,
@@ -73,47 +83,141 @@ export function isOpenAICompatibleReasoningProvider(
   return (
     !!providerId &&
     !NATIVELY_WIRED_REASONING_PROVIDERS.has(providerId) &&
-    (model?.capabilities?.includes('reasoning') ?? false)
+    ((model?.capabilities?.includes('reasoning') ?? false) ||
+      REASONING_MODEL_ID.test(model?.id ?? ''))
   )
 }
 
+/** The levels a model offers, and the one it uses when none is chosen. */
+export interface EffortProfile {
+  /** The stops to show, lowest first. Empty means no control belongs on screen. */
+  levels: EffortLevel[]
+  /**
+   * The level the model runs at when none is sent, marked "Recommended" on the
+   * bar and shown while nothing is chosen. Null only when there are no levels.
+   * llama.cpp defaults to an unbounded budget, so its stop is the highest, the
+   * nearest one.
+   */
+  recommended: EffortLevel | null
+  /**
+   * Whether the model can be told not to think at all. The bar then gets an
+   * extra first stop, Off.
+   */
+  canDisable: boolean
+}
+
+/** A stop on the bar: an effort level, or thinking switched off. */
+export type EffortChoice = EffortLevel | 'off'
+
+const NO_EFFORT: EffortProfile = {
+  levels: [],
+  recommended: null,
+  canDisable: false,
+}
+const THREE_LEVELS: EffortLevel[] = ['low', 'medium', 'high']
+
 /**
- * The levels this provider and model will actually act on.
+ * OpenAI: `xhigh` arrived with gpt-5.2 and the codex-max models. The models
+ * before it (gpt-5, gpt-5.1, the o-series) top out at `high`, and are named
+ * here; an id not named is taken to be newer and gets all four, so a new model
+ * is never held back. All default to `medium`.
+ */
+const OPENAI_TOPS_OUT_AT_HIGH = /(^|[/:])(o[134](-|$)|gpt-?5(-|$)|gpt-?5\.1(-|$))/
+
+function openaiProfile(modelId: string): EffortProfile {
+  const id = modelId.toLowerCase()
+  const topsOut = OPENAI_TOPS_OUT_AT_HIGH.test(id) && !/codex-max/.test(id)
+  return {
+    levels: topsOut ? THREE_LEVELS : EFFORT_LEVELS,
+    recommended: 'medium',
+    // `reasoning_effort: none` arrived with gpt-5.1; the codex models and the
+    // earlier ones always reason.
+    canDisable: /gpt-?5\.([1-9]|\d{2,})/.test(id) && !/codex/.test(id),
+  }
+}
+
+/**
+ * A remote OpenAI-compatible reasoning model. No provider API reports which
+ * efforts a model accepts, so this is what each family is known to take:
+ * gpt-oss stops at `high`; the rest of the compatible hosts (OpenRouter,
+ * vLLM, LiteLLM) normalise `xhigh` themselves. `medium` is the default
+ * everywhere. Qwen3 can be told not to think (`enable_thinking: false`, which
+ * llama.cpp, vLLM and SGLang all read); the others have no such switch common
+ * to every host.
+ */
+function compatibleProfile(modelId: string): EffortProfile {
+  const id = modelId.toLowerCase()
+  return {
+    levels: /gpt-?oss/.test(id) ? THREE_LEVELS : EFFORT_LEVELS,
+    recommended: 'medium',
+    canDisable: /qwen-?3/.test(id),
+  }
+}
+
+/**
+ * What this provider and model will actually act on, read from the model
+ * rather than fixed per provider, since models of one provider differ.
  *
- * Empty means no effort control belongs on screen:
+ * Empty levels mean no effort control belongs on screen:
  *
- * - **openai** maps each level to a distinct `reasoningEffort`, so all four.
- * - **anthropic** takes a distinct `budgetTokens` per level only on pre-4.6
- *   models; 4.6+ reasons adaptively and ignores the level entirely.
+ * - **openai**: per generation, see `openaiProfile`.
+ * - **anthropic** (pre-4.6, which can also switch thinking off) takes a distinct `budgetTokens` per level only on pre-4.6
+ *   models (default 8192, the `medium` budget); 4.6+ reasons adaptively and
+ *   ignores the level entirely.
  * - **llamacpp** resolves each level to a fraction of the live context window,
  *   so all four (its own menu additionally offers `unlimited`, which is not an
- *   effort and so is not offered here).
+ *   effort and so is not offered here). Its default is unbounded, so the
+ *   highest stop, the nearest, is the one shown as its default.
  * - **google / gemini** treat any level as a single on switch — the budget is
  *   dynamic — so there is nothing discrete to choose between.
  * - **any other remote** provider (reached through the OpenAI-compatible
- *   factory) gets all four when its model declares the `reasoning` capability,
- *   since each level maps to a distinct `reasoning_effort` in the request body.
+ *   factory) when its model reasons, see `compatibleProfile`.
  */
+export function effortProfile(
+  providerId: string | null | undefined,
+  model: Model | null | undefined
+): EffortProfile {
+  switch (providerId) {
+    case 'openai':
+      return openaiProfile(model?.id ?? '')
+    case 'llamacpp':
+      return { levels: EFFORT_LEVELS, recommended: 'xhigh', canDisable: true }
+    case 'anthropic':
+      return anthropicTakesAnExplicitBudget(model?.id ?? '')
+        ? { levels: EFFORT_LEVELS, recommended: 'medium', canDisable: true }
+        : NO_EFFORT
+    case 'google':
+    case 'gemini':
+      return NO_EFFORT
+    default:
+      return isOpenAICompatibleReasoningProvider(providerId, model)
+        ? compatibleProfile(model?.id ?? '')
+        : NO_EFFORT
+  }
+}
+
+/** The levels this provider and model will actually act on. */
 export function supportedEffortLevels(
   providerId: string | null | undefined,
   model: Model | null | undefined
 ): EffortLevel[] {
-  switch (providerId) {
-    case 'openai':
-    case 'llamacpp':
-      return EFFORT_LEVELS
-    case 'anthropic':
-      return anthropicTakesAnExplicitBudget(model?.id ?? '')
-        ? EFFORT_LEVELS
-        : []
-    case 'google':
-    case 'gemini':
-      return []
-    default:
-      return isOpenAICompatibleReasoningProvider(providerId, model)
-        ? EFFORT_LEVELS
-        : []
-  }
+  return effortProfile(providerId, model).levels
+}
+
+/**
+ * A stored level the model does not take (kept from a previous model, or set
+ * before it was known) becomes the nearest one it does: the highest it offers
+ * that is not above it, else its lowest. Null where it offers none.
+ */
+export function clampEffort(
+  level: EffortLevel,
+  levels: EffortLevel[]
+): EffortLevel | null {
+  if (!levels.length) return null
+  if (levels.includes(level)) return level
+  const rank = (l: EffortLevel) => EFFORT_LEVELS.indexOf(l)
+  const below = levels.filter((l) => rank(l) < rank(level))
+  return below.length ? below[below.length - 1] : levels[0]
 }
 
 /** Does an effort control belong on screen for this provider and model? */
@@ -137,4 +241,9 @@ export const EFFORT_SETTING_KEY = 'thinking_budget_tokens'
 export function effortOf(model: Model | null | undefined): EffortLevel | null {
   const value = model?.settings?.[EFFORT_SETTING_KEY]?.controller_props?.value
   return isEffortLevel(value) ? value : null
+}
+
+/** Is thinking switched off for this resolved model? */
+export function isThinkingOff(model: Model | null | undefined): boolean {
+  return model?.settings?.reasoning?.controller_props?.value === 'off'
 }

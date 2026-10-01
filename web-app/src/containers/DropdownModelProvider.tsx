@@ -926,6 +926,9 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                   provider={provider}
                   open={settingsOpen}
                   onOpenChange={setSettingsOpen}
+                  // Under a composer the row stays quiet; the settings still open
+                  // from the status dot's "adjust settings" and the Models page.
+                  hideTrigger={quiet}
                 />
               </div>
             )}

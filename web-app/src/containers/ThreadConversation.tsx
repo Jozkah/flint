@@ -2631,21 +2631,14 @@ export function ThreadConversation({
     chatMessages[0]?.metadata as { createdAt?: Date | string } | undefined
   )?.createdAt
 
-  // The model, then what acts on the conversation, plus whatever the
-  // surrounding layout adds.
+  // What acts on the conversation, plus whatever the surrounding layout adds.
+  // The model sits under the composer (on a phone, on the conversation's own
+  // header row).
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
-      {/* On a phone the page header has room for one button: the model moves
-          onto the conversation's own header row, and Split and Details into
-          an overflow menu. A split pane's header row keeps them all. */}
-      {(isSplit || !isPhone) && (
-        // A bounded box: the pill truncates the model name inside it instead
-        // of resizing with every name swap and spilling onto the Split button.
-        <div className="flex min-w-24 max-w-60 shrink" data-testid="model-pill-box">
-          <DropdownModelProvider model={threadModel} />
-        </div>
-      )}
+      {/* On a phone the page header has room for one button: Split and Details
+          move into an overflow menu. A split pane's header row keeps them all. */}
       <div className="flex shrink-0 items-center gap-1.5">
         {extra && <div className="hidden sm:contents">{extra}</div>}
         {!isSplit && (
@@ -3042,6 +3035,13 @@ export function ThreadConversation({
         >
           <ChatInput
             model={threadModel}
+            // Under the composer, as in Cowork. A phone keeps it in the header.
+            modelControl={
+              isPhone && !isSplit ? undefined : (
+                <DropdownModelProvider variant="quiet" model={threadModel} />
+              )
+            }
+            groupOptions
             onSubmit={handleSubmit}
             onStop={stop}
             chatStatus={effectiveStatus}

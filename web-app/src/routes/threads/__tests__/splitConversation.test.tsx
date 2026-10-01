@@ -151,7 +151,7 @@ vi.mock('@/containers/ChatInput', async () => {
   const { usePrompt } = await import('@/hooks/usePrompt')
   const { useEffect } = await import('react')
   return {
-    default: ({ threadId, draftScope, onStop, chatStatus, takeFocus }: any) => {
+    default: ({ threadId, draftScope, onStop, chatStatus, takeFocus, modelControl }: any) => {
       useEffect(() => {
         h.mounts[threadId] = (h.mounts[threadId] ?? 0) + 1
       }, [threadId])
@@ -170,6 +170,7 @@ vi.mock('@/containers/ChatInput', async () => {
                 : usePrompt.getState().setPrompt(e.target.value)
             }
           />
+          {modelControl}
           <span data-testid={`status-${threadId}`}>{chatStatus}</span>
           <button data-testid={`stop-${threadId}`} onClick={() => onStop()}>
             stop
