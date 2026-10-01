@@ -463,6 +463,51 @@ async fn test_modify_and_delete_message() {
 }
 
 #[tokio::test]
+async fn test_delete_message_keeps_the_tail_of_a_branched_thread_reachable() {
+    let (app, _data_dir) = mock_app_with_temp_data_dir();
+    let created = create_thread(app.handle().clone(), create_test_thread("Branched"))
+        .await
+        .unwrap();
+    let thread_id = created["id"].as_str().unwrap().to_string();
+
+    // u1 -> a1b -> u2, with a1 an older version of the reply.
+    let lines = [
+        ("u1", 1, json!({"parentId": null})),
+        ("a1", 2, json!({"parentId": "u1"})),
+        ("a1b", 3, json!({"parentId": "u1"})),
+        ("u2", 4, json!({"parentId": "a1b"})),
+    ];
+    for (id, at, metadata) in lines {
+        let message = json!({
+            "id": id,
+            "object": "message",
+            "thread_id": thread_id,
+            "role": "user",
+            "content": [],
+            "status": "sent",
+            "created_at": at,
+            "completed_at": at,
+            "metadata": metadata
+        });
+        create_message(app.handle().clone(), message).await.unwrap();
+    }
+
+    delete_message(app.handle().clone(), thread_id.clone(), "a1b".to_string())
+        .await
+        .unwrap();
+
+    let messages = list_messages(app.handle().clone(), thread_id.clone())
+        .await
+        .unwrap();
+    let ids: Vec<_> = messages.iter().map(|m| m["id"].as_str().unwrap()).collect();
+    assert_eq!(ids, ["u1", "a1", "u2"]);
+    let u2 = messages.iter().find(|m| m["id"] == "u2").unwrap();
+    assert_eq!(u2["metadata"]["parentId"], "u1");
+    let u1 = messages.iter().find(|m| m["id"] == "u1").unwrap();
+    assert_eq!(u1["metadata"]["activeChildId"], "u2");
+}
+
+#[tokio::test]
 async fn test_modify_thread_assistant() {
     let (app, _data_dir) = mock_app_with_temp_data_dir();
     let app_handle = app.handle().clone();
