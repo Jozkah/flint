@@ -162,3 +162,68 @@ pub async fn diffusion_media<R: Runtime>(
         .await
         .map_err(|e| format!("Could not read the item: {e}"))?
 }
+
+/// Pictures a hosted provider returned, to keep in the gallery beside local ones.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalImages {
+    pub prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+    pub width: u32,
+    pub height: u32,
+    /// `provider/model`, so the gallery shows where it came from.
+    pub model_id: String,
+    pub model_name: String,
+    pub duration_ms: u64,
+    /// Base64 of each picture's bytes.
+    pub images: Vec<String>,
+}
+
+/// Most pictures one request keeps, and the largest each may be once decoded.
+const MAX_EXTERNAL_IMAGES: usize = 10;
+const MAX_EXTERNAL_IMAGE_BYTES: usize = 40 * 1024 * 1024;
+
+#[tauri::command]
+pub async fn diffusion_save_external_images<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    params: ExternalImages,
+) -> Result<Generated, String> {
+    use base64::Engine as _;
+    if params.images.is_empty() || params.images.len() > MAX_EXTERNAL_IMAGES {
+        return Err(format!("Expected between 1 and {MAX_EXTERNAL_IMAGES} pictures."));
+    }
+    let created_at_ms = gallery::now_ms();
+    let job_id = format!("cloud_{created_at_ms}");
+    let mut ids = Vec::new();
+    let mut paths = Vec::new();
+    for (index, encoded) in params.images.iter().enumerate() {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|_| "The provider's picture was not readable.".to_string())?;
+        if bytes.len() > MAX_EXTERNAL_IMAGE_BYTES {
+            return Err("The provider's picture is too large to keep.".to_string());
+        }
+        let recipe = gallery::Recipe {
+            job_id: job_id.clone(),
+            kind: Kind::Image,
+            prompt: params.prompt.clone(),
+            negative_prompt: params.negative_prompt.clone(),
+            width: params.width,
+            height: params.height,
+            steps: 0,
+            seed: 0,
+            batch_seed: 0,
+            model_id: params.model_id.clone(),
+            model_name: params.model_name.clone(),
+            frames: None,
+            fps: None,
+            created_at_ms,
+            duration_ms: params.duration_ms,
+        };
+        let saved = gallery::save_external_image(&app, &recipe, index as u32, &bytes)?;
+        ids.push(saved.id);
+        paths.push(saved.path.to_string_lossy().into_owned());
+    }
+    Ok(Generated { job_id, seed: 0, ids, paths, duration_ms: params.duration_ms })
+}

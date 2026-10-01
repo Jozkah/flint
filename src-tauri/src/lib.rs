@@ -49,6 +49,7 @@ macro_rules! invoke_commands_with_extras {
         core::diffusion::commands::diffusion_gallery,
         core::diffusion::commands::diffusion_delete,
         core::diffusion::commands::diffusion_media,
+        core::diffusion::commands::diffusion_save_external_images,
         core::filesystem::commands::join_path,
         core::filesystem::commands::mkdir,
         core::filesystem::commands::exists_sync,
