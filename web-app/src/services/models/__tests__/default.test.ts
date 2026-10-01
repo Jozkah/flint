@@ -331,9 +331,11 @@ describe('DefaultModelsService - additional coverage', () => {
   })
 
   describe('startModel', () => {
-    it('returns undefined when engine not found', async () => {
+    it('says so when the engine is not available', async () => {
       mockEngineManager.get.mockReturnValueOnce(undefined)
-      expect(await svc.startModel({ provider: 'unknown', models: [] } as any, 'model1')).toBeUndefined()
+      await expect(
+        svc.startModel({ provider: 'unknown', models: [] } as any, 'model1')
+      ).rejects.toThrow(/unknown engine is not available/)
     })
 
     it.each([
