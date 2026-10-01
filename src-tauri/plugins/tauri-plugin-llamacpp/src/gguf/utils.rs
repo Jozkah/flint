@@ -129,10 +129,26 @@ pub async fn find_gguf_tensors_internal(
     .await
 }
 
+/// Size of one KV cache element in 1/32 bytes, so block-quantized types stay
+/// integral (q8_0 is 34 bytes per 32 elements). Unknown names fall back to f16.
+fn kv_cache_units_per_element(cache_type: Option<&str>) -> u64 {
+    match cache_type.map(|t| t.trim().to_ascii_lowercase()).as_deref() {
+        Some("f32") => 128,
+        Some("q8_0") => 34,
+        Some("q5_1") => 24,
+        Some("q5_0") => 22,
+        Some("q4_1") => 20,
+        Some("q4_0") | Some("iq4_nl") => 18,
+        _ => 64, // f16, bf16 and anything unrecognised
+    }
+}
+
 /// Estimate KVCache size from a given metadata
 pub async fn estimate_kv_cache_internal(
     meta: HashMap<String, String>,
     ctx_size: Option<u64>,
+    cache_type_k: Option<&str>,
+    cache_type_v: Option<&str>,
 ) -> Result<KVCacheEstimate, KVCacheError> {
     log::info!("Received ctx_size parameter: {:?}", ctx_size);
     let arch = meta
@@ -232,8 +248,8 @@ pub async fn estimate_kv_cache_internal(
         .and_then(|s| s.parse::<u64>().ok())
         .filter(|&n| n > 0);
 
-    // Assume fp16
-    const BYTES_PER_ELEMENT: u64 = 2;
+    let units_k = kv_cache_units_per_element(cache_type_k);
+    let units_v = kv_cache_units_per_element(cache_type_v);
 
     // Every factor below comes from the file's own metadata. Release builds
     // disable overflow checks, so plain arithmetic on a crafted or corrupt
@@ -243,10 +259,11 @@ pub async fn estimate_kv_cache_internal(
 
     // Per-token KV size
     let kv_per_token = key_len
-        .checked_add(val_len)
+        .checked_mul(units_k)
+        .and_then(|k| val_len.checked_mul(units_v).and_then(|v| k.checked_add(v)))
         .and_then(|kv| kv.checked_mul(n_layer))
         .and_then(|v| v.checked_mul(n_head))
-        .and_then(|v| v.checked_mul(BYTES_PER_ELEMENT))
+        .map(|v| v / 32)
         .ok_or_else(overflow)?;
 
     // Pure full-attention cost
@@ -380,9 +397,32 @@ mod kv_estimate_fallback_tests {
             ("llama.embedding_length", "512"),
             ("llama.context_length", "100"),
         ]);
-        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        let est = estimate_kv_cache_internal(m, None, None, None).await.unwrap();
         // key 192 (declared) + value 512/4 = 128 (derived)
         assert_eq!(est.per_token_size, 2 * 4 * (192 + 128) * 2);
+    }
+
+    #[tokio::test]
+    async fn quantized_cache_types_shrink_the_estimate() {
+        let m = meta(&[
+            ("general.architecture", "llama"),
+            ("llama.block_count", "2"),
+            ("llama.attention.head_count", "4"),
+            ("llama.attention.key_length", "128"),
+            ("llama.attention.value_length", "128"),
+            ("llama.embedding_length", "512"),
+            ("llama.context_length", "100"),
+        ]);
+        let f16 = estimate_kv_cache_internal(m.clone(), None, None, None).await.unwrap();
+        assert_eq!(f16.per_token_size, 2 * 4 * (128 + 128) * 2);
+        let q8 = estimate_kv_cache_internal(m.clone(), None, Some("q8_0"), Some("q8_0"))
+            .await
+            .unwrap();
+        assert_eq!(q8.per_token_size, 2 * 4 * (128 + 128) * 34 / 32);
+        let mixed = estimate_kv_cache_internal(m, None, Some("f16"), Some("q4_0"))
+            .await
+            .unwrap();
+        assert_eq!(mixed.per_token_size, 2 * 4 * (128 * 64 + 128 * 18) / 32);
     }
 
     #[tokio::test]
@@ -395,7 +435,7 @@ mod kv_estimate_fallback_tests {
             ("llama.embedding_length", "512"),
             ("llama.context_length", "100"),
         ]);
-        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        let est = estimate_kv_cache_internal(m, None, None, None).await.unwrap();
         assert_eq!(est.per_token_size, 2 * 4 * (128 + 64) * 2);
     }
 
@@ -408,7 +448,7 @@ mod kv_estimate_fallback_tests {
             ("llama.embedding_length", "512"),
             ("llama.context_length", "100"),
         ]);
-        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        let est = estimate_kv_cache_internal(m, None, None, None).await.unwrap();
         assert_eq!(est.per_token_size, 2 * 4 * (128 + 128) * 2);
     }
 }
@@ -435,7 +475,7 @@ mod kv_estimate_overflow_tests {
             ("llama.attention.value_length", "4294967296"),
             ("llama.context_length", "4096"),
         ]);
-        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        let err = estimate_kv_cache_internal(m, None, None, None).await.unwrap_err();
         assert!(matches!(err, KVCacheError::SizeOverflow));
     }
 
@@ -449,7 +489,7 @@ mod kv_estimate_overflow_tests {
             ("llama.attention.value_length", "128"),
             ("llama.context_length", "18446744073709551615"),
         ]);
-        let err = estimate_kv_cache_internal(m, None).await.unwrap_err();
+        let err = estimate_kv_cache_internal(m, None, None, None).await.unwrap_err();
         assert!(matches!(err, KVCacheError::SizeOverflow));
     }
 
@@ -463,7 +503,7 @@ mod kv_estimate_overflow_tests {
             ("llama.attention.value_length", "128"),
             ("llama.context_length", "4096"),
         ]);
-        let est = estimate_kv_cache_internal(m, None).await.unwrap();
+        let est = estimate_kv_cache_internal(m, None, None, None).await.unwrap();
         assert_eq!(est.per_token_size, 32 * 32 * 256 * 2);
         assert_eq!(est.size, 4096 * 32 * 32 * 256 * 2);
     }

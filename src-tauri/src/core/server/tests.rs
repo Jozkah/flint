@@ -743,6 +743,28 @@ mod server_tests {
     }
 
     #[test]
+    fn convert_messages_merges_scattered_system_messages_into_one_leading() {
+        let msgs = serde_json::json!([
+            {"role": "user", "content": "hi"},
+            {"role": "system", "content": "late rule"},
+            {"role": "developer", "content": [{"type": "text", "text": "dev rule"}]},
+            {"role": "assistant", "content": "ok"}
+        ]);
+        let sys = serde_json::json!("base");
+        let out = proxy::convert_messages(&msgs, Some(&sys)).unwrap();
+        let arr = out.as_array().unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0]["role"], "system");
+        assert_eq!(arr[0]["content"], "base
+
+late rule
+
+dev rule");
+        assert_eq!(arr[1]["role"], "user");
+        assert_eq!(arr[2]["role"], "assistant");
+    }
+
+    #[test]
     fn convert_messages_assistant_with_tool_use_emits_tool_calls() {
         let msgs = json!([{
             "role": "assistant",

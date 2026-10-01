@@ -434,7 +434,52 @@ pub(crate) fn convert_messages(
         }
     }
 
-    Some(serde_json::Value::Array(openai_messages))
+    Some(serde_json::Value::Array(merge_system_messages(openai_messages)))
+}
+
+/// Collapse every system/developer message into one leading system message.
+/// Strict chat templates (Qwen3 and others) reject a system message anywhere
+/// but the start, and clients such as Claude Code send several.
+pub(crate) fn merge_system_messages(messages: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
+    let is_system = |m: &serde_json::Value| {
+        matches!(
+            m.get("role").and_then(|r| r.as_str()),
+            Some("system") | Some("developer")
+        )
+    };
+    if messages.iter().filter(|m| is_system(m)).count() == 0 {
+        return messages;
+    }
+    let mut system_text: Vec<String> = Vec::new();
+    let mut rest: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+    for m in messages {
+        if is_system(&m) {
+            match m.get("content") {
+                Some(serde_json::Value::String(t)) => system_text.push(t.clone()),
+                Some(serde_json::Value::Array(parts)) => system_text.push(
+                    parts
+                        .iter()
+                        .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                        .collect::<Vec<_>>()
+                        .join("
+"),
+                ),
+                _ => {}
+            }
+        } else {
+            rest.push(m);
+        }
+    }
+    system_text.retain(|t| !t.is_empty());
+    if system_text.is_empty() {
+        return rest;
+    }
+    let mut out = Vec::with_capacity(rest.len() + 1);
+    out.push(serde_json::json!({ "role": "system", "content": system_text.join("
+
+") }));
+    out.extend(rest);
+    out
 }
 
 /// Convert text parts to OpenAI content value (string for single text, array for mixed)

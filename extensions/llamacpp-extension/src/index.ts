@@ -2789,7 +2789,14 @@ export default class llamacpp_extension extends AIEngine implements EmbeddingEng
     ctxSize?: number
   ): Promise<'RED' | 'YELLOW' | 'GREEN'> {
     try {
-      const result = await isModelSupported(path, Number(ctxSize))
+      // The estimate must use the cache width the model will load with.
+      const cfg = this.config as Partial<LlamacppConfig> | undefined
+      const result = await isModelSupported(
+        path,
+        Number(ctxSize),
+        cfg?.cache_type_k,
+        cfg?.cache_type_v
+      )
       return result
     } catch (e) {
       throw new Error(String(e))

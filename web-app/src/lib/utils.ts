@@ -21,7 +21,8 @@ export function basenameNoExt(filePath: string): string {
   }
 
   // fallback: remove only the last extension
-  return base.slice(0, -path.extname(base).length)
+  const ext = path.extname(base)
+  return ext ? base.slice(0, -ext.length) : base
 }
 
 /**

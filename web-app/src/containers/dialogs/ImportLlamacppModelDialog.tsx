@@ -11,6 +11,7 @@ import { Switch } from '@/components/ui/switch'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useState, useCallback } from 'react'
 import { toast } from 'sonner'
+import { normalizeAppError } from '@/utils/appError'
 import {
   Check,
   FileCode,
@@ -451,7 +452,7 @@ export const ImportLlamacppModelDialog = ({
       console.error('Import model error:', error)
       toast.error('Failed to import model', {
         description:
-          error instanceof Error ? error.message : 'Unknown error occurred',
+          normalizeAppError(error),
       })
     } finally {
       setImporting(false)
