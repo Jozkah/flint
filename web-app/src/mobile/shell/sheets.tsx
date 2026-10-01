@@ -13,6 +13,8 @@ import { effortStops, stopLabel } from '../ui/effort'
 import { ASSISTANT_ICON } from '../ui/assistants'
 import { ACCESS_MODES, COWORK_MODES } from './labels'
 import { copyToClipboard } from '@/lib/clipboard'
+import { StudioItemSheet, StudioSettingsSheet, VoiceSetupSheet } from './studioSheets'
+import type { StudioItemWire } from '@/lib/remote/protocol'
 
 type Props = Record<string, unknown>
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined)
@@ -376,6 +378,7 @@ function FilesSheet({ props }: { props: Props }) {
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu, roommenu: RoomMenu, clearroom: ClearRoomSheet, plus: PlusSheet, attach: PlusSheet, cwoptions: PlusSheet, effort: EffortSheet, tokens: TokensSheet, replystats: ReplyStatsSheet, skillsused: SkillsUsedSheet, assistant: AssistantSheet, msgmenu: MsgMenu, modelgone: ModelGoneSheet, files: FilesSheet,
+  studioset: () => <StudioSettingsSheet />, studioitem: ({ props }) => <StudioItemSheet item={props.item as StudioItemWire | undefined} />, voicesetup: () => <VoiceSetupSheet />,
   params: () => <><Title>Parameters</Title><DesktopOnly title="Output, context, compaction and sampling" /></>,
   skills: () => <><Title>Commands & skills</Title><DesktopOnly title="Commands & skills" sub="Run or configure these on the computer." /></>,
   coworkmenu: () => <><Title>Cowork</Title><Action icon="plus" label="New session" run={() => go({ name: 'home', mode: 'cowork' })} /><DesktopOnly title="New group" /><DesktopOnly title="Import session" /></>,

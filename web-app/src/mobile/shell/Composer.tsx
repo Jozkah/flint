@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Avatar } from '../ui/bits'
 import { I } from '../ui/icons'
+import { DictateButton, insertInto } from '../ui/dictate'
 import { openSheet } from '../state/app'
 import type { ComposerModel } from '../state/app'
 
@@ -118,6 +119,14 @@ export function Composer({
           ) : (
             <span className="tok" />
           )}
+          <DictateButton
+            insert={(words) =>
+              insertInto(ref.current, text, (v) => {
+                setText(v)
+                requestAnimationFrame(grow)
+              }, words)
+            }
+          />
           {running && !(allowWhileRunning && text.trim()) ? (
             <button type="button" className="send stop" onClick={() => openSheet('stop', stopFor)} aria-label="Stop…">
               <I n="sq" />

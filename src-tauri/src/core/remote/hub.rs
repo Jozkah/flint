@@ -22,6 +22,8 @@ use super::config::RemoteConfig;
 
 /// How long a phone's RPC waits for the desktop window to answer.
 pub const RPC_TIMEOUT: Duration = Duration::from_secs(30);
+/// Transcribing a long recording (and loading the voice model first) takes longer.
+pub const VOICE_RPC_TIMEOUT: Duration = Duration::from_secs(150);
 /// Pairing attempts per IP per window.
 pub const PAIR_LIMIT: usize = 10;
 /// Failed authentications per IP per window before the IP is refused
@@ -371,7 +373,8 @@ impl RemoteHub {
         method: &str,
         params: Value,
     ) -> Result<RpcOutcome, RpcReject> {
-        self.rpc_with_timeout(device, method, params, RPC_TIMEOUT)
+        let timeout = if method == "voice.transcribe" { VOICE_RPC_TIMEOUT } else { RPC_TIMEOUT };
+        self.rpc_with_timeout(device, method, params, timeout)
             .await
     }
 

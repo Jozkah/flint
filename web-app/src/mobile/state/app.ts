@@ -16,6 +16,7 @@ import type {
 import { RemoteCallError, type Me, type RemoteClient } from '../api/client'
 import type { ConnectionState, EventSocket } from '../api/events'
 import { createStore } from './store'
+import { studioJob } from './studio'
 import { hashToRoute, routeToHash, type HomeMode, type Route } from './router'
 import { invalidate, peekRpc, refresh } from './rpc'
 import {
@@ -487,6 +488,13 @@ export function handleEvent(e: RemoteEvent) {
       break
     case 'notification':
       addNotice({ kind: 'info', title: e.title, body: e.body })
+      break
+    case 'studio.progress':
+      studioJob.set({ job: e.job })
+      if (!e.job) invalidate(['studio.'])
+      break
+    case 'studio.updated':
+      invalidate(['studio.status', 'studio.gallery'])
       break
   }
 }

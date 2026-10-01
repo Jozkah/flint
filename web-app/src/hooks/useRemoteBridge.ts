@@ -6,6 +6,7 @@ import { createRemoteHandlers } from '@/lib/remote/handlers'
 import { appSources } from '@/lib/remote/sources'
 import { appActions } from '@/lib/remote/appActions'
 import { appExtras } from '@/lib/remote/appExtras'
+import { appStudio, appVoice, startStudioForwarding } from '@/lib/remote/appStudio'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
 import {
   REMOTE_EVENT_DEVICES_CHANGED,
@@ -29,7 +30,9 @@ export function useRemoteBridge() {
     const handlers = createRemoteHandlers(
       appSources,
       appActions((to) => navigate(to as Parameters<typeof navigate>[0])),
-      appExtras
+      appExtras,
+      appStudio,
+      appVoice
     )
     let cancelled = false
     const offs: (() => void)[] = []
@@ -59,8 +62,10 @@ export function useRemoteBridge() {
 
   useEffect(() => {
     if (!IS_TAURI || connected === 0) return
-    return startRemoteEventForwarding((event, topic) => {
+    const emit = (event: Parameters<typeof remoteApi.emitEvent>[0], topic?: string) => {
       void remoteApi.emitEvent(event, topic).catch(() => {})
-    })
+    }
+    const stops = [startRemoteEventForwarding(emit), startStudioForwarding(emit)]
+    return () => stops.forEach((stop) => stop())
   }, [connected])
 }

@@ -597,6 +597,84 @@ export type DownloadTaskWire = {
 }
 
 /** Every method a phone may call, with its params and result. */
+
+// ---------------------------------------------------------------------------
+// Studio and dictation (the desktop runs both; phones drive them)
+// ---------------------------------------------------------------------------
+
+export type StudioKindWire = 'image' | 'video'
+export type StudioModelWire = {
+  id: string
+  name: string
+  kind: StudioKindWire
+  installed: boolean
+  totalBytes: number
+  /** Frames a second, for a video model. */
+  fps: number | null
+}
+export type StudioJobWire = {
+  kind: StudioKindWire
+  prompt: string
+  phase: string
+  fraction: number
+  startedAt: number
+  /** How many images this job makes (1 for a video). */
+  count: number
+}
+export type StudioActivityWire = {
+  id: number
+  kind: StudioKindWire
+  prompt: string
+  status: 'making' | 'done' | 'failed' | 'stopped'
+  error?: string
+  durationMs: number
+  at: number
+}
+export type StudioStatusResult = {
+  supported: boolean
+  engineTag: string
+  engineBackend: string | null
+  models: StudioModelWire[]
+  resident: { modelId: string; kind: StudioKindWire; busy: boolean } | null
+  job: StudioJobWire | null
+  download: { modelId: string; bytes: number; total: number } | null
+  activity: StudioActivityWire[]
+  /** Set when video would swap on this computer; must be acknowledged. */
+  memoryWarning: string | null
+  memoryGb: number | null
+  error: string | null
+  sizes: Record<StudioKindWire, { label: string; short: string }[]>
+  videoSeconds: number[]
+}
+export type StudioRecipeWire = {
+  prompt: string
+  negativePrompt: string
+  width: number
+  height: number
+  seed: number
+  modelName: string
+  frames: number | null
+  fps: number | null
+  createdAtMs: number
+  durationMs: number
+}
+export type StudioItemWire = { id: string; kind: StudioKindWire; recipe: StudioRecipeWire }
+export type StudioGenerateParams = {
+  kind: StudioKindWire
+  prompt: string
+  negative?: string
+  sizeIndex?: number
+  count?: number
+  seconds?: number
+  seed?: number
+  /** The phone showed the low-memory warning and the user accepted it. */
+  memoryAcknowledged?: boolean
+}
+export type StudioItemParams = { kind: StudioKindWire; id: string }
+export type VoiceStatusResult = { ready: boolean }
+/** `audio` is base64 16 kHz mono 16-bit WAV. */
+export type VoiceTranscribeParams = { audio: string; language?: string }
+
 export type RemoteMethods = {
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
@@ -639,6 +717,18 @@ export type RemoteMethods = {
   'hf.search': { params: HfSearchParams; result: HfSearchResult }
   'hf.download': { params: HfDownloadParams; result: { ok: true; id: string } }
   'models.downloads': { params: Record<string, never>; result: { tasks: DownloadTaskWire[] } }
+  'studio.status': { params: Record<string, never>; result: StudioStatusResult }
+  'studio.load': { params: { modelId: string }; result: { ok: true } }
+  'studio.unload': { params: Record<string, never>; result: { ok: true } }
+  'studio.download': { params: { modelId: string }; result: { ok: true } }
+  'studio.generate': { params: StudioGenerateParams; result: { started: true } }
+  'studio.stop': { params: Record<string, never>; result: { ok: true } }
+  'studio.gallery': { params: { kind: StudioKindWire }; result: { items: StudioItemWire[] } }
+  'studio.media': { params: StudioItemParams; result: { dataUrl: string } }
+  'studio.remix': { params: StudioItemParams; result: { started: true } }
+  'studio.delete': { params: StudioItemParams; result: { ok: true } }
+  'voice.status': { params: Record<string, never>; result: VoiceStatusResult }
+  'voice.transcribe': { params: VoiceTranscribeParams; result: { text: string } }
 }
 
 export type RemoteMethod = keyof RemoteMethods
@@ -680,6 +770,10 @@ export type RemoteEvent =
   | { type: 'stream.done'; kind: SessionKind; id: string; messageId: string }
   /** Messages, queue or details of a conversation changed. */
   | { type: 'thread.updated'; kind: SessionKind; id: string }
+  /** Studio's job moved on (progress), throttled to a few a second. */
+  | { type: 'studio.progress'; job: StudioJobWire | null }
+  /** Studio's models, gallery or activity changed; read `studio.status`. */
+  | { type: 'studio.updated' }
 
 /** Conversation-scoped events go to sockets subscribed to this topic. */
 export const threadTopic = (id: string) => `thread:${id}`
