@@ -31,6 +31,16 @@ pub enum Offload {
 }
 
 impl Offload {
+    /// The next policy that uses less graphics memory, or `None` when this one
+    /// already keeps as much as possible in system memory.
+    pub fn lighter(self) -> Option<Offload> {
+        match self {
+            Offload::None => Some(Offload::Group),
+            Offload::Group => Some(Offload::Model),
+            Offload::Model => None,
+        }
+    }
+
     fn flags(self) -> &'static [&'static str] {
         match self {
             Offload::None => &[],
@@ -284,6 +294,13 @@ mod tests {
         let args = build_server_args(&wan, 1, Path::new("s"), Offload::None, None, &[]);
         assert!(pairs(&args).contains(&("--t5xxl", "C:\\m\\umt5.gguf")));
         assert!(!args.contains(&"--llm".to_string()));
+    }
+
+    #[test]
+    fn lighter_offload_steps_down_and_stops() {
+        assert_eq!(Offload::None.lighter(), Some(Offload::Group));
+        assert_eq!(Offload::Group.lighter(), Some(Offload::Model));
+        assert_eq!(Offload::Model.lighter(), None);
     }
 
     #[test]

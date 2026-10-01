@@ -27,6 +27,38 @@ fn active_downloads() -> &'static Mutex<HashMap<String, CancelFlag>> {
     ACTIVE_DOWNLOADS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// One writer per partial file, process-wide.
+///
+/// Pausing only asks a download to stop; the command returns, and a resume can
+/// start, before the old stream has noticed. Two of them then have the same
+/// `.part` open, and the late one's truncating open wipes what the new one is
+/// appending: a file of the right size whose hash fails after hours. Task ids
+/// cannot see this (two tasks can share a file); paths can.
+static PART_WRITERS: OnceLock<std::sync::Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+
+/// Wait until nothing else is writing `path`, then hold it until the guard
+/// drops. Gives up when the download is cancelled while waiting.
+async fn lock_part_for_writing(
+    path: &std::path::Path,
+    cancel: &AtomicBool,
+) -> Result<tokio::sync::OwnedMutexGuard<()>, String> {
+    let lock = {
+        let mut writers = PART_WRITERS
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Entries nobody holds or waits on, so the map does not keep one per
+        // file ever downloaded.
+        writers.retain(|_, lock| Arc::strong_count(lock) > 1);
+        writers.entry(path.to_path_buf()).or_default().clone()
+    };
+    tokio::select! {
+        biased;
+        guard = lock.lock_owned() => Ok(guard),
+        _ = cancelled(cancel) => Err("Download paused".to_string()),
+    }
+}
+
 /// Resolves once `cancel` is set. Raced against network waits so a pause takes
 /// effect on a stalled connection instead of at the next chunk.
 async fn cancelled(cancel: &AtomicBool) {
@@ -735,6 +767,9 @@ pub async fn huggingface_download_model<R: Runtime>(
     }
 
     let result = async {
+        // Before the partial's size is read: a predecessor still winding down
+        // would change it under us.
+        let _writer = lock_part_for_writing(&part_path, &cancel).await?;
         #[cfg(windows)]
         if path_too_long(&part_path) {
             return Err(format!(
@@ -922,5 +957,32 @@ mod tests {
             rel.to_string_lossy().replace('\\', "/"),
             "downloads/huggingface/owner/repo/tokenizer/files.json"
         );
+    }
+
+    #[tokio::test]
+    async fn a_second_writer_waits_for_the_first_and_gives_up_when_cancelled() {
+        let path = std::path::Path::new("lock-test/model.gguf.part");
+        let first_cancel = AtomicBool::new(false);
+        let first = lock_part_for_writing(path, &first_cancel).await.unwrap();
+
+        // Cancelled while waiting: gives up instead of hanging.
+        let cancelled_task = AtomicBool::new(true);
+        assert!(lock_part_for_writing(path, &cancelled_task).await.is_err());
+
+        // Not cancelled: only proceeds once the first lets go.
+        let waiting = tokio::spawn(async move {
+            let cancel = AtomicBool::new(false);
+            lock_part_for_writing(std::path::Path::new("lock-test/model.gguf.part"), &cancel)
+                .await
+                .map(|_| ())
+        });
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        assert!(!waiting.is_finished());
+        drop(first);
+        assert!(waiting.await.unwrap().is_ok());
+
+        // Another file is never held up.
+        let other = std::path::Path::new("lock-test/other.gguf.part");
+        assert!(lock_part_for_writing(other, &AtomicBool::new(false)).await.is_ok());
     }
 }
