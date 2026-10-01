@@ -41,6 +41,36 @@ use crate::core::openai_schema::{
 
 type ResBody = BoxBody<Bytes, Infallible>;
 
+/// Whether a client's model name refers to a session's model id. The two
+/// differ only by `.` against `_` (`Qwen3_5-9B` for `Qwen3.5-9B`) when a client
+/// or a catalog normalises the name, which would otherwise answer 404.
+pub(crate) fn model_ids_match(requested: &str, session: &str) -> bool {
+    requested == session
+        || (requested.len() == session.len()
+            && requested
+                .chars()
+                .zip(session.chars())
+                .all(|(a, b)| a == b || (matches!(a, '.' | '_') && matches!(b, '.' | '_'))))
+}
+
+/// An OpenAI-style error body, so a client can read `error.code` instead of
+/// matching on text. The human message stays in `message` unchanged.
+pub(crate) fn error_json(message: &str, kind: &str, code: &str) -> String {
+    serde_json::json!({
+        "error": { "message": message, "type": kind, "code": code }
+    })
+    .to_string()
+}
+
+/// Whether `url` points at this machine, i.e. a local engine that may simply
+/// not be up yet, as opposed to a remote provider.
+pub(crate) fn is_local_url(url: &str) -> bool {
+    url::Url::parse(url)
+        .ok()
+        .and_then(|u| u.host_str().map(|h| h.to_string()))
+        .is_some_and(|h| matches!(h.as_str(), "127.0.0.1" | "localhost" | "[::1]" | "::1"))
+}
+
 fn full<B: Into<Bytes>>(chunk: B) -> ResBody {
     Full::new(chunk.into()).boxed()
 }
@@ -1173,14 +1203,14 @@ async fn proxy_request(
                                 let mlx_guard = mlx_sessions.lock().await;
                                 mlx_guard
                                     .values()
-                                    .find(|s| s.info.model_id == model_id)
+                                    .find(|s| model_ids_match(model_id, &s.info.model_id))
                                     .map(|s| s.info.clone())
                             };
 
                             if let Some(info) = mlx_session_info {
                                 let target_port = info.port;
                                 session_api_keys = vec![info.api_key.clone()];
-                                mlx_model_id = Some(model_id.to_string());
+                                mlx_model_id = Some(info.model_id.clone());
                                 target_base_url =
                                     Some(format!("http://127.0.0.1:{}/v1/messages", target_port));
                             } else if let Some((url, key)) =
@@ -1390,8 +1420,10 @@ async fn proxy_request(
             let model_id = match model_id {
                 Some(v) => v,
                 None => {
-                    let mut error_response =
-                        Response::builder().status(StatusCode::SERVICE_UNAVAILABLE);
+                    let mut error_response = Response::builder()
+                        .status(StatusCode::SERVICE_UNAVAILABLE)
+                        .header("Content-Type", "application/json")
+                        .header("Retry-After", "1");
                     error_response = add_cors_headers_with_host_and_origin(
                         error_response,
                         &host_header,
@@ -1399,7 +1431,11 @@ async fn proxy_request(
                         &config.trusted_hosts,
                     );
                     return Ok(error_response
-                        .body(full("No running model sessions available"))
+                        .body(full(error_json(
+                            "No running model sessions available",
+                            "server_error",
+                            "no_model_loaded",
+                        )))
                         .unwrap());
                 }
             };
@@ -1747,7 +1783,7 @@ async fn proxy_request(
                                 let mlx_guard = mlx_sessions.lock().await;
                                 mlx_guard
                                     .values()
-                                    .find(|s| s.info.model_id == sessions_find_model)
+                                    .find(|s| model_ids_match(sessions_find_model, &s.info.model_id))
                                     .map(|s| s.info.clone())
                             };
 
@@ -1757,8 +1793,10 @@ async fn proxy_request(
                                 log::warn!(
                                     "Request for model '{model_id}' but no models are running."
                                 );
-                                let mut error_response =
-                                    Response::builder().status(StatusCode::SERVICE_UNAVAILABLE);
+                                let mut error_response = Response::builder()
+                                    .status(StatusCode::SERVICE_UNAVAILABLE)
+                                    .header("Content-Type", "application/json")
+                                    .header("Retry-After", "1");
                                 error_response = add_cors_headers_with_host_and_origin(
                                     error_response,
                                     &host_header,
@@ -1766,14 +1804,18 @@ async fn proxy_request(
                                     &config.trusted_hosts,
                                 );
                                 return Ok(error_response
-                                    .body(full("No models are available"))
+                                    .body(full(error_json(
+                                        "No models are available",
+                                        "server_error",
+                                        "no_model_loaded",
+                                    )))
                                     .unwrap());
                             }
 
                             if let Some(info) = mlx_session_info {
                                 let target_port = info.port;
                                 session_api_keys = vec![info.api_key.clone()];
-                                mlx_model_id = Some(model_id.to_string());
+                                mlx_model_id = Some(info.model_id.clone());
                                 log::debug!("Found MLX session for model_id {model_id}");
                                 target_base_url = Some(format!(
                                     "http://127.0.0.1:{target_port}/v1{destination_path}"
@@ -2397,14 +2439,36 @@ async fn proxy_request(
             Err(e) => {
                 let error_msg = format!("Proxy request to model failed: {e}");
                 log::error!("{error_msg}");
-                let mut error_response = Response::builder().status(StatusCode::BAD_GATEWAY);
+                // A local engine that is not answering is worth retrying; a
+                // remote provider that is unreachable is a bad gateway.
+                let local = is_local_url(upstream_url.as_str());
+                let mut error_response = Response::builder()
+                    .status(if local {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    } else {
+                        StatusCode::BAD_GATEWAY
+                    })
+                    .header("Content-Type", "application/json");
+                if local {
+                    error_response = error_response.header("Retry-After", "1");
+                }
                 error_response = add_cors_headers_with_host_and_origin(
                     error_response,
                     &host_header,
                     &origin_header,
                     &config.trusted_hosts,
                 );
-                return Ok(error_response.body(full(error_msg)).unwrap());
+                return Ok(error_response
+                    .body(full(error_json(
+                        &error_msg,
+                        "server_error",
+                        if local {
+                            "backend_unavailable"
+                        } else {
+                            "upstream_unreachable"
+                        },
+                    )))
+                    .unwrap());
             }
         }
     }
@@ -2444,6 +2508,17 @@ fn map_bind_error(
             port = addr.port()
         );
         return msg.into();
+    }
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        // Windows error 10013: the port sits in a range Windows reserves
+        // (Hyper-V, WSL, Docker), not one another program holds.
+        return format!(
+            "Port {port} ({addr}) cannot be used: the operating system refused access to it. \
+             On Windows this usually means the port is in a reserved range (Hyper-V, WSL or \
+             Docker); pick a different port in Settings > Local API Server. ({err})",
+            port = addr.port()
+        )
+        .into();
     }
     Box::new(err)
 }
@@ -3158,7 +3233,7 @@ mod redirect_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_insecure_public_bind, map_bind_error};
+    use super::{error_json, is_insecure_public_bind, is_local_url, map_bind_error, model_ids_match};
     use std::net::SocketAddr;
 
     /// #195: a final `data: [DONE]` with no trailing newline is still
@@ -3239,5 +3314,41 @@ mod tests {
             msg.contains("denied"),
             "should keep the original error: {msg}"
         );
+    }
+
+    #[test]
+    fn permission_denied_names_the_reserved_port_range() {
+        let addr: SocketAddr = "127.0.0.1:1337".parse().unwrap();
+        let err = std::io::Error::new(std::io::ErrorKind::PermissionDenied, "denied");
+        let msg = map_bind_error(addr, err).to_string();
+        assert!(msg.contains("1337") && msg.contains("reserved"), "{msg}");
+    }
+
+    #[test]
+    fn model_ids_match_treats_dot_and_underscore_alike() {
+        assert!(model_ids_match("Qwen3_5-9B", "Qwen3.5-9B"));
+        assert!(model_ids_match("Qwen3.5-9B", "Qwen3.5-9B"));
+        assert!(!model_ids_match("Qwen3-5-9B", "Qwen3.5-9B"));
+        assert!(!model_ids_match("Qwen3.5-9B", "Qwen3.5-9b"));
+        assert!(!model_ids_match("a", "ab"));
+    }
+
+    #[test]
+    fn error_json_keeps_the_message_and_adds_a_code() {
+        let v: serde_json::Value =
+            serde_json::from_str(&error_json("it \"broke\"", "server_error", "backend_unavailable"))
+                .unwrap();
+        assert_eq!(v["error"]["message"], "it \"broke\"");
+        assert_eq!(v["error"]["type"], "server_error");
+        assert_eq!(v["error"]["code"], "backend_unavailable");
+    }
+
+    #[test]
+    fn local_urls_are_told_from_remote_ones() {
+        assert!(is_local_url("http://127.0.0.1:8080/v1/chat/completions"));
+        assert!(is_local_url("http://localhost:1/v1"));
+        assert!(is_local_url("http://[::1]:5000/v1"));
+        assert!(!is_local_url("https://api.openai.com/v1"));
+        assert!(!is_local_url("not a url"));
     }
 }
