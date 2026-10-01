@@ -515,6 +515,189 @@ pub async fn huggingface_cancel_download(task_id: String) -> Result<(), String> 
     Ok(())
 }
 
+/// A connection that sends nothing for this long is treated as dropped and
+/// retried, instead of leaving a multi-gigabyte download hanging on bad wifi.
+const STALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+/// Consecutive attempts that move no data before the download gives up.
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
+
+/// The wait before retry number `failures` (1-based): 1, 2, 4, 8, 16, then 32 s.
+fn retry_backoff(failures: u32) -> std::time::Duration {
+    std::time::Duration::from_secs(1u64 << failures.saturating_sub(1).min(5))
+}
+
+/// What a raw OS error code means for a download, when it is one worth naming.
+fn os_error_hint(code: i32) -> Option<&'static str> {
+    #[cfg(windows)]
+    {
+        match code {
+            112 => Some("there is not enough free space on the disk"),
+            32 | 33 => Some("another program (often antivirus) has the file open"),
+            5 => Some("access to the folder was denied"),
+            3 | 206 => Some("the file path is too long for Windows; choose a data folder with a shorter path"),
+            _ => None,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        match code {
+            28 | 122 => Some("there is not enough free space on the disk"),
+            13 | 1 => Some("access to the folder was denied"),
+            36 => Some("the file name is too long"),
+            _ => None,
+        }
+    }
+}
+
+/// A download file error that says what went wrong, not only the OS text.
+fn io_failure(action: &str, err: &std::io::Error) -> String {
+    match err.raw_os_error().and_then(os_error_hint) {
+        Some(hint) => format!("{action}: {hint}. ({err})"),
+        None => format!("{action}: {err}"),
+    }
+}
+
+/// Windows refuses to create a path of 260 characters or more unless it is in
+/// the extended form; a deep Hugging Face file name under a long data folder
+/// can reach it, and the failure otherwise shows up late as a bare OS error.
+#[cfg(windows)]
+fn path_too_long(path: &std::path::Path) -> bool {
+    let text = path.to_string_lossy();
+    !text.starts_with(r"\\?\") && text.chars().count() >= 259
+}
+
+enum Attempt {
+    Finished,
+    Paused,
+    /// The connection failed or went quiet. `made_progress` says whether any
+    /// bytes arrived before it did, which resets the count of failures.
+    Retry { made_progress: bool, reason: String },
+}
+
+/// One request for the rest of the file, appended to the `.part` file. Network
+/// trouble comes back as `Retry`; a refusal or a disk error is fatal.
+#[allow(clippy::too_many_arguments)]
+async fn download_attempt<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    client: &reqwest::Client,
+    url: &Url,
+    task_id: &str,
+    part_path: &std::path::Path,
+    expected_size: Option<u64>,
+    cancel: &AtomicBool,
+) -> Result<Attempt, String> {
+    let existing = tokio::fs::metadata(part_path)
+        .await
+        .map(|meta| meta.len())
+        .unwrap_or(0);
+    let mut request = client.get(url.clone());
+    if existing > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
+    }
+    let response = tokio::select! {
+        sent = request.send() => match sent {
+            Ok(response) => response,
+            Err(e) => {
+                return Ok(Attempt::Retry {
+                    made_progress: false,
+                    reason: format!("Hugging Face download failed: {e}"),
+                })
+            }
+        },
+        _ = cancelled(cancel) => return Ok(Attempt::Paused),
+    };
+    let status = response.status();
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE && existing > 0 {
+        // The partial file is not a prefix the server recognises; start over.
+        let _ = tokio::fs::remove_file(part_path).await;
+        return Ok(Attempt::Retry {
+            made_progress: false,
+            reason: "The partial download no longer matched the server".to_string(),
+        });
+    }
+    if status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Ok(Attempt::Retry {
+            made_progress: false,
+            reason: format!("Hugging Face answered {status}"),
+        });
+    }
+    if !status.is_success() {
+        return Err(response_error(response).await);
+    }
+
+    let resumed = existing > 0 && status == reqwest::StatusCode::PARTIAL_CONTENT;
+    let start = if resumed { existing } else { 0 };
+    let total = response
+        .content_length()
+        .map(|remaining| start.saturating_add(remaining))
+        .or(expected_size);
+    let mut output = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(resumed)
+        .truncate(!resumed)
+        .open(part_path)
+        .await
+        .map_err(|e| io_failure("Could not open the model download file", &e))?;
+    let mut downloaded = start;
+    let mut stream = response.bytes_stream();
+
+    loop {
+        let next = tokio::select! {
+            next = tokio::time::timeout(STALL_TIMEOUT, stream.next()) => Some(next),
+            _ = cancelled(cancel) => None,
+        };
+        if cancel.load(Ordering::Relaxed) {
+            // Keep what was written so a resume continues from it.
+            let _ = output.flush().await;
+            return Ok(Attempt::Paused);
+        }
+        let item = match next {
+            Some(Ok(item)) => item,
+            Some(Err(_)) => {
+                let _ = output.flush().await;
+                return Ok(Attempt::Retry {
+                    made_progress: downloaded > start,
+                    reason: format!(
+                        "No data from Hugging Face for {} seconds",
+                        STALL_TIMEOUT.as_secs()
+                    ),
+                });
+            }
+            None => return Ok(Attempt::Paused),
+        };
+        let Some(chunk) = item else { break };
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(e) => {
+                let _ = output.flush().await;
+                return Ok(Attempt::Retry {
+                    made_progress: downloaded > start,
+                    reason: format!("Hugging Face download interrupted: {e}"),
+                });
+            }
+        };
+        output
+            .write_all(&chunk)
+            .await
+            .map_err(|e| io_failure("Could not write the model download", &e))?;
+        downloaded = downloaded.saturating_add(chunk.len() as u64);
+        let _ = app.emit(
+            "huggingface-download-progress",
+            HuggingFaceDownloadProgress {
+                task_id: task_id.to_string(),
+                downloaded,
+                total,
+            },
+        );
+    }
+    output
+        .flush()
+        .await
+        .map_err(|e| io_failure("Could not finish writing the model download", &e))?;
+    Ok(Attempt::Finished)
+}
+
 #[tauri::command]
 pub async fn huggingface_download_model<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -552,74 +735,75 @@ pub async fn huggingface_download_model<R: Runtime>(
     }
 
     let result = async {
-        let existing = tokio::fs::metadata(&part_path)
-            .await
-            .map(|meta| meta.len())
-            .unwrap_or(0);
-
-        if expected_size != Some(existing) || existing == 0 {
-            let client = hf_client(token.as_deref())?;
-            let mut request = client.get(url);
-            if existing > 0 {
-                request = request.header(reqwest::header::RANGE, format!("bytes={existing}-"));
-            }
-            let response = tokio::select! {
-                sent = request.send() => {
-                    sent.map_err(|e| format!("Hugging Face download failed: {e}"))?
-                }
-                _ = cancelled(&cancel) => return Err("Download paused".to_string()),
-            };
-            if !response.status().is_success() {
-                return Err(response_error(response).await);
-            }
-
-            let resumed = existing > 0 && response.status() == reqwest::StatusCode::PARTIAL_CONTENT;
-            let start = if resumed { existing } else { 0 };
-            let total = response
-                .content_length()
-                .map(|remaining| start.saturating_add(remaining))
-                .or(expected_size);
-            let mut output = tokio::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .append(resumed)
-                .truncate(!resumed)
-                .open(&part_path)
+        #[cfg(windows)]
+        if path_too_long(&part_path) {
+            return Err(format!(
+                "The download path is too long for Windows: {}. Choose a data folder with a shorter path.",
+                part_path.display()
+            ));
+        }
+        let client = hf_client(token.as_deref())?;
+        let mut failures: u32 = 0;
+        loop {
+            let existing = tokio::fs::metadata(&part_path)
                 .await
-                .map_err(|e| format!("Could not open model download file: {e}"))?;
-            let mut downloaded = start;
-            let mut stream = response.bytes_stream();
-
-            loop {
-                let next = tokio::select! {
-                    next = stream.next() => next,
-                    _ = cancelled(&cancel) => None,
-                };
-                if cancel.load(Ordering::Relaxed) {
-                    // Keep what was written so a resume continues from it.
-                    let _ = output.flush().await;
-                    return Err("Download paused".to_string());
-                }
-                let Some(chunk) = next else { break };
-                let chunk = chunk.map_err(|e| format!("Hugging Face download interrupted: {e}"))?;
-                output
-                    .write_all(&chunk)
-                    .await
-                    .map_err(|e| format!("Could not write model download: {e}"))?;
-                downloaded = downloaded.saturating_add(chunk.len() as u64);
-                let _ = app.emit(
-                    "huggingface-download-progress",
-                    HuggingFaceDownloadProgress {
-                        task_id: task_id.clone(),
-                        downloaded,
-                        total,
-                    },
-                );
+                .map(|meta| meta.len())
+                .unwrap_or(0);
+            if existing > 0 && expected_size == Some(existing) {
+                break;
             }
-            output
-                .flush()
-                .await
-                .map_err(|e| format!("Could not flush model download: {e}"))?;
+            match download_attempt(
+                &app,
+                &client,
+                &url,
+                &task_id,
+                &part_path,
+                expected_size,
+                &cancel,
+            )
+            .await?
+            {
+                Attempt::Paused => return Err("Download paused".to_string()),
+                outcome => {
+                    let (made_progress, reason) = match outcome {
+                        Attempt::Retry {
+                            made_progress,
+                            reason,
+                        } => (made_progress, reason),
+                        // The server ended the stream cleanly but short of the
+                        // size it listed: the connection was cut, so go on.
+                        _ => {
+                            let now = tokio::fs::metadata(&part_path)
+                                .await
+                                .map(|meta| meta.len())
+                                .unwrap_or(0);
+                            if expected_size.map_or(true, |size| now >= size) {
+                                break;
+                            }
+                            (
+                                now > existing,
+                                format!("The connection closed after {now} of {} bytes", expected_size.unwrap_or(0)),
+                            )
+                        }
+                    };
+                    if made_progress {
+                        failures = 0;
+                    }
+                    failures += 1;
+                    if failures > MAX_CONSECUTIVE_FAILURES {
+                        return Err(format!(
+                            "{reason}. Gave up after {MAX_CONSECUTIVE_FAILURES} attempts; the download can be resumed."
+                        ));
+                    }
+                    log::warn!(
+                        "Hugging Face download of {repo}/{filename} will retry ({failures}/{MAX_CONSECUTIVE_FAILURES}): {reason}"
+                    );
+                    tokio::select! {
+                        _ = tokio::time::sleep(retry_backoff(failures)) => {}
+                        _ = cancelled(&cancel) => return Err("Download paused".to_string()),
+                    }
+                }
+            }
         }
 
         if let Some(size) = expected_size {
@@ -671,6 +855,41 @@ pub async fn huggingface_download_model<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retry_waits_double_up_to_thirty_two_seconds() {
+        let secs: Vec<u64> = (1..=8).map(|n| retry_backoff(n).as_secs()).collect();
+        assert_eq!(secs, vec![1, 2, 4, 8, 16, 32, 32, 32]);
+    }
+
+    #[test]
+    fn a_full_disk_error_is_named() {
+        #[cfg(windows)]
+        let err = std::io::Error::from_raw_os_error(112);
+        #[cfg(not(windows))]
+        let err = std::io::Error::from_raw_os_error(28);
+        let msg = io_failure("Could not write the model download", &err);
+        assert!(msg.contains("not enough free space"), "{msg}");
+    }
+
+    #[test]
+    fn an_unrecognised_error_keeps_only_the_os_text() {
+        let err = std::io::Error::new(std::io::ErrorKind::Other, "odd failure");
+        assert_eq!(
+            io_failure("Could not open", &err),
+            "Could not open: odd failure"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_path_of_260_characters_is_too_long_unless_extended() {
+        let long = std::path::PathBuf::from(format!("C:\\{}", "a".repeat(270)));
+        assert!(path_too_long(&long));
+        let extended = std::path::PathBuf::from(format!("\\\\?\\C:\\{}", "a".repeat(270)));
+        assert!(!path_too_long(&extended));
+        assert!(!path_too_long(std::path::Path::new("C:\\short\\file.gguf")));
+    }
 
     #[test]
     fn repo_ids_are_strictly_owner_and_name() {

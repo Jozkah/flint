@@ -1,6 +1,11 @@
 import { listen } from '@tauri-apps/api/event'
 import { create } from 'zustand'
 import {
+  startSpeedSample,
+  updateSpeedSample,
+  type SpeedSample,
+} from '@/lib/downloadSpeed'
+import {
   cancelHuggingFaceDownload,
   downloadHuggingFaceFile,
   type HuggingFaceDownloadProgress,
@@ -29,6 +34,8 @@ export type HuggingFaceDownloadTask = {
   downloaded: number
   total?: number
   progress: number
+  /** Smoothed download speed in bytes per second, while downloading. */
+  bytesPerSecond?: number
   error?: string
 }
 
@@ -80,6 +87,10 @@ function completedBytes(files: HuggingFaceFile[], count: number): number {
   return files.slice(0, count).reduce((sum, file) => sum + (file.size ?? 0), 0)
 }
 
+// Speed is measured here, between progress events, and kept off the store's
+// persisted shape: it means nothing once the download is not running.
+const speedSamples = new Map<string, SpeedSample>()
+
 function ensureProgressListener() {
   if (progressListener) return progressListener
   progressListener = listen<HuggingFaceDownloadProgress>(
@@ -96,10 +107,17 @@ function ensureProgressListener() {
         (payload.total != null
           ? base + payload.total + completedBytes(task.files.slice(task.currentFileIndex + 1), task.files.length)
           : undefined)
+      const sample = updateSpeedSample(
+        speedSamples.get(task.id) ?? startSpeedSample(task.downloaded, Date.now()),
+        downloaded,
+        Date.now()
+      )
+      speedSamples.set(task.id, sample)
       store.patch(task.id, {
         downloaded,
         total,
         progress: total && total > 0 ? Math.min(1, downloaded / total) : task.progress,
+        bytesPerSecond: sample.bytesPerSecond > 0 ? sample.bytesPerSecond : undefined,
       })
     }
   ).catch(() => () => {})
