@@ -136,6 +136,21 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Upgraded the bundled llama.cpp engine from 0.4.1 / b10964 to **0.5.0 / b11146**, with matching packages and lockfiles.
 - Active release workflows, package metadata, project links and web-search identification now target `Jozkah/flint` rather than the upstream repository where appropriate.
 
+### Local models and engine settings
+
+- Added **Find models already on this computer** to the model import dialog. It lists GGUF models kept by LM Studio, Ollama, the Hugging Face cache, llama.cpp and GPT4All, honouring `HF_HUB_CACHE`, `HF_HOME`, `LLAMA_CACHE` and `OLLAMA_MODELS`. It runs only when asked, skips projector files and later shards, and a chosen model is used where it lives instead of being copied.
+- Sending a message with no model selected now picks one and sends, instead of stopping at "select a model": your default, the last used model, a connected remote provider, then the only local model or the lightest by the size in its name. Embedding models are never chosen.
+- Added an **Additional arguments** setting for llama-server (for example `--rope-scaling yarn --no-warmup`). The options apply to every model and win over the individual settings. Options that would move the server or change the files it opens, such as the host, port, API key and model paths, are ignored.
+- A tool call a local model writes as text is now run. Hermes and Qwen 2.5, Qwen3-Coder, GLM, Mistral and Llama 3.1 call formats are recognised when the server could not parse them, for llama.cpp, MLX and OpenAI-compatible models. Only calls naming a tool the request offered are run, and a call the server already parsed is never run twice.
+- The model-fit check uses the KV cache type a model is configured with instead of assuming f16, and no longer counts an integrated GPU's memory twice.
+- A quantized V cache is held at f16 when flash attention is off, which llama.cpp cannot load, and a DFlash draft defaults to greedy sampling.
+- The Anthropic `/messages` endpoint merges scattered system and developer messages into one leading system message, which strict chat templates such as Qwen3's require.
+- An image returned by an MCP tool (a screenshot tool, for one) no longer floods a local model's context as base64 text. For llama.cpp and MLX it is replaced by a note in what the model reads and, for a model that can see, attached again as an image. Remote providers and the stored conversation are unchanged.
+- The Local API Server answers "no model is running" and "the engine is not answering" with a JSON error that has a `code` and a `Retry-After`, keeps 502 for an unreachable remote provider, finds an MLX model when a client writes `.` as `_`, and explains a port the system refuses (Windows reserved ranges) instead of showing a bare error.
+- The Local API Server's timeout now limits silence rather than the whole request, so a long generation from a large local model is no longer cut off mid-stream.
+- The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
+- Loading a model whose file was moved, deleted or only partly downloaded now fails with that reason, naming the file, instead of the loader's own error.
+
 ### Release infrastructure
 
 - Tag pushes matching `v*` start the Flint release build, which attaches the Windows, macOS and Linux bundles to the existing release for that tag.
@@ -174,6 +189,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 - Added a **Browse Hugging Face** button to the Models page, and Discover entry points from onboarding, from an empty local provider and from `flint://` and `jan://` model links. The sidebar row counts active downloads.
 - Discover shows model avatars and Hugging Face author pictures, capability chips, fit badges with MLX fit, a sturdier memory estimate and a highlighted recommendation for the device.
+- Pausing a model download takes effect at once, even on a stalled connection, and keeps the partial file so a resume continues from it. A late-finishing earlier attempt can no longer remove the handle of a newer one.
+- A model's README is shown without its YAML metadata block, and a repository id such as `../name` is refused.
 
 ## Core Flint capabilities
 
