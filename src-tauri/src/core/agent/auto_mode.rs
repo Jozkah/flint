@@ -49,6 +49,26 @@ pub struct AutoModePolicy {
     pub environment: Environment,
 }
 
+/// Set in the environment of an unattended run (a scheduled task's child
+/// process). Nobody is there to answer a prompt, so the classifier layer is
+/// forced on whatever the project's `agent.toml` says.
+pub const UNATTENDED_ENV: &str = "FLINT_UNATTENDED_RUN";
+
+/// `policy` with the classifier on when the run is unattended. Only ever turns
+/// it on: a project's own allow and soft-deny lists are left as written.
+pub fn enforce(mut policy: AutoModePolicy, unattended: bool) -> AutoModePolicy {
+    if unattended {
+        policy.enabled = true;
+    }
+    policy
+}
+
+/// [`enforce`], reading whether this process is an unattended run from the
+/// environment its supervisor gave it.
+pub fn enforce_unattended(policy: AutoModePolicy) -> AutoModePolicy {
+    enforce(policy, std::env::var_os(UNATTENDED_ENV).is_some_and(|v| v == "1"))
+}
+
 /// The person's description of their own environment, so the classifier can
 /// tell "mine" from "shared" and "trusted" from "external".
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -549,5 +569,17 @@ mod tests {
         assert!(p
             .block_reason("write", Capability::Write, &write("src/main.rs"))
             .is_none());
+    }
+
+    #[test]
+    fn an_unattended_run_forces_the_classifier_on_without_touching_the_lists() {
+        let project = AutoModePolicy { allow: vec!["make deploy".into()], ..Default::default() };
+        assert!(!project.enabled);
+        let forced = enforce(project.clone(), true);
+        assert!(forced.enabled);
+        assert_eq!(forced.allow, project.allow);
+        assert!(!enforce(project, false).enabled, "an attended run keeps the project's choice");
+        let already = AutoModePolicy { enabled: true, ..Default::default() };
+        assert!(enforce(already, false).enabled, "never turned off");
     }
 }

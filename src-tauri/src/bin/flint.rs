@@ -427,6 +427,44 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: BenchCommands,
     },
+    /// Scheduled tasks: prompts that run on a timetable with nobody watching
+    #[command(display_order = 16)]
+    Schedule {
+        #[command(subcommand)]
+        cmd: ScheduleCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScheduleCommands {
+    /// List the scheduled tasks and when each runs next
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Start a task's run now, detached; `--wait` stays until it ends
+    Run {
+        /// The task id (see `list`)
+        id: String,
+        #[arg(long)]
+        wait: bool,
+    },
+    /// A task's run history, newest first
+    Runs {
+        /// The task id (see `list`)
+        id: String,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run one scheduled run from its spec, as a job supervisor starts it. Not
+    /// meant to be run by hand.
+    #[command(hide = true)]
+    RunSpec {
+        #[arg(long)]
+        spec: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1580,6 +1618,19 @@ async fn handle_cli(cmd: CliCommands) {
         }
         CliCommands::Net { cmd } => handle_net(cmd),
         CliCommands::Bench { cmd } => handle_bench(cmd),
+        CliCommands::Schedule { cmd } => {
+            use app_lib::core::cli::schedule;
+            let result = match cmd {
+                ScheduleCommands::List { json } => schedule::list(json),
+                ScheduleCommands::Run { id, wait } => schedule::run_now(&id, wait).await,
+                ScheduleCommands::Runs { id, limit, json } => schedule::runs(&id, limit, json),
+                ScheduleCommands::RunSpec { spec } => schedule::run_spec(std::path::Path::new(&spec)).await,
+            };
+            if let Err(e) = result {
+                eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                std::process::exit(e.exit_code());
+            }
+        }
     }
 }
 

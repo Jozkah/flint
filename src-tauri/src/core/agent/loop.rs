@@ -5609,6 +5609,9 @@ async fn orchestrate_inner(
             })
             .map(|cfg| cfg.auto_mode)
             .unwrap_or_default();
+        // A scheduled task's child has nobody to ask, so the classifier is on
+        // for it whatever the project says.
+        let auto_mode = crate::core::agent::auto_mode::enforce_unattended(auto_mode);
         // How many auto-approved calls in a row before the run checks in with
         // the user; `0` turns the pause off.
         let auto_approve_limit_from_body =
