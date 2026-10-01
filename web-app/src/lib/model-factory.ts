@@ -64,6 +64,7 @@ import {
 } from '@/hooks/useProviderReachability'
 import { SessionInfo } from '@janhq/core'
 import { providerFetch } from '@/lib/providerFetch'
+import { textToolCallMiddleware } from '@/lib/textToolCallMiddleware'
 
 // These three call sites predate the canonical transport and named the raw
 // Tauri fetch; they are the same transport now, under the name they used.
@@ -1172,7 +1173,7 @@ export class ModelFactory {
       customFetch = withAssistantReasoningStripped(customFetch)
     }
 
-    return new OpenAICompatibleChatLanguageModel(modelId, {
+    const llamaModel = new OpenAICompatibleChatLanguageModel(modelId, {
       provider: 'llamacpp',
       headers: () => ({
         Authorization: `Bearer ${sessionInfo.api_key}`,
@@ -1185,6 +1186,13 @@ export class ModelFactory {
       includeUsage: true,
       fetch: customFetch,
       metadataExtractor: providerMetadataExtractor,
+    })
+
+    // A model whose tool-call syntax the server could not parse otherwise
+    // leaves the call as text and no tool runs.
+    return wrapLanguageModel({
+      model: llamaModel,
+      middleware: textToolCallMiddleware(),
     })
   }
 
@@ -1277,10 +1285,14 @@ export class ModelFactory {
 
     return wrapLanguageModel({
       model: model,
-      middleware: extractReasoningMiddleware({
-        tagName: getReasoningTagName(modelId),
-        separator: '\n',
-      }),
+      middleware: [
+        // Outermost, so it sees text after reasoning has been split out.
+        textToolCallMiddleware(),
+        extractReasoningMiddleware({
+          tagName: getReasoningTagName(modelId),
+          separator: '\n',
+        }),
+      ],
     })
   }
 
@@ -1527,10 +1539,14 @@ export class ModelFactory {
 
     return wrapLanguageModel({
       model,
-      middleware: extractReasoningMiddleware({
-        tagName: getReasoningTagName(modelId),
-        separator: '\n',
-      }),
+      middleware: [
+        // Outermost, so it sees text after reasoning has been split out.
+        textToolCallMiddleware(),
+        extractReasoningMiddleware({
+          tagName: getReasoningTagName(modelId),
+          separator: '\n',
+        }),
+      ],
     })
   }
 }
