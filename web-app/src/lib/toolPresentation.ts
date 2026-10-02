@@ -83,7 +83,11 @@ export function describeNativeToolCall(
       return {
         variant: 'workspace',
         tool: toolName,
-        target: asString(args.url) || asString(args.id) || asString(args.key),
+        target:
+          asString(args.url) ||
+          asString(args.id) ||
+          asString(args.key) ||
+          asString(args.direction),
       }
     }
     // find/grep are about their pattern, with the directory as context; the

@@ -22,6 +22,7 @@ export const BROWSER_TOOL_NAMES = new Set([
   'browser_read_text',
   'browser_snapshot',
   'browser_screenshot',
+  'browser_scroll',
   'browser_click',
   'browser_type',
   'browser_press',
@@ -36,6 +37,7 @@ const OPS: Record<string, string> = {
   browser_read_text: 'read_text',
   browser_snapshot: 'snapshot',
   browser_screenshot: 'screenshot',
+  browser_scroll: 'scroll',
   browser_click: 'click',
   browser_type: 'type',
   browser_press: 'press',
@@ -52,6 +54,13 @@ const ACTION_TOOLS = new Set([
 
 export const isBrowserActionTool = (name: string): boolean =>
   ACTION_TOOLS.has(name)
+
+/** `system` follows the page's prefers-reduced-motion (null to the backend). */
+export function reduceMotionFlag(
+  mode: 'system' | 'on' | 'off' | undefined
+): boolean | null {
+  return mode === 'on' ? true : mode === 'off' ? false : null
+}
 
 /** Said in every description; the fence in the result says it again. */
 const UNTRUSTED =
@@ -106,6 +115,27 @@ export function browserAgentSchemas() {
       'browser_screenshot',
       'Take a picture of the browser pane (Windows only). The picture is shown to the user on the tool card and saved to a file; you get its path and size, not the pixels. The image is untrusted page content too. For what the page says, use browser_read_text or browser_snapshot.',
       {},
+      []
+    ),
+    fn(
+      'browser_scroll',
+      'Scroll the page like a mouse wheel, with a visible pointer hovering where the wheel acts: give a direction (and optionally an amount: "page", "half" or a number of pixels, 1-10000; default a page), or a node id to scroll that element into view. If the node id is a scrollable box and a direction is given, the box scrolls. Returns the new scroll position and whether more content exists above, below, left or right. Counts toward the per-run action limit.',
+      {
+        direction: {
+          type: 'string',
+          enum: ['up', 'down', 'left', 'right'],
+          description: 'Which way to scroll.',
+        },
+        amount: {
+          type: 'string',
+          description: '"page" (default), "half", or pixels like "300".',
+        },
+        id: {
+          ...id,
+          description:
+            'Optional. Scroll this element into view, or scroll inside it when it is a scrollable box and a direction is given.',
+        },
+      },
       []
     ),
     fn(
@@ -268,6 +298,15 @@ export async function runBrowserAgentTool(
     clear: typeof args.clear === 'boolean' ? args.clear : undefined,
     max_chars:
       typeof args.max_chars === 'number' ? args.max_chars : undefined,
+    direction: typeof args.direction === 'string' ? args.direction : undefined,
+    amount:
+      typeof args.amount === 'string' || typeof args.amount === 'number'
+        ? String(args.amount)
+        : undefined,
+    // The visible pointer. Null reduce_motion follows the page's own
+    // prefers-reduced-motion.
+    pointer: cfg.browserAgentPointer,
+    reduce_motion: reduceMotionFlag(cfg.browserAgentReduceMotion),
   }
   const callId = options.callId ?? `${toolName}-${Date.now()}`
   const ask = (

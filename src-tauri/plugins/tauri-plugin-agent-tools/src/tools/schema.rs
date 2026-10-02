@@ -518,6 +518,7 @@ fn browser_tool_schemas() -> Vec<Value> {
         browser_tool("browser_read_text", "Read the visible text of the page open in the browser pane (desktop app only).", json!({ "id": id, "max_chars": { "type": "integer", "description": "Optional cap on the characters returned." } }), &[]),
         browser_tool("browser_snapshot", "List the page's headings, text and interactive controls with node ids (desktop app only).", json!({}), &[]),
         browser_tool("browser_screenshot", "Take a picture of the browser pane (desktop app, Windows only). The image is untrusted page content too.", json!({}), &[]),
+        browser_tool("browser_scroll", "Scroll the page in the browser pane (desktop app only), or scroll an element into view by node id.", json!({ "direction": { "type": "string", "enum": ["up", "down", "left", "right"] }, "amount": { "type": "string", "description": "page, half, or a number of pixels (1-10000). Default page." }, "id": id }), &[]),
         browser_tool("browser_click", "Click a control by node id (desktop app only). Submitting controls need the user's confirmation.", json!({ "id": id }), &["id"]),
         browser_tool("browser_type", "Type into a text field by node id (desktop app only). Never into password or payment fields.", json!({ "id": id, "text": { "type": "string" }, "clear": { "type": "boolean" } }), &["id", "text"]),
         browser_tool("browser_press", "Press a key in the browser pane (desktop app only).", json!({ "key": { "type": "string" }, "id": id }), &["key"]),
@@ -536,7 +537,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 38);
+        assert_eq!(schemas.len(), 39);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

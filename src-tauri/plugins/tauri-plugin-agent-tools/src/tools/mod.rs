@@ -726,6 +726,11 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         path_args: &[],
     },
     BuiltinTool {
+        name: "browser_scroll",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
         name: "browser_click",
         capability: Capability::Read,
         path_args: &[],
@@ -753,6 +758,7 @@ pub const BROWSER_TOOL_NAMES: &[&str] = &[
     "browser_read_text",
     "browser_snapshot",
     "browser_screenshot",
+    "browser_scroll",
     "browser_click",
     "browser_type",
     "browser_press",
@@ -850,8 +856,8 @@ mod tests {
         // + request_access, list_plugins and open_in_browser, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + git, the host's git and gh with per-call classification.
-        // + the 8 browser-pane tools, which only the desktop can run.
-        assert_eq!(BUILTIN_TOOLS.len(), 38);
+        // + the 9 browser-pane tools, which only the desktop can run.
+        assert_eq!(BUILTIN_TOOLS.len(), 39);
     }
 
     #[test]
@@ -865,7 +871,7 @@ mod tests {
 
     #[test]
     fn browser_tools_are_registered_read_only_host_tools() {
-        assert_eq!(BROWSER_TOOL_NAMES.len(), 8);
+        assert_eq!(BROWSER_TOOL_NAMES.len(), 9);
         for name in BROWSER_TOOL_NAMES {
             let t = lookup(name).expect("registered");
             assert_eq!(t.capability, Capability::Read, "{name}");

@@ -11,9 +11,11 @@ import {
   browserCardUrl,
   isBrowserActionTool,
   patternsFor,
+  reduceMotionFlag,
   runBrowserAgentTool,
   urlFromBrowserOutput,
 } from '@/lib/browserAgent'
+import { describeNativeToolCall } from '@/lib/toolPresentation'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
 import { useBrowserShots } from '@/hooks/useBrowserShots'
@@ -30,6 +32,8 @@ beforeEach(() => {
   useAgentToolsConfig.setState({
     browserAgentEnabled: true,
     browserAgentMaxActions: 40,
+    browserAgentPointer: true,
+    browserAgentReduceMotion: 'system',
   })
 })
 
@@ -278,6 +282,81 @@ describe('screenshot', () => {
   })
 })
 
+describe('scroll and the pointer', () => {
+  it('is a read-like action: no approval, direction and amount passed through', async () => {
+    invoke.mockResolvedValueOnce(ok)
+    const r = await runBrowserAgentTool(
+      'browser_scroll',
+      { direction: 'down', amount: 300 },
+      't',
+      { callId: 's1' }
+    )
+    expect(r).toEqual({ content: ok.content })
+    expect(approve).not.toHaveBeenCalled()
+    expect(invoke.mock.calls[0][1].request).toMatchObject({
+      tool: 'scroll',
+      direction: 'down',
+      amount: '300',
+    })
+    expect(isBrowserActionTool('browser_scroll')).toBe(false)
+  })
+
+  it('a node id alone is sent as an id', async () => {
+    invoke.mockResolvedValueOnce(ok)
+    await runBrowserAgentTool('browser_scroll', { id: '2.4' }, 't')
+    expect(invoke.mock.calls[0][1].request).toMatchObject({ tool: 'scroll', id: '2.4' })
+  })
+
+  it('still needs the domain permission like a read', async () => {
+    invoke.mockResolvedValueOnce(ask).mockResolvedValue(ok)
+    const pending = runBrowserAgentTool('browser_scroll', { direction: 'down' }, 't')
+    await answerNext('allow')
+    expect(await pending).toEqual({ content: ok.content })
+  })
+
+  it('passes the pointer settings with every call', async () => {
+    invoke.mockResolvedValue(ok)
+    await runBrowserAgentTool('browser_snapshot', {}, 't')
+    expect(invoke.mock.calls[0][1].request).toMatchObject({ pointer: true, reduce_motion: null })
+    useAgentToolsConfig.setState({ browserAgentPointer: false, browserAgentReduceMotion: 'on' })
+    await runBrowserAgentTool('browser_click', { id: '1.1' }, 't')
+    expect(invoke.mock.calls[1][1].request).toMatchObject({ pointer: false, reduce_motion: true })
+    useAgentToolsConfig.setState({ browserAgentPointer: true, browserAgentReduceMotion: 'off' })
+    await runBrowserAgentTool('browser_snapshot', {}, 't')
+    expect(invoke.mock.calls[2][1].request).toMatchObject({ pointer: true, reduce_motion: false })
+    expect(reduceMotionFlag('system')).toBeNull()
+  })
+
+  it('the approval prompt comes before the call that moves the pointer', async () => {
+    const order: string[] = []
+    approve.mockImplementation(async () => {
+      order.push('approve')
+      return true
+    })
+    invoke.mockImplementation(async () => {
+      order.push('invoke')
+      return ok
+    })
+    await runBrowserAgentTool('browser_click', { id: '1.1' }, 't', { callId: 'c' })
+    expect(order).toEqual(['approve', 'invoke'])
+  })
+
+  it('declares its schema with a direction enum, and says it counts as an action', () => {
+    const s = browserAgentSchemas().find((x) => x.function.name === 'browser_scroll')!
+    const p = s.function.parameters as { properties: { direction: { enum: string[] } }; required: string[] }
+    expect(p.properties.direction.enum).toEqual(['up', 'down', 'left', 'right'])
+    expect(p.required).toEqual([])
+    expect(s.function.description).toContain('action limit')
+    expect(s.function.description).toContain('untrusted')
+  })
+
+  it('has a tool-card bar naming the direction', () => {
+    expect(
+      describeNativeToolCall({ kind: 'agent' } as never, 'browser_scroll', { direction: 'down' })
+    ).toEqual({ variant: 'workspace', tool: 'browser_scroll', target: 'down' })
+  })
+})
+
 describe('actions', () => {
   it('ask for the normal tool approval before anything is sent', async () => {
     approve.mockResolvedValueOnce(false)
@@ -387,7 +466,7 @@ describe('actions', () => {
 })
 
 describe('schemas and helpers', () => {
-  it('advertise the eight tools, each saying page content is untrusted', () => {
+  it('advertise the nine tools, each saying page content is untrusted', () => {
     const schemas = browserAgentSchemas()
     expect(schemas.map((s) => s.function.name).sort()).toEqual(
       [...BROWSER_TOOL_NAMES].sort()

@@ -10,6 +10,7 @@
       "browser_read_text": "read this page",
       "browser_snapshot": "look at this page's controls",
       "browser_screenshot": "take a picture of this page",
+      "browser_scroll": "scroll this page",
       "browser_click": "click on this page",
       "browser_type": "type on this page",
       "browser_press": "press a key on this page",
@@ -51,6 +52,13 @@
     "add": "Add rule",
     "added": "Rule saved",
     "addFailed": "Could not save the rule: {{error}}",
+    "pointer": "Show the pointer",
+    "pointerDesc": "Draws a cursor in the browser pane that glides to what the assistant clicks or types into, and scrolls with it. Off: nothing is drawn and nothing is delayed.",
+    "reduceMotion": "Reduce motion",
+    "reduceMotionDesc": "No gliding or glow pulse: the pointer jumps to its target.",
+    "reduceSystem": "Follow the system",
+    "reduceOn": "Always reduce",
+    "reduceOff": "Never reduce",
     "forgetGrants": "Forget this session's approvals"
   },
   "card": {
