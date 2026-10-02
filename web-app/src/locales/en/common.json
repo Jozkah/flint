@@ -255,7 +255,7 @@
       "image": "Export current chat as image"
     }
   },
-  "exportSession": "Export session…",
+  "exportSessionBundle": "Session bundle (JSON)",
   "importSession": "Import session…",
   "sessionExported": "Session exported. {{count}} credential(s) were left out.",
   "sessionExportFailed": "Could not export the session: {{reason}}",
