@@ -95,6 +95,7 @@ pub enum Role {
     Vae,
     Llm,
     T5xxl,
+    ClipL,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -234,7 +235,12 @@ pub const WAN_22_TI2V_5B: ModelDef = ModelDef {
 pub const MODELS: &[ModelDef] = &[Z_IMAGE_TURBO, WAN_22_TI2V_5B];
 
 pub fn model(id: &str) -> Option<&'static ModelDef> {
-    MODELS.iter().find(|m| m.id == id)
+    MODELS.iter().find(|m| m.id == id).or_else(|| super::custom::lookup(id))
+}
+
+/// The built-in models, then the ones the person added from Discover.
+pub fn all_models() -> Vec<&'static ModelDef> {
+    MODELS.iter().chain(super::custom::all()).collect()
 }
 
 #[cfg(test)]

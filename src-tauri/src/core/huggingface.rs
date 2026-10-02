@@ -189,7 +189,7 @@ fn api_url(path: &[&str]) -> Result<Url, String> {
     Ok(url)
 }
 
-fn valid_repo_id(repo: &str) -> bool {
+pub(crate) fn valid_repo_id(repo: &str) -> bool {
     let mut parts = repo.split('/');
     let Some(owner) = parts.next() else { return false };
     let Some(name) = parts.next() else { return false };
@@ -206,7 +206,7 @@ fn valid_repo_id(repo: &str) -> bool {
         })
 }
 
-fn valid_remote_path(filename: &str) -> bool {
+pub(crate) fn valid_remote_path(filename: &str) -> bool {
     !filename.is_empty()
         && !filename.starts_with('/')
         && !filename.contains('\\')
@@ -382,6 +382,16 @@ pub async fn huggingface_search_models(
                 pairs.append_pair("filter", "mlx");
             }
             Some("all") => {}
+            // Pictures and video: GGUF repositories tagged for the task, which
+            // Studio can run, not every diffusers checkpoint.
+            Some("image") => {
+                pairs.append_pair("filter", "gguf");
+                pairs.append_pair("pipeline_tag", "text-to-image");
+            }
+            Some("video") => {
+                pairs.append_pair("filter", "gguf");
+                pairs.append_pair("pipeline_tag", "text-to-video");
+            }
             _ => {
                 pairs.append_pair("filter", "gguf");
             }

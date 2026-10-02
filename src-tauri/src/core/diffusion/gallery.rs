@@ -111,6 +111,33 @@ pub fn save_image<R: Runtime>(
     save(app, recipe, id, "png", png)
 }
 
+/// The picture format of `bytes` by its signature: the extension to keep it
+/// under, or `None` when it is not a picture Studio shows (an HTML error page
+/// from a provider, for one, must never land in the gallery).
+pub fn sniff_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        Some("png")
+    } else if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("jpg")
+    } else if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        Some("webp")
+    } else {
+        None
+    }
+}
+
+/// A picture a hosted provider made, kept in the gallery like a local one.
+pub fn save_external_image<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    recipe: &Recipe,
+    index: u32,
+    bytes: &[u8],
+) -> Result<Saved, String> {
+    let extension = sniff_image(bytes).ok_or("The provider did not return a picture.")?;
+    let id = format!("{}-{}-{:02}", recipe.created_at_ms, file_safe(&recipe.job_id), index);
+    save(app, recipe, id, extension, bytes)
+}
+
 pub fn save_video<R: Runtime>(
     app: &tauri::AppHandle<R>,
     recipe: &Recipe,
@@ -120,8 +147,11 @@ pub fn save_video<R: Runtime>(
     save(app, recipe, id, "webm", webm)
 }
 
+/// Every extension a result can be kept under.
+const MEDIA_EXTENSIONS: [&str; 4] = ["png", "jpg", "webp", "webm"];
+
 fn media_file(dir: &Path, id: &str) -> Option<PathBuf> {
-    ["png", "webm"]
+    MEDIA_EXTENSIONS
         .iter()
         .map(|ext| dir.join(format!("{id}.{ext}")))
         .find(|p| p.is_file())
@@ -190,7 +220,7 @@ fn delete_in(dir: &Path, id: &str) -> Result<(), String> {
     if id.is_empty() || id != file_safe(id) {
         return Err("That is not a gallery item.".to_string());
     }
-    for ext in ["png", "webm", "json"] {
+    for ext in ["png", "jpg", "webp", "webm", "json"] {
         let path = dir.join(format!("{id}.{ext}"));
         if path.is_file() {
             std::fs::remove_file(&path).map_err(|e| format!("Could not delete {}: {e}", path.display()))?;
@@ -218,7 +248,12 @@ fn media_in(dir: &Path, id: &str) -> Result<String, String> {
     if size > MAX_MEDIA_BYTES {
         return Err("That file is too large to send to a phone.".to_string());
     }
-    let mime = if path.extension().and_then(|e| e.to_str()) == Some("webm") { "video/webm" } else { "image/png" };
+    let mime = match path.extension().and_then(|e| e.to_str()) {
+        Some("webm") => "video/webm",
+        Some("jpg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        _ => "image/png",
+    };
     let bytes = std::fs::read(&path).map_err(|e| format!("Could not read it: {e}"))?;
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(bytes)))
 }
@@ -315,6 +350,28 @@ mod tests {
         assert_eq!(media_in(dir.path(), "1-a").unwrap(), "data:image/png;base64,cG5n");
         assert!(media_in(dir.path(), "../1-a").is_err());
         assert!(media_in(dir.path(), "missing").is_err());
+    }
+
+    #[test]
+    fn pictures_are_told_by_their_signature() {
+        assert_eq!(sniff_image(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 0]), Some("png"));
+        assert_eq!(sniff_image(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("jpg"));
+        assert_eq!(sniff_image(b"RIFF   WEBPVP8 "), Some("webp"));
+        assert_eq!(sniff_image(b"<html>429 Too Many Requests</html>"), None);
+        assert_eq!(sniff_image(b""), None);
+        assert_eq!(sniff_image(b"RIFF   WAVEfmt "), None);
+    }
+
+    #[test]
+    fn a_jpeg_and_a_webp_are_listed_deleted_and_sent_with_their_own_type() {
+        let dir = tempfile::tempdir().unwrap();
+        put(dir.path(), "j", "jpg", &recipe("j1", 2, Kind::Image));
+        put(dir.path(), "w", "webp", &recipe("j2", 1, Kind::Image));
+        assert_eq!(list_in(dir.path(), Kind::Image).len(), 2);
+        assert!(media_in(dir.path(), "j").unwrap().starts_with("data:image/jpeg;base64,"));
+        assert!(media_in(dir.path(), "w").unwrap().starts_with("data:image/webp;base64,"));
+        delete_in(dir.path(), "j").unwrap();
+        assert!(!dir.path().join("j.jpg").exists() && !dir.path().join("j.json").exists());
     }
 
     #[test]

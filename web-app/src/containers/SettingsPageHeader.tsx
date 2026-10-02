@@ -4,7 +4,7 @@ import { Icon } from '@/components/ui/icon'
 import HeaderPage from '@/containers/HeaderPage'
 import SettingsMenu, { SettingsSectionPicker } from '@/containers/SettingsMenu'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
-import { areaForPath } from '@/lib/shellNavigation'
+import { showsSettingsSections } from '@/lib/shellNavigation'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -41,13 +41,15 @@ export function SettingsPageHeader({
 }
 
 /**
- * Settings pages carry their section list beside the content; engine pages
- * that reuse the settings body (models, tools) are reached from the sidebar
- * instead, so they show none.
+ * Settings pages carry their section list beside the content, and keep it for
+ * every page the list itself links to. That includes MCP Servers, which the
+ * sidebar also reaches as the Tools area: it used to drop the list, so a click
+ * on it in the list made the list vanish. Model providers, which the list does
+ * not link to, are reached from the sidebar and show none.
  */
 function useOnSettingsPage() {
   const { pathname } = useLocation()
-  return areaForPath(pathname) === 'settings'
+  return showsSettingsSections(pathname)
 }
 
 function SettingsSections() {
