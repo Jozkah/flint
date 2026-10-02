@@ -247,6 +247,13 @@
     "endpointSearchDesc": "The base URL of your self-hosted search instance."
   },
   "agentTools": {
+    "tabBehaviour": "Behaviour",
+    "search": "Search",
+    "noMatches": "Nothing matches that search.",
+    "showMore": "Show {{count}} more",
+    "skillsHelp": "Skills are instructions the agent can load when a task needs them. Skills that come from a plugin are read-only here.",
+    "yourSkills": "Your skills ({{count}})",
+    "pluginSkills": "From plugins ({{count}})",
     "attributionCommits": "Add Flint as co-author on commits",
     "attributionCommitsDesc": "Commits the agent makes end with a Co-Authored-By trailer naming Flint and the model that wrote them.",
     "attributionPullRequests": "Add 'Generated with Flint' to pull requests",

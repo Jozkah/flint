@@ -18,7 +18,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Lock, LockOpen } from 'lucide-react'
+import { Lock, LockOpen, Search } from 'lucide-react'
+import { Chip } from '@/components/ui/chip'
+import { isPluginSkill } from '@/lib/skillStore'
 import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -105,6 +107,11 @@ function AgentToolsContent() {
   const [memories, setMemories] = useState<string[]>([])
   const [editor, setEditor] = useState<Editor | null>(null)
   const [saving, setSaving] = useState(false)
+  // The page is long when there are many skills, so each kind of thing gets
+  // its own tab and its own search instead of one scroll of everything.
+  const [tab, setTab] = useState<'behaviour' | 'skills' | 'memories'>('behaviour')
+  const [query, setQuery] = useState('')
+  const [showAll, setShowAll] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -195,13 +202,21 @@ function AgentToolsContent() {
   const entryRow = (
     kind: EntryKind,
     name: string,
-    description?: string
+    description?: string,
+    plugin?: string
   ) => (
     <CardItem
       key={`${kind}-${name}`}
       title={name}
-      description={description}
+      description={
+        description ? (
+          <span className="line-clamp-2 break-words">{description}</span>
+        ) : undefined
+      }
       actions={
+        plugin ? (
+          <Chip>{plugin}</Chip>
+        ) : (
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -224,9 +239,50 @@ function AgentToolsContent() {
             <Icon name="x-trash" size={16} />
           </Button>
         </div>
+        )
       }
     />
   )
+
+  const q = query.trim().toLowerCase()
+  const matches = (name: string, description?: string) =>
+    !q ||
+    name.toLowerCase().includes(q) ||
+    (description ?? '').toLowerCase().includes(q)
+  const LIMIT = 40
+  const ownSkills = skills.filter(
+    (k) => !isPluginSkill(k) && matches(k.name, k.description)
+  )
+  const pluginSkills = skills.filter(
+    (k) => isPluginSkill(k) && matches(k.name, k.description)
+  )
+  const shownMemories = memories.filter((m) => matches(m))
+  const searchBox = (
+    <div className="relative w-56 max-w-full">
+      <Search
+        className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+        aria-hidden
+      />
+      <Input
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value)
+          setShowAll(false)
+        }}
+        placeholder={t('settings:agentTools.search')}
+        aria-label={t('settings:agentTools.search')}
+        className="h-8 pl-8"
+      />
+    </div>
+  )
+  const more = (total: number, shown: number) =>
+    total > shown ? (
+      <div className="flex justify-center py-2">
+        <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
+          {t('settings:agentTools.showMore', { count: total - shown })}
+        </Button>
+      </div>
+    ) : null
 
   const addButton = (kind: EntryKind) => (
     <Button
@@ -244,8 +300,35 @@ function AgentToolsContent() {
       <SettingsPageBody
         title={t('common:agent_tools')}
         description={t('settings:pageDesc.agentTools')}
-        layout={[0, 1, 0, 1]}
+        layout={[0, 1, 0]}
+        actions={
+          <Segmented<'behaviour' | 'skills' | 'memories'>
+            // Remounted when the counts arrive: the gliding pill is measured
+            // once, and the labels grow after the lists load.
+            key={`${skills.length}-${memories.length}`}
+            size="sm"
+            aria-label={t('common:agent_tools')}
+            value={tab}
+            onValueChange={(v) => {
+              setTab(v)
+              setQuery('')
+              setShowAll(false)
+            }}
+            options={[
+              { value: 'behaviour', label: t('settings:agentTools.tabBehaviour') },
+              {
+                value: 'skills',
+                label: `${t('settings:agentTools.skills')} (${skills.length})`,
+              },
+              {
+                value: 'memories',
+                label: `${t('settings:agentTools.memories')} (${memories.length})`,
+              },
+            ]}
+          />
+        }
       >
+        {tab === 'behaviour' && (
         <Card
           title={t('settings:agentTools.title')}
           description={t('settings:agentTools.description')}
@@ -399,31 +482,75 @@ function AgentToolsContent() {
           {sandbox?.enforces && <SandboxToolchainGrants />}
           <AttributionSettings />
         </Card>
+        )}
 
-        <CompactionPolicySettings />
-        <BrowserAgentSettings />
-        <Card
-          title={t('settings:agentTools.memories')}
-          aside={addButton('memory')}
-        >
-          {memories.length === 0 ? (
-            <CardItem
-              description={t('settings:agentTools.noMemories')}
-            />
-          ) : (
-            memories.map((name) => entryRow('memory', name))
-          )}
-        </Card>
+        {tab === 'behaviour' && <CompactionPolicySettings />}
+        {tab === 'behaviour' && <BrowserAgentSettings />}
+        {tab === 'memories' && (
+          <Card
+            title={t('settings:agentTools.memories')}
+            aside={
+              <div className="flex items-center gap-2">
+                {memories.length > 6 && searchBox}
+                {addButton('memory')}
+              </div>
+            }
+          >
+            {memories.length === 0 ? (
+              <CardItem description={t('settings:agentTools.noMemories')} />
+            ) : shownMemories.length === 0 ? (
+              <CardItem description={t('settings:agentTools.noMatches')} />
+            ) : (
+              <>
+                {(showAll ? shownMemories : shownMemories.slice(0, LIMIT)).map(
+                  (name) => entryRow('memory', name)
+                )}
+                {more(shownMemories.length, showAll ? shownMemories.length : LIMIT)}
+              </>
+            )}
+          </Card>
+        )}
 
-        <Card title={t('settings:agentTools.skills')} aside={addButton('skill')}>
-          {skills.length === 0 ? (
-            <CardItem description={t('settings:agentTools.noSkills')} />
-          ) : (
-            skills.map((skill) =>
-              entryRow('skill', skill.name, skill.description)
-            )
-          )}
-        </Card>
+        {tab === 'skills' && (
+          <Card
+            title={t('settings:agentTools.skills')}
+            description={t('settings:agentTools.skillsHelp')}
+            aside={
+              <div className="flex items-center gap-2">
+                {skills.length > 6 && searchBox}
+                {addButton('skill')}
+              </div>
+            }
+          >
+            {skills.length === 0 ? (
+              <CardItem description={t('settings:agentTools.noSkills')} />
+            ) : ownSkills.length + pluginSkills.length === 0 ? (
+              <CardItem description={t('settings:agentTools.noMatches')} />
+            ) : (
+              <>
+                {ownSkills.length > 0 && pluginSkills.length > 0 && (
+                  <p className="px-1 pt-1 text-xs font-medium text-muted-foreground">
+                    {t('settings:agentTools.yourSkills', { count: ownSkills.length })}
+                  </p>
+                )}
+                {(showAll ? ownSkills : ownSkills.slice(0, LIMIT)).map((skill) =>
+                  entryRow('skill', skill.name, skill.description)
+                )}
+                {more(ownSkills.length, showAll ? ownSkills.length : LIMIT)}
+                {pluginSkills.length > 0 && (
+                  <p className="px-1 pt-3 text-xs font-medium text-muted-foreground">
+                    {t('settings:agentTools.pluginSkills', { count: pluginSkills.length })}
+                  </p>
+                )}
+                {(showAll ? pluginSkills : pluginSkills.slice(0, LIMIT)).map(
+                  (skill) =>
+                    entryRow('skill', skill.name, skill.description, skill.plugin)
+                )}
+                {more(pluginSkills.length, showAll ? pluginSkills.length : LIMIT)}
+              </>
+            )}
+          </Card>
+        )}
       </SettingsPageBody>
 
       <Dialog

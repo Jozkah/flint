@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import {
   ArrowLeftRight,
+  ChevronDown,
   Download,
   Film,
   ImageIcon,
@@ -13,6 +14,18 @@ import {
   X,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useNavigate } from '@tanstack/react-router'
+import { route } from '@/constants/routes'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -190,6 +203,81 @@ function Option({
     >
       {children}
     </button>
+  )
+}
+
+/**
+ * The engine for a picture: models on this computer first, then hosted ones
+ * that have an API key, then the two ways to get more.
+ */
+function EnginePicker({
+  value,
+  label,
+  sub,
+  local,
+  hosted,
+  disabled,
+  onLocal,
+  onHosted,
+}: {
+  value: string
+  label: string
+  sub: string
+  local: Array<{ id: string; name: string }>
+  hosted: Array<{ key: string; name: string; provider: string }>
+  disabled?: boolean
+  onLocal: (id: string) => void
+  onHosted: (key: string) => void
+}) {
+  const navigate = useNavigate()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild disabled={disabled}>
+        <button
+          type="button"
+          aria-label="Engine"
+          className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border-[0.8px] border-border bg-card px-3 text-left transition-colors hover:border-border-strong focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50 pointer-coarse:h-12"
+        >
+          <span className="min-w-0">
+            <span className="block truncate text-[13px] font-medium text-foreground">{label}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">{sub}</span>
+          </span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 overflow-y-auto">
+        <DropdownMenuRadioGroup
+          value={value}
+          onValueChange={(v) => (v.startsWith('cloud:') ? onHosted(v.slice(6)) : onLocal(v.slice(6)))}
+        >
+          <DropdownMenuLabel>On this computer</DropdownMenuLabel>
+          {local.map((m) => (
+            <DropdownMenuRadioItem key={m.id} value={`local:${m.id}`}>
+              {m.name}
+            </DropdownMenuRadioItem>
+          ))}
+          {hosted.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Hosted · your prompt leaves this computer</DropdownMenuLabel>
+              {hosted.map((t) => (
+                <DropdownMenuRadioItem key={t.key} value={`cloud:${t.key}`}>
+                  <span className="min-w-0 truncate">{t.name}</span>
+                  <span className="ml-auto pl-2 text-[11px] text-muted-foreground">{t.provider}</span>
+                </DropdownMenuRadioItem>
+              ))}
+            </>
+          )}
+        </DropdownMenuRadioGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate({ to: route.hub.index })}>
+          Find more picture models in Discover
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate({ to: route.settings.model_providers })}>
+          {hosted.length ? 'Manage hosted providers' : 'Add an API key to use hosted models'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -506,30 +594,16 @@ function Settings({
       <FrameBody className="gap-4 p-3.5">
         {(kind === 'image' || localModels.length > 1) && (
           <Field label={kind === 'image' ? 'Where to make it' : 'Model'}>
-            <div className="flex flex-wrap gap-1.5">
-              {localModels.map((m) => (
-                <Option
-                  key={m.id}
-                  pressed={!hosted && m.id === model.id}
-                  disabled={running}
-                  onClick={() => setForm({ cloud: '', localModel: m.id })}
-                  title={`${m.display_name} runs on this computer`}
-                >
-                  {m.display_name}
-                </Option>
-              ))}
-              {targets.map((t) => (
-                <Option
-                  key={t.key}
-                  pressed={form.cloud === t.key}
-                  disabled={running}
-                  onClick={() => setForm({ cloud: t.key })}
-                  title={`${t.model.name} on ${t.provider.label}`}
-                >
-                  {t.model.name}
-                </Option>
-              ))}
-            </div>
+            <EnginePicker
+              disabled={running}
+              value={hosted ? `cloud:${form.cloud}` : `local:${model.id}`}
+              label={hosted ? hosted.model.name : model.display_name}
+              sub={hosted ? hosted.provider.label : 'On this computer'}
+              local={localModels.map((m) => ({ id: m.id, name: m.display_name }))}
+              hosted={targets.map((t) => ({ key: t.key, name: t.model.name, provider: t.provider.label }))}
+              onLocal={(id) => setForm({ cloud: '', localModel: id })}
+              onHosted={(key) => setForm({ cloud: key })}
+            />
             {hosted ? (
               <p className="text-xs leading-snug text-muted-foreground">
                 Your prompt is sent to {hosted.provider.label} and the pictures
