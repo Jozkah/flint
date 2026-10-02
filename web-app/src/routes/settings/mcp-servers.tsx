@@ -1,7 +1,7 @@
 import type { MCPServerStatus } from '@/services/mcp/types'
 import { createFileRoute } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import { SettingsPageHeader, SettingsWithSections } from '@/containers/SettingsPageHeader'
 import { CardItem } from '@/containers/Card'
 import {
   Braces,
@@ -1356,6 +1356,7 @@ function MCPServersDesktop() {
     <Fragment>
       <div className="flex h-full w-full flex-col">
         <SettingsPageHeader title={t('common:mcp-servers')} />
+        <SettingsWithSections>
         <EnginePage testId="tools-page">
           <PageHead
             title={t('engine:mcp.title')}
@@ -1586,6 +1587,7 @@ function MCPServersDesktop() {
             </DropdownMenu>
           )}
         </EnginePage>
+        </SettingsWithSections>
       </div>
 
       {/* Use the AddEditMCPServer component */}

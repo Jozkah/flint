@@ -75,6 +75,20 @@ function SettingsSections() {
   )
 }
 
+/**
+ * The Sections list beside a page that lays itself out (an engine page rather
+ * than a settings body), so the list stays when that page is opened from it.
+ */
+export function SettingsWithSections({ children }: { children: ReactNode }) {
+  const showSections = useHeaderSlot() !== null
+  return (
+    <div className="flex h-full min-h-0 w-full gap-5 px-1">
+      {showSections && <SettingsSections />}
+      <div className="h-full min-h-0 min-w-0 flex-1">{children}</div>
+    </div>
+  )
+}
+
 /** The Sections list as one button, for windows too narrow to show it. */
 function CompactSections() {
   const onSettingsPage = useOnSettingsPage()
