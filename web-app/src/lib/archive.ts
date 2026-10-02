@@ -50,6 +50,24 @@ export type Blocked = {
   reason: string
 }
 
+/** A bounded, read-only look inside an archived item (`archive_preview`). */
+export type ArchivePreview = {
+  kind: ArchiveKind
+  title: string
+  createdAt?: number
+  updatedAt?: number
+  folder?: string
+  participants: string[]
+  messages: { role: string; text: string }[]
+  /** How many messages or turns the item holds; above `messages.length` means cut. */
+  totalMessages?: number
+  threads: string[]
+  instructions?: string
+  fields: { label: string; value: string }[]
+  /** A small picture as a data URL. */
+  thumbnail?: string
+}
+
 export type PurgeReport = { purged: number; blocked: Blocked[] }
 
 export const DEFAULT_ARCHIVE_SETTINGS: ArchiveSettings = {
@@ -112,6 +130,9 @@ export const archiveApi = {
     extra?: unknown
   ) =>
     changes(invoke<string>('archive_put', { kind, id, title, payload, extra })),
+  /** Read-only: does not restore, move or change anything. */
+  preview: (kind: ArchiveKind, archiveId: string) =>
+    invoke<ArchivePreview>('archive_preview', { kind, archiveId }),
   restore: (kind: ArchiveKind, archiveId: string) =>
     changes(invoke<Restored>('archive_restore', { kind, archiveId })),
   purge: (kind: ArchiveKind, archiveId: string) =>

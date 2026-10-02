@@ -76,6 +76,19 @@ pub async fn archive_put<R: Runtime>(
     blocking(move || store::archive_payload(&data, kind, &id, &title, &payload, extra)).await
 }
 
+/// A bounded, read-only look inside an archived item (its first messages, a
+/// recipe, a name list), without restoring it. Never writes.
+#[tauri::command]
+pub async fn archive_preview<R: Runtime>(
+    app_handle: AppHandle<R>,
+    kind: String,
+    archive_id: String,
+) -> Result<super::preview::ArchivePreview, String> {
+    let data = get_jan_data_folder_path(app_handle);
+    let kind = Kind::parse(&kind)?;
+    blocking(move || super::preview::preview(&data, kind, &archive_id)).await
+}
+
 #[tauri::command]
 pub async fn archive_restore<R: Runtime>(
     app_handle: AppHandle<R>,

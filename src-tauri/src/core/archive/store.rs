@@ -31,7 +31,7 @@ use crate::core::threads::utils::validate_thread_id;
 
 pub const ARCHIVE_DIR: &str = ".archive";
 const META_FILE: &str = "meta.json";
-const PAYLOAD_FILE: &str = "payload.json";
+pub(super) const PAYLOAD_FILE: &str = "payload.json";
 const SETTINGS_FILE: &str = "archive-settings.json";
 /// Collision suffixes tried before giving up.
 const MAX_SUFFIX: u32 = 1000;
@@ -281,7 +281,7 @@ fn dir_size(path: &Path) -> u64 {
         .sum()
 }
 
-fn read_meta(dir: &Path) -> Result<ArchiveMeta, String> {
+pub(super) fn read_meta(dir: &Path) -> Result<ArchiveMeta, String> {
     let bytes = fs::read(dir.join(META_FILE)).map_err(|e| format!("read {META_FILE}: {e}"))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("parse {META_FILE}: {e}"))
 }
@@ -376,7 +376,9 @@ pub fn archive_payload(
 /// The gallery folders a Studio result can come from, and the only ones a
 /// restore will write to.
 const GALLERIES: [&str; 2] = ["images", "videos"];
-const GALLERY_EXTS: [&str; 3] = ["png", "webm", "json"];
+/// Every extension the gallery saves under (a hosted provider's JPEG or WebP
+/// is kept as it came), so none is left behind by an archive.
+const GALLERY_EXTS: [&str; 5] = ["png", "jpg", "webp", "webm", "json"];
 
 /// Move one generated result (its media file and its recipe) out of
 /// `<data>/<gallery>/` into the archive. `id` is the gallery's file stem.
@@ -481,7 +483,7 @@ pub fn disk_usage(data: &Path) -> u64 {
     dir_size(&data.join(ARCHIVE_DIR))
 }
 
-fn item_dir(data: &Path, kind: Kind, archive_id: &str) -> Result<PathBuf, String> {
+pub(super) fn item_dir(data: &Path, kind: Kind, archive_id: &str) -> Result<PathBuf, String> {
     check_id(archive_id)?;
     let dir = kind_dir(data, kind).join(archive_id);
     match fs::symlink_metadata(&dir) {
@@ -971,6 +973,25 @@ mod tests {
         let err = restore(d.path(), Kind::Studio, &first).unwrap_err();
         assert!(err.contains("already exists"), "{err}");
         assert_eq!(list(d.path()).len(), 1);
+    }
+
+    #[test]
+    fn a_jpeg_or_webp_result_from_a_hosted_provider_moves_with_its_recipe() {
+        let d = data();
+        let dir = d.path().join("images");
+        fs::create_dir_all(&dir).unwrap();
+        for (id, ext) in [("5-a-00", "jpg"), ("5-b-00", "webp")] {
+            fs::write(dir.join(format!("{id}.{ext}")), b"media").unwrap();
+            fs::write(dir.join(format!("{id}.json")), b"{}").unwrap();
+            let name = archive_studio(d.path(), "images", id, "t").unwrap();
+            // Nothing of the result stays behind in the gallery.
+            assert!(!dir.join(format!("{id}.{ext}")).exists(), "{ext} media left behind");
+            assert!(!dir.join(format!("{id}.json")).exists());
+            restore(d.path(), Kind::Studio, &name).unwrap();
+            assert!(dir.join(format!("{id}.{ext}")).exists(), "{ext} not restored");
+            assert!(dir.join(format!("{id}.json")).exists());
+        }
+        assert!(list(d.path()).is_empty());
     }
 
     #[test]

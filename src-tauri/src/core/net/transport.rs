@@ -344,6 +344,30 @@ pub struct SnapshotRef {
     pub invocation: String,
 }
 
+/// Why a chat request has no session.
+#[derive(Debug, PartialEq, Eq)]
+enum Unattributed {
+    /// It never carried an identity: a title, a summary, a description or a
+    /// probe the app makes for itself. Not part of a conversation, so there
+    /// is nothing to file it under, and nothing was lost.
+    Utility,
+    /// The web layer builds the identity as a set (session first), so any
+    /// identity field without the session means the session was lost on the
+    /// way here.
+    Lost,
+}
+
+fn unattributed(req: &ProviderRequest) -> Unattributed {
+    let partial = [&req.run, &req.thread, &req.agent, &req.provider]
+        .iter()
+        .any(|field| field.as_deref().is_some_and(|v| !v.is_empty()));
+    if partial {
+        Unattributed::Lost
+    } else {
+        Unattributed::Utility
+    }
+}
+
 /// Record what is about to be sent, if this is a model dispatch.
 ///
 /// The transport is the last point before the request leaves the process, and
@@ -359,13 +383,18 @@ fn capture_snapshot(req: &ProviderRequest) -> Option<SnapshotRef> {
     }
     let Some(session) = req.session.as_deref() else {
         // A dispatch that arrived without knowing whose conversation it is
-        // cannot be filed against one, and the panel would have nothing to
-        // look up. Say so rather than dropping it silently.
-        log::warn!(
-            "prompt snapshot: a dispatch to {} carried no session; \
-             the x-jan-session header did not survive the fetch chain",
-            req.url
-        );
+        // cannot be filed against one. Say so when that is a loss; a call that
+        // never carried an identity (a title, a summary, a probe) is not.
+        match unattributed(req) {
+            Unattributed::Utility => log::debug!(
+                "prompt snapshot: not recorded, {} is a call outside any conversation",
+                req.url
+            ),
+            Unattributed::Lost => log::warn!(
+                "prompt snapshot: a dispatch to {} carried part of its identity but no session;                  the x-jan-session header did not survive the fetch chain",
+                req.url
+            ),
+        }
         return None;
     };
     let invocation = req.invocation_id.clone().unwrap_or_default();
@@ -927,6 +956,61 @@ mod tests {
         done.unwrap().unwrap();
         let chunks = seen.lock().unwrap();
         assert!(matches!(chunks.last(), Some(StreamChunk::End)));
+    }
+
+    fn chat_request() -> ProviderRequest {
+        ProviderRequest {
+            url: "http://llm-host:1/v1/chat/completions".into(),
+            method: "POST".into(),
+            body: Some(r#"{"messages":[{"role":"user","content":"hi"}]}"#.into()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_call_with_no_identity_at_all_is_a_utility_call_not_a_loss() {
+        assert_eq!(unattributed(&chat_request()), Unattributed::Utility);
+        // An empty header value is the same as an absent one.
+        let mut empty = chat_request();
+        empty.run = Some(String::new());
+        assert_eq!(unattributed(&empty), Unattributed::Utility);
+        assert!(capture_snapshot(&chat_request()).is_none());
+    }
+
+    #[test]
+    fn identity_without_a_session_is_a_real_loss() {
+        for set in [
+            |r: &mut ProviderRequest| r.run = Some("req-1".into()),
+            |r: &mut ProviderRequest| r.thread = Some("t".into()),
+            |r: &mut ProviderRequest| r.agent = Some("a".into()),
+            |r: &mut ProviderRequest| r.provider = Some("groq".into()),
+        ] {
+            let mut r = chat_request();
+            set(&mut r);
+            assert_eq!(unattributed(&r), Unattributed::Lost);
+            // Still not recorded: there is no session to file it under.
+            assert!(capture_snapshot(&r).is_none());
+        }
+    }
+
+    #[test]
+    fn the_web_layers_identity_headers_deserialize_into_the_request() {
+        // The shape providerFetch.ts posts: the x-jan-* headers lifted out of
+        // the headers map into these camelCase fields.
+        let req: ProviderRequest = serde_json::from_value(serde_json::json!({
+            "url": "http://h/v1/chat/completions",
+            "headers": {},
+            "body": "{}",
+            "session": "thread-1",
+            "run": "req-9",
+            "provider": "groq",
+            "invocationId": "inv-1",
+        }))
+        .unwrap();
+        assert_eq!(req.session.as_deref(), Some("thread-1"));
+        assert_eq!(req.run.as_deref(), Some("req-9"));
+        assert_eq!(req.provider.as_deref(), Some("groq"));
+        assert_eq!(req.invocation_id.as_deref(), Some("inv-1"));
     }
 
     #[test]

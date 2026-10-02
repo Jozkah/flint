@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { trackArchiveWork } from '@/lib/archive'
 
 /**
  * The image and video engine, as the page sees it. The shapes mirror
@@ -122,7 +123,10 @@ export const studioApi = {
   }) => invoke<Generated>('diffusion_generate_video', { params }),
   cancel: () => invoke<void>('diffusion_cancel'),
   gallery: (kind: StudioKind) => invoke<GalleryItem[]>('diffusion_gallery', { kind }),
-  remove: (kind: StudioKind, id: string) => invoke<void>('diffusion_delete', { kind, id }),
+  // With the archive on this moves the result into it, so the Archive page
+  // waits for the move instead of listing around it.
+  remove: (kind: StudioKind, id: string) =>
+    trackArchiveWork(invoke<void>('diffusion_delete', { kind, id })),
   families: () => invoke<StudioFamily[]>('diffusion_families'),
   guessFamily: (repo: string, filename: string) =>
     invoke<string | null>('diffusion_guess_family', { repo, filename }),

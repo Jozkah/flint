@@ -15,7 +15,7 @@ import {
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
 import { sessionMailbox } from '@/lib/sessionMailbox'
-import { archiveApi, archiveEnabled } from '@/lib/archive'
+import { archiveApi, archiveEnabled, trackArchiveWork } from '@/lib/archive'
 
 /**
  * Delete a Cowork session, stopping its run first (janhq/jan#8905).
@@ -69,23 +69,29 @@ export function deleteCoworkSession(
  *
  * Returns false when the archive is off, so the caller runs the old delete.
  */
-export async function archiveCoworkSession(
+export function archiveCoworkSession(
   id: string,
   removeWorktree: boolean
 ): Promise<boolean> {
-  if (!(await archiveEnabled())) return false
-  const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
-  if (!session) return false
-  const worktree = useCoworkWorktrees.getState().bySession[id] ?? null
-  await archiveApi.put(
-    'cowork',
-    id,
-    session.title,
-    { session },
-    { worktree, discardOnPurge: removeWorktree && worktree !== null }
+  // Tracked as one operation, so the Archive page waits until the session is
+  // both archived and gone from the live list.
+  return trackArchiveWork(
+    (async () => {
+      if (!(await archiveEnabled())) return false
+      const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
+      if (!session) return false
+      const worktree = useCoworkWorktrees.getState().bySession[id] ?? null
+      await archiveApi.put(
+        'cowork',
+        id,
+        session.title,
+        { session },
+        { worktree, discardOnPurge: removeWorktree && worktree !== null }
+      )
+      deleteCoworkSession(id, { keepRecords: true })
+      return true
+    })()
   )
-  deleteCoworkSession(id, { keepRecords: true })
-  return true
 }
 
 /** Put an archived Cowork session (and its worktree record) back. */

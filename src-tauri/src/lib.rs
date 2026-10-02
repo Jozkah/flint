@@ -308,6 +308,7 @@ macro_rules! invoke_commands_with_extras {
         core::archive::commands::archive_list,
         core::archive::commands::archive_disk_usage,
         core::archive::commands::archive_put,
+        core::archive::commands::archive_preview,
         core::archive::commands::archive_restore,
         core::archive::commands::archive_purge,
         core::archive::commands::archive_empty,

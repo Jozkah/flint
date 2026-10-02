@@ -4,9 +4,11 @@
  * formats. `build` is called when an entry is chosen, not on render, so a long
  * conversation is only turned into a document when someone asks for it.
  */
+import type { ReactNode } from 'react'
 import { Download } from 'lucide-react'
 import {
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -18,10 +20,13 @@ import { EXPORT_CHOICES, runExport, type BuildDoc } from '@/lib/exportAction'
 export function ExportItems({
   build,
   versions = false,
+  extra,
 }: {
   build: BuildDoc
   /** Offer the "all versions" entries; for a chat, which can have them. */
   versions?: boolean
+  /** Further entries after the formats (a Cowork row's importable bundle). */
+  extra?: ReactNode
 }) {
   const { t } = useTranslation()
   return (
@@ -37,6 +42,12 @@ export function ExportItems({
           <span>{t(choice.labelKey)}</span>
         </DropdownMenuItem>
       ))}
+      {extra ? (
+        <>
+          <DropdownMenuSeparator />
+          {extra}
+        </>
+      ) : null}
     </>
   )
 }
@@ -45,9 +56,11 @@ export function ExportItems({
 export function ExportSubmenu({
   build,
   versions = false,
+  extra,
 }: {
   build: BuildDoc
   versions?: boolean
+  extra?: ReactNode
 }) {
   const { t } = useTranslation()
   return (
@@ -57,7 +70,7 @@ export function ExportSubmenu({
         <span>{t('common:export.menu')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
-        <ExportItems build={build} versions={versions} />
+        <ExportItems build={build} versions={versions} extra={extra} />
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   )

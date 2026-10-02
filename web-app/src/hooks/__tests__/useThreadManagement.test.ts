@@ -67,6 +67,7 @@ vi.mock('@/hooks/useThreads', () => ({
 }))
 
 import { useThreadManagement } from '../useThreadManagement'
+import { settleArchiveWork } from '@/lib/archive'
 
 // We need to get the underlying store for direct testing
 // The hook wraps a zustand store with useEffect, so we test both
@@ -173,6 +174,30 @@ describe('useThreadManagement', () => {
     expect(mockDeleteThread).toHaveBeenCalledWith('t2')
     expect(mockDeleteThreadState).toHaveBeenCalledWith('t1')
     expect(mockDeleteThreadState).toHaveBeenCalledWith('t2')
+    expect(mockDeleteProject).toHaveBeenCalledWith('p1')
+  })
+
+  it('is archive work the Archive page waits for, from the first thread to the last step', async () => {
+    let release: () => void = () => {}
+    mockDeleteThread.mockReturnValue(new Promise<void>((r) => (release = r)))
+    mockDeleteProject.mockResolvedValue(undefined)
+    mockGetProjects.mockResolvedValue([])
+    const { result } = renderHook(() => useThreadManagement())
+
+    let done = false
+    const deleting = act(async () => {
+      await result.current.deleteFolderWithThreads('p1')
+    })
+    const settled = settleArchiveWork().then(() => {
+      done = true
+    })
+    await new Promise((r) => setTimeout(r, 10))
+    // The thread move is held, so the page is still waiting.
+    expect(done).toBe(false)
+    release()
+    await deleting
+    await settled
+    expect(done).toBe(true)
     expect(mockDeleteProject).toHaveBeenCalledWith('p1')
   })
 
