@@ -31,7 +31,7 @@ use crate::core::threads::utils::validate_thread_id;
 
 pub const ARCHIVE_DIR: &str = ".archive";
 const META_FILE: &str = "meta.json";
-const PAYLOAD_FILE: &str = "payload.json";
+pub(super) const PAYLOAD_FILE: &str = "payload.json";
 const SETTINGS_FILE: &str = "archive-settings.json";
 /// Collision suffixes tried before giving up.
 const MAX_SUFFIX: u32 = 1000;
@@ -281,7 +281,7 @@ fn dir_size(path: &Path) -> u64 {
         .sum()
 }
 
-fn read_meta(dir: &Path) -> Result<ArchiveMeta, String> {
+pub(super) fn read_meta(dir: &Path) -> Result<ArchiveMeta, String> {
     let bytes = fs::read(dir.join(META_FILE)).map_err(|e| format!("read {META_FILE}: {e}"))?;
     serde_json::from_slice(&bytes).map_err(|e| format!("parse {META_FILE}: {e}"))
 }
@@ -481,7 +481,7 @@ pub fn disk_usage(data: &Path) -> u64 {
     dir_size(&data.join(ARCHIVE_DIR))
 }
 
-fn item_dir(data: &Path, kind: Kind, archive_id: &str) -> Result<PathBuf, String> {
+pub(super) fn item_dir(data: &Path, kind: Kind, archive_id: &str) -> Result<PathBuf, String> {
     check_id(archive_id)?;
     let dir = kind_dir(data, kind).join(archive_id);
     match fs::symlink_metadata(&dir) {
