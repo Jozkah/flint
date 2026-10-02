@@ -34,3 +34,12 @@ export function areaForPath(pathname: string): ShellArea {
   if (within(path, route.settings.index)) return 'settings'
   return 'workspace'
 }
+
+/**
+ * Whether a settings body shows its Sections list: every page under Settings
+ * except model providers (reached from the Models area, and not in the list).
+ */
+export function showsSettingsSections(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  return within(path, route.settings.index) && !within(path, route.settings.model_providers)
+}
