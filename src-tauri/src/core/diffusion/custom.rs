@@ -80,6 +80,23 @@ const QWEN_IMAGE_COMPANIONS: &[FileDef] = &[
     },
 ];
 
+const QWEN_IMAGE_21_COMPANIONS: &[FileDef] = &[
+    FileDef {
+        role: Role::Vae,
+        repo: "Comfy-Org/Qwen-Image-2.1",
+        filename: "vae/qwen_image_2.1_vae_bf16.safetensors",
+        size: 675_509_688,
+        sha256: "bb21f7473051e1ac368515dd3f2e15cd44d7a11748ee8823e1ddca3e4876b7c9",
+    },
+    FileDef {
+        role: Role::Llm,
+        repo: "Qwen/Qwen3-VL-8B-Instruct-GGUF",
+        filename: "Qwen3VL-8B-Instruct-Q4_K_M.gguf",
+        size: 5_027_784_800,
+        sha256: "67d1659bfe71b89d50b45a4ad1a9e5b997e5bb16ce5da66a6a6167abd569e9e2",
+    },
+];
+
 const FLUX1_COMPANIONS: &[FileDef] = &[
     FLUX_AE,
     FileDef {
@@ -117,9 +134,26 @@ pub const FAMILIES: &[Family] = &[
         max_side: 2048,
     },
     Family {
+        id: "qwen-image-2.1",
+        label: "Qwen-Image 2.1",
+        description: "The 2.1 release only. Also downloads an 8B text encoder (5.0 GB) and its own VAE (0.7 GB).",
+        hints: &["qwen-image-2.1", "qwen_image_2.1", "qwen-image-2-1", "qwenimage2.1"],
+        companions: QWEN_IMAGE_21_COMPANIONS,
+        defaults: Defaults {
+            steps: 20,
+            cfg_scale: 6.0,
+            sample_method: Some("euler"),
+            flow_shift: None,
+            width: 1024,
+            height: 1024,
+        },
+        min_side: 256,
+        max_side: 2048,
+    },
+    Family {
         id: "qwen-image",
         label: "Qwen-Image",
-        description: "Strong at text in pictures. Also downloads a 7B text encoder (4.7 GB) and a VAE (0.3 GB).",
+        description: "Qwen-Image and Qwen-Image 2512, not 2.1. Also downloads a 7B text encoder (4.7 GB) and a VAE (0.3 GB).",
         hints: &["qwen-image", "qwen_image", "qwenimage"],
         companions: QWEN_IMAGE_COMPANIONS,
         defaults: Defaults {
@@ -172,13 +206,16 @@ pub struct CustomModel {
 
 struct Registry {
     records: Vec<CustomModel>,
+    /// Records of a family this build does not know (written by a newer one):
+    /// not usable, but kept in the file so they come back when it does.
+    unknown: Vec<CustomModel>,
     defs: Vec<&'static ModelDef>,
 }
 
 static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
 
 fn registry() -> &'static Mutex<Registry> {
-    REGISTRY.get_or_init(|| Mutex::new(Registry { records: Vec::new(), defs: Vec::new() }))
+    REGISTRY.get_or_init(|| Mutex::new(Registry { records: Vec::new(), unknown: Vec::new(), defs: Vec::new() }))
 }
 
 fn leak(text: &str) -> &'static str {
@@ -239,17 +276,26 @@ fn store_path<R: Runtime>(app: &tauri::AppHandle<R>) -> PathBuf {
 
 /// Read the saved records into the registry. A missing or unreadable file is an empty list.
 pub fn load<R: Runtime>(app: &tauri::AppHandle<R>) {
-    let records: Vec<CustomModel> = std::fs::read(store_path(app))
-        .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-        .unwrap_or_default();
+    let path = store_path(app);
+    let records: Vec<CustomModel> = match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+            // A file that cannot be read is set aside, not overwritten by the next add.
+            let _ = std::fs::rename(&path, path.with_extension("json.bad"));
+            Vec::new()
+        }),
+        Err(_) => Vec::new(),
+    };
     if let Ok(mut reg) = registry().lock() {
         reg.records.clear();
+        reg.unknown.clear();
         reg.defs.clear();
         for record in records {
-            if let Some(def) = def_of(&record) {
-                reg.defs.push(Box::leak(Box::new(def)));
-                reg.records.push(record);
+            match def_of(&record) {
+                Some(def) => {
+                    reg.defs.push(Box::leak(Box::new(def)));
+                    reg.records.push(record);
+                }
+                None => reg.unknown.push(record),
             }
         }
     }
@@ -282,17 +328,27 @@ pub fn id_for(repo: &str, filename: &str) -> String {
             .collect::<Vec<_>>()
             .join("-")
     };
-    let id = format!("custom-{}-{}", clean(repo), clean(stem));
-    id.chars().take(96).collect()
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(format!("{repo}\0{filename}").as_bytes());
+    let hash: String = digest.iter().take(4).map(|b| format!("{b:02x}")).collect();
+    let readable: String = format!("custom-{}-{}", clean(repo), clean(stem)).chars().take(80).collect();
+    format!("{}-{hash}", readable.trim_end_matches('-'))
 }
 
 /// The family whose hints appear in a repo or file name, for the picker's default.
 pub fn guess_family(repo: &str, filename: &str) -> Option<&'static str> {
     let haystack = format!("{repo} {filename}").to_ascii_lowercase();
+    // Editing and fill variants of a family need a reference image and other
+    // arguments, so they are not offered as a plain picture model.
+    if ["kontext", "-fill", "_fill", "edit", "redux", "inpaint"].iter().any(|w| haystack.contains(w)) {
+        return None;
+    }
+    // The longest matching hint wins, so "qwen-image-2.1" is not taken for "qwen-image".
     FAMILIES
         .iter()
-        .find(|f| f.hints.iter().any(|h| haystack.contains(h)))
-        .map(|f| f.id)
+        .flat_map(|f| f.hints.iter().filter(|h| haystack.contains(*h)).map(move |h| (h.len(), f.id)))
+        .max_by_key(|(len, _)| *len)
+        .map(|(_, id)| id)
 }
 
 /// A weights file a person may add: GGUF or safetensors, a plain path, no more than ~60 GB.
@@ -317,7 +373,9 @@ pub fn add<R: Runtime>(app: &tauri::AppHandle<R>, record: CustomModel) -> Result
     let mut reg = registry().lock().map_err(|_| "The model list is busy.".to_string())?;
     let mut records: Vec<CustomModel> = reg.records.iter().filter(|r| r.id != record.id).cloned().collect();
     records.push(record);
-    save(app, &records)?;
+    let mut everything = records.clone();
+    everything.extend(reg.unknown.iter().cloned());
+    save(app, &everything)?;
     reg.defs.retain(|d| d.id != leaked.id);
     reg.defs.push(leaked);
     reg.records = records;
@@ -331,7 +389,9 @@ pub fn remove<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) -> Result<(), Str
     if records.len() == reg.records.len() {
         return Err("That is not one of your added models.".to_string());
     }
-    save(app, &records)?;
+    let mut everything = records.clone();
+    everything.extend(reg.unknown.iter().cloned());
+    save(app, &everything)?;
     reg.defs.retain(|d| d.id != id);
     reg.records = records;
     Ok(())
@@ -371,6 +431,7 @@ mod tests {
         let roles = |id: &str| family(id).unwrap().companions.iter().map(|f| f.role).collect::<Vec<_>>();
         assert_eq!(roles("z-image"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("qwen-image"), vec![Role::Vae, Role::Llm]);
+        assert_eq!(roles("qwen-image-2.1"), vec![Role::Vae, Role::Llm]);
         assert_eq!(roles("flux1"), vec![Role::Vae, Role::ClipL, Role::T5xxl]);
     }
 
@@ -395,9 +456,20 @@ mod tests {
 
     #[test]
     fn ids_are_readable_and_safe() {
-        assert_eq!(id_for("QuantStack/Qwen-Image-GGUF", "Qwen_Image-Q4_K_M.gguf"), "custom-quantstack-qwen-image-gguf-qwen-image-q4-k-m");
-        assert_eq!(id_for("a/b", "dir/../x y.gguf"), "custom-a-b-x-y");
+        let id = id_for("QuantStack/Qwen-Image-GGUF", "Qwen_Image-Q4_K_M.gguf");
+        assert!(id.starts_with("custom-quantstack-qwen-image-gguf-qwen-image-q4-k-m-"), "{id}");
+        assert!(id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'));
+        assert!(id_for("a/b", "dir/../x y.gguf").starts_with("custom-a-b-x-y-"));
         assert!(id_for(&"x".repeat(200), "f.gguf").len() <= 96);
+    }
+
+    #[test]
+    fn different_files_never_share_an_id() {
+        // These spell the same once punctuation is dropped.
+        assert_ne!(id_for("a/b-c", "d.gguf"), id_for("a-b/c", "d.gguf"));
+        assert_ne!(id_for("a/b", "x_q4.gguf"), id_for("a/b", "x-q4.gguf"));
+        assert_ne!(id_for(&"x".repeat(200), "one.gguf"), id_for(&"x".repeat(200), "two.gguf"));
+        assert_eq!(id_for("a/b", "c.gguf"), id_for("a/b", "c.gguf"));
     }
 
     #[test]
@@ -406,6 +478,12 @@ mod tests {
         assert_eq!(guess_family("leejet/FLUX.1-dev-gguf", "flux1-dev-q4_k.gguf"), Some("flux1"));
         assert_eq!(guess_family("unsloth/Z-Image-Turbo-GGUF", "z-image-turbo-Q4_K_M.gguf"), Some("z-image"));
         assert_eq!(guess_family("someone/unknown-model", "m.gguf"), None);
+        // The 2.1 release is not the original Qwen-Image, though both contain its name.
+        assert_eq!(guess_family("unsloth/Qwen-Image-2.1-GGUF", "qwen-image-2.1-Q4_K_M.gguf"), Some("qwen-image-2.1"));
+        assert_eq!(guess_family("unsloth/Qwen-Image-2512-GGUF", "qwen-image-2512-Q4_K_M.gguf"), Some("qwen-image"));
+        // Editing variants need other arguments and are not guessed.
+        assert_eq!(guess_family("x/FLUX.1-Kontext-dev-gguf", "flux1-kontext-dev-Q4_K_M.gguf"), None);
+        assert_eq!(guess_family("x/Qwen-Image-Edit-GGUF", "qwen-image-edit-Q4_K_M.gguf"), None);
     }
 
     #[test]

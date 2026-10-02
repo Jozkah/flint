@@ -8,7 +8,7 @@ import { invoke } from '@tauri-apps/api/core'
 export type StudioKind = 'image' | 'video'
 
 export type StudioFile = {
-  role: 'diffusion_model' | 'vae' | 'llm' | 't5xxl'
+  role: 'diffusion_model' | 'vae' | 'llm' | 't5xxl' | 'clip_l'
   repo: string
   filename: string
   size: number

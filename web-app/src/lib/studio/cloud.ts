@@ -170,6 +170,33 @@ export function imagesUrl(baseUrl: string | undefined): string | null {
   return base ? `${base}/images/generations` : null
 }
 
+/** The most a downloaded picture may weigh. */
+export const MAX_PICTURE_BYTES = 64 * 1024 * 1024
+
+/**
+ * Whether a picture URL from a provider is one to fetch: https, and a name that
+ * is not this computer or a private network, so a provider (or a mistyped
+ * endpoint) cannot point the download at something on the local network.
+ */
+export function isPublicHttpsUrl(text: string): boolean {
+  let url: URL
+  try {
+    url = new URL(text)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return false
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return false
+  if (host.includes(':')) return !/^(::1?|f[cd]|fe[89ab])/.test(host)
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host)
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])]
+    return !(a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127))
+  }
+  return host.includes('.')
+}
+
 export type CloudPicture = { b64?: string; url?: string }
 
 /** The pictures in an answer, and the provider's own words when it refused. */
@@ -187,7 +214,7 @@ export function readCloudAnswer(json: unknown): { pictures: CloudPicture[]; erro
       const item = (entry ?? {}) as { b64_json?: unknown; url?: unknown }
       return {
         b64: typeof item.b64_json === 'string' && item.b64_json ? item.b64_json : undefined,
-        url: typeof item.url === 'string' && /^https:\/\//.test(item.url) ? item.url : undefined,
+        url: typeof item.url === 'string' && isPublicHttpsUrl(item.url) ? item.url : undefined,
       }
     })
     .filter((p) => p.b64 || p.url)
@@ -272,7 +299,11 @@ export async function generateCloudImages(
     // A URL answer: fetched once, so the gallery does not depend on the link.
     const download = await fetchImpl(picture.url as string, { signal, headers: { 'User-Agent': 'Flint' } })
     if (!download.ok) throw new Error(`${target.provider.label}'s picture could not be downloaded (${download.status}).`)
-    images.push(bytesToBase64(new Uint8Array(await download.arrayBuffer())))
+    const declared = Number(download.headers?.get?.('content-length') ?? 0)
+    if (declared > MAX_PICTURE_BYTES) throw new Error(`${target.provider.label}'s picture is too large to keep.`)
+    const bytes = new Uint8Array(await download.arrayBuffer())
+    if (bytes.length > MAX_PICTURE_BYTES) throw new Error(`${target.provider.label}'s picture is too large to keep.`)
+    images.push(bytesToBase64(bytes))
   }
 
   const { width, height } = fitCloudSize(target.provider, params.width, params.height)

@@ -190,6 +190,11 @@ pub struct ExternalImages {
 /// Most pictures one request keeps, and the largest each may be once decoded.
 const MAX_EXTERNAL_IMAGES: usize = 10;
 const MAX_EXTERNAL_IMAGE_BYTES: usize = 40 * 1024 * 1024;
+/// Base64 is a third longer than what it encodes; longer than this is refused before it is decoded.
+const MAX_EXTERNAL_IMAGE_TEXT: usize = MAX_EXTERNAL_IMAGE_BYTES / 3 * 4 + 8;
+const MAX_EXTERNAL_PROMPT_CHARS: usize = 20_000;
+const MAX_EXTERNAL_NAME_CHARS: usize = 200;
+static EXTERNAL_JOBS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 #[tauri::command]
 pub async fn diffusion_save_external_images<R: Runtime>(
@@ -200,8 +205,21 @@ pub async fn diffusion_save_external_images<R: Runtime>(
     if params.images.is_empty() || params.images.len() > MAX_EXTERNAL_IMAGES {
         return Err(format!("Expected between 1 and {MAX_EXTERNAL_IMAGES} pictures."));
     }
+    if params.prompt.chars().count() > MAX_EXTERNAL_PROMPT_CHARS
+        || params.negative_prompt.chars().count() > MAX_EXTERNAL_PROMPT_CHARS
+        || params.model_id.chars().count() > MAX_EXTERNAL_NAME_CHARS
+        || params.model_name.chars().count() > MAX_EXTERNAL_NAME_CHARS
+        || !(1..=65_535).contains(&params.width)
+        || !(1..=65_535).contains(&params.height)
+    {
+        return Err("That request is outside what Studio keeps.".to_string());
+    }
+    if params.images.iter().any(|text| text.len() > MAX_EXTERNAL_IMAGE_TEXT) {
+        return Err("The provider's picture is too large to keep.".to_string());
+    }
     let created_at_ms = gallery::now_ms();
-    let job_id = format!("cloud_{created_at_ms}");
+    let counter = EXTERNAL_JOBS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let job_id = format!("cloud_{created_at_ms}_{counter}");
     let mut ids = Vec::new();
     let mut paths = Vec::new();
     for (index, encoded) in params.images.iter().enumerate() {
@@ -327,8 +345,13 @@ pub async fn diffusion_remove_custom_model<R: Runtime>(
     app: tauri::AppHandle<R>,
     model_id: String,
 ) -> Result<(), String> {
-    if runtime::resident_info().await.is_some_and(|r| r.model_id == model_id) {
-        runtime::unload(&app).await;
+    if let Some(resident) = runtime::resident_info().await {
+        if resident.model_id == model_id {
+            if resident.busy {
+                return Err("That model is making a picture right now. Remove it when it is done.".to_string());
+            }
+            runtime::unload(&app).await;
+        }
     }
     custom::remove(&app, &model_id)
 }

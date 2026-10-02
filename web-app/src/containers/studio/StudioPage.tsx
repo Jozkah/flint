@@ -133,19 +133,20 @@ function useCloudTargets(kind: StudioKind): CloudTarget[] {
   }, [providers, kind])
 }
 
+/** The smallest and largest side a custom size may have: the hosted provider's, or the local model's. */
+function sideLimits(model: StudioModel, hosted?: CloudTarget): { min: number; max: number } {
+  return hosted ? { min: 16, max: hosted.provider.limits.maxEdge } : { min: model.min_side, max: model.max_side }
+}
+
 /** The size the form asks for: a standard shape, or the two boxes snapped into range. */
 function chosenSize(
   kind: StudioKind,
   model: StudioModel,
-  form: Form
+  form: Form,
+  hosted?: CloudTarget
 ): { width: number; height: number } {
   if (form.sizeIndex === CUSTOM) {
-    return customSize(
-      form.customWidth,
-      form.customHeight,
-      { min: model.min_side, max: model.max_side },
-      1024
-    )
+    return customSize(form.customWidth, form.customHeight, sideLimits(model, hosted), 1024)
   }
   const sizes = kind === 'video' ? VIDEO_SIZES : IMAGE_SIZES
   return sizes[Math.min(Math.max(form.sizeIndex, 0), sizes.length - 1)]
@@ -399,13 +400,13 @@ function Field({
 /** Width and height boxes. A box is snapped into range when it is left, so what is shown is what runs. */
 function CustomSize({
   kind,
-  model,
+  limits,
   form,
   setForm,
   disabled,
 }: {
   kind: StudioKind
-  model: StudioModel
+  limits: { min: number; max: number }
   form: Form
   setForm: (patch: Partial<Form>) => void
   disabled: boolean
@@ -413,7 +414,7 @@ function CustomSize({
   const settle = (key: 'customWidth' | 'customHeight') => {
     const typed = parseSide(form[key])
     setForm({
-      [key]: String(snapSide(typed ?? 1024, model.min_side, model.max_side)),
+      [key]: String(snapSide(typed ?? 1024, limits.min, limits.max)),
     })
   }
   const box = (key: 'customWidth' | 'customHeight', label: string) => (
@@ -455,7 +456,7 @@ function CustomSize({
         </button>
       </div>
       <p className="text-xs leading-snug text-muted-foreground">
-        Multiples of 16, from {model.min_side} to {model.max_side} pixels.
+        Multiples of 16, from {limits.min} to {limits.max} pixels.
         {kind === 'video'
           ? ' Big clips need a lot of memory.'
           : ' Big pictures need more memory and time.'}
@@ -574,7 +575,7 @@ function Settings({
           {form.sizeIndex === CUSTOM && (
             <CustomSize
               kind={kind}
-              model={model}
+              limits={sideLimits(model, hosted)}
               form={form}
               setForm={setForm}
               disabled={running}
@@ -705,7 +706,7 @@ function Stage({
   const generate = useStudio((s) => s.generate)
   const cancel = useStudio((s) => s.cancel)
   const { hardware } = useFitContext()
-  const size = chosenSize(kind, model, form)
+  const size = chosenSize(kind, model, form, hosted)
   const warning =
     kind === 'video' ? videoMemoryWarning(hardware.total_memory) : null
   const ready = hosted ? true : status?.resident?.model_id === model.id
@@ -1184,6 +1185,14 @@ export function StudioPage() {
   const [viewing, setViewing] = useState<number | null>(null)
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const targets = useCloudTargets(kind)
+
+  // A hosted model whose provider lost its key must not come back selected, and
+  // billed, when the key is added again.
+  useEffect(() => {
+    if (form.cloud && !targets.some((t) => t.key === form.cloud)) {
+      setFormState((f) => ({ ...f, cloud: '' }))
+    }
+  }, [form.cloud, targets])
 
   const setForm = (patch: Partial<Form>) =>
     setFormState((f) => ({ ...f, ...patch }))

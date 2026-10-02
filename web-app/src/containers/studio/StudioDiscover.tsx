@@ -111,20 +111,20 @@ export function StudioDiscover({
     const opening = open !== repo
     setOpen(opening ? repo : null)
     if (!opening) return
-    if (!files[repo]?.length) {
+    let known = files[repo] ?? []
+    if (!known.length) {
       try {
-        const listed = await getHuggingFaceFiles(repo, token)
-        setFiles((current) => ({ ...current, [repo]: listed }))
+        known = await getHuggingFaceFiles(repo, token)
+        setFiles((current) => ({ ...current, [repo]: known }))
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err))
       }
     }
-    const first = weightsFiles(files[repo] ?? [])[0]
-    if (first && !family[repo]) {
-      const guess = await studioApi
-        .guessFamily(repo, first.name)
-        .catch(() => null)
-      if (guess) setFamily((current) => ({ ...current, [repo]: guess }))
+    const first = weightsFiles(known)[0]
+    if (first) {
+      const guess = await studioApi.guessFamily(repo, first.name).catch(() => null)
+      // A choice made while the guess was on its way wins over it.
+      if (guess) setFamily((current) => (current[repo] ? current : { ...current, [repo]: guess }))
     }
   }
 
