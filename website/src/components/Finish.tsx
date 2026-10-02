@@ -43,6 +43,9 @@ export function Download() {
               )}{' '}
               · <ExternalLink href={LINKS.build} className="link">Build from source</ExternalLink> · <a href={pageHref('install')} className="link">Install guide</a>
             </p>
+            <p className="dim" style={{ fontSize: 14, marginTop: 10 }}>
+              This is a nightly build. It is rebuilt from the latest code each time Flint is updated, so the files behind this link change without a new version number, and a new build can change or break things. Installed copies do not update themselves: download again to get the newest build.
+            </p>
           </Reveal>
           <Reveal delay={100}>
             <div className="dl-card">
