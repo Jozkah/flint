@@ -446,6 +446,19 @@ describe('ChatInput', () => {
     expect(setPromptMock).toHaveBeenCalledWith('')
   })
 
+  it('does not leave a restored draft behind for the next composer', async () => {
+    promptState = 'keep me please'
+    const onSubmit = vi.fn(
+      (_t: string, _f?: unknown, onRefused?: () => void) => onRefused?.()
+    )
+    const first = renderInput({ onSubmit })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() => expect(promptState).toBe('keep me please'))
+    first.unmount()
+    // A composer mounted after (New Chat) starts empty.
+    expect(promptState).toBe('')
+  })
+
   it('gives the draft back when the send is refused before it started', async () => {
     promptState = 'keep me'
     const onSubmit = vi.fn(

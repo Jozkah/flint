@@ -415,6 +415,10 @@ const ChatInput = memo(function ChatInput({
   // The draft as of the last render, for a refused send's restore (below).
   const latestPromptRef = useRef(prompt)
   latestPromptRef.current = prompt
+  // Text put back after a refused send. The draft store may be shared with
+  // other composers (the unscoped one is), so it is taken out again when this
+  // composer goes away or moves to another session, if still untouched.
+  const restoredDraftRef = useRef<string | null>(null)
   const setMainPrompt = usePrompt((state) => state.setPrompt)
   const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
   const setPrompt = useCallback(
@@ -423,6 +427,17 @@ const ChatInput = memo(function ChatInput({
     [draftScope, setScopedPrompt, setMainPrompt]
   )
   const addToHistory = usePrompt((state) => state.addToHistory)
+  useEffect(
+    () => () => {
+      const restored = restoredDraftRef.current
+      restoredDraftRef.current = null
+      if (restored !== null && latestPromptRef.current === restored) {
+        setPrompt('')
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopeKey, draftScope]
+  )
   const navigateMainHistory = usePrompt((state) => state.navigateHistory)
   const navigateScopedHistory = usePrompt(
     (state) => state.navigateScopedHistory
@@ -1183,7 +1198,10 @@ const ChatInput = memo(function ChatInput({
           // Not over something typed since. The render that follows the clear
           // may not have happened yet, so the sent text counts as empty too.
           const now = latestPromptRef.current
-          if (!now || now === typed) setPrompt(typed)
+          if (!now || now === typed) {
+            restoredDraftRef.current = typed
+            setPrompt(typed)
+          }
           if (sentAttachments.length > 0) {
             setAttachmentsForThread(attachmentsKey, (prev) =>
               prev.length > 0 ? prev : sentAttachments
