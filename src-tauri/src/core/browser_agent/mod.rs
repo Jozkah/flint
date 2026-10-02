@@ -20,6 +20,7 @@ pub mod fence;
 pub mod policy;
 pub mod script;
 pub mod shot;
+pub mod step;
 pub mod store;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -65,6 +66,21 @@ pub(crate) fn load_seq() -> u64 {
 
 pub(crate) fn loading() -> bool {
     LOADING.load(Ordering::SeqCst)
+}
+
+/// A load that never reported its end (the window was hidden) must not leave the
+/// pane looking busy.
+pub(crate) fn reset_loading() {
+    LOADING.store(false, Ordering::SeqCst);
+}
+
+/// Release everything a tool call that timed out may have left behind: the
+/// lease (so the pane is the user's again), the "loading" flag, and the
+/// open-in-flight marker. A later call starts clean.
+pub(crate) fn release_pane_state() {
+    STORE.clear_lease();
+    reset_loading();
+    set_open_in_flight(false);
 }
 
 /// A navigation the policy stopped, for the tool call that was waiting on it.
@@ -247,6 +263,30 @@ mod tests {
 
         assert!(!navigation_permitted(PANE_LABEL, &u("https://elsewhere.test/")));
         assert_eq!(last_block().unwrap().needs_approval.as_deref(), Some("elsewhere.test"));
+        STORE.clear_lease();
+    }
+
+    #[test]
+    fn a_timed_out_call_leaves_no_lease_loading_or_in_flight_state() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        STORE.set_lease(&policy::NetworkPolicy::open(), false, true);
+        STORE.add_visit("approved-site.test");
+        on_page_load(PANE_LABEL, true); // a load started and never finished
+        set_open_in_flight(true);
+        assert!(loading());
+        assert!(STORE.lease().is_some());
+
+        release_pane_state();
+
+        assert!(!loading(), "no leaked loading flag");
+        assert!(!OPEN_IN_FLIGHT.load(Ordering::SeqCst), "no leaked in-flight marker");
+        assert!(STORE.lease().is_none(), "the pane is the user's again");
+        // The pane is not restricted any more...
+        assert_eq!(STORE.nav_check(&u("https://anything.test/")), store::NavCheck::NoLease);
+        assert!(navigation_permitted(PANE_LABEL, &u("https://anything.test/")));
+        // ...and a later call (the window restored) takes the lease again.
+        STORE.set_lease(&policy::NetworkPolicy::open(), false, true);
+        assert!(STORE.lease().is_some());
         STORE.clear_lease();
     }
 
