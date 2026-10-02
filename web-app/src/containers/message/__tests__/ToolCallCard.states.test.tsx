@@ -11,7 +11,9 @@ vi.mock('@/i18n/react-i18next-compat', () => ({
 
 const approvalState: { pending: Record<string, unknown> } = { pending: {} }
 const resolveApproval = vi.fn()
-vi.mock('@/hooks/useToolApprovalRequests', () => ({
+vi.mock('@/hooks/useToolApprovalRequests', async (importOriginal) => ({
+  // Pure helpers (canTemporarilyAllowGit) stay real; only the store is faked.
+  ...(await importOriginal<typeof import('@/hooks/useToolApprovalRequests')>()),
   wasCommandAllowedOnce: () => false,
   useToolApprovalRequests: (selector: (s: unknown) => unknown) =>
     selector({ ...approvalState, allowedOnceCommands: {}, resolveApproval }),

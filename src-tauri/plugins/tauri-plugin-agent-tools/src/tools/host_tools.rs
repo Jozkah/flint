@@ -1288,7 +1288,7 @@ mod tests {
         );
         assert!(blocked.contains(r"C:\Program Files\nodejs\node.exe"));
         assert!(blocked.contains("ALL APPLICATION PACKAGES"));
-        assert!(blocked.contains("different application"));
+        assert!(blocked.contains("bundled with another application"));
         let in_profile = unavailable_hint(
             "cargo",
             Path::new(r"C:\Users\me\.cargo\bin\cargo.exe"),

@@ -99,11 +99,19 @@ beforeEach(() => {
 })
 
 const rows = () => screen.queryAllByTestId('timeline-row')
+// The panel opens on tools alone. Replay is about the whole run, so these tests
+// switch every category on first.
+const showEverything = () => {
+  for (const button of screen.getAllByTestId(/^timeline-filter-/)) {
+    if (button.getAttribute('aria-pressed') === 'false') fireEvent.click(button)
+  }
+}
 const position = () => screen.getByTestId('timeline-replay-position').textContent
 
 describe('CoworkTimelinePanel replay', () => {
   it('steps a finished run forward and back, showing the state at each step', async () => {
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showEverything()
     await waitFor(() => expect(rows()).toHaveLength(5))
     fireEvent.click(screen.getByTestId('timeline-replay'))
     // The latest finished run is chosen first.
@@ -150,6 +158,7 @@ describe('CoworkTimelinePanel replay', () => {
       error: { kind: 'invalid_input', message: 'run r1 has no recorded end, so it cannot be stepped through' },
     })
     render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showEverything()
     await waitFor(() => expect(rows()).toHaveLength(5))
     fireEvent.click(screen.getByTestId('timeline-replay'))
     const alert = await screen.findByTestId('timeline-replay-error')
@@ -174,6 +183,7 @@ describe('CoworkTimelinePanel replay', () => {
     const gate = deferred<void>()
     h.gate = gate
     const { rerender } = render(<CoworkTimelinePanel sessionId="s1" running={false} onClose={() => {}} />)
+    showEverything()
     await waitFor(() => expect(rows()).toHaveLength(5))
     fireEvent.click(screen.getByTestId('timeline-replay'))
     expect(screen.getByTestId('timeline-replay-loading')).toBeTruthy()
