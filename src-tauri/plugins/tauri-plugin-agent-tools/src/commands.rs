@@ -1768,6 +1768,18 @@ pub async fn mailbox_session_remove(
     Mailbox::open(Path::new(&data_folder)).remove(&session_id)
 }
 
+/// Clear a session's deleted mark and register it: the restore path of an
+/// archived Cowork session (also recovers ones archived by older builds).
+#[tauri::command]
+pub async fn mailbox_session_revive(
+    data_folder: String,
+    session_id: String,
+    display_name: String,
+    folder: Option<String>,
+) -> Result<SessionRecord, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).revive(&session_id, &display_name, folder.as_deref())
+}
+
 /// Queued envelopes become `delivered` and are returned oldest first.
 #[tauri::command]
 pub async fn mailbox_take_for_delivery(

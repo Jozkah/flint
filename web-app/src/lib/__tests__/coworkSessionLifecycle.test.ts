@@ -64,3 +64,44 @@ describe('deleting a Cowork session', () => {
     expect(useCoworkRun.getState().outcomes.A).toBeUndefined()
   })
 })
+
+describe('archiving vs deleting, as the mailbox sees it', () => {
+  it('archive never tombstones; delete does; restore re-registers', async () => {
+    const { vi } = await import('vitest')
+    const { createPresenceSync, __presenceTesting } = await import('@/lib/mailboxPresence')
+    const { restoreCoworkSession } = await import('@/lib/coworkSessionLifecycle')
+    const { sessionMailbox } = await import('@/lib/sessionMailbox')
+    const revive = vi
+      .spyOn(sessionMailbox, 'revive')
+      .mockResolvedValue({} as never)
+    vi.useFakeTimers()
+    __presenceTesting.reset()
+    const sessions = [session('A') as never as { id: string }]
+    useCoworkSessions.setState({ sessions: sessions as never, currentId: 'A' })
+    const mb = {
+      register: vi.fn(async () => undefined),
+      setStatus: vi.fn(async () => undefined),
+      heartbeat: vi.fn(async () => undefined),
+      remove: vi.fn(async () => undefined),
+    }
+    const stop = createPresenceSync(mb as never, { debounceMs: 10 }).start()
+    vi.advanceTimersByTime(20)
+    mb.register.mockClear()
+
+    deleteCoworkSession('A', { keepRecords: true })
+    expect(mb.remove).not.toHaveBeenCalled()
+
+    restoreCoworkSession({ session: sessions[0] }, null)
+    // Restore clears any backend tombstone (older builds left one).
+    expect(revive).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: 'A' })
+    )
+    vi.advanceTimersByTime(20)
+    expect(mb.register).toHaveBeenCalledTimes(1)
+
+    deleteCoworkSession('A')
+    expect(mb.remove).toHaveBeenCalledWith('A')
+    stop()
+    vi.useRealTimers()
+  })
+})

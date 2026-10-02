@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { useState } from 'react'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { VersionSwitcher } from '../VersionSwitcher'
@@ -83,5 +84,31 @@ describe('VersionSwitcher', () => {
     rerender(<VersionSwitcher messageId="m" index={1} count={2} onSwitch={vi.fn()} />)
     expect(prev).toHaveFocus()
     expect(prev).not.toBeDisabled()
+  })
+
+  it('keeps focus across a real version change, where the switcher remounts', () => {
+    // The list keys messages by id, so a new version is a new instance.
+    function Harness() {
+      const [v, setV] = useState(2)
+      return (
+        <VersionSwitcher
+          key={`msg-v${v}`}
+          messageId={`msg-v${v}`}
+          index={v}
+          count={2}
+          onSwitch={(_id, dir) => setV((x) => x + dir)}
+        />
+      )
+    }
+    render(<Harness />)
+    screen.getByRole('button', { name: /^Previous version/ }).focus()
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowLeft' })
+    expect(screen.getByText('1/2')).toBeInTheDocument()
+    const prev = screen.getByRole('button', { name: /^Previous version/ })
+    expect(prev).toHaveFocus()
+    expect(prev).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' })
+    expect(screen.getByText('2/2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Previous version/ })).toHaveFocus()
   })
 })

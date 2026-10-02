@@ -614,6 +614,36 @@ impl Mailbox {
         Ok(self.view(&record))
     }
 
+    /// Bring back a session that was marked deleted -- a restore from the
+    /// archive, or an archive made before archiving stopped tombstoning --
+    /// and register it. Clearing the flag is the only way back from a
+    /// deletion, so it is called only by that restore path; a session that
+    /// was never deleted just registers.
+    pub fn revive(
+        &self,
+        session_id: &str,
+        display_name: &str,
+        folder: Option<&str>,
+    ) -> Result<SessionRecord> {
+        check_session_id(session_id)?;
+        {
+            let _guard = lock();
+            let mut registry = self.read_registry()?;
+            if let Some(record) = registry.get_mut(session_id) {
+                if record.deleted {
+                    record.deleted = false;
+                    record.status = SessionStatus::Idle;
+                    record.run_id = None;
+                    record.heartbeat_at = None;
+                    record.epoch = None;
+                    record.updated_at = self.now();
+                    self.write_registry(&registry)?;
+                }
+            }
+        }
+        self.register(session_id, display_name, folder)
+    }
+
     fn with_live_record(
         &self,
         session_id: &str,

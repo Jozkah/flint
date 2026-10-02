@@ -14,6 +14,7 @@ import {
 } from '@/lib/mailboxPresence'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 import { useCoworkWorktrees } from '@/hooks/useCoworkWorktrees'
+import { sessionMailbox } from '@/lib/sessionMailbox'
 import { archiveApi, archiveEnabled } from '@/lib/archive'
 
 /**
@@ -36,6 +37,10 @@ export function deleteCoworkSession(
   // A temporary Git grant is scoped to the conversation and dies with it.
   useToolApprovalRequests.getState().forgetTemporaryGit(id)
   useMessageQueue.getState().clearQueue(id)
+  // An archive is not a delete: a tombstone would block registering the
+  // session again after a restore. Marked BEFORE the session leaves the list,
+  // because the presence subscription reacts to that removal synchronously.
+  if (opts?.keepRecords) notifySessionArchived(id)
   useCoworkSessions.getState().deleteSession(id, opts)
   // The activity record is keyed by session; leaving it behind would keep a
   // deleted session's workflows in the store forever.
@@ -50,10 +55,7 @@ export function deleteCoworkSession(
   // The origin ledger describes a run whose transcript is about to be gone.
   useCoworkOrigins.getState().forget(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.
-  // An archive is not a delete: a tombstone would block registering the
-  // session again after a restore.
-  if (opts?.keepRecords) notifySessionArchived(id)
-  else notifySessionRemoved(id)
+  if (!opts?.keepRecords) notifySessionRemoved(id)
   useSessionMessaging.getState().forget(id)
 }
 
@@ -104,5 +106,14 @@ export function restoreCoworkSession(payload: unknown, extra: unknown): boolean 
     )
   }
   notifySessionRestored(session.id)
+  // Clears a backend tombstone (from a build that tombstoned on archive) so the
+  // presence sync's register is accepted. Best effort, like all presence calls.
+  void Promise.resolve(
+    sessionMailbox.revive({
+      sessionId: session.id,
+      displayName: session.title,
+      folder: session.folder,
+    })
+  ).catch((e) => console.warn('[mailbox] revive failed:', e))
   return useCoworkSessions.getState().restoreSession(session)
 }

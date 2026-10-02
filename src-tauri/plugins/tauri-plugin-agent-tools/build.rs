@@ -85,6 +85,7 @@ const COMMANDS: &[&str] = &[
     "mailbox_session_status",
     "mailbox_session_heartbeat",
     "mailbox_session_remove",
+    "mailbox_session_revive",
     "mailbox_take_for_delivery",
     "mailbox_pending",
     "mailbox_mark_read",

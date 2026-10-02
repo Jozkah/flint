@@ -244,6 +244,21 @@ export const sessionMailbox = {
   remove: (sessionId: string) =>
     call<null>('mailbox_session_remove', { sessionId }),
 
+  /**
+   * Clear a deleted mark and register: the restore of an archived session,
+   * which also recovers one archived by a build that tombstoned it.
+   */
+  revive: (input: {
+    sessionId: string
+    displayName: string
+    folder?: string | null
+  }) =>
+    call<SessionRecord>('mailbox_session_revive', {
+      sessionId: input.sessionId,
+      displayName: input.displayName,
+      folder: input.folder ?? null,
+    }),
+
   takeForDelivery: (sessionId: string) =>
     call<MailEnvelope[]>('mailbox_take_for_delivery', { sessionId }),
 
