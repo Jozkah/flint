@@ -331,6 +331,15 @@ export function reconcileConstraintParams(body: Record<string, unknown>): void {
   }
 }
 
+/** Just the dispatch identity of `parameters`, none of its sampling values. */
+function dispatchOnly(
+  parameters: Record<string, unknown>
+): Record<string, unknown> {
+  return DISPATCH_PARAM_KEY in parameters
+    ? { [DISPATCH_PARAM_KEY]: parameters[DISPATCH_PARAM_KEY] }
+    : {}
+}
+
 function filterParameters(
   parameters: Record<string, unknown>,
   keepLlamacppOnly: boolean
@@ -1109,7 +1118,14 @@ export class ModelFactory {
       case 'perplexity':
       case 'moonshot':
       case 'minimax':
-        return this.createOpenAICompatibleModel(modelId, provider)
+        // These take no sampling parameters from the caller, but the
+        // conversation they belong to must still reach the transport, or the
+        // request is sent unattributed and its prompt snapshot is dropped.
+        return this.createOpenAICompatibleModel(
+          modelId,
+          provider,
+          dispatchOnly(parameters)
+        )
 
       case 'mistral':
         return this.createMistralModel(modelId, provider, parameters)
