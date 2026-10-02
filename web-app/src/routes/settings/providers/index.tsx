@@ -32,7 +32,10 @@ import cloneDeep from 'lodash/cloneDeep'
 import { toast } from 'sonner'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useAppState } from '@/hooks/useAppState'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageHeader,
+  SettingsWithSections,
+} from '@/containers/SettingsPageHeader'
 import {
   CapabilityChips,
   EnginePage,
@@ -308,6 +311,7 @@ function ModelProviders() {
   return (
     <div className="flex h-full w-full flex-col">
       <SettingsPageHeader title={t('engine:models.title')} />
+      <SettingsWithSections>
       <EnginePage testId="models-page">
         <PageHead
           title={t('engine:models.title')}
@@ -817,6 +821,7 @@ function ModelProviders() {
           onConfirm={confirmRemoval}
         />
       </EnginePage>
+      </SettingsWithSections>
     </div>
   )
 }

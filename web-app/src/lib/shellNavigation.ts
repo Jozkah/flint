@@ -36,10 +36,10 @@ export function areaForPath(pathname: string): ShellArea {
 }
 
 /**
- * Whether a settings body shows its Sections list: every page under Settings
- * except model providers (reached from the Models area, and not in the list).
+ * Whether a settings body shows its Sections list: every page under Settings,
+ * model providers included (the list links to it, so it must stay).
  */
 export function showsSettingsSections(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/'
-  return within(path, route.settings.index) && !within(path, route.settings.model_providers)
+  return within(path, route.settings.index)
 }

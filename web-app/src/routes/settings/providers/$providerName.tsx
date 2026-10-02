@@ -64,7 +64,10 @@ import {
   modelStatusLabelKey,
   modelStatusTone,
 } from '@/lib/modelStatus'
-import { SettingsPageHeader } from '@/containers/SettingsPageHeader'
+import {
+  SettingsPageHeader,
+  SettingsWithSections,
+} from '@/containers/SettingsPageHeader'
 import { Chip } from '@/components/ui/chip'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -1583,6 +1586,7 @@ function ProviderDetail() {
   return (
     <div className="flex h-full w-full flex-col">
       <SettingsPageHeader title={title} />
+      <SettingsWithSections>
       <EnginePage testId="provider-page">
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-[14px] bg-muted bg-[repeating-linear-gradient(-62deg,transparent_0_10px,rgba(127,127,127,.06)_10px_10.8px)] p-4 shadow-[inset_0_0_0_0.8px_var(--border)] motion-safe:animate-rise-in">
           <div className="flex min-w-0 items-center gap-3.5">
@@ -1751,6 +1755,7 @@ function ProviderDetail() {
           </div>
         )}
       </EnginePage>
+      </SettingsWithSections>
     </div>
   )
 }

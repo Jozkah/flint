@@ -44,8 +44,8 @@ export function SettingsPageHeader({
  * Settings pages carry their section list beside the content, and keep it for
  * every page the list itself links to. That includes MCP Servers, which the
  * sidebar also reaches as the Tools area: it used to drop the list, so a click
- * on it in the list made the list vanish. Model providers, which the list does
- * not link to, are reached from the sidebar and show none.
+ * on it in the list made the list vanish. Model providers are in the list
+ * too, so they keep it as well.
  */
 function useOnSettingsPage() {
   const { pathname } = useLocation()

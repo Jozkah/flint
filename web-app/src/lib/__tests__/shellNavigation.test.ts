@@ -39,13 +39,13 @@ describe('areaForPath', () => {
 
 describe('showsSettingsSections', () => {
   it('keeps the Sections list on every page it links to, MCP servers included', () => {
-    for (const path of ['/settings/general', '/settings/mcp-servers', '/settings/extensions', '/settings/jev', '/settings/mcp-servers/']) {
+    for (const path of ['/settings/general', '/settings/mcp-servers', '/settings/extensions', '/settings/jev', '/settings/mcp-servers/', '/settings/providers', '/settings/providers/openai']) {
       expect(showsSettingsSections(path)).toBe(true)
     }
   })
 
-  it('shows none on model providers, the Models area or outside settings', () => {
-    for (const path of ['/settings/providers', '/settings/providers/openai', '/hub', '/', '/studio']) {
+  it('shows none in the Models area or outside settings', () => {
+    for (const path of ['/hub', '/', '/studio']) {
       expect(showsSettingsSections(path)).toBe(false)
     }
   })
