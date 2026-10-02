@@ -365,6 +365,38 @@ fn deleted_sessions_are_refused_and_hidden() {
 }
 
 #[test]
+fn revive_clears_a_tombstone_so_a_restored_session_registers_again() {
+    let fx = Fixture::new("revive");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    mb.remove("b").unwrap();
+    assert_eq!(
+        code_of(mb.register("b", "Beta", fx.folder())),
+        code::SESSION_DELETED
+    );
+
+    let record = mb.revive("b", "Beta", fx.folder()).unwrap();
+    assert!(!record.deleted);
+    assert_eq!(record.status, SessionStatus::Idle);
+    // Persisted, and a later plain register works.
+    assert!(!Mailbox::open(&fx.data).session("b").unwrap().deleted);
+    mb.register("b", "Beta 2", fx.folder()).unwrap();
+    // It can be messaged again.
+    mb.send("a", "b", "hi", None, Origin::Agent).unwrap();
+
+    // A never-deleted or unknown session just registers.
+    mb.revive("a", "Alpha", fx.folder()).unwrap();
+    mb.revive("fresh", "Fresh", None).unwrap();
+    assert!(!mb.session("fresh").unwrap().deleted);
+    // A real delete afterwards still refuses.
+    mb.remove("b").unwrap();
+    assert_eq!(
+        code_of(mb.register("b", "Beta", fx.folder())),
+        code::SESSION_DELETED
+    );
+}
+
+#[test]
 fn self_messages_and_bad_text_are_refused() {
     let fx = Fixture::new("self");
     let mb = Mailbox::open(&fx.data);

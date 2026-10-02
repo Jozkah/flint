@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useTheme } from '@/hooks/useTheme'
+import { tooHeavyToHighlight } from '@/lib/highlightLimits'
 import {
   highlightKey,
   readHighlight,
@@ -139,7 +140,15 @@ export function CodeViewer({
   const [selection, setSelection] = useState<CodeRef | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
+  // Tokenising a huge or minified file blocks the renderer for seconds and
+  // balloons the DOM; past these bounds the plain source is shown instead.
+  const plainOnly = useMemo(() => tooHeavyToHighlight(content), [content])
+
   useEffect(() => {
+    if (plainOnly) {
+      setHtml(null)
+      return
+    }
     let alive = true
     const theme = isDark ? 'one-dark-pro' : 'one-light'
     const markers = JSON.stringify(changedLines ?? {})
@@ -169,7 +178,7 @@ export function CodeViewer({
     return () => {
       alive = false
     }
-  }, [content, language.lang, isDark, relPath, changedLines])
+  }, [content, language.lang, isDark, relPath, changedLines, plainOnly])
 
   // Scroll to a requested line once the highlighted lines exist, and mark it
   // briefly so the eye lands on it.

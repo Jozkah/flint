@@ -22,6 +22,8 @@ import { cn } from '@/lib/utils'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 
 import HeaderPage from '@/containers/HeaderPage'
+import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
+import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
@@ -31,6 +33,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { MessageItem } from '@/containers/MessageItem'
 
 import { useMessages } from '@/hooks/useMessages'
+import { getActiveMessages } from '@/hooks/useActiveMessages'
+import { BRANCH_CHANGED_EVENT, repairActiveRoot, setActiveBranch as setActiveBranchFor } from '@/lib/branchSelect'
 import { useMessageErrors } from '@/stores/message-errors'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
@@ -118,6 +122,7 @@ import { Button } from '@/components/ui/button'
 import {
   CircleAlert,
   Columns2,
+  Download,
   Loader2,
   MoreHorizontal,
   PanelRight,
@@ -150,7 +155,9 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
-import { chatFolderToolOptions } from '@/lib/chatFolders'
+import { browserCallOptions } from '@/lib/browserAgent'
+import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
+import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import {
   deadToolNote,
@@ -378,6 +385,8 @@ export function ThreadConversation({
 
   // Subscribe directly to the thread data to ensure updates when model changes
   const thread = useThreads(useShallow((state) => state.threads[threadId]))
+  // Paths in a reply link only when inside the folders attached to this chat.
+  const chatPathRoots = useMemo(() => chatFoldersOf(thread), [thread])
 
   // This conversation's model: in a split pane its own thread's, otherwise
   // the global picker, exactly as before.
@@ -992,6 +1001,9 @@ export function ThreadConversation({
                   // Stopping the conversation withdraws a pending
                   // `request_access` prompt instead of leaving it answerable.
                   signal,
+                  // The browser tools ask the user themselves, and the question
+                  // has to sit under this call's card to be answerable there.
+                  ...browserCallOptions(toolName, toolCall.toolCallId),
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',
@@ -1209,7 +1221,8 @@ export function ThreadConversation({
       })
 
       if (!isAbort) {
-        const localMessages = useMessages.getState().getMessages(threadId)
+        // The titled conversation is the one on screen, not every version.
+        const localMessages = getActiveMessages(threadId)
         const currentThread = useThreads.getState().threads[threadId]
         // Once per chat, and again only when the first message was edited
         // (see lib/threadAutoTitle).
@@ -1985,25 +1998,8 @@ export function ThreadConversation({
 
   // Make `node` the active branch under its parent (or active root).
   const setActiveBranch = useCallback(
-    (node: ThreadMessage) => {
-      const parentId = getParentId(node)
-      if (!parentId) {
-        const t = useThreads.getState().threads[threadId]
-        useThreads.getState().updateThread(threadId, {
-          metadata: {
-            ...((t?.metadata as Record<string, unknown> | undefined) ?? {}),
-            activeRootId: node.id,
-          },
-        })
-        return
-      }
-      const parent = useMessages
-        .getState()
-        .getMessages(threadId)
-        .find((m) => m.id === parentId)
-      if (parent) updateMessage(withActiveChild(parent, node.id))
-    },
-    [threadId, updateMessage]
+    (node: ThreadMessage) => setActiveBranchFor(threadId, node),
+    [threadId]
   )
 
   // Rebuild the rendered conversation from the active path in the store.
@@ -2018,6 +2014,16 @@ export function ThreadConversation({
       convertThreadMessagesToUIMessages(computeActivePath(msgs, activeRootId))
     )
   }, [threadId, setChatMessages])
+
+  // A version switched from the phone: show (and send from) the new path.
+  useEffect(() => {
+    const onChanged = (e: Event) => {
+      if ((e as CustomEvent<{ threadId?: string }>).detail?.threadId === threadId)
+        syncActivePath()
+    }
+    window.addEventListener(BRANCH_CHANGED_EVENT, onChanged)
+    return () => window.removeEventListener(BRANCH_CHANGED_EVENT, onChanged)
+  }, [threadId, syncActivePath])
 
   // Switch the visible version of a message (the `< n/m >` control).
   const handleSwitchVersion = useCallback(
@@ -2188,6 +2194,7 @@ export function ThreadConversation({
       const stored = useMessages.getState().getMessages(threadId)
       const branched = hasBranching(stored)
       for (const m of removeFromTree(stored, [messageId])) updateMessage(m)
+      repairActiveRoot(threadId, stored, [messageId])
       deleteMessage(threadId, messageId)
       useMessageErrors.getState().clearError(messageId)
 
@@ -2634,6 +2641,13 @@ export function ThreadConversation({
   // What acts on the conversation, plus whatever the surrounding layout adds.
   // The model sits under the composer (on a phone, on the conversation's own
   // header row).
+  const buildExportDoc = ({ allVersions }: { allVersions: boolean }) =>
+    docFromThread(
+      thread ?? { id: threadId },
+      useMessages.getState().getMessages(threadId),
+      new Date(),
+      { allVersions }
+    )
   const controlsWith = (extra: ReactNode) => (
     <>
       <TemporaryChatBanner threadId={threadId} />
@@ -2658,6 +2672,7 @@ export function ThreadConversation({
                 <PanelRight className="size-4" />
                 <span>{t('context:details')}</span>
               </DropdownMenuItem>
+              <ExportSubmenu build={buildExportDoc} versions />
               {extra && (
                 <DropdownMenuItem
                   onSelect={() => useSplitConversation.getState().addPane()}
@@ -2666,6 +2681,24 @@ export function ThreadConversation({
                   <span>{t('chat:split.open')}</span>
                 </DropdownMenuItem>
               )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {!isSplit && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="size-[30px] max-sm:hidden"
+                aria-label={t('common:export.header')}
+                data-testid="export-thread-header"
+              >
+                <Download className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <ExportItems build={buildExportDoc} versions />
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -2691,6 +2724,7 @@ export function ThreadConversation({
   }, [localThreadMessages])
 
   return (
+    <PathRootsContext.Provider value={chatPathRoots}>
     <div
       className={cn(
         'flex h-full min-h-0 flex-col',
@@ -3074,5 +3108,6 @@ export function ThreadConversation({
         </div>
       </div>
     </div>
+    </PathRootsContext.Provider>
   )
 }

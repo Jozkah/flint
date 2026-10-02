@@ -1414,6 +1414,65 @@ pub fn kill_tree(pid: u32) -> KillOutcome {
     outcome
 }
 
+/// Kill every descendant of `root`, leaving `root` itself running, and report
+/// how many were signalled.
+///
+/// For a process that is stopping a run of its own: the future that spawned a
+/// shell is dropped, but a shell's own children (a `sleep`, a build) belong to
+/// no group the dropped future still holds. Best effort, like the descendants
+/// half of [`kill_tree`].
+#[cfg(windows)]
+pub fn kill_descendants(root: u32) -> usize {
+    use windows_sys::Win32::System::Threading::TerminateProcess;
+    let Ok(root) = win_tree::Owned::open(root) else { return 0 };
+    let mut killed = 0;
+    // A second pass takes what the first pass's victims started meanwhile.
+    for _ in 0..3 {
+        let tree = win_tree::descendants(&root);
+        if tree.is_empty() {
+            break;
+        }
+        for member in &tree {
+            if unsafe { TerminateProcess(member.handle, 1) } != 0 {
+                killed += 1;
+            }
+        }
+    }
+    killed
+}
+
+/// See the Windows version. Found with `pgrep -P`, present on Linux and macOS.
+#[cfg(unix)]
+pub fn kill_descendants(root: u32) -> usize {
+    use nix::sys::signal::{kill, Signal};
+    use nix::unistd::Pid;
+
+    fn children(pid: u32) -> Vec<u32> {
+        std::process::Command::new("pgrep")
+            .args(["-P", &pid.to_string()])
+            .output()
+            .map(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|l| l.trim().parse().ok())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+    let mut all: Vec<u32> = Vec::new();
+    let mut frontier = vec![root];
+    while let Some(p) = frontier.pop() {
+        for c in children(p) {
+            if !all.contains(&c) {
+                all.push(c);
+                frontier.push(c);
+            }
+        }
+    }
+    // Leaves first would be gentler, but SIGKILL has no cleanup to order.
+    all.iter().filter(|p| kill(Pid::from_raw(**p as i32), Signal::SIGKILL).is_ok()).count()
+}
+
 /// When the process holding `pid` was created, or `None` if nothing does.
 ///
 /// Opened for query only: asking which process something *is* must not require
@@ -2563,5 +2622,69 @@ mod chaining_tests {
             "the second command ran after the first failed: {}",
             String::from_utf8_lossy(&out.stdout)
         );
+    }
+}
+
+#[cfg(all(test, windows))]
+mod descendant_tests {
+    use super::*;
+    use std::process::Stdio;
+
+    /// The shell a stopped run leaves behind: `cmd` is the root, `ping` the
+    /// sleeping grandchild. Killing the root's descendants takes `ping` and
+    /// leaves nothing waiting out its 300 seconds.
+    #[test]
+    fn kill_descendants_takes_the_sleeping_child() {
+        let mut shell = std::process::Command::new("cmd.exe")
+            .args(["/d", "/c", "ping -n 300 127.0.0.1 >NUL"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let root = win_tree::Owned::open(shell.id()).unwrap();
+        let mut sleeper = None;
+        for _ in 0..100 {
+            if let Some(found) = win_tree::descendants(&root).into_iter().next() {
+                sleeper = Some(found);
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let sleeper = sleeper.expect("cmd never started ping");
+        assert!(kill_descendants(shell.id()) >= 1);
+        let mut gone = false;
+        for _ in 0..100 {
+            use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+            use windows_sys::Win32::System::Threading::WaitForSingleObject;
+            if unsafe { WaitForSingleObject(sleeper.handle, 0) } == WAIT_OBJECT_0 {
+                gone = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        let _ = shell.kill();
+        assert!(gone, "the sleeping child outlived kill_descendants");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod descendant_tests {
+    use super::*;
+    use std::process::Stdio;
+
+    #[test]
+    fn kill_descendants_takes_the_sleeping_child() {
+        let mut shell = std::process::Command::new("sh")
+            .args(["-c", "sleep 300 & wait"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        assert!(kill_descendants(shell.id()) >= 1);
+        // The shell's `wait` returns once its child is gone.
+        let _ = shell.wait().unwrap();
     }
 }

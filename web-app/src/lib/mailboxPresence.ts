@@ -17,7 +17,7 @@ export const HEARTBEAT_INTERVAL_MS = 30_000
 
 type PresenceMailbox = Pick<
   SessionMailbox,
-  'register' | 'setStatus' | 'heartbeat' | 'remove'
+  'register' | 'setStatus' | 'heartbeat' | 'remove' | 'revive'
 >
 
 function safe(label: string, fn: () => Promise<unknown>): void {
@@ -41,7 +41,24 @@ export function notifySessionRemoved(sessionId: string): void {
   safe('remove', () => removalMailbox.remove(sessionId))
 }
 
-const registrationKey = (s: CoworkSession) =>
+const archivedSessions = new Set<string>()
+
+/**
+ * The session is leaving the list because it was archived, not deleted. The
+ * backend tombstone for a deleted id can never be registered again, so an
+ * archived session must not get one or a restore could not register it.
+ */
+export function notifySessionArchived(sessionId: string): void {
+  if (!removedSessions.has(sessionId)) archivedSessions.add(sessionId)
+}
+
+/** The session is back in the list (a restore): forget any removal state. */
+export function notifySessionRestored(sessionId: string): void {
+  archivedSessions.delete(sessionId)
+  removedSessions.delete(sessionId)
+}
+
+const registrationKey =(s: CoworkSession) =>
   JSON.stringify([s.title, s.folder ?? null])
 
 export function createPresenceSync(
@@ -51,6 +68,8 @@ export function createPresenceSync(
   const debounceMs = opts.debounceMs ?? PRESENCE_DEBOUNCE_MS
   const heartbeatMs = opts.heartbeatMs ?? HEARTBEAT_INTERVAL_MS
   const registered = new Map<string, string>()
+  // Sessions already revived this run: one try each, so a refusal cannot loop.
+  const revived = new Set<string>()
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
   const runs = new Map<string, string>()
   const heartbeats = new Map<string, ReturnType<typeof setInterval>>()
@@ -77,11 +96,26 @@ export function createPresenceSync(
         const key = registrationKey(latest)
         if (registered.get(latest.id) === key) return
         registered.set(latest.id, key)
+        const input = {
+          sessionId: latest.id,
+          displayName: latest.title,
+          folder: latest.folder,
+        }
         safe('register', () =>
-          mailbox.register({
-            sessionId: latest.id,
-            displayName: latest.title,
-            folder: latest.folder,
+          Promise.resolve(mailbox.register(input)).catch((e) => {
+            // A tombstone left by a build that marked archived sessions
+            // deleted. The session is live in the store, so the tombstone is
+            // stale: clear it once and register again. A session the user
+            // really deleted is not in the store and is never registered.
+            const code = (e as { code?: string } | null)?.code
+            const live = useCoworkSessions
+              .getState()
+              .sessions.some((s) => s.id === input.sessionId)
+            if (code !== 'session_deleted' || !live || revived.has(input.sessionId)) {
+              throw e
+            }
+            revived.add(input.sessionId)
+            return mailbox.revive(input)
           })
         )
       }, debounceMs)
@@ -100,6 +134,8 @@ export function createPresenceSync(
       if (timer) clearTimeout(timer)
       pending.delete(s.id)
       registered.delete(s.id)
+      // Archived, not deleted: no tombstone (see notifySessionArchived).
+      if (archivedSessions.delete(s.id)) continue
       notifySessionRemoved(s.id)
     }
   }
@@ -176,6 +212,7 @@ export function createPresenceSync(
 export const __presenceTesting = {
   reset: () => {
     removedSessions.clear()
+    archivedSessions.clear()
     removalMailbox = sessionMailbox
   },
   setRemovalMailbox: (mailbox: PresenceMailbox) => {

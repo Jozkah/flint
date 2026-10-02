@@ -8,8 +8,11 @@ import {
   PanelRight,
   ExternalLink,
   ScanEye,
+  Bot,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { WebPreviewPip } from '@/containers/WebPreviewPip'
 import { useWebPreview } from '@/hooks/useWebPreview'
@@ -22,6 +25,18 @@ import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { isLocalAppUrl } from '@/lib/browserVerify'
+import { applyAnswer } from '@/lib/browserAgent'
+import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
+import {
+  allApprovalRequests,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
+import {
+  resumeBrowserAgent,
+  stopBrowserAgent,
+  useBrowserAgentEvents,
+  useBrowserAgentPane,
+} from '@/hooks/useBrowserAgentPane'
 
 const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-popups'
 
@@ -45,14 +60,73 @@ export function WebPreviewHost() {
   const interceptLinks = useWebPreviewSettings((s) => s.interceptLinks)
   const coworkSessionId = useCoworkSessions((s) => s.currentId)
   const [nonce, setNonce] = useState(0)
+  const agentActive = useBrowserAgentPane((s) => s.active)
+  const agentPaused = useBrowserAgentPane((s) => s.paused)
+  useBrowserAgentEvents(
+    ({ url, reason }) =>
+      toast.warning(t('browser-agent:pane.blocked', { reason }), {
+        description: url,
+        id: 'browser-agent-blocked',
+      }),
+    // A page tried to send the pane to a site nobody approved: it was stopped
+    // before anything was requested. Ask; if allowed, go there now.
+    ({ url, host }) => {
+      void (async () => {
+        const answer = await useBrowserAgentPrompt.getState().request({
+          url,
+          host,
+          tool: 'browser_open',
+        })
+        if (await applyAnswer(host, answer)) {
+          useWebPreview.getState().navigate(url)
+        }
+      })()
+    }
+  )
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
   const currentUrl = useWebPreview.getState().url()
+  // A question waiting for the user (a tool approval, a site to allow) needs
+  // the whole screen: the native view is a window of its own that no DOM
+  // overlay can cover, so it steps aside, and so does the panel around it,
+  // until the question is answered. The page and its history stay as they are.
+  const questionWaiting = useToolApprovalRequests(
+    (s) => allApprovalRequests(s).length > 0
+  )
+  const siteQuestionWaiting = useBrowserAgentPrompt((s) => s.queue.length > 0)
+  const suspended = questionWaiting || siteQuestionWaiting
   const mode = useNativeWebPreview({
     enabled: open && !!currentUrl,
     url: currentUrl,
     reloadNonce: nonce,
     container: viewport,
+    suspended,
   })
+
+  // Publish the pane's box (side panel width, PIP moves/resizes) so the
+  // toaster can step around it. Sampled per frame, written only on change.
+  const [paneEl, setPaneEl] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!paneEl) {
+      useWebPreview.getState().setPaneRect(null)
+      return
+    }
+    let frame = 0
+    const tick = () => {
+      const r = paneEl.getBoundingClientRect()
+      useWebPreview.getState().setPaneRect({
+        left: Math.round(r.left),
+        top: Math.round(r.top),
+        right: Math.round(r.right),
+        bottom: Math.round(r.bottom),
+      })
+      frame = requestAnimationFrame(tick)
+    }
+    tick()
+    return () => {
+      cancelAnimationFrame(frame)
+      useWebPreview.getState().setPaneRect(null)
+    }
+  }, [paneEl])
 
   useEffect(() => {
     if (!interceptLinks) return
@@ -129,6 +203,33 @@ export function WebPreviewHost() {
       <span className="mx-1 min-w-0 flex-1 truncate rounded bg-muted px-2 py-1 font-mono text-xs text-fg-2">
         {url}
       </span>
+      {(agentActive || agentPaused) && (
+        // While the assistant is driving, the user can take the pane back;
+        // its browser calls are refused until they hand it over again.
+        <Button
+          variant={agentPaused ? 'outline' : 'secondary'}
+          size="xs"
+          data-testid="wp-agent-toggle"
+          aria-label={
+            agentPaused
+              ? t('browser-agent:pane.handBack')
+              : t('browser-agent:pane.takeOver')
+          }
+          title={
+            agentPaused
+              ? t('browser-agent:pane.paused')
+              : t('browser-agent:pane.driving')
+          }
+          onClick={() =>
+            void (agentPaused ? resumeBrowserAgent() : stopBrowserAgent())
+          }
+        >
+          <Bot className="size-3.5" aria-hidden />
+          {agentPaused
+            ? t('browser-agent:pane.handBack')
+            : t('browser-agent:pane.takeOver')}
+        </Button>
+      )}
       {isLocalAppUrl(url) && coworkSessionId && (
         // Hands the URL to the Cowork Preview's verifier, which runs it in a
         // separate, confined browser; this preview is left as it is.
@@ -189,7 +290,7 @@ export function WebPreviewHost() {
   )
 
   const body = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={setPaneEl} className="flex h-full min-h-0 flex-col">
       {toolbar}
       {mode === 'iframe' ? (
         <>
@@ -225,10 +326,27 @@ export function WebPreviewHost() {
   )
 
   if (surface === 'pip') {
-    return <WebPreviewPip title={url}>{body}</WebPreviewPip>
+    return (
+      <div
+        data-testid="wp-pip-wrap"
+        data-suspended={suspended ? '' : undefined}
+        className={cn(suspended && 'pointer-events-none invisible')}
+      >
+        <WebPreviewPip title={url}>{body}</WebPreviewPip>
+      </div>
+    )
   }
   return (
-    <div className="absolute inset-y-0 right-0 z-50 flex">
+    // Below the header row, so the header's approvals chip and menus are never
+    // under it; invisible (but alive) while a question waits.
+    <div
+      data-testid="wp-side-panel"
+      data-suspended={suspended ? '' : undefined}
+      className={cn(
+        'absolute right-0 bottom-0 top-[52px] z-50 flex',
+        suspended && 'pointer-events-none invisible'
+      )}
+    >
       <CoworkSidePanel
         title={t('common:webPreview.title')}
         onClose={() => useWebPreview.getState().close()}

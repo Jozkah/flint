@@ -427,6 +427,54 @@ enum CliCommands {
         #[command(subcommand)]
         cmd: BenchCommands,
     },
+    /// Scheduled tasks: prompts that run on a timetable with nobody watching
+    #[command(display_order = 16)]
+    Schedule {
+        #[command(subcommand)]
+        cmd: ScheduleCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum ScheduleCommands {
+    /// List the scheduled tasks and when each runs next
+    List {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Start a task's run now, detached; `--wait` stays until it ends
+    Run {
+        /// The task id (see `list`)
+        id: String,
+        #[arg(long)]
+        wait: bool,
+    },
+    /// Start whatever is due, once, then exit. For an OS scheduler entry that
+    /// runs while the app is closed; safe alongside the app's own ticking.
+    Tick {
+        /// The Flint data folder to work on (an OS scheduler carries no
+        /// environment, so the installed entry passes it)
+        #[arg(long)]
+        data: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// A task's run history, newest first
+    Runs {
+        /// The task id (see `list`)
+        id: String,
+        #[arg(long, default_value_t = 10)]
+        limit: usize,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Run one scheduled run from its spec, as a job supervisor starts it. Not
+    /// meant to be run by hand.
+    #[command(hide = true)]
+    RunSpec {
+        #[arg(long)]
+        spec: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -1014,10 +1062,13 @@ enum ThreadsCommands {
         /// Thread ID
         id: String,
     },
-    /// Print all messages in a thread as JSON
+    /// Print a thread's messages as JSON (the conversation as shown)
     Messages {
         /// Thread ID
         thread_id: String,
+        /// Include every stored version of an edited or regenerated message
+        #[arg(long)]
+        all_versions: bool,
     },
 }
 
@@ -1580,6 +1631,20 @@ async fn handle_cli(cmd: CliCommands) {
         }
         CliCommands::Net { cmd } => handle_net(cmd),
         CliCommands::Bench { cmd } => handle_bench(cmd),
+        CliCommands::Schedule { cmd } => {
+            use app_lib::core::cli::schedule;
+            let result = match cmd {
+                ScheduleCommands::List { json } => schedule::list(json),
+                ScheduleCommands::Run { id, wait } => schedule::run_now(&id, wait).await,
+                ScheduleCommands::Tick { data, json } => schedule::tick(data.as_deref(), json),
+                ScheduleCommands::Runs { id, limit, json } => schedule::runs(&id, limit, json),
+                ScheduleCommands::RunSpec { spec } => schedule::run_spec(std::path::Path::new(&spec)).await,
+            };
+            if let Err(e) = result {
+                eprintln!("Error [{}]: {}", e.kind().tag(), e.message());
+                std::process::exit(e.exit_code());
+            }
+        }
     }
 }
 
@@ -2818,7 +2883,10 @@ async fn handle_threads(cmd: ThreadsCommands) {
             }
         },
 
-        ThreadsCommands::Messages { thread_id } => match cli_list_messages(&thread_id) {
+        ThreadsCommands::Messages {
+            thread_id,
+            all_versions,
+        } => match cli_list_messages(&thread_id, all_versions) {
             Ok(messages) => println!("{}", serde_json::to_string_pretty(&messages).unwrap()),
             Err(e) => {
                 eprintln!("Error: {e}");

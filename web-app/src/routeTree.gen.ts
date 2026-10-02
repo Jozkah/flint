@@ -16,12 +16,14 @@ import { Route as LogsRouteImport } from './routes/logs'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
+import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as HubIndexRouteImport } from './routes/hub/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
+import { Route as SettingsSchedulesRouteImport } from './routes/settings/schedules'
 import { Route as SettingsRemoteAccessRouteImport } from './routes/settings/remote-access'
 import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
@@ -79,6 +81,11 @@ const ArtifactsRoute = ArtifactsRouteImport.update({
   path: '/artifacts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ArchiveRoute = ArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -107,6 +114,11 @@ const SettingsWebSearchRoute = SettingsWebSearchRouteImport.update({
 const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
   id: '/settings/shortcuts',
   path: '/settings/shortcuts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsSchedulesRoute = SettingsSchedulesRouteImport.update({
+  id: '/settings/schedules',
+  path: '/settings/schedules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRemoteAccessRoute = SettingsRemoteAccessRouteImport.update({
@@ -218,6 +230,7 @@ const SettingsProvidersProviderNameRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
@@ -244,6 +257,7 @@ export interface FileRoutesByFullPath {
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -254,6 +268,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
@@ -280,6 +295,7 @@ export interface FileRoutesByTo {
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -291,6 +307,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
@@ -317,6 +334,7 @@ export interface FileRoutesById {
   '/settings/memory': typeof SettingsMemoryRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -329,6 +347,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
@@ -355,6 +374,7 @@ export interface FileRouteTypes {
     | '/settings/memory'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -365,6 +385,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
@@ -391,6 +412,7 @@ export interface FileRouteTypes {
     | '/settings/memory'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -401,6 +423,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
@@ -427,6 +450,7 @@ export interface FileRouteTypes {
     | '/settings/memory'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -438,6 +462,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArchiveRoute: typeof ArchiveRoute
   ArtifactsRoute: typeof ArtifactsRoute
   CoworkRoute: typeof CoworkRoute
   ExtensionsRoute: typeof ExtensionsRoute
@@ -464,6 +489,7 @@ export interface RootRouteChildren {
   SettingsMemoryRoute: typeof SettingsMemoryRoute
   SettingsPermissionsRoute: typeof SettingsPermissionsRoute
   SettingsRemoteAccessRoute: typeof SettingsRemoteAccessRoute
+  SettingsSchedulesRoute: typeof SettingsSchedulesRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
@@ -524,6 +550,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ArtifactsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/archive': {
+      id: '/archive'
+      path: '/archive'
+      fullPath: '/archive'
+      preLoaderRoute: typeof ArchiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -564,6 +597,13 @@ declare module '@tanstack/react-router' {
       path: '/settings/shortcuts'
       fullPath: '/settings/shortcuts'
       preLoaderRoute: typeof SettingsShortcutsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings/schedules': {
+      id: '/settings/schedules'
+      path: '/settings/schedules'
+      fullPath: '/settings/schedules'
+      preLoaderRoute: typeof SettingsSchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/remote-access': {
@@ -718,6 +758,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArchiveRoute: ArchiveRoute,
   ArtifactsRoute: ArtifactsRoute,
   CoworkRoute: CoworkRoute,
   ExtensionsRoute: ExtensionsRoute,
@@ -744,6 +785,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsMemoryRoute: SettingsMemoryRoute,
   SettingsPermissionsRoute: SettingsPermissionsRoute,
   SettingsRemoteAccessRoute: SettingsRemoteAccessRoute,
+  SettingsSchedulesRoute: SettingsSchedulesRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,

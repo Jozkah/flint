@@ -106,7 +106,7 @@ import { useServiceHub } from '@/hooks/useServiceHub'
 import { useTools } from '@/hooks/useTools'
 import { TokenCounter } from '@/components/TokenCounter'
 import type { TokenUsageSource } from '@/hooks/useTokensCount'
-import { useMessages } from '@/hooks/useMessages'
+import { useActiveMessages } from '@/hooks/useActiveMessages'
 import { useShallow } from 'zustand/react/shallow'
 import { McpExtensionToolLoader } from './McpExtensionToolLoader'
 import {
@@ -198,7 +198,12 @@ type ChatInputProps = {
   projectAssistantId?: string
   onSubmit?: (
     text: string,
-    files?: Array<{ type: string; mediaType: string; url: string }>
+    files?: Array<{ type: string; mediaType: string; url: string }>,
+    /**
+     * Call when the send is refused before anything started (no tool-calling
+     * model, say): the composer then gets its text and attachments back.
+     */
+    onRefused?: () => void
   ) => void
   onStop?: () => void
   chatStatus?: ChatStatus
@@ -407,6 +412,13 @@ const ChatInput = memo(function ChatInput({
     draftScope ? (state.scoped?.[draftScope]?.prompt ?? '') : ''
   )
   const prompt = draftScope ? scopedPrompt : mainPrompt
+  // The draft as of the last render, for a refused send's restore (below).
+  const latestPromptRef = useRef(prompt)
+  latestPromptRef.current = prompt
+  // Text put back after a refused send. The draft store may be shared with
+  // other composers (the unscoped one is), so it is taken out again when this
+  // composer goes away or moves to another session, if still untouched.
+  const restoredDraftRef = useRef<string | null>(null)
   const setMainPrompt = usePrompt((state) => state.setPrompt)
   const setScopedPrompt = usePrompt((state) => state.setScopedPrompt)
   const setPrompt = useCallback(
@@ -415,6 +427,17 @@ const ChatInput = memo(function ChatInput({
     [draftScope, setScopedPrompt, setMainPrompt]
   )
   const addToHistory = usePrompt((state) => state.addToHistory)
+  useEffect(
+    () => () => {
+      const restored = restoredDraftRef.current
+      restoredDraftRef.current = null
+      if (restored !== null && latestPromptRef.current === restored) {
+        setPrompt('')
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopeKey, draftScope]
+  )
   const navigateMainHistory = usePrompt((state) => state.navigateHistory)
   const navigateScopedHistory = usePrompt(
     (state) => state.navigateScopedHistory
@@ -789,11 +812,7 @@ const ChatInput = memo(function ChatInput({
   )
 
   // Get current thread messages for token counting
-  const threadMessages = useMessages(
-    useShallow((state) =>
-      currentThreadId ? state.messages[currentThreadId] : []
-    )
-  )
+  const threadMessages = useActiveMessages(currentThreadId)
 
   const maxRows = 10
   const ATTACHMENT_AUTO_INLINE_FALLBACK_BYTES = 512 * 1024
@@ -1172,7 +1191,24 @@ const ChatInput = memo(function ChatInput({
         }))
       const files = [...imageFiles, ...audioFiles, ...videoFiles]
 
-      onSubmit(effectivePrompt, files.length > 0 ? files : undefined)
+      const sentAttachments = attachments
+      onSubmit(effectivePrompt, files.length > 0 ? files : undefined, () => {
+        // After the clear below, which a synchronous refusal would precede.
+        queueMicrotask(() => {
+          // Not over something typed since. The render that follows the clear
+          // may not have happened yet, so the sent text counts as empty too.
+          const now = latestPromptRef.current
+          if (!now || now === typed) {
+            restoredDraftRef.current = typed
+            setPrompt(typed)
+          }
+          if (sentAttachments.length > 0) {
+            setAttachmentsForThread(attachmentsKey, (prev) =>
+              prev.length > 0 ? prev : sentAttachments
+            )
+          }
+        })
+      })
       setPrompt('')
       clearAttachmentsForThread(attachmentsKey)
     } else {

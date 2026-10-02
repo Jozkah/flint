@@ -27,6 +27,35 @@ export const SECTION_ORDER: PaletteSection[] = [
   'settings',
 ]
 
+/** The formats the palette offers for the conversation on screen. */
+export const EXPORT_COMMAND_FORMATS = [
+  'markdown',
+  'obsidian',
+  'pdf',
+  'image',
+] as const
+
+export type ExportCommandFormat = (typeof EXPORT_COMMAND_FORMATS)[number]
+
+/**
+ * "Export current chat as ..." entries. Offered only while a chat or a Cowork
+ * session is on screen (`target`), since there is nothing else to export.
+ */
+export function exportCommands(
+  target: 'thread' | 'session' | null,
+  title: (format: ExportCommandFormat) => string,
+  run: (target: 'thread' | 'session', format: ExportCommandFormat) => void
+): PaletteCommand[] {
+  if (!target) return []
+  return EXPORT_COMMAND_FORMATS.map((format) => ({
+    id: `action-export-${format}`,
+    section: 'actions' as const,
+    title: title(format),
+    keywords: ['export', 'save', 'download', 'share', format],
+    run: () => run(target, format),
+  }))
+}
+
 /**
  * Rank commands against a query.
  *

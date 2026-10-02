@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react'
-import { summarizeConversation } from '@/lib/thread-title-summarizer'
+import {
+  canSummarizeLocally,
+  summarizeConversation,
+} from '@/lib/thread-title-summarizer'
 
 const cache = new Map<string, string>()
 const inFlight = new Map<string, Promise<string | null>>()
@@ -27,6 +30,8 @@ export function usePreviewSummary(
 
   useEffect(() => {
     if (!open || !key || !getTranscript || cache.has(key)) return
+    // A remote provider is never asked, and its transcript is not even read.
+    if (!canSummarizeLocally(key.split('\u0000')[0])) return
     let current = true
     let run = inFlight.get(key)
     if (!run) {

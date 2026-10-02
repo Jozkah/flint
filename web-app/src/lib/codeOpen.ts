@@ -33,6 +33,11 @@ export type CodePathCheck = { ok: true } | { ok: false; reason: string }
 /** What a surface offers beside opening: a reason check and the diff view. */
 export type CodeOpenTools = {
   check?: (path: string) => CodePathCheck
+  /**
+   * Does the file exist? Asked on a click, never while rendering. Only a
+   * definite `false` stops the open; a surface that cannot tell says true.
+   */
+  exists?: (path: string) => Promise<boolean>
   /** Show this file in Changes. */
   openDiff?: (path: string) => void
   /**
@@ -42,6 +47,15 @@ export type CodeOpenTools = {
    */
   displayPath?: (path: string) => string
 }
+
+/**
+ * The folders a surface holds (Cowork: sandbox, project, attached folders;
+ * Chat: the thread's attached folders). An absolute path in a reply becomes a
+ * link only when it sits inside one of these.
+ */
+export const PathRootsContext = createContext<readonly string[]>([])
+
+export const usePathRoots = (): readonly string[] => useContext(PathRootsContext)
 
 export const CodeOpenToolsContext = createContext<CodeOpenTools>({})
 

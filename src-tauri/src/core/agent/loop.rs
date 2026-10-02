@@ -5625,6 +5625,9 @@ async fn orchestrate_inner(
             })
             .map(|cfg| cfg.auto_mode)
             .unwrap_or_default();
+        // A scheduled task's child has nobody to ask, so the classifier is on
+        // for it whatever the project says.
+        let auto_mode = crate::core::agent::auto_mode::enforce_unattended(auto_mode);
         // How many auto-approved calls in a row before the run checks in with
         // the user; `0` turns the pause off.
         let auto_approve_limit_from_body =
@@ -11848,7 +11851,7 @@ mod tests {
     /// role that asks for one is refused before any gate; nothing is written.
     #[tokio::test]
     async fn a_model_cannot_call_an_export_or_audit_command_by_name() {
-        let commands = ["audit_export", "agent_events_export", "memory_export", "session_export_save"];
+        let commands = ["audit_export", "agent_events_export", "memory_export", "session_export_save", "export_save_file"];
         let offered: Vec<String> = tauri_plugin_agent_tools::tools::schema::builtin_tool_schemas()
             .iter()
             .filter_map(|s| s["function"]["name"].as_str().map(str::to_string))

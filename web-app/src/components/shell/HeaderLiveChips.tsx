@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate } from '@tanstack/react-router'
 import { Loader2, ShieldAlert } from 'lucide-react'
 import {
@@ -22,6 +22,8 @@ import {
   waitingApprovalRows,
 } from '@/lib/headerLiveWork'
 import { useTranslation } from '@/i18n/react-i18next-compat'
+import { Button } from '@/components/ui/button'
+import { isBrowserTool } from '@/lib/browserAgent'
 
 /** One row of a pill's card, in the sidebar chat hover card's style. */
 function CardRow({
@@ -30,12 +32,15 @@ function CardRow({
   time,
   onOpen,
   testId,
+  actions,
 }: {
   title: string
   detail?: string
   time?: string
   onOpen: () => void
   testId: string
+  /** Answer buttons under the row, where the row's request can be answered here. */
+  actions?: ReactNode
 }) {
   return (
     <li>
@@ -53,6 +58,7 @@ function CardRow({
           {time && <span className="ml-auto shrink-0 tabular-nums">{time}</span>}
         </span>
       </button>
+      {actions}
     </li>
   )
 }
@@ -193,16 +199,48 @@ export function HeaderLiveChips() {
               {t('common:shell.approvalWaiting')}
             </p>
             <ul className="flex flex-col">
-              {approvalRows.map((row) => (
-                <CardRow
-                  key={row.requestId}
-                  testId="header-approval-row"
-                  title={row.title || t('common:newThread')}
-                  detail={row.tool}
-                  time={row.waitingMs === undefined ? undefined : formatWait(row.waitingMs)}
-                  onOpen={() => openApproval(row)}
-                />
-              ))}
+              {approvalRows.map((row) => {
+                // A browser action's question can be answered right here: the
+                // page it is about may be under the preview pane, and the
+                // tool card with the buttons may be out of view.
+                const entry = pendingEntries.find((e) => e.requestId === row.requestId)
+                const answer = (decision: 'allow-once' | 'deny') =>
+                  entry &&
+                  useToolApprovalRequests
+                    .getState()
+                    .resolveApproval(entry.toolCallId, decision, row.requestId)
+                return (
+                  <CardRow
+                    key={row.requestId}
+                    testId="header-approval-row"
+                    title={row.title || t('common:newThread')}
+                    detail={row.tool}
+                    time={row.waitingMs === undefined ? undefined : formatWait(row.waitingMs)}
+                    onOpen={() => openApproval(row)}
+                    actions={
+                      entry && isBrowserTool(row.tool) ? (
+                        <div className="flex gap-1.5 px-2 pb-1.5" data-testid="header-approval-actions">
+                          <Button
+                            variant="outline"
+                            size="xs"
+                            data-testid="header-approval-deny"
+                            onClick={() => answer('deny')}
+                          >
+                            {t('tools:toolApproval.deny')}
+                          </Button>
+                          <Button
+                            size="xs"
+                            data-testid="header-approval-allow"
+                            onClick={() => answer('allow-once')}
+                          >
+                            {t('tools:toolApproval.allowOnce')}
+                          </Button>
+                        </div>
+                      ) : undefined
+                    }
+                  />
+                )
+              })}
             </ul>
           </HoverCardContent>
         </HoverCard>

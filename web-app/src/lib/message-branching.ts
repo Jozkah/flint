@@ -262,6 +262,30 @@ export const removeFromTree = (
 }
 
 /**
+ * Which root the thread should point at once `removeIds` are gone, when the
+ * thread's `activeRootId` is one of them. Removing a root promotes its children
+ * to roots (see `removeFromTree`), so the selection follows to the first child
+ * that took its place, else the newest root left, else nothing.
+ *
+ * `undefined` means leave `activeRootId` alone; `null` means clear it.
+ */
+export const activeRootAfterRemoval = (
+  messages: ThreadMessage[],
+  removeIds: Iterable<string>,
+  activeRootId: string | undefined
+): string | null | undefined => {
+  const removed = new Set(removeIds)
+  if (!activeRootId || !removed.has(activeRootId)) return undefined
+  const promoted = new Map(removeFromTree(messages, removed).map((m) => [m.id, m]))
+  const after = messages
+    .filter((m) => !removed.has(m.id))
+    .map((m) => promoted.get(m.id) ?? m)
+  const roots = after.filter((m) => rawParent(m) === null).sort(byCreatedAt)
+  const reparented = roots.find((m) => promoted.has(m.id))
+  return (reparented ?? roots[roots.length - 1])?.id ?? null
+}
+
+/**
  * Re-attach messages whose `parentId` names a message that is gone -- threads
  * already damaged by the delete path `removeFromTree` now handles. Each is
  * hung off the nearest earlier surviving message by `created_at`, which is the
@@ -353,4 +377,44 @@ export const makeSibling = (
     completed_at: opts.createdAt,
     metadata: { ...sourceMeta, parentId: getParentId(source) },
   }
+}
+
+/** The root the thread has selected, from its metadata (`undefined` ⇒ newest). */
+export const activeRootIdOf = (
+  threadMetadata: Record<string, unknown> | undefined | null
+): string | undefined => {
+  const id = threadMetadata?.activeRootId
+  return typeof id === 'string' ? id : undefined
+}
+
+/**
+ * The conversation the user is looking at, given the thread's metadata. Every
+ * reader that wants "the chat" (token counts, titles, previews, the phone,
+ * export) goes through this rather than reading the stored list, which also
+ * holds the versions that are not on screen.
+ */
+export const activePathOf = (
+  messages: ThreadMessage[],
+  threadMetadata?: Record<string, unknown> | null
+): ThreadMessage[] =>
+  computeActivePath(messages, activeRootIdOf(threadMetadata))
+
+/**
+ * Every root-to-leaf path of the tree, oldest branch first; the active path is
+ * one of them. A thread with no branching is one path.
+ */
+export const allBranchPaths = (
+  messages: ThreadMessage[]
+): ThreadMessage[][] => {
+  if (!hasBranching(messages)) return messages.length ? [messages] : []
+  const paths: ThreadMessage[][] = []
+  const walk = (node: ThreadMessage, trail: ThreadMessage[]) => {
+    if (trail.some((t) => t.id === node.id)) return
+    const next = [...trail, node]
+    const kids = childrenOf(messages, node.id)
+    if (kids.length === 0) paths.push(next)
+    else kids.forEach((k) => walk(k, next))
+  }
+  childrenOf(messages, null).forEach((r) => walk(r, []))
+  return paths.length ? paths : [messages]
 }

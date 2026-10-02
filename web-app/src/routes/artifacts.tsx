@@ -540,9 +540,15 @@ function ArtifactsPage() {
                     onOpen={() => open(inspected)}
                     onGoToSession={() => goToSession(inspected)}
                     convertFileSrc={convertFileSrc}
-                    openPath={(p) => void serviceHub.opener().openPath(p)}
+                    openPath={(p) =>
+                      void serviceHub
+                        .opener()
+                        .openPath(p, inspected.root ? [inspected.root] : [])
+                    }
                     revealItemInDir={(p) =>
-                      void serviceHub.opener().revealItemInDir(p)
+                      void serviceHub
+                        .opener()
+                        .revealItemInDir(p, inspected.root ? [inspected.root] : [])
                     }
                   />
                 </div>

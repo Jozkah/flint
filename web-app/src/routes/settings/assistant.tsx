@@ -10,7 +10,10 @@ import {
 } from '@/containers/SettingsPageHeader'
 import { Icon } from '@/components/ui/icon'
 import AddEditAssistant from '@/containers/dialogs/AddEditAssistant'
+import { toast } from 'sonner'
 import { DeleteAssistantDialog } from '@/containers/dialogs'
+import { archiveAssistant } from '@/lib/archiveAssistants'
+import { errorText } from '@/lib/errorText'
 import { AvatarEmoji } from '@/containers/AvatarEmoji'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
@@ -49,8 +52,15 @@ function AssistantContent() {
     setDeleteConfirmOpen(true)
   }
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (deletingId) {
+      const target = assistants.find((a) => a.id === deletingId)
+      try {
+        if (target) await archiveAssistant(target)
+      } catch (e) {
+        toast.error(t('archive:deleteFailed'), { description: errorText(e) })
+        return
+      }
       deleteAssistant(deletingId)
       setDeleteConfirmOpen(false)
       setDeletingId(null)
@@ -222,6 +232,7 @@ function AssistantContent() {
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         onConfirm={confirmDelete}
+        assistantName={assistants.find((a) => a.id === deletingId)?.name}
       />
     </div>
   )

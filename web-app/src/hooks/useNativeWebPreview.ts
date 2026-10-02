@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import {
   NativeWebPreviewController,
+  OVERLAY_SELECTOR,
   hasBlockingOverlay,
   toPhysicalBounds,
   type InvokeFn,
@@ -34,14 +35,19 @@ export function useNativeWebPreview({
   url,
   reloadNonce,
   container,
+  suspended = false,
   invokeFn = invoke as InvokeFn,
 }: {
   enabled: boolean
   url: string
   reloadNonce: number
   container: HTMLElement | null
+  /** Hide the native view (keeping the page) while something needs the screen. */
+  suspended?: boolean
   invokeFn?: InvokeFn
 }): NativePreviewMode {
+  const suspendedRef = useRef(suspended)
+  suspendedRef.current = suspended
   const [mode, setMode] = useState<NativePreviewMode>(() =>
     isTauri() ? 'pending' : 'iframe'
   )
@@ -178,11 +184,17 @@ export function useNativeWebPreview({
     const tick = () => {
       const rect = container.getBoundingClientRect()
       lastRect = rect
+      // A popper wrapper mounts off-screen and moves into place by `style`
+      // (not observed), so while any overlay is in the DOM re-test it each
+      // frame; otherwise a menu opened over the page would be missed.
+      if (document.querySelector(OVERLAY_SELECTOR)) recheckOverlay()
+      else overlay = false
       const visible =
         rect.width > 0 &&
         rect.height > 0 &&
         container.isConnected &&
         document.visibilityState !== 'hidden' &&
+        !suspendedRef.current &&
         !overlay
       ctrl.setVisible(visible)
       if (visible) ctrl.setBounds(toPhysicalBounds(rect, window.devicePixelRatio || 1))

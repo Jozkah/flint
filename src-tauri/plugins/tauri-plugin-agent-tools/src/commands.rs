@@ -786,6 +786,12 @@ pub async fn advertised_tool_schemas(
         if !crate::tools::advertised_in_scope(name, session_scope) {
             continue;
         }
+        // The desktop advertises the browser tools from its web layer, behind
+        // the Settings switch and only where a pane exists; this list is for
+        // surfaces that run these tools themselves.
+        if crate::tools::is_browser_tool(name) {
+            continue;
+        }
         match readiness::tool_availability(&report, name) {
             readiness::ToolAvailability::Available => schemas.push(if name == "bash" && non_posix_shell {
                 note_non_posix_shell(value.clone())
@@ -1766,6 +1772,18 @@ pub async fn mailbox_session_remove(
     session_id: String,
 ) -> Result<(), MailboxError> {
     Mailbox::open(Path::new(&data_folder)).remove(&session_id)
+}
+
+/// Clear a session's deleted mark and register it: the restore path of an
+/// archived Cowork session (also recovers ones archived by older builds).
+#[tauri::command]
+pub async fn mailbox_session_revive(
+    data_folder: String,
+    session_id: String,
+    display_name: String,
+    folder: Option<String>,
+) -> Result<SessionRecord, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).revive(&session_id, &display_name, folder.as_deref())
 }
 
 /// Queued envelopes become `delivered` and are returned oldest first.

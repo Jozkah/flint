@@ -56,11 +56,15 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-pub fn dir_for<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind) -> PathBuf {
-    get_jan_data_folder_path(app.clone()).join(match kind {
+fn folder_name(kind: Kind) -> &'static str {
+    match kind {
         Kind::Image => "images",
         Kind::Video => "videos",
-    })
+    }
+}
+
+pub fn dir_for<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind) -> PathBuf {
+    get_jan_data_folder_path(app.clone()).join(folder_name(kind))
 }
 
 /// Only letters, digits, `-` and `_`, so a job id can never name a path.
@@ -193,6 +197,25 @@ pub fn delete<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind, id: &str) -> Re
     delete_in(&dir_for(app, kind), id)
 }
 
+/// Move one result into the archive instead of deleting it. Same id rules as
+/// `delete`; the archive's title is the start of the prompt.
+pub fn archive<R: Runtime>(app: &tauri::AppHandle<R>, kind: Kind, id: &str) -> Result<(), String> {
+    archive_in(&get_jan_data_folder_path(app.clone()), kind, id)
+}
+
+fn archive_in(data: &Path, kind: Kind, id: &str) -> Result<(), String> {
+    if id.is_empty() || id != file_safe(id) {
+        return Err("That is not a gallery item.".to_string());
+    }
+    let folder = folder_name(kind);
+    let title = std::fs::read(data.join(folder).join(format!("{id}.json")))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Recipe>(&bytes).ok())
+        .map(|r| r.prompt.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect::<String>())
+        .unwrap_or_default();
+    crate::core::archive::store::archive_studio(data, folder, id, &title).map(|_| ())
+}
+
 fn delete_in(dir: &Path, id: &str) -> Result<(), String> {
     if id.is_empty() || id != file_safe(id) {
         return Err("That is not a gallery item.".to_string());
@@ -286,6 +309,27 @@ mod tests {
         std::fs::write(dir.path().join("junk.json"), b"not json").unwrap();
         assert!(list_in(dir.path(), Kind::Image).is_empty());
         assert!(list_in(&dir.path().join("missing"), Kind::Image).is_empty());
+    }
+
+    #[test]
+    fn archiving_moves_the_media_and_recipe_out_of_the_list_and_back() {
+        use crate::core::archive::store as archive;
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("images");
+        std::fs::create_dir_all(&dir).unwrap();
+        put(&dir, "1-job-00", "png", &recipe("job", 1, Kind::Image));
+        assert_eq!(list_in(&dir, Kind::Image).len(), 1);
+
+        archive_in(data.path(), Kind::Image, "1-job-00").unwrap();
+        assert!(list_in(&dir, Kind::Image).is_empty());
+        let items = archive::list(data.path());
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].meta.title, "a cat");
+
+        archive::restore(data.path(), archive::Kind::Studio, &items[0].archive_id).unwrap();
+        assert_eq!(list_in(&dir, Kind::Image).len(), 1);
+        assert!(archive_in(data.path(), Kind::Image, "../x").is_err());
+        assert!(archive_in(data.path(), Kind::Image, "").is_err());
     }
 
     #[test]

@@ -77,6 +77,19 @@ export function describeNativeToolCall(
         jobId: jobId || undefined,
       }
     }
+    // The assistant's browser: the page it was asked to open, or the control
+    // (a node id, a key) it acted on. The card header shows the page address.
+    if (toolName.startsWith('browser_')) {
+      return {
+        variant: 'workspace',
+        tool: toolName,
+        target:
+          asString(args.url) ||
+          asString(args.id) ||
+          asString(args.key) ||
+          asString(args.direction),
+      }
+    }
     // find/grep are about their pattern, with the directory as context; the
     // others are about the single path or name they act on. `ls` defaults to the
     // workspace root, which the widget shows rather than an empty bar.

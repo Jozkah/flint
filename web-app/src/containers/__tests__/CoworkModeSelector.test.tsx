@@ -23,7 +23,7 @@ describe('CoworkModeSelector', () => {
   it('names the current mode on the trigger', () => {
     render(<CoworkModeSelector mode="review" onChange={vi.fn()} />)
     expect(screen.getByRole('button')).toHaveTextContent(
-      'common:coworkMode.review.label'
+      'common:coworkMode.review.short'
     )
   })
 

@@ -60,7 +60,9 @@ import {
   MessageSquare,
   PanelRight,
 } from 'lucide-react'
-import { basenameOf } from '@/lib/coworkPreview'
+import { basenameOf, resolveInRoot } from '@/lib/coworkPreview'
+import { codePathExists } from '@/lib/codePathExists'
+import { readTextBounded } from '@/lib/boundedRead'
 import { Frame, FrameBody } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
 import { Button } from '@/components/ui/button'
@@ -1316,6 +1318,28 @@ export function CoworkPage() {
     },
     [resolveToolPath, t]
   )
+  /** Does a clicked path's file exist? Only a definite "not found" is false. */
+  const toolPathExists = useCallback(
+    (path: string) =>
+      codePathExists(resolveToolPath(path), {
+        project: async (rel) => {
+          if (!treeRoot) return
+          const dataFolder = await serviceHub.app().getJanDataFolder()
+          if (!dataFolder) return
+          await projectReadFile(dataFolder, treeRoot, rel, false)
+        },
+        sandboxMissing: async (rel) => {
+          const abs = workspacePath ? resolveInRoot(workspacePath, rel) : null
+          if (!abs) return false
+          const read = await readTextBounded(
+            serviceHub.core().convertFileSrc(abs),
+            { maxBytes: 4096 }
+          )
+          return read.status === 'missing'
+        },
+      }),
+    [resolveToolPath, treeRoot, workspacePath, serviceHub]
+  )
   /**
    * A tool path as shown: relative to the sandbox or the attached folder it
    * is in, else just its name. The full path stays in the tooltip.
@@ -1329,6 +1353,15 @@ export function CoworkPage() {
         ...extraFolders,
       ]),
     [resolveToolPath, extraFolders, workspacePath, treeRoot]
+  )
+  // The folders a path in a reply may open from: sandbox, project tree,
+  // attached folder and extras.
+  const pathLinkRoots = useMemo(
+    () =>
+      [workspacePath, treeRoot, folder, ...extraFolders].filter(
+        (r): r is string => typeof r === 'string' && r.length > 0
+      ),
+    [workspacePath, treeRoot, folder, extraFolders]
   )
   /** Show a changed file in Changes. */
   const openToolDiff = useCallback(
@@ -2512,7 +2545,11 @@ export function CoworkPage() {
     hidden = false,
     // Files attached to this message: documents staged in the composer, and
     // the media it passed along. Without this they were dropped on send.
-    attachmentInput?: CoworkAttachmentInput
+    attachmentInput?: CoworkAttachmentInput,
+    // Called when the request is refused before a run starts (no usable model,
+    // a model that cannot call tools, a stale worktree), so the composer can
+    // give the draft back instead of losing it.
+    onRefused?: () => void
   ) => {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
@@ -2588,6 +2625,7 @@ export function CoworkPage() {
           ? t('common:sessionModelUnavailable', { model: resolved.unavailable.id })
           : t('common:selectModel')
       )
+      onRefused?.()
       return
     }
     // Without tool calling the transport drops the tool set silently, and the
@@ -2595,6 +2633,7 @@ export function CoworkPage() {
     // toolless "agent" run is worse than no run.
     if (!selectedModel.capabilities?.includes('tools')) {
       toast.error(t('common:modelNoTools', { model: selectedModel.id }))
+      onRefused?.()
       return
     }
     // A restored session may remember Managed worktree while its process-local
@@ -2603,6 +2642,7 @@ export function CoworkPage() {
     if (access === 'managed-worktree' && effective.destination !== 'managed') {
       const key = effectiveDowngradeKey(effective)
       if (key) toast.error(t(key))
+      onRefused?.()
       return
     }
     // Another session's message is not what this session is about.
@@ -2642,6 +2682,7 @@ export function CoworkPage() {
         useCoworkWorktrees.getState().forget(sid)
         useCoworkSessions.getState().setAccess(sid, 'review-only')
         toast.error(t(`common:coworkAccess.worktreeState.${health}`))
+        onRefused?.()
         return
       }
     }
@@ -4626,7 +4667,11 @@ export function CoworkPage() {
   const runRequestRef = useRef(runRequest)
   runRequestRef.current = runRequest
 
-  const handleSubmit = (text: string, files?: SubmittedFile[]) => {
+  const handleSubmit = (
+    text: string,
+    files?: SubmittedFile[],
+    onRefused?: () => void
+  ) => {
     // Read the staged documents now: the composer clears them as soon as this
     // returns.
     const sid = session?.id
@@ -4638,7 +4683,13 @@ export function CoworkPage() {
       : []
     const hasFiles = docs.length > 0 || (files?.length ?? 0) > 0
     const body = text.trim() || !hasFiles ? text : 'Please look at the attached file(s).'
-    void runRequest(body, undefined, false, hasFiles ? { docs, files } : undefined)
+    void runRequest(
+      body,
+      undefined,
+      false,
+      hasFiles ? { docs, files } : undefined,
+      onRefused
+    )
   }
   // A paired phone's message to the session in view takes the same path.
   useRemoteComposer('cowork', session?.id, handleSubmit)
@@ -5536,8 +5587,10 @@ export function CoworkPage() {
                   <CodeOpenProvider
             open={openToolPath}
             check={checkToolPath}
+            exists={toolPathExists}
             openDiff={openToolDiff}
             displayPath={displayToolPath}
+            roots={pathLinkRoots}
           >
                     {windowStart > 0 && (
                       <div className="flex justify-center pb-3">
@@ -6282,7 +6335,7 @@ export function CoworkPage() {
               if (!absolute) return
               void serviceHub
                 .opener()
-                .openPath(absolute)
+                .openPath(absolute, pathLinkRoots)
                 .catch((e) => toast.error(errorText(e)))
             }}
             // The tree the changes are in, not the one the session is

@@ -14,6 +14,9 @@ type WebPreviewState = {
   openUrl: (url: string) => void
   navigate: (url: string) => void
   replaceUrl: (url: string) => void
+  /** The open pane's box in CSS px (any surface); null while closed. */
+  paneRect: { left: number; top: number; right: number; bottom: number } | null
+  setPaneRect: (rect: WebPreviewState['paneRect']) => void
   close: () => void
   setSurface: (s: PreviewSurface) => void
   back: () => void
@@ -61,7 +64,23 @@ export const useWebPreview = create<WebPreviewState>((set, get) => ({
       return { history }
     })
   },
-  close: () => set({ open: false }),
+  paneRect: null,
+  setPaneRect: (paneRect) =>
+    set((s) => {
+      const a = s.paneRect
+      if (
+        a === paneRect ||
+        (a &&
+          paneRect &&
+          a.left === paneRect.left &&
+          a.top === paneRect.top &&
+          a.right === paneRect.right &&
+          a.bottom === paneRect.bottom)
+      )
+        return {}
+      return { paneRect }
+    }),
+  close: () => set({ open: false, paneRect: null }),
   setSurface: (surface) => set({ surface }),
   back: () => set((s) => ({ index: Math.max(0, s.index - 1) })),
   forward: () =>

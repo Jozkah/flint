@@ -156,6 +156,12 @@ pub async fn diffusion_delete<R: Runtime>(
     kind: Kind,
     id: String,
 ) -> Result<(), String> {
+    // With the archive on (the default) a result moves to the archive and can
+    // be restored; permanent deletion is done from the Archive page.
+    let data = crate::core::app::commands::get_jan_data_folder_path(app.clone());
+    if crate::core::archive::store::read_settings(&data).enabled {
+        return gallery::archive(&app, kind, &id);
+    }
     gallery::delete(&app, kind, &id)
 }
 

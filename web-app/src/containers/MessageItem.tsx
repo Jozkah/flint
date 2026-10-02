@@ -21,8 +21,6 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import {
-  ChevronLeft,
-  ChevronRight,
   Copy,
   GitFork,
   Loader,
@@ -52,6 +50,7 @@ const REVEAL_ACTIONS =
 const ACTION_BUTTON =
   'size-7 text-muted-foreground hover:bg-transparent hover:text-foreground dark:hover:bg-transparent data-[state=open]:bg-transparent pointer-coarse:size-11'
 import { ChainOfThoughtGroup } from './message/ChainOfThoughtGroup'
+import { VersionSwitcher } from './message/VersionSwitcher'
 import { shouldAnimateEntry } from '@/lib/messageEntry'
 import {
   CHAT_STATUS,
@@ -60,6 +59,8 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
+import { ExportSubmenu } from '@/components/ExportMenu'
+import { docFromUIMessage } from '@/lib/exportDoc'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -179,10 +180,18 @@ export const MessageItem = memo(
       index: number
     } | null>(null)
     const [ctxMenuOpen, setCtxMenuOpen] = useState(false)
+    // Where the menu opens: the pointer, in the message's own coordinates. The
+    // menu's anchor used to be an unpositioned sr-only span, which sat after
+    // the message's content, so the menu opened at the bottom of the message
+    // (and for the last one, at the very end of the transcript, under the
+    // composer) instead of at the pointer.
+    const [ctxPoint, setCtxPoint] = useState({ x: 0, y: 0 })
 
     const openContextMenu = useCallback((e: React.MouseEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      const box = e.currentTarget.getBoundingClientRect()
+      setCtxPoint({ x: e.clientX - box.left, y: e.clientY - box.top })
       setCtxMenuOpen(true)
     }, [])
 
@@ -685,29 +694,12 @@ export const MessageItem = memo(
 
     const versionNav =
       versionInfo && versionInfo.count > 1 && onSwitchVersion ? (
-        <div className="flex items-center gap-0.5 text-muted-foreground">
-          <button
-            type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-            disabled={versionInfo.index <= 1}
-            onClick={() => onSwitchVersion(message.id, -1)}
-            title="Previous version"
-          >
-            <ChevronLeft className="size-3.5" />
-          </button>
-          <span className="tabular-nums">
-            {versionInfo.index}/{versionInfo.count}
-          </span>
-          <button
-            type="button"
-            className="flex size-6 items-center justify-center rounded-md hover:text-foreground disabled:opacity-50 disabled:hover:bg-transparent focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:size-11"
-            disabled={versionInfo.index >= versionInfo.count}
-            onClick={() => onSwitchVersion(message.id, 1)}
-            title="Next version"
-          >
-            <ChevronRight className="size-3.5" />
-          </button>
-        </div>
+        <VersionSwitcher
+          messageId={message.id}
+          index={versionInfo.index}
+          count={versionInfo.count}
+          onSwitch={onSwitchVersion}
+        />
       ) : null
 
     const compactionRecord = metadata?.compaction as
@@ -725,7 +717,7 @@ export const MessageItem = memo(
       <div
         data-role={message.role}
         className={cn(
-          'group/message mb-3 w-full',
+          'group/message relative mb-3 w-full',
           // A different assistant took over: a rule and some air mark the change.
           switchedFrom && 'mt-4 border-t-[0.8px] border-border pt-4',
           animateIn && 'motion-safe:animate-msg-in',
@@ -1028,7 +1020,12 @@ export const MessageItem = memo(
         {/* Right-click context menu */}
         <DropdownMenu open={ctxMenuOpen} onOpenChange={setCtxMenuOpen}>
           <DropdownMenuTrigger asChild>
-            <span className="sr-only">Message actions</span>
+            <span
+              aria-hidden
+              data-testid="message-menu-anchor"
+              className="pointer-events-none absolute size-0"
+              style={{ left: ctxPoint.x, top: ctxPoint.y }}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent>
             <DropdownMenuItem
@@ -1036,13 +1033,17 @@ export const MessageItem = memo(
                 navigator.clipboard.writeText(getFullTextContent())
               }
             >
-              <Copy className="mr-2 size-4" />
+              <Copy className="size-4" />
               {t('chat:actions.copy')}
             </DropdownMenuItem>
 
+            <ExportSubmenu
+              build={() => docFromUIMessage(message, undefined, new Date())}
+            />
+
             {selectedModel && onRegenerate && !isStreaming && isLastMessage && (
               <DropdownMenuItem onClick={handleRegenerate}>
-                <RefreshCw className="mr-2 size-4" />
+                <RefreshCw className="size-4" />
                 {t('chat:actions.regenerate')}
               </DropdownMenuItem>
             )}
@@ -1053,7 +1054,7 @@ export const MessageItem = memo(
               canContinue &&
               !isStreaming && (
                 <DropdownMenuItem onClick={handleContinue}>
-                  <Play className="mr-2 size-4" />
+                  <Play className="size-4" />
                   {t('chat:actions.continue')}
                 </DropdownMenuItem>
               )}
@@ -1065,7 +1066,7 @@ export const MessageItem = memo(
                   className="text-destructive focus:text-destructive"
                   onClick={handleDelete}
                 >
-                  <Trash2 className="mr-2 size-4" />
+                  <Trash2 className="size-4" />
                   {t('chat:actions.delete')}
                 </DropdownMenuItem>
               </>

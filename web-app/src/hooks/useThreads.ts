@@ -12,7 +12,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { cleanupThreadWorkspace } from '@/lib/agentTools'
-import { deletePromptSnapshots } from '@/lib/promptSnapshotRetention'
+import { trackArchiveWork } from '@/lib/archive'
 
 type ThreadState = {
   threads: Record<string, Thread>
@@ -24,7 +24,8 @@ type ThreadState = {
   getFavoriteThreads: () => Thread[]
   getThreadById: (threadId: string) => Thread | undefined
   toggleFavorite: (threadId: string) => void
-  deleteThread: (threadId: string) => void
+  /** Moves the thread to the archive; `permanent` destroys it instead. */
+  deleteThread: (threadId: string, permanent?: boolean) => void
   renameThread: (threadId: string, newTitle: string) => void
   deleteAllThreads: () => void
   clearAllThreads: () => void
@@ -101,6 +102,20 @@ const cleanupThreadArtifacts = (threadId: string) => {
   cleanupThreadWorkspace(threadId)
   // "Allow all temporarily" lasts only as long as its conversation.
   useToolApprovalRequests.getState().forgetTemporaryGit(threadId)
+}
+
+// The backend delete. It moves the thread to the archive (or destroys it when
+// the archive is off or `permanent` is set), and removes the request records
+// and scratch dir only when the thread is finally purged. Fire-and-forget from
+// inside a reducer, so a failure is logged rather than thrown.
+const deleteThreadBackend = (threadId: string, permanent?: boolean) => {
+  const threads = getServiceHub().threads()
+  const done = permanent
+    ? threads.deleteThread(threadId, true)
+    : threads.deleteThread(threadId)
+  void trackArchiveWork(Promise.resolve(done)).catch((e) =>
+    console.warn(`[Threads] Failed to delete thread ${threadId}:`, e)
+  )
 }
 
 export const useThreads = create<ThreadState>()((set, get) => ({
@@ -201,7 +216,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       }
     })
   },
-  deleteThread: (threadId) => {
+  deleteThread: (threadId, permanent) => {
     set((state) => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [threadId]: _, ...remainingThreads } = state.threads
@@ -213,7 +228,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // behind they would sit in the record forever.
       useModelOverrides.getState().dropThread(threadId)
       cleanupThreadArtifacts(threadId)
-      getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
+      deleteThreadBackend(threadId, permanent)
 
       return {
         threads: remainingThreads,
@@ -249,7 +264,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
       // Delete threads and clean up their out-of-store artifacts
       threadsToDeleteIds.forEach((threadId) => {
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
+        deleteThreadBackend(threadId)
       })
 
       // Keep favorite threads and threads with project metadata
@@ -283,7 +298,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         useChatSessions.getState().removeSession(threadId)
         useAppState.getState().clearThreadState(threadId)
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
+        deleteThreadBackend(threadId)
       })
 
       return {
@@ -309,7 +324,7 @@ export const useThreads = create<ThreadState>()((set, get) => ({
         useChatSessions.getState().removeSession(threadId)
         useAppState.getState().clearThreadState(threadId)
         cleanupThreadArtifacts(threadId)
-        getServiceHub().threads().deleteThread(threadId); void deletePromptSnapshots(threadId)
+        deleteThreadBackend(threadId)
       })
 
       // Keep threads that don't belong to this project

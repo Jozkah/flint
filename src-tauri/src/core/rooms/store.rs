@@ -1059,4 +1059,45 @@ impl RoomStore {
         fs::remove_dir_all(&dir)
             .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("delete room {room_id}: {e}")))
     }
+
+    /// Move the room into the archive instead of destroying it. `data` is the
+    /// data folder the archive lives under. Refuses what `delete` refuses (a
+    /// missing room, a link standing in for the directory).
+    pub fn archive(&self, data: &Path, room_id: &str) -> Result<(), RoomError> {
+        let dir = self.room_dir(room_id)?;
+        let _guard = write_guard();
+        match fs::symlink_metadata(&dir) {
+            Ok(meta) if meta.is_dir() => {}
+            Ok(_) => {
+                return Err(RoomError::new(
+                    RoomErrorCode::NotFound,
+                    format!("room {room_id} not found"),
+                ))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(RoomError::new(
+                    RoomErrorCode::NotFound,
+                    format!("room {room_id} not found"),
+                ))
+            }
+            Err(e) => {
+                return Err(RoomError::new(
+                    RoomErrorCode::Io,
+                    format!("inspect room directory: {e}"),
+                ))
+            }
+        }
+        let title = read_room_file(&dir.join(ROOM_FILE))
+            .map(|room| room.title)
+            .unwrap_or_default();
+        crate::core::archive::store::archive_dir(
+            data,
+            crate::core::archive::store::Kind::Room,
+            room_id,
+            &title,
+            None,
+        )
+        .map(|_| ())
+        .map_err(|e| RoomError::new(RoomErrorCode::Io, format!("archive room {room_id}: {e}")))
+    }
 }

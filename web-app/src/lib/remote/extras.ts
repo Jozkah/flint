@@ -29,6 +29,8 @@ export type RemoteExtras = {
   setChatAssistant(id: string, assistant: string): void
   assistants(): AssistantsResult
   forkChat(id: string, messageId?: string): Promise<string | null>
+  /** Step a message's version; false when there is none that way or the chat is busy. */
+  selectVersion(id: string, messageId: string, dir: -1 | 1): boolean
   compactChat(id: string): boolean
   regenerateTitle(kind: SessionKind, id: string): Promise<TitleRegenerateResult['result']>
   clearRoom(id: string, scope: RoomClearParams['scope']): Promise<void>
@@ -45,6 +47,7 @@ export type ExtraMethods =
   | 'chat.effort'
   | 'chat.assistant'
   | 'chat.fork'
+  | 'thread.branch.select'
   | 'chat.compact'
   | 'title.regenerate'
   | 'assistants.list'
@@ -113,6 +116,13 @@ export function createExtraHandlers(x?: RemoteExtras): Pick<RemoteHandlers, Extr
       const next = await need().forkChat(id(params), messageId)
       if (!next) throw new RemoteRpcError('bad_params', 'There is nothing to fork in this chat')
       return { id: next }
+    },
+    'thread.branch.select': (params) => {
+      const p = rec(params)
+      const messageId = str(p.messageId)
+      if (!messageId) throw new RemoteRpcError('bad_params', 'messageId is required')
+      if (p.dir !== -1 && p.dir !== 1) throw new RemoteRpcError('bad_params', 'dir must be -1 or 1')
+      return { ok: need().selectVersion(id(params), messageId, p.dir) }
     },
     'chat.compact': (params) => ({ started: need().compactChat(id(params)) }),
     'title.regenerate': async (params) => {

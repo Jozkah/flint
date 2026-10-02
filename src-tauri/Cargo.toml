@@ -54,6 +54,11 @@ name = "sdk_examples"
 path = "tests/sdk_examples.rs"
 required-features = ["cli"]
 
+[[test]]
+name = "scheduled_run"
+path = "tests/scheduled_run.rs"
+required-features = ["cli"]
+
 # Real-Tauri UI smoke harness. Excluded from release builds: `cowork-smoke` is
 # not in `default`, so `required-features` keeps cargo from building this target
 # unless it is asked for explicitly.
@@ -255,6 +260,7 @@ rfd = { version = "0.15.4", optional = true, default-features = false, features 
   "common-controls-v6",
 ] }
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 futures = "0.3"
 hostname = "0.4"
@@ -327,6 +333,8 @@ gtk = { version = "0.18", optional = true }
 libc = "0.2.172"
 webview2-com = "0.38.2"
 windows-core = "0.61"
+# IStream for the browser pane screenshot (WebView2 CapturePreview).
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage"] }
 windows-sys = { version = "0.60.2", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",

@@ -436,10 +436,40 @@ describe('ChatInput', () => {
     renderInput({ onSubmit })
     fireEvent.keyDown(getTextarea(), { key: 'Enter' })
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith('hello world', undefined)
+      expect(onSubmit).toHaveBeenCalledWith(
+        'hello world',
+        undefined,
+        expect.any(Function)
+      )
     )
     expect(addToHistoryMock).toHaveBeenCalledWith('hello world')
     expect(setPromptMock).toHaveBeenCalledWith('')
+  })
+
+  it('does not leave a restored draft behind for the next composer', async () => {
+    promptState = 'keep me please'
+    const onSubmit = vi.fn(
+      (_t: string, _f?: unknown, onRefused?: () => void) => onRefused?.()
+    )
+    const first = renderInput({ onSubmit })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() => expect(promptState).toBe('keep me please'))
+    first.unmount()
+    // A composer mounted after (New Chat) starts empty.
+    expect(promptState).toBe('')
+  })
+
+  it('gives the draft back when the send is refused before it started', async () => {
+    promptState = 'keep me'
+    const onSubmit = vi.fn(
+      (_t: string, _f?: unknown, onRefused?: () => void) => onRefused?.()
+    )
+    renderInput({ onSubmit })
+    fireEvent.keyDown(getTextarea(), { key: 'Enter' })
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(setPromptMock.mock.calls.map((c) => c[0])).toEqual(['', 'keep me'])
+    )
   })
 
   it('does NOT submit on Shift+Enter (newline behavior)', () => {
@@ -470,7 +500,11 @@ describe('ChatInput', () => {
     ) as HTMLButtonElement
     fireEvent.click(btn)
     await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith('button submit', undefined)
+      expect(onSubmit).toHaveBeenCalledWith(
+        'button submit',
+        undefined,
+        expect.any(Function)
+      )
     )
   })
 
@@ -762,7 +796,8 @@ describe('ChatInput', () => {
             mediaType: 'image/png',
             url: 'data:image/png;base64,xxx',
           }),
-        ])
+        ]),
+        expect.any(Function)
       )
     )
     expect(clearAttachmentsMock).toHaveBeenCalled()
@@ -798,7 +833,8 @@ describe('ChatInput', () => {
         'transcribe this',
         expect.arrayContaining([
           expect.objectContaining({ mediaType: 'audio/wav' }),
-        ])
+        ]),
+        expect.any(Function)
       )
     )
   })
@@ -1315,7 +1351,8 @@ describe('ChatInput slash commands', () => {
     await waitFor(() =>
       expect(onSubmit).toHaveBeenCalledWith(
         '/usr/bin/env is missing',
-        undefined
+        undefined,
+        expect.any(Function)
       )
     )
   })

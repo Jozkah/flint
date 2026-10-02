@@ -18,6 +18,7 @@ const Rooms = lazy(() => import('../screens/Rooms'))
 const Overview = lazy(() => import('../screens/Overview'))
 const Library = lazy(() => import('../screens/Library'))
 const Studio = lazy(() => import('../screens/Studio'))
+const Archive = lazy(() => import('../screens/Archive'))
 const Models = lazy(() => import('../screens/Models'))
 const HuggingFace = lazy(() => import('../screens/HuggingFace'))
 const Tools = lazy(() => import('../screens/Tools'))
@@ -50,6 +51,7 @@ function Screen({ route }: { route: Route }) {
         overview: Overview,
         library: Library,
         studio: Studio,
+        archive: Archive,
         models: Models,
         hf: HuggingFace,
         tools: Tools,

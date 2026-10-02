@@ -18,6 +18,8 @@ import { AddProviderDialog } from '@/containers/dialogs'
 import { ImportLlamacppModelDialog } from '@/containers/dialogs/ImportLlamacppModelDialog'
 import { Switch } from '@/components/ui/switch'
 import { Chip } from '@/components/ui/chip'
+import { ProviderStatusChip } from '@/components/ProviderStatusChip'
+import { providerKeyStatus } from '@/lib/providerKeyStatus'
 import { Segmented } from '@/components/ui/segmented'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
@@ -568,9 +570,7 @@ function ModelProviders() {
                         : t('engine:providers.notSetUp')}
                     </small>
                     {provider.active ? (
-                      <Chip tone="ok" dot>
-                        {local ? t('engine:status.running') : t('engine:status.connected')}
-                      </Chip>
+                      <ProviderStatusChip status={providerKeyStatus(provider)} />
                     ) : (
                       <Chip dot>{t('engine:status.off')}</Chip>
                     )}
@@ -656,7 +656,7 @@ function ModelProviders() {
                   const loaded = local && activeModels.includes(model.id)
                   const speed = speeds.get(model.id)
                   const ctx = contextLengthOf(model)
-                  const hasKey = local || providerHasRemoteApiKeys(provider)
+                  const hasKey = providerKeyStatus(provider) !== 'missing'
                   return (
                     <div
                       key={`${provider.provider}:${model.id}`}

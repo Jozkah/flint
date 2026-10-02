@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { createPresenceSync, notifySessionRemoved, __presenceTesting } from '../mailboxPresence'
+import {
+  createPresenceSync,
+  notifySessionArchived,
+  notifySessionRemoved,
+  notifySessionRestored,
+  __presenceTesting,
+} from '../mailboxPresence'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 
@@ -11,6 +17,7 @@ const fake = () => ({
   setStatus: vi.fn(async () => undefined),
   heartbeat: vi.fn(async () => undefined),
   remove: vi.fn(async () => undefined),
+  revive: vi.fn(async () => undefined),
 })
 
 describe('mailbox presence', () => {
@@ -73,6 +80,58 @@ describe('mailbox presence', () => {
     vi.advanceTimersByTime(100)
     expect(mailbox.remove).toHaveBeenCalledTimes(1)
     expect(mailbox.remove).toHaveBeenCalledWith('A')
+  })
+
+  it('does not tombstone an archived session, and registers it again on restore', () => {
+    vi.advanceTimersByTime(100)
+    mailbox.register.mockClear()
+    const archived = useCoworkSessions.getState().sessions[0]
+    notifySessionArchived('A')
+    useCoworkSessions.getState().deleteSession('A', { keepRecords: true })
+    vi.advanceTimersByTime(100)
+    expect(mailbox.remove).not.toHaveBeenCalled()
+
+    notifySessionRestored('A')
+    useCoworkSessions.getState().restoreSession(archived)
+    vi.advanceTimersByTime(100)
+    expect(mailbox.register).toHaveBeenCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+    })
+    // A real delete afterwards still tombstones.
+    useCoworkSessions.getState().deleteSession('A')
+    expect(mailbox.remove).toHaveBeenCalledWith('A')
+  })
+
+  it('revives a live session whose registration hit an old tombstone, once', async () => {
+    const { MailboxError } = await import('@/lib/sessionMailbox')
+    mailbox.register.mockRejectedValue(new MailboxError('session_deleted', 'deleted'))
+    vi.advanceTimersByTime(100)
+    await vi.runOnlyPendingTimersAsync()
+    expect(mailbox.revive).toHaveBeenCalledTimes(1)
+    expect(mailbox.revive).toHaveBeenCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+    })
+    // A rename registers again; still refused, but no second revive.
+    useCoworkSessions.getState().setTitle('A', 'Alpha 2')
+    vi.advanceTimersByTime(100)
+    await vi.runOnlyPendingTimersAsync()
+    expect(mailbox.revive).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves a really deleted session tombstoned', async () => {
+    const { MailboxError } = await import('@/lib/sessionMailbox')
+    mailbox.register.mockImplementation(async () => {
+      // Deleted from the store while the register was in flight.
+      useCoworkSessions.setState({ sessions: [] })
+      throw new MailboxError('session_deleted', 'deleted')
+    })
+    vi.advanceTimersByTime(100)
+    await vi.runOnlyPendingTimersAsync()
+    expect(mailbox.revive).not.toHaveBeenCalled()
   })
 
   it('reports running with heartbeats, then idle', () => {

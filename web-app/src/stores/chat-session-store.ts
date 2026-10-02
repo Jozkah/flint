@@ -57,31 +57,50 @@ const createSessionData = (): SessionData => ({
 // Standalone data store for sessions that don't have a Chat yet
 const standaloneData: Record<string, SessionData> = {};
 
+let notifyQueued = false;
+
+/**
+ * Tell subscribers the sessions changed, once, after the current synchronous
+ * work (a render) ends. Replaces the record so selectors see a new reference.
+ */
+function notifyAfterRender(
+  set: (fn: (s: ChatSessionState) => Partial<ChatSessionState>) => void
+) {
+  if (notifyQueued) return;
+  notifyQueued = true;
+  queueMicrotask(() => {
+    notifyQueued = false;
+    set((s) => ({ sessions: { ...s.sessions } }));
+  });
+}
+
 export const useChatSessions = create<ChatSessionState>((set, get) => ({
   sessions: {},
   activeConversationId: undefined,
   setActiveConversationId: (conversationId) =>
     set({ activeConversationId: conversationId }),
   ensureSession: (sessionId, transport, createChat, title) => {
-    // Only update activeConversationId if it changed (avoid unnecessary state updates during render)
-    if (get().activeConversationId !== sessionId) {
-      set({ activeConversationId: sessionId });
+    // ensureSession runs while a component renders (use-chat's useMemo), and a
+    // store `set` there notifies subscribers such as ChatsNav, which React
+    // reports as "Cannot update a component while rendering a different
+    // component". So the state is changed in place, readable at once through
+    // `get()`, and subscribers are told right after the render, not during it.
+    const state = get();
+    if (state.activeConversationId !== sessionId) {
+      state.activeConversationId = sessionId;
+      notifyAfterRender(set);
     }
 
-    const existing = get().sessions[sessionId];
+    const existing = state.sessions[sessionId];
     if (existing) {
       // Keep transport and title in sync if they changed
       if (existing.transport !== transport || existing.title !== title) {
-        set((state) => ({
-          sessions: {
-            ...state.sessions,
-            [sessionId]: {
-              ...existing,
-              transport,
-              title: title ?? existing.title,
-            },
-          },
-        }));
+        state.sessions[sessionId] = {
+          ...existing,
+          transport,
+          title: title ?? existing.title,
+        };
+        notifyAfterRender(set);
       }
       return existing.chat;
     }
@@ -108,12 +127,8 @@ export const useChatSessions = create<ChatSessionState>((set, get) => ({
       data,
     };
 
-    set((state) => ({
-      sessions: {
-        ...state.sessions,
-        [sessionId]: newSession,
-      },
-    }));
+    state.sessions[sessionId] = newSession;
+    notifyAfterRender(set);
 
     return chat;
   },

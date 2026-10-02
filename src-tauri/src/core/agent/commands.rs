@@ -874,6 +874,40 @@ pub fn agent_worktree_discard(
     worktree::discard_owned(&record, &roots, force)
 }
 
+/// Remove the worktree (or copy) of a Cowork session being purged from the
+/// archive, never forcing: uncommitted changes and commits that are not in the
+/// base branch refuse, and the refusal names them. The record is the one the
+/// renderer filed when the session was archived, so it is checked exactly as
+/// [`agent_worktree_discard`] checks one -- under the folder Flint owns and
+/// still listed by its repository. A worktree that is already gone has nothing
+/// left to lose and is not an error.
+pub fn discard_for_purge(
+    data_folder: &std::path::Path,
+    record: &serde_json::Value,
+) -> Result<(), String> {
+    let path = record
+        .get("path")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "the worktree record has no path".to_string())?;
+    if !std::path::Path::new(path).exists() {
+        return Ok(());
+    }
+    let roots = worktree::absolute(&workspace::worktrees_dir(data_folder))?;
+    if !std::path::Path::new(path).starts_with(&roots) {
+        return Err(format!(
+            "{path} is not a worktree Flint manages, so Flint will not remove it"
+        ));
+    }
+    if record.get("kind").and_then(|v| v.as_str()) == Some("copy") {
+        let copy = crate::core::agent::session_copy::load(std::path::Path::new(path), &roots)?;
+        return crate::core::agent::session_copy::discard(&copy, false);
+    }
+    let input: WorktreeRecordInput = serde_json::from_value(record.clone())
+        .map_err(|e| format!("the worktree record is not readable: {e}"))?;
+    let record: worktree::WorktreeRecord = input.into();
+    worktree::discard_owned(&record, &roots, false)
+}
+
 /// Why a shell command would be asked about before it runs, or `None`.
 ///
 /// The renderer's own port (`destructiveCommand.ts`) compares paths as text;

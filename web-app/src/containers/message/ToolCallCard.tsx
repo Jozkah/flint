@@ -29,6 +29,8 @@ import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
 import { BrowserOpenedCard } from './BrowserOpenedCard'
 import { parseBrowserTarget } from '@/lib/browserOpen'
+import { browserCardUrl, isBrowserTool } from '@/lib/browserAgent'
+import { useBrowserShots } from '@/hooks/useBrowserShots'
 import { toolSentence } from '@/lib/traceSummary'
 import {
   lineOfToolInput,
@@ -185,6 +187,12 @@ export const ToolCallCard = memo(
     // Native tools name what they acted on (a command, a path, a query) in the
     // header; their widget shows the result inside the card.
     const bar = describeNativeToolCall(origin, toolName, part.input)
+    const shot = useBrowserShots((s) =>
+      part.toolCallId ? s.shots[part.toolCallId] : undefined
+    )
+    const browserArg = isBrowserTool(toolName)
+      ? browserCardUrl(toolName, part.input, part.output)
+      : ''
 
     const bash = useMemo(
       () =>
@@ -414,7 +422,10 @@ export const ToolCallCard = memo(
               </>
             ) : undefined
           }
-          arg={bar ? shownArg(bar) : undefined}
+          arg={
+            // The page the assistant's browser is on, from its own result.
+            browserArg || (bar ? shownArg(bar) : undefined)
+          }
           argNode={
             // A finished call's path opens in the Code panel from the header,
             // at the line it read when it names one.
@@ -441,6 +452,16 @@ export const ToolCallCard = memo(
           {/* A diff already says what the edit's arguments would. */}
           {Boolean(part.input) && !showDiff && <ToolInput input={part.input} />}
           <ToolApprovalActions />
+          {shot && (
+            // The picture the assistant took of the browser pane. Display
+            // only: the model is told where it was saved, not given pixels.
+            <img
+              data-testid="browser-shot"
+              alt={t('browser-agent:card.screenshot')}
+              src={`data:image/png;base64,${shot}`}
+              className="max-h-72 w-full rounded-md border border-border bg-muted object-contain"
+            />
+          )}
           {awaitingApproval
             ? null
             : bar

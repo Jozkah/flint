@@ -201,6 +201,13 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
       active: within(route.appLogs),
     },
     {
+      to: route.archive,
+      label: t('archive:nav'),
+      icon: 'x-disk',
+      active: pathname === route.archive,
+      testId: 'nav-archive',
+    },
+    {
       to: route.settings.general,
       label: t('common:appRail.settings'),
       icon: 'sb-settings',

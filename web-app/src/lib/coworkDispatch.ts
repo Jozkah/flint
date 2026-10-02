@@ -12,11 +12,13 @@ import {
 import {
   ASK_TOOL_NAME,
   PLAN_DENIED_TOOLS,
+  isReviewDeniedBrowserTool,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
+import { isBrowserTool } from '@/lib/browserAgent'
 import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
@@ -724,6 +726,11 @@ async function routeCoworkTool(
       }
     }
 
+    // Review mode changes nothing: a click or a keystroke can.
+    if (isReviewDeniedBrowserTool(toolName) && isReadOnly(ctx.mode)) {
+      return planRefusal(toolName)
+    }
+
     if (WEB_TOOL_NAMES.has(toolName)) {
       if (!ctx.webSearch) {
         return {
@@ -795,6 +802,32 @@ async function routeCoworkTool(
         // which task is asking.
         ...(toolName === 'request_access'
           ? { signal, taskLabel: 'Cowork session' }
+          : {}),
+        // Browser tools ask the user themselves (domain, action, submit).
+        // Auto mode has nobody to ask: they then run only on sites a saved
+        // rule or the project's allowed domains already cover.
+        ...(isBrowserTool(toolName)
+          ? {
+              signal,
+              unattended: ctx.mode === 'auto',
+              // Through Cowork's own prompt, as for an edit: the session's
+              // grants apply, a subagent is named, and stopping the run
+              // withdraws the question.
+              approve: ({ context, url, alwaysAsk, input }) =>
+                ctx.onApprove
+                  ? unlessStopped(
+                      ctx.onApprove(
+                        call.toolCallId,
+                        toolName,
+                        input ?? call.input,
+                        url ? `Page: ${url}` : undefined,
+                        signal,
+                        alwaysAsk ? { alwaysAsk: true, reason: context } : undefined
+                      ),
+                      signal
+                    )
+                  : Promise.resolve(false),
+            }
           : {}),
         // Live command output for the terminal card, as the chat surface
         // does: raw, so it keeps the colours the model-facing result (which

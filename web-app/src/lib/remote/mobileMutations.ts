@@ -2,7 +2,10 @@ import { useThreads } from '@/hooks/useThreads'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
-import { deleteCoworkSession } from '@/lib/coworkSessionLifecycle'
+import {
+  archiveCoworkSession,
+  deleteCoworkSession,
+} from '@/lib/coworkSessionLifecycle'
 import { composerFor } from './composer'
 import { useAppState } from '@/hooks/useAppState'
 import type {
@@ -134,8 +137,11 @@ export async function handleMobileMutation(
   if (op === 'cowork.delete') {
     const id = str(p.id)
     if (!id) throw new Error('Session id is required')
-    // Stops the session's run and drops everything held for it.
-    deleteCoworkSession(id)
+    // Archived like a delete on the desktop (the worktree is left alone), and
+    // stops the session's run and drops everything held for it. With the
+    // archive off, or if it cannot be written, this is the plain delete.
+    const archived = await archiveCoworkSession(id, false).catch(() => false)
+    if (!archived) deleteCoworkSession(id)
     return { ok: true }
   }
 

@@ -6,6 +6,7 @@ import { createRemoteHandlers } from '@/lib/remote/handlers'
 import { appSources } from '@/lib/remote/sources'
 import { appActions } from '@/lib/remote/appActions'
 import { appExtras } from '@/lib/remote/appExtras'
+import { appArchive } from '@/lib/remote/appArchive'
 import { appStudio, appVoice, startStudioForwarding } from '@/lib/remote/appStudio'
 import { startRemoteEventForwarding } from '@/lib/remote/events'
 import { startPushForwarding } from '@/lib/remote/push'
@@ -35,7 +36,8 @@ export function useRemoteBridge() {
       appActions((to) => navigate(to as Parameters<typeof navigate>[0])),
       appExtras,
       appStudio,
-      appVoice
+      appVoice,
+      appArchive
     )
     let cancelled = false
     const offs: (() => void)[] = []

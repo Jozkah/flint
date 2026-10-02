@@ -132,10 +132,10 @@ describe('CoworkWorkspacePill', () => {
     await userEvent.click(screen.getByRole('button', { name: /a11yWithFolder/ }))
 
     await userEvent.click(screen.getAllByText('common:workspace.open')[0])
-    expect(openPath).toHaveBeenCalledWith('/home/u/Projects/jan-app')
+    expect(openPath).toHaveBeenCalledWith('/home/u/Projects/jan-app', ['/home/u/Projects/jan-app'])
 
     await userEvent.click(screen.getByText('common:workspace.reveal'))
-    expect(revealItemInDir).toHaveBeenCalledWith('/home/u/Projects/jan-app')
+    expect(revealItemInDir).toHaveBeenCalledWith('/home/u/Projects/jan-app', ['/home/u/Projects/jan-app'])
   })
 
   it('detaches the folder', async () => {

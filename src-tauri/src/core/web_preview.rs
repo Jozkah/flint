@@ -161,6 +161,9 @@ mod desktop {
             .join("web-preview-profile");
 
         let nav_origin = origin.clone();
+        let nav_label = label.clone();
+        let nav_app = app.clone();
+        let load_label = label.clone();
         let load_app = app.clone();
         let load_id = id.clone();
         let title_app = app.clone();
@@ -172,13 +175,23 @@ mod desktop {
         let builder = WebviewBuilder::new(&label, WebviewUrl::External(target))
             .data_directory(data_dir)
             .on_navigation(move |u| {
-                let ok = is_allowed_preview_url(u, nav_origin.as_ref());
+                let mut ok = is_allowed_preview_url(u, nav_origin.as_ref());
                 if !ok {
                     log::warn!("web preview blocked navigation to {u}");
+                } else if !crate::core::browser_agent::navigation_permitted(&nav_label, u) {
+                    // The agent holds the pane and the policy stops this hop.
+                    // This callback runs on the webview's thread: it only
+                    // queues the notice and never waits.
+                    crate::core::browser_agent::report_block(&nav_app, u);
+                    ok = false;
                 }
                 ok
             })
             .on_page_load(move |_wv, payload| {
+                crate::core::browser_agent::on_page_load(
+                    &load_label,
+                    matches!(payload.event(), PageLoadEvent::Started),
+                );
                 emit(
                     &load_app,
                     NavigatedPayload {

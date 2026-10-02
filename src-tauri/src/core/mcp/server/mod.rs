@@ -89,6 +89,10 @@ impl ServedTools {
         let Some(tool) = lookup(name) else {
             return false;
         };
+        // A peer has no browser pane to drive.
+        if tauri_plugin_agent_tools::tools::is_browser_tool(name) {
+            return false;
+        }
         if !self.only.is_empty() && !self.only.iter().any(|n| n == name) {
             return false;
         }

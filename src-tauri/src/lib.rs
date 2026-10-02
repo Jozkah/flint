@@ -68,7 +68,9 @@ macro_rules! invoke_commands_with_extras {
         core::filesystem::commands::decompress,
         core::filesystem::commands::open_dialog,
         core::filesystem::commands::save_dialog,
+        core::filesystem::export_file::export_save_file,
         core::filesystem::group_folders::inspect_group_folders,
+        core::filesystem::session_path::open_session_path,
         // App configuration commands
         core::app::commands::get_app_configurations,
         core::app::commands::get_user_home_path,
@@ -285,6 +287,7 @@ macro_rules! invoke_commands_with_extras {
         core::threads::commands::create_thread,
         core::threads::commands::modify_thread,
         core::threads::commands::delete_thread,
+        core::threads::commands::delete_thread_permanently,
         core::threads::commands::list_messages,
         core::threads::commands::create_message,
         core::threads::commands::modify_message,
@@ -298,7 +301,32 @@ macro_rules! invoke_commands_with_extras {
         core::rooms::commands::room_save,
         core::rooms::commands::room_append,
         core::rooms::commands::room_delete,
+        core::rooms::commands::room_delete_permanently,
         core::rooms::commands::room_clear_journal,
+        // Archive (delete moves here first)
+        core::archive::commands::archive_list,
+        core::archive::commands::archive_disk_usage,
+        core::archive::commands::archive_put,
+        core::archive::commands::archive_restore,
+        core::archive::commands::archive_purge,
+        core::archive::commands::archive_empty,
+        core::archive::commands::archive_get_settings,
+        core::archive::commands::archive_set_settings,
+        // Scheduled tasks
+        core::schedule::commands::schedules_list,
+        core::schedule::commands::schedule_save,
+        core::schedule::commands::schedule_delete,
+        core::schedule::commands::schedule_set_enabled,
+        core::schedule::commands::schedule_run_now,
+        core::schedule::commands::schedule_runs,
+        core::schedule::commands::schedule_cancel_run,
+        core::schedule::commands::schedule_preview,
+        core::schedule::commands::schedule_to_cron,
+        core::schedule::commands::schedule_time_zones,
+        core::schedule::commands::schedule_tools,
+        core::schedule::commands::schedule_os_status,
+        core::schedule::commands::schedule_os_enable,
+        core::schedule::commands::schedule_os_disable,
         core::preview::preview_register,
         core::preview::preview_release,
         // Native web preview (child webview)
@@ -652,6 +680,18 @@ pub fn build_app() -> tauri::App {
         core::remote::commands::remote_emit_event,
         core::remote::commands::remote_upload_take,
         core::remote::commands::remote_set_preview,
+        // Agent browser tools (drive the built-in browser pane); desktop-only.
+        core::browser_agent::pane::browser_agent_call,
+        core::browser_agent::pane::browser_agent_status,
+        core::browser_agent::pane::browser_agent_grant,
+        core::browser_agent::pane::browser_agent_block,
+        core::browser_agent::pane::browser_agent_rules,
+        core::browser_agent::pane::browser_agent_rule_set,
+        core::browser_agent::pane::browser_agent_rule_remove,
+        core::browser_agent::pane::browser_agent_clear_grants,
+        core::browser_agent::pane::browser_agent_grants,
+        core::browser_agent::pane::browser_agent_stop,
+        core::browser_agent::pane::browser_agent_resume,
     ]);
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -709,6 +749,28 @@ pub fn build_app() -> tauri::App {
                     "background jobs: {} left by an earlier process were settled",
                     settled.len()
                 );
+            }
+            // Archive: idle threads move first, before the window lists
+            // threads (off by default, so this normally reads nothing); items
+            // past their retention are deleted off the main thread.
+            {
+                let data_folder = get_jan_data_folder_path(app.handle().clone());
+                let moved = core::archive::auto_archive_idle_threads(
+                    &data_folder,
+                    core::archive::store::now_ms(),
+                );
+                if moved > 0 {
+                    log::info!("archive: {moved} idle thread(s) moved to the archive");
+                }
+                std::thread::spawn(move || {
+                    let report = core::archive::sweep_expired(
+                        &data_folder,
+                        core::archive::store::now_ms(),
+                    );
+                    if report.purged > 0 {
+                        log::info!("archive: {} expired item(s) deleted", report.purged);
+                    }
+                });
             }
             // Request snapshots and usage counts are bounded rather than kept
             // forever. Off the main thread: a large log is a rewrite, and the
@@ -844,6 +906,9 @@ pub fn build_app() -> tauri::App {
             #[cfg(desktop)]
             setup::setup_jan_cli(app.handle().clone(), stored_version != app_version);
             setup::setup_theme_listener(app)?;
+            // Scheduled tasks: catch-up pass now, then a tick every 30s.
+            #[cfg(desktop)]
+            core::schedule::driver::start(app.handle().clone());
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -62,7 +62,7 @@ export function CoworkArtifactCard({
         <div className="flex shrink-0 items-center rounded-lg border-[0.8px] border-border bg-card">
           <button
             type="button"
-            onClick={() => void serviceHub.opener().openPath(abs)}
+            onClick={() => void serviceHub.opener().openPath(abs, root ? [root] : [])}
             className="flex h-7 items-center gap-1.5 rounded-l-lg px-2.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-hover-btn hover:text-foreground"
           >
             <SquareArrowOutUpRight size={13} className="text-muted-foreground" />
@@ -79,11 +79,11 @@ export function CoworkArtifactCard({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => void serviceHub.opener().openPath(abs)}>
+              <DropdownMenuItem onClick={() => void serviceHub.opener().openPath(abs, root ? [root] : [])}>
                 <SquareArrowOutUpRight size={14} />
                 {t('common:artifactOpenExternal')}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => void serviceHub.opener().revealItemInDir(abs)}>
+              <DropdownMenuItem onClick={() => void serviceHub.opener().revealItemInDir(abs, root ? [root] : [])}>
                 <FolderOpen size={14} />
                 {t('common:artifactShowInFolder')}
               </DropdownMenuItem>

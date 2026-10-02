@@ -92,6 +92,13 @@ export type RemoteMessage = {
   tools?: RemoteToolStep[]
   /** A reply's footer facts, as the desktop's reply row shows them. */
   meta?: ReplyMeta
+  /**
+   * Present only when the message has other versions (an edited question, a
+   * regenerated reply): which one this is, 1-based, of how many. Older phones
+   * ignore it and show the version in force, which is all `thread.messages`
+   * sends them.
+   */
+  versions?: { index: number; count: number }
 }
 
 /** What a reply's header and footer say (#47, #61, #84). */
@@ -111,6 +118,13 @@ export type ReplyMeta = {
   draft?: { accepted: number; tokens: number }
   /** Skills the reply read (`plugin:skill` or `skill`). */
   skills?: string[]
+}
+
+/** Step a message to the previous (-1) or next (+1) version of itself. */
+export type ThreadBranchSelectParams = {
+  id: string
+  messageId: string
+  dir: -1 | 1
 }
 
 export type ThreadMessagesParams = {
@@ -690,6 +704,32 @@ export type VoiceStatusResult = { ready: boolean }
 /** `audio` is base64 16 kHz mono 16-bit WAV. */
 export type VoiceTranscribeParams = { audio: string; language?: string }
 
+export type ArchiveKindWire = 'thread' | 'room' | 'cowork' | 'project' | 'assistant' | 'studio'
+
+export type ArchiveItemWire = {
+  /** `<kind>:<name in the archive>`; what restore and purge take back. */
+  key: string
+  kind: ArchiveKindWire
+  title: string
+  /** Milliseconds since the epoch. */
+  archivedAt: number
+  sizeBytes: number
+}
+
+export type ArchiveListResult = {
+  items: ArchiveItemWire[]
+  /** Days an archived item is kept before it is deleted; 0 keeps it for good. */
+  retentionDays: number
+}
+
+export type ArchiveKeyParams = { key: string }
+
+export type ArchiveEmptyResult = {
+  purged: number
+  /** Items a guard kept (a Cowork session whose worktree holds unmerged work). */
+  blocked: { title: string; reason: string }[]
+}
+
 // ---------------------------------------------------------------------------
 // Push (answered by the server itself, not the window)
 // ---------------------------------------------------------------------------
@@ -752,6 +792,8 @@ export type RemoteMethods = {
   'preview.ticket': { params: { id: string }; result: { path: string } }
   'sessions.list': { params: SessionsListParams; result: SessionsListResult }
   'thread.messages': { params: ThreadMessagesParams; result: ThreadMessagesResult }
+  /** `ok: false` when there is no version that way or the chat is mid-reply. */
+  'thread.branch.select': { params: ThreadBranchSelectParams; result: { ok: boolean } }
   'models.list': { params: Record<string, never>; result: ModelsListResult }
   status: { params: Record<string, never>; result: StatusResult }
   'rooms.get': { params: IdParams; result: RoomDetail }
@@ -801,6 +843,11 @@ export type RemoteMethods = {
   'studio.media': { params: StudioItemParams; result: { dataUrl: string } }
   'studio.remix': { params: StudioItemParams; result: { started: true } }
   'studio.delete': { params: StudioItemParams; result: { ok: true } }
+  /** The archive of deleted items; a phone can list, restore and delete them for good. */
+  'archive.list': { params: Record<string, never>; result: ArchiveListResult }
+  'archive.restore': { params: ArchiveKeyParams; result: { ok: true } }
+  'archive.purge': { params: ArchiveKeyParams; result: { ok: true } }
+  'archive.empty': { params: { kind?: ArchiveKindWire }; result: ArchiveEmptyResult }
   'voice.status': { params: Record<string, never>; result: VoiceStatusResult }
   'voice.transcribe': { params: VoiceTranscribeParams; result: { text: string } }
 }

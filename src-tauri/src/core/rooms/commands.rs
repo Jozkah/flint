@@ -81,8 +81,28 @@ pub async fn room_clear_journal<R: Runtime>(
     run_blocking(move || store.clear_journal(&room_id)).await
 }
 
+/// Delete a room. With the archive on (the default) it moves to the archive
+/// and can be restored; with it off this is `room_delete_permanently`.
 #[tauri::command]
 pub async fn room_delete<R: Runtime>(
+    app_handle: AppHandle<R>,
+    room_id: String,
+) -> Result<(), RoomError> {
+    let data = get_jan_data_folder_path(app_handle);
+    let store = RoomStore::for_data_folder(&data);
+    run_blocking(move || {
+        if crate::core::archive::store::read_settings(&data).enabled {
+            store.archive(&data, &room_id)
+        } else {
+            store.delete(&room_id)
+        }
+    })
+    .await
+}
+
+/// Delete a room and everything in it, skipping the archive.
+#[tauri::command]
+pub async fn room_delete_permanently<R: Runtime>(
     app_handle: AppHandle<R>,
     room_id: String,
 ) -> Result<(), RoomError> {

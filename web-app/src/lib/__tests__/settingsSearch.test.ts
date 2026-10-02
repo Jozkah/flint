@@ -15,6 +15,7 @@ import enAssistants from '@/locales/en/assistants.json'
 import enMcpServers from '@/locales/en/mcp-servers.json'
 import enPermissions from '@/locales/en/permissions.json'
 import enRemote from '@/locales/en/remote.json'
+import enSchedules from '@/locales/en/schedules.json'
 
 // A fake translator, so the tests control the translated text the index is
 // built from and can tell "found the key" apart from "found the label".
@@ -267,6 +268,7 @@ describe('registry i18n keys', () => {
     'mcp-servers': enMcpServers,
     permissions: enPermissions,
     remote: enRemote,
+    schedules: enSchedules,
   }
 
   const resolve = (key: string): string | undefined => {

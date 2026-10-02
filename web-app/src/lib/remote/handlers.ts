@@ -7,6 +7,7 @@ import { RemoteRpcError, plannedHandlers, type RemoteHandlers } from './bridge'
 import { createActionHandlers, type RemoteActions } from './actions'
 import { handleMobileMutation } from './mobileMutations'
 import { createExtraHandlers, type RemoteExtras } from './extras'
+import { createArchiveHandlers, type RemoteArchive } from './archive'
 import { createStudioHandlers, type RemoteStudio, type RemoteVoice } from './studio'
 import type {
   AppearanceResult,
@@ -143,13 +144,15 @@ export function createRemoteHandlers(
   actions?: RemoteActions,
   extras?: RemoteExtras,
   studio?: RemoteStudio,
-  voice?: RemoteVoice
+  voice?: RemoteVoice,
+  archive?: RemoteArchive
 ): RemoteHandlers {
   const actionHandlers = actions ? createActionHandlers(actions) : undefined
   return {
     ...plannedHandlers,
     ...createExtraHandlers(extras),
     ...createStudioHandlers(studio, voice),
+    ...createArchiveHandlers(archive),
     ...(actionHandlers ?? {}),
 
     // First-class Room mutations. These deliberately reuse the exact Room

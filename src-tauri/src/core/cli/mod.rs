@@ -30,6 +30,7 @@ pub mod rpc;
 pub mod rpc_schema;
 pub mod providers;
 pub mod run_report;
+pub mod schedule;
 pub mod secrets;
 mod secret_input;
 pub mod stream_input;
@@ -255,10 +256,35 @@ pub fn cli_list_messages_in(
     read_messages_from_file(base, thread_id)
 }
 
-/// List messages for a thread.
-pub fn cli_list_messages(thread_id: &str) -> Result<Vec<serde_json::Value>, String> {
-    let data_folder = resolve_jan_data_folder();
-    read_messages_from_file(&data_folder, thread_id)
+/// A thread's messages as the conversation shows them: the active version at
+/// each fork, not every edited or regenerated one. A linear thread is returned
+/// whole. `all_versions` gives the stored list.
+pub fn cli_list_messages_active_in(
+    base: &std::path::Path,
+    thread_id: &str,
+    all_versions: bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    let messages = read_messages_from_file(base, thread_id)?;
+    if all_versions {
+        return Ok(messages);
+    }
+    let active_root = cli_get_thread_in(base, thread_id).ok().and_then(|t| {
+        t.pointer("/metadata/activeRootId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    });
+    Ok(crate::core::threads::branching::active_path(
+        &messages,
+        active_root.as_deref(),
+    ))
+}
+
+/// List messages for a thread (the active path unless `all_versions`).
+pub fn cli_list_messages(
+    thread_id: &str,
+    all_versions: bool,
+) -> Result<Vec<serde_json::Value>, String> {
+    cli_list_messages_active_in(&resolve_jan_data_folder(), thread_id, all_versions)
 }
 
 /// Delete a thread directory.
@@ -4248,6 +4274,70 @@ mod tests {
 
         let latest = find_resume_thread(base, &ResumeTarget::Latest).unwrap();
         assert_eq!(latest["id"], "good1111");
+    }
+
+    fn write_thread_files(base: &std::path::Path, id: &str, meta: &str, lines: &[&str]) {
+        std::fs::create_dir_all(get_thread_dir(base, id)).unwrap();
+        std::fs::write(get_thread_metadata_path(base, id), meta).unwrap();
+        std::fs::write(get_messages_path(base, id), format!("{}\n", lines.join("\n"))).unwrap();
+    }
+
+    fn ids_of(v: &[serde_json::Value]) -> Vec<String> {
+        v.iter().map(|m| m["id"].as_str().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn list_messages_shows_the_active_versions_unless_all_are_asked_for() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        write_thread_files(
+            base,
+            "br000001",
+            r#"{"id":"br000001","metadata":{}}"#,
+            &[
+                r#"{"id":"u1","created_at":1,"metadata":{"parentId":null}}"#,
+                r#"{"id":"a1","created_at":2,"metadata":{"parentId":"u1"}}"#,
+                r#"{"id":"a1b","created_at":3,"metadata":{"parentId":"u1"}}"#,
+            ],
+        );
+        let shown = cli_list_messages_active_in(base, "br000001", false).unwrap();
+        assert_eq!(ids_of(&shown), ["u1", "a1b"]);
+        let all = cli_list_messages_active_in(base, "br000001", true).unwrap();
+        assert_eq!(ids_of(&all), ["u1", "a1", "a1b"]);
+    }
+
+    #[test]
+    fn list_messages_follows_the_threads_chosen_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        write_thread_files(
+            base,
+            "br000002",
+            r#"{"id":"br000002","metadata":{"activeRootId":"r1"}}"#,
+            &[
+                r#"{"id":"r1","created_at":1,"metadata":{"parentId":null}}"#,
+                r#"{"id":"r2","created_at":2,"metadata":{"parentId":null}}"#,
+            ],
+        );
+        let shown = cli_list_messages_active_in(base, "br000002", false).unwrap();
+        assert_eq!(ids_of(&shown), ["r1"]);
+    }
+
+    #[test]
+    fn list_messages_leaves_a_legacy_linear_thread_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        write_thread_files(
+            base,
+            "lin00001",
+            r#"{"id":"lin00001"}"#,
+            &[
+                r#"{"id":"m1","role":"user"}"#,
+                r#"{"id":"m2","role":"assistant"}"#,
+            ],
+        );
+        let shown = cli_list_messages_active_in(base, "lin00001", false).unwrap();
+        assert_eq!(ids_of(&shown), ["m1", "m2"]);
     }
 
     #[test]

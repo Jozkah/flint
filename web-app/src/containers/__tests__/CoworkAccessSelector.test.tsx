@@ -83,7 +83,7 @@ describe('what the selector reports', () => {
     )
 
     expect(screen.getByRole('button')).toHaveTextContent(
-      'common:coworkAccess.review-only.label'
+      'common:coworkAccess.review-only.short'
     )
   })
 

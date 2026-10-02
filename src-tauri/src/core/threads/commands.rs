@@ -130,7 +130,9 @@ pub async fn modify_thread<R: Runtime>(
     Ok(())
 }
 
-/// Deletes a thread and all its associated files by removing its directory.
+/// Deletes a thread. With the archive on (the default) the thread is moved to
+/// the archive instead of destroyed, and everything recorded about it stays
+/// until it is purged; with it off this is `delete_thread_permanently`.
 #[tauri::command]
 pub async fn delete_thread<R: Runtime>(
     app_handle: tauri::AppHandle<R>,
@@ -139,12 +141,73 @@ pub async fn delete_thread<R: Runtime>(
     validate_thread_id(&thread_id)?;
     if should_use_sqlite() {
         #[cfg(any(target_os = "android", target_os = "ios"))]
-        return db::db_delete_thread(app_handle, &thread_id).await;
+        return db::db_delete_thread(app_handle, &thread_id, true).await;
     }
 
-    // Use file-based storage on desktop
     let data_folder = get_jan_data_folder_path(app_handle);
-    let thread_dir = get_thread_dir(&data_folder, &thread_id);
+    if crate::core::archive::store::read_settings(&data_folder).enabled {
+        return archive_thread_files(&data_folder, &thread_id).await;
+    }
+    remove_thread_files(&data_folder, &thread_id).await
+}
+
+/// Deletes a thread and all its associated files by removing its directory,
+/// skipping the archive.
+#[tauri::command]
+pub async fn delete_thread_permanently<R: Runtime>(
+    app_handle: tauri::AppHandle<R>,
+    thread_id: String,
+) -> Result<(), String> {
+    validate_thread_id(&thread_id)?;
+    if should_use_sqlite() {
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        return db::db_delete_thread(app_handle, &thread_id, false).await;
+    }
+
+    let data_folder = get_jan_data_folder_path(app_handle);
+    remove_thread_files(&data_folder, &thread_id).await
+}
+
+/// Move a thread directory into the archive. A thread that is already gone is
+/// not an error (a delete of nothing has always been fine); a thread that
+/// cannot be archived is, so a failed attempt to keep it never destroys it. The
+/// per-thread lock keeps a message append from landing mid-move.
+async fn archive_thread_files(
+    data_folder: &std::path::Path,
+    thread_id: &str,
+) -> Result<(), String> {
+    let lock = get_lock_for_thread(thread_id).await;
+    let _guard = lock.lock().await;
+    if !get_thread_dir(data_folder, thread_id).exists() {
+        return Ok(());
+    }
+    let title = fs::read(get_thread_metadata_path(data_folder, thread_id))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|v| v.get("title").and_then(|t| t.as_str()).map(str::to_owned))
+        .unwrap_or_default();
+    let data = data_folder.to_path_buf();
+    let id = thread_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        crate::core::archive::store::archive_dir(
+            &data,
+            crate::core::archive::store::Kind::Thread,
+            &id,
+            &title,
+            None,
+        )
+        .map(|_| ())
+    })
+    .await
+    .map_err(|e| format!("archive task failed: {e}"))?
+}
+
+/// The old delete: remove the directory, then what was recorded about it.
+async fn remove_thread_files(
+    data_folder: &std::path::Path,
+    thread_id: &str,
+) -> Result<(), String> {
+    let thread_dir = get_thread_dir(data_folder, thread_id);
     if thread_dir.exists() {
         let _ = fs::remove_dir_all(thread_dir);
     }
@@ -152,16 +215,14 @@ pub async fn delete_thread<R: Runtime>(
     // counts for them, go with it. Best effort, like the directory removal
     // above: a log that cannot be rewritten right now must not stop the thread
     // being deleted, and startup compaction still bounds what is left.
-    if let Err(e) =
-        tauri_plugin_agent_tools::retention::delete_session(&data_folder, &thread_id)
-    {
+    if let Err(e) = tauri_plugin_agent_tools::retention::delete_session(data_folder, thread_id) {
         log::warn!("could not remove request records for a deleted thread: {e}");
     }
     // The thread's agent scratch dir in the OS temp folder is ours to remove
     // too (workspace::ensure_scratch_dir assigns its teardown to thread
     // deletion on the desktop); without this it leaked until a restart sweep
     // (Jozkah/jan#186).
-    if let Some(scratch) = super::utils::thread_scratch_dir(&thread_id) {
+    if let Some(scratch) = super::utils::thread_scratch_dir(thread_id) {
         if let Err(e) = tokio::fs::remove_dir_all(&scratch).await {
             if e.kind() != std::io::ErrorKind::NotFound {
                 log::warn!("could not remove a deleted thread's scratch dir: {e}");
@@ -313,8 +374,25 @@ pub async fn delete_message<R: Runtime>(
         let lock = get_lock_for_thread(&thread_id).await;
         let _guard = lock.lock().await;
 
-        let mut messages = read_messages_from_file(&data_folder, &thread_id)?;
-        messages.retain(|m| m.get("id").and_then(|v| v.as_str()) != Some(message_id.as_str()));
+        // Out of the tree without cutting off what hangs below it (the TS
+        // `removeFromTree`): children move up to the deleted message's parent.
+        let messages = read_messages_from_file(&data_folder, &thread_id)?;
+        // A deleted root that the thread had selected hands the selection to
+        // the root that replaces it.
+        let meta_path = get_thread_metadata_path(&data_folder, &thread_id);
+        if let Ok(raw) = fs::read_to_string(&meta_path) {
+            if let Ok(mut thread) = serde_json::from_str::<serde_json::Value>(&raw) {
+                let change = super::branching::active_root_after_delete(
+                    &messages,
+                    &message_id,
+                    super::branching::thread_active_root(&thread).as_deref(),
+                );
+                if super::branching::apply_active_root(&mut thread, change) {
+                    update_thread_metadata(&data_folder, &thread_id, &thread)?;
+                }
+            }
+        }
+        let messages = super::branching::remove_message(messages, &message_id);
 
         // Rewrite remaining messages
         let path = get_messages_path(&data_folder, &thread_id);

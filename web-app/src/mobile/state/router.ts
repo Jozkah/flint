@@ -15,6 +15,7 @@ export type Route =
   | { name: 'overview' }
   | { name: 'library' }
   | { name: 'studio' }
+  | { name: 'archive' }
   | { name: 'models' }
   | { name: 'hf' }
   | { name: 'tools' }
@@ -29,6 +30,7 @@ const SIMPLE = [
   'overview',
   'library',
   'studio',
+  'archive',
   'models',
   'hf',
   'tools',

@@ -392,7 +392,8 @@ describe('ProviderDetail route', () => {
 
     it('validateSearch handles missing search', () => {
       const r = (Route as any).validateSearch({})
-      expect(r.step).toBe('undefined')
+      expect(r).toEqual({})
+      expect('step' in r).toBe(false)
     })
   })
 

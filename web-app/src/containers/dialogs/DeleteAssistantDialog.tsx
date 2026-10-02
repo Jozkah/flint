@@ -9,20 +9,25 @@ import {
   DialogHeader,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 
 interface DeleteAssistantDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
+  /** Named in the archive confirmation, so it says which assistant moves. */
+  assistantName?: string
 }
 
 export function DeleteAssistantDialog({
   open,
   onOpenChange,
   onConfirm,
+  assistantName,
 }: DeleteAssistantDialogProps) {
   const { t } = useTranslation()
   const cancelButtonRef = useRef<HTMLButtonElement>(null)
+  const archiveOn = useArchiveEnabled()
 
   const handleConfirm = () => {
     onConfirm()
@@ -43,9 +48,15 @@ export function DeleteAssistantDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{t('assistants:deleteConfirmation')}</DialogTitle>
+          <DialogTitle>
+            {archiveOn ? t('archive:moveTitle') : t('assistants:deleteConfirmation')}
+          </DialogTitle>
           <DialogDescription>
-            {t('assistants:deleteConfirmationDesc')}
+            {archiveOn
+              ? assistantName
+                ? t('archive:moveBody', { title: assistantName })
+                : t('archive:moveGeneric')
+              : t('assistants:deleteConfirmationDesc')}
           </DialogDescription>
         </DialogHeader>
         {/* A two-line confirmation never scrolls, so its footer is plain: the
@@ -65,9 +76,9 @@ export function DeleteAssistantDialog({
             onClick={handleConfirm}
             size="sm"
             className="w-full sm:w-auto pointer-coarse:h-11"
-            aria-label={t('assistants:delete')}
+            aria-label={archiveOn ? t('archive:moveButton') : t('assistants:delete')}
           >
-            {t('assistants:delete')}
+            {archiveOn ? t('archive:moveButton') : t('assistants:delete')}
           </Button>
         </DialogFooter>
       </DialogContent>

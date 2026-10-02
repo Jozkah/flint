@@ -69,7 +69,11 @@ import {
 } from '@/lib/coworkCode'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { readFileAsText } from '@/lib/fileSafety'
+import { readTextBounded } from '@/lib/boundedRead'
 import { errorText } from '@/lib/errorText'
+import { isNotFoundError } from '@/lib/fileErrors'
+import { detectEol, toLf, withEol } from '@/lib/lineEndings'
+import { isExecutablePath, toOsPath } from '@/lib/pathOpen'
 import { changedLines, collectCodeFileDiffs } from '@/lib/coworkDiffs'
 import { useTheme } from '@/hooks/useTheme'
 import {
@@ -126,8 +130,10 @@ type FileState =
   /** The project this tab came from is no longer attached. */
   | { status: 'detached' }
   | { status: 'ready'; content: string }
-  | { status: 'oversized'; size: number }
+  | { status: 'oversized'; size: number; preview?: string }
   | { status: 'binary' }
+  /** Not there (any more). `detail` is the technical message. */
+  | { status: 'missing'; detail?: string }
   | { status: 'denied' }
   | { status: 'sensitive' }
   /**
@@ -388,6 +394,15 @@ export function CoworkCodePanel({
    */
   const rootIdentity = `${projectKey ?? ''}\u0000${sessionKey ?? ''}\u0000${workspacePath ?? ''}`
   const generation = useRef(0)
+  /** In-flight sandbox reads by tab id, aborted when superseded or on unmount. */
+  const readAborts = useRef(new Map<string, AbortController>())
+  useEffect(() => {
+    const aborts = readAborts.current
+    return () => {
+      for (const c of aborts.values()) c.abort()
+      aborts.clear()
+    }
+  }, [rootIdentity])
   const currentGen = useRef(0)
   const lastRootIdentity = useRef<string | undefined>(undefined)
   if (lastRootIdentity.current !== rootIdentity) {
@@ -497,18 +512,37 @@ export function CoworkCodePanel({
         if (!workspacePath) return null
         const abs = resolveInRoot(workspacePath, copy ?? tab.path)
         if (!abs) return { status: 'error', message: t('common:preview.outside') }
-        try {
-          const res = await fetch(getServiceHub().core().convertFileSrc(abs))
-          if (!res.ok) throw new Error(String(res.status))
-          const size = Number(res.headers.get('content-length') ?? 0)
-          if (size > MAX_CODE_FILE_BYTES) return { status: 'oversized', size }
-          const content = await res.text()
-          if (content.length > MAX_CODE_FILE_BYTES) {
-            return { status: 'oversized', size: content.length }
-          }
-          return { status: 'ready', content }
-        } catch (e) {
-          return { status: 'error', message: messageOf(e) }
+        const id = tabId(tab)
+        // A newer read of the same tab supersedes this one.
+        readAborts.current.get(id)?.abort()
+        const controller = new AbortController()
+        readAborts.current.set(id, controller)
+        const read = await readTextBounded(
+          getServiceHub().core().convertFileSrc(abs),
+          { signal: controller.signal }
+        )
+        if (readAborts.current.get(id) === controller) {
+          readAborts.current.delete(id)
+        }
+        switch (read.status) {
+          case 'ready':
+            return { status: 'ready', content: read.content }
+          case 'oversized':
+            return {
+              status: 'oversized',
+              size: read.size,
+              preview: read.preview,
+            }
+          case 'binary':
+            return { status: 'binary' }
+          case 'missing':
+            return { status: 'missing', detail: '404' }
+          default:
+            // An aborted read was replaced or the roots changed: record nothing.
+            if (read.message === 'aborted') return null
+            return isNotFoundError(read.message)
+              ? { status: 'missing', detail: read.message }
+              : { status: 'error', message: read.message }
         }
       }
 
@@ -520,7 +554,13 @@ export function CoworkCodePanel({
           tab.path,
           allowSensitive
         )
-        if (file.oversized) return { status: 'oversized', size: file.size }
+        if (file.oversized) {
+          return {
+            status: 'oversized',
+            size: file.size,
+            preview: file.preview,
+          }
+        }
         if (file.binary) return { status: 'binary' }
         return { status: 'ready', content: file.content }
       } catch (e) {
@@ -529,7 +569,9 @@ export function CoworkCodePanel({
           ? { status: 'sensitive' }
           : message.startsWith(DENIED_PREFIX)
             ? { status: 'denied' }
-            : { status: 'error', message }
+            : isNotFoundError(message)
+              ? { status: 'missing', detail: message }
+              : { status: 'error', message }
       }
     },
     [folder, projectKey, sessionKey, workspacePath, dataFolder, sandboxCopyOf, t]
@@ -686,7 +728,11 @@ export function CoworkCodePanel({
   const activeBuffer = activeId ? buffers[activeId] : undefined
   const activeDirty = isDirty(activeBuffer)
   const readyContent =
-    activeFile?.status === 'ready' ? activeFile.content : undefined
+    activeFile?.status === 'ready' ? toLf(activeFile.content) : undefined
+  // How the file on disk ends its lines, put back when the buffer is saved.
+  const diskEol = detectEol(
+    activeFile?.status === 'ready' ? activeFile.content : ''
+  )
 
   // Seed the buffer from what was read, and keep it in step with the disk:
   // new bytes replace a clean buffer, and raise a conflict under a dirty one
@@ -724,7 +770,7 @@ export function CoworkCodePanel({
   const recheckDisk = useCallback(async (): Promise<string | null> => {
     if (!active || !activeId) return null
     const read = await fetchContent(active)
-    return read?.status === 'ready' ? read.content : null
+    return read?.status === 'ready' ? toLf(read.content) : null
   }, [active, activeId, fetchContent])
 
   // Coming back to the window is when an editor elsewhere may have saved.
@@ -761,7 +807,7 @@ export function CoworkCodePanel({
         const outcome = await saveFile({
           sessionId: sessionKey,
           target: editTarget,
-          content: text,
+          content: withEol(text, diskEol),
           readRoot: readRoot ?? null,
           extraFolders,
         })
@@ -797,6 +843,7 @@ export function CoworkCodePanel({
       activeId,
       sessionKey,
       editTarget,
+      diskEol,
       saveFile,
       readRoot,
       extraFolders,
@@ -907,7 +954,9 @@ export function CoworkCodePanel({
     let alive = true
     void projectReadFile(dataFolder, folder, copyOfProject, false)
       .then((file) => {
-        if (alive && !file.binary && !file.oversized) setOriginal(file.content)
+        if (alive && !file.binary && !file.oversized) {
+          setOriginal(toLf(file.content))
+        }
       })
       .catch(() => {})
     return () => {
@@ -933,12 +982,15 @@ export function CoworkCodePanel({
     const abs = resolveInRoot(workspacePath, agentCopy)
     if (!abs) return
     let alive = true
-    void fetch(getServiceHub().core().convertFileSrc(abs))
-      .then((res) => (res.ok ? res.text() : null))
-      .then((text) => alive && setAgentCopyText(text))
-      .catch(() => {})
+    const controller = new AbortController()
+    void readTextBounded(getServiceHub().core().convertFileSrc(abs), {
+      signal: controller.signal,
+    }).then((read) => {
+      if (alive) setAgentCopyText(read.status === 'ready' ? toLf(read.content) : null)
+    })
     return () => {
       alive = false
+      controller.abort()
     }
   }, [agentCopy, workspacePath])
   const agentHunks = useMemo(
@@ -985,12 +1037,18 @@ export function CoworkCodePanel({
     }
     try {
       const fresh = await projectReadFile(dataFolder, folder, active.path, false)
-      const next = applySandboxHunk(fresh.content, hunk)
+      // Hunks are computed on the editor's LF text; the file keeps its own
+      // line endings, so apply on LF and write back in the file's style.
+      const next = applySandboxHunk(toLf(fresh.content), hunk)
       if (next === null) {
         setPeekNote('conflict')
         return
       }
-      const outcome = await onApplySandboxHunk(active.path, fresh.content, next)
+      const outcome = await onApplySandboxHunk(
+        active.path,
+        fresh.content,
+        withEol(next, detectEol(fresh.content))
+      )
       if (outcome === 'changed') {
         setPeekNote('conflict')
         return
@@ -1031,6 +1089,26 @@ export function CoworkCodePanel({
     })
     setOpenHunk(null)
   }
+
+  /**
+   * Open the active file in the OS, through the same contained command the
+   * path links use: the Rust side re-checks the root and refuses to run an
+   * executable (those are only revealed).
+   */
+  const openActiveExternally = useCallback(() => {
+    if (!active) return
+    const root = active.origin.kind === 'project' ? folder : workspacePath
+    const abs = root ? resolveInRoot(root, active.path) : null
+    if (!root || !abs) return
+    void getServiceHub()
+      .core()
+      .invoke('open_session_path', {
+        roots: [root],
+        path: toOsPath(abs),
+        mode: isExecutablePath(abs) ? 'reveal' : 'open',
+      })
+      .catch((e: unknown) => toast.error(messageOf(e)))
+  }, [active, folder, workspacePath])
 
   const readOnlyText = (reason: ReadOnlyReason): string =>
     t(`common:codePanel.readOnlyReason.${reason}`)
@@ -1137,7 +1215,6 @@ export function CoworkCodePanel({
             <button
               key={entry.relPath}
               type="button"
-              disabled={!viewable}
               onClick={() => openPath(entry.relPath)}
               aria-current={
                 state.activeTabId ===
@@ -1147,7 +1224,7 @@ export function CoworkCodePanel({
               }
               className={cn(
                 'flex h-7 w-full items-center gap-1.5 pr-2 text-left text-[12.5px] text-fg-2 outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row',
-                !viewable && 'opacity-50',
+                !viewable && 'text-muted-foreground',
                 state.activeTabId ===
                   tabId(projectTab(entry.relPath, projectKey ?? '')) &&
                   'bg-accent font-medium text-foreground'
@@ -1551,7 +1628,7 @@ export function CoworkCodePanel({
                       >
                         <CodeEditor
                           docKey={activeId}
-                          value={activeBuffer?.text ?? activeFile.content}
+                          value={activeBuffer?.text ?? toLf(activeFile.content)}
                           lang={detectLanguage(active.path).lang}
                           wordWrap={state.wordWrap}
                           isDark={isDark}
@@ -1561,7 +1638,8 @@ export function CoworkCodePanel({
                               ...current,
                               [activeId]: {
                                 base:
-                                  current[activeId]?.base ?? activeFile.content,
+                                  current[activeId]?.base ??
+                                  toLf(activeFile.content),
                                 text,
                               },
                             }))
@@ -1733,12 +1811,83 @@ export function CoworkCodePanel({
             </div>
           ) : activeFile.status === 'oversized' ? (
             <Notice>
-              {t('common:codePanel.tooLarge', {
-                size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
-              })}
+              <span className="block">
+                {t('common:codePanel.tooLarge', {
+                  size: `${(activeFile.size / (1024 * 1024)).toFixed(1)} MB`,
+                })}
+              </span>
+              <span className="mt-1 block text-muted-foreground">
+                {activeFile.preview
+                  ? t('common:codePanel.openExternallyPreview')
+                  : t('common:codePanel.openExternally')}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2"
+                data-testid="code-open-external"
+                onClick={openActiveExternally}
+              >
+                {t('common:codePanel.openExternallyAction')}
+              </Button>
+              {activeFile.preview ? (
+                <pre
+                  data-testid="code-oversized-preview"
+                  className="mt-3 max-h-64 overflow-auto rounded-md bg-code-bg p-2 text-left font-mono text-xs"
+                >
+                  {activeFile.preview.slice(0, 16384)}
+                </pre>
+              ) : null}
             </Notice>
           ) : activeFile.status === 'binary' ? (
-            <Notice>{t('common:codePanel.binary')}</Notice>
+            <Notice>
+              <span className="block" data-testid="code-binary-notice">
+                {t('common:codePanel.binary')}
+              </span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  data-testid="code-open-external"
+                  onClick={openActiveExternally}
+                >
+                  {t('common:codePanel.openExternallyAction')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
+          ) : activeFile.status === 'missing' ? (
+            <Notice>
+              <span
+                className="block"
+                data-testid="code-missing-notice"
+                title={activeFile.detail}
+              >
+                {t('common:codePanel.fileMissing', { name: active.path })}
+              </span>
+              <span className="mt-2 flex justify-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void loadFile(active)}
+                >
+                  {t('common:codePanel.retry')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onStateChange(closeTab(state, activeId))}
+                >
+                  {t('common:codePanel.closeMissing')}
+                </Button>
+              </span>
+            </Notice>
           ) : activeFile.status === 'denied' ? (
             <Notice>{t('common:codePanel.denied')}</Notice>
           ) : activeFile.status === 'detached' ? (

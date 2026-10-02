@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
-import { rankCommands, type PaletteCommand } from '../commandPalette'
+import {
+  exportCommands,
+  rankCommands,
+  type PaletteCommand,
+} from '../commandPalette'
 
 const cmd = (
   id: string,
@@ -46,5 +50,26 @@ describe('rankCommands', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     rankCommands(commands, 'anything')
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+})
+
+describe('exportCommands', () => {
+  it('offers nothing when no conversation is on screen', () => {
+    expect(exportCommands(null, (f) => f, vi.fn())).toEqual([])
+  })
+
+  it('offers each format as an action and runs it for the target', () => {
+    const run = vi.fn()
+    const list = exportCommands('thread', (f) => `Export ${f}`, run)
+    expect(list.map((c) => c.id)).toEqual([
+      'action-export-markdown',
+      'action-export-obsidian',
+      'action-export-pdf',
+      'action-export-image',
+    ])
+    expect(list.every((c) => c.section === 'actions')).toBe(true)
+    list[2].run()
+    expect(run).toHaveBeenCalledWith('thread', 'pdf')
+    expect(rankCommands(list, 'obsidian')[0].id).toBe('action-export-obsidian')
   })
 })

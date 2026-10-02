@@ -12,6 +12,7 @@
 
 #[cfg(not(feature = "cli"))]
 pub mod commands;
+pub mod branching;
 pub mod constants;
 #[cfg(any(target_os = "android", target_os = "ios"))]
 pub mod db;

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { usePreviewSummary } from '@/hooks/usePreviewSummary'
 import {
   HoverCard,
@@ -37,6 +37,11 @@ export function RowPreview({
   children: ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  // Forget a hover that began before the menu or a dialog opened; otherwise the
+  // card returns as soon as `suppressed` clears (a picked menu item).
+  useEffect(() => {
+    if (suppressed) setOpen(false)
+  }, [suppressed])
   const written = usePreviewSummary(summaryKey, open && !suppressed, transcript)
   const shown = written.summary ?? summary
   return (

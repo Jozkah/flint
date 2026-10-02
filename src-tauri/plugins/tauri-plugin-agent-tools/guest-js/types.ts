@@ -85,6 +85,8 @@ export interface ProjectFile {
   content: string
   oversized: boolean
   binary: boolean
+  /** The head of an oversized text file (about 16 KB), when it has one. */
+  preview?: string
 }
 
 /** A shell command still running in the background, as reported by

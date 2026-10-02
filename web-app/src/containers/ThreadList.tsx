@@ -59,6 +59,8 @@ import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
 import { prefetchThreadMessages } from '@/lib/threadPrefetch'
+import { ExportSubmenu } from '@/components/ExportMenu'
+import { docFromThread } from '@/lib/exportDoc'
 import { regenerateTitle } from '@/lib/regenerateTitle'
 import { regenerateWithToast } from '@/lib/regenerateToast'
 import { ThreadPreviewSummary } from '@/containers/ThreadPreviewSummary'
@@ -178,6 +180,14 @@ const ThreadItem = memo(
     }
 
     const [groupMenuOpen, setGroupMenuOpen] = useState(false)
+    // The peek must not show while the row's menu or one of its dialogs is up.
+    // Closing it is not enough: Radix keeps `previewOpen` true, so the card
+    // came back the moment the menu closed (a picked item, the delete dialog).
+    const previewBlocked =
+      menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen
+    useEffect(() => {
+      if (previewBlocked) setPreviewOpen(false)
+    }, [previewBlocked])
 
     /**
      * Numbered like the design's group picker: while "Move to group" is open,
@@ -290,7 +300,7 @@ const ThreadItem = memo(
             closeDelay={80}
             // Shut while the row's menu is open; it used to open over the menu
             // and hide its submenus.
-            open={previewOpen && !menuOpen}
+            open={previewOpen && !previewBlocked}
             onOpenChange={setPreviewOpen}
           >
             <HoverCardTrigger asChild>
@@ -315,7 +325,7 @@ const ThreadItem = memo(
             <HoverCardContent side="right" align="start" sideOffset={10} className="w-80 max-w-[calc(100vw-2rem)] p-3">
               {/* The written summary is asked for here, when the card opens. */}
               <ThreadPreviewSummary
-                open={previewOpen && !menuOpen}
+                open={previewOpen && !previewBlocked}
                 threadId={thread.id}
                 updated={thread.updated}
                 fallback={lastUserMessageText}
@@ -387,6 +397,16 @@ const ThreadItem = memo(
               <GitFork className="size-4" />
               <span>{t('chat:fork.chat')}</span>
             </DropdownMenuItem>
+            <ExportSubmenu
+              versions
+              build={async ({ allVersions }) => {
+                let stored = useMessages.getState().getMessages(thread.id)
+                if (stored.length === 0) {
+                  stored = await serviceHub.messages().fetchMessages(thread.id)
+                }
+                return docFromThread(thread, stored, new Date(), { allVersions })
+              }}
+            />
             <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />

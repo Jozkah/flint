@@ -14,7 +14,8 @@ import { ASSISTANT_ICON } from '../ui/assistants'
 import { ACCESS_MODES, COWORK_MODES } from './labels'
 import { copyToClipboard } from '@/lib/clipboard'
 import { StudioItemSheet, StudioSettingsSheet, VoiceSetupSheet } from './studioSheets'
-import type { StudioItemWire } from '@/lib/remote/protocol'
+import type { ArchiveItemWire, StudioItemWire } from '@/lib/remote/protocol'
+import { archiveChanged } from '../state/archive'
 import { addDeskFile, addFiles, attachKey, insertIntoComposer, MAX_FILES } from '../state/attachments'
 
 type Props = Record<string, unknown>
@@ -208,6 +209,24 @@ function RoomMenu({ props }: { props: Props }) {
     <Group><DesktopOnly title="Open in split view" /><DesktopOnly title="Move to group" /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('room', id) }} /></Group>
     <Group><button type="button" className="opt" onClick={() => openSheet('clearroom', props)}><I n="erase" /><span className="tx"><b>Clear this room…</b></span></button><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Room?')) void mobileMutation({ mobileOp: 'room.delete', id }, 'Room deleted.').then(() => go({ name: 'rooms' })) }} /></Group></>
 }
+function ArchiveMenu({ props }: { props: Props }) {
+  const item = props.item as ArchiveItemWire | undefined
+  const run = async (method: 'archive.restore' | 'archive.purge', ok: string) => {
+    if (!item) return
+    try {
+      await client().rpc(method, { key: item.key })
+      toast(ok)
+    } catch (e) {
+      // A refused purge says why (a Cowork session with unmerged work).
+      toast(e instanceof Error ? e.message : 'That did not work')
+    } finally {
+      archiveChanged()
+    }
+  }
+  return <><Title>{item?.title || 'Archived item'}</Title>
+    <Group><Action icon="refresh" label="Restore" run={() => void run('archive.restore', 'Restored')} />
+    <Action icon="trash" label="Delete permanently" danger run={() => { if (item && window.confirm(`Delete “${item.title || 'this item'}” permanently? This can’t be undone.`)) void run('archive.purge', 'Deleted permanently') }} /></Group></>
+}
 function ClearRoomSheet({ props }: { props: Props }) {
   const id = str(props.id)
   const [scope, setScope] = useState<'chat' | 'knowledge' | 'everything'>('chat')
@@ -400,6 +419,7 @@ function FilesSheet({ props }: { props: Props }) {
 
 const SHEETS: Record<string, (p: { props: Props }) => ReactNode> = {
   model: ModelSheet, reason: ReasonSheet, mode: ModeSheet, access: AccessSheet, stop: StopSheet, permdetails: PermDetailsSheet, vote: VoteSheet, runs: RunsSheet, conn: ConnSheet, palette: PaletteSheet, notifset: NotifSetSheet, tools: ToolsSheet, roomnew: RoomNewSheet, threadmenu: ThreadMenu, sessmenu: SessionMenu, roommenu: RoomMenu, clearroom: ClearRoomSheet, plus: PlusSheet, attach: PlusSheet, cwoptions: PlusSheet, effort: EffortSheet, tokens: TokensSheet, replystats: ReplyStatsSheet, skillsused: SkillsUsedSheet, assistant: AssistantSheet, msgmenu: MsgMenu, modelgone: ModelGoneSheet, files: FilesSheet,
+  archivemenu: ArchiveMenu,
   studioset: () => <StudioSettingsSheet />, studioitem: ({ props }) => <StudioItemSheet item={props.item as StudioItemWire | undefined} />, voicesetup: () => <VoiceSetupSheet />,
   params: () => <><Title>Parameters</Title><DesktopOnly title="Output, context, compaction and sampling" /></>,
   skills: () => <><Title>Commands & skills</Title><DesktopOnly title="Commands & skills" sub="Run or configure these on the computer." /></>,

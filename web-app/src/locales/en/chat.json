@@ -140,5 +140,13 @@
     "chat": "Fork chat",
     "done": "Forked into a new chat.",
     "failed": "Could not fork this chat."
+  },
+  "version": {
+    "group": "Message versions",
+    "previous": "Previous version",
+    "next": "Next version",
+    "previousAt": "Previous version (showing {{index}} of {{count}})",
+    "nextAt": "Next version (showing {{index}} of {{count}})",
+    "position": "Version {{index}} of {{count}}"
   }
 }

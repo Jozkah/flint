@@ -4,6 +4,7 @@ import { ModelFactory } from './model-factory'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { resolveThreadModelSelection } from '@/hooks/useConversationPane'
 import { BACKGROUND_SLOT_ID } from '@/constants/models'
+import { isEngineProviderName } from '@/lib/engineModels'
 
 const MAX_TITLE_WORDS = 10
 const MAX_PROMPT_LENGTH = 1500
@@ -152,6 +153,18 @@ async function requestTitle(
 
 const SUMMARY_CHARS = 600
 
+/**
+ * True when the model this conversation uses runs in Flint's own engine on this
+ * machine. The hover summary is made only then: it is sent without the user
+ * sending anything, so it must never leave the machine.
+ */
+export function canSummarizeLocally(session: string): boolean {
+  const { selectedProvider } = session
+    ? resolveThreadModelSelection(session)
+    : useModelProvider.getState()
+  return !!selectedProvider && isEngineProviderName(selectedProvider)
+}
+
 function buildConversationSummaryPrompt(transcript: string): string {
   const truncated =
     transcript.length > MAX_PROMPT_LENGTH
@@ -170,6 +183,9 @@ export async function summarizeConversation(
   abortSignal: AbortSignal,
   session: string
 ): Promise<string | null> {
+  // Privacy: a hover is not a message. Only an engine on this machine may read
+  // the transcript for it; a remote provider is never called.
+  if (!canSummarizeLocally(session)) return null
   // A local model serves one request at a time. A summary made for a hover
   // must never queue beside a run, so it is skipped while the engine is busy.
   const { selectedProvider, selectedModel } = session

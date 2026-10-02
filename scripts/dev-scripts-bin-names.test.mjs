@@ -28,8 +28,10 @@ test('build-tui.sh builds and copies a declared bin', () => {
 
 test('jan-agent.sh launches the flint binary', () => {
   const launcher = read('../jan-agent.sh')
-  assert.match(launcher, /resources\/bin\/flint"/)
-  assert.doesNotMatch(launcher, /resources\/bin\/jan"/)
+  // build-tui.sh installs the CLI to ~/.local/bin/flint; FLINT_BIN overrides it.
+  assert.match(launcher, /\.local\/bin\/flint\}"/)
+  assert.match(launcher, /FLINT_BIN/)
+  assert.doesNotMatch(launcher, /\/bin\/jan"/)
 })
 
 test('AGENT-TUI.md only builds declared bins', () => {

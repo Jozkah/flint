@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
 import { ThreadStatusMark } from '@/containers/ThreadStatusMark'
 import { useRoomsStore } from '@/lib/rooms/store'
 import { openInSplit, reportSplitResult } from '@/lib/splitView'
@@ -188,6 +189,7 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
     id: string
     title: string
   } | null>(null)
+  const archiveOn = useArchiveEnabled()
   const runningRoomIds = useRoomsStore((s) => s.runningRoomIds)
   const visibleRooms = expanded
     ? summaries
@@ -317,11 +319,17 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('common:shell.deleteRoomTitle')}</DialogTitle>
+            <DialogTitle>
+              {archiveOn
+                ? t('archive:moveTitle')
+                : t('common:shell.deleteRoomTitle')}
+            </DialogTitle>
             <DialogDescription>
-              {t('common:shell.deleteRoomBody', {
-                title: pendingDelete?.title,
-              })}
+              {archiveOn
+                ? t('archive:moveBody', { title: pendingDelete?.title })
+                : t('common:shell.deleteRoomBody', {
+                    title: pendingDelete?.title,
+                  })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -329,7 +337,9 @@ export function RoomsNav({ icon }: { icon?: React.ReactNode }) {
               {t('common:cancel')}
             </Button>
             <Button variant="destructive" onClick={confirmDelete}>
-              {t('common:delete')}
+              {archiveOn
+                ? t('archive:moveButton')
+                : t('common:delete')}
             </Button>
           </DialogFooter>
         </DialogContent>

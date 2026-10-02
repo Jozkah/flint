@@ -153,14 +153,27 @@ describe('CoworkWorkflowCard', () => {
     const { rerender } = render(<Card state={before} />)
     expect(screen.getByText(/common:tasks.runningTasks count=1/)).toBeInTheDocument()
 
-    const after = updateTask(before, idOf('a'), {
+    // Once it finishes with another task still waiting, nothing is running and
+    // the line reports progress instead.
+    const withQueued = startTask(before, task({ id: 'b', status: 'queued' }))
+    const after = updateTask(withQueued, idOf('a'), {
       status: 'done',
       endedAt: T0 + 2,
     })
     rerender(<Card state={after} />)
     expect(
-      screen.getByText(/common:tasks.progress finished=1 total=1/)
+      screen.getByText(/common:tasks.progress finished=1 total=2/)
     ).toBeInTheDocument()
+  })
+
+  it('gets out of the way once nothing is queued or running', () => {
+    // Finished work stays available in Activity; the notice is for live work.
+    const done = updateTask(stateWith(task({ id: 'a' })), idOf('a'), {
+      status: 'done',
+      endedAt: T0 + 2,
+    })
+    render(<Card state={done} />)
+    expect(screen.queryByTestId('workflow-card')).not.toBeInTheDocument()
   })
 
   it('reports progress on a bar screen readers can read', () => {
@@ -213,12 +226,13 @@ describe('CoworkWorkflowCard', () => {
       <Card
         state={stateWith(
           task({ id: 'a', status: 'error', endedAt: T0 + 1 }),
-          task({ id: 'b', status: 'done', endedAt: T0 + 2 })
+          task({ id: 'b', status: 'done', endedAt: T0 + 2 }),
+          task({ id: 'c', status: 'queued' })
         )}
       />
     )
     expect(
-      screen.getByText(/common:tasks.progress finished=2 total=2/)
+      screen.getByText(/common:tasks.progress finished=2 total=3/)
     ).toBeInTheDocument()
     expect(
       screen.getAllByLabelText('common:tasks.statusError').length
@@ -245,7 +259,9 @@ describe('CoworkWorkflowCard', () => {
             status: 'error',
             output: 'ERROR: command timed out after 60s and was terminated.',
             endedAt: T0 + 2,
-          })
+          }),
+          // The card only shows while work is live.
+          task({ id: 'c', status: 'queued' })
         )}
       />
     )
