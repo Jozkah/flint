@@ -84,8 +84,21 @@ describe('no update checking', () => {
     )
   })
 
-  it('asks no release feed what the latest version is', () => {
-    expect(filesMatching(/api\.github\.com|releases\/latest/)).toEqual([])
+  it('asks no release feed what the latest version is, except the opt-in build check', () => {
+    // One file may name GitHub, because the person turns it on (Settings,
+    // General) and it is off until then. Nothing else may.
+    expect(
+      filesMatching(/api\.github\.com|releases\/latest/).map((f) =>
+        f.split('\\').join('/')
+      )
+    ).toEqual([
+      'web-app/src/lib/buildUpdate.ts',
+    ])
+  })
+
+  it('keeps the build check off until the person turns it on', async () => {
+    const { useBuildUpdate } = await import('@/hooks/useBuildUpdate')
+    expect(useBuildUpdate.getState().enabled).toBe(false)
   })
 })
 

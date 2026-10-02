@@ -17,6 +17,8 @@ declare global {
   declare const IS_ANDROID: boolean
   declare const PLATFORM: string
   declare const VERSION: string
+  /** The commit this build was made from, or an empty string for a local build. */
+  declare const BUILD_COMMIT: string
   declare const IS_DEV: boolean
   interface Window {
     core: AppCore | undefined

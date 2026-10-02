@@ -5,6 +5,21 @@ import path from 'path'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import packageJson from './package.json'
+import { execSync } from 'node:child_process'
+
+// The commit this build is made from: CI provides it, a local build asks git.
+// Empty when neither is available; the update check then reports unknown.
+function buildCommit(): string {
+  const fromCi = process.env.GITHUB_SHA?.trim()
+  if (fromCi) return fromCi
+  try {
+    return execSync('git rev-parse HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return ''
+  }
+}
 const host = process.env.TAURI_DEV_HOST
 
 // https://vite.dev/config/
@@ -69,6 +84,7 @@ export default defineConfig(() => {
       PLATFORM: JSON.stringify(process.env.TAURI_ENV_PLATFORM),
 
       VERSION: JSON.stringify(packageJson.version),
+      BUILD_COMMIT: JSON.stringify(buildCommit()),
 
     },
 

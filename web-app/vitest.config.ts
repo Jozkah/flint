@@ -52,6 +52,7 @@ export default defineConfig({
     IS_ANDROID: JSON.stringify(false),
     PLATFORM: JSON.stringify('web'),
     VERSION: JSON.stringify('test'),
+    BUILD_COMMIT: JSON.stringify(''),
     AUTO_UPDATER_DISABLED: JSON.stringify('false'),
   },
 })

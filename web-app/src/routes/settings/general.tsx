@@ -8,6 +8,7 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { Switch } from '@/components/ui/switch'
+import { BuildUpdateItem } from '@/containers/BuildUpdateItem'
 import { Button } from '@/components/ui/button'
 import { useMigrationAssistant } from '@/stores/migration-assistant-store'
 import { Card, CardItem } from '@/containers/Card'
@@ -223,6 +224,7 @@ function General() {
               </span>
             }
           />
+          <BuildUpdateItem />
           <CardItem
             anchor="settings-general-language"
             title={t('common:language')}

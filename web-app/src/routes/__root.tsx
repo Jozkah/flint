@@ -44,6 +44,7 @@ import { useWindowTitle } from '@/hooks/useWindowTitle'
 import { useAppViewport } from '@/hooks/useAppViewport'
 import { useApprovalWaitNotifier } from '@/hooks/useApprovalWaitNotifier'
 import { useRemoteBridge } from '@/hooks/useRemoteBridge'
+import { useBuildUpdateCheck } from '@/hooks/useBuildUpdate'
 import { RemotePairingConfirm } from '@/containers/RemotePairingConfirm'
 import { detectWindowChrome } from '@/lib/titlebar'
 
@@ -67,6 +68,7 @@ const AppLayout = () => {
   useApprovalWaitNotifier(useNavigate())
   // Remote access: answers paired phones and asks to confirm new ones.
   useRemoteBridge()
+  useBuildUpdateCheck()
   const appDrawsChrome = detectWindowChrome() === 'custom'
   const pageRef = useRef<HTMLDivElement>(null)
   const { booting } = useShellMotion(pageRef)
