@@ -18,6 +18,7 @@ This changelog is release-oriented: it lists shipped features, additions and mea
 - **Redesigned Flint UI.** New shell/sidebar/header, Overview dashboard, Slate/Violet appearance system, Inter, duotone iconography, redesigned settings/components, split view, groups, phone layouts, notifications and System Monitor.
 - **Remote access preview.** Pair a phone over Tailscale, LAN or loopback and use Chat, Cowork and Rooms while models, keys and files remain on the desktop.
 - **SDK and CLI.** JavaScript/Python Agent SDKs, protocol v1, host tools, Flint tools over MCP, JSON-lines CLI, diagnostics and benchmark tooling.
+- **Archive, export, scheduled tasks and an agent browser.** Deleting moves things to a restorable Archive, chats export as Markdown, Obsidian notes, PDF or PNG, saved prompts run on a schedule with strict unattended limits, and the assistant can drive the built-in browser pane with per-site consent and a visible pointer.
 - **Fully custom Windows installer.** The NSIS installer is now a real Flint-styled setup flow rather than a stock/passive Tauri wizard, with the actual Flint app icon, Inter, app colors, custom controls, install options, progress, completion and matching uninstall screens.
 
 ## Final 0.9.0 additions
@@ -152,6 +153,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Added a **Hide Secrets** option that replaces API keys, passwords in URLs and secret-looking environment values with placeholders before a request goes to the model, and restores the real values when the model's tool calls run. It is off by default.
 - The MCP config file, which can hold keys entered during plugin setup, is now readable only by its owner on macOS and Linux.
 - The secret scanner catches dotted credentials such as `API_TOKEN` values, and no longer blocks code that merely mentions a value such as `spend.spent`.
+- Hovering a chat, Cowork session or room in the sidebar no longer sends the conversation to a model: the preview summary is written only by a model running on this computer, and other providers get a plain preview made from your own messages.
+- A remote provider with no API key now says **No API key** in the provider list instead of **Connected**.
 
 ### Search, MCP and interface additions
 
@@ -285,6 +288,53 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - A download whose partial file the server no longer recognises restarts cleanly instead of showing a hard error.
 - Disk-full, permission-denied, file-locked and path-too-long download errors are explained in plain words.
 - The download row shows a smoothed speed and the time left, for example 38 MB/s and 4 min left.
+
+### Archive instead of delete
+
+- Deleting a chat, room, project, Cowork session, assistant or Studio result now moves it to an **Archive** page instead of destroying it. The link sits in the sidebar's Support group, above Settings, and the phone app has its own Archive screen.
+- **Restore** puts an item back where it was. **Delete permanently** is only in the right-click menu on the Archive page and asks for confirmation. Delete dialogs just say the item moves to the Archive.
+- Each row has a preview, and the right-click menu opens at the pointer and stays inside the window.
+- The Archive is on by default. Archived items are deleted after 30 days (0 keeps them), threads untouched for a set number of days can be archived automatically (off by default), and **Empty archive** clears it.
+- A Cowork session whose managed worktree holds unmerged work cannot be purged until that work is dealt with.
+- A restored Cowork session registers with the session mailbox again, and sessions archived by an earlier build recover when restored.
+
+### Export
+
+- Chats, Cowork sessions and single messages can be exported as **Markdown**, an **Obsidian note** (frontmatter, tags and wikilinks for file references), **PDF** or **PNG**, from the thread and Cowork menus, a message's right-click menu and the command palette.
+- A chat exports the branch you are viewing, or **all versions** nested under the message each replaces.
+- Tool output, reasoning and absolute paths are left out unless you ask, credentials are redacted, and an export over 50 MB is refused with a message that says what to do.
+- PDF uses the system print dialog. Where printing is not available it saves a print-ready HTML file instead. PNG refuses pages taller than about 16,000 pixels and says so.
+
+### Chat branches
+
+- The version switcher on an edited or regenerated message has translated labels, announces its position (for example, "Version 2 of 3") and steps with the left and right arrow keys, keeping keyboard focus as the version changes.
+- Token counts, titles, previews, the command line and the phone app now use the branch you are viewing, not every stored version. Deleting a message in the middle of a branched chat keeps the replies after it reachable.
+- The phone shows the same version switcher.
+
+### Clickable file paths
+
+- A path written in inline code in a reply, such as `src/app.ts` or `src/app.ts:12`, becomes a link in Chat and Cowork. Source files open in the Code panel, other files and folders open in the system, and executables are only revealed.
+- A path outside the session's folders stays plain text, and a link to a file that does not exist says so instead of opening an empty tab.
+- Every place that opens a file or folder in the system now goes through one backend command that resolves symlinks and refuses anything outside the allowed folders, and the app no longer holds a blanket permission to open any path.
+- The Code panel shows a short preview of a file that is too large to open, marks binary files, says plainly when a file is not found, and no longer shows a CRLF file as changed before you touch it.
+
+### Scheduled tasks
+
+- Added **Settings > Schedules**: run a saved prompt on a schedule. Choose every day, weekdays or certain days, with several times a day, or write a cron expression, and see the next run times before saving. A task can name a model, a folder and a Cowork profile.
+- Scheduled runs are unattended, so each task has an explicit tool list and required limits on turns, tokens and time, plus an optional cost limit. A permission prompt is never shown: it is denied and recorded as what the run was blocked on, and the task can either carry on or stop there.
+- Tasks are read-only by default, and a task that writes works in its own worktree. Runs are listed with their summary, spend and a link to the conversation.
+- After a gap, a missed task runs once on the next start by default, and can instead be skipped or caught up.
+- An opt-in switch can install an operating-system entry (a Windows scheduled task, a macOS LaunchAgent or a Linux systemd timer) that runs `flint cli schedule tick`, so tasks run while Flint is closed. It shows exactly what it will write and only installs after you confirm.
+- `flint cli schedule` lists tasks, runs one and shows its runs.
+
+### Agent browser
+
+- Added an off-by-default **agent browser**: the assistant can open pages in the built-in browser pane, read text, take an accessibility snapshot, click, type, press keys, select options and scroll, and on Windows take a screenshot. A glowing pointer glides to each element before the assistant acts, shows a click pulse and scrolls smoothly. It can be turned off, follows the system's reduce-motion setting and hides while you take over.
+- The first visit to a site asks, showing the full address: this visit, until Flint closes, or always, with an option for subdomains. Saved rules and the sites approved for now are listed in **Settings > Agent tools** and can be revoked.
+- Loopback, private, link-local and cloud-metadata addresses are refused in every spelling. A redirect to a site that has not been approved is stopped and asked about, and page content comes back inside a block marked as untrusted.
+- Clicks and typing ask for approval in Chat and Cowork, a control that looks like submit or delete asks every time, and a run has an action limit. Unattended runs only reach sites with a saved always-allow rule.
+- The browser tools return a clear message in the command line and in background jobs, where there is no pane, and a hidden or minimized window gets an explanation instead of a hang.
+- Toasts move clear of the Web preview pane, and the pane never covers the approvals chip.
 
 ## Core Flint capabilities
 
