@@ -28,6 +28,8 @@ import { WebPreviewHost } from '../WebPreviewHost'
 import { useWebPreview } from '@/hooks/useWebPreview'
 import { useBrowserAgentPane } from '@/hooks/useBrowserAgentPane'
 import { toast } from 'sonner'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
 
 const emit = (name: string, payload: unknown) =>
   act(() => handlers.get(name)?.({ payload }))
@@ -96,5 +98,89 @@ describe('WebPreviewHost with the assistant driving', () => {
       expect.any(String),
       expect.objectContaining({ description: 'http://169.254.169.254/' })
     )
+  })
+
+  it('sits below the header row, so the approvals chip is never under it', () => {
+    useWebPreview.getState().openUrl('https://example.com/')
+    render(<WebPreviewHost />)
+    const panel = screen.getByTestId('wp-side-panel')
+    expect(panel.className).toContain('top-[52px]')
+    expect(panel.className).not.toContain('inset-y-0')
+    expect(panel.hasAttribute('data-suspended')).toBe(false)
+  })
+
+  it('steps aside, page kept, while an approval waits', async () => {
+    useWebPreview.getState().openUrl('https://example.com/')
+    useToolApprovalRequests.setState({ pending: {}, queued: {}, refusals: {} })
+    render(<WebPreviewHost />)
+    expect(screen.getByTestId('wp-side-panel').hasAttribute('data-suspended')).toBe(false)
+    act(() => {
+      useToolApprovalRequests.setState({
+        pending: {
+          c1: { requestId: 'r1', toolCallId: 'c1', toolName: 'browser_click', threadId: 't', resolve: () => {} } as never,
+        },
+      })
+    })
+    const panel = screen.getByTestId('wp-side-panel')
+    expect(panel.hasAttribute('data-suspended')).toBe(true)
+    expect(panel.className).toContain('invisible')
+    expect(panel.className).toContain('pointer-events-none')
+    // The page and its history are untouched.
+    expect(useWebPreview.getState().open).toBe(true)
+    expect(useWebPreview.getState().url()).toBe('https://example.com/')
+    act(() => {
+      useToolApprovalRequests.setState({ pending: {} })
+    })
+    expect(screen.getByTestId('wp-side-panel').hasAttribute('data-suspended')).toBe(false)
+  })
+
+  it('also steps aside while a site question waits', () => {
+    useWebPreview.getState().openUrl('https://example.com/')
+    render(<WebPreviewHost />)
+    act(() => {
+      useBrowserAgentPrompt.setState({
+        queue: [{ id: 'd1', url: 'https://x.test/', host: 'x.test', tool: 'browser_open', resolve: () => {} }],
+      })
+    })
+    expect(screen.getByTestId('wp-side-panel').hasAttribute('data-suspended')).toBe(true)
+    act(() => {
+      useBrowserAgentPrompt.setState({ queue: [] })
+    })
+  })
+
+  it('a stopped redirect asks about the site, and an allow takes the pane there', async () => {
+    useBrowserAgentPrompt.setState({ queue: [] })
+    useWebPreview.getState().openUrl('https://example.com/')
+    render(<WebPreviewHost />)
+    await vi.waitFor(() => expect(handlers.has('browser-agent://domain-request')).toBe(true))
+    emit('browser-agent://domain-request', {
+      url: 'https://collector.test/c?d=1',
+      host: 'collector.test',
+    })
+    await vi.waitFor(() => expect(useBrowserAgentPrompt.getState().queue).toHaveLength(1))
+    const q = useBrowserAgentPrompt.getState().queue[0]
+    expect(q).toMatchObject({ url: 'https://collector.test/c?d=1', host: 'collector.test' })
+    await act(async () => {
+      useBrowserAgentPrompt.getState().answer(q.id, { decision: 'allow', scope: 'once', subdomains: false })
+    })
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('browser_agent_grant', { pattern: 'collector.test', scope: 'once' })
+    )
+    await vi.waitFor(() => expect(useWebPreview.getState().url()).toBe('https://collector.test/c?d=1'))
+  })
+
+  it('declining the stopped site leaves the pane where it was', async () => {
+    useBrowserAgentPrompt.setState({ queue: [] })
+    useWebPreview.getState().openUrl('https://example.com/')
+    render(<WebPreviewHost />)
+    await vi.waitFor(() => expect(handlers.has('browser-agent://domain-request')).toBe(true))
+    emit('browser-agent://domain-request', { url: 'https://collector.test/', host: 'collector.test' })
+    await vi.waitFor(() => expect(useBrowserAgentPrompt.getState().queue).toHaveLength(1))
+    await act(async () => {
+      useBrowserAgentPrompt.getState().answer(useBrowserAgentPrompt.getState().queue[0].id, {
+        decision: 'deny', scope: 'once', subdomains: false,
+      })
+    })
+    expect(useWebPreview.getState().url()).toBe('https://example.com/')
   })
 })

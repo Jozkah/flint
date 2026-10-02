@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { WebPreviewPip } from '@/containers/WebPreviewPip'
 import { useWebPreview } from '@/hooks/useWebPreview'
@@ -24,6 +25,12 @@ import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { isLocalAppUrl } from '@/lib/browserVerify'
+import { applyAnswer } from '@/lib/browserAgent'
+import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
+import {
+  allApprovalRequests,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
 import {
   resumeBrowserAgent,
   stopBrowserAgent,
@@ -55,19 +62,44 @@ export function WebPreviewHost() {
   const [nonce, setNonce] = useState(0)
   const agentActive = useBrowserAgentPane((s) => s.active)
   const agentPaused = useBrowserAgentPane((s) => s.paused)
-  useBrowserAgentEvents(({ url, reason }) =>
-    toast.warning(t('browser-agent:pane.blocked', { reason }), {
-      description: url,
-      id: 'browser-agent-blocked',
-    })
+  useBrowserAgentEvents(
+    ({ url, reason }) =>
+      toast.warning(t('browser-agent:pane.blocked', { reason }), {
+        description: url,
+        id: 'browser-agent-blocked',
+      }),
+    // A page tried to send the pane to a site nobody approved: it was stopped
+    // before anything was requested. Ask; if allowed, go there now.
+    ({ url, host }) => {
+      void (async () => {
+        const answer = await useBrowserAgentPrompt.getState().request({
+          url,
+          host,
+          tool: 'browser_open',
+        })
+        if (await applyAnswer(host, answer)) {
+          useWebPreview.getState().navigate(url)
+        }
+      })()
+    }
   )
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
   const currentUrl = useWebPreview.getState().url()
+  // A question waiting for the user (a tool approval, a site to allow) needs
+  // the whole screen: the native view is a window of its own that no DOM
+  // overlay can cover, so it steps aside, and so does the panel around it,
+  // until the question is answered. The page and its history stay as they are.
+  const questionWaiting = useToolApprovalRequests(
+    (s) => allApprovalRequests(s).length > 0
+  )
+  const siteQuestionWaiting = useBrowserAgentPrompt((s) => s.queue.length > 0)
+  const suspended = questionWaiting || siteQuestionWaiting
   const mode = useNativeWebPreview({
     enabled: open && !!currentUrl,
     url: currentUrl,
     reloadNonce: nonce,
     container: viewport,
+    suspended,
   })
 
   // Publish the pane's box (side panel width, PIP moves/resizes) so the
@@ -294,10 +326,27 @@ export function WebPreviewHost() {
   )
 
   if (surface === 'pip') {
-    return <WebPreviewPip title={url}>{body}</WebPreviewPip>
+    return (
+      <div
+        data-testid="wp-pip-wrap"
+        data-suspended={suspended ? '' : undefined}
+        className={cn(suspended && 'pointer-events-none invisible')}
+      >
+        <WebPreviewPip title={url}>{body}</WebPreviewPip>
+      </div>
+    )
   }
   return (
-    <div className="absolute inset-y-0 right-0 z-50 flex">
+    // Below the header row, so the header's approvals chip and menus are never
+    // under it; invisible (but alive) while a question waits.
+    <div
+      data-testid="wp-side-panel"
+      data-suspended={suspended ? '' : undefined}
+      className={cn(
+        'absolute right-0 bottom-0 top-[52px] z-50 flex',
+        suspended && 'pointer-events-none invisible'
+      )}
+    >
       <CoworkSidePanel
         title={t('common:webPreview.title')}
         onClose={() => useWebPreview.getState().close()}

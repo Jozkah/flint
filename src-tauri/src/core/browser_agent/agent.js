@@ -710,7 +710,8 @@
           return;
         } else {
           var t = suppress || tag === 'LABEL' ? '' : ownText(node);
-          if (t) push(depth, 'text "' + t.replace(/"/g, "'") + '"');
+          // A separator ("| |", "-", a bullet) is not content.
+          if (t && /[^\s|\u2022\u00B7\-\u2013\u2014_*#<>\/\\.,;:!?()\[\]{}~=+]/.test(t)) push(depth, 'text "' + t.replace(/"/g, "'") + '"');
         }
 
         if (node.shadowRoot) {
@@ -764,7 +765,7 @@
       if (reason && !ARGS.confirmed) {
         return { ok: true, needs_confirm: true, label: labelOf(el), reason: reason };
       }
-      if (ARGS.dry) return { ok: true, dry: true };
+      if (ARGS.dry) return { ok: true, dry: true, label: ARGS.id != null && ARGS.id !== '' ? labelOf(el) : '' };
       try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) {}
       var before = location.href;
       pointerSequence(el, 'click', pointerOpts());
@@ -789,7 +790,7 @@
         return fail('unsupported', 'That element is not a text field.');
       }
       if (el.disabled || el.readOnly) return fail('disabled', 'That field is read-only or disabled.');
-      if (ARGS.dry) return { ok: true, dry: true };
+      if (ARGS.dry) return { ok: true, dry: true, label: ARGS.id != null && ARGS.id !== '' ? labelOf(el) : '' };
       try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
       pointerSequence(el, 'rest', pointerOpts());
       el.focus();
@@ -835,7 +836,7 @@
       if (submits && !ARGS.confirmed) {
         return { ok: true, needs_confirm: true, label: labelOf(el), reason: 'pressing Enter here submits a form' };
       }
-      if (ARGS.dry) return { ok: true, dry: true };
+      if (ARGS.dry) return { ok: true, dry: true, label: ARGS.id != null && ARGS.id !== '' ? labelOf(el) : '' };
       if (ARGS.id != null && ARGS.id !== '') pointerSequence(el, 'rest', pointerOpts());
       if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch (e) {} }
       var init = { key: key, code: ARGS.key === 'Space' ? 'Space' : key, bubbles: true, cancelable: true };
@@ -877,7 +878,7 @@
         for (i = 0; i < el.options.length && i < 30; i++) have.push(clip(el.options[i].label || el.options[i].value, 40));
         return fail('no_option', 'No option matches. Options: ' + have.join(' | '));
       }
-      if (ARGS.dry) return { ok: true, dry: true };
+      if (ARGS.dry) return { ok: true, dry: true, label: ARGS.id != null && ARGS.id !== '' ? labelOf(el) : '' };
       pointerSequence(el, 'rest', pointerOpts());
       el.selectedIndex = idx;
       el.dispatchEvent(new Event('input', { bubbles: true }));

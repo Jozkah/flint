@@ -813,13 +813,13 @@ async function routeCoworkTool(
               // Through Cowork's own prompt, as for an edit: the session's
               // grants apply, a subagent is named, and stopping the run
               // withdraws the question.
-              approve: ({ context, url, alwaysAsk }) =>
+              approve: ({ context, url, alwaysAsk, input }) =>
                 ctx.onApprove
                   ? unlessStopped(
                       ctx.onApprove(
                         call.toolCallId,
                         toolName,
-                        call.input,
+                        input ?? call.input,
                         url ? `Page: ${url}` : undefined,
                         signal,
                         alwaysAsk ? { alwaysAsk: true, reason: context } : undefined

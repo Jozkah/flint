@@ -9,9 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Only the browser command is scripted; the activity recorder and friends also
 // call invoke and must not eat scripted answers.
 const browser = vi.fn()
-const invoke = vi.fn(async (cmd: string, ...rest: unknown[]) =>
-  cmd === 'browser_agent_call' ? browser(cmd, ...rest) : undefined
-)
+// The check that runs before the user is asked (node id and site) answers itself.
+const validated = { status: 'ok', content: '', url: 'https://shop.test/cart?id=7', label: 'Add to cart' }
+const invoke = vi.fn(async (cmd: string, ...rest: unknown[]) => {
+  if (cmd !== 'browser_agent_call') return undefined
+  const req = (rest[0] as { request: { validate_only?: boolean } }).request
+  return req.validate_only ? validated : browser(cmd, ...rest)
+})
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...a: [string, ...unknown[]]) => invoke(...a),
 }))
