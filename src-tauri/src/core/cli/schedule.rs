@@ -274,6 +274,7 @@ async fn execute(
     let drain = tokio::spawn(async move {
         let mut observer = Observer::new(on_block);
         let mut conversation: Option<Vec<serde_json::Value>> = None;
+        let mut held = Vec::new();
         while let Some(ev) = rx.recv().await {
             observer.observe(&ev);
             match &ev {
@@ -281,7 +282,19 @@ async fn execute(
                 StreamEvent::PermissionRequest { request_id, tool_name, capability, path, command, .. } => {
                     eprintln!("(scheduled run: {tool_name} needs approval and nobody is attached; denied)");
                     let end = observer.blocked(tool_name, capability, path.as_deref(), command.as_deref());
-                    if let Some(sender) = registry.lock().await.remove(request_id) {
+                    let sender = registry.lock().await.remove(request_id);
+                    if end {
+                        // The run ends here, so the prompt is never answered:
+                        // the stop is signalled first and the loop is left
+                        // waiting on it. Answering "deny" would let the loop
+                        // go on to its next provider request while the stop
+                        // was still being delivered (the notification below
+                        // can take seconds), which is the request on_block=end
+                        // exists to prevent. The sender is kept, not dropped,
+                        // because a dropped one reads as an answer too.
+                        stop_for_drain.notify_one();
+                        held.extend(sender);
+                    } else if let Some(sender) = sender {
                         let _ = sender.send(PermissionDecision::Deny);
                     }
                     if let Some(n) = notify_cfg.as_ref() {
@@ -293,13 +306,11 @@ async fn execute(
                         );
                         let _ = notify::deliver(n, &note, &project_root, Moment::NeedsAttention).await;
                     }
-                    if end {
-                        stop_for_drain.notify_one();
-                    }
                 }
                 _ => {}
             }
         }
+        drop(held);
         (observer, conversation)
     });
 
