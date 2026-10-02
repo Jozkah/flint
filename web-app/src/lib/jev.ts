@@ -36,7 +36,7 @@ export type JevStatus = {
 
 export type JevReceipt = {
   at: string
-  feature: 'skill' | 'rerank'
+  feature: 'skill' | 'rerank' | 'model'
   mode: JevMode
   model: string | null
   decision: string
@@ -133,6 +133,17 @@ export const jevSuggestSkill = (
   isWorkProfileCatalog(skills)
     ? jevChooseWorkProfile(message, skills)
     : invoke<SkillDecision>('jev_suggest_skill', { message, skills })
+
+/**
+ * Whether one of `models` would handle `message` clearly better than `current`.
+ * `skill` in the answer is the name of the chosen option, or null to keep the
+ * current model. Gated by the same opt-in as skill suggestions.
+ */
+export const jevSuggestModel = (
+  message: string,
+  current: { name: string; description: string },
+  models: { name: string; description: string }[]
+) => invoke<SkillDecision>('jev_suggest_model', { message, current, models })
 
 /**
  * The work-profile chooser Cowork hands to `chooseWorkProfile`, or undefined

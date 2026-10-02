@@ -17,6 +17,10 @@ import {
   type ActivatedSkill,
 } from '@/lib/skillActivation'
 import { refreshSkillCatalog } from '@/lib/skillCatalog'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import { resolvePool } from '@/lib/jevModelRouting'
+import { routeModelForTurn, selectionFor } from '@/lib/jevModelTurn'
+import { useModelRouting } from '@/hooks/useModelRouting'
 
 function latestUserMessage(
   messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
@@ -100,8 +104,62 @@ export class RoutedChatTransport extends CustomChatTransport {
           ).catch(() => undefined)
         : Promise.resolve(undefined),
       this.routeAssistantFor(latest, signal),
+      this.routeModelFor(latest, messages, signal),
     ])
     this.activeSkills = skills
+  }
+
+  /**
+   * Let Jev pick the AI model for this message, when the person turned that on
+   * and listed the models it may pick from. Most messages stay on the current
+   * model: Jev names another only when it is clearly better, and in Ask mode
+   * the person is asked first. The choice is for this message only and the
+   * model picker is left alone. A temporary chat never sends its prompt to Jev.
+   */
+  private async routeModelFor(
+    latest: { id: string; text: string },
+    messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages'],
+    signal?: AbortSignal
+  ) {
+    // Last message's choice must never carry over.
+    this.turnModel = undefined
+    const routing = useModelRouting.getState()
+    if (routing.mode === 'off' || routing.pool.length === 0 || this.temporary) return
+    const thread = this.threadId ? useThreads.getState().threads[this.threadId] : undefined
+
+    // A regenerate after a restart keeps what this message was routed to.
+    const kept = thread?.metadata?.jevRoutedModel as
+      | { messageId?: string; provider?: string; model?: string }
+      | undefined
+    if (kept?.messageId === latest.id && kept.provider && kept.model) {
+      const pool = resolvePool(routing.pool, useModelProvider.getState().providers)
+      const target = pool.find((m) => m.provider === kept.provider && m.model === kept.model)
+      if (target) this.turnModel = selectionFor(target)
+      return
+    }
+
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    const routed = await routeModelForTurn({
+      message: latest.text,
+      parts: lastUser?.parts ?? [],
+      current: this.getModelSelection(),
+      temporary: this.temporary,
+      signal,
+    })
+    if (!routed) return
+    this.turnModel = routed.selection
+    if (this.threadId && thread) {
+      useThreads.getState().updateThread(this.threadId, {
+        metadata: {
+          ...thread.metadata,
+          jevRoutedModel: {
+            messageId: latest.id,
+            provider: routed.target.provider,
+            model: routed.target.model,
+          },
+        },
+      })
+    }
   }
 
   private async routeAssistantFor(
