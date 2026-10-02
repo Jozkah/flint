@@ -183,9 +183,49 @@ Everything below is implemented in Flint, on top of upstream [Jan](https://githu
 - Benchmark harness, golden repositories and a prompt-injection and escalation corpus.
 - **Real-app scenario harness** (`cowork-smoke`) that drives the actual desktop app with a local model fixture.
 
+## Archive instead of delete
+
+- **Delete moves to the Archive:** deleting a chat, room, project, Cowork session, assistant or Studio result moves it to the Archive. Restore puts it back. Permanent deletion is only in the right-click menu on the Archive page, and asks for confirmation.
+- **Settings:** the archive is on by default. Archived items are deleted after 30 days (0 keeps them), threads untouched for a set number of days can be archived automatically (off by default), and the page can empty the archive.
+- **Safe for Cowork work:** a Cowork session whose worktree holds unmerged work cannot be purged until the work is dealt with.
+- **Phone:** the phone app has its own Archive screen.
+
+## Export
+
+- **Formats:** export a chat, a Cowork session or a single message as Markdown, an Obsidian note (frontmatter, tags and wikilinks), PDF or PNG, from the thread and Cowork menus, a message's right-click menu and the command palette.
+- **Branches:** a chat exports the branch you are viewing, or every version nested under the message it replaces.
+- **Careful by default:** tool output, reasoning and absolute paths are left out unless you ask, credentials are redacted, and exports over 50 MB are refused with a message. Where printing is not available, PDF falls back to a print-ready HTML file.
+
+## Chat branches
+
+- **Versions of a message:** editing a message or regenerating a reply keeps the old version. A switcher steps between versions with the mouse or the arrow keys, and the shown branch is the one the conversation continues from.
+- **Everywhere:** token counts, titles, previews, the command line and the phone app all use the shown branch. Deleting a message in the middle keeps the replies after it reachable.
+
+## Clickable file paths
+
+- **Paths in replies:** a path written in inline code becomes a link. Source files open in the Code panel, other files and folders open in the OS, and executables are only revealed. A path outside the session's folders stays plain text, and a link to a file that does not exist says so instead of opening an empty tab.
+- **One checked route:** every file open in the app goes through a backend command that resolves symlinks and refuses anything outside the allowed folders.
+
+## Scheduled tasks
+
+- **Settings > Schedules:** run a saved prompt on a schedule: daily, weekdays, certain days or a cron expression, with several times a day and a preview of the next runs.
+- **Unattended safely:** every task has an explicit tool allow-list, mandatory limits on turns, tokens and time, and an optional cost limit. A permission prompt is never shown: it is denied and recorded as what the run was blocked on. Tasks default to read-only, and writing tasks work in their own worktree.
+- **Missed runs:** after the app was closed, a task runs once on the next start by default. Optionally, Flint can install an operating-system entry (Windows scheduled task, macOS LaunchAgent or Linux systemd timer) that runs `flint cli schedule tick`, so tasks run while the app is closed. It only installs after you confirm and shows exactly what it will write.
+
+## Agent browser
+
+- **Off by default:** under Settings > Agent tools, the assistant can open pages in the built-in browser pane, read text, take an accessibility snapshot, click, type, select, press keys, scroll, and (on Windows) take a screenshot.
+- **Consent per site:** the first visit to a site asks, showing the full address: this visit, until Flint closes, or always, with an option for subdomains. Saved rules and the sites approved for now are listed in settings and can be revoked.
+- **Guarded:** loopback, private, link-local and metadata addresses are refused in every spelling, and a redirect to a site that has not been approved is stopped and asked about. Page content comes back inside a fenced block marked as untrusted. Clicks and typing ask for approval, controls that look like submit or delete always ask, and a run has an action limit. Unattended runs only reach sites with a saved always-allow rule.
+- **A visible pointer:** a glowing pointer glides to each element before the assistant acts, shows a click pulse and scrolls smoothly. It can be turned off, follows the system's reduce-motion setting, and hides when you take over.
+
 ## Not finished yet
 
 - Semantic code search is built but has not been verified against a real embedding model.
 - Custom CA certificates are verified on Windows only.
 - The desktop app has no slash commands or marketplace browsing; those are available from the command line or as agent tools only.
 - A full screen-reader pass has not been done.
+- PDF export through print and PNG export have not been verified on macOS and Linux. PNG refuses pages taller than about 16,000 pixels.
+- The scheduler's closed-app entry is built and unit-tested, but the real `schtasks`, `launchctl` and `systemctl` calls have not been exercised.
+- The agent browser's screenshot works on Windows only.
+- Archive does not cover Library files, which are files Cowork wrote into your own folders.
