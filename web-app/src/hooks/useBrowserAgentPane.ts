@@ -60,8 +60,16 @@ export function useBrowserAgentEvents(
       p.then((u) => (live ? unlisten.push(u) : u())).catch(() => {})
 
     keep(
-      listen<{ url: string }>(OPEN_PANE_EVENT, ({ payload }) => {
+      listen<{ url: string; recreate?: boolean }>(OPEN_PANE_EVENT, ({ payload }) => {
         const preview = useWebPreview.getState()
+        if (payload.recreate) {
+          // The backend asked twice and no native view appeared: it failed to
+          // start (or fell back to the iframe). Closing and reopening makes the
+          // preview build a fresh one from scratch.
+          preview.close()
+          setTimeout(() => useWebPreview.getState().openUrl(payload.url), 250)
+          return
+        }
         // Already showing it: nothing to do, and no duplicate history entry.
         if (preview.open && preview.url() === payload.url) return
         preview.openUrl(payload.url)

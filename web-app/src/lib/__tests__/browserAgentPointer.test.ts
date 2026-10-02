@@ -294,6 +294,33 @@ describe('lifetime', () => {
     expect(hosts()).toHaveLength(0)
   })
 
+  it('every kind of action starts the same three-second countdown', () => {
+    // Fade ~3 s after the last action: click, type, press, select and scroll.
+    page('<input id="i" aria-label="Name"><select id="s" aria-label="Size"><option>S</option></select>')
+    for (const id of ['i', 's']) {
+      ;(document.getElementById(id) as HTMLElement).getBoundingClientRect = () => rect(50, 50, 50, 20)
+    }
+    const snap = run('snapshot').snapshot as string
+    Object.defineProperty(document, 'scrollingElement', { value: document.documentElement, configurable: true })
+    vi.spyOn(window, 'scrollBy').mockImplementation(() => {})
+    const actions: Array<[string, () => R]> = [
+      ['type', () => run('type', { id: idOf(snap, 'textbox "Name"'), text: 'x', pointer: SHOW })],
+      ['select', () => run('select', { id: idOf(snap, 'combobox "Size"'), value: 'S', pointer: SHOW })],
+      ['press', () => run('press', { key: 'Escape', id: idOf(snap, 'textbox "Name"'), pointer: SHOW })],
+      ['scroll', () => run('scroll', { direction: 'down', pointer: SHOW })],
+    ]
+    for (const [name, act] of actions) {
+      run('pointer', { mode: 'remove' })
+      act()
+      expect(hosts(), `${name}: drawn`).toHaveLength(1)
+      vi.advanceTimersByTime(2900)
+      expect(hosts(), `${name}: still there before 3 s`).toHaveLength(1)
+      vi.advanceTimersByTime(1100)
+      expect(hosts(), `${name}: gone after ~3 s`).toHaveLength(0)
+    }
+    vi.restoreAllMocks()
+  })
+
   it('a new action keeps it alive', () => {
     const { id } = oneButton()
     run('click', { id, pointer: SHOW })
