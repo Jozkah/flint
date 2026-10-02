@@ -15,12 +15,13 @@ use super::fence;
 use super::policy::{self, Decision, DenyReason, NetworkPolicy, Verdict};
 use super::script;
 use super::shot;
+use super::step::{run_step, StepError, WindowState, CALL_BUDGET, PANE_UNRESPONSIVE, STEP_BUDGET, WINDOW_BUDGET};
 use super::store::{Scope, DEFAULT_MAX_ACTIONS};
 use super::{EVENT_BLOCKED, EVENT_OPEN_PANE, EVENT_STATE, PANE_LABEL, STORE};
 
 const MAX_TEXT_ARG: usize = 2_000;
 const MAX_VALUE_ARG: usize = 200;
-const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
+const EVAL_TIMEOUT: Duration = STEP_BUDGET;
 const OPEN_PANE_TIMEOUT: Duration = Duration::from_secs(8);
 const OPEN_LOAD_TIMEOUT: Duration = Duration::from_secs(25);
 const ACTION_LOAD_TIMEOUT: Duration = Duration::from_secs(10);
@@ -223,15 +224,26 @@ async fn eval<R: Runtime>(wv: &Webview<R>, op: &str, args: Value) -> Result<Valu
     let js = script::build(script::state_key(), op, &args);
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();
     let tx = std::sync::Mutex::new(Some(tx));
-    wv.eval_with_callback(js, move |raw| {
-        if let Some(tx) = tx.lock().ok().and_then(|mut g| g.take()) {
-            let _ = tx.send(raw);
-        }
+    // Handing the script to the webview waits on the main thread, which does
+    // not answer while the window is minimized: bounded, like the reply below.
+    let w = wv.clone();
+    let started = run_step(STEP_BUDGET, move || {
+        w.eval_with_callback(js, move |raw| {
+            if let Some(tx) = tx.lock().ok().and_then(|mut g| g.take()) {
+                let _ = tx.send(raw);
+            }
+        })
     })
-    .map_err(|e| format!("could not run in the page: {e}"))?;
+    .await;
+    match started {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(format!("could not run in the page: {e}")),
+        Err(StepError::Timeout) => return Err(PANE_UNRESPONSIVE.to_string()),
+        Err(StepError::Failed(m)) => return Err(m),
+    }
     let raw = tokio::time::timeout(EVAL_TIMEOUT, rx)
         .await
-        .map_err(|_| "the page did not answer in time (it may be loading or busy)".to_string())?
+        .map_err(|_| PANE_UNRESPONSIVE.to_string())?
         .map_err(|_| "the page closed before answering".to_string())?;
     script::parse_result(&raw)
 }
@@ -252,6 +264,8 @@ async fn settle<R: Runtime>(wv: &Webview<R>, seq0: u64, block0: u64, start_wait:
         match eval(wv, "info", json!({})).await {
             Ok(v) if v["ready"] == "complete" => break,
             Ok(_) => tokio::time::sleep(Duration::from_millis(150)).await,
+            // The webview is not answering at all: waiting longer only stalls.
+            Err(e) if e == PANE_UNRESPONSIVE => break,
             // Mid-navigation the page cannot answer; try again shortly.
             Err(_) => tokio::time::sleep(Duration::from_millis(150)).await,
         }
@@ -290,9 +304,9 @@ async fn guard<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netw
             "The browser pane is not open. Call browser_open with a URL first.",
         ));
     };
-    let url = match wv.url() {
+    let url = match pane_url(&wv).await {
         Ok(u) => u,
-        Err(e) => return Gate::Stop(CallResponse::error(format!("could not read the pane's address: {e}"))),
+        Err(e) => return Gate::Stop(CallResponse::error(e)),
     };
     if url.scheme() == "about" {
         return Gate::Stop(CallResponse::error("The browser pane is empty. Call browser_open with a URL first."));
@@ -312,10 +326,47 @@ async fn guard<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netw
     Gate::Go(Guarded { wv, url })
 }
 
+/// Send the pane to a blank page. Not waited for: it is a clean-up, and a pane
+/// that is not answering must not hold the call.
 fn blank<R: Runtime>(wv: &Webview<R>) {
     if let Ok(u) = Url::parse("about:blank") {
-        let _ = wv.navigate(u);
+        let w = wv.clone();
+        drop(tokio::task::spawn_blocking(move || {
+            let _ = w.navigate(u);
+        }));
     }
+}
+
+/// The pane's address, within the step budget.
+async fn pane_url<R: Runtime>(wv: &Webview<R>) -> Result<Url, String> {
+    let w = wv.clone();
+    match run_step(STEP_BUDGET, move || w.url()).await {
+        Ok(Ok(u)) => Ok(u),
+        Ok(Err(e)) => Err(format!("could not read the pane's address: {e}")),
+        Err(StepError::Timeout) => Err(PANE_UNRESPONSIVE.to_string()),
+        Err(StepError::Failed(m)) => Err(m),
+    }
+}
+
+/// Whether the app window that holds the pane is minimized or hidden.
+async fn window_state<R: Runtime>(app: &AppHandle<R>) -> WindowState {
+    let Some(window) = app.get_window("main") else {
+        return WindowState::default();
+    };
+    let a = window.clone();
+    let minimized = run_step(WINDOW_BUDGET, move || a.is_minimized().ok()).await.ok().flatten();
+    let b = window;
+    let visible = run_step(WINDOW_BUDGET, move || b.is_visible().ok()).await.ok().flatten();
+    WindowState { minimized, visible }
+}
+
+/// A tool call that ended because the pane did not answer: say why, in the
+/// words that fit the window's state. Any other response is left alone.
+pub fn explain_unresponsive(mut resp: CallResponse, window: WindowState) -> CallResponse {
+    if resp.status == "error" && resp.reason.as_deref() == Some(PANE_UNRESPONSIVE) {
+        resp.reason = Some(window.message());
+    }
+    resp
 }
 
 fn str_arg(v: &Option<String>, name: &str, max: usize) -> Result<String, CallResponse> {
@@ -330,6 +381,23 @@ fn str_arg(v: &Option<String>, name: &str, max: usize) -> Result<String, CallRes
 
 #[tauri::command]
 pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequest) -> CallResponse {
+    // Every step that waits on the webview is bounded, and so is the call as a
+    // whole: a minimized window used to park the call, the lease and the
+    // "loading" flag for good.
+    let resp = match tokio::time::timeout(CALL_BUDGET, call_inner(&app, request)).await {
+        Ok(resp) => resp,
+        Err(_) => CallResponse::error(PANE_UNRESPONSIVE),
+    };
+    if resp.status == "error" && resp.reason.as_deref() == Some(PANE_UNRESPONSIVE) {
+        super::release_pane_state();
+        emit_state(&app, None);
+        return explain_unresponsive(resp, window_state(&app).await);
+    }
+    resp
+}
+
+async fn call_inner<R: Runtime>(app: &AppHandle<R>, request: CallRequest) -> CallResponse {
+    let app = app.clone();
     ensure_store(&app);
     let req = request;
     if !TOOLS.contains(&req.tool.as_str()) {
@@ -349,6 +417,12 @@ pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequ
     // platform that cannot take the picture.
     if req.tool == "screenshot" && cfg!(not(windows)) {
         return CallResponse::error(shot::UNSUPPORTED);
+    }
+    // The pane cannot answer while the window is minimized or hidden. Said up
+    // front, before a lease is taken or anything is opened.
+    let window = window_state(&app).await;
+    if window.unavailable() {
+        return CallResponse::error(window.message());
     }
     let network = network_for(req.project_root.as_deref());
     if req.tool == "open" {
@@ -409,18 +483,47 @@ async fn open<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netwo
     let _in_flight = InFlight;
     let block0 = super::block_seq();
     let seq0 = super::load_seq();
-    let existing = pane(app);
-    let already_there = existing.as_ref().and_then(|w| w.url().ok()).is_some_and(|u| same_page(&u, &target));
+    let mut already_there = false;
+    if let Some(existing) = pane(app) {
+        match pane_url(&existing).await {
+            Ok(u) => already_there = same_page(&u, &target),
+            // Slow, not broken: say so.
+            Err(e) if e == PANE_UNRESPONSIVE => return CallResponse::error(e),
+            // The webview exists but is dead (it cannot be spoken to). Close
+            // it so the web side builds a fresh one below.
+            Err(_) => {
+                let dead = existing.clone();
+                let _ = run_step(STEP_BUDGET, move || dead.close()).await;
+                for _ in 0..20 {
+                    if pane(app).is_none() {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
+        }
+    }
     emit_to_main(app, EVENT_OPEN_PANE, json!({ "url": target.as_str() }));
 
-    // The web side creates the webview when the pane opens; wait for it.
+    // The web side creates the webview when the pane opens; wait for it. If it
+    // has not appeared, ask again with `recreate`: the view may have failed to
+    // start (WebView2 can refuse at startup) and the web side retries from
+    // scratch rather than staying on its fallback.
     let t0 = Instant::now();
+    let mut asked_again = 0u32;
     let wv = loop {
         if let Some(w) = pane(app) {
             break w;
         }
-        if t0.elapsed() > OPEN_PANE_TIMEOUT {
-            return CallResponse::error("The browser pane did not open. Make sure the Flint window is visible, then try again.");
+        let waited = t0.elapsed();
+        if waited > OPEN_PANE_TIMEOUT {
+            return CallResponse::error(
+                "The browser pane could not be created: its webview did not start. Close the preview panel and try again; if it keeps failing, restart Flint.",
+            );
+        }
+        if waited > Duration::from_secs(3) * (asked_again + 1) / 1 && asked_again < 2 {
+            asked_again += 1;
+            emit_to_main(app, EVENT_OPEN_PANE, json!({ "url": target.as_str(), "recreate": true }));
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
@@ -442,9 +545,9 @@ async fn open<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netwo
     }
 
     // Where the page really is now: a redirect may have moved it.
-    let now = match wv.url() {
+    let now = match pane_url(&wv).await {
         Ok(u) => u,
-        Err(e) => return CallResponse::error(format!("could not read the pane's address: {e}")),
+        Err(e) => return CallResponse::error(e),
     };
     match decide_for(req, network, &now) {
         Decision::Allow => {}
@@ -651,7 +754,7 @@ async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Networ
     settle(&wv, seq0, block0, Duration::from_millis(700), ACTION_LOAD_TIMEOUT).await;
 
     // Where the page is after the action: it may have moved anywhere.
-    let now = wv.url().unwrap_or(url.clone());
+    let now = pane_url(&wv).await.unwrap_or_else(|_| url.clone());
     let info = eval(&wv, "info", json!({})).await.unwrap_or(json!({}));
     let title = info["title"].as_str().unwrap_or("").to_string();
     let what = match req.tool.as_str() {
@@ -790,7 +893,10 @@ pub async fn browser_agent_resume<R: Runtime>(app: AppHandle<R>) {
 /// Hide, show or remove the pointer on the pane, without waiting for an answer.
 fn pointer_mode<R: Runtime>(app: &AppHandle<R>, mode: &str) {
     if let Some(wv) = pane(app) {
-        let _ = wv.eval(script::build(script::state_key(), "pointer", &json!({ "mode": mode })));
+        let js = script::build(script::state_key(), "pointer", &json!({ "mode": mode }));
+        drop(tokio::task::spawn_blocking(move || {
+            let _ = wv.eval(js);
+        }));
     }
 }
 
@@ -955,6 +1061,29 @@ mod tests {
         assert!(!req.validate_only);
         let req: CallRequest = serde_json::from_str(r#"{"tool":"click","validate_only":true}"#).unwrap();
         assert!(req.validate_only);
+    }
+
+    #[test]
+    fn an_unresponsive_pane_is_explained_by_the_window_state() {
+        let timed_out = || CallResponse::error(PANE_UNRESPONSIVE);
+        let minimized = explain_unresponsive(timed_out(), WindowState { minimized: Some(true), visible: Some(true) });
+        assert_eq!(minimized.status, "error");
+        assert!(minimized.reason.as_deref().unwrap().contains("minimized"), "{:?}", minimized.reason);
+        assert!(minimized.reason.as_deref().unwrap().contains("Restore the Flint window"));
+        let unknown = explain_unresponsive(timed_out(), WindowState::default());
+        assert!(unknown.reason.as_deref().unwrap().contains("hidden or minimized"));
+        // Other errors, and successful answers, keep their own words.
+        let other = explain_unresponsive(CallResponse::error("stale node"), WindowState { minimized: Some(true), visible: None });
+        assert_eq!(other.reason.as_deref(), Some("stale node"));
+        let ok = explain_unresponsive(CallResponse::ok("x".into(), "https://a.test/", None), WindowState::default());
+        assert_eq!(ok.status, "ok");
+    }
+
+    #[test]
+    fn the_budgets_are_bounded() {
+        assert!(STEP_BUDGET <= Duration::from_secs(10));
+        assert!(CALL_BUDGET > STEP_BUDGET);
+        assert!(CALL_BUDGET <= Duration::from_secs(90));
     }
 
     #[test]

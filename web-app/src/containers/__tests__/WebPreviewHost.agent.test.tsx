@@ -100,6 +100,39 @@ describe('WebPreviewHost with the assistant driving', () => {
     )
   })
 
+  it('a recreate request rebuilds the pane from scratch (a failed webview is not stuck)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      useWebPreview.getState().openUrl('https://example.com/')
+      render(<WebPreviewHost />)
+      await vi.waitFor(() => expect(handlers.has('browser-agent://open-pane')).toBe(true))
+      const seen: boolean[] = []
+      const unsub = useWebPreview.subscribe((s) => seen.push(s.open))
+      emit('browser-agent://open-pane', { url: 'https://example.com/', recreate: true })
+      // Closed first, so the preview drops its view (or its iframe fallback)...
+      expect(useWebPreview.getState().open).toBe(false)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(400)
+      })
+      // ...then opened again on the same page.
+      expect(useWebPreview.getState().open).toBe(true)
+      expect(useWebPreview.getState().url()).toContain('https://example.com/')
+      expect(seen[0]).toBe(false)
+      unsub()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('a plain open request for the page already showing is left alone', async () => {
+    useWebPreview.getState().openUrl('https://example.com/')
+    render(<WebPreviewHost />)
+    await vi.waitFor(() => expect(handlers.has('browser-agent://open-pane')).toBe(true))
+    emit('browser-agent://open-pane', { url: 'https://example.com/' })
+    expect(useWebPreview.getState().open).toBe(true)
+    expect(useWebPreview.getState().history).toEqual(['https://example.com/'])
+  })
+
   it('sits below the header row, so the approvals chip is never under it', () => {
     useWebPreview.getState().openUrl('https://example.com/')
     render(<WebPreviewHost />)

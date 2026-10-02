@@ -24,6 +24,8 @@ pub const UNSUPPORTED: &str = "browser_screenshot is not supported on this platf
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CaptureError {
     Unsupported,
+    /// The webview did not answer in time (the window may be minimized).
+    Unresponsive,
     Failed(String),
 }
 
@@ -31,6 +33,7 @@ impl CaptureError {
     pub fn message(&self) -> String {
         match self {
             CaptureError::Unsupported => UNSUPPORTED.to_string(),
+            CaptureError::Unresponsive => super::step::PANE_UNRESPONSIVE.to_string(),
             CaptureError::Failed(why) => format!("could not capture the browser pane: {why}"),
         }
     }
@@ -126,17 +129,26 @@ pub async fn capture<R: tauri::Runtime>(wv: &tauri::Webview<R>) -> Result<Vec<u8
         }
     };
     let send_start = send.clone();
-    wv.with_webview(move |platform| unsafe {
-        if let Err(e) = start_capture(platform, send) {
-            send_start(Err(e));
-        }
+    let w = wv.clone();
+    let started = super::step::run_step(super::step::STEP_BUDGET, move || {
+        w.with_webview(move |platform| unsafe {
+            if let Err(e) = start_capture(platform, send) {
+                send_start(Err(e));
+            }
+        })
     })
-    .map_err(|e| CaptureError::Failed(e.to_string()))?;
+    .await;
+    match started {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => return Err(CaptureError::Failed(e.to_string())),
+        Err(super::step::StepError::Timeout) => return Err(CaptureError::Unresponsive),
+        Err(super::step::StepError::Failed(m)) => return Err(CaptureError::Failed(m)),
+    }
     match tokio::time::timeout(Duration::from_secs(10), rx).await {
         Ok(Ok(Ok(png))) => Ok(png),
         Ok(Ok(Err(why))) => Err(CaptureError::Failed(why)),
         Ok(Err(_)) => Err(CaptureError::Failed("the capture was dropped".into())),
-        Err(_) => Err(CaptureError::Failed("the capture timed out".into())),
+        Err(_) => Err(CaptureError::Unresponsive),
     }
 }
 
