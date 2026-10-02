@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{Emitter, Runtime};
@@ -206,6 +207,12 @@ fn diagnose(live: &Arc<StdMutex<Live>>) -> String {
 
 /// What a run that ran out of graphics memory reports, so it can be told apart.
 const OUT_OF_MEMORY: &str = "The graphics card ran out of memory. Try a smaller size, or close other programs that use the GPU.";
+
+/// Whether a failure message is the out-of-memory one. The engine's own message
+/// is appended to it in brackets, so it is matched by its start.
+fn is_out_of_memory(message: &str) -> bool {
+    message.starts_with(OUT_OF_MEMORY)
+}
 
 /// A plain-words reason for a failure, from the engine's log.
 pub fn friendly_failure(tail: &[String]) -> String {
@@ -456,6 +463,7 @@ async fn run_job<R: Runtime>(
             return Err("The image engine is busy with another generation.".to_string());
         }
         r.busy = true;
+        CANCEL_REQUESTED.store(false, Ordering::SeqCst);
         r.last_used = Instant::now();
         let live = r.live.clone();
         if let Ok(mut l) = live.lock() {
@@ -533,7 +541,13 @@ async fn poll_job<R: Runtime>(
         let response = match response {
             Ok(r) => r,
             Err(e) => {
-                // The engine stopped under us: a cancel, a crash, or an unload.
+                log::info!("diffusion: poll failed ({e}); cancel_requested={}", CANCEL_REQUESTED.load(Ordering::SeqCst));
+                // A stop the person asked for ends the engine under us; that is a
+                // cancellation, not a failure to report.
+                if CANCEL_REQUESTED.load(Ordering::SeqCst) {
+                    return Err("Cancelled.".to_string());
+                }
+                // Otherwise the engine stopped on its own: a crash, or an unload.
                 return Err(format!("{} ({e})", diagnose(live)));
             }
         };
@@ -569,7 +583,7 @@ async fn run_job_with_fallback<R: Runtime>(
     loop {
         let outcome = run_job(app, path, body.clone(), steps, batch, model_id).await;
         let Err(message) = &outcome else { return outcome };
-        if message != OUT_OF_MEMORY {
+        if !is_out_of_memory(message) {
             return outcome;
         }
         let current = last_load()
@@ -765,6 +779,10 @@ pub async fn generate_video<R: Runtime>(
 /// Stop the generation in progress. The engine can only cancel a queued job,
 /// so a running one is stopped by stopping the engine; the next generation
 /// starts it again.
+/// Set when the person asked to stop the job in flight, so the engine going away
+/// afterwards (stopped to make the cancel prompt) is read as that, not as a crash.
+static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+
 pub async fn cancel<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     let (port, job) = {
         let guard = resident().lock().await;
@@ -773,6 +791,8 @@ pub async fn cancel<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String>
             _ => return Ok(()),
         }
     };
+    CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+    log::info!("diffusion: cancel requested for {job:?}");
     if let Some(job) = job {
         let client = http()?;
         let base = format!("http://127.0.0.1:{port}");
@@ -803,4 +823,16 @@ pub async fn cancel<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String>
     }
     unload(app).await;
     Ok(())
+}
+
+#[cfg(test)]
+mod oom_tests {
+    use super::*;
+
+    #[test]
+    fn the_out_of_memory_message_is_recognised_with_the_engines_own_words_after_it() {
+        assert!(is_out_of_memory(OUT_OF_MEMORY));
+        assert!(is_out_of_memory(&format!("{OUT_OF_MEMORY} (generate_image returned no results)")));
+        assert!(!is_out_of_memory("Cancelled."));
+    }
 }

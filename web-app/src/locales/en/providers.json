@@ -130,7 +130,8 @@
   "enterNameForProvider": "Enter name for provider",
   "baseUrl": {
     "title": "Base URL",
-    "azureDescription": "Your Azure OpenAI endpoint. Replace YOUR-RESOURCE-NAME with your Azure resource name."
+    "azureDescription": "Your Azure OpenAI endpoint. Replace YOUR-RESOURCE-NAME with your Azure resource name.",
+    "qwenDescription": "Your Model Studio endpoint. A key only works in the region it was created in: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 for Singapore or https://dashscope.aliyuncs.com/compatible-mode/v1 for mainland China."
   },
   "apiKeys": {
     "title": "API keys",

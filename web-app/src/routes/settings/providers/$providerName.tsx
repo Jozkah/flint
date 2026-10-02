@@ -86,6 +86,22 @@ import {
 } from '@/stores/engine-activity-store'
 
 // as route.threadsDetail
+/**
+ * Built-in providers whose endpoint depends on the account, so it stays
+ * editable: Azure on the resource name, Alibaba Qwen on the region its keys
+ * were created in.
+ */
+const EDITABLE_ENDPOINT: Record<string, { description: string; placeholder: string }> = {
+  azure: {
+    description: 'providers:baseUrl.azureDescription',
+    placeholder: 'https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1',
+  },
+  qwen: {
+    description: 'providers:baseUrl.qwenDescription',
+    placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  },
+}
+
 export const Route = createFileRoute('/settings/providers/$providerName')({
   component: ProviderDetail,
   validateSearch: (search: Record<string, unknown>): { step?: string } => {
@@ -389,7 +405,7 @@ function ProviderDetail() {
   }, [serviceHub])
 
   useEffect(() => {
-    if (provider?.provider !== 'azure') return
+    if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
     setBaseUrlDraft(provider.base_url ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerName, provider?.base_url])
@@ -458,7 +474,7 @@ function ProviderDetail() {
   }, [apiKeysDraft, provider, providerName, serviceHub, updateProvider])
 
   const commitBaseUrlDraft = useCallback(() => {
-    if (!provider || provider.provider !== 'azure') return
+    if (!provider || !EDITABLE_ENDPOINT[provider.provider]) return
     const next = baseUrlDraft.trim()
     if (next === (provider.base_url ?? '')) return
     updateProvider(providerName, { ...provider, base_url: next })
@@ -1316,19 +1332,19 @@ function ProviderDetail() {
     <Frame className="motion-safe:animate-rise-in [animation-delay:260ms]">
       <FrameHeader icon={<Icon name="x-key" />} title={t('engine:provider.api')} />
       <FrameBody className="gap-4 p-3">
-        {provider.provider === 'azure' && (
+        {EDITABLE_ENDPOINT[provider.provider] && (
           <div className="space-y-2">
             <div className="space-y-1">
               <h3 className="text-[13px] font-medium text-foreground">
                 {t('providers:baseUrl.title')}
               </h3>
               <p className="text-xs leading-normal text-muted-foreground">
-                {t('providers:baseUrl.azureDescription')}
+                {t(EDITABLE_ENDPOINT[provider.provider].description)}
               </p>
             </div>
             <input
               className="flex h-8 w-full min-w-0 rounded-lg border-[0.8px] border-input bg-card px-2.5 py-1 font-mono text-base text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring pointer-coarse:h-11 md:text-xs"
-              placeholder="https://YOUR-RESOURCE-NAME.openai.azure.com/openai/v1"
+              placeholder={EDITABLE_ENDPOINT[provider.provider].placeholder}
               value={baseUrlDraft}
               onChange={(e) => setBaseUrlDraft(e.target.value)}
               onBlur={() => commitBaseUrlDraft()}

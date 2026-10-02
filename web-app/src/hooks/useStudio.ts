@@ -80,8 +80,9 @@ function listenOnce(): void {
   void listen('diffusion-state', () => {
     void useStudio.getState().refresh()
   })
-  void listen<{ task_id: string; downloaded: number }>('huggingface-download-progress', ({ payload }) => {
-    const task = parseDownloadTask(payload.task_id)
+  void listen<{ taskId: string; downloaded: number }>('huggingface-download-progress', ({ payload }) => {
+    // The downloader serialises this event in camelCase.
+    const task = parseDownloadTask(payload.taskId)
     if (!task) return
     const model = useStudio.getState().status?.models.find((m) => m.id === task.modelId)
     if (!model) return

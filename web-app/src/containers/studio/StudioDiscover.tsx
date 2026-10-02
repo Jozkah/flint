@@ -112,7 +112,8 @@ export function StudioDiscover({
     setOpen(opening ? repo : null)
     if (!opening) return
     let known = files[repo] ?? []
-    if (!known.length) {
+    // The search lists file names only; sizes (and the order they give) come from the file listing.
+    if (!known.length || known.some((f) => f.size == null)) {
       try {
         known = await getHuggingFaceFiles(repo, token)
         setFiles((current) => ({ ...current, [repo]: known }))
