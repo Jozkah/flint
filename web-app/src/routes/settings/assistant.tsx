@@ -102,10 +102,12 @@ function AssistantContent() {
             {t('assistants:addAssistant')}
           </Button>
         }
-        layout={[0, 1]}
       >
-        {/* Default Assistant */}
-        <Card>
+        <Card
+          title={t('assistants:allAssistants')}
+          aside={<span className="tabular-nums">{sortedAssistants.length}</span>}
+        >
+          {/* Default Assistant */}
           <CardItem
             anchor="settings-assistants-default"
             title={t('assistants:defaultAssistantSection')}
@@ -151,16 +153,10 @@ function AssistantContent() {
               </DropdownMenu>
             }
           />
-        </Card>
-
-        <Card
-          title={t('assistants:allAssistants')}
-          aside={<span className="tabular-nums">{sortedAssistants.length}</span>}
-        >
-          <ul className="flex flex-col">
+          <ul className="grid gap-3 pt-3 @min-[40rem]:grid-cols-2 @min-[72rem]:grid-cols-3">
             {sortedAssistants.map((assistant) => (
               <li
-                className="group flex items-center gap-3 border-b border-dashed border-border px-0.5 py-3 transition-colors last:border-b-0"
+                className="group flex min-w-0 items-start gap-3 rounded-xl border-[0.8px] border-border bg-card p-3 transition-colors hover:border-border-strong"
                 key={assistant.id}
               >
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border-[0.8px] border-input bg-card">
@@ -184,7 +180,7 @@ function AssistantContent() {
                     )}
                   </div>
                   {assistant.description && (
-                    <p className="text-xs leading-[1.35] text-muted-foreground">
+                    <p className="line-clamp-3 text-xs leading-[1.35] text-muted-foreground">
                       {assistant.description}
                     </p>
                   )}

@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Lock, LockOpen, Search } from 'lucide-react'
 import { Chip } from '@/components/ui/chip'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
 import { isPluginSkill } from '@/lib/skillStore'
 import { Icon } from '@/components/ui/icon'
 import { toast } from 'sonner'
@@ -114,6 +115,11 @@ function AgentToolsContent() {
   // its own tab and its own search instead of one scroll of everything.
   const [tab, setTab] = useState<'behaviour' | 'skills' | 'memories'>('behaviour')
   const [query, setQuery] = useState('')
+  // Every searchable setting here lives on Behaviour; a search result opens it.
+  const pendingTarget = useSettingsSearch((s) => s.pendingTarget)
+  useEffect(() => {
+    if (pendingTarget?.startsWith('settings-agent-tools')) setTab('behaviour')
+  }, [pendingTarget])
 
   const refresh = useCallback(async () => {
     try {

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Segmented } from '@/components/ui/segmented'
+import { useSettingsSearch } from '@/hooks/useSettingsSearch'
 import { Card, CardItem } from '@/containers/Card'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -53,6 +55,18 @@ function ModePicker({
   )
 }
 
+type JevTab = 'setup' | 'automatic' | 'profiles' | 'receipts'
+
+const TAB_OF_ANCHOR: Record<string, JevTab> = {
+  'settings-jev-key': 'setup',
+  'settings-jev-skills': 'setup',
+  'settings-jev-rerank': 'setup',
+  'settings-jev-route': 'automatic',
+  'settings-jev-activate': 'automatic',
+  'settings-jev-model-routing': 'automatic',
+  'settings-jev-profiles': 'profiles',
+}
+
 /**
  * Settings for Jev decision support: the key (write-only, stored in the
  * protected secret store), the two opt-ins -- separate, both off by default
@@ -78,6 +92,15 @@ export function JevSettingsCard({
   const [receipts, setReceipts] = useState<JevReceipt[]>([])
   const [keyInput, setKeyInput] = useState('')
   const [error, setError] = useState<string | null>(null)
+  // One long page of five cards became four short ones: the key and the
+  // opt-ins, what Jev does on its own, work profiles, and the receipts.
+  const [tab, setTab] = useState<JevTab>('setup')
+  // A settings-search result for something on another tab opens that tab first.
+  const pendingTarget = useSettingsSearch((s) => s.pendingTarget)
+  useEffect(() => {
+    const at = pendingTarget ? TAB_OF_ANCHOR[pendingTarget] : undefined
+    if (at) setTab(at)
+  }, [pendingTarget])
 
   const refresh = useCallback(() => {
     void api.jevStatus().then(setStatus).catch(() => setStatus(null))
@@ -99,6 +122,20 @@ export function JevSettingsCard({
 
   return (
     <>
+    <Segmented<JevTab>
+      size="sm"
+      aria-label={t('common:jev.tab')}
+      value={tab}
+      onValueChange={setTab}
+      className="w-fit max-w-full"
+      options={[
+        { value: 'setup', label: t('common:jev.tabSetup') },
+        { value: 'automatic', label: t('common:jev.tabAutomatic') },
+        { value: 'profiles', label: t('common:jev.tabProfiles') },
+        { value: 'receipts', label: t('common:jev.receipts') },
+      ]}
+    />
+    {tab === 'setup' && (
     <Card title={t('common:jev.cardKey')}>
       <CardItem
         align="start"
@@ -138,6 +175,8 @@ export function JevSettingsCard({
       />
       {error && <p className="px-4 text-xs text-destructive">{error}</p>}
     </Card>
+    )}
+    {tab === 'setup' && (
     <Card title={t('common:jev.cardFeatures')}>
       <CardItem
         anchor={anchors?.skills}
@@ -172,9 +211,11 @@ export function JevSettingsCard({
         description={<p className="text-muted-foreground">{t('common:jev.modesExplained')}</p>}
       />
     </Card>
-    <AutomationCard />
-    <JevModelRoutingCard />
-    <WorkProfilesCard />
+    )}
+    {tab === 'automatic' && <AutomationCard />}
+    {tab === 'automatic' && <JevModelRoutingCard />}
+    {tab === 'profiles' && <WorkProfilesCard />}
+    {tab === 'receipts' && (
     <Card title={t('common:jev.receipts')}>
       <CardItem
         align="start"
@@ -208,6 +249,7 @@ export function JevSettingsCard({
         }
       />
     </Card>
+    )}
     </>
   )
 }

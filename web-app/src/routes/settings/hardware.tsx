@@ -97,8 +97,8 @@ function SpecChip({ children }: { children: React.ReactNode }) {
 function UsageMeter({ percent }: { percent: number }) {
   const clamped = Math.min(100, Math.max(0, percent))
   return (
-    <div className="flex items-center gap-3">
-      <Progress value={clamped} className="h-1.5 w-32 border border-border sm:w-40" />
+    <div className="flex w-full items-center gap-3">
+      <Progress value={clamped} className="h-1.5 min-w-0 flex-1 border border-border" />
       <span className="w-14 text-right font-mono text-xs tabular-nums text-foreground">
         {clamped.toFixed(1)}%
       </span>
@@ -580,6 +580,7 @@ function HardwareContent() {
                 )}
                 <CardItem
                   title={t('settings:hardware.usage')}
+                  column
                   actions={
                     systemUsage.cpu > 0 && (
                       <UsageMeter percent={systemUsage.cpu} />
@@ -619,6 +620,7 @@ function HardwareContent() {
                 />
                 <CardItem
                   title={t('settings:hardware.usage')}
+                  column
                   actions={
                     hardwareData.total_memory > 0 && (
                       <UsageMeter percent={memoryPercent} />
