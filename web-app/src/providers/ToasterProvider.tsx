@@ -1,7 +1,9 @@
 import { Toaster } from '@/components/ui/sonner'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { getToastOffset } from '@/utils/toastPlacement'
+import { useEffect, useState } from 'react'
+import { useWebPreview } from '@/hooks/useWebPreview'
+import { getToastOffsetAvoidingPane } from '@/utils/toastPlacement'
 
 /** Below the 52px top header on phones, so a toast never sits over the composer. */
 const PHONE_OFFSET = { top: '60px' }
@@ -12,7 +14,26 @@ export function ToasterProvider() {
   )
   const isPhone = useMediaQuery('(max-width: 767px)')
 
-  const offset = getToastOffset(notificationPosition)
+  const open = useWebPreview((s) => s.open)
+  const surface = useWebPreview((s) => s.surface)
+  const paneRect = useWebPreview((s) => s.paneRect)
+  const [viewport, setViewport] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }))
+  useEffect(() => {
+    const onResize = () =>
+      setViewport({ width: window.innerWidth, height: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+
+  // Keep toasts clear of the open Web preview pane and its toolbar.
+  const offset = getToastOffsetAvoidingPane(
+    notificationPosition,
+    open && paneRect ? { surface, rect: paneRect } : null,
+    viewport
+  )
 
   return (
     <Toaster

@@ -70,6 +70,32 @@ export function WebPreviewHost() {
     container: viewport,
   })
 
+  // Publish the pane's box (side panel width, PIP moves/resizes) so the
+  // toaster can step around it. Sampled per frame, written only on change.
+  const [paneEl, setPaneEl] = useState<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!paneEl) {
+      useWebPreview.getState().setPaneRect(null)
+      return
+    }
+    let frame = 0
+    const tick = () => {
+      const r = paneEl.getBoundingClientRect()
+      useWebPreview.getState().setPaneRect({
+        left: Math.round(r.left),
+        top: Math.round(r.top),
+        right: Math.round(r.right),
+        bottom: Math.round(r.bottom),
+      })
+      frame = requestAnimationFrame(tick)
+    }
+    tick()
+    return () => {
+      cancelAnimationFrame(frame)
+      useWebPreview.getState().setPaneRect(null)
+    }
+  }, [paneEl])
+
   useEffect(() => {
     if (!interceptLinks) return
     const onClick = (e: MouseEvent) => {
@@ -232,7 +258,7 @@ export function WebPreviewHost() {
   )
 
   const body = (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={setPaneEl} className="flex h-full min-h-0 flex-col">
       {toolbar}
       {mode === 'iframe' ? (
         <>
