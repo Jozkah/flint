@@ -19,6 +19,12 @@ type AgentToolsConfigState = {
   /** Clicks, keystrokes and selections one run may make in the browser pane. */
   browserAgentMaxActions: number
   setBrowserAgentMaxActions: (value: number) => void
+  /** Draw the assistant's pointer in the browser pane while it works. */
+  browserAgentPointer: boolean
+  setBrowserAgentPointer: (value: boolean) => void
+  /** `system` follows the page's prefers-reduced-motion; `on` never glides or pulses. */
+  browserAgentReduceMotion: 'system' | 'on' | 'off'
+  setBrowserAgentReduceMotion: (value: 'system' | 'on' | 'off') => void
 }
 
 /**
@@ -41,6 +47,12 @@ export const useAgentToolsConfig = create<AgentToolsConfigState>()(
       browserAgentEnabled: false,
       setBrowserAgentEnabled: (browserAgentEnabled) =>
         set({ browserAgentEnabled }),
+      browserAgentPointer: true,
+      setBrowserAgentPointer: (browserAgentPointer) =>
+        set({ browserAgentPointer }),
+      browserAgentReduceMotion: 'system',
+      setBrowserAgentReduceMotion: (browserAgentReduceMotion) =>
+        set({ browserAgentReduceMotion }),
       browserAgentMaxActions: 40,
       setBrowserAgentMaxActions: (value) =>
         set({

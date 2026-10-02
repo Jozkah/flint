@@ -19,6 +19,7 @@
 pub mod fence;
 pub mod policy;
 pub mod script;
+pub mod shot;
 pub mod store;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

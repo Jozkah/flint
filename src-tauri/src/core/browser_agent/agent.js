@@ -148,6 +148,432 @@
       return clip(out, 160);
     }
 
+    // ---- the pointer -------------------------------------------------------
+    //
+    // A visible mouse for the assistant: an arrow with an outline and glow that
+    // glides to what it is about to act on, pulses on a click and fades a few
+    // seconds after the last action. Purely cosmetic and purely additive:
+    //   - it lives in a closed shadow root under a zero-size fixed host on the
+    //     document element (not the body), so read_text, the snapshot and the
+    //     node ids never see it and it cannot move the page's layout or scroll;
+    //   - the host's tag and id are random, and it is removed on navigation (the
+    //     document goes), on `remove`, and after it fades;
+    //   - nothing waits on it here: the host sleeps for the `wait` an op returns,
+    //     and every safety decision was made before any op that moves it.
+    var GLIDE_MIN = 250;
+    var GLIDE_MAX = 650;
+    var SCROLL_MS = 250;
+    var FADE_AFTER_MS = 3000;
+    var FADE_MS = 400;
+
+    function prefersReduced() {
+      try {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    /** `show`: draw it. `reduce`: no glide, no pulse (null follows the system). */
+    function pointerOpts() {
+      var p = ARGS.pointer || {};
+      return {
+        show: p.show !== false,
+        reduce: p.reduce === true || (p.reduce == null && prefersReduced()),
+      };
+    }
+
+    function now() {
+      return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    }
+
+    function rand() {
+      return Math.random().toString(36).slice(2, 10);
+    }
+
+    var CURSOR_CSS =
+      ':host{all:initial}' +
+      '.c{position:fixed;left:0;top:0;pointer-events:none;will-change:transform;transition:opacity .4s ease}' +
+      '.c svg{display:block;overflow:visible;filter:drop-shadow(0 0 3px rgba(124,92,255,.9)) drop-shadow(0 0 9px rgba(124,92,255,.55))}' +
+      '.l{position:absolute;left:16px;top:18px;font:600 10px/1 system-ui,sans-serif;color:#fff;background:#7c5cff;border-radius:8px;padding:3px 6px;white-space:nowrap;box-shadow:0 0 8px rgba(124,92,255,.6)}' +
+      '.r{position:fixed;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid #7c5cff;pointer-events:none;animation:rip .5s ease-out forwards}' +
+      '@keyframes rip{from{transform:scale(.4);opacity:.95}to{transform:scale(3.2);opacity:0}}' +
+      '@keyframes glow{0%,100%{filter:drop-shadow(0 0 3px rgba(124,92,255,.9)) drop-shadow(0 0 9px rgba(124,92,255,.55))}50%{filter:drop-shadow(0 0 5px rgba(124,92,255,1)) drop-shadow(0 0 16px rgba(124,92,255,.8))}}' +
+      '.c.pulse svg{animation:glow 1.4s ease-in-out infinite}' +
+      '.calm *{animation:none!important}';
+
+    function ensureCursor(o) {
+      var C = S.cursor;
+      if (C && C.host.isConnected) {
+        C.el.className = 'c' + (o.reduce ? ' calm' : ' pulse');
+        return C;
+      }
+      var host = document.createElement('x-' + rand());
+      host.id = 'f' + rand();
+      host.setAttribute('aria-hidden', 'true');
+      host.setAttribute('inert', '');
+      host.style.cssText =
+        'all:initial;position:fixed;top:0;left:0;width:0;height:0;overflow:visible;' +
+        'pointer-events:none;z-index:2147483647;contain:layout style;';
+      var root = host.attachShadow({ mode: 'closed' });
+      root.innerHTML =
+        '<style>' + CURSOR_CSS + '</style>' +
+        '<div class="c"><svg width="22" height="26" viewBox="0 0 22 26" aria-hidden="true">' +
+        '<path d="M2 2 L2 20 L7 15.5 L10.5 23 L14 21.5 L10.6 14.2 L17.5 14 Z" fill="#fff" stroke="#7c5cff" stroke-width="2" stroke-linejoin="round"/>' +
+        '</svg><span class="l">Flint</span></div>';
+      (document.documentElement || document.body).appendChild(host);
+      C = S.cursor = {
+        host: host,
+        root: root,
+        el: root.querySelector('.c'),
+        x: Math.round(window.innerWidth / 2),
+        y: Math.round(window.innerHeight / 2),
+        raf: 0,
+        fade: 0,
+        gone: 0,
+        settle: 0,
+      };
+      C.el.className = 'c' + (o.reduce ? ' calm' : ' pulse');
+      place(C, C.x, C.y);
+      return C;
+    }
+
+    function place(C, x, y) {
+      C.x = x;
+      C.y = y;
+      C.el.style.transform = 'translate(' + x + 'px,' + y + 'px)';
+    }
+
+    function reveal(C) {
+      clearTimeout(C.fade);
+      clearTimeout(C.gone);
+      C.host.style.visibility = 'visible';
+      C.el.style.opacity = '1';
+    }
+
+    /** Fade out a while after the last thing it did, then take it off the page. */
+    function armFade(C) {
+      clearTimeout(C.fade);
+      clearTimeout(C.gone);
+      C.fade = setTimeout(function () {
+        C.el.style.opacity = '0';
+        C.gone = setTimeout(function () {
+          removeCursor();
+        }, FADE_MS + 50);
+      }, FADE_AFTER_MS);
+    }
+
+    function removeCursor() {
+      var C = S.cursor;
+      if (!C) return;
+      clearTimeout(C.fade);
+      clearTimeout(C.gone);
+      clearTimeout(C.settle);
+      if (C.raf && window.cancelAnimationFrame) window.cancelAnimationFrame(C.raf);
+      if (C.host.parentNode) C.host.parentNode.removeChild(C.host);
+      S.cursor = null;
+    }
+
+    function clampInt(n, lo, hi) {
+      return Math.max(lo, Math.min(hi, n));
+    }
+
+    /** A slightly curved, eased path from where the pointer is to (tx, ty). */
+    function glide(C, tx, ty, ms) {
+      if (C.raf && window.cancelAnimationFrame) window.cancelAnimationFrame(C.raf);
+      clearTimeout(C.settle);
+      var x0 = C.x;
+      var y0 = C.y;
+      var dx = tx - x0;
+      var dy = ty - y0;
+      var dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      // Control point pushed sideways: the bend a hand makes.
+      var bend = 0.16 * dist * (dx >= 0 ? 1 : -1);
+      var cx = x0 + dx / 2 + (-dy / dist) * bend;
+      var cy = y0 + dy / 2 + (dx / dist) * bend;
+      var t0 = now();
+      var step = function () {
+        var t = clampInt((now() - t0) / ms, 0, 1);
+        var e = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        var a = (1 - e) * (1 - e);
+        var b = 2 * (1 - e) * e;
+        var c = e * e;
+        place(C, a * x0 + b * cx + c * tx, a * y0 + b * cy + c * ty);
+        if (t < 1 && window.requestAnimationFrame) C.raf = window.requestAnimationFrame(step);
+      };
+      if (window.requestAnimationFrame) C.raf = window.requestAnimationFrame(step);
+      // A hidden or busy page throttles frames; the end point must still be reached.
+      C.settle = setTimeout(function () {
+        place(C, tx, ty);
+      }, ms + 30);
+    }
+
+    function ripple(C, x, y) {
+      var r = document.createElement('div');
+      r.className = 'r';
+      r.style.left = x + 'px';
+      r.style.top = y + 'px';
+      C.root.appendChild(r);
+      setTimeout(function () {
+        if (r.parentNode) r.parentNode.removeChild(r);
+      }, 600);
+    }
+
+    function centerOf(el) {
+      var rect = el.getBoundingClientRect();
+      var vw = window.innerWidth || 1;
+      var vh = window.innerHeight || 1;
+      return {
+        x: clampInt(rect.left + rect.width / 2, 6, Math.max(6, vw - 6)),
+        y: clampInt(rect.top + rect.height / 2, 6, Math.max(6, vh - 6)),
+        rect: rect,
+        vw: vw,
+        vh: vh,
+      };
+    }
+
+    function fireMouse(el, type, x, y, buttons) {
+      var Ctor = /^pointer/.test(type) && typeof PointerEvent === 'function' ? PointerEvent : MouseEvent;
+      var init = {
+        bubbles: !/enter$/.test(type),
+        cancelable: true,
+        composed: true,
+        view: window,
+        clientX: x,
+        clientY: y,
+        screenX: x,
+        screenY: y,
+        button: 0,
+        buttons: buttons || 0,
+      };
+      if (Ctor !== MouseEvent) {
+        init.pointerId = 1;
+        init.pointerType = 'mouse';
+        init.isPrimary = true;
+      }
+      var ev;
+      try {
+        ev = new Ctor(type, init);
+      } catch (e) {
+        // A `view` that is not a real Window (some embedded engines).
+        delete init.view;
+        ev = new Ctor(type, init);
+      }
+      el.dispatchEvent(ev);
+    }
+
+    /**
+     * What a person's mouse does on arriving at `el`, and (for a click) pressing
+     * it, so hover menus and framework handlers see a real sequence at real
+     * coordinates. The pointer is snapped to the exact point first.
+     */
+    function pointerSequence(el, kind, o) {
+      var c = centerOf(el);
+      if (o.show) {
+        var C = ensureCursor(o);
+        reveal(C);
+        place(C, c.x, c.y);
+        if (kind === 'click' && !o.reduce) ripple(C, c.x, c.y);
+        armFade(C);
+      }
+      if (kind !== 'click') return;
+      var order = ['pointerover', 'pointerenter', 'mouseover', 'mouseenter', 'pointermove', 'mousemove'];
+      for (var i = 0; i < order.length; i++) fireMouse(el, order[i], c.x, c.y, 0);
+      fireMouse(el, 'pointerdown', c.x, c.y, 1);
+      fireMouse(el, 'mousedown', c.x, c.y, 1);
+      if (typeof el.focus === 'function') {
+        try { el.focus({ preventScroll: true }); } catch (e) {}
+      }
+      fireMouse(el, 'pointerup', c.x, c.y, 0);
+      fireMouse(el, 'mouseup', c.x, c.y, 0);
+      el.click();
+    }
+
+    /** Start the pointer toward `id`; the host sleeps for the `wait` returned. */
+    function movePointer() {
+      var r = resolve(ARGS.id);
+      if (r.err) return r.err;
+      var o = pointerOpts();
+      if (!o.show) return { ok: true, wait: 0 };
+      var el = r.el;
+      var c = centerOf(el);
+      var off = c.rect.top < 0 || c.rect.bottom > c.vh || c.rect.left < 0 || c.rect.right > c.vw;
+      var tx = c.x;
+      var ty = c.y;
+      var scrollMs = 0;
+      if (off) {
+        try {
+          el.scrollIntoView({ block: 'center', inline: 'center', behavior: o.reduce ? 'auto' : 'smooth' });
+        } catch (e) {}
+        if (o.reduce) {
+          var after = centerOf(el);
+          tx = after.x;
+          ty = after.y;
+        } else {
+          scrollMs = SCROLL_MS;
+          ty = c.vh / 2;
+        }
+      }
+      var C = ensureCursor(o);
+      reveal(C);
+      if (o.reduce) {
+        place(C, tx, ty);
+        armFade(C);
+        return { ok: true, wait: 0 };
+      }
+      var dx = tx - C.x;
+      var dy = ty - C.y;
+      var ms = clampInt(GLIDE_MIN + Math.sqrt(dx * dx + dy * dy) * 0.35, GLIDE_MIN, GLIDE_MAX);
+      if (scrollMs) setTimeout(function () { glide(C, tx, ty, ms); }, scrollMs);
+      else glide(C, tx, ty, ms);
+      armFade(C);
+      return { ok: true, wait: scrollMs + ms };
+    }
+
+    function pointerControl() {
+      var C = S.cursor;
+      var mode = ARGS.mode;
+      if (mode === 'remove') {
+        removeCursor();
+      } else if (C && mode === 'hide') {
+        clearTimeout(C.fade);
+        C.host.style.visibility = 'hidden';
+      } else if (C && mode === 'show') {
+        reveal(C);
+        armFade(C);
+      }
+      return { ok: true, present: !!S.cursor };
+    }
+
+    // ---- scrolling ---------------------------------------------------------
+
+    function isScrollable(el) {
+      if (!el || el === document.body || el === document.documentElement) return false;
+      var cs;
+      try { cs = getComputedStyle(el); } catch (e) { return false; }
+      var ov = (cs.overflowY || '') + ' ' + (cs.overflowX || '');
+      return /(auto|scroll)/.test(ov) && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    }
+
+    /** The thing a scroll acts on: the node id's own box if it scrolls, else the page. */
+    function scrollTarget(r) {
+      return r && r.el && ARGS.direction && isScrollable(r.el) ? r.el : null;
+    }
+
+    function metrics(box) {
+      if (box) {
+        return {
+          x: box.scrollLeft, y: box.scrollTop,
+          maxX: Math.max(0, box.scrollWidth - box.clientWidth),
+          maxY: Math.max(0, box.scrollHeight - box.clientHeight),
+          w: box.clientWidth, h: box.clientHeight,
+        };
+      }
+      var se = document.scrollingElement || document.documentElement;
+      var vw = window.innerWidth || se.clientWidth || 0;
+      var vh = window.innerHeight || se.clientHeight || 0;
+      return {
+        x: window.scrollX || 0, y: window.scrollY || 0,
+        maxX: Math.max(0, (se.scrollWidth || 0) - vw),
+        maxY: Math.max(0, (se.scrollHeight || 0) - vh),
+        w: vw, h: vh,
+      };
+    }
+
+    function scrollOp() {
+      var r = null;
+      if (ARGS.id != null && ARGS.id !== '') {
+        r = resolve(ARGS.id);
+        if (r.err) return r.err;
+      }
+      var o = pointerOpts();
+      var box = scrollTarget(r);
+      var m = metrics(box);
+      var behavior = o.reduce ? 'auto' : 'smooth';
+      if (r && !box) {
+        // A node id with no direction: bring it into view.
+        if (ARGS.dry) return { ok: true, dry: true };
+        var already = centerOf(r.el);
+        var inView = already.rect.top >= 0 && already.rect.bottom <= already.vh && already.rect.left >= 0 && already.rect.right <= already.vw;
+        if (!inView) {
+          try { r.el.scrollIntoView({ block: 'center', inline: 'center', behavior: behavior }); } catch (e) {}
+        }
+        var ms0 = inView || o.reduce ? 0 : SCROLL_MS + 150;
+        if (o.show) {
+          var C0 = ensureCursor(o);
+          reveal(C0);
+          armFade(C0);
+        }
+        return { ok: true, wait: ms0 };
+      }
+      var dir = ARGS.direction;
+      var amount = ARGS.amount || { kind: 'page' };
+      var dim = dir === 'up' || dir === 'down' ? m.h : m.w;
+      var px = amount.kind === 'half' ? dim * 0.5 : amount.kind === 'px' ? amount.px : dim * 0.9;
+      px = Math.max(1, Math.round(px));
+      var dx = dir === 'left' ? -px : dir === 'right' ? px : 0;
+      var dy = dir === 'up' ? -px : dir === 'down' ? px : 0;
+      if (ARGS.dry) return { ok: true, dry: true };
+
+      // The pointer hovers where a wheel would act: the box, or the viewport centre.
+      var px0 = box ? centerOf(box) : null;
+      var hx = px0 ? px0.x : Math.round((window.innerWidth || 0) / 2);
+      var hy = px0 ? px0.y : Math.round((window.innerHeight || 0) / 2);
+      var glideMs = 0;
+      if (o.show) {
+        var C = ensureCursor(o);
+        reveal(C);
+        if (o.reduce) {
+          place(C, hx, hy);
+        } else {
+          var gx = hx - C.x;
+          var gy = hy - C.y;
+          glideMs = clampInt(GLIDE_MIN * 0.6 + Math.sqrt(gx * gx + gy * gy) * 0.2, 80, SCROLL_MS);
+          glide(C, hx, hy, glideMs);
+        }
+        armFade(C);
+      }
+      var at = (document.elementFromPoint && document.elementFromPoint(hx, hy)) || document.body;
+      var wheel = new WheelEvent('wheel', {
+        bubbles: true, cancelable: true, composed: true,
+        clientX: hx, clientY: hy, deltaX: dx, deltaY: dy, deltaMode: 0,
+      });
+      var handled = !at.dispatchEvent(wheel);
+      if (!handled) {
+        var opts = { left: dx, top: dy, behavior: behavior };
+        if (box) box.scrollBy(opts);
+        else window.scrollBy(opts);
+      }
+      var travel = o.reduce || handled ? 0 : clampInt(150 + Math.sqrt(dx * dx + dy * dy) * 0.25, 200, 650);
+      return { ok: true, wait: Math.min(900, glideMs + travel), handled: handled };
+    }
+
+    function scrollInfo() {
+      var r = null;
+      if (ARGS.id != null && ARGS.id !== '') {
+        r = resolve(ARGS.id);
+        if (r.err) return r.err;
+      }
+      var box = scrollTarget(r);
+      var m = metrics(box);
+      var out = {
+        ok: true,
+        url: location.href,
+        x: Math.round(m.x), y: Math.round(m.y),
+        max_x: Math.round(m.maxX), max_y: Math.round(m.maxY),
+        more: {
+          up: m.y > 1, down: m.y < m.maxY - 1,
+          left: m.x > 1, right: m.x < m.maxX - 1,
+        },
+        scrolled: box ? 'element' : 'page',
+      };
+      if (r && !box) {
+        var c = centerOf(r.el);
+        out.target_visible = c.rect.top >= 0 && c.rect.bottom <= c.vh && c.rect.left >= 0 && c.rect.right <= c.vw;
+      }
+      return out;
+    }
+
     // ---- ops -------------------------------------------------------------
 
     function resolve(id) {
@@ -341,8 +767,7 @@
       if (ARGS.dry) return { ok: true, dry: true };
       try { el.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) {}
       var before = location.href;
-      if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch (e) {} }
-      el.click();
+      pointerSequence(el, 'click', pointerOpts());
       return { ok: true, clicked: labelOf(el), url: location.href, url_before: before };
     }
 
@@ -366,6 +791,7 @@
       if (el.disabled || el.readOnly) return fail('disabled', 'That field is read-only or disabled.');
       if (ARGS.dry) return { ok: true, dry: true };
       try { el.scrollIntoView({ block: 'center' }); } catch (e) {}
+      pointerSequence(el, 'rest', pointerOpts());
       el.focus();
       var append = ARGS.clear === false;
       if (tag === 'INPUT' || tag === 'TEXTAREA') {
@@ -410,6 +836,7 @@
         return { ok: true, needs_confirm: true, label: labelOf(el), reason: 'pressing Enter here submits a form' };
       }
       if (ARGS.dry) return { ok: true, dry: true };
+      if (ARGS.id != null && ARGS.id !== '') pointerSequence(el, 'rest', pointerOpts());
       if (typeof el.focus === 'function') { try { el.focus({ preventScroll: true }); } catch (e) {} }
       var init = { key: key, code: ARGS.key === 'Space' ? 'Space' : key, bubbles: true, cancelable: true };
       var down = new KeyboardEvent('keydown', init);
@@ -451,6 +878,7 @@
         return fail('no_option', 'No option matches. Options: ' + have.join(' | '));
       }
       if (ARGS.dry) return { ok: true, dry: true };
+      pointerSequence(el, 'rest', pointerOpts());
       el.selectedIndex = idx;
       el.dispatchEvent(new Event('input', { bubbles: true }));
       el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -490,6 +918,14 @@
         return press();
       case 'select':
         return selectOption();
+      case 'move':
+        return movePointer();
+      case 'scroll':
+        return scrollOp();
+      case 'scrollinfo':
+        return scrollInfo();
+      case 'pointer':
+        return pointerControl();
       default:
         return fail('bad_op', 'Unknown operation ' + OP);
     }

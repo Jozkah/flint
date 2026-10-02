@@ -699,12 +699,92 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // The assistant's use of the desktop's built-in browser pane. They exist
+    // here so the Rust loop (the CLI and durable jobs) knows the names and
+    // answers a call with a clear "needs the desktop app" result; the desktop
+    // chat and Cowork answer them in the web layer, behind a domain prompt, and
+    // never reach this handler. A run with no webview must not be able to
+    // drive one, so nothing here opens a page or reads one.
+    BuiltinTool {
+        name: "browser_open",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_read_text",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_snapshot",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_screenshot",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_scroll",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_click",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_type",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_press",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    BuiltinTool {
+        name: "browser_select",
+        capability: Capability::Read,
+        path_args: &[],
+    },
 ];
+
+/// The browser-pane tools (`core/browser_agent` on the desktop).
+pub const BROWSER_TOOL_NAMES: &[&str] = &[
+    "browser_open",
+    "browser_read_text",
+    "browser_snapshot",
+    "browser_screenshot",
+    "browser_scroll",
+    "browser_click",
+    "browser_type",
+    "browser_press",
+    "browser_select",
+];
+
+pub fn is_browser_tool(name: &str) -> bool {
+    BROWSER_TOOL_NAMES.contains(&name)
+}
+
+/// The tool result a headless surface gives a browser tool call.
+pub fn browser_unavailable_result() -> String {
+    crate::access::result_json(
+        "unavailable",
+        serde_json::json!({ "message": BROWSER_NEEDS_DESKTOP }),
+    )
+}
+
+/// What a headless surface answers a browser tool with. Said the same way
+/// everywhere (the handler, the tests, the loop) so a model sees one message.
+pub const BROWSER_NEEDS_DESKTOP: &str = "Browser tools need the Flint desktop app: they drive its built-in browser pane, which this surface (the command line or a background job) does not have. Nothing was opened or read. Use web_fetch to read a page, or tell the user what you needed the browser for.";
 
 /// Tools the desktop answers itself (a prompt, or a store only the app can
 /// read). Auto-allowed by the gate like the workspace tools.
 pub fn is_host_tool(name: &str) -> bool {
-    matches!(name, "request_access" | "list_plugins" | "open_in_browser")
+    matches!(name, "request_access" | "list_plugins" | "open_in_browser") || is_browser_tool(name)
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -776,7 +856,32 @@ mod tests {
         // + request_access, list_plugins and open_in_browser, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + git, the host's git and gh with per-call classification.
-        assert_eq!(BUILTIN_TOOLS.len(), 30);
+        // + the 9 browser-pane tools, which only the desktop can run.
+        assert_eq!(BUILTIN_TOOLS.len(), 39);
+    }
+
+    #[test]
+    fn a_headless_surface_gets_a_plain_refusal() {
+        let r = browser_unavailable_result();
+        assert!(r.contains("unavailable"), "{r}");
+        assert!(r.contains("desktop app"), "{r}");
+        assert!(r.contains("Nothing was opened or read"), "{r}");
+        assert!(r.contains("web_fetch"), "{r}");
+    }
+
+    #[test]
+    fn browser_tools_are_registered_read_only_host_tools() {
+        assert_eq!(BROWSER_TOOL_NAMES.len(), 9);
+        for name in BROWSER_TOOL_NAMES {
+            let t = lookup(name).expect("registered");
+            assert_eq!(t.capability, Capability::Read, "{name}");
+            assert!(t.path_args.is_empty(), "{name}");
+            // The gate lets the call through; the handler is what refuses it.
+            assert!(is_host_tool(name), "{name}");
+            assert!(!is_workspace_tool(name) && !is_mailbox_tool(name), "{name}");
+        }
+        assert!(!is_browser_tool("open_in_browser"));
+        assert!(!is_browser_tool("web_fetch"));
     }
 
     #[test]

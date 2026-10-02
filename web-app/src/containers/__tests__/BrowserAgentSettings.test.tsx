@@ -159,3 +159,58 @@ describe('BrowserAgentSettings', () => {
     expect(useAgentToolsConfig.getState().browserAgentMaxActions).toBe(1)
   })
 })
+
+describe('BrowserAgentSettings pointer', () => {
+  beforeEach(() => {
+    useAgentToolsConfig.setState({
+      browserAgentEnabled: true,
+      browserAgentPointer: true,
+      browserAgentReduceMotion: 'system',
+    })
+  })
+
+  it('shows the pointer by default and follows the system for motion', async () => {
+    render(<BrowserAgentSettings />)
+    await screen.findAllByTestId('browser-rule-pattern')
+    expect(
+      screen.getByTestId('browser-agent-pointer').getAttribute('data-state')
+    ).toBe('checked')
+    expect(
+      (screen.getByTestId('browser-agent-reduce-motion') as HTMLSelectElement).value
+    ).toBe('system')
+  })
+
+  it('the switch turns the pointer off, which also disables the motion choice', async () => {
+    render(<BrowserAgentSettings />)
+    await screen.findAllByTestId('browser-rule-pattern')
+    fireEvent.click(screen.getByTestId('browser-agent-pointer'))
+    expect(useAgentToolsConfig.getState().browserAgentPointer).toBe(false)
+    await waitFor(() =>
+      expect(
+        (screen.getByTestId('browser-agent-reduce-motion') as HTMLSelectElement).disabled
+      ).toBe(true)
+    )
+  })
+
+  it('reduce motion can be forced on or off', async () => {
+    render(<BrowserAgentSettings />)
+    await screen.findAllByTestId('browser-rule-pattern')
+    const select = screen.getByTestId('browser-agent-reduce-motion')
+    fireEvent.change(select, { target: { value: 'on' } })
+    expect(useAgentToolsConfig.getState().browserAgentReduceMotion).toBe('on')
+    fireEvent.change(select, { target: { value: 'off' } })
+    expect(useAgentToolsConfig.getState().browserAgentReduceMotion).toBe('off')
+  })
+
+  it('both are unavailable while the agent browser is off', async () => {
+    useAgentToolsConfig.setState({ browserAgentEnabled: false })
+    render(<BrowserAgentSettings />)
+    await screen.findAllByTestId('browser-rule-pattern')
+    expect(
+      screen.getByTestId('browser-agent-pointer').hasAttribute('disabled')
+    ).toBe(true)
+    expect(
+      (screen.getByTestId('browser-agent-reduce-motion') as HTMLSelectElement).disabled
+    ).toBe(true)
+  })
+})

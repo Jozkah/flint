@@ -439,6 +439,8 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         "stop_session" => vec![capability::FS_READ],
         // Answered by the desktop: a prompt, and Flint's plugin state.
         "request_access" | "list_plugins" | "open_in_browser" => vec![capability::FS_READ],
+        // Answered by the desktop's web layer, or refused plainly elsewhere.
+        n if crate::tools::is_browser_tool(n) => vec![capability::FS_READ],
         // The web tools reach the network, which is a per-run policy decision
         // rather than an environment fact, and is enforced by the gate. Nothing
         // about the environment withholds them.

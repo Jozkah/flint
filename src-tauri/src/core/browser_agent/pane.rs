@@ -14,6 +14,7 @@ use url::Url;
 use super::fence;
 use super::policy::{self, Decision, DenyReason, NetworkPolicy, Verdict};
 use super::script;
+use super::shot;
 use super::store::{Scope, DEFAULT_MAX_ACTIONS};
 use super::{EVENT_BLOCKED, EVENT_OPEN_PANE, EVENT_STATE, PANE_LABEL, STORE};
 
@@ -24,7 +25,7 @@ const OPEN_PANE_TIMEOUT: Duration = Duration::from_secs(8);
 const OPEN_LOAD_TIMEOUT: Duration = Duration::from_secs(25);
 const ACTION_LOAD_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub const TOOLS: &[&str] = &["open", "read_text", "snapshot", "click", "type", "press", "select"];
+pub const TOOLS: &[&str] = &["open", "read_text", "snapshot", "screenshot", "scroll", "click", "type", "press", "select"];
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CallRequest {
@@ -63,6 +64,74 @@ pub struct CallRequest {
     /// The project whose `agent.toml` domain lists apply.
     #[serde(default)]
     pub project_root: Option<String>,
+    /// `scroll`: `up`, `down`, `left` or `right`.
+    #[serde(default)]
+    pub direction: Option<String>,
+    /// `scroll`: `page`, `half` or a pixel count (bounded).
+    #[serde(default)]
+    pub amount: Option<String>,
+    /// Draw the assistant's pointer (Settings; default on).
+    #[serde(default)]
+    pub pointer: Option<bool>,
+    /// Reduce motion: `Some(true)` no glide or pulse, `Some(false)` always,
+    /// `None` follow the page's `prefers-reduced-motion`.
+    #[serde(default)]
+    pub reduce_motion: Option<bool>,
+}
+
+/// Longest the host waits on the pointer's glide plus a scroll, so animation
+/// can never add more than this to one action.
+pub const MAX_MOTION_WAIT_MS: u64 = 900;
+/// Most pixels one `browser_scroll` may ask for.
+pub const MAX_SCROLL_PX: u32 = 10_000;
+
+/// The pointer settings as the page script reads them.
+pub fn pointer_args(pointer: Option<bool>, reduce_motion: Option<bool>) -> Value {
+    json!({ "show": pointer.unwrap_or(true), "reduce": reduce_motion })
+}
+
+/// A validated `browser_scroll`: which way and how far, or one node to bring
+/// into view.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScrollSpec {
+    pub direction: Option<String>,
+    /// `{ kind: "page" | "half" | "px", px }`
+    pub amount: Value,
+    pub id: Option<String>,
+}
+
+pub fn parse_scroll(direction: &Option<String>, amount: &Option<String>, id: &Option<String>) -> Result<ScrollSpec, String> {
+    let id = id.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(String::from);
+    if let Some(i) = &id {
+        if i.chars().count() > 16 {
+            return Err("'id' is longer than 16 characters".into());
+        }
+    }
+    let direction = match direction.as_deref().map(|d| d.trim().to_ascii_lowercase()).filter(|d| !d.is_empty()) {
+        None => None,
+        Some(d) if matches!(d.as_str(), "up" | "down" | "left" | "right") => Some(d),
+        Some(_) => return Err("'direction' must be up, down, left or right".into()),
+    };
+    if direction.is_none() && id.is_none() {
+        return Err("give a 'direction' (up, down, left, right) or a node 'id' to bring into view".into());
+    }
+    let amount = match amount.as_deref().map(|a| a.trim().to_ascii_lowercase()).filter(|a| !a.is_empty()) {
+        None => json!({ "kind": "page" }),
+        Some(a) if a == "page" => json!({ "kind": "page" }),
+        Some(a) if a == "half" => json!({ "kind": "half" }),
+        Some(a) => {
+            let px: u32 = a
+                .trim_end_matches("px")
+                .trim()
+                .parse()
+                .map_err(|_| "'amount' must be page, half, or a number of pixels".to_string())?;
+            if px == 0 || px > MAX_SCROLL_PX {
+                return Err(format!("'amount' must be between 1 and {MAX_SCROLL_PX} pixels"));
+            }
+            json!({ "kind": "px", "px": px })
+        }
+    };
+    Ok(ScrollSpec { direction, amount, id })
 }
 
 #[derive(Debug, Clone, Serialize, Default)]
@@ -87,6 +156,9 @@ pub struct CallResponse {
     pub reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actions_used: Option<u32>,
+    /// For `screenshot`: the PNG, base64, for the tool card. Never sent to the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
 }
 
 impl CallResponse {
@@ -261,6 +333,11 @@ pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequ
             ..Default::default()
         };
     }
+    // Said before anything else is asked: no point prompting for a site on a
+    // platform that cannot take the picture.
+    if req.tool == "screenshot" && cfg!(not(windows)) {
+        return CallResponse::error(shot::UNSUPPORTED);
+    }
     let network = network_for(req.project_root.as_deref());
     if req.tool == "open" {
         return open(&app, &req, &network).await;
@@ -274,6 +351,8 @@ pub async fn browser_agent_call<R: Runtime>(app: AppHandle<R>, request: CallRequ
     match req.tool.as_str() {
         "read_text" => read_text(&req, &wv, &url).await,
         "snapshot" => snapshot(&wv, &url).await,
+        "screenshot" => screenshot(&app, &req, &wv, &url).await,
+        "scroll" => scroll(&req, &network, wv, url).await,
         _ => act(&app, &req, &network, wv, url).await,
     }
 }
@@ -389,12 +468,46 @@ async fn snapshot<R: Runtime>(wv: &Webview<R>, url: &Url) -> CallResponse {
     }
 }
 
+async fn screenshot<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, wv: &Webview<R>, url: &Url) -> CallResponse {
+    let png = match shot::capture(wv).await {
+        Ok(b) => b,
+        Err(e) => return CallResponse::error(e.message()),
+    };
+    let shot = match shot::validate(png) {
+        Ok(s) => s,
+        Err(why) => return CallResponse::error(format!("could not capture the browser pane: {why}")),
+    };
+    let dir = crate::core::app::commands::get_jan_data_folder_path(app.clone())
+        .join("browser-agent")
+        .join("screenshots");
+    let run = if req.run_id.is_empty() { "default" } else { req.run_id.as_str() };
+    let path = match shot::save(&dir, run, &shot) {
+        Ok(p) => p,
+        Err(e) => return CallResponse::error(format!("could not save the screenshot: {e}")),
+    };
+    // The picture is page content, like the text: fenced, and it does not go
+    // to the model (the desktop tool pipeline carries text). The user sees it
+    // on the tool card.
+    let body = format!(
+        "Screenshot of the browser pane, {}x{} pixels, {} KiB, saved to {}.
+The user can see it on the tool card. This tool does not show you the pixels; use browser_snapshot or browser_read_text for the page's content.",
+        shot.width,
+        shot.height,
+        shot.png.len() / 1024,
+        path.display()
+    );
+    use base64::Engine as _;
+    let mut resp = CallResponse::ok(fence::fence("screenshot", url.as_str(), &body, fence::MAX_STATUS_CHARS), url.as_str(), None);
+    resp.image = Some(base64::engine::general_purpose::STANDARD.encode(&shot.png));
+    resp
+}
+
 fn script_error(v: &Value) -> CallResponse {
     CallResponse::error(v["error"].as_str().unwrap_or("the page refused the operation").to_string())
 }
 
 async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &NetworkPolicy, wv: Webview<R>, url: Url) -> CallResponse {
-    let mut args = json!({ "confirmed": req.confirmed });
+    let mut args = json!({ "confirmed": req.confirmed, "pointer": pointer_args(req.pointer, req.reduce_motion) });
     match req.tool.as_str() {
         "click" => match str_arg(&req.id, "id", 16) {
             Ok(id) => args["id"] = json!(id),
@@ -457,6 +570,27 @@ async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Networ
             ));
         }
     };
+
+    // Everything that decides whether this may happen -- the domain, the user's
+    // approval, the confirmation of a submit-like control, the action cap -- is
+    // behind us. Only now does the pointer move, and the host waits for it.
+    let has_target = req.tool != "press" || req.id.as_deref().is_some_and(|s| !s.is_empty());
+    if has_target && req.pointer.unwrap_or(true) {
+        let mut mv = json!({ "pointer": pointer_args(req.pointer, req.reduce_motion) });
+        if let Some(id) = args.get("id") {
+            mv["id"] = id.clone();
+        }
+        match eval(&wv, "move", mv).await {
+            Ok(v) if v["ok"] == true => {
+                let wait = v["wait"].as_u64().unwrap_or(0).min(MAX_MOTION_WAIT_MS);
+                if wait > 0 {
+                    tokio::time::sleep(Duration::from_millis(wait)).await;
+                }
+            }
+            Ok(v) => return script_error(&v),
+            Err(e) => return CallResponse::error(e),
+        }
+    }
 
     let seq0 = super::load_seq();
     let result = match eval(&wv, &req.tool, args).await {
@@ -576,11 +710,172 @@ pub fn browser_agent_clear_grants() {
 #[tauri::command]
 pub fn browser_agent_stop<R: Runtime>(app: AppHandle<R>) {
     STORE.set_paused(true);
+    pointer_mode(&app, "hide");
     emit_state(&app, None);
 }
 
 #[tauri::command]
 pub fn browser_agent_resume<R: Runtime>(app: AppHandle<R>) {
     STORE.set_paused(false);
+    pointer_mode(&app, "show");
     emit_state(&app, None);
+}
+
+/// Hide, show or remove the pointer on the pane, without waiting for an answer.
+fn pointer_mode<R: Runtime>(app: &AppHandle<R>, mode: &str) {
+    if let Some(wv) = pane(app) {
+        let _ = wv.eval(script::build(script::state_key(), "pointer", &json!({ "mode": mode })));
+    }
+}
+
+/// `browser_scroll`: wheel-like scrolling with the pointer hovering where a
+/// wheel would act. It is a read-like action (no approval beyond the domain
+/// prompt that got us here) and counts toward the run's action cap.
+async fn scroll<R: Runtime>(req: &CallRequest, _network: &NetworkPolicy, wv: Webview<R>, url: Url) -> CallResponse {
+    let spec = match parse_scroll(&req.direction, &req.amount, &req.id) {
+        Ok(s) => s,
+        Err(e) => return CallResponse::error(e),
+    };
+    let mut args = json!({ "amount": spec.amount, "pointer": pointer_args(req.pointer, req.reduce_motion) });
+    if let Some(d) = &spec.direction {
+        args["direction"] = json!(d);
+    }
+    if let Some(i) = &spec.id {
+        args["id"] = json!(i);
+    }
+    let mut dry = args.clone();
+    dry["dry"] = json!(true);
+    match eval(&wv, "scroll", dry).await {
+        Ok(v) if v["ok"] == true => {}
+        Ok(v) => return script_error(&v),
+        Err(e) => return CallResponse::error(e),
+    }
+    let cap = req.max_actions.unwrap_or(DEFAULT_MAX_ACTIONS);
+    let run = if req.run_id.is_empty() { "default" } else { req.run_id.as_str() };
+    let used = match STORE.take_action(run, cap) {
+        Ok(n) => n,
+        Err(n) => {
+            return CallResponse::error(format!(
+                "This run has used its {n} browser actions. Stop here and tell the user where you got to; they can continue in a new request."
+            ));
+        }
+    };
+    let wait = match eval(&wv, "scroll", args).await {
+        Ok(v) if v["ok"] == true => v["wait"].as_u64().unwrap_or(0).min(MAX_MOTION_WAIT_MS),
+        Ok(v) => return script_error(&v),
+        Err(e) => return CallResponse::error(e),
+    };
+    if wait > 0 {
+        tokio::time::sleep(Duration::from_millis(wait)).await;
+    }
+    let mut info_args = json!({});
+    if let Some(d) = &spec.direction {
+        info_args["direction"] = json!(d);
+    }
+    if let Some(i) = &spec.id {
+        info_args["id"] = json!(i);
+    }
+    let info = match eval(&wv, "scrollinfo", info_args).await {
+        Ok(v) if v["ok"] == true => v,
+        Ok(v) => return script_error(&v),
+        Err(e) => return CallResponse::error(e),
+    };
+    let more = |d: &str| if info["more"][d] == true { "yes" } else { "no" };
+    let what = match (&spec.direction, &spec.id) {
+        (Some(d), _) => format!("Scrolled {d}."),
+        (None, _) => "Brought the element into view.".to_string(),
+    };
+    let mut body = format!(
+        "{what}\nScroll position: x={}, y={} (the {} can scroll to x={}, y={}).\nMore content: above {}, below {}, left {}, right {}.",
+        info["x"], info["y"], info["scrolled"].as_str().unwrap_or("page"), info["max_x"], info["max_y"],
+        more("up"), more("down"), more("left"), more("right"),
+    );
+    if info["target_visible"] == false {
+        body.push_str("\nThe element is still not fully in view.");
+    }
+    body.push_str(&format!("\nActions used this run: {used} of {}", cap.clamp(1, super::store::MAX_ACTIONS_CEILING)));
+    let page = info["url"].as_str().unwrap_or(url.as_str()).to_string();
+    let mut resp = CallResponse::ok(fence::fence("status", &page, &body, fence::MAX_STATUS_CHARS), &page, None);
+    resp.actions_used = Some(used);
+    resp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(v: &str) -> Option<String> {
+        Some(v.to_string())
+    }
+
+    #[test]
+    fn pointer_flags_reach_the_script() {
+        assert_eq!(pointer_args(None, None), json!({ "show": true, "reduce": null }));
+        assert_eq!(pointer_args(Some(false), Some(true)), json!({ "show": false, "reduce": true }));
+        assert_eq!(pointer_args(Some(true), Some(false)), json!({ "show": true, "reduce": false }));
+    }
+
+    #[test]
+    fn a_request_without_the_flags_draws_the_pointer_and_follows_the_system() {
+        let req: CallRequest = serde_json::from_str(r#"{"tool":"click"}"#).unwrap();
+        assert_eq!(req.pointer, None);
+        assert_eq!(req.reduce_motion, None);
+        assert_eq!(pointer_args(req.pointer, req.reduce_motion), json!({ "show": true, "reduce": null }));
+        let req: CallRequest =
+            serde_json::from_str(r#"{"tool":"click","pointer":false,"reduce_motion":true}"#).unwrap();
+        assert_eq!(pointer_args(req.pointer, req.reduce_motion), json!({ "show": false, "reduce": true }));
+    }
+
+    #[test]
+    fn motion_never_adds_more_than_the_cap() {
+        assert!(MAX_MOTION_WAIT_MS <= 900);
+        assert_eq!(10_000u64.min(MAX_MOTION_WAIT_MS), 900);
+    }
+
+    #[test]
+    fn scroll_needs_a_direction_or_a_node() {
+        assert!(parse_scroll(&None, &None, &None).is_err());
+        assert!(parse_scroll(&s("  "), &None, &s("")).is_err());
+        let by_node = parse_scroll(&None, &None, &s("3.12")).unwrap();
+        assert_eq!(by_node.id.as_deref(), Some("3.12"));
+        assert_eq!(by_node.direction, None);
+    }
+
+    #[test]
+    fn scroll_directions_are_a_closed_set() {
+        for d in ["up", "DOWN", " Left ", "right"] {
+            assert!(parse_scroll(&s(d), &None, &None).is_ok(), "{d}");
+        }
+        for d in ["diagonal", "top", "forward", "up; rm"] {
+            assert!(parse_scroll(&s(d), &None, &None).is_err(), "{d}");
+        }
+    }
+
+    #[test]
+    fn scroll_amounts_are_bounded() {
+        let ok = |a: &str| parse_scroll(&s("down"), &s(a), &None).unwrap().amount;
+        assert_eq!(ok("page"), json!({ "kind": "page" }));
+        assert_eq!(ok("HALF"), json!({ "kind": "half" }));
+        assert_eq!(ok("250"), json!({ "kind": "px", "px": 250 }));
+        assert_eq!(ok("250px"), json!({ "kind": "px", "px": 250 }));
+        assert_eq!(ok("1"), json!({ "kind": "px", "px": 1 }));
+        assert_eq!(ok(&MAX_SCROLL_PX.to_string()), json!({ "kind": "px", "px": MAX_SCROLL_PX }));
+        // Default is a page.
+        assert_eq!(parse_scroll(&s("down"), &None, &None).unwrap().amount, json!({ "kind": "page" }));
+        for bad in ["0", "-5", "10001", "99999999999", "1e3", "lots", "2.5", "--"] {
+            assert!(parse_scroll(&s("down"), &s(bad), &None).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn scroll_ids_are_length_limited() {
+        assert!(parse_scroll(&None, &None, &s(&"9".repeat(17))).is_err());
+        assert!(parse_scroll(&None, &None, &s(&"9".repeat(16))).is_ok());
+    }
+
+    #[test]
+    fn the_scroll_tool_is_a_known_tool() {
+        assert!(TOOLS.contains(&"scroll"));
+        assert!(TOOLS.contains(&"screenshot"));
+    }
 }

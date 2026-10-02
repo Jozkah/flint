@@ -26,6 +26,12 @@ export function BrowserAgentSettings() {
   const setEnabled = useAgentToolsConfig((s) => s.setBrowserAgentEnabled)
   const maxActions = useAgentToolsConfig((s) => s.browserAgentMaxActions)
   const setMaxActions = useAgentToolsConfig((s) => s.setBrowserAgentMaxActions)
+  const pointer = useAgentToolsConfig((s) => s.browserAgentPointer)
+  const setPointer = useAgentToolsConfig((s) => s.setBrowserAgentPointer)
+  const reduceMotion = useAgentToolsConfig((s) => s.browserAgentReduceMotion)
+  const setReduceMotion = useAgentToolsConfig(
+    (s) => s.setBrowserAgentReduceMotion
+  )
 
   const [rules, setRules] = useState<BrowserRule[]>([])
   const [pattern, setPattern] = useState('')
@@ -97,6 +103,41 @@ export function BrowserAgentSettings() {
               key={maxActions}
               onBlur={(e) => setMaxActions(Number(e.currentTarget.value))}
             />
+          }
+        />
+        <CardItem
+          title={t('browser-agent:settings.pointer')}
+          description={t('browser-agent:settings.pointerDesc')}
+          align="start"
+          actions={
+            <Switch
+              data-testid="browser-agent-pointer"
+              checked={pointer}
+              disabled={!enabled}
+              onCheckedChange={setPointer}
+            />
+          }
+        />
+        <CardItem
+          title={t('browser-agent:settings.reduceMotion')}
+          description={t('browser-agent:settings.reduceMotionDesc')}
+          actions={
+            <select
+              aria-label={t('browser-agent:settings.reduceMotion')}
+              data-testid="browser-agent-reduce-motion"
+              className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+              disabled={!enabled || !pointer}
+              value={reduceMotion}
+              onChange={(e) =>
+                setReduceMotion(e.target.value as 'system' | 'on' | 'off')
+              }
+            >
+              <option value="system">
+                {t('browser-agent:settings.reduceSystem')}
+              </option>
+              <option value="on">{t('browser-agent:settings.reduceOn')}</option>
+              <option value="off">{t('browser-agent:settings.reduceOff')}</option>
+            </select>
           }
         />
         <CardItem

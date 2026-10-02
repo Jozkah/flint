@@ -786,6 +786,12 @@ pub async fn advertised_tool_schemas(
         if !crate::tools::advertised_in_scope(name, session_scope) {
             continue;
         }
+        // The desktop advertises the browser tools from its web layer, behind
+        // the Settings switch and only where a pane exists; this list is for
+        // surfaces that run these tools themselves.
+        if crate::tools::is_browser_tool(name) {
+            continue;
+        }
         match readiness::tool_availability(&report, name) {
             readiness::ToolAvailability::Available => schemas.push(if name == "bash" && non_posix_shell {
                 note_non_posix_shell(value.clone())
