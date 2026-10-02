@@ -13,20 +13,20 @@ import { Route as SystemMonitorRouteImport } from './routes/system-monitor'
 import { Route as StudioRouteImport } from './routes/studio'
 import { Route as OverviewRouteImport } from './routes/overview'
 import { Route as LogsRouteImport } from './routes/logs'
-import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as ExtensionsRouteImport } from './routes/extensions'
 import { Route as CoworkRouteImport } from './routes/cowork'
 import { Route as ArtifactsRouteImport } from './routes/artifacts'
+import { Route as ArchiveRouteImport } from './routes/archive'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as RoomsIndexRouteImport } from './routes/rooms/index'
 import { Route as HubIndexRouteImport } from './routes/hub/index'
 import { Route as ThreadsThreadIdRouteImport } from './routes/threads/$threadId'
 import { Route as SettingsWebSearchRouteImport } from './routes/settings/web-search'
 import { Route as SettingsShortcutsRouteImport } from './routes/settings/shortcuts'
+import { Route as SettingsSchedulesRouteImport } from './routes/settings/schedules'
 import { Route as SettingsRemoteAccessRouteImport } from './routes/settings/remote-access'
 import { Route as SettingsPermissionsRouteImport } from './routes/settings/permissions'
 import { Route as SettingsMemoryRouteImport } from './routes/settings/memory'
-import { Route as SettingsSchedulesRouteImport } from './routes/settings/schedules'
 import { Route as SettingsMcpServersRouteImport } from './routes/settings/mcp-servers'
 import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/local-api-server'
 import { Route as SettingsJevRouteImport } from './routes/settings/jev'
@@ -66,11 +66,6 @@ const LogsRoute = LogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ArchiveRoute = ArchiveRouteImport.update({
-  id: '/archive',
-  path: '/archive',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const ExtensionsRoute = ExtensionsRouteImport.update({
   id: '/extensions',
   path: '/extensions',
@@ -84,6 +79,11 @@ const CoworkRoute = CoworkRouteImport.update({
 const ArtifactsRoute = ArtifactsRouteImport.update({
   id: '/artifacts',
   path: '/artifacts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ArchiveRoute = ArchiveRouteImport.update({
+  id: '/archive',
+  path: '/archive',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -116,6 +116,11 @@ const SettingsShortcutsRoute = SettingsShortcutsRouteImport.update({
   path: '/settings/shortcuts',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SettingsSchedulesRoute = SettingsSchedulesRouteImport.update({
+  id: '/settings/schedules',
+  path: '/settings/schedules',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRemoteAccessRoute = SettingsRemoteAccessRouteImport.update({
   id: '/settings/remote-access',
   path: '/settings/remote-access',
@@ -129,11 +134,6 @@ const SettingsPermissionsRoute = SettingsPermissionsRouteImport.update({
 const SettingsMemoryRoute = SettingsMemoryRouteImport.update({
   id: '/settings/memory',
   path: '/settings/memory',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SettingsSchedulesRoute = SettingsSchedulesRouteImport.update({
-  id: '/settings/schedules',
-  path: '/settings/schedules',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsMcpServersRoute = SettingsMcpServersRouteImport.update({
@@ -230,11 +230,11 @@ const SettingsProvidersProviderNameRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
-  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -255,9 +255,9 @@ export interface FileRoutesByFullPath {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
-  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -268,11 +268,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
-  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -293,9 +293,9 @@ export interface FileRoutesByTo {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
-  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -307,11 +307,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/archive': typeof ArchiveRoute
   '/artifacts': typeof ArtifactsRoute
   '/cowork': typeof CoworkRoute
   '/extensions': typeof ExtensionsRoute
   '/logs': typeof LogsRoute
-  '/archive': typeof ArchiveRoute
   '/overview': typeof OverviewRoute
   '/studio': typeof StudioRoute
   '/system-monitor': typeof SystemMonitorRoute
@@ -332,9 +332,9 @@ export interface FileRoutesById {
   '/settings/local-api-server': typeof SettingsLocalApiServerRoute
   '/settings/mcp-servers': typeof SettingsMcpServersRoute
   '/settings/memory': typeof SettingsMemoryRoute
-  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/permissions': typeof SettingsPermissionsRoute
   '/settings/remote-access': typeof SettingsRemoteAccessRoute
+  '/settings/schedules': typeof SettingsSchedulesRoute
   '/settings/shortcuts': typeof SettingsShortcutsRoute
   '/settings/web-search': typeof SettingsWebSearchRoute
   '/threads/$threadId': typeof ThreadsThreadIdRoute
@@ -347,11 +347,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
     | '/logs'
-    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -372,9 +372,9 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
-    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -385,11 +385,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
     | '/logs'
-    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -410,9 +410,9 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
-    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -423,11 +423,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/archive'
     | '/artifacts'
     | '/cowork'
     | '/extensions'
     | '/logs'
-    | '/archive'
     | '/overview'
     | '/studio'
     | '/system-monitor'
@@ -448,9 +448,9 @@ export interface FileRouteTypes {
     | '/settings/local-api-server'
     | '/settings/mcp-servers'
     | '/settings/memory'
-    | '/settings/schedules'
     | '/settings/permissions'
     | '/settings/remote-access'
+    | '/settings/schedules'
     | '/settings/shortcuts'
     | '/settings/web-search'
     | '/threads/$threadId'
@@ -462,11 +462,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ArchiveRoute: typeof ArchiveRoute
   ArtifactsRoute: typeof ArtifactsRoute
   CoworkRoute: typeof CoworkRoute
   ExtensionsRoute: typeof ExtensionsRoute
   LogsRoute: typeof LogsRoute
-  ArchiveRoute: typeof ArchiveRoute
   OverviewRoute: typeof OverviewRoute
   StudioRoute: typeof StudioRoute
   SystemMonitorRoute: typeof SystemMonitorRoute
@@ -487,9 +487,9 @@ export interface RootRouteChildren {
   SettingsLocalApiServerRoute: typeof SettingsLocalApiServerRoute
   SettingsMcpServersRoute: typeof SettingsMcpServersRoute
   SettingsMemoryRoute: typeof SettingsMemoryRoute
-  SettingsSchedulesRoute: typeof SettingsSchedulesRoute
   SettingsPermissionsRoute: typeof SettingsPermissionsRoute
   SettingsRemoteAccessRoute: typeof SettingsRemoteAccessRoute
+  SettingsSchedulesRoute: typeof SettingsSchedulesRoute
   SettingsShortcutsRoute: typeof SettingsShortcutsRoute
   SettingsWebSearchRoute: typeof SettingsWebSearchRoute
   ThreadsThreadIdRoute: typeof ThreadsThreadIdRoute
@@ -529,13 +529,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/archive': {
-      id: '/archive'
-      path: '/archive'
-      fullPath: '/archive'
-      preLoaderRoute: typeof ArchiveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/extensions': {
       id: '/extensions'
       path: '/extensions'
@@ -555,6 +548,13 @@ declare module '@tanstack/react-router' {
       path: '/artifacts'
       fullPath: '/artifacts'
       preLoaderRoute: typeof ArtifactsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/archive': {
+      id: '/archive'
+      path: '/archive'
+      fullPath: '/archive'
+      preLoaderRoute: typeof ArchiveRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -599,6 +599,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsShortcutsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/settings/schedules': {
+      id: '/settings/schedules'
+      path: '/settings/schedules'
+      fullPath: '/settings/schedules'
+      preLoaderRoute: typeof SettingsSchedulesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings/remote-access': {
       id: '/settings/remote-access'
       path: '/settings/remote-access'
@@ -618,13 +625,6 @@ declare module '@tanstack/react-router' {
       path: '/settings/memory'
       fullPath: '/settings/memory'
       preLoaderRoute: typeof SettingsMemoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/settings/schedules': {
-      id: '/settings/schedules'
-      path: '/settings/schedules'
-      fullPath: '/settings/schedules'
-      preLoaderRoute: typeof SettingsSchedulesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings/mcp-servers': {
@@ -758,11 +758,11 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ArchiveRoute: ArchiveRoute,
   ArtifactsRoute: ArtifactsRoute,
   CoworkRoute: CoworkRoute,
   ExtensionsRoute: ExtensionsRoute,
   LogsRoute: LogsRoute,
-  ArchiveRoute: ArchiveRoute,
   OverviewRoute: OverviewRoute,
   StudioRoute: StudioRoute,
   SystemMonitorRoute: SystemMonitorRoute,
@@ -783,9 +783,9 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsLocalApiServerRoute: SettingsLocalApiServerRoute,
   SettingsMcpServersRoute: SettingsMcpServersRoute,
   SettingsMemoryRoute: SettingsMemoryRoute,
-  SettingsSchedulesRoute: SettingsSchedulesRoute,
   SettingsPermissionsRoute: SettingsPermissionsRoute,
   SettingsRemoteAccessRoute: SettingsRemoteAccessRoute,
+  SettingsSchedulesRoute: SettingsSchedulesRoute,
   SettingsShortcutsRoute: SettingsShortcutsRoute,
   SettingsWebSearchRoute: SettingsWebSearchRoute,
   ThreadsThreadIdRoute: ThreadsThreadIdRoute,
