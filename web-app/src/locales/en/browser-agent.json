@@ -59,6 +59,11 @@
     "reduceSystem": "Follow the system",
     "reduceOn": "Always reduce",
     "reduceOff": "Never reduce",
+    "grantsTitle": "Approved for now",
+    "grantsNone": "Nothing is approved without being saved. Every site not in the saved rules asks.",
+    "grantsDesc": "Sites you allowed for this session or this visit. They are not saved and end when Flint closes.",
+    "grantScope": { "session": "this session", "once": "this visit" },
+    "grantAge": "{{minutes}} min ago",
     "forgetGrants": "Forget this session's approvals"
   },
   "card": {

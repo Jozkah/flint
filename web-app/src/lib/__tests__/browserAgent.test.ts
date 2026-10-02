@@ -8,6 +8,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 import {
   BROWSER_TOOL_NAMES,
   browserAgentSchemas,
+  browserCallOptions,
   browserCardUrl,
   isBrowserActionTool,
   patternsFor,
@@ -319,7 +320,7 @@ describe('scroll and the pointer', () => {
     await runBrowserAgentTool('browser_snapshot', {}, 't')
     expect(invoke.mock.calls[0][1].request).toMatchObject({ pointer: true, reduce_motion: null })
     useAgentToolsConfig.setState({ browserAgentPointer: false, browserAgentReduceMotion: 'on' })
-    await runBrowserAgentTool('browser_click', { id: '1.1' }, 't')
+    await runBrowserAgentTool('browser_scroll', { direction: 'down' }, 't')
     expect(invoke.mock.calls[1][1].request).toMatchObject({ pointer: false, reduce_motion: true })
     useAgentToolsConfig.setState({ browserAgentPointer: true, browserAgentReduceMotion: 'off' })
     await runBrowserAgentTool('browser_snapshot', {}, 't')
@@ -333,12 +334,13 @@ describe('scroll and the pointer', () => {
       order.push('approve')
       return true
     })
-    invoke.mockImplementation(async () => {
-      order.push('invoke')
-      return ok
+    invoke.mockImplementation(async (_cmd: string, a: { request: { validate_only?: boolean } }) => {
+      order.push(a.request.validate_only ? 'validate' : 'act')
+      return a.request.validate_only ? validated : ok
     })
     await runBrowserAgentTool('browser_click', { id: '1.1' }, 't', { callId: 'c' })
-    expect(order).toEqual(['approve', 'invoke'])
+    // Nothing that moves the pointer runs before the user has said yes.
+    expect(order).toEqual(['validate', 'approve', 'act'])
   })
 
   it('declares its schema with a direction enum, and says it counts as an action', () => {
@@ -357,111 +359,150 @@ describe('scroll and the pointer', () => {
   })
 })
 
+/** What the backend says about a node it checked: still there, and what it is. */
+const validated = {
+  status: 'ok',
+  content: '',
+  url: 'https://shop.test/cart?id=7',
+  label: 'Add to cart',
+}
+
+/** Script the backend: validation answers itself, the rest come from `rest`. */
+function backend(...rest: unknown[]) {
+  const queue = [...rest]
+  invoke.mockImplementation(async (_cmd: string, a: { request: { validate_only?: boolean } }) =>
+    a.request.validate_only ? validated : queue.shift()
+  )
+}
+
+const actCalls = () =>
+  invoke.mock.calls.map((c) => c[1].request).filter((r) => !r.validate_only)
+
 describe('actions', () => {
-  it('ask for the normal tool approval before anything is sent', async () => {
-    approve.mockResolvedValueOnce(false)
-    const r = await runBrowserAgentTool('browser_click', { id: '1.2' }, 't', {
-      callId: 'c1',
+  it('check the node first: a stale id is refused before the user is asked', async () => {
+    invoke.mockResolvedValueOnce({
+      status: 'error',
+      reason: 'Node 3.1 is from an older snapshot. Call browser_snapshot again.',
     })
+    const r = await runBrowserAgentTool('browser_click', { id: '3.1' }, 't', { callId: 'c0' })
+    expect(r).toEqual({ error: expect.stringContaining('older snapshot') })
+    expect(approve).not.toHaveBeenCalled()
+    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(invoke.mock.calls[0][1].request).toMatchObject({ tool: 'click', validate_only: true })
+  })
+
+  it('a first-visit site is asked about before the action approval', async () => {
+    const order: string[] = []
+    approve.mockImplementation(async () => {
+      order.push('approve')
+      return true
+    })
+    invoke
+      .mockResolvedValueOnce(ask)
+      .mockImplementation(async (c: string, a: { request?: { validate_only?: boolean } }) =>
+        c !== 'browser_agent_call' ? undefined : a.request?.validate_only ? validated : ok
+      )
+    const pending = runBrowserAgentTool('browser_click', { id: '1.2' }, 't', { callId: 'c' })
+    await vi.waitFor(() => expect(useBrowserAgentPrompt.getState().queue.length).toBe(1))
+    order.push('site-question')
+    await answerNext('allow')
+    expect(await pending).toEqual({ content: ok.content })
+    expect(order).toEqual(['site-question', 'approve'])
+  })
+
+  it('ask for the normal tool approval before anything is sent, naming the control and page', async () => {
+    backend()
+    approve.mockResolvedValueOnce(false)
+    const r = await runBrowserAgentTool('browser_click', { id: '1.2' }, 't', { callId: 'c1' })
     expect(r).toEqual({ error: expect.stringContaining('declined') })
     expect(approve).toHaveBeenCalledWith(
       'c1',
       'browser_click',
       't',
       undefined,
-      expect.objectContaining({ input: { id: '1.2' }, alwaysAsk: false })
+      expect.objectContaining({
+        input: { id: '1.2', control: 'Add to cart', page: 'https://shop.test/cart?id=7' },
+        alwaysAsk: false,
+        taskContext: expect.stringContaining('"Add to cart"'),
+      })
     )
-    expect(invoke).not.toHaveBeenCalled()
+    expect(actCalls()).toHaveLength(0)
   })
 
   it('send the click once approved', async () => {
-    invoke.mockResolvedValueOnce(ok)
-    const r = await runBrowserAgentTool('browser_click', { id: '1.2' }, 't', {
-      callId: 'c1',
-    })
+    backend(ok)
+    const r = await runBrowserAgentTool('browser_click', { id: '1.2' }, 't', { callId: 'c1' })
     expect(r).toEqual({ content: ok.content })
-    expect(invoke.mock.calls[0][1].request).toMatchObject({
-      tool: 'click',
-      id: '1.2',
-      confirmed: false,
-    })
+    expect(actCalls()[0]).toMatchObject({ tool: 'click', id: '1.2', confirmed: false })
   })
 
   it('a submit-like control asks again, every time, and retries confirmed', async () => {
-    invoke
-      .mockResolvedValueOnce({
+    backend(
+      {
         status: 'needs_confirmation',
         label: 'Buy now',
         reason: 'its label reads "Buy now"',
         url: 'https://shop.test/cart?x=1',
-      })
-      .mockResolvedValueOnce(ok)
-    const r = await runBrowserAgentTool('browser_click', { id: '1.9' }, 't', {
-      callId: 'c2',
-    })
+      },
+      ok
+    )
+    const r = await runBrowserAgentTool('browser_click', { id: '1.9' }, 't', { callId: 'c2' })
     expect(r).toEqual({ content: ok.content })
     expect(approve).toHaveBeenCalledTimes(2)
     const second = approve.mock.calls[1]
     expect(second[4]).toMatchObject({ alwaysAsk: true })
     expect(second[4].taskContext).toContain('Buy now')
     expect(second[4].taskContext).toContain('https://shop.test/cart?x=1')
-    expect(invoke.mock.calls[1][1].request.confirmed).toBe(true)
+    expect(actCalls()[1].confirmed).toBe(true)
   })
 
   it('a declined confirmation sends nothing more', async () => {
-    invoke.mockResolvedValueOnce({
+    backend({
       status: 'needs_confirmation',
       label: 'Pay',
       reason: 'submits',
       url: 'https://shop.test/',
     })
     approve.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
-    const r = await runBrowserAgentTool('browser_click', { id: '1.9' }, 't', {
-      callId: 'c3',
-    })
+    const r = await runBrowserAgentTool('browser_click', { id: '1.9' }, 't', { callId: 'c3' })
     expect(r).toEqual({ error: expect.stringContaining('declined') })
-    expect(invoke).toHaveBeenCalledTimes(1)
+    expect(actCalls()).toHaveLength(1)
   })
 
   it('unattended: no prompts, and a submit-like control is refused', async () => {
-    invoke.mockResolvedValueOnce({
+    backend({
       status: 'needs_confirmation',
       label: 'Send',
       reason: 'submits',
       url: 'https://x.test/',
     })
-    const r = await runBrowserAgentTool('browser_click', { id: '1.1' }, 't', {
-      unattended: true,
-    })
+    const r = await runBrowserAgentTool('browser_click', { id: '1.1' }, 't', { unattended: true })
     expect(r).toEqual({ error: expect.stringContaining('nobody') })
     expect(approve).not.toHaveBeenCalled()
   })
 
   it('sends text, key and value arguments', async () => {
-    invoke.mockResolvedValue(ok)
-    await runBrowserAgentTool(
-      'browser_type',
-      { id: '2.3', text: 'hi', clear: false },
-      't'
-    )
+    backend(ok, ok, ok)
+    await runBrowserAgentTool('browser_type', { id: '2.3', text: 'hi', clear: false }, 't')
     await runBrowserAgentTool('browser_press', { key: 'Escape' }, 't')
     await runBrowserAgentTool('browser_select', { id: '2.4', value: 'Blue' }, 't')
-    const reqs = invoke.mock.calls.map((c) => c[1].request)
-    expect(reqs[0]).toMatchObject({
-      tool: 'type',
-      id: '2.3',
-      text: 'hi',
-      clear: false,
-    })
+    const reqs = actCalls()
+    expect(reqs[0]).toMatchObject({ tool: 'type', id: '2.3', text: 'hi', clear: false })
     expect(reqs[1]).toMatchObject({ tool: 'press', key: 'Escape' })
     expect(reqs[2]).toMatchObject({ tool: 'select', id: '2.4', value: 'Blue' })
   })
 
   it('the action cap from Settings is passed to the backend', async () => {
     useAgentToolsConfig.setState({ browserAgentMaxActions: 7 })
-    invoke.mockResolvedValue(ok)
+    backend(ok)
     await runBrowserAgentTool('browser_click', { id: '1.1' }, 't')
-    expect(invoke.mock.calls[0][1].request.max_actions).toBe(7)
+    expect(actCalls()[0].max_actions).toBe(7)
+  })
+
+  it('the chat card id is what the approval is keyed by (so it is answerable there)', () => {
+    expect(browserCallOptions('browser_click', 'call-77')).toEqual({ callId: 'call-77' })
+    expect(browserCallOptions('browser_scroll', 'call-78')).toEqual({ callId: 'call-78' })
+    expect(browserCallOptions('bash', 'call-79')).toEqual({})
   })
 })
 

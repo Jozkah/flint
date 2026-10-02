@@ -34,14 +34,19 @@ export function useNativeWebPreview({
   url,
   reloadNonce,
   container,
+  suspended = false,
   invokeFn = invoke as InvokeFn,
 }: {
   enabled: boolean
   url: string
   reloadNonce: number
   container: HTMLElement | null
+  /** Hide the native view (keeping the page) while something needs the screen. */
+  suspended?: boolean
   invokeFn?: InvokeFn
 }): NativePreviewMode {
+  const suspendedRef = useRef(suspended)
+  suspendedRef.current = suspended
   const [mode, setMode] = useState<NativePreviewMode>(() =>
     isTauri() ? 'pending' : 'iframe'
   )
@@ -183,6 +188,7 @@ export function useNativeWebPreview({
         rect.height > 0 &&
         container.isConnected &&
         document.visibilityState !== 'hidden' &&
+        !suspendedRef.current &&
         !overlay
       ctrl.setVisible(visible)
       if (visible) ctrl.setBounds(toPhysicalBounds(rect, window.devicePixelRatio || 1))

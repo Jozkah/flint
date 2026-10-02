@@ -150,6 +150,7 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import { browserCallOptions } from '@/lib/browserAgent'
 import { chatFolderToolOptions } from '@/lib/chatFolders'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
 import {
@@ -992,6 +993,9 @@ export function ThreadConversation({
                   // Stopping the conversation withdraws a pending
                   // `request_access` prompt instead of leaving it answerable.
                   signal,
+                  // The browser tools ask the user themselves, and the question
+                  // has to sit under this call's card to be answerable there.
+                  ...browserCallOptions(toolName, toolCall.toolCallId),
                   taskLabel:
                     useThreads.getState().threads[threadId]?.title ||
                     'This conversation',

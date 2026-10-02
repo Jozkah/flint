@@ -7,6 +7,7 @@ import { useWebPreview } from '@/hooks/useWebPreview'
 export const OPEN_PANE_EVENT = 'browser-agent://open-pane'
 export const STATE_EVENT = 'browser-agent://state'
 export const BLOCKED_EVENT = 'browser-agent://blocked'
+export const DOMAIN_REQUEST_EVENT = 'browser-agent://domain-request'
 
 /** The pane counts as the assistant's for this long after its last call. */
 const LEASE_MS = 10 * 60 * 1000
@@ -43,10 +44,13 @@ const isTauri = () => typeof IS_TAURI !== 'undefined' && !!IS_TAURI
  * page was refused. Mounted once with the pane.
  */
 export function useBrowserAgentEvents(
-  onBlocked?: (e: { url: string; reason: string }) => void
+  onBlocked?: (e: { url: string; reason: string }) => void,
+  onDomainRequest?: (e: { url: string; host: string }) => void
 ) {
   const onBlockedRef = useRef(onBlocked)
   onBlockedRef.current = onBlocked
+  const onDomainRef = useRef(onDomainRequest)
+  onDomainRef.current = onDomainRequest
   useEffect(() => {
     if (!isTauri()) return
     let expiry: ReturnType<typeof setTimeout> | undefined
@@ -81,6 +85,11 @@ export function useBrowserAgentEvents(
     keep(
       listen<{ url: string; reason: string }>(BLOCKED_EVENT, ({ payload }) =>
         onBlockedRef.current?.(payload)
+      )
+    )
+    keep(
+      listen<{ url: string; host: string }>(DOMAIN_REQUEST_EVENT, ({ payload }) =>
+        onDomainRef.current?.(payload)
       )
     )
     return () => {

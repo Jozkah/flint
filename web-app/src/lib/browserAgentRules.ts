@@ -27,5 +27,15 @@ export const setBrowserRule = (
 export const removeBrowserRule = (pattern: string): Promise<boolean> =>
   invoke<boolean>('browser_agent_rule_remove', { pattern })
 
+/** An approval that is not saved: this session, or this visit. */
+export type BrowserGrant = {
+  pattern: string
+  scope: 'session' | 'once'
+  age_secs: number
+}
+
+export const listBrowserGrants = (): Promise<BrowserGrant[]> =>
+  invoke<BrowserGrant[]>('browser_agent_grants')
+
 export const clearBrowserGrants = (): Promise<void> =>
   invoke<void>('browser_agent_clear_grants')

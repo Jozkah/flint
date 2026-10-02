@@ -8,9 +8,11 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import {
   clearBrowserGrants,
+  listBrowserGrants,
   listBrowserRules,
   removeBrowserRule,
   setBrowserRule,
+  type BrowserGrant,
   type BrowserRule,
 } from '@/lib/browserAgentRules'
 import { errorText } from '@/lib/errorText'
@@ -38,10 +40,15 @@ export function BrowserAgentSettings() {
   const [verdict, setVerdict] = useState<BrowserRule['verdict']>('allow')
   const [privateOk, setPrivateOk] = useState(false)
 
+  const [grants, setGrants] = useState<BrowserGrant[]>([])
+
   const refresh = useCallback(() => {
     listBrowserRules()
       .then(setRules)
       .catch(() => setRules([]))
+    listBrowserGrants()
+      .then((g) => setGrants(Array.isArray(g) ? g : []))
+      .catch(() => setGrants([]))
   }, [])
   useEffect(refresh, [refresh])
 
@@ -146,10 +153,46 @@ export function BrowserAgentSettings() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => void clearBrowserGrants().catch(() => {})}
+              onClick={() =>
+                void clearBrowserGrants()
+                  .catch(() => {})
+                  .then(refresh)
+              }
             >
               {t('browser-agent:settings.forgetGrants')}
             </Button>
+          }
+        />
+        {/* Why a site did not ask: what has been approved without being saved. */}
+        <CardItem
+          title={t('browser-agent:settings.grantsTitle')}
+          description={
+            grants.length === 0
+              ? t('browser-agent:settings.grantsNone')
+              : t('browser-agent:settings.grantsDesc')
+          }
+          column
+          align="start"
+          actions={
+            grants.length > 0 ? (
+              <ul className="grid w-full gap-1" data-testid="browser-grants">
+                {grants.map((g) => (
+                  <li
+                    key={`${g.scope}:${g.pattern}`}
+                    className="flex items-center justify-between gap-2 font-mono text-xs"
+                  >
+                    <span data-testid="browser-grant-pattern">{g.pattern}</span>
+                    <span className="text-muted-foreground">
+                      {t(`browser-agent:settings.grantScope.${g.scope}`)}
+                      {' · '}
+                      {t('browser-agent:settings.grantAge', {
+                        minutes: Math.max(1, Math.round(g.age_secs / 60)),
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : undefined
           }
         />
       </Card>

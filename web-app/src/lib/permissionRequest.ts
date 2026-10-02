@@ -31,6 +31,7 @@ export type PermissionCategory =
   | 'external-tool'
   | 'git'
   | 'read'
+  | 'browser'
   | 'other'
 
 /** Answers that grant something. `deny` is always available and not listed. */
@@ -117,6 +118,12 @@ const FILE_CHANGE_TOOLS = new Set([
   'create_file',
   'delete_file',
   'move_file',
+])
+const BROWSER_ACTION_TOOLS = new Set([
+  'browser_click',
+  'browser_type',
+  'browser_press',
+  'browser_select',
 ])
 const COMMAND_TOOLS = new Set(['bash', 'shell', 'run_command', 'execute_command'])
 const NETWORK_TOOLS = new Set(['web_fetch', 'web_search'])
@@ -265,6 +272,8 @@ export function categorizeTool(
   // about what the call does; where it goes is the fact that matters.
   if (serverName) return 'external-tool'
   if (toolName === GIT_TOOL_NAME) return 'git'
+  // The assistant acting on a web page in the browser pane (click, type, ...).
+  if (BROWSER_ACTION_TOOLS.has(toolName)) return 'browser'
   if (FILE_CHANGE_TOOLS.has(toolName)) return 'file-change'
   if (COMMAND_TOOLS.has(toolName)) return 'command'
   if (NETWORK_TOOLS.has(toolName)) return 'network'
@@ -338,6 +347,13 @@ function resourcesFor(
       break
     case 'read':
       raw = generic
+      break
+    case 'browser':
+      // The page in full (its query string is what a prompt must not hide),
+      // then the control, as the page's own snapshot labels it.
+      raw = [str(args.page), str(args.control) ? `"${str(args.control)}"` : undefined].filter(
+        (v): v is string => Boolean(v)
+      )
       break
     case 'external-tool':
       raw = [...(serverName ? [serverName] : []), ...generic]
@@ -419,6 +435,32 @@ function actionFor(
       }
       return { key: 'permissions:action.searchWeb' }
     }
+    case 'browser': {
+      const control = str(args.control)
+      const values = {
+        control: control ? `"${sanitizeResource(control, 60)}"` : 'the control',
+        page: sanitizeResource(str(args.page) ?? 'the open page', 200),
+      }
+      switch (toolName) {
+        case 'browser_click':
+          return { key: 'permissions:action.browserClick', values }
+        case 'browser_type':
+          return {
+            key: 'permissions:action.browserType',
+            values: { ...values, text: sanitizeResource(str(args.text) ?? '', 60) },
+          }
+        case 'browser_press':
+          return {
+            key: 'permissions:action.browserPress',
+            values: { ...values, keyName: sanitizeResource(str(args.key) ?? '', 20) },
+          }
+        default:
+          return {
+            key: 'permissions:action.browserSelect',
+            values: { ...values, value: sanitizeResource(str(args.value) ?? '', 60) },
+          }
+      }
+    }
     case 'external-tool':
       return {
         key: 'permissions:action.useExternalTool',
@@ -476,6 +518,8 @@ function consequencesFor(
       return [{ key: 'permissions:consequence.externalTool' }]
     case 'read':
       return [{ key: 'permissions:consequence.read' }]
+    case 'browser':
+      return [{ key: 'permissions:consequence.browser' }]
     default:
       if (toolName === STOP_SESSION_TOOL_NAME) {
         return [{ key: 'permissions:consequence.stopSession' }]

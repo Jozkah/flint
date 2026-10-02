@@ -52,6 +52,18 @@ const ACTION_TOOLS = new Set([
   'browser_select',
 ])
 
+/**
+ * The options a surface passes `executeAgentTool` for a browser call. The
+ * browser tools ask the user themselves, and the question is only answerable
+ * under the call's own card when it carries that card's id.
+ */
+export function browserCallOptions(
+  toolName: string,
+  toolCallId: string
+): { callId?: string } {
+  return isBrowserTool(toolName) ? { callId: toolCallId } : {}
+}
+
 export const isBrowserActionTool = (name: string): boolean =>
   ACTION_TOOLS.has(name)
 
@@ -223,6 +235,8 @@ export type BrowserApproval = {
   url?: string
   /** Ask even if a standing grant would answer (submit-like controls). */
   alwaysAsk: boolean
+  /** The arguments with the control's label and the page added, for the prompt. */
+  input?: unknown
 }
 
 type ToolResult = { content: string } | { error: string }
@@ -237,7 +251,7 @@ export function patternsFor(host: string, subdomains: boolean): string[] {
   return [host, base, `*.${base}`].filter((p, i, a) => a.indexOf(p) === i)
 }
 
-async function applyAnswer(
+export async function applyAnswer(
   host: string,
   answer: DomainAnswer
 ): Promise<boolean> {
@@ -309,71 +323,97 @@ export async function runBrowserAgentTool(
     reduce_motion: reduceMotionFlag(cfg.browserAgentReduceMotion),
   }
   const callId = options.callId ?? `${toolName}-${Date.now()}`
+  const unattended = options.unattended === true
+
+  // What the user is shown: the action, the control it is on (the snapshot's
+  // own label for the node) and the page, in full.
   const ask = (
     context: string,
     alwaysAsk: boolean,
-    url?: string
-  ): Promise<boolean> =>
-    options.approve
-      ? options.approve({ context, alwaysAsk, url })
-      : useToolApprovalRequests
-      .getState()
-      .requestApproval(callId, toolName, threadId, undefined, {
-        input,
-        alwaysAsk,
-        taskContext: context,
-        signal: options.signal,
-        origin: options.origin,
-        destructiveChecked: true,
-        autoApproveStreak: alwaysAsk ? undefined : threadId,
-      })
-
-  try {
-    if (options.unattended !== true && isBrowserActionTool(toolName)) {
-      const page = useWebPreview.getState().url()
-      const ok = await ask(
-        page
-          ? `Acts on the page open in the browser pane: ${page}`
-          : 'Acts on the page open in the browser pane.',
-        false,
-        page || undefined
-      )
-      if (!ok) return { error: 'The user declined this browser action.' }
+    target: { url?: string; label?: string }
+  ): Promise<boolean> => {
+    const shown = {
+      ...args,
+      ...(target.label ? { control: target.label } : {}),
+      ...(target.url ? { page: target.url } : {}),
     }
+    return options.approve
+      ? options.approve({ context, alwaysAsk, url: target.url, input: shown })
+      : useToolApprovalRequests
+          .getState()
+          .requestApproval(callId, toolName, threadId, undefined, {
+            input: shown,
+            alwaysAsk,
+            taskContext: context,
+            signal: options.signal,
+            origin: options.origin,
+            destructiveChecked: true,
+            autoApproveStreak: alwaysAsk ? undefined : threadId,
+          })
+  }
 
-    let confirmed = false
-    let asked = 0
+  let asked = 0
+  type Exchange = { response: BrowserResponse } | { error: string }
+  /**
+   * One call to the backend, with the first-visit question put to the user and
+   * the call repeated when they allow it. Everything else comes back as is.
+   */
+  const exchange = async (extra: Record<string, unknown>): Promise<Exchange> => {
     for (;;) {
       if (options.signal?.aborted) return { error: 'Stopped.' }
       const r = await invoke<BrowserResponse>('browser_agent_call', {
-        request: { ...base, confirmed },
+        request: { ...base, ...extra },
       })
+      if (r.status !== 'needs_permission') return { response: r }
+      const host = r.host ?? ''
+      if (unattended || asked >= 3) return { error: declined(host) }
+      asked += 1
+      const answer = await useBrowserAgentPrompt.getState().request({
+        url: r.url ?? host,
+        host,
+        tool: toolName,
+        origin: options.origin,
+        signal: options.signal,
+      })
+      if (!(await applyAnswer(host, answer))) return { error: declined(host) }
+    }
+  }
+
+  try {
+    let target: { url?: string; label?: string } = {}
+    if (isBrowserActionTool(toolName)) {
+      // Check the node id and the site first: a stale id is refused before the
+      // user is asked about it, and the question can name the real control.
+      const checked = await exchange({ validate_only: true })
+      if ('error' in checked) return checked
+      if (checked.response.status !== 'ok') {
+        return { error: checked.response.reason ?? 'The browser tool failed.' }
+      }
+      target = { url: checked.response.url, label: checked.response.label }
+      if (!unattended) {
+        const where = target.url ?? useWebPreview.getState().url()
+        const ok = await ask(
+          `Acts on ${target.label ? `"${target.label}"` : 'the page'} in the browser pane${where ? `: ${where}` : ''}`,
+          false,
+          { url: where || undefined, label: target.label }
+        )
+        if (!ok) return { error: 'The user declined this browser action.' }
+      }
+    }
+
+    let confirmed = false
+    for (;;) {
+      const got = await exchange({ confirmed })
+      if ('error' in got) return got
+      const r = got.response
       switch (r.status) {
         case 'ok':
           if (r.image && options.callId) {
             useBrowserShots.getState().put(options.callId, r.image)
           }
           return { content: r.content ?? '' }
-        case 'needs_permission': {
-          const host = r.host ?? ''
-          if (options.unattended === true || asked >= 3) {
-            return { error: declined(host) }
-          }
-          asked += 1
-          const answer = await useBrowserAgentPrompt.getState().request({
-            url: r.url ?? host,
-            host,
-            tool: toolName,
-            origin: options.origin,
-            signal: options.signal,
-          })
-          if (!(await applyAnswer(host, answer))) {
-            return { error: declined(host) }
-          }
-          continue
-        }
         case 'needs_confirmation': {
-          if (options.unattended === true || confirmed) {
+          if (unattended || confirmed) {
             return {
               error:
                 'That control needs the user to confirm it, and nobody is available to ask.',
@@ -382,7 +422,7 @@ export async function runBrowserAgentTool(
           const ok = await ask(
             `Confirm: ${r.label ? `"${r.label}"` : 'this control'} on ${r.url ?? 'the page'} - ${r.reason ?? 'it changes something on the site'}. Asked every time.`,
             true,
-            r.url
+            { url: r.url, label: r.label ?? target.label }
           )
           if (!ok) return { error: 'The user declined this action.' }
           confirmed = true
