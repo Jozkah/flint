@@ -140,6 +140,7 @@ fn files_for<R: Runtime>(app: &tauri::AppHandle<R>, def: &ModelDef) -> Result<Mo
         vae: find(Role::Vae).ok_or("The model has no VAE file.")?,
         llm: find(Role::Llm),
         t5xxl: find(Role::T5xxl),
+        clip_l: find(Role::ClipL),
     })
 }
 
