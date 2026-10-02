@@ -12,6 +12,7 @@ static APP: OnceLock<tauri::AppHandle> = OnceLock::new();
 
 pub fn register(app: &tauri::AppHandle) {
     let _ = APP.set(app.clone());
+    custom::load(app);
 }
 
 pub fn app() -> Option<&'static tauri::AppHandle> {
@@ -21,6 +22,7 @@ pub fn app() -> Option<&'static tauri::AppHandle> {
 pub mod args;
 pub mod catalog;
 pub mod commands;
+pub mod custom;
 pub mod engine;
 pub mod gallery;
 pub mod progress;

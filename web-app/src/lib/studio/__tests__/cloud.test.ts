@@ -23,6 +23,7 @@ import {
   fitCloudSize,
   generateCloudImages,
   imagesUrl,
+  isPublicHttpsUrl,
   nearestAspectRatio,
   readCloudAnswer,
   targetFor,
@@ -188,5 +189,39 @@ describe('generateCloudImages', () => {
     await expect(generateCloudImages(target, settings, params, signal, refused as never)).rejects.toThrow(
       'size not allowed'
     )
+  })
+})
+
+describe('isPublicHttpsUrl', () => {
+  it('accepts a public https address', () => {
+    expect(isPublicHttpsUrl('https://cdn.example.com/x.png')).toBe(true)
+    expect(isPublicHttpsUrl('https://8.8.8.8/x.png')).toBe(true)
+  })
+
+  it('refuses http, this computer, private networks and credentials in the address', () => {
+    for (const url of [
+      'http://cdn.example.com/x.png',
+      'https://localhost/x.png',
+      'https://app.localhost/x.png',
+      'https://127.0.0.1/x.png',
+      'https://10.1.2.3/x.png',
+      'https://172.20.0.1/x.png',
+      'https://192.168.1.5/x.png',
+      'https://169.254.169.254/latest',
+      'https://100.64.0.1/x.png',
+      'https://[::1]/x.png',
+      'https://[fd00::1]/x.png',
+      'https://printer.local/x.png',
+      'https://intranet/x.png',
+      'https://user:pw@cdn.example.com/x.png',
+      'file:///C:/x.png',
+      'not a url',
+    ]) {
+      expect(isPublicHttpsUrl(url), url).toBe(false)
+    }
+  })
+
+  it('drops such an address from a provider answer', () => {
+    expect(readCloudAnswer({ data: [{ url: 'https://127.0.0.1/x.png' }] }).pictures).toEqual([])
   })
 })

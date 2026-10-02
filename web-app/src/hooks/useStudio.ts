@@ -55,6 +55,7 @@ type StudioState = {
   ) => Promise<boolean>
   cancel: () => Promise<void>
   remove: (kind: StudioKind, id: string) => Promise<void>
+  removeCustomModel: (modelId: string) => Promise<void>
   clearError: () => void
 }
 
@@ -220,6 +221,16 @@ export const useStudio = create<StudioState>((set, get) => ({
       await studioApi.cancel()
     } catch (error) {
       set({ error: message(error) })
+    }
+  },
+
+  removeCustomModel: async (modelId) => {
+    try {
+      await studioApi.removeCustomModel(modelId)
+    } catch (error) {
+      set({ error: message(error) })
+    } finally {
+      await get().refresh()
     }
   },
 
