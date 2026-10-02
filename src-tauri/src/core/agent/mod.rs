@@ -80,6 +80,7 @@ pub mod review;
 pub mod roles;
 pub mod routing;
 pub mod semantic;
+pub mod secrets;
 pub mod session;
 pub mod session_bundle;
 pub mod skill_hub;

@@ -57,6 +57,7 @@ export function seedStudioAnswers() {
     models: [
       model('z-image-turbo', 'Z-Image Turbo', 'image', [5_017_613_376, 335_304_388, 2_497_281_120]),
       model('wan2.2-ti2v-5b', 'Wan 2.2 TI2V 5B', 'video', [3_433_116_000, 1_409_400_960, 3_655_145_312]),
+      { ...model('custom-quantstack-qwen-image-gguf-qwen-image-q4-k-m', 'Qwen_Image Q4_K_M', 'image', [13_065_746_976, 253_806_246, 4_683_072_512]), installed: false, custom: true, family: 'qwen-image', license: 'apache-2.0' },
     ],
     resident: { model_id: 'z-image-turbo', kind: 'image', busy: false },
   }))
@@ -78,6 +79,12 @@ export function seedStudioAnswers() {
         }))
       : []
   )
+  answer('diffusion_families', () => [
+    { id: 'z-image', label: 'Z-Image', description: 'A fast model.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 2_832_585_508 },
+    { id: 'qwen-image', label: 'Qwen-Image', description: 'Strong at text in pictures.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 4_936_878_758 },
+    { id: 'flux1', label: 'FLUX.1', description: 'FLUX.1 dev or schnell.', hints: [], minSide: 256, maxSide: 2048, companionBytes: 3_477_572_612 },
+  ])
+  answer('diffusion_guess_family', () => 'qwen-image')
   answer('plugin:event|listen', () => 1)
   answer('plugin:event|unlisten', () => undefined)
 }

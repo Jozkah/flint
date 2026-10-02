@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 
-export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all'
+export type HuggingFaceFormat = 'gguf' | 'mlx' | 'all' | 'image' | 'video'
 
 export type HuggingFaceFile = {
   name: string

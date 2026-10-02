@@ -46,6 +46,12 @@ const GLOBAL_CONFIG_TEMPLATE: &str = r#"# Jan Agent global provider config.
 #                                     # On by default
 # claude_code_alias = false             # allow Jan to reuse Claude Code's
 #                                     # keychain login; on by default
+# hide_secrets = true                 # replace secret-named env values, URL
+#                                     # passwords and credential-shaped tokens
+#                                     # with placeholders before a request goes
+#                                     # to a model; tool calls get the real
+#                                     # value back. Off by default;
+#                                     # JAN_HIDE_SECRETS=1|0 overrides it
 # wave = "👋"                          # sweep this glyph along the working row
 #                                     # instead of the static throbber. Up to
 #                                     # 3 characters ("🍌", "~", "👁️👄👁️").
@@ -113,6 +119,10 @@ struct GlobalConfigToml {
     /// on; set false to keep Flint from reading or refreshing that credential.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     claude_code_alias: Option<bool>,
+    /// Hide secrets from model requests (`core::agent::secrets`). `None` = the
+    /// default, off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hide_secrets: Option<bool>,
     /// Glyph swept along the working row while a turn runs, in place of the
     /// static Braille throbber. Absent = `WAVE_DEFAULT`; `""` = off, the
     /// throbber. See `wave_glyph` for why those are two different things.
@@ -286,6 +296,12 @@ pub fn set_ca_bundle(path: Option<&str>) -> Result<PathBuf, String> {
     let mut config = load_raw()?;
     config.ca_bundle = path.map(str::to_string);
     write_raw(&config)
+}
+
+/// `hide_secrets` in `~/.jan/config.toml`; `None` when unset. Fails open to
+/// "unset" (off): a preference file must never stop a session from starting.
+pub(crate) fn hide_secrets_setting() -> Option<bool> {
+    load_raw().ok().and_then(|config| config.hide_secrets)
 }
 
 /// Whether the TUI should track the mouse (`mouse` in `~/.jan/config.toml`),
@@ -897,6 +913,23 @@ mod tests {
         with_temp_home(|_| {
             let configs = load_global_config().expect("load");
             assert!(configs.is_empty());
+        });
+    }
+
+    #[test]
+    fn hide_secrets_is_unset_by_default_and_reads_its_key() {
+        with_temp_home(|home| {
+            assert_eq!(hide_secrets_setting(), None, "missing file");
+            let path = home.join(".jan").join("config.toml");
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "hide_secrets = true
+").unwrap();
+            assert_eq!(hide_secrets_setting(), Some(true));
+            std::fs::write(&path, "hide_secrets = false
+").unwrap();
+            assert_eq!(hide_secrets_setting(), Some(false));
+            std::fs::write(&path, "hide_secrets = [").unwrap();
+            assert_eq!(hide_secrets_setting(), None, "fails open to unset");
         });
     }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   downloadedBytes,
+  downloadProgressText,
   durationText,
   estimateVideoMs,
   framesForSeconds,
@@ -9,7 +10,10 @@ import {
   IMAGE_SIZES,
   VIDEO_SIZES,
   phaseLabel,
+  customSize,
+  parseSide,
   sizeFor,
+  snapSide,
   sizeIndexOf,
   videoMemoryWarning,
 } from '@/lib/studio/helpers'
@@ -117,5 +121,39 @@ describe('shapes', () => {
     expect(IMAGE_SIZES[wide].short).toBe('16:9')
     expect(sizeIndexOf(IMAGE_SIZES, 99999, 1)).toBe(IMAGE_SIZES.findIndex((s) => s.short === '21:9'))
     expect(sizeIndexOf(IMAGE_SIZES, 1024, 1024)).toBe(0)
+  })
+})
+
+describe('custom resolution', () => {
+  it('reads whole pixel counts only', () => {
+    expect(parseSide(' 1024 ')).toBe(1024)
+    for (const bad of ['', '12.5', '-8', 'abc', '1e3', '123456']) expect(parseSide(bad)).toBeNull()
+  })
+
+  it('snaps to multiples of 16 inside the model limits', () => {
+    expect(snapSide(1000, 256, 2048)).toBe(1008)
+    expect(snapSide(100, 256, 2048)).toBe(256)
+    expect(snapSide(5000, 256, 2048)).toBe(2048)
+    expect(snapSide(2047, 256, 2040)).toBe(2032)
+  })
+
+  it('uses the fallback for a box that is empty or not a number', () => {
+    expect(customSize('1280', '720', { min: 256, max: 2048 }, 1024)).toEqual({ width: 1280, height: 720 })
+    expect(customSize('', 'x', { min: 256, max: 2048 }, 1024)).toEqual({ width: 1024, height: 1024 })
+    expect(customSize('3000', '64', { min: 256, max: 1280 }, 1024)).toEqual({ width: 1280, height: 256 })
+  })
+})
+
+describe('downloadProgressText', () => {
+  const fmt = (n: number) => `${n} B`
+
+  it('says it is starting while nothing has arrived, never "unknown size"', () => {
+    expect(downloadProgressText(0, 100, fmt)).toBe('Starting… 100 B to download')
+    expect(downloadProgressText(0, 0, fmt)).toBe('Starting…')
+  })
+
+  it('shows progress against the total once bytes arrive', () => {
+    expect(downloadProgressText(40, 100, fmt)).toBe('40 B of 100 B')
+    expect(downloadProgressText(40, 0, fmt)).toBe('40 B')
   })
 })

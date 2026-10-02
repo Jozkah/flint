@@ -298,10 +298,17 @@ export const predefinedProviders = [
     ],
     models: [
       {
+        id: 'MiniMax-M3',
+        name: 'MiniMax-M3',
+        version: '1.0',
+        description: 'Latest flagship model for agents, coding and long documents. 1M context window.',
+        capabilities: ['completion', 'tools'],
+      },
+      {
         id: 'MiniMax-M2.7',
         name: 'MiniMax-M2.7',
         version: '1.0',
-        description: 'Latest flagship model with enhanced reasoning and coding.',
+        description: 'Flagship model with enhanced reasoning and coding. 204K context window.',
         capabilities: ['completion', 'tools'],
       },
       {
@@ -309,20 +316,6 @@ export const predefinedProviders = [
         name: 'MiniMax-M2.7-highspeed',
         version: '1.0',
         description: 'High-speed version of M2.7 for low-latency scenarios.',
-        capabilities: ['completion', 'tools'],
-      },
-      {
-        id: 'MiniMax-M2.5',
-        name: 'MiniMax-M2.5',
-        version: '1.0',
-        description: 'Peak Performance. Ultimate Value. Master the Complex. 204K context window.',
-        capabilities: ['completion', 'tools'],
-      },
-      {
-        id: 'MiniMax-M2.5-highspeed',
-        name: 'MiniMax-M2.5-highspeed',
-        version: '1.0',
-        description: 'Same performance, faster and more agile. 204K context window.',
         capabilities: ['completion', 'tools'],
       },
     ],
@@ -394,6 +387,247 @@ export const predefinedProviders = [
           value: '',
           type: 'password',
           input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.deepseek.com',
+    explore_models_url: 'https://api-docs.deepseek.com/',
+    provider: 'deepseek',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The DeepSeek API uses API keys for authentication. Visit your [API Keys](https://platform.deepseek.com/api_keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.moonshot.ai/v1',
+    explore_models_url: 'https://platform.kimi.ai/docs/models',
+    provider: 'moonshot',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Moonshot AI API uses API keys for authentication. Visit your [API Keys](https://platform.kimi.ai/console/api-keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.cohere.ai/compatibility/v1',
+    explore_models_url: 'https://docs.cohere.com/docs/models',
+    provider: 'cohere',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Cohere API uses API keys for authentication. Visit your [API Keys](https://dashboard.cohere.com/api-keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.perplexity.ai',
+    explore_models_url: 'https://docs.perplexity.ai/getting-started/models',
+    provider: 'perplexity',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Perplexity API uses API keys for authentication. Visit your [API Keys](https://www.perplexity.ai/settings/api) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.together.ai/v1',
+    explore_models_url: 'https://docs.together.ai/docs/serverless/models',
+    provider: 'together',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Together AI API uses API keys for authentication. Visit your [API Keys](https://api.together.ai/settings/projects/~current/api-keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.fireworks.ai/inference/v1',
+    explore_models_url: 'https://app.fireworks.ai/models',
+    provider: 'fireworks',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Fireworks API uses API keys for authentication. Visit your [API Keys](https://app.fireworks.ai/settings/users/api-keys) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.cerebras.ai/v1',
+    explore_models_url: 'https://inference-docs.cerebras.ai/models/overview',
+    provider: 'cerebras',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Cerebras API uses API keys for authentication. Visit your [API Keys](https://cloud.cerebras.ai) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.sambanova.ai/v1',
+    explore_models_url: 'https://docs.sambanova.ai/docs/en/models/sambacloud-models',
+    provider: 'sambanova',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The SambaNova API uses API keys for authentication. Visit your [API Keys](https://cloud.sambanova.ai/apis) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://api.z.ai/api/paas/v4',
+    explore_models_url: 'https://docs.z.ai/guides/overview/overview',
+    provider: 'zai',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Z.ai API uses API keys for authentication. Visit your [API Keys](https://z.ai/manage-apikey/apikey-list) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+    ],
+    models: [],
+  },
+  {
+    active: true,
+    api_key: '',
+    base_url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+    explore_models_url: 'https://www.alibabacloud.com/help/en/model-studio/models',
+    provider: 'qwen',
+    settings: [
+      {
+        key: 'api-key',
+        title: 'API Key',
+        description:
+          "The Alibaba Cloud Model Studio API uses API keys for authentication. Visit your [API Keys](https://www.alibabacloud.com/help/en/model-studio/get-api-key) page to retrieve the API key you'll use in your requests.",
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'Insert API Key',
+          value: '',
+          type: 'password',
+          input_actions: ['unobscure', 'copy'],
+        },
+      },
+      {
+        key: 'base-url',
+        title: 'Base URL',
+        description:
+          'Your Model Studio endpoint. A key only works in the region it was created in: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1 for Singapore or https://dashscope.aliyuncs.com/compatible-mode/v1 for mainland China.',
+        controller_type: 'input',
+        controller_props: {
+          placeholder: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+          value: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
         },
       },
     ],

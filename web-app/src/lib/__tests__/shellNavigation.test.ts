@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { areaForPath } from '../shellNavigation'
+import { areaForPath, showsSettingsSections } from '../shellNavigation'
 
 describe('areaForPath', () => {
   it.each([
@@ -34,5 +34,19 @@ describe('areaForPath', () => {
     expect(areaForPath('/settings/providers-extra')).toBe('settings')
     expect(areaForPath('/artifactsx')).toBe('workspace')
     expect(areaForPath('/roomsx')).toBe('workspace')
+  })
+})
+
+describe('showsSettingsSections', () => {
+  it('keeps the Sections list on every page it links to, MCP servers included', () => {
+    for (const path of ['/settings/general', '/settings/mcp-servers', '/settings/extensions', '/settings/jev', '/settings/mcp-servers/']) {
+      expect(showsSettingsSections(path)).toBe(true)
+    }
+  })
+
+  it('shows none on model providers, the Models area or outside settings', () => {
+    for (const path of ['/settings/providers', '/settings/providers/openai', '/hub', '/', '/studio']) {
+      expect(showsSettingsSections(path)).toBe(false)
+    }
   })
 })
