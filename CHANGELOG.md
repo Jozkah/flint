@@ -47,6 +47,15 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Thread rename/pin/delete and Cowork fork/delete are real phone actions.
 - Unsupported desktop-only actions are shown as computer-managed instead of pretending to be selectable mobile controls.
 - Pairing exposes a QR code plus a selectable/copyable link and retains a manual fallback when clipboard storage is unavailable.
+- The phone can use Studio: make images and video on the desktop, watch progress, stop a run and browse the gallery with Remix and Delete.
+- The phone has a microphone button beside Send; it records speech and the desktop turns it into text.
+- The phone can browse Hugging Face, start model downloads and show their progress.
+- The phone has a read-only side panel showing what Flint is using, the Cowork code files and the live preview.
+- The phone gets push notifications when an approval is waiting, a run finishes or fails, a pull request merges, a room needs you or a reply is done, with no Flint-hosted server in between.
+- Approval notifications have **Allow once** and **Deny** buttons, and notification settings let you choose the events, set quiet hours (approvals still come through) and hide message content.
+- You can attach photos, camera shots and files from the phone; large uploads resume in chunks and large photos are shrunk first.
+- The phone can browse the Cowork folder read-only, insert file references into a message and open a live preview of an app running on the desktop's localhost, for paired phones only.
+- Phone pairing keeps working for the current visit when the phone's browser storage is blocked or full, and a paired phone can no longer set a room's folder or tool access.
 
 ### Browser verification
 
@@ -107,6 +116,19 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 - Opening a chat no longer animates every message in, which made long chats slow to appear. A chat's messages are also read when the pointer reaches its row.
 - A site without a favicon tries its common icon names before falling back to a letter.
+- Chat titles are made with the conversation's own model instead of whichever model was picked last.
+- In split view each pane keeps its own model choice.
+- Automatic compaction no longer fails when its own summary request is too big for the model; it retries with smaller excerpts.
+- Compaction tries once more when a long conversation produces an unusually short summary, and keeps finished tool calls with their results so the model does not repeat them.
+- A long session on a model with no known context window is now compacted, using the window named in a refusal or else 128K.
+- The chat no longer jumps up and down while a reply streams, and a tool trace or reasoning section you collapsed stays collapsed.
+- **Stop all** stops only the current chat instead of everything.
+- If a llama.cpp model fails to start, the failure is now shown instead of nothing happening.
+- A failed model import shows the real error instead of "Unknown error", and a model file name without an extension no longer comes out empty.
+- A short reply from a fast model now shows its speed, and the reply actions appear on hover or focus, always visible on touch screens.
+- Requests to local models and the local API server on this computer no longer go through a system or VPN proxy.
+- Save dialogs, such as a memory export or saving a code block, suggest the file name instead of showing "Untitled".
+- The duplicate model picker in the Details panel is gone.
 
 ### Run summary and opening pages
 
@@ -120,6 +142,12 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Added **Allow all temporarily** for non-destructive remote Git/GitHub operations in the current conversation.
 - Temporary Git trust stays in renderer memory, is never persisted as an Always allow grant, is not offered to temporary chats and never covers destructive Git operations.
 
+### Privacy and security
+
+- Added a **Hide Secrets** option that replaces API keys, passwords in URLs and secret-looking environment values with placeholders before a request goes to the model, and restores the real values when the model's tool calls run. It is off by default.
+- The MCP config file, which can hold keys entered during plugin setup, is now readable only by its owner on macOS and Linux.
+- The secret scanner catches dotted credentials such as `API_TOKEN` values, and no longer blocks code that merely mentions a value such as `spend.spent`.
+
 ### Search, MCP and interface additions
 
 - Added a DuckDuckGo MCP preset using `uvx duckduckgo-mcp-server`.
@@ -130,6 +158,29 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Added a **New group** action to the Move to group flow.
 - Compact split-pane labels use **Auto** / **Edit** while retaining full accessible labels.
 - Settings rows, including the Local API Server model selector, use the constrained Flint layout correctly.
+- MCP servers no longer all start when Flint launches; each starts the first time a chat, Cowork or room needs it, with its tool list coming from a saved cache until then.
+- An idle MCP server stops by itself after 15 minutes, which can be changed, and keeps its saved tools.
+- MCP settings show each server's state (stopped, starting, running or failed) with **Start** and **Stop** buttons and a **Start with Flint** switch.
+- One MCP server that hangs no longer freezes sending a message; each server is given a few seconds and a slow one falls back to its last known tools.
+- Hovering a Cowork session or room in the sidebar shows a preview card, like chat rows.
+
+### Cowork and agent reliability
+
+- A reply cut off by the output limit, a dropped stream or an empty reply is continued once automatically, and a run that ends without an answer shows **Continue**.
+- A failed request stops retrying after three minutes, so a run no longer stalls for almost an hour.
+- Cowork stops repeating an attempt that keeps failing for the same reason, such as an unavailable sandbox tool, blocked network, a read-only folder or a stale pull request.
+- A bash command over the 120-second limit is refused up front and longer work is pointed to background jobs.
+- When a tool installed on the computer cannot run inside the Windows sandbox, Cowork stops retrying and explains why, with the admin command that grants access.
+- A steering message sent mid-run is delivered right after the current tool call.
+- Cowork no longer opens a pull request unless it has checked the target branch, that the branch was pushed and that it merges cleanly, and the check now works for forks whose remote was renamed.
+- On Windows the shell in Cowork works in a folder you gave edit access to, such as one under Desktop, instead of failing with Access is denied.
+- PowerShell shims and Rust tools now run inside the Windows sandbox, and copy switches such as `/E /XD` no longer get every file write refused.
+- **What changed** lists only the files the session itself wrote, with **Show all**, instead of thousands of unrelated files.
+- The Changes panel no longer reports millions of added lines for untracked files.
+- Cowork shows the memories a session proposes so you can approve them, so Settings > Remembered no longer stays empty.
+- New Cowork sessions are named automatically by the model from the first prompt, without overwriting a name you set.
+- Reasoning effort in Cowork is saved per session and no longer moves the global model picker, and subagent steps use the parent session's reasoning settings.
+- Added **Describe this project** to the Cowork folder menu.
 
 ### Inference and repository targeting
 
@@ -180,6 +231,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Moving an existing release tag rebuilds it and replaces the bundles already attached to that release.
 - The older tag build workflow is now manual-only: it needs an explicit tag, never touches a published release, and clears stale assets from a draft before uploading.
 - Reusable release workflows use `$GITHUB_OUTPUT` instead of deprecated `::set-output` handling.
+- The macOS build is now Apple silicon only, and the DMG is named `_aarch64`, with a custom backdrop and icon layout.
+- Release builds use lighter optimization settings, cutting build time from about 72 minutes.
+- Added a Flint website, published on GitHub Pages, with a homepage, docs, install guide, FAQ, changelog, brand and legal pages.
 
 ### Windows installer
 
@@ -192,6 +246,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - NSIS UI compilation runs with `/WX`, treating every NSIS warning as a CI failure before the release-grade Windows bundle build is allowed to run.
 - Added a custom **Flint MSI wizard** in place of the stock WiX dialogs, with full-page artwork from the app's tokens, Inter, bitmap buttons and native install-path and progress controls.
 - The MSI install-location page opens the standard Windows folder picker, and the wizard is compiled and validated in CI on a throwaway product.
+- The Windows installer refuses a drive root or a user folder as the install location.
+- On Windows 11 the title bar takes its colours from the app's theme and follows theme changes.
 
 ### Skills that apply themselves
 
@@ -207,6 +263,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Added a **context circle** to the composer in Chat and Cowork. Hovering shows a card with a bar coloured by kind (messages, system tools, MCP tools, skills, memory, system prompt), the tokens left before auto-compact, **Compact session**, and an expandable breakdown that opens onto each MCP server and tool.
 - Providers that report no window size get an empty ring with the same card.
 - The hover card shows the latest reply's generation speed and the conversation's average.
+- Added a **reasoning effort bar** beside the model selector in Chat and Cowork, with one stop per level the model supports, a Recommended mark on the model's own default and an Off stop where the model can switch reasoning off.
+- Hand-added OpenAI-compatible servers whose model names show a reasoning family, such as Qwen3, DeepSeek-R1 or gpt-oss, now get the effort bar too.
+- Chat uses Cowork's composer layout, with the model selector under the composer and the assistant, sampling, tools, web search and reasoning controls behind one **Options** button.
 
 ### Hugging Face Discover
 
@@ -214,6 +273,13 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Discover shows model avatars and Hugging Face author pictures, capability chips, fit badges with MLX fit, a sturdier memory estimate and a highlighted recommendation for the device.
 - Pausing a model download takes effect at once, even on a stalled connection, and keeps the partial file so a resume continues from it. A late-finishing earlier attempt can no longer remove the handle of a newer one.
 - A model's README is shown without its YAML metadata block, and a repository id such as `../name` is refused.
+- Discover can be filtered by parameter size, architecture, input type, gated models and downloaded-only.
+- A model split into several GGUF files shows as one model, and its vision (mmproj) and speculative-decoding draft files are paired and downloaded automatically.
+- Installed models show **Update available** when the repository has a newer revision.
+- A model download that loses its connection retries with growing waits and continues from the bytes already saved, and a connection that goes quiet for a minute counts as dropped.
+- A download whose partial file the server no longer recognises restarts cleanly instead of showing a hard error.
+- Disk-full, permission-denied, file-locked and path-too-long download errors are explained in plain words.
+- The download row shows a smoothed speed and the time left, for example 38 MB/s and 4 min left.
 
 ## Core Flint capabilities
 
