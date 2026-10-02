@@ -215,6 +215,49 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Pausing a model download takes effect at once, even on a stalled connection, and keeps the partial file so a resume continues from it. A late-finishing earlier attempt can no longer remove the handle of a newer one.
 - A model's README is shown without its YAML metadata block, and a repository id such as `../name` is refused.
 
+### More chat, model and download fixes
+
+- Chat titles are made with the conversation's own model instead of whichever model was picked last, and in split view each pane keeps its own model choice.
+- Automatic compaction no longer fails when its own summary request is too big for the model: it retries with smaller excerpts, tries once more when the summary comes back suspiciously short, keeps finished tool calls with their results so the model does not repeat them, and compacts long sessions on a model with no known context window (using the window named in a refusal, else 128K).
+- The chat no longer jumps up and down while a reply streams, and a tool trace or reasoning section you collapsed stays collapsed.
+- **Stop all** stops only the current chat instead of everything, and the duplicate model picker in the Details panel is gone.
+- If a llama.cpp model fails to start, the failure is now shown instead of nothing happening. A failed model import shows the real error instead of "Unknown error", and a model file name without an extension no longer comes out empty.
+- A short reply from a fast model now shows its speed, sooner than before, and the reply actions (copy, edit, delete, fork, regenerate, versions) appear on hover or focus, always visible on touch screens.
+- Added a **reasoning effort bar** beside the model selector in Chat and Cowork: one stop per level the model supports, a Recommended mark on the model's own default, and Off where the model can switch reasoning off. Hand-added OpenAI-compatible servers whose model names show a reasoning family (Qwen3, DeepSeek-R1, gpt-oss) get it too, and Chat now uses Cowork's composer layout with the model selector under the composer and the other controls behind one **Options** button.
+- A Hugging Face model download that loses its connection retries with growing waits and continues from the bytes already saved, a connection that goes quiet for a minute counts as dropped, and a partial file the server no longer recognises restarts cleanly. Disk-full, permission, locked-file and too-long-path errors are explained in plain words, and the download row shows a smoothed speed and time left.
+- Requests to local models and the local API server on this computer no longer go through a system or VPN proxy, and save dialogs (memory export, saving a code block) suggest the file name instead of "Untitled".
+- Discover can be filtered by parameter size, architecture, input type, gated models and downloaded-only. A model split into several GGUF files shows as one model, its vision (mmproj) and speculative-decoding draft companions are paired and downloaded automatically, and installed models show **Update available** when the repository has a newer revision.
+
+### More Cowork, agent and MCP fixes
+
+- MCP servers no longer all start when Flint launches: each starts the first time a chat, Cowork or room needs it, with its tool list coming from a saved cache until then, and an idle server stops by itself after 15 minutes (configurable, 0 never). MCP settings show each server's state (stopped, starting, running, failed) with Start and Stop buttons and a **Start with Flint** switch. One MCP server that hangs no longer freezes sending a message; each is given a few seconds and a slow one falls back to its last known tools.
+- A reply cut off by the output limit, a dropped stream or an empty reply is continued once automatically, a run that ends without an answer shows **Continue**, and a failed request stops retrying after three minutes instead of stalling a run for almost an hour.
+- Cowork stops repeating an attempt that keeps failing for the same reason (an unavailable sandbox tool, blocked network or downloads, a read-only folder, a stale pull request), refuses a bash command over the 120-second limit up front and points to background jobs, and says why instead of retrying when a tool cannot run inside the Windows sandbox, with the admin command that grants access.
+- A steering message sent mid-run is delivered right after the current tool call. Cowork no longer opens a pull request unless it checked the target branch, that the branch was pushed and that it merges cleanly, and the check now works for forks whose remote was renamed.
+- On Windows the shell in Cowork works in a folder you gave edit access to (such as one under Desktop) instead of failing with Access is denied, PowerShell shims and Rust tools run inside the sandbox, and Windows copy switches such as `/E /XD` no longer get every file write refused.
+- **What changed** lists only the files the session itself wrote (with Show all) instead of thousands of unrelated files, and the Changes panel no longer reports millions of added lines for untracked files.
+- Cowork shows the memories a session proposes so you can approve them, so Settings > Remembered no longer stays empty, and new Cowork sessions are named automatically by the model from the first prompt without overwriting a name you set.
+- Reasoning effort in Cowork is saved per session and no longer moves the global model picker, and subagent steps use the parent session's reasoning settings.
+- Hovering a Cowork session or room in the sidebar shows a preview card, like chat rows, and the Cowork folder menu has **Describe this project**.
+
+### Phone additions
+
+- The phone can use Studio (make images and video on the desktop, watch progress, stop a run, browse the gallery with Remix and Delete), has a microphone button beside Send that the desktop turns into text, browses Hugging Face and starts model downloads, and shows a read-only side panel with what Flint is using, Cowork code files and the live preview.
+- The phone gets push notifications when an approval is waiting, a run finishes or fails, a pull request merges, a room needs you or a reply is done, with no Flint-hosted server in between. Approval notifications have **Allow once** and **Deny**, and notification settings let you choose events, set quiet hours (approvals still come through) and hide message content.
+- You can attach photos, camera shots and files from the phone (large uploads resume in chunks and large photos are shrunk first), browse the Cowork folder read-only and insert file references into a message, and open a live preview of an app running on the desktop's localhost, for paired phones only.
+- Phone pairing keeps working for the current visit when the phone's browser storage is blocked or full, a paired phone can no longer set a room's folder or tool access, and a broken phone link fails safely.
+
+### Privacy and security
+
+- Added a **Hide Secrets** option that replaces API keys, passwords in URLs and secret-looking environment values with placeholders before a request goes to the model, and restores the real values when the model's tool calls run. It is off by default.
+- The MCP config file, which can hold keys entered during plugin setup, is now readable only by its owner on macOS and Linux, the secret scanner catches dotted credentials such as `API_TOKEN` values while no longer blocking code that merely mentions a value such as `spend.spent`, and the Windows installer refuses a drive root or user folder as the install location.
+
+### Windows and macOS
+
+- On Windows 11 the title bar takes its colours from the app's theme and follows theme changes.
+- The macOS build is now Apple silicon only (the DMG is named `_aarch64`) with a custom backdrop and icon layout, and release builds use lighter optimization settings, cutting build time from about 72 minutes.
+- A Flint website (homepage, docs, install guide, FAQ, changelog, brand and legal pages) is published on GitHub Pages.
+
 ## Core Flint capabilities
 
 ### Identity, privacy and migration
