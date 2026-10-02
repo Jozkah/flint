@@ -40,7 +40,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Jev can pick the AI model for a chat message. In **Settings > Jev > Choose the AI model** you choose Off, **Ask first** or **Always** and tick the models it may use, local or hosted, each with an optional note such as "best for code".
 - Jev compares the model in use with your list for each new message and names another only when it is clearly better, so most messages stay on the current model.
 - Ask first asks before the message goes to the other model; Always switches without asking and the reply names the model that answered. Your model picker is never changed.
-- Only models that can use tools, or see an image, are offered when the message needs that. A temporary chat is never sent to Jev, and routing needs Skill suggestion to be On. It works in Chat for now.
+- Only models that can use tools, or see an image, are offered when the message needs that. A temporary chat is never sent to Jev, and routing needs Skill suggestion to be On.
+- In Cowork the same choice is made once per message, so a tool loop keeps one model, and only models that can use tools, with no smaller known context window than the session's model, are offered.
 
 ### Remote access and mobile parity
 

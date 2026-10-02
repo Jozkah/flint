@@ -17,16 +17,10 @@ import {
   type ActivatedSkill,
 } from '@/lib/skillActivation'
 import { refreshSkillCatalog } from '@/lib/skillCatalog'
-import { useModelRouting } from '@/hooks/useModelRouting'
 import { useModelProvider } from '@/hooks/useModelProvider'
-import {
-  chooseJevModel,
-  messageNeeds,
-  resolvePool,
-  type ModelTarget,
-} from '@/lib/jevModelRouting'
-import { askToSwitchModel } from '@/lib/jevModelPrompt'
-import { getProviderTitle } from '@/lib/utils'
+import { resolvePool } from '@/lib/jevModelRouting'
+import { routeModelForTurn, selectionFor } from '@/lib/jevModelTurn'
+import { useModelRouting } from '@/hooks/useModelRouting'
 
 function latestUserMessage(
   messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
@@ -131,11 +125,6 @@ export class RoutedChatTransport extends CustomChatTransport {
     this.turnModel = undefined
     const routing = useModelRouting.getState()
     if (routing.mode === 'off' || routing.pool.length === 0 || this.temporary) return
-    // Jev's own opt-in governs whether anything may be asked.
-    if (useJevSettings.getState().skillMode !== 'on') return
-
-    const providers = useModelProvider.getState().providers
-    const pool = resolvePool(routing.pool, providers)
     const thread = this.threadId ? useThreads.getState().threads[this.threadId] : undefined
 
     // A regenerate after a restart keeps what this message was routed to.
@@ -143,55 +132,34 @@ export class RoutedChatTransport extends CustomChatTransport {
       | { messageId?: string; provider?: string; model?: string }
       | undefined
     if (kept?.messageId === latest.id && kept.provider && kept.model) {
+      const pool = resolvePool(routing.pool, useModelProvider.getState().providers)
       const target = pool.find((m) => m.provider === kept.provider && m.model === kept.model)
-      if (target) this.turnModel = this.selectionFor(target)
+      if (target) this.turnModel = selectionFor(target)
       return
     }
 
-    const { selectedProvider, selectedModel } = this.getModelSelection()
-    if (!selectedProvider || !selectedModel) return
-    const currentProvider = providers.find((p) => p.provider === selectedProvider)
-    const current = {
-      provider: selectedProvider,
-      model: selectedModel.id,
-      label: `${currentProvider?.displayName || getProviderTitle(selectedProvider)} / ${selectedModel.displayName || selectedModel.id}`,
-      local: selectedProvider === 'llamacpp' || selectedProvider === 'mlx',
-      capabilities: selectedModel.capabilities ?? [],
-    }
     const lastUser = [...messages].reverse().find((m) => m.role === 'user')
-    const decision = await chooseJevModel({
+    const routed = await routeModelForTurn({
       message: latest.text,
-      current,
-      pool,
-      needs: messageNeeds(lastUser?.parts ?? [], current.capabilities),
+      parts: lastUser?.parts ?? [],
+      current: this.getModelSelection(),
+      temporary: this.temporary,
       signal,
     })
-    const target = decision?.target
-    if (!target) return
-    if (routing.mode === 'ask') {
-      const accepted = await askToSwitchModel({
-        currentLabel: current.label,
-        targetLabel: target.label,
-        signal,
-      })
-      if (!accepted) return
-    }
-    this.turnModel = this.selectionFor(target)
+    if (!routed) return
+    this.turnModel = routed.selection
     if (this.threadId && thread) {
       useThreads.getState().updateThread(this.threadId, {
         metadata: {
           ...thread.metadata,
-          jevRoutedModel: { messageId: latest.id, provider: target.provider, model: target.model },
+          jevRoutedModel: {
+            messageId: latest.id,
+            provider: routed.target.provider,
+            model: routed.target.model,
+          },
         },
       })
     }
-  }
-
-  /** The picker-shaped selection for a routed model, from the provider's own model entry. */
-  private selectionFor(target: ModelTarget) {
-    const provider = useModelProvider.getState().providers.find((p) => p.provider === target.provider)
-    const model = provider?.models.find((m) => m.id === target.model)
-    return model ? { selectedProvider: target.provider, selectedModel: model } : undefined
   }
 
   private async routeAssistantFor(

@@ -2,6 +2,7 @@ import { useWorkProfiles } from '@/hooks/useWorkProfiles'
 import { useAssistant } from '@/hooks/useAssistant'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
+import { routeModelForTurn } from '@/lib/jevModelTurn'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
 import {
@@ -137,6 +138,8 @@ export class CoworkChatTransport extends CustomChatTransport {
   private builtSig = ''
   /** One Jev route per user turn, never one per tool-loop step. */
   private lastRoutedUserMessageId: string | null = null
+  /** The user message the model decision was made for. */
+  private lastModelRoutedFor: string | null = null
   /** Persona selected for this turn. Flint keeps Cowork's existing baseline. */
   private routedAssistantInstructions: string | undefined
   /** Behavioural suggestion only; never used by the permission gate. */
@@ -161,6 +164,8 @@ export class CoworkChatTransport extends CustomChatTransport {
    * none rather than silently replaced by whatever is selected.
    */
   protected override getModelSelection() {
+    // The model Jev routed this message to, for this message only.
+    if (this.turnModel) return this.turnModel
     const chosen = this.config.model
     if (!chosen) return super.getModelSelection()
     const provider = useModelProvider.getState().getProviderByName(chosen.provider)
@@ -227,6 +232,33 @@ export class CoworkChatTransport extends CustomChatTransport {
       projectRoot: this.config.readOnlyFolder ?? undefined,
       temporary: false,
     })
+  }
+
+  /**
+   * Let Jev pick the AI model for this message, when the person turned that on.
+   * One decision per user message, never one per tool-loop step, so the run
+   * keeps one model for the whole turn; the session's own model is the default
+   * and the usual outcome. Only models that can use tools are offered, and none
+   * with a known context window smaller than the session model's, because the
+   * run's compaction and context accounting follow the session's model.
+   */
+  private async routeModel(messages: UIMessage[], signal?: AbortSignal) {
+    const latest = latestUserMessage(messages)
+    if (!latest || latest.id === this.lastModelRoutedFor) return
+    this.lastModelRoutedFor = latest.id
+    // Last message's choice must never carry over.
+    this.turnModel = undefined
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    const routed = await routeModelForTurn({
+      message: latest.text,
+      parts: lastUser?.parts ?? [],
+      current: this.getModelSelection(),
+      temporary: false,
+      requireTools: true,
+      keepContextWindow: true,
+      signal,
+    })
+    this.turnModel = routed?.selection
   }
 
   private async routePrompt(messages: UIMessage[], signal?: AbortSignal) {
@@ -296,7 +328,10 @@ export class CoworkChatTransport extends CustomChatTransport {
   override async sendMessages(
     options: Parameters<CustomChatTransport['sendMessages']>[0]
   ) {
-    await this.routePrompt(options.messages, options.abortSignal)
+    await Promise.all([
+      this.routePrompt(options.messages, options.abortSignal),
+      this.routeModel(options.messages, options.abortSignal),
+    ])
     // Read before the prompt is assembled, which names the installed skills
     // from this cache.
     // Which skills apply to this message, with their instructions, so the
