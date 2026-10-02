@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 import { useJevSettings } from '@/hooks/useJevSettings'
 import { WorkProfilesCard } from '@/containers/WorkProfilesCard'
 import { AutomationCard } from '@/containers/AutomationCard'
+import { JevModelRoutingCard } from '@/containers/JevModelRoutingCard'
 import {
   jevClearKey,
   jevReceipts,
@@ -172,6 +173,7 @@ export function JevSettingsCard({
       />
     </Card>
     <AutomationCard />
+    <JevModelRoutingCard />
     <WorkProfilesCard />
     <Card title={t('common:jev.receipts')}>
       <CardItem

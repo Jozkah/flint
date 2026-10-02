@@ -206,6 +206,7 @@ macro_rules! invoke_commands_with_extras {
         core::jev::commands::jev_status,
         core::jev::commands::jev_receipts,
         core::jev::commands::jev_suggest_skill,
+        core::jev::commands::jev_suggest_model,
         core::jev::commands::jev_rerank,
         core::agent::commands::agent_worktree_ensure,
         core::agent::commands::agent_worktree_state,

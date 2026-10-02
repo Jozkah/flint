@@ -111,6 +111,7 @@ pub fn modes_from_settings(raw: Option<&str>) -> Modes {
 pub enum Feature {
     Skill,
     Rerank,
+    Model,
 }
 
 /// Why Flint's existing behaviour was used instead.
@@ -352,7 +353,18 @@ pub fn read_skill_answer(
     resp: &SystemOneResponse,
     skills: &[SkillOption],
 ) -> Result<(Option<String>, f64), Fallback> {
-    let Some(Answer::Choice { choice, probabilities, .. }) = resp.answers.get("skill") else {
+    read_choice_answer(resp, "skill", 's', skills)
+}
+
+/// Read a choice answer (`question`, options named `<prefix>0`, `<prefix>1`, ...)
+/// back to one of `options`, or an abstention (`none`, or under the probability bar).
+fn read_choice_answer(
+    resp: &SystemOneResponse,
+    question: &str,
+    prefix: char,
+    options: &[SkillOption],
+) -> Result<(Option<String>, f64), Fallback> {
+    let Some(Answer::Choice { choice, probabilities, .. }) = resp.answers.get(question) else {
         return Err(Fallback::BadResponse);
     };
     let p = probabilities.get(choice).copied().unwrap_or(0.0);
@@ -360,14 +372,53 @@ pub fn read_skill_answer(
         return Ok((None, p));
     }
     let idx: usize = choice
-        .strip_prefix('s')
+        .strip_prefix(prefix)
         .and_then(|n| n.parse().ok())
         .ok_or(Fallback::BadResponse)?;
-    let skill = skills.get(idx).ok_or(Fallback::BadResponse)?;
+    let option = options.get(idx).ok_or(Fallback::BadResponse)?;
     if p < SKILL_MIN_PROBABILITY {
         return Ok((None, p));
     }
-    Ok((Some(skill.name.clone()), p))
+    Ok((Some(option.name.clone()), p))
+}
+
+/// The TypeSafe request for "is another AI model clearly better for this?".
+/// `current` is the model already in use, so `none` means keep it. Models are
+/// named by position (`m0`, `m1`, ...), never by their own name.
+pub fn model_request(message: &str, current: &SkillOption, models: &[SkillOption]) -> Value {
+    let mut criteria = Map::new();
+    criteria.insert(
+        "none".into(),
+        Value::String("The current model is good enough for this request; keep it.".into()),
+    );
+    for (i, m) in models.iter().enumerate() {
+        criteria.insert(
+            format!("m{i}"),
+            Value::String(format!(
+                "{}: {}",
+                clip(&m.name, 80),
+                clip(&m.description, MAX_SKILL_DESCRIPTION_CHARS)
+            )),
+        );
+    }
+    json!({
+        "model": MODEL,
+        "state": {
+            "request": clip(message, MAX_MESSAGE_CHARS),
+            "current_model": format!(
+                "{}: {}",
+                clip(&current.name, 80),
+                clip(&current.description, MAX_SKILL_DESCRIPTION_CHARS)
+            ),
+        },
+        "questions": {
+            "model": {
+                "type": "choice",
+                "instructions": "Which one of these AI models would handle this request clearly better than the current model? Choose none unless one of them is clearly the better fit; staying on the current model is the default.",
+                "criteria": criteria,
+            }
+        }
+    })
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -553,6 +604,50 @@ pub async fn suggest_skill(deps: &Deps<'_>, message: &str, skills: &[SkillOption
     SkillDecision { skill, probability, fallback, model: o.resp.map(|r| r.model) }
 }
 
+/// Suggest at most one of `models` as clearly better than `current` for `message`,
+/// or none. Governed by the same opt-in as skill suggestions (`skill_mode`).
+pub async fn suggest_model(
+    deps: &Deps<'_>,
+    message: &str,
+    current: &SkillOption,
+    models: &[SkillOption],
+) -> SkillDecision {
+    let mode = deps.modes.skills;
+    let quick = |f: Fallback| SkillDecision { skill: None, probability: None, fallback: Some(f), model: None };
+    let trimmed = message.trim_start();
+    let early = if mode == Mode::Off {
+        Some(Fallback::Disabled)
+    } else if models.is_empty() || trimmed.is_empty() {
+        Some(Fallback::NothingToDecide)
+    } else {
+        None
+    };
+    if let Some(f) = early {
+        if mode != Mode::Off {
+            record(receipt(Feature::Model, mode, &Outcome { resp: None, fallback: Some(f), latency_ms: 0, reserved: 0 }, "none".into(), Some(f), 0, 0));
+        }
+        return quick(f);
+    }
+    let models: Vec<SkillOption> = models.iter().take(MAX_SKILLS).cloned().collect();
+    let body = model_request(message, current, &models);
+    let sent_chars = body.to_string().chars().count();
+    let o = ask(deps, mode, body, SKILL_TIMEOUT).await;
+    let (decision, fallback, picked, probability) = match (&o.resp, o.fallback) {
+        (Some(resp), _) => match read_choice_answer(resp, "model", 'm', &models) {
+            Ok((Some(name), p)) => (name.clone(), None, Some(name), Some(p)),
+            Ok((None, p)) => ("none".to_string(), Some(Fallback::Abstained), None, Some(p)),
+            Err(f) => ("none".to_string(), Some(f), None, None),
+        },
+        (None, f) => ("none".to_string(), f, None, None),
+    };
+    let (picked, fallback) = match (mode, fallback) {
+        (Mode::Shadow, None) => (None, Some(Fallback::Shadow)),
+        (_, f) => (picked.filter(|_| f.is_none()), f),
+    };
+    record(receipt(Feature::Model, mode, &o, decision, fallback, sent_chars, models.len()));
+    SkillDecision { skill: picked, probability, fallback, model: o.resp.map(|r| r.model) }
+}
+
 /// Rerank a retrieval shortlist. `k` is how many the caller will keep.
 pub async fn rerank(deps: &Deps<'_>, query: &str, candidates: &[Candidate], k: usize) -> RerankDecision {
     let mode = deps.modes.rerank;
@@ -672,6 +767,22 @@ pub mod commands {
         let post = live_post();
         let deps = Deps { modes, key: deps_key(modes, modes.skills).await, post: &post };
         suggest_skill(&deps, &message, &skills).await
+    }
+
+    /// A model that is clearly better than the current one for the message, or
+    /// none. Never touches tools; the caller decides what to do with the answer.
+    #[tauri::command]
+    pub async fn jev_suggest_model(
+        app: tauri::AppHandle,
+        message: String,
+        current: SkillOption,
+        models: Vec<SkillOption>,
+    ) -> SkillDecision {
+        budget_file(&app);
+        let modes = current_modes();
+        let post = live_post();
+        let deps = Deps { modes, key: deps_key(modes, modes.skills).await, post: &post };
+        suggest_model(&deps, &message, &current, &models).await
     }
 
     /// A relevance order for a retrieval shortlist, or none.

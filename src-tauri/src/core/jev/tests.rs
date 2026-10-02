@@ -383,3 +383,71 @@ fn requests_match_the_shared_fixture_the_eval_harness_uses() {
     let query = input["rerank"]["query"].as_str().unwrap();
     assert_eq!(rerank_request(query, &candidates), fixture["expected"]["rerank"]);
 }
+
+fn models() -> Vec<SkillOption> {
+    vec![
+        SkillOption { name: "anthropic/claude-sonnet-5-5".into(), description: "Hosted. Best for code and long documents.".into() },
+        SkillOption { name: "llamacpp/qwen3-8b".into(), description: "Runs on this computer. Quick questions.".into() },
+    ]
+}
+
+fn current() -> SkillOption {
+    SkillOption { name: "llamacpp/gemma-4".into(), description: "Runs on this computer.".into() }
+}
+
+fn model_choice(choice: &str, p: f64) -> Value {
+    json!({
+        "model": "jev-1.13.0",
+        "answers": { "model": { "type": "choice", "choice": choice, "confidence": p,
+                                 "probabilities": { choice: p } } },
+        "usage": { "input_tokens": 300, "output_tokens": 20 }
+    })
+}
+
+#[test]
+fn a_model_request_names_models_by_position_and_always_offers_keeping_the_current_one() {
+    let body = model_request("refactor this module", &current(), &models());
+    let criteria = &body["questions"]["model"]["criteria"];
+    assert!(criteria["none"].as_str().unwrap().contains("keep it"));
+    assert!(criteria["m0"].as_str().unwrap().starts_with("anthropic/claude-sonnet-5-5:"));
+    assert!(criteria["m1"].as_str().unwrap().starts_with("llamacpp/qwen3-8b:"));
+    assert_eq!(body["state"]["request"], "refactor this module");
+    assert!(body["state"]["current_model"].as_str().unwrap().starts_with("llamacpp/gemma-4:"));
+    // A model's own name can never become a question key.
+    assert!(criteria.as_object().unwrap().keys().all(|k| k == "none" || k.starts_with('m')));
+}
+
+#[tokio::test]
+async fn a_clearly_better_model_is_named_and_a_weak_answer_keeps_the_current_one() {
+    let (post, _, _) = fake(Ok(model_choice("m0", 0.93)));
+    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let d = suggest_model(&deps, "refactor this module", &current(), &models()).await;
+    assert_eq!(d.skill.as_deref(), Some("anthropic/claude-sonnet-5-5"));
+    assert_eq!(d.fallback, None);
+
+    let (post, _, _) = fake(Ok(model_choice("m0", 0.4)));
+    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let d = suggest_model(&deps, "refactor this module", &current(), &models()).await;
+    assert_eq!(d.skill, None, "under the probability bar the current model stays");
+    assert_eq!(d.fallback, Some(Fallback::Abstained));
+
+    let (post, _, _) = fake(Ok(model_choice("none", 0.95)));
+    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    assert_eq!(suggest_model(&deps, "hi there friend", &current(), &models()).await.skill, None);
+}
+
+#[tokio::test]
+async fn model_routing_asks_nothing_when_off_or_without_a_list_and_rejects_a_bad_answer() {
+    let (post, calls, _) = fake(Ok(model_choice("m0", 0.99)));
+    let off = Deps { modes: Modes::default(), key: Some("ts-key".into()), post: &post };
+    assert_eq!(suggest_model(&off, "write the tests", &current(), &models()).await.fallback, Some(Fallback::Disabled));
+    let on = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    assert_eq!(suggest_model(&on, "write the tests", &current(), &[]).await.fallback, Some(Fallback::NothingToDecide));
+    assert_eq!(calls.load(Ordering::SeqCst), 0, "no request is made in either case");
+
+    let (post, _, _) = fake(Ok(model_choice("m9", 0.99)));
+    let deps = Deps { modes: modes(Mode::On, Mode::Off), key: Some("ts-key".into()), post: &post };
+    let d = suggest_model(&deps, "write the tests", &current(), &models()).await;
+    assert_eq!(d.skill, None);
+    assert_eq!(d.fallback, Some(Fallback::BadResponse));
+}

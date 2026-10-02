@@ -17,6 +17,16 @@ import {
   type ActivatedSkill,
 } from '@/lib/skillActivation'
 import { refreshSkillCatalog } from '@/lib/skillCatalog'
+import { useModelRouting } from '@/hooks/useModelRouting'
+import { useModelProvider } from '@/hooks/useModelProvider'
+import {
+  chooseJevModel,
+  messageNeeds,
+  resolvePool,
+  type ModelTarget,
+} from '@/lib/jevModelRouting'
+import { askToSwitchModel } from '@/lib/jevModelPrompt'
+import { getProviderTitle } from '@/lib/utils'
 
 function latestUserMessage(
   messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages']
@@ -100,8 +110,88 @@ export class RoutedChatTransport extends CustomChatTransport {
           ).catch(() => undefined)
         : Promise.resolve(undefined),
       this.routeAssistantFor(latest, signal),
+      this.routeModelFor(latest, messages, signal),
     ])
     this.activeSkills = skills
+  }
+
+  /**
+   * Let Jev pick the AI model for this message, when the person turned that on
+   * and listed the models it may pick from. Most messages stay on the current
+   * model: Jev names another only when it is clearly better, and in Ask mode
+   * the person is asked first. The choice is for this message only and the
+   * model picker is left alone. A temporary chat never sends its prompt to Jev.
+   */
+  private async routeModelFor(
+    latest: { id: string; text: string },
+    messages: Parameters<CustomChatTransport['sendMessages']>[0]['messages'],
+    signal?: AbortSignal
+  ) {
+    // Last message's choice must never carry over.
+    this.turnModel = undefined
+    const routing = useModelRouting.getState()
+    if (routing.mode === 'off' || routing.pool.length === 0 || this.temporary) return
+    // Jev's own opt-in governs whether anything may be asked.
+    if (useJevSettings.getState().skillMode !== 'on') return
+
+    const providers = useModelProvider.getState().providers
+    const pool = resolvePool(routing.pool, providers)
+    const thread = this.threadId ? useThreads.getState().threads[this.threadId] : undefined
+
+    // A regenerate after a restart keeps what this message was routed to.
+    const kept = thread?.metadata?.jevRoutedModel as
+      | { messageId?: string; provider?: string; model?: string }
+      | undefined
+    if (kept?.messageId === latest.id && kept.provider && kept.model) {
+      const target = pool.find((m) => m.provider === kept.provider && m.model === kept.model)
+      if (target) this.turnModel = this.selectionFor(target)
+      return
+    }
+
+    const { selectedProvider, selectedModel } = this.getModelSelection()
+    if (!selectedProvider || !selectedModel) return
+    const currentProvider = providers.find((p) => p.provider === selectedProvider)
+    const current = {
+      provider: selectedProvider,
+      model: selectedModel.id,
+      label: `${currentProvider?.displayName || getProviderTitle(selectedProvider)} / ${selectedModel.displayName || selectedModel.id}`,
+      local: selectedProvider === 'llamacpp' || selectedProvider === 'mlx',
+      capabilities: selectedModel.capabilities ?? [],
+    }
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user')
+    const decision = await chooseJevModel({
+      message: latest.text,
+      current,
+      pool,
+      needs: messageNeeds(lastUser?.parts ?? [], current.capabilities),
+      signal,
+    })
+    const target = decision?.target
+    if (!target) return
+    if (routing.mode === 'ask') {
+      const accepted = await askToSwitchModel({
+        currentLabel: current.label,
+        targetLabel: target.label,
+        signal,
+      })
+      if (!accepted) return
+    }
+    this.turnModel = this.selectionFor(target)
+    if (this.threadId && thread) {
+      useThreads.getState().updateThread(this.threadId, {
+        metadata: {
+          ...thread.metadata,
+          jevRoutedModel: { messageId: latest.id, provider: target.provider, model: target.model },
+        },
+      })
+    }
+  }
+
+  /** The picker-shaped selection for a routed model, from the provider's own model entry. */
+  private selectionFor(target: ModelTarget) {
+    const provider = useModelProvider.getState().providers.find((p) => p.provider === target.provider)
+    const model = provider?.models.find((m) => m.id === target.model)
+    return model ? { selectedProvider: target.provider, selectedModel: model } : undefined
   }
 
   private async routeAssistantFor(

@@ -91,7 +91,7 @@ export function buildJevRouteOptions(
 }
 
 /** Resolves to `null` if `signal` aborts first; a stopped turn must not wait on Jev. */
-function raceAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T | null> {
+export function raceAbort<T>(work: Promise<T>, signal?: AbortSignal): Promise<T | null> {
   if (!signal) return work
   if (signal.aborted) return Promise.resolve(null)
   return new Promise<T | null>((resolve, reject) => {
