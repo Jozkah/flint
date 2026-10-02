@@ -152,6 +152,22 @@ export const getDefaultProviderTitle = (provider: string) => {
       return 'MiniMax'
     case 'nvidia':
       return 'NVIDIA NIM'
+    case 'deepseek':
+      return 'DeepSeek'
+    case 'moonshot':
+      return 'Moonshot AI (Kimi)'
+    case 'together':
+      return 'Together AI'
+    case 'fireworks':
+      return 'Fireworks AI'
+    case 'cerebras':
+      return 'Cerebras'
+    case 'sambanova':
+      return 'SambaNova'
+    case 'zai':
+      return 'Z.ai (GLM)'
+    case 'qwen':
+      return 'Alibaba Qwen'
     case 'llmman':
       return 'llmman'
     default:

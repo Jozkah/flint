@@ -24,6 +24,7 @@
   "project-config": "Project Config",
   "permissions": "Tool Permissions",
   "mcp": "MCP",
+  "hide-secrets": "Hide Secrets",
   "embedding-separator": { "title": "Embedding", "type": "separator" },
   "sdk": "Agent SDK",
   "sdk-ts": "JavaScript Quickstart",
