@@ -37,7 +37,7 @@
   "reportAnIssueDesc": "Found a bug? Help us out by filing an issue on GitHub.",
   "reportIssue": "Report Issue",
   "credits": "Credits",
-  "creditsDesc1": "👋 Flint is built with ❤️ by Jozkah.",
+  "creditsDesc1": "👋 Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
   "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community.",
   "appVersion": "App Version",
   "dataFolder": {
@@ -402,7 +402,7 @@
     "reportAnIssueDesc": "Found a bug? Help us out by filing an issue on GitHub.",
     "reportIssue": "Report Issue",
     "credits": "Credits",
-    "creditsDesc1": "👋 Flint is built with ❤️ by Jozkah.",
+    "creditsDesc1": "👋 Flint is built with ❤️ by Jozkah, based on Jan from the Menlo Research team.",
     "creditsDesc2": "Special thanks to our open-source dependencies—especially llama.cpp and Tauri—and to our amazing AI community."
   },
   "extensions": {
