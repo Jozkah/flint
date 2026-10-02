@@ -183,6 +183,23 @@ describe('Models page (/settings/providers)', () => {
     )
   })
 
+  it('says "No API key" for a switched-on remote provider without a key', async () => {
+    const openai = h.providers.find((p: any) => p.provider === 'openai')
+    openai.api_key = ''
+    try {
+      await renderPage()
+      const tile = screen.getByTestId('provider-row-openai')
+      expect(tile).toHaveTextContent('engine:status.noKey')
+      expect(tile).not.toHaveTextContent('engine:status.connected')
+      // A LAN/loopback custom endpoint and a local engine are not flagged.
+      expect(screen.getByTestId('provider-row-llamacpp')).toHaveTextContent(
+        'engine:status.running'
+      )
+    } finally {
+      openai.api_key = 'sk-1'
+    }
+  })
+
   it('opens an enabled provider from its tile', async () => {
     await renderPage()
     fireEvent.click(

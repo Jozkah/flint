@@ -933,6 +933,8 @@
   "artifactsFilterLabel": "Filter by kind",
   "artifactsCount_one": "{{count}} item",
   "artifactsCount_other": "{{count}} items",
+  "previewMessageCount_one": "{{count}} message",
+  "previewMessageCount_other": "{{count}} messages",
   "artifactDetails": "Item details",
   "artifactBack": "Back to Library",
   "artifactClose": "Close details",
