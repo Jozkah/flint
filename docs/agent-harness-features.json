@@ -6885,7 +6885,9 @@
       "dependencies": [],
       "owner": "lane-10-provider-enterprise",
       "files": [
-        "src-tauri/src/core/downloads/helpers.rs"
+        "src-tauri/src/core/net/transport.rs",
+        "web-app/src/routes/settings/https-proxy.tsx",
+        "web-app/src/hooks/useProxyConfig.ts"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -7305,7 +7307,7 @@
       "owner": "lane-21-sessions",
       "files": [
         "web-app/src/hooks/useCoworkSessions.ts",
-        "web-app/src/components/left-sidebar/NavCowork.tsx"
+        "web-app/src/components/shell/nav/CoworkNav.tsx"
       ],
       "securityImpact": "medium",
       "acceptanceCriteria": [
@@ -7390,7 +7392,7 @@
         "src-tauri/src/core/agent/session_bundle.rs",
         "src-tauri/src/core/agent/commands.rs",
         "web-app/src/hooks/useCoworkSessions.ts",
-        "web-app/src/components/left-sidebar/NavCowork.tsx"
+        "web-app/src/components/shell/nav/CoworkNav.tsx"
       ],
       "securityImpact": "high",
       "acceptanceCriteria": [
@@ -7689,7 +7691,7 @@
         "src-tauri/src/core/agent/commands.rs",
         "web-app/src/lib/sessionHandoff.ts",
         "web-app/src/containers/CoworkHandoffNotice.tsx",
-        "web-app/src/components/left-sidebar/NavCowork.tsx",
+        "web-app/src/components/shell/nav/CoworkNav.tsx",
         "web-app/src/hooks/useCoworkSessions.ts",
         "web-app/src/routes/cowork.tsx"
       ],
