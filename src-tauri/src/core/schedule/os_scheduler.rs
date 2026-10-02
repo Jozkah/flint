@@ -7,7 +7,10 @@
 //! same fire twice. Closing the app does not stop it; uninstalling removes
 //! every file and registration this module made.
 //!
-//! * Windows: a per-user Task Scheduler task (`schtasks /Create /XML`).
+//! * Windows: a per-user Task Scheduler task (`schtasks /Create /XML`). The
+//!   CLI is a console program, which Task Scheduler would show in a window
+//!   every few minutes, so where `conhost.exe --headless` exists the task runs
+//!   the tick through it and no window opens.
 //! * macOS: a LaunchAgent in `~/Library/LaunchAgents`.
 //! * Linux: a `systemd --user` service and timer.
 //!
@@ -67,6 +70,10 @@ pub struct Install {
     /// scheduler does not carry the app's environment.
     pub data_folder: PathBuf,
     pub interval_minutes: u32,
+    /// Windows only: the `conhost.exe` that runs the tick without a console
+    /// window (`conhost.exe --headless <command>`). `None` runs the program
+    /// directly, which is what hosts without it get.
+    pub headless_host: Option<PathBuf>,
 }
 
 impl Install {
@@ -75,6 +82,28 @@ impl Install {
             exe,
             data_folder,
             interval_minutes: interval_minutes.clamp(MIN_INTERVAL_MINUTES, MAX_INTERVAL_MINUTES),
+            headless_host: None,
+        }
+    }
+
+    pub fn with_headless_host(mut self, host: Option<PathBuf>) -> Install {
+        self.headless_host = host;
+        self
+    }
+
+    /// The program the Windows task starts and its arguments: the tick itself,
+    /// or the tick behind `conhost.exe --headless`.
+    fn windows_command(&self) -> (String, Vec<String>) {
+        match &self.headless_host {
+            Some(host) => {
+                let mut args = vec!["--headless".to_string(), quote(&self.exe.to_string_lossy())];
+                args.extend(self.tick_args().iter().map(|a| quote(a)));
+                (host.to_string_lossy().to_string(), args)
+            }
+            None => (
+                self.exe.to_string_lossy().to_string(),
+                self.tick_args().iter().map(|a| quote(a)).collect(),
+            ),
         }
     }
 
@@ -89,8 +118,13 @@ impl Install {
         ]
     }
 
-    /// The tick as one line a person can read and run themselves.
+    /// The tick as one line a person can read and run themselves. On Windows
+    /// with a headless host this is the exact command the task runs.
     pub fn tick_command(&self) -> String {
+        if self.headless_host.is_some() {
+            let (program, args) = self.windows_command();
+            return std::iter::once(quote(&program)).chain(args).collect::<Vec<_>>().join(" ");
+        }
         let mut parts = vec![quote(&self.exe.to_string_lossy())];
         parts.extend(self.tick_args().iter().map(|a| quote(a)));
         parts.join(" ")
@@ -119,7 +153,7 @@ fn xml_escape(text: &str) -> String {
 /// The Task Scheduler definition. Per user, runs only while that user is
 /// logged on, never overlaps itself, catches up a start missed while asleep.
 pub fn windows_task_xml(i: &Install) -> String {
-    let args: Vec<String> = i.tick_args().iter().map(|a| quote(a)).collect();
+    let (program, args) = i.windows_command();
     format!(
         r#"<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -159,7 +193,7 @@ pub fn windows_task_xml(i: &Install) -> String {
 </Task>
 "#,
         minutes = i.interval_minutes,
-        command = xml_escape(&i.exe.to_string_lossy()),
+        command = xml_escape(&program),
         arguments = xml_escape(&args.join(" ")),
     )
 }
@@ -363,8 +397,15 @@ impl Installer for SystemInstaller {
     }
 
     fn run(&self, program: &str, args: &[String]) -> Result<String, String> {
-        let out = std::process::Command::new(program)
-            .args(args)
+        let mut command = std::process::Command::new(program);
+        command.args(args);
+        // No console window for the helper programs either.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(0x0800_0000);
+        }
+        let out = command
             .output()
             .map_err(|e| format!("{program} could not be run: {e}"))?;
         let text = format!(
@@ -380,6 +421,41 @@ impl Installer for SystemInstaller {
             Err(if text.is_empty() { format!("{program} exited with {}", out.status) } else { text })
         }
     }
+}
+
+/// The first Windows build that has `conhost.exe --headless` (version 1809).
+const HEADLESS_MIN_BUILD: u32 = 17763;
+
+/// The build number in `cmd /c ver` output, e.g.
+/// `Microsoft Windows [Version 10.0.26100.1234]` gives 26100.
+fn windows_build(ver_output: &str) -> Option<u32> {
+    let version = ver_output.split("Version").nth(1)?;
+    let version = version.trim_start().split(|c: char| c == ']' || c.is_whitespace()).next()?;
+    version.split('.').nth(2)?.parse().ok()
+}
+
+/// The console host that can run the tick without a window, when this
+/// Windows has one: 1809 or newer, with `conhost.exe` in System32. Anything
+/// else (older Windows, an unreadable version, a missing file) gets `None` and
+/// the task runs the program directly, which can show a console window.
+pub fn headless_host(platform: Platform, installer: &dyn Installer, system_root: &Path) -> Option<PathBuf> {
+    if platform != Platform::Windows {
+        return None;
+    }
+    let build = windows_build(&installer.run("cmd", &["/c".to_string(), "ver".to_string()]).ok()?)?;
+    if build < HEADLESS_MIN_BUILD {
+        return None;
+    }
+    let host = system_root.join("System32").join("conhost.exe");
+    installer.file_exists(&host).then_some(host)
+}
+
+/// The Windows folder, from the environment, as the installer sees it.
+pub fn system_root() -> PathBuf {
+    std::env::var_os("SystemRoot")
+        .or_else(|| std::env::var_os("windir"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
 }
 
 /// The macOS user id, which launchd domains are named by.
@@ -516,6 +592,93 @@ mod tests {
         assert!(xml.starts_with("<?xml"));
     }
 
+    fn headless() -> Install {
+        install().with_headless_host(Some(PathBuf::from("C:/Windows/System32/conhost.exe")))
+    }
+
+    #[test]
+    fn with_a_headless_host_the_task_runs_the_tick_through_conhost() {
+        let xml = windows_task_xml(&headless());
+        assert!(xml.contains("<Command>C:/Windows/System32/conhost.exe</Command>"), "{xml}");
+        assert!(
+            xml.contains(
+                "<Arguments>--headless &quot;/opt/Flint App/flint&quot; cli schedule tick --data &quot;/home/u/Flint data&quot;</Arguments>"
+            ),
+            "{xml}"
+        );
+        // The rest of the task is unchanged.
+        assert!(xml.contains("<Interval>PT5M</Interval>"));
+        assert!(xml.contains("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>"));
+    }
+
+    #[test]
+    fn without_one_the_task_runs_the_program_directly() {
+        let xml = windows_task_xml(&install());
+        assert!(xml.contains("<Command>/opt/Flint App/flint</Command>"));
+        assert!(!xml.contains("--headless"));
+    }
+
+    #[test]
+    fn the_shown_command_is_exactly_what_the_task_runs() {
+        assert_eq!(
+            headless().tick_command(),
+            "C:/Windows/System32/conhost.exe --headless \"/opt/Flint App/flint\" cli schedule tick --data \"/home/u/Flint data\""
+        );
+        let lines = preview(Platform::Windows, &headless(), Path::new("/h"), "");
+        assert!(lines.last().unwrap().starts_with("every 5 min: C:/Windows/System32/conhost.exe --headless "));
+        // Other platforms never get the host, even if one were set.
+        let linux = Install::new("/x/flint".into(), "/d".into(), 5);
+        assert_eq!(linux.tick_command(), "/x/flint cli schedule tick --data /d");
+        assert!(!systemd_service(&headless()).contains("conhost"));
+        assert!(!launchd_plist(&headless(), Path::new("/l")).contains("conhost"));
+    }
+
+    #[test]
+    fn a_hostile_host_path_cannot_break_out_of_the_xml() {
+        let i = install().with_headless_host(Some(PathBuf::from("C:/a&b/conhost.exe")));
+        let xml = windows_task_xml(&i);
+        assert!(xml.contains("<Command>C:/a&amp;b/conhost.exe</Command>"));
+    }
+
+    #[test]
+    fn the_windows_build_is_read_from_ver_output() {
+        assert_eq!(windows_build("
+Microsoft Windows [Version 10.0.26100.1234]
+"), Some(26100));
+        assert_eq!(windows_build("Microsoft Windows [Version 10.0.17763.1]"), Some(17763));
+        assert_eq!(windows_build("Microsoft Windows [Version 6.1.7601]"), Some(7601));
+        assert_eq!(windows_build("Microsoft Windows [Version 10.0]"), None);
+        assert_eq!(windows_build("nonsense"), None);
+        assert_eq!(windows_build(""), None);
+    }
+
+    #[test]
+    fn the_headless_host_is_used_only_where_it_exists() {
+        let root = Path::new("C:/Windows");
+        let host = root.join("System32").join("conhost.exe");
+        let with = |ver: Option<&str>, has_conhost: bool| {
+            let fake = Fake { ver: ver.map(str::to_string), ..Default::default() };
+            if has_conhost {
+                fake.files.borrow_mut().insert(host.clone(), Vec::new());
+            }
+            headless_host(Platform::Windows, &fake, root)
+        };
+        let win11 = "Microsoft Windows [Version 10.0.26100.1]";
+        assert_eq!(with(Some(win11), true), Some(host.clone()));
+        // 1809 is the first with --headless; 1803 is not.
+        assert_eq!(with(Some("Microsoft Windows [Version 10.0.17763.1]"), true), Some(host.clone()));
+        assert_eq!(with(Some("Microsoft Windows [Version 10.0.17134.1]"), true), None);
+        // conhost missing, version unreadable, or `ver` itself failing: fall back.
+        assert_eq!(with(Some(win11), false), None);
+        assert_eq!(with(Some("garbage"), true), None);
+        assert_eq!(with(None, true), None);
+        // Never on another platform.
+        let fake = Fake { ver: Some(win11.into()), ..Default::default() };
+        fake.files.borrow_mut().insert(host, Vec::new());
+        assert_eq!(headless_host(Platform::Linux, &fake, root), None);
+        assert_eq!(headless_host(Platform::MacOs, &fake, root), None);
+    }
+
     #[test]
     fn hostile_paths_cannot_break_out_of_the_xml() {
         let i = Install::new(PathBuf::from("C:/a&b/<x>/flint.exe"), PathBuf::from("D:/it's"), 5);
@@ -596,6 +759,8 @@ mod tests {
         registered: RefCell<bool>,
         calls: RefCell<Vec<String>>,
         fail_register: bool,
+        /// What `cmd /c ver` prints, if it works at all.
+        ver: Option<String>,
     }
 
     impl Installer for Fake {
@@ -627,6 +792,8 @@ mod tests {
                 return Err("not found".into());
             } else if program == "id" {
                 return Ok("501".into());
+            } else if program == "cmd" {
+                return self.ver.clone().ok_or_else(|| "no cmd".to_string());
             }
             Ok(String::new())
         }

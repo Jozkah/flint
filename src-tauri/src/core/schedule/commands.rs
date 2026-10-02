@@ -221,14 +221,17 @@ pub fn schedule_tools() -> Vec<ToolView> {
 fn os_install<R: Runtime>(app: &AppHandle<R>, interval: Option<u32>) -> Result<(os_scheduler::Install, PathBuf), String> {
     let exe = tauri_plugin_agent_tools::worker::supervisor_binary().map_err(|e| e.message().to_string())?;
     let home = dirs::home_dir().ok_or_else(|| "this user has no home folder".to_string())?;
-    Ok((
-        os_scheduler::Install::new(
-            exe,
-            data_folder(app),
-            interval.unwrap_or(os_scheduler::DEFAULT_INTERVAL_MINUTES),
-        ),
-        home,
-    ))
+    let install = os_scheduler::Install::new(
+        exe,
+        data_folder(app),
+        interval.unwrap_or(os_scheduler::DEFAULT_INTERVAL_MINUTES),
+    )
+    .with_headless_host(os_scheduler::headless_host(
+        os_scheduler::Platform::current(),
+        &os_scheduler::SystemInstaller,
+        &os_scheduler::system_root(),
+    ));
+    Ok((install, home))
 }
 
 /// Whether the OS-scheduler entry is installed, and what installing it would
