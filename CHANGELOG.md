@@ -171,6 +171,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - MCP settings show each server's state (stopped, starting, running or failed) with **Start** and **Stop** buttons and a **Start with Flint** switch.
 - One MCP server that hangs no longer freezes sending a message; each server is given a few seconds and a slow one falls back to its last known tools.
 - Hovering a Cowork session or room in the sidebar shows a preview card, like chat rows.
+- The ten new hosted providers have their own logos, the skills and memories lists scroll instead of growing the page, the Hardware bars use the full width, and Jev's settings are split into **Setup**, **Automatic** and **Work profiles** tabs, with search results opening the right one.
 
 ### Cowork and agent reliability
 
@@ -293,7 +294,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 - Deleting a chat, room, project, Cowork session, assistant or Studio result now moves it to an **Archive** page instead of destroying it. The link sits in the sidebar's Support group, above Settings, and the phone app has its own Archive screen.
 - **Restore** puts an item back where it was. **Delete permanently** is only in the right-click menu on the Archive page and asks for confirmation. Delete dialogs just say the item moves to the Archive.
-- Each row has a preview, and the right-click menu opens at the pointer and stays inside the window.
+- Each row has a preview that shows what the item holds without restoring it: the first messages of a chat or room, a Cowork session's folder and last turns, a project's chats, an assistant's instructions, or a Studio result's recipe and thumbnail. The right-click menu opens at the pointer and stays inside the window.
 - The Archive is on by default. Archived items are deleted after 30 days (0 keeps them), threads untouched for a set number of days can be archived automatically (off by default), and **Empty archive** clears it.
 - A Cowork session whose managed worktree holds unmerged work cannot be purged until that work is dealt with.
 - A restored Cowork session registers with the session mailbox again, and sessions archived by an earlier build recover when restored.
@@ -304,6 +305,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - A chat exports the branch you are viewing, or **all versions** nested under the message each replaces.
 - Tool output, reasoning and absolute paths are left out unless you ask, credentials are redacted, and an export over 50 MB is refused with a message that says what to do.
 - PDF uses the system print dialog. Where printing is not available it saves a print-ready HTML file instead. PNG refuses pages taller than about 16,000 pixels and says so.
+- Cowork's Export submenu also holds the session bundle (JSON) used to move a session to another computer.
 
 ### Chat branches
 
@@ -326,6 +328,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - After a gap, a missed task runs once on the next start by default, and can instead be skipped or caught up.
 - An opt-in switch can install an operating-system entry (a Windows scheduled task, a macOS LaunchAgent or a Linux systemd timer) that runs `flint cli schedule tick`, so tasks run while Flint is closed. It shows exactly what it will write and only installs after you confirm.
 - `flint cli schedule` lists tasks, runs one and shows its runs.
+- On Windows the closed-app task runs hidden, so no console window flashes each time it ticks.
 
 ### Agent browser
 
