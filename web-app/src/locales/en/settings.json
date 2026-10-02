@@ -250,7 +250,6 @@
     "tabBehaviour": "Behaviour",
     "search": "Search",
     "noMatches": "Nothing matches that search.",
-    "showMore": "Show {{count}} more",
     "skillsHelp": "Skills are instructions the agent can load when a task needs them. Skills that come from a plugin are read-only here.",
     "yourSkills": "Your skills ({{count}})",
     "pluginSkills": "From plugins ({{count}})",

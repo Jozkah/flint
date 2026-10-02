@@ -33,6 +33,13 @@ const PROVIDER_LOGOS: Record<string, BrandLogo> = {
   ollama: logo('ollama', true),
   deepseek: logo('deepseek-color'),
   qwen: logo('qwen-color'),
+  moonshot: logo('moonshot', true),
+  perplexity: logo('perplexity-color'),
+  together: logo('together-color'),
+  fireworks: logo('fireworks-color'),
+  cerebras: logo('cerebras-color'),
+  sambanova: logo('sambanova-color'),
+  zai: logo('zai', true),
 }
 
 export function providerLogo(provider: string): BrandLogo | undefined {

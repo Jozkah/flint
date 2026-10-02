@@ -72,6 +72,9 @@ type Editor = {
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
 const messageOf = errorText
 
+/** A long list scrolls inside its card instead of stretching the page. */
+const LIST_CAP = 'max-h-[26rem] overflow-y-auto overscroll-contain pr-1 [scrollbar-width:thin]'
+
 const SKILL_TEMPLATE = '---\ndescription: \n---\n\n'
 
 function AgentToolsContent() {
@@ -111,7 +114,6 @@ function AgentToolsContent() {
   // its own tab and its own search instead of one scroll of everything.
   const [tab, setTab] = useState<'behaviour' | 'skills' | 'memories'>('behaviour')
   const [query, setQuery] = useState('')
-  const [showAll, setShowAll] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -249,7 +251,6 @@ function AgentToolsContent() {
     !q ||
     name.toLowerCase().includes(q) ||
     (description ?? '').toLowerCase().includes(q)
-  const LIMIT = 40
   const ownSkills = skills.filter(
     (k) => !isPluginSkill(k) && matches(k.name, k.description)
   )
@@ -267,7 +268,6 @@ function AgentToolsContent() {
         value={query}
         onChange={(e) => {
           setQuery(e.target.value)
-          setShowAll(false)
         }}
         placeholder={t('settings:agentTools.search')}
         aria-label={t('settings:agentTools.search')}
@@ -275,14 +275,6 @@ function AgentToolsContent() {
       />
     </div>
   )
-  const more = (total: number, shown: number) =>
-    total > shown ? (
-      <div className="flex justify-center py-2">
-        <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-          {t('settings:agentTools.showMore', { count: total - shown })}
-        </Button>
-      </div>
-    ) : null
 
   const addButton = (kind: EntryKind) => (
     <Button
@@ -312,8 +304,7 @@ function AgentToolsContent() {
             onValueChange={(v) => {
               setTab(v)
               setQuery('')
-              setShowAll(false)
-            }}
+                }}
             options={[
               { value: 'behaviour', label: t('settings:agentTools.tabBehaviour') },
               {
@@ -501,12 +492,9 @@ function AgentToolsContent() {
             ) : shownMemories.length === 0 ? (
               <CardItem description={t('settings:agentTools.noMatches')} />
             ) : (
-              <>
-                {(showAll ? shownMemories : shownMemories.slice(0, LIMIT)).map(
-                  (name) => entryRow('memory', name)
-                )}
-                {more(shownMemories.length, showAll ? shownMemories.length : LIMIT)}
-              </>
+              <div className={LIST_CAP}>
+                {shownMemories.map((name) => entryRow('memory', name))}
+              </div>
             )}
           </Card>
         )}
@@ -527,27 +515,24 @@ function AgentToolsContent() {
             ) : ownSkills.length + pluginSkills.length === 0 ? (
               <CardItem description={t('settings:agentTools.noMatches')} />
             ) : (
-              <>
+              <div className={LIST_CAP}>
                 {ownSkills.length > 0 && pluginSkills.length > 0 && (
                   <p className="px-1 pt-1 text-xs font-medium text-muted-foreground">
                     {t('settings:agentTools.yourSkills', { count: ownSkills.length })}
                   </p>
                 )}
-                {(showAll ? ownSkills : ownSkills.slice(0, LIMIT)).map((skill) =>
+                {ownSkills.map((skill) =>
                   entryRow('skill', skill.name, skill.description)
                 )}
-                {more(ownSkills.length, showAll ? ownSkills.length : LIMIT)}
                 {pluginSkills.length > 0 && (
                   <p className="px-1 pt-3 text-xs font-medium text-muted-foreground">
                     {t('settings:agentTools.pluginSkills', { count: pluginSkills.length })}
                   </p>
                 )}
-                {(showAll ? pluginSkills : pluginSkills.slice(0, LIMIT)).map(
-                  (skill) =>
-                    entryRow('skill', skill.name, skill.description, skill.plugin)
+                {pluginSkills.map((skill) =>
+                  entryRow('skill', skill.name, skill.description, skill.plugin)
                 )}
-                {more(pluginSkills.length, showAll ? pluginSkills.length : LIMIT)}
-              </>
+              </div>
             )}
           </Card>
         )}
