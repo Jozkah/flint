@@ -450,15 +450,56 @@ fn covered_by(rule: &str, host: &str) -> bool {
 
 // --- redirects ---------------------------------------------------------------
 
-/// Whether a navigation hop (a redirect, a link, a script) may load while the
-/// agent holds the pane. Only a hard refusal stops a hop: a first visit cannot
-/// be approved from inside a navigation callback, and loading a page nobody
-/// has read yet gives the agent nothing -- the next tool call on it asks. What
-/// must never load is the same list `decide` refuses outright: an internal
-/// address, a denied or off-list domain, anything with the feature or the
-/// network switched off, and (for a run with nobody to ask) an unapproved host.
-pub fn hop_allowed(url: &Url, i: &Inputs) -> bool {
-    !matches!(decide(url, i), Decision::Deny(_))
+/// What to do with a navigation hop (a redirect, a link, a script) while the
+/// agent holds the pane.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Hop {
+    Allow,
+    /// A public site nobody has approved. The hop is stopped before anything is
+    /// requested from it, and the user is asked about `host`.
+    NeedsApproval { host: String },
+    /// Never allowed: an internal address, a denied or off-list domain, a
+    /// switched-off feature, a file URL.
+    Refused(DenyReason),
+}
+
+fn strip_www(host: &str) -> &str {
+    host.strip_prefix("www.").unwrap_or(host)
+}
+
+/// Whether `host` is one of the sites the agent was approved to open, or lives
+/// under one: the same host, `www.` on or off, or a subdomain. Siblings are not
+/// related (`evil.github.io` is not `good.github.io`), because without the
+/// public-suffix list that is the only reading that cannot be abused on shared
+/// hosting domains.
+pub fn related_to_visited(host: &str, visits: &[String]) -> bool {
+    visits.iter().any(|v| {
+        let base = strip_www(v);
+        let h = strip_www(host);
+        h == base || h.ends_with(&format!(".{base}"))
+    })
+}
+
+/// The hop decision. This is `decide`, except that a first visit is not
+/// something a navigation callback can ask about, so it is *stopped* (and
+/// reported) rather than loaded: a hostile page must not be able to make Flint
+/// request an arbitrary public address, with data in its query string, just by
+/// redirecting there. Hops inside the approved site stay allowed.
+pub fn hop_verdict(url: &Url, i: &Inputs, visits: &[String]) -> Hop {
+    match decide(url, i) {
+        Decision::Allow => Hop::Allow,
+        Decision::Ask { host } => {
+            if related_to_visited(&host, visits) {
+                Hop::Allow
+            } else {
+                Hop::NeedsApproval { host }
+            }
+        }
+        // Nobody to ask, but the approved site's own pages are covered by the
+        // approval (a saved rule or the project's list) that opened it.
+        Decision::Deny(DenyReason::Unattended(h)) if related_to_visited(&h, visits) => Hop::Allow,
+        Decision::Deny(reason) => Hop::Refused(reason),
+    }
 }
 
 #[cfg(test)]
@@ -758,29 +799,133 @@ mod tests {
         assert_eq!(run("https://example.com/", &r, &preset, &[], true), Decision::Allow);
     }
 
+    fn hop(url: &str, rules: &RuleSet, net: &NetworkPolicy, granted: &[&str], unattended: bool, visits: &[&str]) -> Hop {
+        let g = |h: &str| granted.contains(&h);
+        let visits: Vec<String> = visits.iter().map(|v| v.to_string()).collect();
+        hop_verdict(
+            &u(url),
+            &Inputs { enabled: true, network: net, rules, granted: &g, unattended },
+            &visits,
+        )
+    }
+
     #[test]
-    fn redirect_hops_are_judged_like_any_url() {
+    fn a_redirect_from_an_allowed_site_to_an_unapproved_public_host_is_stopped() {
         let r = rules(&[("example.com", Verdict::Allow, false)]);
-        let g = |_: &str| false;
-        let i = Inputs { enabled: true, network: &net(), rules: &r, granted: &g, unattended: false };
-        assert!(hop_allowed(&u("https://example.com/next"), &i));
-        // A redirect to a metadata address, a loopback one, or a file never loads.
-        assert!(!hop_allowed(&u("http://169.254.169.254/latest/"), &i));
-        assert!(!hop_allowed(&u("http://[::ffff:a9fe:a9fe]/"), &i));
-        assert!(!hop_allowed(&u("http://2130706433/"), &i));
-        assert!(!hop_allowed(&u("file:///etc/passwd"), &i));
-        assert!(!hop_allowed(&u("https://user@example.com/"), &i));
-        // A site nobody has approved yet may load (the next tool call asks)...
-        assert!(hop_allowed(&u("https://other.test/"), &i));
-        // ...unless nobody is there to ask.
-        let unattended = Inputs { unattended: true, ..i };
-        assert!(!hop_allowed(&u("https://other.test/"), &unattended));
-        assert!(hop_allowed(&u("https://example.com/next"), &unattended));
-        // A project allow list turns every off-list hop into a refusal.
+        let v = ["example.com"];
+        // The hostile case: an allowed page sends Flint to somewhere with data in the query.
+        assert_eq!(
+            hop("https://collector.evil.test/c?data=SECRET", &r, &net(), &[], false, &v),
+            Hop::NeedsApproval { host: "collector.evil.test".into() }
+        );
+        // Lookalikes of the approved host are different hosts.
+        for lookalike in ["https://example.com.evil.test/", "https://notexample.com/", "https://example.org/"] {
+            assert!(matches!(hop(lookalike, &r, &net(), &[], false, &v), Hop::NeedsApproval { .. }), "{lookalike}");
+        }
+    }
+
+    #[test]
+    fn hops_inside_the_approved_site_stay_allowed() {
+        let r = rules(&[("example.com", Verdict::Allow, false)]);
+        let v = ["example.com"];
+        for same in [
+            "https://example.com/next?page=2",
+            "https://www.example.com/",
+            "https://docs.example.com/guide",
+            "https://a.b.example.com/",
+        ] {
+            assert_eq!(hop(same, &r, &net(), &[], false, &v), Hop::Allow, "{same}");
+        }
+        // And the other way: approved www, hop to the bare domain.
+        assert_eq!(hop("https://example.com/", &RuleSet::default(), &net(), &["www.example.com"], false, &["www.example.com"]), Hop::Allow);
+    }
+
+    #[test]
+    fn a_siblings_is_not_the_approved_site() {
+        // Shared hosting: approving one tenant approves nobody else.
+        let v = ["good.github.io"];
+        assert!(matches!(
+            hop("https://evil.github.io/", &RuleSet::default(), &net(), &["good.github.io"], false, &v),
+            Hop::NeedsApproval { .. }
+        ));
+        assert!(matches!(
+            hop("https://github.io/", &RuleSet::default(), &net(), &["good.github.io"], false, &v),
+            Hop::NeedsApproval { .. }
+        ));
+    }
+
+    #[test]
+    fn a_redirect_to_a_host_with_its_own_rule_or_grant_is_allowed() {
+        let r = rules(&[("example.com", Verdict::Allow, false), ("cdn.partner.test", Verdict::Allow, false)]);
+        let v = ["example.com"];
+        assert_eq!(hop("https://cdn.partner.test/x", &r, &net(), &[], false, &v), Hop::Allow);
+        assert_eq!(hop("https://other.test/", &r, &net(), &["other.test"], false, &v), Hop::Allow);
+        // A wildcard rule covers a subdomain; the project's list does too.
+        let w = rules(&[("*.partner.test", Verdict::Allow, false)]);
+        assert_eq!(hop("https://a.partner.test/", &w, &net(), &[], false, &[]), Hop::Allow);
+        let listed = NetworkPolicy { allowed: true, allow_domains: vec!["docs.rs".into()], deny_domains: vec![] };
+        assert_eq!(hop("https://api.docs.rs/", &RuleSet::default(), &listed, &[], false, &[]), Hop::Allow);
+    }
+
+    #[test]
+    fn private_and_internal_targets_are_refused_not_asked_about() {
+        let r = rules(&[("example.com", Verdict::Allow, false)]);
+        let v = ["example.com"];
+        for bad in [
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::ffff:a9fe:a9fe]/",
+            "http://2130706433/",
+            "http://localhost:8080/",
+            "http://192.168.1.1/",
+            "file:///etc/passwd",
+            "https://user@example.com/",
+        ] {
+            assert!(matches!(hop(bad, &r, &net(), &[], false, &v), Hop::Refused(_)), "{bad}");
+        }
+        // The reason for a metadata redirect is the real one, not "only http and https".
+        let Hop::Refused(reason) = hop("http://169.254.169.254/latest/", &r, &net(), &[], false, &v) else { panic!() };
+        let msg = reason.message();
+        assert!(msg.contains("cloud metadata"), "{msg}");
+        assert!(!msg.contains("only http and https"), "{msg}");
+    }
+
+    #[test]
+    fn denied_rules_and_project_lists_beat_relatedness() {
+        let r = rules(&[("example.com", Verdict::Allow, false), ("ads.example.com", Verdict::Deny, false)]);
+        assert!(matches!(
+            hop("https://ads.example.com/", &r, &net(), &[], false, &["example.com"]),
+            Hop::Refused(DenyReason::RuleDenied(_))
+        ));
+        let n = NetworkPolicy { allowed: true, allow_domains: vec![], deny_domains: vec!["tracker.example.com".into()] };
+        assert!(matches!(
+            hop("https://tracker.example.com/", &rules(&[]), &n, &[], false, &["example.com"]),
+            Hop::Refused(DenyReason::ProjectDenied(_))
+        ));
+        // A project allow list still limits every hop.
         let listed = NetworkPolicy { allowed: true, allow_domains: vec!["example.com".into()], deny_domains: vec![] };
-        let g2 = |_: &str| false;
-        let strict = Inputs { enabled: true, network: &listed, rules: &r, granted: &g2, unattended: false };
-        assert!(!hop_allowed(&u("https://example.com.evil.test/"), &strict));
-        assert!(hop_allowed(&u("https://cdn.example.com/"), &strict));
+        assert!(matches!(
+            hop("https://other.test/", &rules(&[]), &listed, &[], false, &["example.com"]),
+            Hop::Refused(DenyReason::ProjectNotAllowed(_))
+        ));
+    }
+
+    #[test]
+    fn unattended_runs_keep_to_the_approved_site() {
+        let r = rules(&[("example.com", Verdict::Allow, false)]);
+        let v = ["example.com"];
+        assert_eq!(hop("https://docs.example.com/", &RuleSet::default(), &net(), &[], true, &v), Hop::Allow);
+        assert!(matches!(
+            hop("https://other.test/", &r, &net(), &[], true, &v),
+            Hop::Refused(DenyReason::Unattended(_))
+        ));
+    }
+
+    #[test]
+    fn network_switch_off_refuses_every_hop() {
+        let off = NetworkPolicy { allowed: false, allow_domains: vec![], deny_domains: vec![] };
+        assert_eq!(
+            hop("https://example.com/", &rules(&[("example.com", Verdict::Allow, false)]), &off, &[], false, &["example.com"]),
+            Hop::Refused(DenyReason::NetworkOff)
+        );
     }
 }

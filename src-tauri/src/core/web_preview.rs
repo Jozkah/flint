@@ -179,16 +179,10 @@ mod desktop {
                 if !ok {
                     log::warn!("web preview blocked navigation to {u}");
                 } else if !crate::core::browser_agent::navigation_permitted(&nav_label, u) {
-                    // The agent holds the pane and the hop is one its domain
-                    // policy refuses (a redirect to an internal address, say).
-                    let _ = nav_app.emit_to(
-                        EventTarget::webview("main"),
-                        crate::core::browser_agent::EVENT_BLOCKED,
-                        serde_json::json!({
-                            "url": u.as_str(),
-                            "reason": crate::core::browser_agent::navigation_refusal(u),
-                        }),
-                    );
+                    // The agent holds the pane and the policy stops this hop.
+                    // This callback runs on the webview's thread: it only
+                    // queues the notice and never waits.
+                    crate::core::browser_agent::report_block(&nav_app, u);
                     ok = false;
                 }
                 ok

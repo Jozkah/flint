@@ -64,6 +64,11 @@ pub struct CallRequest {
     /// The project whose `agent.toml` domain lists apply.
     #[serde(default)]
     pub project_root: Option<String>,
+    /// Only check that this action could be taken (the domain is allowed and the
+    /// node id is current) and describe its target; do nothing. The web layer
+    /// calls this before it asks the user, so a stale id is refused first.
+    #[serde(default)]
+    pub validate_only: bool,
     /// `scroll`: `up`, `down`, `left` or `right`.
     #[serde(default)]
     pub direction: Option<String>,
@@ -232,15 +237,18 @@ async fn eval<R: Runtime>(wv: &Webview<R>, op: &str, args: Value) -> Result<Valu
 }
 
 /// Wait for a navigation that follows an action, then for the page to settle.
-async fn settle<R: Runtime>(wv: &Webview<R>, seq0: u64, start_wait: Duration, total: Duration) {
+async fn settle<R: Runtime>(wv: &Webview<R>, seq0: u64, block0: u64, start_wait: Duration, total: Duration) {
     let t0 = Instant::now();
-    while super::load_seq() == seq0 && t0.elapsed() < start_wait {
+    // A navigation the policy stopped never starts a load: waiting out the start
+    // timeout for it was a six-second stall. It ends the wait at once.
+    let stopped = || super::block_seq() != block0;
+    while super::load_seq() == seq0 && !stopped() && t0.elapsed() < start_wait {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    while super::loading() && t0.elapsed() < total {
+    while super::loading() && !stopped() && t0.elapsed() < total {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    while t0.elapsed() < total {
+    while !stopped() && t0.elapsed() < total {
         match eval(wv, "info", json!({})).await {
             Ok(v) if v["ready"] == "complete" => break,
             Ok(_) => tokio::time::sleep(Duration::from_millis(150)).await,
@@ -296,6 +304,10 @@ async fn guard<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netw
     }
     if let Some(reason) = dns_block(&url).await {
         return Gate::Stop(CallResponse::denied(&reason, Some(url.as_str())));
+    }
+    // The page the agent is on is approved: the pane may follow its own links.
+    if let Some(host) = policy::host_key(&url) {
+        STORE.add_visit(&host);
     }
     Gate::Go(Guarded { wv, url })
 }
@@ -375,13 +387,27 @@ async fn open<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netwo
         return CallResponse::denied(&reason, Some(target.as_str()));
     }
     if let Some(host) = policy::host_key(&target) {
-        STORE.note_visit(&host);
+        STORE.note_visit(&host, Duration::from_secs(60));
+        // This site is approved: its own pages and subdomains may load. Any
+        // other site its pages redirect to is stopped and asked about.
+        STORE.add_visit(&host);
     }
     // The lease goes up before the pane loads anything, so the navigation
     // handler already enforces the policy on this load and its redirects.
     STORE.set_lease(network, req.unattended, req.enabled);
     emit_state(app, policy::host_key(&target));
 
+    // This call reports a blocked hop (and asks) itself; the handler must not
+    // raise a second prompt for the same thing.
+    struct InFlight;
+    impl Drop for InFlight {
+        fn drop(&mut self) {
+            super::set_open_in_flight(false);
+        }
+    }
+    super::set_open_in_flight(true);
+    let _in_flight = InFlight;
+    let block0 = super::block_seq();
     let seq0 = super::load_seq();
     let existing = pane(app);
     let already_there = existing.as_ref().and_then(|w| w.url().ok()).is_some_and(|u| same_page(&u, &target));
@@ -399,7 +425,21 @@ async fn open<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Netwo
         tokio::time::sleep(Duration::from_millis(100)).await;
     };
     let start_wait = if already_there { Duration::ZERO } else { Duration::from_secs(6) };
-    settle(&wv, seq0, start_wait, OPEN_LOAD_TIMEOUT).await;
+    settle(&wv, seq0, block0, start_wait, OPEN_LOAD_TIMEOUT).await;
+
+    // A hop was stopped on the way (a redirect out of the approved site, or to
+    // an address that is never allowed): say what, and why, rather than judging
+    // whatever page the pane is still showing.
+    if super::block_seq() != block0 {
+        if let Some(b) = super::last_block() {
+            return match b.needs_approval {
+                // Ask about the host it tried to reach. Once approved, opening
+                // the same page again follows the redirect.
+                Some(host) => CallResponse::permission(host, &b.url),
+                None => CallResponse { status: "denied", reason: Some(b.reason), url: Some(b.url), ..Default::default() },
+            };
+        }
+    }
 
     // Where the page really is now: a redirect may have moved it.
     let now = match wv.url() {
@@ -554,11 +594,19 @@ async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Networ
     // and calls again with `confirmed`.
     let mut dry = args.clone();
     dry["dry"] = json!(true);
-    match eval(&wv, &req.tool, dry).await {
-        Ok(v) if v["needs_confirm"] == true => return confirmation(&v, &url),
-        Ok(v) if v["ok"] == true => {}
+    let label = match eval(&wv, &req.tool, dry).await {
+        Ok(v) if v["needs_confirm"] == true => {
+            if req.validate_only {
+                return validated(v["label"].as_str(), &url);
+            }
+            return confirmation(&v, &url);
+        }
+        Ok(v) if v["ok"] == true => v["label"].as_str().map(String::from),
         Ok(v) => return script_error(&v),
         Err(e) => return CallResponse::error(e),
+    };
+    if req.validate_only {
+        return validated(label.as_deref(), &url);
     }
     let cap = req.max_actions.unwrap_or(DEFAULT_MAX_ACTIONS);
     let run = if req.run_id.is_empty() { "default" } else { req.run_id.as_str() };
@@ -592,6 +640,7 @@ async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Networ
         }
     }
 
+    let block0 = super::block_seq();
     let seq0 = super::load_seq();
     let result = match eval(&wv, &req.tool, args).await {
         Ok(v) if v["needs_confirm"] == true => return confirmation(&v, &url),
@@ -599,7 +648,7 @@ async fn act<R: Runtime>(app: &AppHandle<R>, req: &CallRequest, network: &Networ
         Ok(v) => return script_error(&v),
         Err(e) => return CallResponse::error(e),
     };
-    settle(&wv, seq0, Duration::from_millis(700), ACTION_LOAD_TIMEOUT).await;
+    settle(&wv, seq0, block0, Duration::from_millis(700), ACTION_LOAD_TIMEOUT).await;
 
     // Where the page is after the action: it may have moved anywhere.
     let now = wv.url().unwrap_or(url.clone());
@@ -634,6 +683,17 @@ The page moved to {host}, which has not been approved. The next browser tool cal
     resp
 }
 
+/// The answer to `validate_only`: the action could be taken, on this control.
+fn validated(label: Option<&str>, url: &Url) -> CallResponse {
+    CallResponse {
+        status: "ok",
+        content: Some(String::new()),
+        url: Some(url.to_string()),
+        label: label.filter(|l| !l.is_empty()).map(String::from),
+        ..Default::default()
+    }
+}
+
 fn confirmation(v: &Value, url: &Url) -> CallResponse {
     CallResponse {
         status: "needs_confirmation",
@@ -653,13 +713,13 @@ pub struct StateView {
 }
 
 #[tauri::command]
-pub fn browser_agent_status() -> StateView {
+pub async fn browser_agent_status() -> StateView {
     StateView { active: STORE.lease().is_some(), paused: STORE.paused() }
 }
 
 /// The user answered the domain prompt. `scope` is `once`, `session` or `always`.
 #[tauri::command]
-pub fn browser_agent_grant<R: Runtime>(app: AppHandle<R>, pattern: String, scope: String) -> Result<String, String> {
+pub async fn browser_agent_grant<R: Runtime>(app: AppHandle<R>, pattern: String, scope: String) -> Result<String, String> {
     ensure_store(&app);
     let scope = Scope::parse(&scope).ok_or_else(|| "scope must be once, session or always".to_string())?;
     STORE.grant(&pattern, scope)
@@ -667,19 +727,19 @@ pub fn browser_agent_grant<R: Runtime>(app: AppHandle<R>, pattern: String, scope
 
 /// The user chose "never" for a site.
 #[tauri::command]
-pub fn browser_agent_block<R: Runtime>(app: AppHandle<R>, pattern: String) -> Result<policy::DomainRule, String> {
+pub async fn browser_agent_block<R: Runtime>(app: AppHandle<R>, pattern: String) -> Result<policy::DomainRule, String> {
     ensure_store(&app);
     STORE.rule_set(&pattern, Verdict::Deny, false)
 }
 
 #[tauri::command]
-pub fn browser_agent_rules<R: Runtime>(app: AppHandle<R>) -> Vec<policy::DomainRule> {
+pub async fn browser_agent_rules<R: Runtime>(app: AppHandle<R>) -> Vec<policy::DomainRule> {
     ensure_store(&app);
     STORE.rules()
 }
 
 #[tauri::command]
-pub fn browser_agent_rule_set<R: Runtime>(
+pub async fn browser_agent_rule_set<R: Runtime>(
     app: AppHandle<R>,
     pattern: String,
     verdict: String,
@@ -695,27 +755,33 @@ pub fn browser_agent_rule_set<R: Runtime>(
 }
 
 #[tauri::command]
-pub fn browser_agent_rule_remove<R: Runtime>(app: AppHandle<R>, pattern: String) -> Result<bool, String> {
+pub async fn browser_agent_rule_remove<R: Runtime>(app: AppHandle<R>, pattern: String) -> Result<bool, String> {
     ensure_store(&app);
     STORE.rule_remove(&pattern)
 }
 
+/// The grants that are not saved (this session, this visit), with their age.
+#[tauri::command]
+pub async fn browser_agent_grants() -> Vec<super::store::GrantView> {
+    STORE.grants()
+}
+
 /// Forget the "this session" and "once" grants.
 #[tauri::command]
-pub fn browser_agent_clear_grants() {
+pub async fn browser_agent_clear_grants() {
     STORE.clear_session_grants();
 }
 
 /// The user took the browser back: calls are refused until `resume`.
 #[tauri::command]
-pub fn browser_agent_stop<R: Runtime>(app: AppHandle<R>) {
+pub async fn browser_agent_stop<R: Runtime>(app: AppHandle<R>) {
     STORE.set_paused(true);
     pointer_mode(&app, "hide");
     emit_state(&app, None);
 }
 
 #[tauri::command]
-pub fn browser_agent_resume<R: Runtime>(app: AppHandle<R>) {
+pub async fn browser_agent_resume<R: Runtime>(app: AppHandle<R>) {
     STORE.set_paused(false);
     pointer_mode(&app, "show");
     emit_state(&app, None);
@@ -871,6 +937,24 @@ mod tests {
     fn scroll_ids_are_length_limited() {
         assert!(parse_scroll(&None, &None, &s(&"9".repeat(17))).is_err());
         assert!(parse_scroll(&None, &None, &s(&"9".repeat(16))).is_ok());
+    }
+
+    #[test]
+    fn a_validation_describes_its_target_and_does_nothing_else() {
+        let url = Url::parse("https://shop.test/cart?id=7").unwrap();
+        let v = validated(Some("Add to cart"), &url);
+        assert_eq!(v.status, "ok");
+        assert_eq!(v.content.as_deref(), Some(""));
+        assert_eq!(v.label.as_deref(), Some("Add to cart"));
+        assert_eq!(v.url.as_deref(), Some("https://shop.test/cart?id=7"));
+        // An empty label (a keypress with no target) is left out.
+        assert_eq!(validated(Some(""), &url).label, None);
+        assert_eq!(validated(None, &url).label, None);
+        // And it is off unless asked for.
+        let req: CallRequest = serde_json::from_str(r#"{"tool":"click"}"#).unwrap();
+        assert!(!req.validate_only);
+        let req: CallRequest = serde_json::from_str(r#"{"tool":"click","validate_only":true}"#).unwrap();
+        assert!(req.validate_only);
     }
 
     #[test]
