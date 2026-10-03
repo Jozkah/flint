@@ -117,6 +117,9 @@ pub enum Observed {
     Navigated { url: String },
     /// An alert, confirm, prompt or beforeunload dialog is open and waiting.
     Dialog { session: Option<String>, kind: String, message: String, default_prompt: String },
+    /// One frame of the live view, when a screencast is running. `ack` is the
+    /// number the browser wants echoed back before it sends the next one.
+    Frame { session: String, ack: i64, data: String },
     /// A download started (and is refused).
     Download { url: String, filename: String },
     /// The page opened another tab or window and popups are off: it was closed.
@@ -292,6 +295,13 @@ pub fn spawn(
                             sink(Observed::Navigated { url: url.to_string() });
                         }
                     }
+                }
+                "Page.screencastFrame" if mains.has_session(session) => {
+                    sink(Observed::Frame {
+                        session: session.unwrap_or_default().to_string(),
+                        ack: p["sessionId"].as_i64().unwrap_or(0),
+                        data: p["data"].as_str().unwrap_or_default().to_string(),
+                    });
                 }
                 "Page.javascriptDialogOpening" => {
                     sink(Observed::Dialog {

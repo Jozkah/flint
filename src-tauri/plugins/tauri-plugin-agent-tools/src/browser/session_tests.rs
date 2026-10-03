@@ -32,8 +32,13 @@ fn install_sink() {
     });
 }
 
+/// One notice per action; the live view's frames are counted apart.
 fn activity_for(key: &str) -> Vec<Activity> {
-    ACTIVITY.lock().unwrap().iter().filter(|a| a.run_id == key).cloned().collect()
+    ACTIVITY.lock().unwrap().iter().filter(|a| a.run_id == key && a.kind != "frame").cloned().collect()
+}
+
+fn frames_for(key: &str) -> Vec<Activity> {
+    ACTIVITY.lock().unwrap().iter().filter(|a| a.run_id == key && a.kind == "frame").cloned().collect()
 }
 
 struct App {
@@ -754,6 +759,50 @@ async fn a_compact_screenshot_is_a_bounded_jpeg_and_the_default_stays_a_png() {
     let snap = session::run_with(&c, &json!({ "action": "snapshot" }), &opts).await;
     assert!(snap.image.is_none() && snap.image_mime.is_empty());
     act(&c, json!({ "action": "close" })).await;
+}
+
+#[tokio::test]
+async fn a_watching_panel_gets_a_throttled_live_view_and_a_closed_one_gets_none() {
+    if !browser_or_skip("live-view") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    install_sink();
+    let app = serve();
+    let c = caller("live");
+    let frames = || frames_for("live");
+    // A page that keeps changing, so the browser keeps producing frames.
+    session::set_activity_watched(true);
+    act(&c, json!({ "action": "open", "url": app.url("/") })).await;
+    act(&c, json!({ "action": "evaluate", "expression": "setInterval(() => { document.title = 'tick ' + Date.now(); document.body.style.background = '#' + (Date.now() % 4096).toString(16).padStart(3, '0') }, 30), 1" })).await;
+    wait_until("live frames", 15, || frames().len() >= 3).await;
+    let first = frames();
+    for f in &first {
+        let s = f.screenshot.as_deref().unwrap_or_default();
+        assert!(s.starts_with("data:image/jpeg;base64,") && s.len() <= session::MAX_FRAME_CHARS + 30, "{}", s.len());
+        assert_eq!(f.session_id, "sess-live");
+    }
+    // Throttled: over the time it took, never more than four a second (plus one).
+    tokio::time::sleep(Duration::from_millis(2000)).await;
+    let n = frames().len();
+    assert!(n <= 4 * 12 + 1, "{n} frames");
+    // Nobody watching: the browser is told to stop and no more frames arrive.
+    session::set_activity_watched(false);
+    tokio::time::sleep(Duration::from_millis(700)).await;
+    let after_stop = frames().len();
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert_eq!(frames().len(), after_stop, "frames kept coming with no panel watching");
+    // A panel that appears later gets the view of the browser already open. It
+    // asks from a plain thread, as the desktop's synchronous command does.
+    std::thread::spawn(|| session::set_activity_watched(true)).join().unwrap();
+    wait_until("frames again", 15, || frames().len() > after_stop).await;
+    // Tabs are listed in the notices once there is more than one.
+    act(&c, json!({ "action": "tab", "op": "new", "url": app.url("/next") })).await;
+    wait_until("a notice listing two tabs", 10, || activity_for("live").iter().any(|a| a.tabs.len() == 2)).await;
+    let listed = activity_for("live").into_iter().rev().find(|a| a.tabs.len() == 2).unwrap();
+    assert!(listed.tabs.iter().any(|t| t.id == "t2" && t.active), "{:?}", listed.tabs);
+    act(&c, json!({ "action": "close" })).await;
+    session::set_activity_watched(true);
 }
 
 #[tokio::test]

@@ -300,6 +300,7 @@
     "changes": "Changes",
     "activity": "Activity",
     "timeline": "Timeline",
+    "agentBrowser": "Agent browser",
     "resize": "Resize panel",
     "resizeHint": "Drag to resize. Double-click to switch between default and wide.",
     "narrower": "Narrower",
@@ -1967,7 +1968,12 @@
     "title": "Agent browser",
     "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
     "lastAction": "Last action: {{action}}",
-    "screenshotAlt": "The page in the agent's browser"
+    "screenshotAlt": "The page in the agent's browser",
+    "live": "Live",
+    "idle": "Idle",
+    "hide": "Hide agent browser",
+    "tabs": "Agent browser tabs",
+    "waiting": "Waiting for the first picture of the page…"
   },
   "browserVerify": {
     "title": "Verify in browser",

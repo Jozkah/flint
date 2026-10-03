@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Activity, Code, Diff, Eye, ListTree, Loader2 } from 'lucide-react'
+import { Activity, Code, Diff, Eye, Globe, ListTree, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -11,7 +11,7 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ActivityProgress } from '@/lib/coworkActivity'
 
 /** The mutually-exclusive Cowork rail panels. */
-export type RailMode = 'code' | 'preview' | 'changes' | 'activity' | 'timeline'
+export type RailMode = 'code' | 'preview' | 'changes' | 'activity' | 'timeline' | 'browser'
 
 /** The tab a keyboard user just pressed, to be focused again after a move. */
 let refocusMode: RailMode | null = null
@@ -39,8 +39,11 @@ export function CoworkRailToolbar({
   deletions,
   activity,
   changeSummary,
+  agentBrowser = false,
   presentation = 'toolbar',
 }: {
+  /** The agent has a browser open: its tab is offered. */
+  agentBrowser?: boolean
   /** `toolbar` in the composer row; `tabs` in the output panel header. The
    * buttons, their names and `aria-pressed` are the same in both. */
   presentation?: 'toolbar' | 'tabs'
@@ -184,6 +187,14 @@ export function CoworkRailToolbar({
         undefined,
         t('common:rail.timeline')
       )}
+      {agentBrowser &&
+        item(
+          'browser',
+          t('common:rail.agentBrowser'),
+          <Globe className="size-3.5 shrink-0" aria-hidden />,
+          undefined,
+          t('common:rail.agentBrowser')
+        )}
     </div>
   )
 }

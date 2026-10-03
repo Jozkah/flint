@@ -71,9 +71,25 @@ pub struct Activity {
     pub action: String,
     pub url: String,
     pub title: String,
-    /// A bounded JPEG as a data URL, when one was taken for this action.
+    /// A bounded JPEG as a data URL, when one was taken for this action (or
+    /// for a `frame`, the live view's latest picture).
     pub screenshot: Option<String>,
+    /// The tabs, when there is more than one; empty otherwise.
+    #[serde(default)]
+    pub tabs: Vec<TabView>,
 }
+
+/// One tab as the panel lists it.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct TabView {
+    pub id: String,
+    pub title: String,
+    pub active: bool,
+}
+
+/// The most live-view frames sent to the panel per second, and the largest one.
+pub const FRAME_MIN_INTERVAL: Duration = Duration::from_millis(250);
+pub const MAX_FRAME_CHARS: usize = 450_000;
 
 pub type ActivitySink = Arc<dyn Fn(Activity) + Send + Sync>;
 
@@ -93,6 +109,71 @@ pub fn set_activity_sink(sink: Option<ActivitySink>) {
 /// The preview panel opened (or closed): start (stop) producing notices.
 pub fn set_activity_watched(watched: bool) {
     WATCHED.store(watched, Ordering::SeqCst);
+    // Open browsers start (stop) streaming to the panel that just appeared (left).
+    let all: Vec<Arc<Session>> = SESSIONS.lock().map(|m| m.values().cloned().collect()).unwrap_or_default();
+    for s in all {
+        if !s.ctl.is_closed() {
+            let (cdp, tabs, stream, caller) = (s.cdp.clone(), s.tabs.clone(), s.stream.clone(), s.caller.clone());
+            // The session's own runtime: this is called from a synchronous Tauri
+            // command, which has none of its own.
+            s.rt.spawn(async move { sync_stream(&cdp, &tabs, &stream, &caller).await });
+        }
+    }
+}
+
+/// Make the live view match what is wanted: a screencast of the active tab
+/// while a panel is watching, none otherwise. Quiet on any failure -- the live
+/// view is a courtesy and must never fail anything.
+async fn sync_stream(cdp: &Cdp, tabs: &Arc<Mutex<Tabs>>, streaming: &Arc<Mutex<Option<String>>>, caller: &Caller) {
+    let wanted = if WATCHED.load(Ordering::SeqCst) {
+        tabs.lock().ok().and_then(|t| t.active_tab()).map(|t| t.session)
+    } else {
+        None
+    };
+    let current = streaming.lock().ok().and_then(|s| s.clone());
+    if current == wanted {
+        return;
+    }
+    if let Some(old) = &current {
+        let _ = tokio::time::timeout(Duration::from_secs(2), cdp.call("Page.stopScreencast", json!({}), Some(old))).await;
+    }
+    if let Some(new) = &wanted {
+        let started = tokio::time::timeout(
+            Duration::from_secs(2),
+            cdp.call(
+                "Page.startScreencast",
+                json!({ "format": "jpeg", "quality": 55, "maxWidth": 960, "maxHeight": 720, "everyNthFrame": 2 }),
+                Some(new),
+            ),
+        )
+        .await;
+        if !matches!(started, Ok(Ok(_))) {
+            if let Ok(mut s) = streaming.lock() {
+                *s = None;
+            }
+            return;
+        }
+    }
+    if let Ok(mut s) = streaming.lock() {
+        *s = wanted.clone();
+    }
+    // A browser screencast only sends a frame when the page changes, so a page
+    // that is sitting still would leave a panel that just appeared with nothing
+    // to show: give it one picture now.
+    if let (Some(session), Some(sink)) = (wanted, activity_sink()) {
+        if let Some(shot) = mirror_shot(cdp, &session).await {
+            sink(Activity {
+                session_id: caller.activity_session(),
+                run_id: caller.key.clone(),
+                kind: "frame".to_string(),
+                action: String::new(),
+                url: String::new(),
+                title: String::new(),
+                screenshot: Some(shot),
+                tabs: Vec::new(),
+            });
+        }
+    }
 }
 
 fn activity_sink() -> Option<ActivitySink> {
@@ -271,8 +352,33 @@ fn apply(seen: &mut Seen, observed: Observed) -> Option<Reaction> {
         Observed::BrowserExited => {
             seen.dead.get_or_insert_with(|| "The browser exited.".to_string());
         }
+        // The live view is the sink's concern (it throttles and forwards); the
+        // ring has nothing to say about a frame.
+        Observed::Frame { .. } => {}
     }
     None
+}
+
+/// Decides which live-view frames reach the panel: at most one per
+/// [`FRAME_MIN_INTERVAL`], only while a panel watches, never an oversized one.
+/// Everything else is dropped (the browser is told to carry on regardless), so a
+/// slow panel can never build up a backlog.
+#[derive(Debug, Default)]
+pub struct FrameGate {
+    last: Option<Instant>,
+}
+
+impl FrameGate {
+    pub fn admit(&mut self, now: Instant, watched: bool, chars: usize) -> bool {
+        if !watched || chars > MAX_FRAME_CHARS {
+            return false;
+        }
+        if self.last.is_some_and(|t| now.saturating_duration_since(t) < FRAME_MIN_INTERVAL) {
+            return false;
+        }
+        self.last = Some(now);
+        true
+    }
 }
 
 // --- the session -----------------------------------------------------------------
@@ -412,7 +518,9 @@ impl Tabs {
 
 struct Page {
     cdp: Cdp,
+    caller: Caller,
     tabs: Arc<Mutex<Tabs>>,
+    stream: Arc<Mutex<Option<String>>>,
     mains: Mains,
     ctl: Arc<Control>,
     seen: Arc<Mutex<Seen>>,
@@ -424,6 +532,11 @@ pub struct Session {
     seen: Arc<Mutex<Seen>>,
     policy: OriginPolicy,
     mains: Mains,
+    cdp: Cdp,
+    rt: tokio::runtime::Handle,
+    tabs: Arc<Mutex<Tabs>>,
+    /// The tab (DevTools session) being screencast to a panel, if any.
+    stream: Arc<Mutex<Option<String>>>,
     browser_name: String,
     caller: Caller,
     last_mirror: Mutex<Option<Instant>>,
@@ -436,8 +549,33 @@ struct Notice {
     activity: Activity,
     /// Take a picture for this notice from this tab first.
     shot: Option<(Cdp, String)>,
+    /// List the tabs (titles) for this notice, when there is more than one.
+    tabs: Option<(Cdp, Arc<Mutex<Tabs>>)>,
     sink: ActivitySink,
     ctl: Arc<Control>,
+}
+
+async fn tab_views(cdp: &Cdp, tabs: &Arc<Mutex<Tabs>>) -> Vec<TabView> {
+    let (list, active) = match tabs.lock() {
+        Ok(t) if t.list.len() > 1 => (t.list.clone(), t.active.clone()),
+        _ => return Vec::new(),
+    };
+    let infos = tokio::time::timeout(Duration::from_secs(1), cdp.call("Target.getTargets", json!({}), None))
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .map(|v| v["targetInfos"].as_array().cloned().unwrap_or_default())
+        .unwrap_or_default();
+    list.iter()
+        .map(|tab| {
+            let title = infos
+                .iter()
+                .find(|i| i["targetId"].as_str() == Some(tab.target.as_str()))
+                .and_then(|i| i["title"].as_str())
+                .unwrap_or_default();
+            TabView { id: tab.id.clone(), title: clip(&plain(title)), active: tab.id == active }
+        })
+        .collect()
 }
 
 /// Deliver notices in order until the session is dropped.
@@ -447,6 +585,11 @@ fn spawn_notice_loop(mut rx: tokio::sync::mpsc::UnboundedReceiver<Notice>) {
             if let Some((cdp, session)) = n.shot.take() {
                 if !n.ctl.is_closed() {
                     n.activity.screenshot = mirror_shot(&cdp, &session).await;
+                }
+            }
+            if let Some((cdp, tabs)) = n.tabs.take() {
+                if !n.ctl.is_closed() {
+                    n.activity.tabs = tab_views(&cdp, &tabs).await;
                 }
             }
             (n.sink)(n.activity);
@@ -796,8 +939,31 @@ async fn start(
     let sink_tabs = tabs.clone();
     let sink_mains = mains.clone();
     let (newtab_tx, mut newtab_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+    let frame_caller = caller.clone();
+    let mut gate = FrameGate::default();
     // A refused navigation leaves the page where it was (204), so the session carries on.
     events::spawn(cdp.clone(), events, policy.clone(), mains.clone(), events::NavigationBlock::Stay, move |observed| {
+        // The live view: acknowledged at once so the browser keeps going, and
+        // forwarded at most a few times a second, only while a panel watches.
+        // Anything over the limit is dropped, never queued.
+        if let Observed::Frame { session, ack, data } = &observed {
+            sink_cdp.fire("Page.screencastFrameAck", json!({ "sessionId": ack }), Some(session));
+            if gate.admit(Instant::now(), WATCHED.load(Ordering::SeqCst), data.len()) {
+                if let Some(sink) = activity_sink() {
+                    sink(Activity {
+                        session_id: frame_caller.activity_session(),
+                        run_id: frame_caller.key.clone(),
+                        kind: "frame".to_string(),
+                        action: String::new(),
+                        url: String::new(),
+                        title: String::new(),
+                        screenshot: Some(format!("data:image/jpeg;base64,{data}")),
+                        tabs: Vec::new(),
+                    });
+                }
+            }
+            return;
+        }
         match &observed {
             // A tab the page opened (popups on): confined and added by the task below.
             Observed::NewTab { target_id, .. } => {
@@ -863,12 +1029,25 @@ async fn start(
         return Err(e);
     }
     let (notices_tx, notices_rx) = tokio::sync::mpsc::unbounded_channel();
+    let stream: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let session = Arc::new(Session {
         ctl: ctl.clone(),
-        page: tokio::sync::Mutex::new(Page { cdp, tabs, mains: mains.clone(), ctl: ctl.clone(), seen: seen.clone() }),
+        page: tokio::sync::Mutex::new(Page {
+            cdp: cdp.clone(),
+            caller: caller.clone(),
+            tabs: tabs.clone(),
+            stream: stream.clone(),
+            mains: mains.clone(),
+            ctl: ctl.clone(),
+            seen: seen.clone(),
+        }),
         seen,
         policy,
         mains,
+        cdp: cdp.clone(),
+        rt: tokio::runtime::Handle::current(),
+        tabs: tabs.clone(),
+        stream: stream.clone(),
         browser_name,
         caller: caller.clone(),
         last_mirror: Mutex::new(None),
@@ -881,6 +1060,8 @@ async fn start(
         old.ctl.kill_detached("replaced by a newer session");
     }
     spawn_watchdog(session.clone());
+    // A panel that is already watching gets this browser's live view from the start.
+    sync_stream(&session.cdp, &session.tabs, &session.stream, &session.caller).await;
     Ok(session)
 }
 
@@ -1481,6 +1662,7 @@ impl Session {
                     t.active = tab.id.clone();
                 }
                 let _ = page.cdp.call("Target.activateTarget", json!({ "targetId": tab.target }), None).await;
+                sync_stream(&page.cdp, &page.tabs, &page.stream, &page.caller).await;
                 let mut d = Done::new(
                     format!("Switched to tab {}. Refs from other tabs do not work here: snapshot this tab.", tab.id),
                     format!("switch to tab {}", tab.id),
@@ -1507,6 +1689,7 @@ impl Session {
                     t.remove_session(&session);
                 }
                 let _ = page.cdp.call("Target.closeTarget", json!({ "targetId": target }), None).await;
+                sync_stream(&page.cdp, &page.tabs, &page.stream, &page.caller).await;
                 let now = page.tabs.lock().map(|t| t.active.clone()).unwrap_or_default();
                 Ok(Done::new(format!("Closed tab {id}. The active tab is {now}."), format!("close tab {id}"), true))
             }
@@ -1573,6 +1756,7 @@ impl Session {
             let _ = page.cdp.call("Target.closeTarget", json!({ "targetId": target }), None).await;
             return Err(e);
         }
+        sync_stream(&page.cdp, &page.tabs, &page.stream, &page.caller).await;
         let mut d = self.navigate(page, url).await.map_err(|e| format!("tab {id} was opened but: {e}"))?;
         d.headline = format!("Opened tab {id} (now active). {}", d.headline);
         Ok(d)
@@ -1675,9 +1859,11 @@ impl Session {
             url: display_url(url),
             title: clip(&plain(title)),
             screenshot: None,
+            tabs: Vec::new(),
         };
         let shot = want_shot.then(|| (page.cdp.clone(), page.session()));
-        let _ = self.notices.send(Notice { activity, shot, sink, ctl: self.ctl.clone() });
+        let tabs = (page.tabs.lock().map(|t| t.list.len()).unwrap_or(0) > 1).then(|| (page.cdp.clone(), page.tabs.clone()));
+        let _ = self.notices.send(Notice { activity, shot, tabs, sink, ctl: self.ctl.clone() });
     }
 
     fn announce_closed(&self, why: &str) {
@@ -1690,8 +1876,9 @@ impl Session {
             url: String::new(),
             title: String::new(),
             screenshot: None,
+            tabs: Vec::new(),
         };
-        let _ = self.notices.send(Notice { activity, shot: None, sink, ctl: self.ctl.clone() });
+        let _ = self.notices.send(Notice { activity, shot: None, tabs: None, sink, ctl: self.ctl.clone() });
     }
 }
 
@@ -1789,6 +1976,23 @@ mod tests {
         assert_eq!(all[2].text, "GET http://127.0.0.1/api -> HTTP 404");
         assert!(all[3].text.contains("a.zip") && all[3].text.contains("refused"), "{:?}", all[3]);
         assert!(all[4].text.contains("a new page") && all[4].text.contains("open"), "{:?}", all[4]);
+    }
+
+    #[test]
+    fn live_frames_are_throttled_bounded_and_only_sent_to_a_watching_panel() {
+        let mut gate = FrameGate::default();
+        let t0 = Instant::now();
+        assert!(!gate.admit(t0, false, 100), "nobody watching: nothing is sent");
+        assert!(gate.admit(t0, true, 100), "the first frame goes");
+        assert!(!gate.admit(t0 + Duration::from_millis(100), true, 100), "too soon is dropped, not queued");
+        assert!(!gate.admit(t0 + Duration::from_millis(249), true, 100));
+        assert!(gate.admit(t0 + FRAME_MIN_INTERVAL, true, 100), "four a second at most");
+        assert!(!gate.admit(t0 + FRAME_MIN_INTERVAL * 3, true, MAX_FRAME_CHARS + 1), "an oversized frame is dropped");
+        assert!(gate.admit(t0 + FRAME_MIN_INTERVAL * 3, true, MAX_FRAME_CHARS), "and does not use up the slot");
+        // Over a second of a fast browser (60 frames offered) at most 5 get through.
+        let mut gate = FrameGate::default();
+        let sent = (0..60).filter(|i| gate.admit(t0 + Duration::from_millis(i * 17), true, 1000)).count();
+        assert!((3..=5).contains(&sent), "{sent}");
     }
 
     #[test]

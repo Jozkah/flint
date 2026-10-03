@@ -307,8 +307,9 @@ pub mod commands {
         })));
     }
 
-    /// The preview panel is open and wants the agent's browser activity (or no
-    /// longer does). With nobody watching the tool takes no mirror screenshots.
+    /// A panel is showing the agent's browser (or no longer is). While one is,
+    /// the tool takes the small pictures it shows and streams the browser's live
+    /// view to it; with nobody watching none of that runs.
     #[tauri::command]
     pub fn browser_tool_watch(watching: bool) {
         tauri_plugin_agent_tools::browser::session::set_activity_watched(watching);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 
 // Mock-backed: the vector index, memory lookup, snapshot read and chat
 // transport are fakes. These tests prove what the panel claims from those
@@ -46,6 +46,7 @@ import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useChatSessions } from '@/stores/chat-session-store'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useThreads } from '@/hooks/useThreads'
+import { useBrowserToolMirror } from '@/hooks/useBrowserToolMirror'
 import { useAppState } from '@/hooks/useAppState'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import type { RequestAttribution } from '@/lib/requestAttribution'
@@ -359,5 +360,34 @@ describe('WhatJanIsUsing', () => {
     expect(
       within(screen.getByTestId('context-section-payload')).getByText('context:reason.noRequestYet')
     ).toBeInTheDocument()
+  })
+
+  it("fills the empty space under Activity with the agent's browser, once it has one", async () => {
+    useBrowserToolMirror.setState({ byId: {} })
+    render(<WhatJanIsUsing threadId="t1" messages={[]} />)
+    await openPanel()
+    const panel = screen.getByTestId('what-jan-is-using-panel')
+    expect(within(panel).queryByTestId('agent-browser-window')).toBeNull()
+    act(() =>
+      useBrowserToolMirror.getState().apply({
+        sessionId: 't1',
+        runId: 't1',
+        kind: 'open',
+        action: 'open http://127.0.0.1:5173/',
+        url: 'http://127.0.0.1:5173/',
+        title: 'Demo',
+        screenshot: 'data:image/jpeg;base64,AAAA',
+      })
+    )
+    const window = within(panel).getByTestId('agent-browser-window')
+    // After the other cards, taking the rest of the column.
+    const cards = [...panel.children]
+    expect(cards[cards.length - 1]).toBe(window)
+    expect(window.className).toMatch(/flex-1/)
+    expect(within(window).getByTestId('abw-url').textContent).toBe('http://127.0.0.1:5173/')
+    // Hiding it leaves the rest of the panel alone.
+    fireEvent.click(within(window).getByTestId('abw-hide'))
+    expect(within(panel).queryByTestId('agent-browser-window')).toBeNull()
+    expect(panel.children.length).toBeGreaterThan(1)
   })
 })

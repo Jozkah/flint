@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useBrowserToolMirror } from '../useBrowserToolMirror'
+import { isLive, LIVE_WINDOW_MS, useBrowserToolMirror } from '../useBrowserToolMirror'
 import { BROWSER_TOOL_EVENT } from '@/lib/browserTool'
 
 const shot = 'data:image/jpeg;base64,AAAA'
@@ -25,8 +25,55 @@ describe('useBrowserToolMirror', () => {
       title: 'Demo',
       action: 'click e12 button "Save"',
       screenshot: shot,
+      tabs: [],
       updatedAt: 100,
+      frameAt: 0,
     })
+  })
+
+  it('a live frame replaces only the picture, and needs a view to land on', () => {
+    const s = useBrowserToolMirror.getState()
+    s.apply(note({ kind: 'frame', screenshot: shot }), 50)
+    expect(useBrowserToolMirror.getState().byId.s1).toBeUndefined()
+    s.apply(note(), 100)
+    const next = 'data:image/jpeg;base64,BBBB'
+    s.apply(note({ kind: 'frame', action: '', url: '', title: '', screenshot: next }), 200)
+    const v = useBrowserToolMirror.getState().byId.s1
+    expect(v.screenshot).toBe(next)
+    expect(v.frameAt).toBe(200)
+    expect(v.url).toBe('http://127.0.0.1:5173/')
+    expect(v.action).toBe('click e12 button "Save"')
+    expect(v.updatedAt).toBe(100)
+  })
+
+  it('a frame that is not a bounded JPEG is dropped', () => {
+    const s = useBrowserToolMirror.getState()
+    s.apply(note(), 100)
+    s.apply(note({ kind: 'frame', screenshot: 'https://evil.example/x.png' }), 200)
+    s.apply(note({ kind: 'frame', screenshot: `data:image/jpeg;base64,${'A'.repeat(500_000)}` }), 300)
+    expect(useBrowserToolMirror.getState().byId.s1.screenshot).toBe(shot)
+    expect(useBrowserToolMirror.getState().byId.s1.frameAt).toBe(0)
+  })
+
+  it('keeps the tab list until a notice replaces it, and drops it for a fresh open', () => {
+    const s = useBrowserToolMirror.getState()
+    const tabs = [{ id: 't1', title: 'A', active: true }, { id: 't2', title: 'B', active: false }]
+    s.apply(note({ tabs }), 100)
+    expect(useBrowserToolMirror.getState().byId.s1.tabs).toHaveLength(2)
+    s.apply(note({ action: 'snapshot' }), 200)
+    expect(useBrowserToolMirror.getState().byId.s1.tabs).toHaveLength(2)
+    s.apply(note({ kind: 'open', tabs: [] }), 300)
+    expect(useBrowserToolMirror.getState().byId.s1.tabs).toEqual([])
+  })
+
+  it('reads as live shortly after a frame or an action and idle after', () => {
+    const s = useBrowserToolMirror.getState()
+    s.apply(note(), 1000)
+    const v = useBrowserToolMirror.getState().byId.s1
+    expect(isLive(v, 1000 + LIVE_WINDOW_MS - 1)).toBe(true)
+    expect(isLive(v, 1000 + LIVE_WINDOW_MS)).toBe(false)
+    s.apply(note({ kind: 'frame' }), 9000)
+    expect(isLive(useBrowserToolMirror.getState().byId.s1, 9000 + 1000)).toBe(true)
   })
 
   it('keeps the last picture when a looking action sends none', () => {

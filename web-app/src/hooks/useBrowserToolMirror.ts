@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { create } from 'zustand'
 import { invoke } from '@tauri-apps/api/core'
 import { BROWSER_TOOL_EVENT } from '@/lib/browserTool'
@@ -14,15 +15,22 @@ import { useWebPreviewSettings } from '@/hooks/useWebPreviewSettings'
  * near Flint's own preview or profile.
  */
 
-/** What the backend announces (`browser::session::Activity`, camelCase). */
+export type BrowserToolTab = { id: string; title: string; active: boolean }
+
+/**
+ * What the backend announces (`browser::session::Activity`, camelCase). A
+ * `frame` carries only the live view's latest picture: the rest of the view is
+ * what the last action reported.
+ */
 export type BrowserToolActivity = {
   sessionId: string
   runId: string
-  kind: 'open' | 'action' | 'screenshot' | 'closed'
+  kind: 'open' | 'action' | 'screenshot' | 'frame' | 'closed'
   action: string
   url: string
   title: string
   screenshot: string | null
+  tabs?: BrowserToolTab[]
 }
 
 export type BrowserToolView = {
@@ -30,7 +38,29 @@ export type BrowserToolView = {
   title: string
   action: string
   screenshot: string | null
+  tabs: BrowserToolTab[]
   updatedAt: number
+  /** When the live view last delivered a frame; 0 before the first. */
+  frameAt: number
+}
+
+/** How long after its last frame or action the view still reads as live. */
+export const LIVE_WINDOW_MS = 5000
+
+export const isLive = (view: BrowserToolView, now: number): boolean =>
+  now - Math.max(view.frameAt, view.updatedAt) < LIVE_WINDOW_MS
+
+const MAX_TABS = 8
+
+function cleanTabs(raw: unknown): BrowserToolTab[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .slice(0, MAX_TABS)
+    .map((t) => {
+      const o = (t ?? {}) as Partial<BrowserToolTab>
+      return { id: clip(o.id, 12), title: clip(o.title, 80), active: o.active === true }
+    })
+    .filter((t) => t.id)
 }
 
 /** The backend caps the picture at about 300 KiB of JPEG; refuse more here too. */
@@ -103,6 +133,17 @@ export const useBrowserToolMirror = create<MirrorState>()((set, get) => ({
       get().clear(id)
       return
     }
+    if (a.kind === 'frame') {
+      // The live view: a picture and nothing else. Without a view yet (the open
+      // notice has not arrived) there is nothing to put it on.
+      const shot = safeShot(a.screenshot)
+      if (!shot) return
+      set((s) => {
+        const prev = s.byId[id]
+        return prev ? { byId: { ...s.byId, [id]: { ...prev, screenshot: shot, frameAt: now } } } : s
+      })
+      return
+    }
     set((s) => {
       const prev = s.byId[id]
       const shot = safeShot(a.screenshot)
@@ -115,7 +156,9 @@ export const useBrowserToolMirror = create<MirrorState>()((set, get) => ({
             action: clip(a.action, 200),
             // A looking action sends no new picture: keep the last one.
             screenshot: shot ?? prev?.screenshot ?? null,
+            tabs: Array.isArray(a.tabs) ? cleanTabs(a.tabs) : (prev?.tabs ?? []).length > 1 && a.kind !== 'open' ? prev.tabs : [],
             updatedAt: now,
+            frameAt: prev?.frameAt ?? 0,
           },
         },
       }
@@ -159,3 +202,30 @@ export const useBrowserToolMirror = create<MirrorState>()((set, get) => ({
     }
   },
 }))
+
+/** Listen for the agent's browser notices while the caller is mounted. */
+export function useBrowserToolMirrorListening(): void {
+  useEffect(() => {
+    let detach: (() => void) | undefined
+    let cancelled = false
+    void useBrowserToolMirror
+      .getState()
+      .attach()
+      .then((d) => {
+        if (cancelled) d()
+        else detach = d
+      })
+    return () => {
+      cancelled = true
+      detach?.()
+    }
+  }, [])
+}
+
+/**
+ * While `showing`, ask the backend for the pictures and the live view a panel
+ * shows. Counted across panels (see `watch`); nothing runs when nothing shows.
+ */
+export function useBrowserToolWatching(showing: boolean): void {
+  useEffect(() => (showing ? useBrowserToolMirror.getState().watch() : undefined), [showing])
+}
