@@ -251,6 +251,21 @@ export function TokenUsageSummary({
   scope?: string
 }) {
   const requests = session?.requests ?? 0
+  if (
+    usage.inputTokens === undefined &&
+    usage.outputTokens === undefined &&
+    usage.totalTokens === undefined
+  ) {
+    return (
+      <p
+        className="px-3 py-2.5 text-[11px] text-muted-foreground"
+        data-testid="token-usage-empty"
+        data-usage-scope={scope}
+      >
+        No reply details yet.
+      </p>
+    )
+  }
   return (
     <div className="divide-y divide-border" data-testid="token-usage-breakdown" data-usage-scope={scope}>
       <section className="space-y-2 px-3 py-2.5" aria-label="Last reply">

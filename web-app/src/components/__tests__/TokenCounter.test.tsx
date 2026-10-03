@@ -147,16 +147,77 @@ describe('TokenCounter', () => {
     ).toBe('var(--destructive)')
   })
 
-  it('renders nothing when maxTokens is unavailable', () => {
+  it('is a dashed empty ring, never nothing, when no window is known and nothing was counted', () => {
     mockTokens({ tokenCount: 0, maxTokens: undefined })
-    const { container } = render(<TokenCounter />)
-    expect(container.firstChild).toBeNull()
+    render(<TokenCounter />)
+    expect(screen.getByTestId('token-counter')).toBeTruthy()
+    const ring = screen.getByTestId('context-ring')
+    expect(ring.getAttribute('data-window')).toBe('unknown')
+    expect(screen.getByTestId('token-usage-empty').textContent).toMatch(/No reply details yet/)
   })
 
-  it('renders nothing when maxTokens is 0', () => {
+  it('treats a window of 0 as unknown, still a ring', () => {
     mockTokens({ tokenCount: 0, maxTokens: 0 })
-    const { container } = render(<TokenCounter />)
-    expect(container.firstChild).toBeNull()
+    render(<TokenCounter />)
+    expect(screen.getByTestId('context-ring').getAttribute('data-window')).toBe('unknown')
+  })
+
+  it('is an empty ring with the window when nothing has been sent yet', () => {
+    mockTokens({ tokenCount: 0, maxTokens: 262144 })
+    render(<TokenCounter />)
+    const ring = screen.getByTestId('context-ring')
+    expect(ring.getAttribute('data-window')).toBe('known')
+    expect(ring.getAttribute('data-fraction')).toBe('0.0000')
+    expect(screen.getByTestId('context-used-of').textContent).toContain('0 / 262.1K')
+    expect(screen.getByTestId('token-usage-empty')).toBeTruthy()
+  })
+
+  it('opens its popup with no data at all without error', () => {
+    mockTokens({ tokenCount: 0, maxTokens: undefined })
+    render(<TokenCounter source={{ threadId: 'fresh' }} />)
+    expect(screen.getByTestId('tooltip-content').textContent).toContain('Token usage')
+  })
+
+  describe('after a long absence', () => {
+    const DAY = 86_400_000
+    it('still shows the ring and the scaled bar, labelled with how old they are', () => {
+      useContextBreakdown.setState({
+        byId: {
+          away: {
+            at: Date.now() - 3 * DAY,
+            segments: [
+              { id: 'messages' as const, label: 'Messages', tokens: 20000, color: 'bg-blue-500' },
+              { id: 'systemTools' as const, label: 'System tools', tokens: 5500, color: 'bg-orange-500' },
+            ],
+          },
+        },
+        lastById: { away: { used: 25_500, window: 262_144, at: Date.now() - 3 * DAY } },
+      })
+      // Nothing counted yet on return: the messages have not loaded.
+      mockTokens({ tokenCount: 0, maxTokens: 262144 })
+      render(<TokenCounter source={{ threadId: 'away' }} />)
+      const ring = screen.getByTestId('context-ring')
+      expect(ring.getAttribute('data-window')).toBe('known')
+      expect(Number(ring.getAttribute('data-fraction'))).toBeCloseTo(25_500 / 262_144, 3)
+      const bar = screen.getByTestId('context-bar')
+      expect(bar.getAttribute('data-window')).toBe('known')
+      const filled = Array.from(bar.querySelectorAll('[data-segment]'))
+        .filter((el) => el.getAttribute('data-segment') !== 'buffer')
+        .reduce((n, el) => n + Number.parseFloat((el as HTMLElement).style.width), 0)
+      expect(filled).toBeCloseTo((25_500 / 262_144) * 100, 1)
+      expect(screen.getByTestId('context-age').textContent).toContain('updated 3 days ago')
+      useContextBreakdown.setState({ byId: {}, lastById: {} })
+    })
+
+    it('keeps the ring when only the last-shown figures are left', () => {
+      useContextBreakdown.setState({
+        lastById: { away: { used: 100_000, window: 200_000, at: Date.now() - 30 * DAY } },
+      })
+      mockTokens({ tokenCount: 0, maxTokens: 200_000 })
+      render(<TokenCounter source={{ threadId: 'away' }} />)
+      expect(Number(screen.getByTestId('context-ring').getAttribute('data-fraction'))).toBeCloseTo(0.5, 3)
+      useContextBreakdown.setState({ lastById: {} })
+    })
   })
 
   it('renders a count-only badge (no percentage) when maxTokens is unavailable but tokens exist', () => {

@@ -19,6 +19,7 @@ import { TokenUsageSummary, type UsageSpeed } from '@/components/TokenUsageSumma
 import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import { useModelProvider } from '@/hooks/useModelProvider'
 import { reconcileBreakdown } from '@/lib/contextBreakdown'
 import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
 import {
@@ -141,10 +142,13 @@ export const TokenCounter = memo(function TokenCounter({
     }
   }, [tokenData.tokenCount, additionalTokens, prevTokenCount])
 
-  const totalTokens = useMemo(
-    () => tokenData.tokenCount + additionalTokens,
-    [tokenData.tokenCount, additionalTokens]
-  )
+  // A chat reopened before its messages are back (or after a restart) has
+  // counted nothing yet; what it last showed stands in, and says how old it is.
+  const last = useContextBreakdown((s) => (scope ? s.lastById[scope] : undefined))
+  const setLast = useContextBreakdown((s) => s.setLast)
+  const modelId = useModelProvider((s) => s.selectedModel?.id)
+  const measuredTokens = tokenData.tokenCount + additionalTokens
+  const totalTokens = measuredTokens > 0 ? measuredTokens : (last?.used ?? 0)
 
   const reconciled = useMemo(
     () => (stored ? reconcileBreakdown(stored, totalTokens) : null),
@@ -178,10 +182,24 @@ export const TokenCounter = memo(function TokenCounter({
 
   const tier = usage.tier
 
-  // Remote providers report no context-window denominator, so a percentage is
-  // meaningless. Show a plain total-tokens badge once a turn has counted tokens.
+  // Remember what is shown, so leaving the chat or restarting does not lose
+  // it. Written only when it changed; a figure restored from here is equal to
+  // what is stored and writes nothing.
+  const shownUsed = usage.used
+  const shownWindow = usage.window ?? undefined
+  useEffect(() => {
+    if (!scope || (shownUsed <= 0 && !shownWindow)) return
+    if (last && last.used === shownUsed && last.window === shownWindow && last.model === modelId) return
+    setLast(scope, { used: shownUsed, window: shownWindow, model: modelId, at: Date.now() })
+  }, [scope, shownUsed, shownWindow, modelId, last, setLast])
+
+  // The age the figures are labelled with: the request they describe, else when
+  // they were last shown.
+  const updatedAt = stored?.at ?? last?.at
+
+  // No window is known for this model: the dashed ring, and the popover says
+  // what there is (nothing yet, or the usage without a fraction).
   if (!tokenData.maxTokens) {
-    if (totalTokens <= 0) return null
     return (
       <TokenCountOnly
         totalTokens={totalTokens}
@@ -196,7 +214,7 @@ export const TokenCounter = memo(function TokenCounter({
             <ContextWindowCard
               segments={reconciled.segments}
               usedTokens={reconciled.usedTokens}
-              updatedAt={stored?.at}
+              updatedAt={updatedAt}
               onCompact={onCompact}
             />
           ) : null
@@ -303,7 +321,7 @@ export const TokenCounter = memo(function TokenCounter({
                 segments={reconciled.segments}
                 usedTokens={reconciled.usedTokens}
                 windowTokens={tokenData.maxTokens}
-                updatedAt={stored?.at}
+                updatedAt={updatedAt}
                 autoCompactOn={policy.auto}
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
