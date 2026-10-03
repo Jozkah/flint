@@ -115,6 +115,38 @@ describe('which levels a provider actually honours', () => {
     ).toEqual(['low', 'medium', 'high'])
   })
 
+  it('skips high for a Flash-Next model, whose server answers it with a 400', () => {
+    expect(
+      supportedEffortLevels('V100', reasoningModel('qwen3.8-flash-next', true))
+    ).toEqual(['low', 'medium', 'xhigh'])
+    // The other Qwen build on the same box takes all four.
+    expect(
+      supportedEffortLevels('V100', reasoningModel('swift15-qwen3.8-27b', true))
+    ).toEqual(EFFORT_LEVELS)
+  })
+
+  it('never sends high to a model that has no high', () => {
+    const withLevel = (m: Model, level: string): Model =>
+      ({
+        ...(m as unknown as Record<string, unknown>),
+        settings: {
+          [EFFORT_SETTING_KEY]: { controller_props: { value: level } },
+        },
+      }) as unknown as Model
+    expect(
+      buildReasoningBodyParams(
+        'V100',
+        withLevel(reasoningModel('qwen3.8-flash-next', true), 'high')
+      )
+    ).toEqual({ reasoning_effort: 'medium' })
+    expect(
+      buildReasoningBodyParams(
+        'V100',
+        withLevel(reasoningModel('qwen3.8-flash-next', true), 'xhigh')
+      )
+    ).toEqual({ reasoning_effort: 'xhigh' })
+  })
+
   it('clamps a level the model does not take to the nearest it does', () => {
     expect(clampEffort('xhigh', ['low', 'medium', 'high'])).toBe('high')
     expect(clampEffort('medium', ['low', 'medium', 'high'])).toBe('medium')

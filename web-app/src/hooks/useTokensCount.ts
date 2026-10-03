@@ -205,7 +205,7 @@ export const useTokensCount = (
   useEffect(() => {
     if (!threadId || !remoteBaseUrl) return
     let current = true
-    fetchServerWindow(remoteBaseUrl).then((tokens) => {
+    fetchServerWindow(remoteBaseUrl, selectedModel?.id).then((tokens) => {
       if (current && tokens) setLearnedWindow(threadId, tokens)
     })
     return () => {

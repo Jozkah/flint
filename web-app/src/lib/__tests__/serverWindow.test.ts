@@ -5,6 +5,8 @@ vi.mock('@/lib/providerFetch', () => ({ providerFetch: h.fetch }))
 
 import {
   fetchServerWindow,
+  modelsUrl,
+  parseModelsWindow,
   parseServerWindow,
   propsUrl,
   resetServerWindowCache,
@@ -81,5 +83,66 @@ describe('reading a server window', () => {
     ])
     await fetchServerWindow('http://127.0.0.1:8000/v1')
     expect(h.fetch).toHaveBeenCalledTimes(1)
+  })
+
+  describe('vLLM, which has no /props', () => {
+    const list = {
+      data: [
+        { id: 'swift15-qwen3.8-27b', max_model_len: 262144 },
+        { id: 'qwen3.8-flash-next', max_model_len: 245000 },
+      ],
+    }
+
+    it('finds its model list from the base URL as typed', () => {
+      expect(modelsUrl('http://192.168.1.9:8559/v1')).toBe(
+        'http://192.168.1.9:8559/v1/models'
+      )
+      expect(modelsUrl('http://192.168.1.9:8559/v1/')).toBe(
+        'http://192.168.1.9:8559/v1/models'
+      )
+      expect(modelsUrl('http://192.168.1.9:8559')).toBe(
+        'http://192.168.1.9:8559/v1/models'
+      )
+      expect(modelsUrl('nope')).toBeNull()
+    })
+
+    it('reads max_model_len for the model the chat uses', () => {
+      expect(parseModelsWindow(list, 'qwen3.8-flash-next')).toBe(245000)
+      expect(parseModelsWindow(list, 'swift15-qwen3.8-27b')).toBe(262144)
+    })
+
+    it('names no window for a model it does not list, among several', () => {
+      expect(parseModelsWindow(list, 'pxa-qwen3.8-27b')).toBeNull()
+      expect(parseModelsWindow({ data: [] }, 'x')).toBeNull()
+      expect(parseModelsWindow(null, 'x')).toBeNull()
+    })
+
+    it('takes the only model a single-model server lists', () => {
+      expect(
+        parseModelsWindow({ data: [{ id: 'a', max_model_len: 8192 }] }, 'other')
+      ).toBe(8192)
+    })
+
+    it('falls back to the model list when /props is not there', async () => {
+      h.fetch.mockImplementation((url: string) =>
+        url.endsWith('/props') ? answer({}, false) : answer(list)
+      )
+      expect(
+        await fetchServerWindow('http://192.168.1.9:8557/v1', 'qwen3.8-flash-next')
+      ).toBe(245000)
+      expect(h.fetch).toHaveBeenCalledWith(
+        'http://192.168.1.9:8557/v1/models',
+        expect.objectContaining({ method: 'GET' })
+      )
+    })
+
+    it('keeps one answer per model when a box serves several', async () => {
+      h.fetch.mockImplementation((url: string) =>
+        url.endsWith('/props') ? answer({}, false) : answer(list)
+      )
+      const a = await fetchServerWindow('http://192.168.1.9:8559/v1', 'swift15-qwen3.8-27b')
+      const b = await fetchServerWindow('http://192.168.1.9:8559/v1', 'qwen3.8-flash-next')
+      expect([a, b]).toEqual([262144, 245000])
+    })
   })
 })
