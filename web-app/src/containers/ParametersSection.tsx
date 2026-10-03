@@ -23,6 +23,7 @@ import {
   isModelLevelRejected,
 } from '@/lib/providerCaps'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
+import { DetectContextControl } from '@/containers/DetectContextControl'
 import { useModelReportedDefaults } from '@/hooks/useModelReportedDefaults'
 import { formatReported } from '@/lib/modelReportedDefaults'
 
@@ -130,6 +131,8 @@ export function ParametersSection({
           params={params}
           support={supportIndex[key]}
           modelRejected={modelRejects(key)}
+          providerId={providerId}
+          modelId={modelId}
           onChange={onChange}
           onRemove={onRemove}
         />
@@ -170,6 +173,8 @@ interface StandaloneRowProps {
   params: Record<string, unknown>
   support?: { supportedBy: string[]; maybeBy: string[]; known: boolean }
   modelRejected?: boolean
+  providerId?: string
+  modelId?: string
   onChange: (key: string, value: unknown) => void
   onRemove: (key: string) => void
 }
@@ -179,6 +184,8 @@ function StandaloneRow({
   params,
   support,
   modelRejected,
+  providerId,
+  modelId,
   onChange,
   onRemove,
 }: StandaloneRowProps) {
@@ -195,6 +202,17 @@ function StandaloneRow({
     support.known &&
     support.supportedBy.length === 0 &&
     support.maybeBy.length > 0
+  const control = (
+    <DynamicControllerSetting
+      controllerType={def.controllerType}
+      controllerProps={{
+        value: value as string | number | boolean,
+        ...(def.controllerProps ?? {}),
+      }}
+      disabledReason={disabledReason ?? undefined}
+      onChange={(v) => onChange(paramKey, v)}
+    />
+  )
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 min-w-0">
@@ -225,15 +243,17 @@ function StandaloneRow({
           <Trash2 size={14} className="text-destructive" />
         </Button>
       </div>
-      <DynamicControllerSetting
-        controllerType={def.controllerType}
-        controllerProps={{
-          value: value as string | number | boolean,
-          ...(def.controllerProps ?? {}),
-        }}
-        disabledReason={disabledReason ?? undefined}
-        onChange={(v) => onChange(paramKey, v)}
-      />
+      {paramKey === 'max_context_tokens' ? (
+        <DetectContextControl
+          providerId={providerId}
+          modelId={modelId}
+          onDetected={(tokens) => onChange(paramKey, tokens)}
+        >
+          {control}
+        </DetectContextControl>
+      ) : (
+        control
+      )}
       {(unsupported || def.effectHint) && (
         <div
           className={
