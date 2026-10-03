@@ -302,7 +302,7 @@ export const TokenCounter = memo(function TokenCounter({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="min-w-72 max-w-80 bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] bg-background border p-0 overflow-hidden"
           data-testid="token-usage-popover"
         >
           {reconciled ? (
@@ -310,7 +310,7 @@ export const TokenCounter = memo(function TokenCounter({
               {tier !== 'ok' && (
                 <p
                   data-testid="context-pressure-detail"
-                  className={cn('px-3 pt-2.5 text-[11px] leading-snug', textCls)}
+                  className={cn('px-4 pt-3 text-[11px] leading-snug', textCls)}
                 >
                   {tier === 'over'
                     ? 'This conversation is larger than the context window: the next request may be cut or refused. Start a new chat or remove attachments.'
@@ -330,7 +330,7 @@ export const TokenCounter = memo(function TokenCounter({
           ) : (
             <>
           {/* Header */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">
@@ -351,7 +351,7 @@ export const TokenCounter = memo(function TokenCounter({
           </div>
 
           {/* Progress block */}
-          <div className="px-3 py-2.5">
+          <div className="px-4 py-3">
             {tier !== 'ok' && (
               <p
                 data-testid="context-pressure-detail"
@@ -416,7 +416,7 @@ export const TokenCounter = memo(function TokenCounter({
 
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
-            <div className="px-3 py-2 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            <div className="px-4 py-3 border-t border-border flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
               {showFittedBadge && (
                 <span
                   className="flex items-center gap-1"
@@ -504,10 +504,10 @@ function TokenCountOnly({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="min-w-64 max-w-80 bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] bg-background border p-0 overflow-hidden"
           data-testid="token-usage-popover"
         >
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
             <Brain className="size-4 text-muted-foreground shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-foreground">

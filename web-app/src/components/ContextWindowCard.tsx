@@ -99,9 +99,9 @@ export function ContextWindowCard({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 pt-3 text-left"
+        className="flex w-full items-center justify-between gap-x-4 px-4 pt-4 text-left"
       >
-        <span className="shrink-0 whitespace-nowrap font-medium text-foreground">Context window</span>
+        <span className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground">Context window</span>
         <span className="ml-auto flex items-center gap-1 whitespace-nowrap tabular-nums text-muted-foreground">
           {usage.label}
           <ChevronDown
@@ -111,7 +111,7 @@ export function ContextWindowCard({
         </span>
       </button>
 
-      <div className="px-3 pt-2">
+      <div className="px-4 pt-3">
         <div
           className={cn(
             'relative flex h-1.5 w-full overflow-hidden rounded-full bg-track',
@@ -146,7 +146,7 @@ export function ContextWindowCard({
       </div>
 
       {(untilCompact !== null || onCompact) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 pt-3 text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-3 text-muted-foreground">
           <span data-testid="until-compact" className="min-w-0">
             {untilCompact !== null
               ? `${formatTokenCount(untilCompact)} until auto-compact`
@@ -167,14 +167,14 @@ export function ContextWindowCard({
       )}
 
       {expanded && (
-        <ul className="mt-2 space-y-0.5 border-t border-border px-3 pt-2" data-testid="context-legend">
+        <ul className="mt-3 space-y-2 border-t border-border px-4 pt-3" data-testid="context-legend">
           {rows.map((row) => {
             const expandable = !!row.children && row.children.length > 0
             const isOpen = !!open[row.key]
             const share = row.tokens / whole
             return (
               <li key={row.key}>
-                <div className="flex items-center gap-2 py-0.5">
+                <div className="flex items-center gap-2">
                   <span
                     aria-hidden
                     className={cn('size-2.5 shrink-0 rounded-[3px]', row.color)}
@@ -224,7 +224,7 @@ export function ContextWindowCard({
 
       {!hasWindow && (
         <p
-          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+          className="px-4 pt-3 text-[11px] leading-snug text-muted-foreground"
           data-testid="window-unknown"
         >
           This server does not report its window size.
@@ -232,7 +232,7 @@ export function ContextWindowCard({
       )}
 
       <p
-        className="px-3 pb-2 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+        className="px-4 pb-4 pt-3 text-[11px] leading-snug text-muted-foreground"
         title="Estimated from what the last request carried, at about 4 characters per token. Send a message to refresh."
       >
         Estimated

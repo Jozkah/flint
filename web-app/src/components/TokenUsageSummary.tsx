@@ -1,5 +1,4 @@
 import { Info } from 'lucide-react'
-import { cn } from '@/lib/utils'
 import {
   Tooltip,
   TooltipContent,
@@ -59,24 +58,50 @@ function InfoTip({ note, testId }: { note: string; testId?: string }) {
   )
 }
 
-function Stat({
+/** One figure with its label above it: the three big numbers of a group. */
+function Tile({
   testId,
   label,
   value,
   note,
-  strong,
   data,
 }: {
   testId: string
   label: string
   value: string
   note?: string
-  strong?: boolean
+  data?: Record<string, string | number | undefined>
+}) {
+  return (
+    <div className="min-w-0" data-testid={testId} {...data}>
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="truncate">{label}</span>
+        {note && <InfoTip note={note} testId={`${testId}-note`} />}
+      </div>
+      <div className="mt-1 truncate font-mono text-base font-medium tabular-nums text-foreground">
+        {value}
+      </div>
+    </div>
+  )
+}
+
+/** A quieter figure on its own line, as in the chat message's speed popover. */
+function Line({
+  testId,
+  label,
+  value,
+  note,
+  data,
+}: {
+  testId: string
+  label: string
+  value: string
+  note?: string
   data?: Record<string, string | number | undefined>
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-3 text-xs"
+      className="flex items-center justify-between gap-4 text-xs"
       data-testid={testId}
       {...data}
     >
@@ -84,20 +109,13 @@ function Stat({
         <span className="truncate">{label}</span>
         {note && <InfoTip note={note} testId={`${testId}-note`} />}
       </span>
-      <span
-        className={cn(
-          'shrink-0 text-right font-mono tabular-nums text-foreground',
-          strong && 'font-semibold'
-        )}
-      >
-        {value}
-      </span>
+      <span className="shrink-0 text-right font-mono tabular-nums text-foreground">{value}</span>
     </div>
   )
 }
 
-/** Cached against freshly processed input, as one thin bar and a percentage. */
-function InputStat({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
+/** The cache line under the figures: a thin bar, and how much of the input it was. */
+function CacheLine({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
   const input = usage.inputTokens
   if (input === undefined) return null
   const cached = usage.cachedInputTokens
@@ -131,43 +149,13 @@ function InputStat({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
 
   return (
     <div
-      className="space-y-1"
+      className="space-y-2"
       data-testid={`${prefix}-input`}
       data-value={input}
       data-cached={cached}
       data-uncached={uncached}
       data-cache-write={usage.cacheWriteTokens}
     >
-      <div className="flex items-center justify-between gap-3 text-xs">
-        <span className="flex min-w-0 items-center gap-1 text-muted-foreground">
-          Input
-          <InfoTip note={cacheNote} testId={`${prefix}-cache-note`} />
-        </span>
-        <span className="flex shrink-0 items-baseline gap-2">
-          {status !== 'not-reported' && (
-            <span
-              className="text-[11px] tabular-nums text-muted-foreground"
-              data-testid={`${prefix}-cache-status`}
-              data-cache-status={status}
-              data-cache-percent={pct !== undefined ? pct.toFixed(2) : undefined}
-            >
-              {pct !== undefined ? `${formatPercent(pct)} cached` : 'cached'}
-            </span>
-          )}
-          {status === 'not-reported' && (
-            <span
-              className="sr-only"
-              data-testid={`${prefix}-cache-status`}
-              data-cache-status={status}
-            >
-              Cache use not reported
-            </span>
-          )}
-          <span className="text-right font-mono tabular-nums text-foreground">
-            {exact(input)}
-          </span>
-        </span>
-      </div>
       {cached !== undefined && whole > 0 && input > 0 && (
         <div
           className="flex h-1.5 overflow-hidden rounded-full bg-track"
@@ -178,6 +166,30 @@ function InputStat({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
           <div className="h-full bg-chart-3" style={{ width: `${(1 - cached / whole) * 100}%` }} />
         </div>
       )}
+      <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          Prompt cache
+          <InfoTip note={cacheNote} testId={`${prefix}-cache-note`} />
+        </span>
+        {status !== 'not-reported' ? (
+          <span
+            className="font-mono tabular-nums text-foreground"
+            data-testid={`${prefix}-cache-status`}
+            data-cache-status={status}
+            data-cache-percent={pct !== undefined ? pct.toFixed(2) : undefined}
+          >
+            {pct !== undefined ? `${formatPercent(pct)} cached` : 'cached'}
+          </span>
+        ) : (
+          <span
+            data-testid={`${prefix}-cache-status`}
+            data-cache-status={status}
+            aria-label="Cache use not reported"
+          >
+            Not reported
+          </span>
+        )}
+      </div>
     </div>
   )
 }
@@ -201,33 +213,41 @@ function Group({
   const kinds = usageValueKinds(usage)
   const estimated = speed?.source === 'estimated'
   return (
-    <div className="space-y-1.5">
-      <InputStat usage={usage} prefix={prefix} />
-      {usage.outputTokens !== undefined && (
-        <Stat
-          testId={`${prefix}-output`}
-          label="Output"
-          value={exact(usage.outputTokens)}
-          data={{ 'data-value': usage.outputTokens }}
-        />
-      )}
+    <div className="space-y-4">
+      <div className="grid grid-cols-3 gap-3">
+        {usage.inputTokens !== undefined && (
+          <Tile
+            testId={`${prefix}-input-value`}
+            label="Input"
+            value={exact(usage.inputTokens)}
+          />
+        )}
+        {usage.outputTokens !== undefined && (
+          <Tile
+            testId={`${prefix}-output`}
+            label="Output"
+            value={exact(usage.outputTokens)}
+            data={{ 'data-value': usage.outputTokens }}
+          />
+        )}
+        {usage.totalTokens !== undefined && (
+          <Tile
+            testId={`${prefix}-total`}
+            label="Total"
+            value={exact(usage.totalTokens)}
+            note={kinds.total === 'derived' ? 'Input plus output.' : undefined}
+            data={{ 'data-value': usage.totalTokens }}
+          />
+        )}
+      </div>
+      <CacheLine usage={usage} prefix={prefix} />
       {speedValue !== undefined && (
-        <Stat
+        <Line
           testId={`${prefix}-speed`}
           label="Speed"
           value={`${estimated ? '~' : ''}${speedValue >= 100 ? Math.round(speedValue) : speedValue.toFixed(1)} tok/s`}
           note={speed?.source ? SPEED_NOTE[speed.source] : undefined}
           data={{ 'data-value': speedValue, 'data-source': speed?.source }}
-        />
-      )}
-      {usage.totalTokens !== undefined && (
-        <Stat
-          testId={`${prefix}-total`}
-          label="Total"
-          value={exact(usage.totalTokens)}
-          note={kinds.total === 'derived' ? 'Input plus output.' : undefined}
-          strong
-          data={{ 'data-value': usage.totalTokens }}
         />
       )}
     </div>
@@ -258,7 +278,7 @@ export function TokenUsageSummary({
   ) {
     return (
       <p
-        className="px-3 py-2.5 text-[11px] text-muted-foreground"
+        className="px-4 py-3 text-xs text-muted-foreground"
         data-testid="token-usage-empty"
         data-usage-scope={scope}
       >
@@ -268,20 +288,20 @@ export function TokenUsageSummary({
   }
   return (
     <div className="divide-y divide-border" data-testid="token-usage-breakdown" data-usage-scope={scope}>
-      <section className="space-y-2 px-3 py-2.5" aria-label="Last reply">
-        <div className="text-[11px] font-medium text-foreground">Last reply</div>
+      <section className="space-y-3 px-4 py-4" aria-label="Last reply">
+        <div className="text-xs font-medium text-foreground">Last reply</div>
         <Group usage={usage} speed={speed} speedValue={speed?.last} prefix="token-usage" />
       </section>
       {session && requests > 1 && (
         <section
-          className="space-y-2 px-3 py-2.5"
+          className="space-y-3 px-4 py-4"
           aria-label="This conversation"
           data-testid="session-usage"
           data-usage-scope={scope}
           data-requests={session.requests}
           data-cache-hit-requests={session.cacheHitRequests}
         >
-          <div className="text-[11px] font-medium text-foreground">
+          <div className="text-xs font-medium text-foreground">
             This conversation
             <span className="font-normal text-muted-foreground">
               {` · ${requests} ${requests === 1 ? 'request' : 'requests'}`}
