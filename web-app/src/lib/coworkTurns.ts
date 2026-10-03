@@ -2,6 +2,7 @@
 import type { UIMessage } from 'ai'
 import type { CoworkTurn } from '@/types/coworkSession'
 import { reasoningPartsFromText } from '@/lib/messages'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 
 /**
  * Adapts the code screen's flat `CoworkTurn[]` transcript into the AI SDK
@@ -61,6 +62,8 @@ export function assistantAnchorId(
 export function isHideableToolTurn(turn: CoworkTurn): boolean {
   if (turn.role !== 'tool') return false
   if (turn.isError) return false
+  // A widget is content for the user, not activity to fold away.
+  if (turn.name === SHOW_WIDGET_TOOL) return false
   if (turn.toolState) return turn.toolState === 'succeeded'
   // Turns written before the state field existed: a finished call with no
   // error is a success.

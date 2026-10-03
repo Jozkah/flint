@@ -16,6 +16,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
+import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
@@ -4722,6 +4723,22 @@ export function CoworkPage() {
   }
   // A paired phone's message to the session in view takes the same path.
   useRemoteComposer('cowork', session?.id, handleSubmit)
+  // A widget's button sends its prompt as the user's next message, once the
+  // run in view has ended.
+  const widgetBusyRef = useRef(false)
+  widgetBusyRef.current = running
+  const widgetSubmitRef = useRef(handleSubmit)
+  widgetSubmitRef.current = handleSubmit
+  const widgetHost = useMemo<WidgetHost>(
+    () => ({
+      sendPrompt: (text) => {
+        if (widgetBusyRef.current) return false
+        widgetSubmitRef.current(text)
+        return true
+      },
+    }),
+    []
+  )
   // Cowork's own `/` built-ins; `/help` is added by the composer.
   /**
    * Compact this session now: fold its older messages into a summary written
@@ -5613,6 +5630,7 @@ export function CoworkPage() {
             ) : (
               <Conversation className="absolute inset-0 text-start">
                 <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
+                  <WidgetHostContext.Provider value={widgetHost}>
                   <CodeOpenProvider
             open={openToolPath}
             check={checkToolPath}
@@ -5834,6 +5852,7 @@ export function CoworkPage() {
                                           ))
                     })}
                   </CodeOpenProvider>
+                  </WidgetHostContext.Provider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
