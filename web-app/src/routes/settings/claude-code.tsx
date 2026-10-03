@@ -30,6 +30,8 @@ import { modelLogo } from '@/lib/brandLogos'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { getModelDisplayName, isLocalProvider } from '@/lib/utils'
+import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
+import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const Route = createFileRoute(route.settings.claude_code as any)({
@@ -361,25 +363,29 @@ function HelperModelSelector({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const hideProvider = useHideUnavailable()
 
   const availableModels = useMemo(() => {
     return providers
       .filter((p) => p.active)
-      .flatMap((p) =>
-        p.models.map((m) => ({
-          ...m,
-          providerName: p.provider,
-          isLocal: isLocalProvider(p.provider),
-          hasApiKey: !!p.api_key?.length,
-        }))
-      )
+      .flatMap((p) => {
+        const filteredOut = hideProvider(p)
+        return p.models
+          .filter((m) => !filteredOut || m.id === selectedModel)
+          .map((m) => ({
+            ...m,
+            providerName: p.provider,
+            isLocal: isLocalProvider(p.provider),
+            hasApiKey: !!p.api_key?.length,
+          }))
+      })
       .filter((m) => {
         if (m.isLocal) {
           return m.id
         }
         return m.hasApiKey
       })
-  }, [providers])
+  }, [providers, hideProvider, selectedModel])
 
   const filteredModels = useMemo(() => {
     if (!searchValue.trim()) return availableModels
@@ -462,23 +468,22 @@ function HelperModelSelector({
         sideOffset={8}
       >
         <div className="flex flex-col size-full">
-          <div className="relative border-b border-border p-2">
+          <div className="flex items-center gap-1 border-b border-border p-2">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder="Search models..."
-              className="w-full bg-transparent pr-8 text-base font-normal outline-0 md:text-sm"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
-              <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <X
-                  size={16}
-                  className="text-muted-foreground cursor-pointer"
-                  onClick={() => setSearchValue('')}
-                />
-              </div>
+              <X
+                size={16}
+                className="shrink-0 text-muted-foreground cursor-pointer"
+                onClick={() => setSearchValue('')}
+              />
             )}
+            <ModelFilterButton />
           </div>
 
           <div className="max-h-[300px] overflow-y-auto">

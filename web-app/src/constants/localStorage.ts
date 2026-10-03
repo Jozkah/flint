@@ -22,6 +22,7 @@ export const localStorageKey = {
   defaultAssistantId: 'default-assistant-id',
   favoriteModels: 'favorite-models',
   modelOrder: 'model-order',
+  modelFilter: 'model-filter',
   setupCompleted: 'setup-completed',
   threadManagement: 'thread-management',
   /** Conversation groups, one key per surface: `conversation-groups:home` etc. */
