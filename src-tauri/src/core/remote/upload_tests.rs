@@ -125,7 +125,7 @@ mod http {
     #[tokio::test]
     async fn preview_needs_a_live_ticket_and_upload_needs_a_token() {
         let hub = Arc::new(RemoteHub::new(Default::default(), DeviceStore::in_memory(), Arc::new(NoWindow), None));
-        let server = super::super::server::start(hub.clone(), "127.0.0.1:0".parse().unwrap(), None, None)
+        let server = super::super::server::start(hub.clone(), "127.0.0.1:0".parse().unwrap(), None, Vec::new())
             .await
             .unwrap();
         let base = format!("http://127.0.0.1:{}", server.addr.port());

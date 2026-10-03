@@ -15,6 +15,8 @@
   "address": "Address",
   "port": "Port",
   "portDesc": "Between 1024 and 65535.",
+  "customHost": "Custom host name",
+  "customHostDesc": "Optional. A name of your own that points at this computer, like flint.example.com. The pairing link uses it instead of the address. With HTTPS, the certificate must cover it.",
   "https": "Connection",
   "httpsOn": "HTTPS ({{source}})",
   "tlsSource": {

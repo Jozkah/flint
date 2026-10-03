@@ -104,6 +104,22 @@ describe('RemoteAccessSettings', () => {
     expect(screen.getByTestId('remote-allow-always')).toBeDisabled()
   })
 
+  it('saves a custom host name, and clears it when emptied', async () => {
+    const api = makeApi(status())
+    render(<RemoteAccessSettings api={api} />)
+    const input = await screen.findByTestId('remote-custom-host')
+    fireEvent.change(input, { target: { value: ' flint.example.com ' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(api.calls.at(-1)?.customHost).toBe('flint.example.com'))
+    await waitFor(() => expect(input).toHaveValue('flint.example.com'))
+    // Leaving it unchanged saves nothing.
+    fireEvent.blur(input)
+    expect(api.calls).toHaveLength(1)
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.blur(input)
+    await waitFor(() => expect(api.calls.at(-1)?.customHost).toBeNull())
+  })
+
   it('removes a paired phone', async () => {
     const api = makeApi(status())
     render(<RemoteAccessSettings api={api} />)

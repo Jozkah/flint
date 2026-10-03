@@ -58,6 +58,7 @@ export function RemoteAccessSettings({
   const status = useRemoteAccess((s) => s.status)
   const devices = useRemoteAccess((s) => s.devices)
   const [portInput, setPortInput] = useState('')
+  const [hostInput, setHostInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pairOpen, setPairOpen] = useState(false)
 
@@ -65,6 +66,7 @@ export function RemoteAccessSettings({
     const [s, d] = await Promise.all([api.getStatus(), api.listDevices()])
     useRemoteAccess.setState({ status: s, devices: d })
     setPortInput(String(s.config.port))
+    setHostInput(s.config.customHost ?? '')
   }, [api])
 
   useEffect(() => {
@@ -78,6 +80,7 @@ export function RemoteAccessSettings({
       const next = await api.setConfig({ ...status.config, ...patch })
       useRemoteAccess.setState({ status: next })
       setPortInput(String(next.config.port))
+      setHostInput(next.config.customHost ?? '')
     } catch (e) {
       setError(String(e))
     }
@@ -161,6 +164,32 @@ export function RemoteAccessSettings({
                 else setPortInput(String(cfg.port))
               }}
               className="h-8 w-24 rounded border border-border bg-card px-2 text-xs"
+            />
+          }
+        />
+        <CardItem
+          title={t('remote:customHost')}
+          description={t('remote:customHostDesc')}
+          actions={
+            <input
+              type="text"
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              data-testid="remote-custom-host"
+              aria-label={t('remote:customHost')}
+              placeholder={serving?.host ?? detected ?? ''}
+              value={hostInput}
+              onChange={(e) => setHostInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur()
+              }}
+              onBlur={() => {
+                const customHost = hostInput.trim() || null
+                if (customHost !== (cfg.customHost ?? null)) void save({ customHost })
+                else setHostInput(cfg.customHost ?? '')
+              }}
+              className="h-8 w-56 rounded border border-border bg-card px-2 text-xs"
             />
           }
         />
