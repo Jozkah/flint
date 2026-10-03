@@ -38,19 +38,27 @@ export function resolveModel(
   return { provider, model }
 }
 
-export function contextWindowFor(ref: RoomModelRef, lookup: ProviderLookup): number {
+/**
+ * The window Flint actually knows for a model (the user's own setting, what the
+ * provider or a server said, or the bundled table), or null when nobody does.
+ */
+export function knownWindowFor(ref: RoomModelRef, lookup: ProviderLookup): number | null {
   const { provider, model } = resolveModel(ref, lookup)
-  if (!model) return FALLBACK_CONTEXT_WINDOW
+  if (!model) return null
   try {
     return (
       knownContextWindow(
         model as unknown as Parameters<typeof knownContextWindow>[0],
         provider as unknown as Parameters<typeof knownContextWindow>[1]
-      ) ?? FALLBACK_CONTEXT_WINDOW
+      ) ?? null
     )
   } catch {
-    return FALLBACK_CONTEXT_WINDOW
+    return null
   }
+}
+
+export function contextWindowFor(ref: RoomModelRef, lookup: ProviderLookup): number {
+  return knownWindowFor(ref, lookup) ?? FALLBACK_CONTEXT_WINDOW
 }
 
 export function modelSupportsTools(ref: RoomModelRef, lookup: ProviderLookup): boolean {
