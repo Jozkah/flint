@@ -890,6 +890,11 @@ Section Install
   ; `.old` copies the frees left are no longer needed as a way back.
   !insertmacro CleanFreedBinaries
 
+  ; Shortcuts and pins left pointing at an earlier install location. Before
+  ; anything that removes an old install, so the old executable they target is
+  ; still there to be recognised.
+  Call FlintRetargetLegacyShortcuts
+
   ; Create file associations
 
   ; Register deep links
@@ -936,9 +941,6 @@ Section Install
     WriteRegStr SHCTX "${UNINSTKEY}" "URLUpdateInfo" "${HOMEPAGE}"
     WriteRegStr SHCTX "${UNINSTKEY}" "HelpLink" "${HOMEPAGE}"
   !endif
-
-  ; Shortcuts and pins left pointing at an earlier install location
-  Call FlintRetargetLegacyShortcuts
 
   ; Create start menu shortcut
   !insertmacro MUI_STARTMENU_WRITE_BEGIN Application
