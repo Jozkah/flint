@@ -4,6 +4,7 @@ import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
+import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
 import {
@@ -2363,9 +2364,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
 
           // Counted for the Overview dashboard, on this computer only.
+          const pricedModel = useModelProvider
+            .getState()
+            .getProviderByName(providerId ?? '')
+            ?.models.find((m: Model) => m.id === modelId)
           useUsageStats.getState().recordGeneration({
             tokens: outputTokens,
             durationMs: tokenSpeed > 0 ? (outputTokens / tokenSpeed) * 1000 : 0,
+            cost: replyCost(
+              resolvePricing(
+                providerId,
+                pricedModel ?? (modelId ? { id: modelId } : undefined)
+              ),
+              usage.inputTokens,
+              outputTokens
+            ),
           })
 
           // AH-083: where each carried memory was used -- now naming the

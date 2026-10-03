@@ -54,6 +54,10 @@ type Model = {
   /** Whether this model was imported from a user-supplied local file
    *  (path lives outside the provider's managed models directory). */
   imported?: boolean
+  /** USD per million input tokens, set by the user. Unset = look up / free. */
+  inputCostPerMillion?: number
+  /** USD per million output tokens, set by the user. */
+  outputCostPerMillion?: number
 }
 
 /**
