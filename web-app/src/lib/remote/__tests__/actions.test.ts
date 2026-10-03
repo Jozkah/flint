@@ -278,3 +278,31 @@ describe('cowork.send resume', () => {
     expect(recoverInterrupted).not.toHaveBeenCalled()
   })
 })
+
+describe('chat.regenerate and chat.edit', () => {
+  it('go through the mounted chat, once it is open', async () => {
+    const chatAct = vi.fn(async () => true)
+    setup({ chatAct })
+    expect(await call('chat.regenerate', { id: 'c1', messageId: 'm2' })).toEqual({ result: { ok: true } })
+    expect(a.open).toHaveBeenCalledWith('chat', 'c1')
+    expect(chatAct).toHaveBeenLastCalledWith('c1', { type: 'regenerate', messageId: 'm2' })
+    expect(await call('chat.edit', { id: 'c1', messageId: 'm1', text: '  New question  ' })).toEqual({ result: { ok: true } })
+    expect(chatAct).toHaveBeenLastCalledWith('c1', { type: 'edit', messageId: 'm1', text: 'New question' })
+  })
+
+  it('wait for a reply in flight to finish, and need a real chat and real text', async () => {
+    const chatAct = vi.fn(async () => true)
+    setup({ chatAct, chatBusy: vi.fn(() => true) })
+    expect(await call('chat.regenerate', { id: 'c1' })).toMatchObject({ error: { code: 'busy' } })
+    setup({ chatAct })
+    expect(await call('chat.regenerate', { id: 'nope' })).toMatchObject({ error: { code: 'not_found' } })
+    expect(await call('chat.edit', { id: 'c1', messageId: 'm1', text: '   ' })).toMatchObject({ error: { code: 'bad_params' } })
+    expect(await call('chat.edit', { id: 'c1', text: 'x' })).toMatchObject({ error: { code: 'bad_params' } })
+    expect(chatAct).not.toHaveBeenCalled()
+  })
+
+  it('say so when the window did not open the chat in time', async () => {
+    setup({ chatAct: vi.fn(async () => false) })
+    expect(await call('chat.regenerate', { id: 'c1' })).toMatchObject({ error: { code: 'unavailable' } })
+  })
+})

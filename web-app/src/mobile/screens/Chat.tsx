@@ -154,6 +154,11 @@ export default function Chat({ id }: { id: string }) {
           m.role === 'user' ? (
             <Fragment key={m.id}>
               <UserBubble text={m.text} attachments={m.attachments} />
+              <div className="macts user">
+                <button type="button" className="ib" aria-label="Message actions" onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text, role: 'user' })}>
+                  <I n="more" />
+                </button>
+              </div>
               <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
             </Fragment>
           ) : m.role === 'assistant' ? (

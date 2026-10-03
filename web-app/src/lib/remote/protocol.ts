@@ -649,6 +649,11 @@ export type ChatDetails = {
 export type ChatEffortParams = { id: string; choice: EffortChoiceWire | null }
 export type ChatAssistantParams = { id: string; assistant: string }
 export type ChatForkParams = { id: string; messageId?: string }
+/** Regenerate a reply (the last one when `messageId` is absent). */
+export type ChatRegenerateParams = { id: string; messageId?: string }
+/** Edit a message: the old version is kept beside the new one, and a
+ * question gets a new reply. */
+export type ChatEditParams = { id: string; messageId: string; text: string }
 export type TitleRegenerateParams = { kind: SessionKind; id: string }
 export type TitleRegenerateResult = { result: 'done' | 'empty' | 'busy' | 'failed' }
 
@@ -912,6 +917,8 @@ export type RemoteMethods = {
   'chat.effort': { params: ChatEffortParams; result: { ok: true } }
   'chat.assistant': { params: ChatAssistantParams; result: { ok: true } }
   'chat.fork': { params: ChatForkParams; result: { id: string } }
+  'chat.regenerate': { params: ChatRegenerateParams; result: { ok: true } }
+  'chat.edit': { params: ChatEditParams; result: { ok: true } }
   'chat.compact': { params: IdParams; result: { started: boolean } }
   'title.regenerate': { params: TitleRegenerateParams; result: TitleRegenerateResult }
   'assistants.list': { params: Record<string, never>; result: AssistantsResult }

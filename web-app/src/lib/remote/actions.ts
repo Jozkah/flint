@@ -110,6 +110,12 @@ export type RemoteActions = {
   respondPrompt?(id: string, action: string): boolean
   /** Keeps what an interrupted turn finished, so the session can go on. */
   recoverInterrupted?(id: string): void
+  /** Regenerates or edits through the mounted chat's own handlers. False
+   * when the chat did not mount in time. */
+  chatAct?(
+    id: string,
+    action: { type: 'regenerate'; messageId?: string } | { type: 'edit'; messageId: string; text: string }
+  ): Promise<boolean>
 
   // -- Rooms -----------------------------------------------------------------
   roomExists(id: string): Promise<boolean>
@@ -197,6 +203,8 @@ type ActionMethods =
   | 'approvals.respond'
   | 'asks.respond'
   | 'approvals.prompt'
+  | 'chat.regenerate'
+  | 'chat.edit'
 
 export function createActionHandlers(
   a: RemoteActions,
@@ -252,6 +260,17 @@ export function createActionHandlers(
       throw new RemoteRpcError('rejected', att.rejected.map((r) => `${r.name}: ${r.message}`).join(' · '))
     }
     return att
+  }
+  /** A message action in a chat: only while it is idle, as on the desktop
+   * (its row hides them during a reply). */
+  const chatAct = async (id: string, action: Parameters<NonNullable<RemoteActions['chatAct']>>[1]) => {
+    if (!a.chatAct) throw new RemoteRpcError('not_implemented', 'That is not available from phones yet')
+    if (!a.chatExists(id)) throw new RemoteRpcError('not_found', 'No such chat')
+    if (a.chatBusy(id)) throw new RemoteRpcError('busy', 'Wait for the reply to finish')
+    a.open('chat', id)
+    if (!(await a.chatAct(id, action))) {
+      throw new RemoteRpcError('unavailable', "Flint's window didn't open that chat in time")
+    }
   }
   const textWith = (text: string, att: PlannedAttachments) =>
     text || (att.files.length + att.docs.length ? 'Please look at the attached file(s).' : text)
@@ -372,6 +391,23 @@ export function createActionHandlers(
         answers = checked
       }
       return { status: a.answerAsk(threadId, requestId, answers) ? 'answered' : 'gone' }
+    },
+
+    'chat.regenerate': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Record<string, unknown>
+      const id = str(p.id)
+      if (!id) throw new RemoteRpcError('bad_params', 'id is required')
+      await chatAct(id, { type: 'regenerate', ...(str(p.messageId) ? { messageId: str(p.messageId) } : {}) })
+      return { ok: true }
+    },
+
+    'chat.edit': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Record<string, unknown>
+      const id = str(p.id)
+      const messageId = str(p.messageId)
+      if (!id || !messageId) throw new RemoteRpcError('bad_params', 'id and messageId are required')
+      await chatAct(id, { type: 'edit', messageId, text: textOf(p) })
+      return { ok: true }
     },
 
     'approvals.prompt': async (params) => {

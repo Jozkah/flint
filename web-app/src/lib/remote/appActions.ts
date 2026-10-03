@@ -28,7 +28,7 @@ import { SESSION_STORAGE_PREFIX } from '@/constants/chat'
 import { route } from '@/constants/routes'
 import { remoteApi } from './api'
 import { RemoteRpcError } from './bridge'
-import { composerFor, waitForComposer } from './composer'
+import { composerFor, waitForChatActions, waitForComposer } from './composer'
 import type { ApprovalScopeWire, RemoteActions } from './actions'
 import type { ModelRef, NotificationPrefs } from './protocol'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
@@ -328,6 +328,14 @@ export function appActions(navigate: Navigate): RemoteActions {
     // run's own resolver settles the card and applies what the answer means
     // (leaving plan mode, continuing an accepted proposal).
     answerAsk: (threadId, requestId, answers) => answerAsk(threadId, requestId, answers),
+
+    chatAct: async (id, action) => {
+      const entry = await waitForChatActions(id)
+      if (!entry) return false
+      if (action.type === 'regenerate') entry.regenerate(action.messageId)
+      else entry.edit(action.messageId, action.text)
+      return true
+    },
 
     findPrompt: (id) => appPrompts().find((p) => p.id === id) ?? null,
     respondPrompt: (id, action) => respondAppPrompt(id, action),

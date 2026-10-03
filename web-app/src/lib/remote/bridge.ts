@@ -54,6 +54,8 @@ export const PLANNED_METHODS = [
   'approvals.respond',
   'asks.respond',
   'approvals.prompt',
+  'chat.regenerate',
+  'chat.edit',
 ] as const satisfies readonly RemoteMethod[]
 
 export const plannedHandlers = Object.fromEntries(
