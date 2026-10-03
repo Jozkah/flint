@@ -570,7 +570,16 @@ async fn execute(
     } else {
         proc::shell().clone()
     };
-    let command = hook.command.clone();
+    // A confined PowerShell ignores the directory it was started in (it opens
+    // at System32), so a relative path in a hook meant somewhere else. The
+    // `bash` tool fixes this by wrapping the command to open in the workspace
+    // (`proc::located`); a hook is no less entitled to its own project, so it
+    // gets the same wrapper. Unconfined shells already honour `current_dir`.
+    let command = if ctx.sandbox {
+        proc::located(shell.flavor, &hook.command, ctx.project_root)
+    } else {
+        hook.command.clone()
+    };
     let root = ctx.project_root.to_path_buf();
     // The shell's pid, shared out of the future so a deadline can kill the
     // tree it started. Killing the shell alone is not enough: the work is in
@@ -1253,6 +1262,43 @@ mod tests {
         } else {
             // Where one can, the hook ran inside it.
             assert_eq!(decision.runs.len(), 1);
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A confined PowerShell opens in System32 whatever directory it was
+    /// started in, so a relative path in a hook used to land (or fail) there.
+    /// A hook starts in the project, confined or not.
+    #[tokio::test]
+    async fn a_confined_hook_starts_in_the_project() {
+        let root = dir("confined-cwd");
+        write_config(
+            &root,
+            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > relative-hook-output.txt\"\non_failure = \"warn\"\n",
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run_post_tool_batch(
+            &hooks,
+            &["ls".to_string()],
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: true,
+                mask_root: None,
+                cancel: None,
+            },
+        )
+        .await;
+        let run = decision.runs.first().expect("the hook ran or was refused");
+        match &run.error {
+            // No shell can be confined on this host: nothing to check here.
+            Some(e) if e.kind == HookErrorKind::ShellUnavailable => {}
+            Some(e) => panic!("the confined hook failed: {}", e.message),
+            None => assert!(
+                root.join("relative-hook-output.txt").is_file(),
+                "a relative path in a confined hook must land in the project"
+            ),
         }
         let _ = std::fs::remove_dir_all(&root);
     }

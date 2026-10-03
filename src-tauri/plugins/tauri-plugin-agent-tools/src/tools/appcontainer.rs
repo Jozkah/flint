@@ -1989,16 +1989,38 @@ mod win {
         )
     }
 
+    /// What the hook runner tells a hook (`hooks.rs`), the one thing carried
+    /// from the host into a confined shell besides the system basics.
+    const HOOK_ENV: &[&str] = &[
+        "FLINT_HOOK_EVENT",
+        "FLINT_HOOK_TOOL",
+        "FLINT_HOOK_TOOL_NAMES",
+        "FLINT_HOOK_TOOL_COUNT",
+        "FLINT_PROJECT_ROOT",
+        "JAN_HOOK_EVENT",
+        "JAN_HOOK_TOOL",
+        "JAN_HOOK_TOOL_NAMES",
+        "JAN_HOOK_TOOL_COUNT",
+        "JAN_PROJECT_ROOT",
+    ];
+
     /// Assemble the environment the confined process receives.
     fn sandbox_env(req: &Request, home: &Path) -> Result<SandboxEnv, LaunchFailure> {
         let temp = req.scratch.clone().unwrap_or_else(|| home.to_path_buf());
+        // A hook is told the event and the tools through these (docs/HOOKS.md);
+        // only these names, and only when the hook runner set them, so the
+        // confined shell still sees none of the host environment.
+        let hook_env: Vec<(&'static str, std::ffi::OsString)> = HOOK_ENV
+            .iter()
+            .filter_map(|name| std::env::var_os(name).map(|value| (*name, value)))
+            .collect();
         win_env::build(
             &ProcessEnv,
             &SandboxEnvSpec {
                 home,
                 temp: &temp,
                 path: Some(sandbox_path(&req.program, &req.path_dirs)),
-                extra: &[],
+                extra: &hook_env,
             },
         )
         .map_err(|e| {
