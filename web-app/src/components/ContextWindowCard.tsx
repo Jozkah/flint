@@ -3,6 +3,17 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn, formatTokenCount } from '@/lib/utils'
 import type { ContextSegment } from '@/lib/contextBreakdown'
 
+/** How long ago, in words: "2 hours ago". Nothing under a minute. */
+function ago(ms: number): string | null {
+  const minutes = Math.floor(ms / 60_000)
+  if (minutes < 1) return null
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours} hour${hours === 1 ? '' : 's'} ago`
+  const days = Math.floor(hours / 24)
+  return `${days} days ago`
+}
+
 /** A share (0 to 1) as a percentage; anything under a tenth of a percent says so. */
 const pctText = (share: number) => {
   const pct = share * 100
@@ -33,6 +44,8 @@ export function ContextWindowCard({
   autoCompactBuffer,
   autoCompactOn,
   onCompact,
+  updatedAt,
+  now = Date.now(),
   defaultExpanded = false,
 }: {
   segments: readonly ContextSegment[]
@@ -43,6 +56,10 @@ export function ContextWindowCard({
   autoCompactBuffer?: number
   autoCompactOn?: boolean
   onCompact?: () => void
+  /** When the request these figures describe was sent. */
+  updatedAt?: number
+  /** The time to measure its age against; the clock, unless a test says. */
+  now?: number
   defaultExpanded?: boolean
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
@@ -72,6 +89,7 @@ export function ContextWindowCard({
       : []),
   ]
 
+  const age = updatedAt ? ago(now - updatedAt) : null
   const usedPct = hasWindow ? Math.min(100, (usedTokens / windowTokens) * 100) : undefined
 
   return (
@@ -100,11 +118,18 @@ export function ContextWindowCard({
           role="img"
           aria-label="Context window usage by kind"
           data-testid="context-bar"
+          // No window known: the bar shows what the used part is made of, and
+          // fades out at the end rather than reading as a full window.
+          style={
+            hasWindow
+              ? undefined
+              : { maskImage: 'linear-gradient(to right, black 60%, transparent)' }
+          }
         >
           {segments.map((s) => (
             <div
               key={s.id}
-              className={cn('h-full shrink-0', s.color)}
+              className={cn('h-full shrink-0', s.color, !hasWindow && 'opacity-60')}
               style={{ width: `${(s.tokens / whole) * 100}%` }}
               title={`${s.label}: ${formatTokenCount(s.tokens)}`}
               data-segment={s.id}
@@ -195,6 +220,25 @@ export function ContextWindowCard({
             )
           })}
         </ul>
+      )}
+
+      {!hasWindow && (
+        <p
+          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+          data-testid="window-unknown"
+        >
+          This server does not say how large its window is, so the bar shows
+          what the used part is made of, not how full it is.
+        </p>
+      )}
+
+      {age && (
+        <p
+          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+          data-testid="context-age"
+        >
+          Last updated {age}. Send a message to refresh.
+        </p>
       )}
 
       <p className="px-3 pb-2 pt-2 text-[10.5px] leading-snug text-muted-foreground">
