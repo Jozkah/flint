@@ -22,6 +22,24 @@ export const MAX_SUBAGENT_STEPS = 30
  */
 export const MAX_SESSION_TOKENS = 200_000
 
+/**
+ * The spend allowance for one request. It is a spend cap, not a context limit,
+ * and it counts completions and prompt growth that compaction later folds
+ * away. With auto-compact on, a healthy run (compacting as it goes) must not be
+ * stopped by it, so it scales with the window: never below the default, and
+ * room for several windows' worth of work otherwise.
+ */
+export const COMPACTING_ALLOWANCE_WINDOWS = 4
+
+export function sessionTokenLimitFor(input: {
+  autoCompact: boolean
+  window: number | null | undefined
+}): number {
+  const { autoCompact, window } = input
+  if (!autoCompact || window == null || !(window > 0)) return MAX_SESSION_TOKENS
+  return Math.max(MAX_SESSION_TOKENS, COMPACTING_ALLOWANCE_WINDOWS * window)
+}
+
 export type BudgetState = {
   step: number
   sessionTokens: number
@@ -122,10 +140,11 @@ export type BudgetStop = 'steps' | 'tokens' | null
 /** Which cap, if any, this run has reached. */
 export function budgetExceeded(
   state: BudgetState,
-  maxSteps: number = MAX_AGENT_STEPS
+  maxSteps: number = MAX_AGENT_STEPS,
+  tokenLimit: number = MAX_SESSION_TOKENS
 ): BudgetStop {
   if (state.step >= maxSteps) return 'steps'
-  if (state.sessionTokens >= MAX_SESSION_TOKENS) return 'tokens'
+  if (state.sessionTokens >= tokenLimit) return 'tokens'
   return null
 }
 

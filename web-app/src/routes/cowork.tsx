@@ -149,6 +149,7 @@ import {
   coworkWindow,
   isContextOverflow,
   planTurn,
+  sessionTokenLimitFor,
 } from '@/lib/coworkBudget'
 import { restoreDeadline, startDeadline } from '@/lib/runDeadline'
 import { accountedTotal } from '@/lib/coworkReadiness'
@@ -3685,7 +3686,8 @@ export function CoworkPage() {
       msgs: UIMessage[],
       why: 'threshold' | 'context-error',
       signal: AbortSignal,
-      failure?: unknown
+      failure?: unknown,
+      headroom?: number
     ): Promise<UIMessage[] | null> => {
       if (!autoCompact) return null
       if (why === 'context-error' && runWindow == null) {
@@ -3712,7 +3714,22 @@ export function CoworkPage() {
         const window = compactionWindow(
           now.budget.known === false ? null : now.budget.tokens
         )
-        if (!shouldCompact(accountedTotal(now).tokens, window)) return null
+        // What the next step is expected to add, never more than a quarter of
+        // the window, so one big result cannot make every step compact.
+        const expected = Math.min(
+          Math.max(0, headroom ?? 0),
+          Math.floor(window * 0.25)
+        )
+        if (
+          !shouldCompact(
+            accountedTotal(now).tokens,
+            window,
+            undefined,
+            expected
+          )
+        ) {
+          return null
+        }
       }
       setCompacting(true)
       let result: Awaited<ReturnType<typeof compactHistory>>
@@ -3825,6 +3842,12 @@ export function CoworkPage() {
         // The previous turn's `total_tokens` is a context size, not a spend, and
         // seeding with it would pre-charge the whole replayed prompt.
         sessionTokens: 0,
+        // The allowance is a spend cap, not the window: with auto-compact on
+        // it must not stop a run that is compacting its way through.
+        sessionTokenLimit: sessionTokenLimitFor({
+          autoCompact,
+          window: compactionWindow(runWindow),
+        }),
         deps: {
           // The session's `post-tool-batch` hooks, once a step's calls are all
           // answered; detached, so the run never waits for them.

@@ -47,10 +47,18 @@ async function compactOrNull(
   messages: UIMessage[],
   why: 'threshold' | 'context-error',
   signal: AbortSignal,
-  failure?: unknown
+  failure?: unknown,
+  headroom?: number
 ): Promise<UIMessage[] | null> {
   try {
-    return (await deps.compact?.([...messages], why, signal, failure)) ?? null
+    const args: [UIMessage[], typeof why, AbortSignal, unknown?, number?] = [
+      [...messages],
+      why,
+      signal,
+    ]
+    if (headroom !== undefined) args.push(failure, headroom)
+    else if (failure !== undefined) args.push(failure)
+    return (await deps.compact?.(...args)) ?? null
   } catch (error) {
     if (signal.aborted) throw error
     console.warn('[cowork] compaction failed; continuing without it', error)
@@ -890,7 +898,13 @@ export type RunDeps = {
     why: 'threshold' | 'context-error',
     signal: AbortSignal,
     /** The refusal that asked for this compaction, when it was one. */
-    failure?: unknown
+    failure?: unknown,
+    /**
+     * Tokens the next step is expected to add, from the growth of recent
+     * steps' prompts. Lets the caller compact before a large tool result
+     * carries the request past the window rather than after.
+     */
+    headroom?: number
   ) => Promise<UIMessage[] | null>
 }
 
@@ -927,6 +941,12 @@ export async function runTurn(opts: {
   /** Tokens already spent by this session, which the caps apply across. */
   sessionTokens?: number
   /**
+   * Spend allowance for this request; defaults to `MAX_SESSION_TOKENS`. A run
+   * that compacts automatically is given more (`sessionTokenLimitFor`), since
+   * the allowance counts history that compaction folds away.
+   */
+  sessionTokenLimit?: number
+  /**
    * When this run must be over. AH-019.
    *
    * Absolute, so it means the same thing after a restart as before one. Absent
@@ -950,6 +970,10 @@ export async function runTurn(opts: {
   // conversation, so summing totals charges the same context once per step.
   let spend = newSpend(opts.sessionTokens ?? 0)
   let usage: Usage | null = null
+  // Prompt growth of the last few steps, to tell compaction how much the next
+  // one will probably add. `lastPromptSeen` is shrunk by each compaction.
+  const recentGrowth: number[] = []
+  let lastPromptSeen: number | undefined
   // One automatic recovery per run: a reply cut off by the output limit or a
   // dropped stream, or an empty reply, is continued once without the user
   // having to type "continue". Once, so it can never loop.
@@ -975,7 +999,8 @@ export async function runTurn(opts: {
     }
     const overBudget = budgetExceeded(
       { step, sessionTokens: spend.spent },
-      maxSteps
+      maxSteps,
+      opts.sessionTokenLimit
     )
     if (overBudget) {
       return {
@@ -1021,9 +1046,24 @@ export async function runTurn(opts: {
     // window's threshold, so the run keeps going on a summary instead of
     // stopping at the window.
     if (deps.compact) {
-      const compacted = await compactOrNull(deps, messages, 'threshold', signal)
+      const headroom =
+        recentGrowth.length > 0
+          ? Math.ceil(Math.max(...recentGrowth) * 1.25)
+          : undefined
+      const compacted = await compactOrNull(
+        deps,
+        messages,
+        'threshold',
+        signal,
+        undefined,
+        headroom
+      )
       if (compacted) {
-        spend = creditCompaction(spend, compactionSaving(messages, compacted))
+        const saving = compactionSaving(messages, compacted)
+        if (lastPromptSeen != null) {
+          lastPromptSeen = Math.max(0, lastPromptSeen - saving)
+        }
+        spend = creditCompaction(spend, saving)
         messages.splice(0, messages.length, ...compacted)
       }
     }
@@ -1079,10 +1119,11 @@ export async function runTurn(opts: {
               failure
             )
             if (compacted) {
-              spend = creditCompaction(
-                spend,
-                compactionSaving(messages, compacted)
-              )
+              const saving = compactionSaving(messages, compacted)
+              if (lastPromptSeen != null) {
+                lastPromptSeen = Math.max(0, lastPromptSeen - saving)
+              }
+              spend = creditCompaction(spend, saving)
               messages.splice(0, messages.length, ...compacted)
               continue
             }
@@ -1138,6 +1179,14 @@ export async function runTurn(opts: {
     if (result.usage) {
       usage = result.usage
       spend = recordSpend(spend, result.usage)
+      const prompt = result.usage.prompt_tokens
+      if (prompt != null) {
+        if (lastPromptSeen != null) {
+          recentGrowth.push(Math.max(0, prompt - lastPromptSeen))
+          if (recentGrowth.length > 5) recentGrowth.shift()
+        }
+        lastPromptSeen = prompt
+      }
     }
 
     if (result.errorText) {

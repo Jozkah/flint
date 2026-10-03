@@ -7,6 +7,7 @@ import {
   MAX_AGENT_STEPS,
   MAX_SUBAGENT_STEPS,
   MAX_SESSION_TOKENS,
+  sessionTokenLimitFor,
 } from '../coworkBudget'
 
 describe('budgetExceeded', () => {
@@ -48,6 +49,28 @@ describe('budgetExceeded', () => {
     expect(
       budgetExceeded({ step: MAX_SUBAGENT_STEPS - 1, sessionTokens: 0 }, MAX_SUBAGENT_STEPS)
     ).toBeNull()
+  })
+
+  it('honours a caller-supplied token allowance', () => {
+    expect(
+      budgetExceeded({ step: 0, sessionTokens: MAX_SESSION_TOKENS }, MAX_AGENT_STEPS, 800_000)
+    ).toBeNull()
+    expect(
+      budgetExceeded({ step: 0, sessionTokens: 800_000 }, MAX_AGENT_STEPS, 800_000)
+    ).toBe('tokens')
+  })
+
+  it('scales the allowance with the window when the run compacts', () => {
+    expect(sessionTokenLimitFor({ autoCompact: false, window: 200_000 })).toBe(
+      MAX_SESSION_TOKENS
+    )
+    expect(sessionTokenLimitFor({ autoCompact: true, window: null })).toBe(
+      MAX_SESSION_TOKENS
+    )
+    expect(sessionTokenLimitFor({ autoCompact: true, window: 200_000 })).toBe(800_000)
+    expect(sessionTokenLimitFor({ autoCompact: true, window: 8_000 })).toBe(
+      MAX_SESSION_TOKENS
+    )
   })
 
   it('keeps a subagent on a tighter leash than the parent', () => {

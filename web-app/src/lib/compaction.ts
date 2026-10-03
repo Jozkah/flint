@@ -25,7 +25,7 @@ import {
   SUMMARY_FORMAT_INSTRUCTION,
 } from '@/lib/context-manager'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
-import { isContextOverflow } from '@/lib/coworkBudget'
+import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
 
 /** Share of the effective window at which a request is compacted first. */
 export const DEFAULT_COMPACT_THRESHOLD = 0.8
@@ -119,14 +119,41 @@ export function compactionTriggerTokens(
   return Math.max(Math.floor(window * 0.1), Math.min(base, trimLimit))
 }
 
-/** Whether a request of `projected` tokens should be compacted first. */
+/**
+ * Whether a request of `projected` tokens should be compacted first.
+ *
+ * `headroom` is how much the next step is expected to add (a large tool
+ * result, a long completion): the request is compacted when it would cross the
+ * trigger *after* that growth, not only when it is already past it. The trigger
+ * is the fixed share of the window, capped at the window minus the reply
+ * reserve so a request never starts with no room to answer.
+ */
 export function shouldCompact(
   projected: number,
   window: number | null | undefined,
-  threshold: number = DEFAULT_COMPACT_THRESHOLD
+  threshold: number = DEFAULT_COMPACT_THRESHOLD,
+  headroom = 0
 ): boolean {
   if (window == null || !(window > 0)) return false
-  return projected >= thresholdTokens(window, threshold)
+  const trigger = Math.min(
+    thresholdTokens(window, threshold),
+    window - replyReserveFor(window)
+  )
+  return projected + Math.max(0, headroom || 0) >= trigger
+}
+
+/**
+ * Expected growth of the next request, from recent per-step growth: a margin
+ * over the largest recent step, capped at a quarter of the window so one
+ * outlier cannot make every step compact.
+ */
+export function compactionHeadroom(
+  recentGrowth: readonly number[],
+  window: number | null | undefined
+): number {
+  if (window == null || !(window > 0) || recentGrowth.length === 0) return 0
+  const peak = Math.max(0, ...recentGrowth)
+  return Math.min(Math.floor(peak * 1.25), Math.floor(window * 0.25))
 }
 
 /** Whether a failure is the provider refusing a request for its length. */

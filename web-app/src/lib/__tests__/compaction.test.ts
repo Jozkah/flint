@@ -10,6 +10,7 @@ import {
   isSummaryMessage,
   planCompaction,
   resolveAutoCompact,
+  compactionHeadroom,
   shouldCompact,
   summaryMessage,
   thresholdTokens,
@@ -69,6 +70,27 @@ describe('threshold math', () => {
     expect(thresholdTokens(10_000, 0.5)).toBe(5_000)
     expect(thresholdTokens(10_000, 5)).toBe(10_000)
     expect(thresholdTokens(10_000, 0)).toBe(1_000)
+  })
+
+  it('compacts early when the next step is expected to cross the trigger', () => {
+    expect(shouldCompact(7_000, 10_000, undefined, 500)).toBe(false)
+    expect(shouldCompact(7_000, 10_000, undefined, 1_000)).toBe(true)
+    // No headroom by default, so the plain behaviour is unchanged.
+    expect(shouldCompact(7_999, 10_000)).toBe(false)
+  })
+
+  it('never lets the trigger sit inside the reply reserve', () => {
+    // A 95% share of a 10,000 window is 9,500, but 1,500 is kept for the
+    // reply, so the trigger is 8,500.
+    expect(shouldCompact(8_499, 10_000, 0.95)).toBe(false)
+    expect(shouldCompact(8_500, 10_000, 0.95)).toBe(true)
+  })
+
+  it('derives headroom from recent growth, capped at a quarter of the window', () => {
+    expect(compactionHeadroom([], 100_000)).toBe(0)
+    expect(compactionHeadroom([400, 2_000, 100], 100_000)).toBe(2_500)
+    expect(compactionHeadroom([90_000], 100_000)).toBe(25_000)
+    expect(compactionHeadroom([1_000], null)).toBe(0)
   })
 
   it('never compacts against an unknown window', () => {

@@ -1775,7 +1775,26 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       cancelPrecompute(threadId)
     }
 
-    const trigger = compactionTriggerTokens(opts.window, opts.trimReserveTokens)
+    const fullTrigger = compactionTriggerTokens(
+      opts.window,
+      opts.trimReserveTokens
+    )
+    // The next request grows by about what the last assistant turns did (tool
+    // output rides in them), so compact before that growth crosses the window
+    // rather than after. At most a tenth of the window, so a compaction that
+    // keeps a large recent turn cannot leave the request still over the trigger.
+    const recentAssistant = history
+      .filter((m) => m.role === 'assistant')
+      .slice(-4)
+      .map((m) => estimateHistoryTokens([m]))
+    const headroom = Math.min(
+      Math.floor(opts.window * 0.1),
+      Math.ceil(Math.max(0, ...recentAssistant) * 1.25)
+    )
+    const trigger = Math.max(
+      Math.floor(opts.window * 0.1),
+      fullTrigger - headroom
+    )
     let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
     if (projected < trigger) {
       if (projected >= trigger * PRECOMPUTE_FRACTION) {
