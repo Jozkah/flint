@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { CoworkBackgroundTasksPanel } from '../CoworkBackgroundTasksPanel'
 import { CoworkRailToolbar } from '../CoworkRailToolbar'
+import { ReviewChangesContext } from '../TaskCheckoutLink'
 import { useBackgroundTabState } from '@/hooks/useBackgroundTabState'
 import type { ActivityTask } from '@/lib/coworkActivity'
 
@@ -228,6 +229,36 @@ describe('CoworkBackgroundTasksPanel', () => {
     // A running row has a stop control, never a dismiss.
     const runningRow = within(screen.getByTestId('background-running')).getByTestId('background-row')
     expect(within(runningRow).queryByRole('button', { name: /backgroundDismiss/ })).toBeNull()
+  })
+
+  it('shows an isolated child’s checkout and leads to its review', async () => {
+    const open = vi.fn()
+    const isolated = task({
+      callId: 'iso',
+      checkout: { path: 'C:/wt/iso', branch: 'flint/task-iso', taskId: 'task' },
+    })
+    render(
+      <ReviewChangesContext.Provider value={open}>
+        <CoworkBackgroundTasksPanel {...props({ running: [isolated, task({ callId: 'plain' })] })} />
+      </ReviewChangesContext.Provider>
+    )
+    // Only the isolated child has the link.
+    expect(screen.getAllByTestId('task-checkout')).toHaveLength(1)
+    expect(screen.getByText('flint/task-iso')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'common:tasks.reviewChanges' }))
+    expect(open).toHaveBeenCalledWith(isolated)
+  })
+
+  it('shows the checkout without a review button when nothing can open it', () => {
+    render(
+      <CoworkBackgroundTasksPanel
+        {...props({
+          running: [task({ checkout: { path: 'p', branch: 'b', taskId: 't' } })],
+        })}
+      />
+    )
+    expect(screen.getByTestId('task-checkout')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'common:tasks.reviewChanges' })).toBeNull()
   })
 
   it('shows the empty state when nothing is listed', () => {

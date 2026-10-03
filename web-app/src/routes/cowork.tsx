@@ -277,6 +277,7 @@ import {
 import { withUserEditNotice } from '@/lib/coworkCodeEdit'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
 import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPanel'
+import { ReviewChangesContext } from '@/containers/TaskCheckoutLink'
 import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
 import {
@@ -2429,6 +2430,16 @@ export function CoworkPage() {
     },
     [setRail]
   )
+  // A child in a checkout of its own: its row leads to the Changes panel, where
+  // the review list shows that child's work.
+  const [reviewFocusTaskId, setReviewFocusTaskId] = useState<string | null>(null)
+  const reviewChildChanges = useCallback(
+    (task: ActivityTask) => {
+      setReviewFocusTaskId(task.checkout?.taskId ?? null)
+      setRail({ kind: 'diff' })
+    },
+    [setRail]
+  )
   const showWorkflowInPanel = useCallback(
     (workflowId: string) => {
       setRail({ kind: 'tasks' })
@@ -4255,6 +4266,11 @@ export function CoworkPage() {
                             .getState()
                             .patchTask(taskIdFor(sid, runId, childId), {
                               detail: `own checkout: ${destination.path}`,
+                              checkout: {
+                                path: destination.path,
+                                branch: destination.branch,
+                                taskId: one.id,
+                              },
                             })
                           // AH-109: recorded before it runs, so its worktree is
                           // listed for review whatever becomes of the run -- and
@@ -6281,6 +6297,7 @@ export function CoworkPage() {
                 <CoworkTeamReviews
                   project={folder}
                   session={session.id}
+                  focusTaskId={reviewFocusTaskId}
                   onApplied={() => git.refresh()}
                 />
               ) : null}
@@ -6401,6 +6418,7 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'tasks' && (
+          <ReviewChangesContext.Provider value={reviewChildChanges}>
           <CoworkTasksPanel
             workflows={workflowViews}
             totals={taskCounts}
@@ -6420,8 +6438,10 @@ export function CoworkPage() {
             }}
             onClose={closeRail}
           />
+          </ReviewChangesContext.Provider>
         )}
         {rail?.kind === 'background' && session?.id && (
+          <ReviewChangesContext.Provider value={reviewChildChanges}>
           <CoworkBackgroundTasksPanel
             sessionId={session.id}
             running={backgroundTasks.running}
@@ -6438,6 +6458,7 @@ export function CoworkPage() {
             }
             onClose={closeRail}
           />
+          </ReviewChangesContext.Provider>
         )}
         {rail?.kind === 'timeline' && session?.id && (
           <CoworkTimelinePanel

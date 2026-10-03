@@ -155,6 +155,12 @@ export type ActivityTask = {
    */
   background?: boolean
   /**
+   * The checkout of its own this child works in, when it asked for one. `taskId`
+   * is the team task id the Changes panel's review list is keyed by, so a row
+   * can lead there. Not authority-bearing: a path and a branch name.
+   */
+  checkout?: { path: string; branch: string; taskId: string }
+  /**
    * Cleared from the Background tasks list. Only hides the row there: the
    * record, its transcript and its output stay, and the Tasks panel still
    * shows it.

@@ -3,6 +3,7 @@ import { ChevronDown, Square, Trash2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { CoworkSubagentTranscript } from '@/containers/CoworkSubagentTranscript'
+import { TaskCheckoutLink } from '@/containers/TaskCheckoutLink'
 import { formatTokens } from '@/containers/CoworkTasksPanel'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
@@ -233,6 +234,7 @@ function BackgroundRow({
               </span>
             )}
           </p>
+          <TaskCheckoutLink task={task} />
           {isAgent && (
             <p
               className="mt-1 text-[11.5px] text-muted-foreground tabular-nums"

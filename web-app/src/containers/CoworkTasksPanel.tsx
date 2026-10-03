@@ -29,6 +29,7 @@ import {
   type WorkflowView,
 } from '@/lib/coworkActivity'
 import { CoworkSubagentTranscript } from '@/containers/CoworkSubagentTranscript'
+import { TaskCheckoutLink } from '@/containers/TaskCheckoutLink'
 import { subagentStats } from '@/lib/coworkSubagentStats'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
@@ -925,6 +926,7 @@ function TaskItem({
               {reasonLabel(task.detail, t)}
             </p>
           )}
+          <TaskCheckoutLink task={task} />
           {task.stoppedAtLimit && (
             <p
               className="mb-2 text-[11px] text-destructive"

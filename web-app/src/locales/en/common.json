@@ -1232,6 +1232,7 @@
     "signalled": "killed by signal",
     "outputPartial": "Only the end of the output was kept.",
     "resultCapped": "Result shortened: the middle of this subagent's answer was cut before it reached the agent.",
+    "reviewChanges": "Review changes",
     "backgroundTitle": "Background tasks",
     "backgroundEmpty": "Nothing is running in the background.",
     "backgroundRunning": "Running",
