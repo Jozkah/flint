@@ -16,7 +16,7 @@ import { useAccessRequests } from '@/lib/accessRequests'
  *
  * Shows what a grant would actually enforce -- the canonical path the backend
  * resolved, not the model's spelling of it -- with the model's reason, the
- * mode, and which conversation is asking. Closing it (Esc, click-away) denies,
+ * mode, and which conversation is asking. Esc denies, a click outside does nothing,
  * and focus starts on Deny, so a reflexive Enter never grants anything.
  *
  * Mounted once at the root. While it is mounted the store knows someone can
@@ -45,6 +45,10 @@ export function AccessRequestDialog() {
       <DialogContent
         className="sm:max-w-lg"
         data-testid="access-request-dialog"
+        // A click outside is not an answer: it used to deny, which refused
+        // requests the user never meant to decline. Esc and Deny still do.
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
         onOpenAutoFocus={(e) => {
           e.preventDefault()
           document
