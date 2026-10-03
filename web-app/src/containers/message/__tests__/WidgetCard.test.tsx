@@ -171,4 +171,23 @@ describe('WidgetCard', () => {
     expect(screen.queryByTestId('widget-frame')).toBeNull()
     expect(screen.getByRole('alert').textContent).toContain('200000')
   })
+
+  it('replaces a frame that stops sending its heartbeat, and re-runs on request', () => {
+    vi.useFakeTimers()
+    try {
+      render(<WidgetCard part={part()} messageId="m" />)
+      fromFrame({ flint: 1, op: 'ready' })
+      act(() => vi.advanceTimersByTime(6000))
+      fromFrame({ flint: 1, op: 'beat' })
+      act(() => vi.advanceTimersByTime(6000))
+      expect(screen.queryByTestId('widget-stalled')).toBeNull()
+      act(() => vi.advanceTimersByTime(6000))
+      expect(screen.getByTestId('widget-stalled').textContent).toContain('stopped responding')
+      expect(screen.queryByTestId('widget-frame')).toBeNull()
+      fireEvent.click(screen.getByText('Re-run'))
+      expect(screen.getByTestId('widget-frame')).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
 })

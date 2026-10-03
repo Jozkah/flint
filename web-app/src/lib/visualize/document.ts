@@ -88,7 +88,8 @@ img,canvas,video{max-width:100%}
  *
  * Messages in (from the host): `theme` (CSS variables), `content` (the markup,
  * activated once `final`). Messages out: `ready`, `height`, `error`,
- * `sendPrompt`, `openLink`.
+ * `sendPrompt`, `openLink`, and a `beat` every second that the host watches:
+ * a script stuck in a loop stops sending it.
  */
 const PRELUDE = `
 (function(){
@@ -122,6 +123,7 @@ chain.then(function(){try{document.dispatchEvent(new Event('DOMContentLoaded',{b
 addEventListener('message',function(e){if(e.source!==P)return;var d=e.data;if(!d||d.flint!==1)return;
 if(d.op==='theme')theme(d);
 else if(d.op==='content'&&typeof d.html==='string'){root.innerHTML=d.html;if(d.final)activate();report()}});
+setInterval(function(){post({op:'beat'})},1000);
 post({op:'ready'});
 })();
 `
@@ -167,6 +169,7 @@ export function buildStandalonePage(
 
 export type FrameMessage =
   | { op: 'ready' }
+  | { op: 'beat' }
   | { op: 'height'; h: number }
   | { op: 'error'; message: string }
   | { op: 'sendPrompt'; text: string }
@@ -180,6 +183,8 @@ export function parseFrameMessage(data: unknown): FrameMessage | null {
   switch (m.op) {
     case 'ready':
       return { op: 'ready' }
+    case 'beat':
+      return { op: 'beat' }
     case 'height':
       return typeof m.h === 'number' && Number.isFinite(m.h)
         ? { op: 'height', h: m.h }

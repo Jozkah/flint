@@ -129,6 +129,7 @@
     "save": "Save as .html file",
     "expand": "Open full size",
     "rerun": "Re-run",
+    "stalled": "Widget stopped responding.",
     "parked": "Widget paused while off-screen.",
     "error": "Widget error:",
     "viewSource": "View source",

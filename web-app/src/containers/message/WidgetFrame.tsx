@@ -18,6 +18,9 @@ import { MIN_WIDGET_HEIGHT } from '@/lib/visualize/constants'
 /** How long a half-written widget waits before it is repainted. */
 export const PARTIAL_PAINT_DELAY_MS = 300
 
+/** A frame silent this long is treated as stuck in a loop. */
+export const STALL_AFTER_MS = 10_000
+
 /** Heights measured so far, so a remounted widget does not collapse and jump. */
 const measured = new Map<string, number>()
 
@@ -33,6 +36,8 @@ export type WidgetFrameProps = {
   cacheKey?: string
   className?: string
   onPainted?: () => void
+  /** The frame stopped answering (a script that never returns). */
+  onStalled?: () => void
   onError?: (message: string) => void
   onPrompt?: (text: string) => void
   onLink?: (url: string) => void
@@ -53,6 +58,7 @@ export const WidgetFrame = memo(function WidgetFrame({
   cacheKey,
   className,
   onPainted,
+  onStalled,
   onError,
   onPrompt,
   onLink,
@@ -72,8 +78,9 @@ export const WidgetFrame = memo(function WidgetFrame({
   const latestCode = useRef(code)
   latestCode.current = code
   const sourceKey = 'src' in source ? source.src : 'doc'
-  const handlers = useRef({ onPainted, onError, onPrompt, onLink })
-  handlers.current = { onPainted, onError, onPrompt, onLink }
+  const handlers = useRef({ onPainted, onStalled, onError, onPrompt, onLink })
+  handlers.current = { onPainted, onStalled, onError, onPrompt, onLink }
+  const lastBeat = useRef(Date.now())
 
   // A new document (the desktop scheme's id arriving, or a policy change) has
   // not announced itself yet.
@@ -92,7 +99,11 @@ export const WidgetFrame = memo(function WidgetFrame({
       if (!msg) return
       switch (msg.op) {
         case 'ready':
+          lastBeat.current = Date.now()
           setReady(true)
+          break
+        case 'beat':
+          lastBeat.current = Date.now()
           break
         case 'height': {
           const h = Math.max(MIN_WIDGET_HEIGHT, msg.h)
@@ -122,6 +133,20 @@ export const WidgetFrame = memo(function WidgetFrame({
     window.addEventListener('message', onMessage)
     return () => window.removeEventListener('message', onMessage)
   }, [cacheKey])
+
+  // Watchdog: a widget stuck in a loop stops sending its heartbeat. The host
+  // page is not blocked, but the frame is dead weight: the card replaces it.
+  useEffect(() => {
+    if (!ready) return
+    lastBeat.current = Date.now()
+    const timer = setInterval(() => {
+      if (Date.now() - lastBeat.current > STALL_AFTER_MS) {
+        clearInterval(timer)
+        handlers.current.onStalled?.()
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [ready])
 
   // The theme, once the frame is up and whenever the app's theme changes.
   useEffect(() => {

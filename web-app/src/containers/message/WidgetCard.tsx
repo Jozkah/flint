@@ -100,6 +100,7 @@ export const WidgetCard = memo(function WidgetCard({
   const [pendingLink, setPendingLink] = useState<string | null>(null)
   const [loadingAt, setLoadingAt] = useState(0)
   const [parked, setParked] = useState(false)
+  const [stalled, setStalled] = useState(false)
   const [ref, near] = useNearViewport()
 
   // Off-screen widgets give up their frame after a pause, so a long chat does
@@ -188,6 +189,7 @@ export const WidgetCard = memo(function WidgetCard({
       cacheKey={fill ? undefined : part.toolCallId}
       className={fill ? 'h-full' : undefined}
       onPainted={() => setPainted(true)}
+      onStalled={() => setStalled(true)}
       onError={(message) => setError((prev) => prev ?? message)}
       onPrompt={sendPrompt}
       onLink={setPendingLink}
@@ -210,6 +212,28 @@ export const WidgetCard = memo(function WidgetCard({
   ) : tooLarge ? (
     <div role="alert" className="px-3 py-2.5 text-xs text-destructive">
       {t('chat:widget.tooLarge', { max: MAX_WIDGET_CODE_CHARS })}
+    </div>
+  ) : stalled && view === 'preview' ? (
+    <div
+      role="alert"
+      data-testid="widget-stalled"
+      className="flex min-h-24 flex-wrap items-center justify-center gap-3 px-3 py-6 text-xs text-muted-foreground"
+    >
+      <TriangleAlert className="size-3.5 text-warning" aria-hidden />
+      <span>{t('chat:widget.stalled')}</span>
+      <Button
+        type="button"
+        size="xs"
+        variant="outline"
+        onClick={() => {
+          setStalled(false)
+          setPainted(false)
+          setRunKey((n) => n + 1)
+        }}
+      >
+        <RotateCw aria-hidden />
+        {t('chat:widget.rerun')}
+      </Button>
     </div>
   ) : parked && view === 'preview' ? (
     <div
