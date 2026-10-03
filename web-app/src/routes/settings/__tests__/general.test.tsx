@@ -92,6 +92,9 @@ vi.mock('@/hooks/useGeneralSetting', () => ({
   }),
 }))
 
+// The picker reads the fallback list through a selector this flat mock ignores.
+vi.mock('@/containers/FallbackModelsPicker', () => ({ default: () => null }))
+
 // Create a controllable mock
 vi.mock('@/i18n/react-i18next-compat', () => ({
   useTranslation: () => ({
