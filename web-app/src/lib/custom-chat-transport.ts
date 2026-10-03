@@ -162,6 +162,7 @@ import {
   readTokenUsage,
   type TokenUsage,
 } from '@/lib/tokenUsage'
+import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
 
 export type TokenUsageCallback = (
   usage: TokenUsage,
@@ -2796,6 +2797,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.lastRequestId = requestId
 
     let streamStartTime: number | undefined
+    // Generation time, for the speed: output only, per step. See createDecodeClock.
+    const decodeClock = createDecodeClock()
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
     useAppState.getState().updateLiveTokenStats(undefined)
@@ -2861,6 +2864,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ) {
           streamStartTime = Date.now()
         }
+        if (
+          part.type === 'text-delta' ||
+          part.type === 'reasoning-delta' ||
+          part.type === 'tool-input-delta'
+        ) {
+          const piece =
+            part.type === 'tool-input-delta'
+              ? (part as { inputTextDelta?: string }).inputTextDelta
+              : (part as { delta?: string }).delta
+          decodeClock.tick(piece?.length ?? 0)
+        }
+        if (part.type === 'finish-step') decodeClock.endStep()
 
         usageCollector.observe(part)
 
@@ -2929,20 +2944,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
           const usage = usageCollector.total(finishPart.totalUsage)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
-          const durationSec = durationMs / 1000
 
           // Only for the speed figure; the stored usage keeps an unreported
           // count unreported rather than zero.
           const outputTokens = usage.outputTokens ?? 0
 
-          // Use llama.cpp's tokens per second if available, otherwise calculate from duration
-          let tokenSpeed: number
-          if (durationSec > 0 && outputTokens > 0) {
-            tokenSpeed =
-              tokensPerSecond > 0 ? tokensPerSecond : outputTokens / durationSec
-          } else {
-            tokenSpeed = 0
-          }
+          // The server's own tokens per second when it sends one (llama.cpp);
+          // otherwise the provider's output tokens over the time output was
+          // arriving, not over the whole request.
+          const generation = generationSpeed({
+            serverTokensPerSecond: tokensPerSecond,
+            outputTokens: usage.outputTokens,
+            ...decodeClock.result(),
+          })
+          const tokenSpeed = generation?.tokenSpeed ?? 0
           // The Models page charts speed from replies this machine measured.
           if (tokenSpeed > 0 && modelId) {
             recordGeneration({ model: modelId, provider: providerId, tps: tokenSpeed })
@@ -3051,8 +3066,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               promptSpeed: promptPerSecond
                 ? Math.round(promptPerSecond * 100) / 100
                 : undefined,
-              tokenCount: outputTokens,
-              durationMs,
+              tokenCount: generation?.tokenCount ?? outputTokens,
+              durationMs: generation?.durationMs ?? durationMs,
+              ...(generation ? { source: generation.source } : {}),
               ...(draftTokens > 0
                 ? { draftTokens, draftAccepted: Math.min(draftAccepted, draftTokens) }
                 : {}),
