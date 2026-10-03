@@ -847,6 +847,14 @@ pub enum WorkspaceScope {
 }
 
 impl WorkspaceScope {
+    /// The workspace's path, without creating it.
+    fn path(self, data_folder: &Path, id: &str) -> Result<PathBuf, String> {
+        match self {
+            Self::Thread => workspace::thread_workspace(data_folder, id),
+            Self::Session => workspace::session_workspace(data_folder, id),
+        }
+    }
+
     async fn ensure(self, data_folder: &Path, id: &str) -> Result<PathBuf, String> {
         match self {
             Self::Thread => workspace::ensure_thread_workspace(data_folder, id).await,
@@ -1528,10 +1536,12 @@ pub async fn fire_post_tool_batch(
     if tool_names.is_empty() {
         return Ok(());
     }
+    // Only the path: a chat that never ran a tool has no workspace, and one
+    // without a hooks file in it has nothing to fire. `fire_post_tool_batch`
+    // returns at once for that, so this must not create the folder.
     let root = scope
         .unwrap_or_default()
-        .ensure(Path::new(&data_folder), &thread_id)
-        .await?;
+        .path(Path::new(&data_folder), &thread_id)?;
     let policy = crate::policy::load(None, allow_network);
     let network = policy.network.allowed && allow_network.unwrap_or(false);
     // Same confinement the thread's `execute_tool` calls get: sandboxed, with

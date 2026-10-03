@@ -1957,10 +1957,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // user message, a regenerate, another selected model, or the time running
     // out all forget it, so the chosen model is tried again.
     const threadKey = this.threadId ?? options.chatId
-    const selectionKey = fallbackRef(
+    // The chain is part of the key: reordering or editing it must not leave
+    // an index pointing at a different model.
+    const selectionKey = `${fallbackRef(
       currentProvider,
       this.getModelSelection().selectedModel?.id ?? ''
-    )
+    )}>${chain
+      .map((c) => fallbackRef(c.selectedProvider, c.selectedModel.id))
+      .join('>')}`
     const isFollowUp =
       options.trigger === 'submit-message' &&
       options.messages[options.messages.length - 1]?.role === 'assistant'

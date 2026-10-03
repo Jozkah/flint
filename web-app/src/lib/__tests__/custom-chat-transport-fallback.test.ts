@@ -427,6 +427,18 @@ describe('remembering that the chosen model is down', () => {
     now.mockRestore()
   })
 
+  it('does not carry its place over to a chain that was edited', async () => {
+    t.script = [
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+    ]
+    await drain(await t.sendMessages(userTurn()))
+    h.fallbackModels = ['openai::gpt', 'llamacpp::local-b']
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen[2].turnModel).toBeUndefined()
+  })
+
   it('moves on along the chain from where it stood, and starts over when all fail', async () => {
     h.fallbackModels = ['llamacpp::local-b', 'openai::gpt']
     t.script = [

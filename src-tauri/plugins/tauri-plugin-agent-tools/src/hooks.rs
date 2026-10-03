@@ -1303,6 +1303,42 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The project's path reaches a confined PowerShell inside a quoted literal.
+    /// A folder named with quote, space, `&`, `^` and `%` characters must be a
+    /// place to start in, never code: the hook still lands its file there.
+    #[tokio::test]
+    async fn a_confined_hook_starts_in_a_project_with_awkward_characters() {
+        let root = dir("it's a & b ^ 100% $x `t");
+        write_config(
+            &root,
+            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > awkward-output.txt\"\non_failure = \"warn\"\n",
+        );
+        let hooks = load(&root).unwrap();
+        let decision = run_post_tool_batch(
+            &hooks,
+            &["ls".to_string()],
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: true,
+                mask_root: None,
+                cancel: None,
+            },
+        )
+        .await;
+        let run = decision.runs.first().expect("the hook ran or was refused");
+        match &run.error {
+            Some(e) if e.kind == HookErrorKind::ShellUnavailable => {}
+            Some(e) => panic!("the confined hook failed: {}", e.message),
+            None => assert!(
+                root.join("awkward-output.txt").is_file(),
+                "the hook must start in the awkwardly named project"
+            ),
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     /// The security property: a hook file the model could have written is not
     /// read, because the path it must live at is one no tool can write.
     #[test]

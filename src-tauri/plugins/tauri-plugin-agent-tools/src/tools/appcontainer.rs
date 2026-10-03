@@ -1991,7 +1991,7 @@ mod win {
 
     /// What the hook runner tells a hook (`hooks.rs`), the one thing carried
     /// from the host into a confined shell besides the system basics.
-    const HOOK_ENV: &[&str] = &[
+    pub(super) const HOOK_ENV: &[&str] = &[
         "FLINT_HOOK_EVENT",
         "FLINT_HOOK_TOOL",
         "FLINT_HOOK_TOOL_NAMES",
@@ -2366,6 +2366,22 @@ mod granted_path_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The only host variables a confined shell is handed beyond the system
+    /// basics: what the hook runner sets for a hook, by exact name. Anything
+    /// else here would carry the host environment into the sandbox.
+    #[cfg(windows)]
+    #[test]
+    fn only_the_hook_variables_pass_into_a_confined_shell() {
+        for name in win::HOOK_ENV {
+            let hook = (name.starts_with("FLINT_") || name.starts_with("JAN_"))
+                && (name.contains("_HOOK_") || name.ends_with("_PROJECT_ROOT"));
+            assert!(hook, "{name} is not a hook variable");
+            assert!(!name.contains("KEY") && !name.contains("TOKEN") && !name.contains("SECRET"));
+        }
+        assert!(!win::HOOK_ENV.contains(&"JAN_DATA_FOLDER"));
+        assert!(!win::HOOK_ENV.contains(&"JAN_API_KEY"));
+    }
 
     fn ws() -> PathBuf {
         PathBuf::from(r"C:\Users\me\.jan\agent-workspace\threads\t1")
