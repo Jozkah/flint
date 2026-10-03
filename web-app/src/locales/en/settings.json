@@ -249,6 +249,8 @@
   },
   "agentTools": {
     "tabBehaviour": "Behaviour",
+    "shellTitle": "Shell and git",
+    "shellDescription": "Where the agent's commands run, what they can reach, and how its commits are credited.",
     "search": "Search",
     "noMatches": "Nothing matches that search.",
     "skillsHelp": "Skills are instructions the agent can load when a task needs them. Skills that come from a plugin are read-only here.",
