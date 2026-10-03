@@ -1357,6 +1357,31 @@ pub(crate) struct ParentRun {
     pub(crate) send_reasoning: bool,
 }
 
+/// The model a child runs on. Mirrors `resolveSubagentChoice` in the web app
+/// (`web-app/src/lib/subagentSettings.ts`), so every spawn path orders the same
+/// four sources the same way:
+///
+///   an explicit argument the calling model supplied
+///     > a routing rule written about this subagent by name (the Rust side's
+///       per-role setting, AH-194)
+///     > the definition's own model
+///     > the parent's model.
+///
+/// Only the model is decided here: a child's tools and permissions come from
+/// `intersect_allowed_tools` and the parent's own gate, never from this.
+pub(crate) fn choose_child_model(
+    requested: Option<&str>,
+    rule: Option<&str>,
+    definition: Option<&str>,
+    parent: &str,
+) -> String {
+    requested
+        .or(rule)
+        .or(definition)
+        .unwrap_or(parent)
+        .to_string()
+}
+
 /// Build the child request body shared by every subagent run.
 pub(crate) fn child_body(
     resolved: &ResolvedDispatch,
@@ -1365,23 +1390,23 @@ pub(crate) fn child_body(
     forked: Option<&[serde_json::Value]>,
     max_turns: Option<u32>,
 ) -> serde_json::Value {
-    let model = resolved
+    // AH-194: a rule written about this subagent by name outranks both the
+    // definition's model and the parent's -- that rule is the more specific
+    // statement, and it is the one somebody wrote down on purpose.
+    let fallback = resolved
         .definition
         .model
         .clone()
         .unwrap_or_else(|| parent.model.clone());
-    // AH-194: a rule written about this subagent by name outranks both the
-    // definition's model and the parent's -- that rule is the more specific
-    // statement, and it is the one somebody wrote down on purpose.
-    let model = crate::core::agent::routing::route(
+    let rule = crate::core::agent::routing::route(
         &parent.routing,
         &crate::core::agent::routing::Request {
             role: "task",
             agent: Some(&resolved.definition.name),
-            model: &model,
+            model: &fallback,
         },
-    )
-    .unwrap_or(model);
+    );
+    let model = choose_child_model(None, rule.as_deref(), resolved.definition.model.as_deref(), &parent.model);
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
     // AH-100: a fork starts from a copy of the parent's conversation; the
@@ -2357,6 +2382,15 @@ pub fn subagent_dir_for(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn child_model_precedence_matches_the_web_app() {
+        // argument > rule > definition > parent
+        assert_eq!(choose_child_model(Some("asked"), Some("rule"), Some("def"), "parent"), "asked");
+        assert_eq!(choose_child_model(None, Some("rule"), Some("def"), "parent"), "rule");
+        assert_eq!(choose_child_model(None, None, Some("def"), "parent"), "def");
+        assert_eq!(choose_child_model(None, None, None, "parent"), "parent");
+    }
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
