@@ -28,6 +28,8 @@ import {
   type ActivityTask,
   type WorkflowView,
 } from '@/lib/coworkActivity'
+import { CoworkSubagentTranscript } from '@/containers/CoworkSubagentTranscript'
+import { subagentStats } from '@/lib/coworkSubagentStats'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
@@ -711,6 +713,8 @@ function TaskItem({
   // The row has room for one number; the rest, cache counts included, is on
   // hover, and says so when the provider reported none.
   const usageDetail = describeTokenUsage(fromCoworkUsage(task.usage))
+  // One computation shared with the transcript header and the totals.
+  const stats = subagentStats(task, now)
 
   return (
     <div
@@ -815,6 +819,11 @@ function TaskItem({
                 </span>
               )}
               {task.signalled && <span>{t('common:tasks.signalled')}</span>}
+              {task.stoppedAtLimit && (
+                <span className="text-destructive" data-testid="task-limit-badge">
+                  {t('common:tasks.limitBadge')}
+                </span>
+              )}
             </span>
             {task.cancelError && (
               <span
@@ -873,7 +882,40 @@ function TaskItem({
               <span>{t('common:tasks.fromTask', { name: parentTitle })}</span>
             )}
           </p>
-          {task.description && (
+          {task.kind === 'agent' && (
+            <p
+              className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground tabular-nums"
+              data-testid="subagent-stats"
+            >
+              {stats.approximate ? (
+                <span>
+                  {t('common:tasks.statApprox', {
+                    tokens: formatTokens(stats.totalTokens),
+                  })}
+                </span>
+              ) : (
+                stats.totalTokens > 0 && (
+                  <>
+                    <span>
+                      {t('common:tasks.statInput', {
+                        tokens: formatTokens(stats.inputTokens),
+                      })}
+                    </span>
+                    <span>
+                      {t('common:tasks.statOutput', {
+                        tokens: formatTokens(stats.outputTokens),
+                      })}
+                    </span>
+                  </>
+                )
+              )}
+              <span>{t('common:tasks.statTurns', { count: stats.turns })}</span>
+              <span>
+                {t('common:tasks.statTools', { count: stats.tools.total })}
+              </span>
+            </p>
+          )}
+          {task.description && task.kind !== 'agent' && (
             <p className="mb-2 text-[11px] text-fg-2">
               {task.description}
             </p>
@@ -883,7 +925,22 @@ function TaskItem({
               {reasonLabel(task.detail, t)}
             </p>
           )}
-          {task.transcript && task.transcript.length > 0 && (
+          {task.stoppedAtLimit && (
+            <p
+              className="mb-2 text-[11px] text-destructive"
+              data-testid="subagent-stopped-at-limit"
+            >
+              {t('common:tasks.stoppedAtLimit')}
+            </p>
+          )}
+          {task.kind === 'agent' && (
+            <CoworkSubagentTranscript
+              task={task}
+              onClose={onToggle}
+              showFinal={false}
+            />
+          )}
+          {task.kind !== 'agent' && task.transcript && task.transcript.length > 0 && (
             <>
               <p className="mb-1 text-xs font-medium text-muted-foreground">
                 {t('common:tasks.transcript')}
@@ -955,6 +1012,11 @@ function TaskOutput({ task }: { task: ActivityTask }) {
       <div className="mb-1 flex items-center justify-between gap-2">
         <span className="text-[11px] text-muted-foreground">
           {task.outputTruncated && t('common:tasks.outputPartial')}{' '}
+          {task.resultCapped && (
+            <span data-testid="task-result-capped">
+              {t('common:tasks.resultCapped')}{' '}
+            </span>
+          )}
           {truncated &&
             t('common:tasks.outputTruncated', { lines: MAX_OUTPUT_LINES })}
         </span>

@@ -298,6 +298,64 @@ describe('CoworkTasksPanel', () => {
     expect(screen.getByText('found 3 matches')).toBeInTheDocument()
   })
 
+  it('shows a subagent’s own stats and tool breakdown when opened', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            usage: { prompt_tokens: 900, completion_tokens: 100, total_tokens: 1000 },
+            transcript: [
+              { role: 'assistant', content: 'on it' },
+              { role: 'tool', name: 'read', content: '', toolState: 'succeeded' },
+              { role: 'tool', name: 'read', content: '', toolState: 'succeeded' },
+            ],
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    const stats = screen.getByTestId('subagent-stats')
+    expect(stats).toHaveTextContent('statInput tokens=')
+    expect(stats).toHaveTextContent('statTurns count=1')
+    expect(stats).toHaveTextContent('statTools count=2')
+    expect(stats).not.toHaveTextContent('statApprox')
+    expect(screen.getByTestId('transcript-tool-breakdown')).toHaveTextContent('read ×2')
+  })
+
+  it('marks tokens estimated when the provider reported none', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ transcript: [{ role: 'assistant', content: 'a'.repeat(400) }] }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByTestId('subagent-stats')).toHaveTextContent('statApprox')
+  })
+
+  it('labels a child that ran out of steps distinctly, and a shortened result', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            status: 'error',
+            stoppedAtLimit: true,
+            resultCapped: true,
+            output: 'partial',
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(screen.getByTestId('task-limit-badge')).toHaveTextContent('common:tasks.limitBadge')
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByTestId('subagent-stopped-at-limit')).toBeInTheDocument()
+    expect(screen.getByTestId('task-result-capped')).toBeInTheDocument()
+  })
+
   it('shows only the tail of a very long output, and says so', async () => {
     const output = Array.from({ length: 500 }, (_, i) => `line ${i}`).join('\n')
     render(<Panel state={stateWith([task({ output })])} />)
