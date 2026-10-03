@@ -923,6 +923,7 @@ function TaskItem({
               task={task}
               onClose={onToggle}
               showFinal={false}
+              embedded
             />
           )}
           {task.kind !== 'agent' && task.transcript && task.transcript.length > 0 && (

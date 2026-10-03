@@ -7,7 +7,7 @@
     "assistant": "Assistant",
     "profile": "Work profile",
     "model": "Model",
-    "inherit": "Inherit from the parent",
+    "inherit": "Inherit",
     "allSubagents": "all subagents",
     "assistantLabel": "Assistant for {{name}}",
     "profileLabel": "Work profile for {{name}}",

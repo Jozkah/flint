@@ -307,9 +307,13 @@ export function CoworkSubagentTranscript({
   task,
   onClose,
   showFinal = true,
+  embedded = false,
 }: {
   task: ActivityTask
   onClose?: () => void
+  /** Drawn inside a row that already shows the role, model, status and stats:
+   * leave those out and show only the conversation and the tools used. */
+  embedded?: boolean
   /** Draw the final result here. The Tasks panel draws it itself, with its
    * copy control, and turns this off. */
   showFinal?: boolean
@@ -373,6 +377,7 @@ export function CoworkSubagentTranscript({
       >
         {/* Sticky: what this is and how it is going stays in view while the
             conversation scrolls under it. */}
+        {!embedded && (
         <div
           data-testid="transcript-header"
           className="sticky top-0 z-10 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-card/95 px-2.5 py-1.5 text-[11.5px] backdrop-blur"
@@ -404,10 +409,11 @@ export function CoworkSubagentTranscript({
             {t(`common:tasks.line.${line}`)}
           </span>
         </div>
+        )}
 
-        {((!queued && showFinal) || stats.tools.total > 0) && (
+        {((!queued && showFinal && !embedded) || stats.tools.total > 0) && (
           <div className="space-y-2 border-b border-border px-2.5 py-2" data-testid="transcript-stats">
-            {!queued && showFinal && <StatStrip stats={stats} testId="transcript-stat-strip" />}
+            {!queued && showFinal && !embedded && <StatStrip stats={stats} testId="transcript-stat-strip" />}
             <ToolChips stats={stats} />
           </div>
         )}

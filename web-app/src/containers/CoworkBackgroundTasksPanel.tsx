@@ -320,7 +320,7 @@ function BackgroundRow({
       {expanded && (
         <div ref={detailRef} className="mt-2 border-t border-dashed border-border pt-2">
           {isAgent ? (
-            <CoworkSubagentTranscript task={task} onClose={onToggle} />
+            <CoworkSubagentTranscript task={task} onClose={onToggle} embedded />
           ) : (
             <CommandOutput task={task} />
           )}
