@@ -4,8 +4,8 @@ import {
   ArrowLeftRight,
   Box,
   Check,
-  ChevronDown,
   ChevronRight,
+  ChevronsUpDown,
   CornerDownLeft,
   Dices,
   Download,
@@ -20,6 +20,8 @@ import {
   RefreshCw,
   RotateCcw,
   Ruler,
+  Search,
+  Settings,
   SlidersHorizontal,
   Sparkles,
   Square,
@@ -28,15 +30,15 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { ModelAvatar } from '@/containers/ModelAvatar'
+import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -184,14 +186,16 @@ const rise = (index: number) => ({
   animationDelay: `${40 + Math.min(index, 10) * 35}ms`,
 })
 
-/** A pressable option, like the chips in the design: 28px, a hairline, pressed = filled. */
 /**
- * The engine for a picture: models on this computer first, then hosted ones
- * that have an API key, then the two ways to get more.
+ * The engine for a picture, in the same popover the chat's model picker uses:
+ * a search box, models on this computer first, then hosted ones grouped by
+ * provider, then the two ways to get more.
  */
 function EnginePicker({
   value,
   label,
+  providerId,
+  modelId,
   local,
   hosted,
   disabled,
@@ -200,58 +204,159 @@ function EnginePicker({
 }: {
   value: string
   label: string
+  /** The hosted provider in use, for the mark beside the name. */
+  providerId?: string
+  modelId: string
   local: Array<{ id: string; name: string }>
-  hosted: Array<{ key: string; name: string; provider: string }>
+  hosted: Array<{ key: string; name: string; provider: string; providerId: string }>
   disabled?: boolean
   onLocal: (id: string) => void
   onHosted: (key: string) => void
 }) {
   const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const q = search.trim().toLowerCase()
+  const localShown = local.filter((m) => !q || m.name.toLowerCase().includes(q))
+  const hostedShown = hosted.filter(
+    (m) => !q || `${m.name} ${m.provider}`.toLowerCase().includes(q)
+  )
+  const providers = [...new Set(hostedShown.map((m) => m.providerId))]
+  const heading =
+    'px-2 pt-2.5 pb-1 text-[11px] font-medium tracking-wide text-subtle-foreground uppercase'
+  const row = (selected: boolean) =>
+    cn(
+      'flex min-h-9 w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-150 hover:bg-accent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring pointer-coarse:min-h-11',
+      selected && 'bg-accent'
+    )
+  const pick = (fn: () => void) => {
+    fn()
+    setOpen(false)
+    setSearch('')
+  }
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild disabled={disabled}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) setSearch('')
+      }}
+    >
+      <PopoverTrigger asChild disabled={disabled}>
         <button
           type="button"
           aria-label="Engine"
-          className="-ml-1 flex w-full items-center justify-between gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
+          className="-ml-1 flex w-full items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50"
         >
-          <span className="min-w-0 truncate text-[15px] font-semibold text-foreground">{label}</span>
-          <ChevronDown className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+          <ModelAvatar modelId={modelId} name={label} provider={providerId} />
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-foreground">
+            {label}
+          </span>
+          <ChevronsUpDown className="size-[13px] shrink-0 text-muted-foreground" aria-hidden />
         </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="max-h-80 w-[var(--radix-dropdown-menu-trigger-width)] min-w-56 overflow-y-auto">
-        <DropdownMenuRadioGroup
-          value={value}
-          onValueChange={(v) => (v.startsWith('cloud:') ? onHosted(v.slice(6)) : onLocal(v.slice(6)))}
-        >
-          <DropdownMenuLabel>On this computer</DropdownMenuLabel>
-          {local.map((m) => (
-            <DropdownMenuRadioItem key={m.id} value={`local:${m.id}`}>
-              {m.name}
-            </DropdownMenuRadioItem>
-          ))}
-          {hosted.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>Hosted · your prompt leaves this computer</DropdownMenuLabel>
-              {hosted.map((t) => (
-                <DropdownMenuRadioItem key={t.key} value={`cloud:${t.key}`}>
-                  <span className="min-w-0 truncate">{t.name}</span>
-                  <span className="ml-auto pl-2 text-[11px] text-muted-foreground">{t.provider}</span>
-                </DropdownMenuRadioItem>
-              ))}
-            </>
-          )}
-        </DropdownMenuRadioGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={() => navigate({ to: route.hub.index })}>
-          Find more picture models in Discover
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => navigate({ to: route.settings.model_providers })}>
-          {hosted.length ? 'Manage hosted providers' : 'Add an API key to use hosted models'}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="max-h-[min(26rem,calc(100vh-16px))] w-[360px] max-w-[calc(100vw-24px)] overflow-hidden p-1.5"
+      >
+        <div className="flex max-h-[inherit] flex-col">
+          <div className="flex items-center gap-2 border-b border-dashed border-border px-2 pt-1.5 pb-2">
+            <Search aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search models..."
+              aria-label="Search models"
+              autoFocus
+              className="min-w-0 flex-1 bg-transparent text-base font-normal text-foreground outline-0 placeholder:text-muted-foreground md:text-[13px]"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear"
+                onClick={() => setSearch('')}
+                className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring pointer-coarse:size-11"
+              >
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-1 [scrollbar-width:thin]">
+            {localShown.length === 0 && hostedShown.length === 0 && (
+              <p className="px-4 py-3 text-sm text-muted-foreground">No models match.</p>
+            )}
+            {localShown.length > 0 && (
+              <div>
+                <p className={heading}>On this computer</p>
+                {localShown.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    className={row(value === `local:${m.id}`)}
+                    onClick={() => pick(() => onLocal(m.id))}
+                  >
+                    <ModelAvatar modelId={m.id} name={m.name} />
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                      {m.name}
+                    </span>
+                    {value === `local:${m.id}` && <Check className="size-3.5 text-muted-foreground" aria-hidden />}
+                  </button>
+                ))}
+              </div>
+            )}
+            {providers.map((id) => {
+              const models = hostedShown.filter((m) => m.providerId === id)
+              return (
+                <div key={id}>
+                  <div className="flex items-center gap-1.5 px-2 pt-2.5 pb-0.5 text-xs">
+                    <span className="shrink-0 [&_[data-slot=brand-mark]]:!size-3.5">
+                      <ProvidersAvatar provider={{ provider: id } as ProviderObject} />
+                    </span>
+                    <span className="font-semibold text-foreground">{models[0].provider}</span>
+                    <span className="text-[11px] text-subtle-foreground">· prompt leaves this computer</span>
+                  </div>
+                  {models.map((m) => (
+                    <button
+                      key={m.key}
+                      type="button"
+                      className={row(value === `cloud:${m.key}`)}
+                      onClick={() => pick(() => onHosted(m.key))}
+                    >
+                      <ModelAvatar modelId={m.name} name={m.name} provider={m.providerId} />
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+                        {m.name}
+                      </span>
+                      {value === `cloud:${m.key}` && <Check className="size-3.5 text-muted-foreground" aria-hidden />}
+                    </button>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+          <div className="mt-1.5 flex shrink-0 flex-col border-t border-dashed border-border pt-1">
+            <button
+              type="button"
+              className={row(false)}
+              onClick={() => pick(() => navigate({ to: route.hub.index }))}
+            >
+              <Search className="size-3.5 text-muted-foreground" aria-hidden />
+              <span className="text-[13px] text-secondary-foreground">Find more picture models in Discover</span>
+            </button>
+            <button
+              type="button"
+              className={row(false)}
+              onClick={() => pick(() => navigate({ to: route.settings.model_providers }))}
+            >
+              <Settings className="size-3.5 text-muted-foreground" aria-hidden />
+              <span className="text-[13px] text-secondary-foreground">
+                {hosted.length ? 'Manage hosted providers' : 'Add an API key to use hosted models'}
+              </span>
+            </button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -601,11 +706,14 @@ function ModelPanel({
               disabled={running}
               value={hosted ? `cloud:${form.cloud}` : `local:${model.id}`}
               label={name}
+              modelId={hosted ? hosted.model.name : model.id}
+              providerId={hosted?.provider.provider}
               local={localModels.map((m) => ({ id: m.id, name: m.display_name }))}
               hosted={targets.map((t) => ({
                 key: t.key,
                 name: t.model.name,
                 provider: t.provider.label,
+                providerId: t.provider.provider,
               }))}
               onLocal={(id) => setForm({ cloud: '', localModel: id })}
               onHosted={(key) => setForm({ cloud: key })}
@@ -746,7 +854,7 @@ function SettingsPanel({
     )
 
   return (
-    <Frame className="motion-safe:animate-rise-in" style={rise(1)}>
+    <Frame className="motion-safe:animate-rise-in lg:flex-1" style={rise(1)}>
       <FrameHeader
         icon={<SlidersHorizontal className="size-4" aria-hidden />}
         title="Generation Settings"
@@ -762,7 +870,7 @@ function SettingsPanel({
           </PanelButton>
         }
       />
-      <FrameBody className="gap-4 p-3.5">
+      <FrameBody className="flex-1 gap-4 p-3.5">
         <div className="flex flex-col gap-2">
           <span className={label}>{kind === 'video' ? 'Shape' : 'Aspect Ratio'}</span>
           <div className="grid grid-cols-4 gap-2">
@@ -874,7 +982,7 @@ function SettingsPanel({
         )}
 
         {!hosted && (
-          <div className="flex flex-col gap-3 border-t border-border pt-3">
+          <div className="mt-auto flex flex-col gap-3 border-t border-border pt-3">
             <button
               type="button"
               aria-expanded={advanced}
@@ -1041,7 +1149,7 @@ function PromptPanel({
           </PanelButton>
         }
       />
-      <FrameBody className="gap-3 p-3.5">
+      <FrameBody className="flex-1 gap-3 p-3.5">
         <div className="flex flex-col gap-2.5">
           <div className="relative rounded-xl border-[0.8px] border-border bg-card transition-shadow duration-200 focus-within:border-input focus-within:shadow-lift">
             <Textarea
@@ -1126,7 +1234,7 @@ function PromptPanel({
           // Nothing made yet: a compact stage, not a tall empty square.
           style={
             latest
-              ? { aspectRatio: `${size.width} / ${size.height}`, maxHeight: '58vh' }
+              ? { aspectRatio: `${size.width} / ${size.height}`, maxHeight: 'min(58vh, 420px)' }
               : { height: 'min(40vh, 320px)' }
           }
         >
@@ -1240,7 +1348,7 @@ function PromptPanel({
           type="button"
           disabled={!ready || busy || (!!warning && !form.accepted)}
           onClick={() => void start()}
-          className="relative flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgb(99_102_241/0.7)] transition-[filter,transform] duration-150 hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
+          className="relative mt-auto flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#3b82f6] to-[#8b5cf6] text-sm font-semibold text-white shadow-[0_6px_20px_-6px_rgb(99_102_241/0.7)] transition-[filter,transform] duration-150 hover:brightness-110 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-hidden active:translate-y-px disabled:pointer-events-none disabled:opacity-50"
         >
           <Sparkles className="size-4" aria-hidden />
           {ready ? (kind === 'video' ? 'Generate Video' : 'Generate Image') : 'Load the model first'}
@@ -1312,13 +1420,13 @@ function ActivityPanel({
           </PanelButton>
         }
       />
-      <FrameBody className="p-2.5">
+      <FrameBody className="min-h-0 flex-1 p-2.5">
         {empty ? (
           <p className="px-1.5 py-2 text-xs text-muted-foreground">
             Nothing yet. What you make shows up here.
           </p>
         ) : (
-          <ul className="flex max-h-[44rem] flex-col gap-1.5 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:thin]">
+          <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-width:thin]">
             {job && (
               <li className="flex min-w-0 flex-col gap-1.5 rounded-xl border-[0.8px] border-blue-500/40 bg-blue-500/5 p-2.5">
                 <div className="flex items-center gap-2">
@@ -1790,7 +1898,7 @@ export function StudioPage() {
         <>
           <EngineSetup />
           {status.supported && model && (
-            <div className="grid items-start gap-4 lg:grid-cols-[minmax(300px,1.1fr)_minmax(0,1.35fr)_minmax(260px,1fr)]">
+            <div className="grid gap-4 lg:grid-cols-[minmax(300px,1.1fr)_minmax(0,1.35fr)_minmax(260px,1fr)] lg:items-stretch">
               <div className="flex min-w-0 flex-col gap-4">
                 <ModelPanel
                   kind={kind}

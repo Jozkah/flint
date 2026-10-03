@@ -395,6 +395,47 @@ export function patchSettingsServices(hub: Hub) {
   set('appService', 'getServerStatus', async () => true)
   set('hardwareService', 'getHardwareInfo', async () => HARDWARE)
   set('hardwareService', 'getSystemUsage', async () => usage())
+  // The System Monitor's snapshot: drives, adapters and sensors, with network
+  // counters that grow on every call so the rates move.
+  let received = 462.5e9
+  let sent = 13.6e9
+  const TB = 1e12
+  const GBYTE = 1e9
+  set('hardwareService', 'getSystemSnapshot', async () => {
+    received += 4.4e6
+    sent += 4.3e4
+    return {
+      host_name: 'DESKTOP-GPBT9JV',
+      os_version: 'Windows 11 IoT Enterprise LTSC 2024',
+      kernel_version: '26100',
+      uptime_secs: 4 * 86400 + 19 * 60,
+      timestamp_ms: Date.now(),
+      cpu: {
+        name: 'AMD Ryzen 9 9950X3D 16-Core Processor',
+        frequency_mhz: 4300,
+        physical_cores: 16,
+        logical_cores: 32,
+        usage: 13.9,
+        per_core: Array.from({ length: 32 }, (_, i) => 6 + ((i * 7) % 29)),
+      },
+      memory: { total: 31.69 * GBYTE, used: 18.6 * GBYTE, swap_total: 34 * GBYTE, swap_used: 1.5 * GBYTE },
+      disks: [
+        { name: 'MEDIA', mount_point: 'D:\\',file_system: 'NTFS', kind: 'HDD', total: 3.6 * TB, available: 1.3 * TB, removable: false },
+        { name: 'HDD', mount_point: 'E:\\',file_system: 'NTFS', kind: 'HDD', total: 1.8 * TB, available: 1.7 * TB, removable: false },
+        { name: 'NVME', mount_point: 'C:\\',file_system: 'NTFS', kind: 'SSD', total: 930.8 * GBYTE, available: 415.3 * GBYTE, removable: false },
+        { name: 'NVME', mount_point: 'F:\\',file_system: 'NTFS', kind: 'SSD', total: 1.8 * TB, available: 651.1 * GBYTE, removable: false },
+        { name: '', mount_point: 'J:\\',file_system: 'exFAT', kind: 'Unknown', total: 119.3 * GBYTE, available: 71.8 * GBYTE, removable: true },
+      ],
+      networks: [
+        { name: 'Ethernet', mac_address: 'a4:bb:6d:11:22:33', total_received: received, total_transmitted: sent },
+        { name: 'vEthernet (WSL)', mac_address: '00:15:5d:aa:bb:cc', total_received: 1e6, total_transmitted: 1e6 },
+        { name: 'Loopback Pseudo-Interface 1', mac_address: '', total_received: 2e6, total_transmitted: 2e6 },
+      ],
+      sensors: [
+        { label: 'NVIDIA GeForce RTX 5080', kind: 'gpu', source: 'NVML', temperature: 35, max: 93, critical: 93 },
+      ],
+    }
+  })
   set('hardwareService', 'getLlamacppDevices', async () => [
     { id: 'CUDA0', name: 'NVIDIA GeForce RTX 4060', mem: 8 * GB, free: 1.4 * GB, activated: true },
     { id: 'Vulkan0', name: 'NVIDIA GeForce RTX 4060', mem: 8 * GB, free: 1.4 * GB, activated: true },

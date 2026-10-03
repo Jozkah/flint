@@ -67,5 +67,9 @@
   "noCpuSensorsWindows": "No CPU temperature readable. Windows exposes it only to apps running as administrator, or while LibreHardwareMonitor or OpenHardwareMonitor is running.",
   "cpu": "CPU",
   "memory": "Memory",
-  "gpu": "GPU"
+  "gpu": "GPU",
+  "processor": "Processor",
+  "graphics": "Graphics",
+  "freeVram": "Free VRAM",
+  "apiVersion": "API Version"
 }

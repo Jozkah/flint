@@ -427,7 +427,19 @@ function MachineArt() {
   )
 }
 
-function SystemPanel({ snapshot }: { snapshot: SystemSnapshot }) {
+function SystemPanel({
+  snapshot,
+  cpuName,
+  arch,
+  totalMemory,
+  gpuNames,
+}: {
+  snapshot: SystemSnapshot
+  cpuName: string
+  arch: string
+  totalMemory: number
+  gpuNames: string[]
+}) {
   const { t } = useTranslation()
   return (
     <Panel
@@ -456,6 +468,26 @@ function SystemPanel({ snapshot }: { snapshot: SystemSnapshot }) {
             <Stat label={t('system-monitor:uptime')}>{formatUptime(snapshot.uptime_secs)}</Stat>
           </Stats>
         </div>
+      </div>
+      {/* What this machine is made of, so the card is never a picture and a few lines. */}
+      <div className="mt-5 border-t border-dashed border-border pt-4">
+        <Stats>
+          <Stat label={t('system-monitor:processor')}>{cpuName}</Stat>
+          <Stat label={t('system-monitor:cores')}>
+            {snapshot.cpu.physical_cores ?? '—'} / {snapshot.cpu.logical_cores}{' '}
+            <span className="text-muted-foreground">{t('system-monitor:threads').toLowerCase()}</span>
+          </Stat>
+          <Stat label={t('system-monitor:architecture')}>
+            <span className="font-mono">{arch}</span>
+          </Stat>
+          <Stat label={t('system-monitor:totalRam')}>{formatMegaBytes(totalMemory)}</Stat>
+          {gpuNames.map((name, i) => (
+            <Stat key={`${name}-${i}`} label={i === 0 ? t('system-monitor:graphics') : ''}>
+              {name}
+            </Stat>
+          ))}
+          <Stat label={t('system-monitor:drives')}>{snapshot.disks.length}</Stat>
+        </Stats>
       </div>
     </Panel>
   )
@@ -658,7 +690,7 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
       title={t('system-monitor:temperatures')}
       icon={<Icon name="zap" size={16} />}
       delay={420}
-      className="md:col-span-2 xl:col-span-5"
+      className="md:col-span-2 xl:col-span-5 xl:self-start"
     >
       {sensors.length === 0 ? (
         <Empty>
@@ -810,6 +842,26 @@ function GpuBlock({
           </Stat>
         )}
         <Stat label={t('system-monitor:vram')}>{formatMegaBytes(total)}</Stat>
+        {hasUsage && (
+          <>
+            <Stat label={t('system-monitor:usedRam')}>
+              {formatMegaBytes((total * percent) / 100)}
+            </Stat>
+            <Stat label={t('system-monitor:freeVram')}>
+              {formatMegaBytes(total - (total * percent) / 100)}
+            </Stat>
+          </>
+        )}
+        {gpu.nvidia_info?.compute_capability && (
+          <Stat label={t('system-monitor:computeCapability').replace(/:$/, '')}>
+            <span className="font-mono">{gpu.nvidia_info.compute_capability}</span>
+          </Stat>
+        )}
+        {gpu.vulkan_info?.api_version && (
+          <Stat label={t('system-monitor:apiVersion')}>
+            <span className="font-mono">{gpu.vulkan_info.api_version}</span>
+          </Stat>
+        )}
       </Stats>
       {hasUsage && (
         <>
@@ -1125,7 +1177,15 @@ function SystemMonitorContent() {
               </Panel>
             )}
 
-            {snapshot && <SystemPanel snapshot={snapshot} />}
+            {snapshot && (
+              <SystemPanel
+                snapshot={snapshot}
+                cpuName={hardwareData.cpu.name}
+                arch={hardwareData.cpu.arch}
+                totalMemory={hardwareData.total_memory}
+                gpuNames={gpus.map((g) => g.name)}
+              />
+            )}
             {snapshot && <DrivesPanel snapshot={snapshot} />}
             {snapshot && <NetworkPanel snapshot={snapshot} rates={rates} peaks={peaks} />}
             {snapshot && <TemperaturePanel snapshot={snapshot} />}
