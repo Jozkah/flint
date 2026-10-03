@@ -405,6 +405,11 @@ export type RunSubagentOptions = {
   /** Session tokens already spent, so a child cannot outrun the session cap. */
   sessionTokens?: number
   maxSteps?: number
+  /**
+   * The most tokens this child may spend, for a surface with a budget of its
+   * own (a Room). Absent is the run's own allowance, which is none.
+   */
+  tokenLimit?: number
 }
 
 export type SubagentResult = {
@@ -546,6 +551,7 @@ export async function runSubagent(
       signal: opts.signal,
       maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
       sessionTokens,
+      ...(opts.tokenLimit !== undefined ? { sessionTokenLimit: opts.tokenLimit } : {}),
       deps: {
         sendStep: (msgs, signal, stepOpts) =>
           childStep({

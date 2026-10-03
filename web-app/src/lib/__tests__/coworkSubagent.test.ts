@@ -455,6 +455,20 @@ describe('runSubagent', () => {
     expect(out.output).not.toContain('step budget')
   })
 
+  it('stops a child that spends past the token limit it was given', async () => {
+    // Each request reports a larger total, as a growing context does.
+    mockSteps(
+      Array.from({ length: 6 }, (_, i) => [
+        { type: 'tool-input-start', toolCallId: `c${i}`, toolName: 'read' },
+        { type: 'tool-input-available', toolCallId: `c${i}`, toolName: 'read', input: { path: `p${i}` } },
+        { type: 'finish', messageMetadata: { usage: { totalTokens: (i + 1) * 5 } } },
+      ])
+    )
+    const out = await runSubagent(baseOpts({ tokenLimit: 8 }))
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain('token budget')
+  })
+
   it('returns cleanly when already aborted', async () => {
     mockSteps([textStep('never')])
     const controller = new AbortController()

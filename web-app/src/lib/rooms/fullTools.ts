@@ -6,7 +6,6 @@ import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { chatDelegationEnabled } from '@/lib/chatDelegation'
-import { MAX_SESSION_TOKENS } from '@/lib/coworkBudget'
 import { createSurfaceDelegation } from '@/lib/surfaceDelegation'
 import type { RoomToolActivity, RoomToolContext } from './callError'
 
@@ -174,10 +173,7 @@ export async function buildFullFolderTools(
       background: false,
       scope: 'session',
       maxSteps: ROOM_CHILD_MAX_STEPS,
-      startingTokens:
-        remaining === undefined
-          ? undefined
-          : () => Math.max(0, MAX_SESSION_TOKENS - remaining),
+      tokenLimit: remaining === undefined ? undefined : () => remaining,
       onUsage: delegation.onUsage,
     })
     const task = room.tools.task

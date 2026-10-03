@@ -143,11 +143,11 @@ describe('delegation in a room', () => {
 
   it('holds a child to the tokens the room has left', async () => {
     await buildFullFolderTools({ ...ctx, tokenBudget: 80_000 }, undefined, delegation)
-    const { startingTokens } = createSurfaceDelegation.mock.calls[0][0]
-    // The child's own cap is 200k; it starts having "spent" what the room lacks.
-    expect(startingTokens()).toBe(120_000)
-    await buildFullFolderTools({ ...ctx, tokenBudget: 900_000 }, undefined, delegation)
-    expect(createSurfaceDelegation.mock.calls[1][0].startingTokens()).toBe(0)
+    const { tokenLimit } = createSurfaceDelegation.mock.calls[0][0]
+    expect(tokenLimit()).toBe(80_000)
+    // A room with no limit left to state puts none on the child.
+    await buildFullFolderTools(ctx, undefined, delegation)
+    expect(createSurfaceDelegation.mock.calls[1][0].tokenLimit).toBeUndefined()
   })
 
   it('runs the call through the shared delegation and reports it as room activity', async () => {
