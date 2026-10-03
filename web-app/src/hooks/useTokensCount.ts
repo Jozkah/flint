@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ThreadMessage } from '@janhq/core'
 import { parseContextOverflow } from '@/utils/error'
-import { usableContextValue } from '@/lib/modelCapabilities'
+import {
+  CONTEXT_FIELDS,
+  readCapabilityField,
+  usableContextValue,
+} from '@/lib/modelCapabilities'
 import {
   getLocalPropsExtension,
   type LlamacppModelProps,
@@ -232,11 +236,13 @@ export const useTokensCount = (
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         usage,
-        // What a refused request named, else the window this chat's server was
-        // last found to run with. A hosted provider has neither, and keeps no
+        // What a refused request named, else a window the user set or the
+        // provider listed for this model, else the window this chat's server
+        // was last found to run with. A model with none of those keeps no
         // window rather than a guessed one.
         maxTokens:
           usableContextValue(sourceOverflow?.contextTokens) ??
+          readCapabilityField(selectedModel, CONTEXT_FIELDS) ??
           usableContextValue(learnedWindow) ??
           undefined,
         isOverflow: sourceOverflow != null,

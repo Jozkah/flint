@@ -209,6 +209,7 @@ export const TokenCounter = memo(function TokenCounter({
             <ContextWindowCard
               segments={reconciled.segments}
               usedTokens={reconciled.usedTokens}
+              updatedAt={stored?.at}
               onCompact={onCompact}
             />
           ) : null
@@ -346,6 +347,7 @@ export const TokenCounter = memo(function TokenCounter({
                 segments={reconciled.segments}
                 usedTokens={reconciled.usedTokens}
                 windowTokens={tokenData.maxTokens}
+                updatedAt={stored?.at}
                 autoCompactOn={policy.auto}
                 autoCompactBuffer={effectiveReserve(tokenData.maxTokens, policy)}
                 onCompact={onCompact}
