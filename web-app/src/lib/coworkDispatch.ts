@@ -389,7 +389,9 @@ async function callMcpTool(
     agent: ctx.activity?.agent ?? '',
     resource: resourceOf(call.input),
   }
-  resetAutoApproveStreak(ctx.sessionId)
+  // The unasked streak is left to the approval queue: it counts a call a grant
+  // answers and starts over only when it prompts. Resetting here would let a
+  // trusted server's calls never reach the limit.
   await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
   if (!ctx.onApproveMcp) {
     await recordToolActivity({
