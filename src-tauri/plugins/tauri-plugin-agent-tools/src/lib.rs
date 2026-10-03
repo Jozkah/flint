@@ -178,6 +178,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::execute_tool_unsandboxed_retry,
             commands::execute_tool_unsandboxed_withdraw,
             commands::tool_resources_finish_run,
+            commands::fire_post_tool_batch,
             commands::undo_journal,
             commands::undo_turn,
             commands::redo_turn,

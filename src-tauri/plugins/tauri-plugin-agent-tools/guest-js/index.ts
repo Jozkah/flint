@@ -33,6 +33,29 @@ export async function finishRunResources(run: string): Promise<RunResources | nu
 }
 
 /**
+ * Tell the backend that every tool call of one assistant turn has its result,
+ * so the project's `post-tool-batch` hooks can run. For a renderer that runs
+ * tool calls one at a time through `executeTool`; the Rust agent loop fires the
+ * event itself. Observe-only: it returns at once and a failing hook never
+ * reaches the caller, so callers should not await it on the chat's path.
+ */
+export async function firePostToolBatch(
+  dataFolder: string,
+  threadId: string,
+  toolNames: string[],
+  allowNetwork?: boolean,
+  scope?: WorkspaceScope
+): Promise<void> {
+  await invoke('plugin:agent-tools|fire_post_tool_batch', {
+    dataFolder,
+    threadId,
+    toolNames,
+    allowNetwork,
+    scope,
+  })
+}
+
+/**
  * Every call takes the Jan data folder, because the plugin derives its
  * directories from it (`<dataFolder>/agent-workspace`) while the app remains the
  * owner of where the data folder actually is.

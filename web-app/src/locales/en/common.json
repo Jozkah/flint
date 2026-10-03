@@ -190,6 +190,7 @@
   "clearRecent": "Clear",
   "name": "Name",
   "cancel": "Cancel",
+  "fallbackSwitched": "Model unavailable, retrying with {{model}}",
   "dismiss": "Dismiss",
   "create": "Create",
   "save": "Save",

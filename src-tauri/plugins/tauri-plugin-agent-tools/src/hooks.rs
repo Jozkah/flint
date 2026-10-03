@@ -57,6 +57,11 @@ pub enum Event {
     PreTool,
     /// After a tool call has produced its result.
     PostTool,
+    /// Once per assistant turn, after every tool call of that turn has its
+    /// result and before the next model request. Observe-only: it is fired
+    /// detached by [`fire_post_tool_batch`] and can neither block nor alter
+    /// anything.
+    PostToolBatch,
     /// Once, when a session begins.
     ///
     /// Declared and not yet fired: parsing refuses it rather than accepting a
@@ -71,6 +76,7 @@ impl Event {
         match self {
             Event::PreTool => "pre-tool",
             Event::PostTool => "post-tool",
+            Event::PostToolBatch => "post-tool-batch",
             Event::SessionStart => "session-start",
             Event::RunEnd => "run-end",
         }
@@ -85,6 +91,7 @@ impl Event {
         match raw {
             "pre-tool" => Some(Event::PreTool),
             "post-tool" => Some(Event::PostTool),
+            "post-tool-batch" => Some(Event::PostToolBatch),
             "run-end" => Some(Event::RunEnd),
             _ => None,
         }
@@ -438,9 +445,21 @@ pub struct Context<'a> {
 /// already made, and running more commands after refusing the work is just
 /// more side effects.
 pub async fn run(hooks: &[Hook], event: Event, tool: Option<&str>, ctx: &Context<'_>) -> Decision {
+    run_with_env(hooks, event, tool, ctx, &[]).await
+}
+
+/// [`run`] with extra environment variables for the hook (the batch event's
+/// tool list). The names are the harness's, never the model's or the file's.
+async fn run_with_env(
+    hooks: &[Hook],
+    event: Event,
+    tool: Option<&str>,
+    ctx: &Context<'_>,
+    extra_env: &[(&str, String)],
+) -> Decision {
     let mut decision = Decision::default();
     for hook in hooks.iter().filter(|h| h.applies_to(event, tool)) {
-        let (ok, output, error) = execute(hook, event, tool, ctx).await;
+        let (ok, output, error) = execute(hook, event, tool, ctx, extra_env).await;
         if !ok {
             let error = error.clone().unwrap_or_else(|| {
                 HookError::new(HookErrorKind::Failed, "the hook failed with no output")
@@ -472,6 +491,7 @@ async fn execute(
     event: Event,
     tool: Option<&str>,
     ctx: &Context<'_>,
+    extra_env: &[(&str, String)],
 ) -> (bool, String, Option<HookError>) {
     use crate::tools::{jail, proc};
 
@@ -550,7 +570,16 @@ async fn execute(
     } else {
         proc::shell().clone()
     };
-    let command = hook.command.clone();
+    // A confined PowerShell ignores the directory it was started in (it opens
+    // at System32), so a relative path in a hook meant somewhere else. The
+    // `bash` tool fixes this by wrapping the command to open in the workspace
+    // (`proc::located`); a hook is no less entitled to its own project, so it
+    // gets the same wrapper. Unconfined shells already honour `current_dir`.
+    let command = if ctx.sandbox {
+        proc::located(shell.flavor, &hook.command, ctx.project_root)
+    } else {
+        hook.command.clone()
+    };
     let root = ctx.project_root.to_path_buf();
     // The shell's pid, shared out of the future so a deadline can kill the
     // tree it started. Killing the shell alone is not enough: the work is in
@@ -561,6 +590,8 @@ async fn execute(
     let spawned = running.clone();
     let event_name = event.as_str();
     let tool_name = tool.unwrap_or_default().to_string();
+    let extra_env: Vec<(String, String)> =
+        extra_env.iter().map(|(k, v)| ((*k).to_string(), v.clone())).collect();
 
     let work = async move {
         use jan_process::CommandConsole;
@@ -584,6 +615,7 @@ async fn execute(
             .env("JAN_HOOK_EVENT", event_name)
             .env("JAN_HOOK_TOOL", &tool_name)
             .env("JAN_PROJECT_ROOT", &root)
+            .envs(extra_env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -682,6 +714,89 @@ async fn execute(
     }
 }
 
+/// Run the `post-tool-batch` hooks for a finished batch and say nothing back.
+///
+/// Observe-only by construction: the returned [`Decision`] never carries a
+/// block (a `block` policy cannot even be parsed for this event, and is
+/// cleared here regardless), and the caller in the tool path does not use it.
+/// `tool_names` is the batch's tool names in call order; a hook with a `tools`
+/// list runs when any of them is in it.
+pub async fn run_post_tool_batch(
+    hooks: &[Hook],
+    tool_names: &[String],
+    ctx: &Context<'_>,
+) -> Decision {
+    let batch: Vec<Hook> = hooks
+        .iter()
+        .filter(|h| {
+            h.event == Event::PostToolBatch
+                && (h.tools.is_empty() || tool_names.iter().any(|n| h.tools.contains(n)))
+        })
+        .map(|h| Hook { tools: Vec::new(), ..h.clone() })
+        .collect();
+    if batch.is_empty() {
+        return Decision::default();
+    }
+    let joined = tool_names.join(",");
+    let count = tool_names.len().to_string();
+    let extra = [
+        ("FLINT_HOOK_TOOL_NAMES", joined.clone()),
+        ("FLINT_HOOK_TOOL_COUNT", count.clone()),
+        ("JAN_HOOK_TOOL_NAMES", joined),
+        ("JAN_HOOK_TOOL_COUNT", count),
+    ];
+    let mut decision = run_with_env(&batch, Event::PostToolBatch, None, ctx, &extra).await;
+    decision.blocked = None;
+    decision
+}
+
+/// Fire the `post-tool-batch` hooks for a turn that has all its results,
+/// without making the turn wait for them.
+///
+/// Returns immediately. A project with no hooks file costs one metadata call
+/// and nothing else. Otherwise the hooks are read and run on a detached task
+/// that owns everything it uses, so nothing it does -- a slow hook (bounded by
+/// the hook's own timeout, at most [`MAX_TIMEOUT_SECS`]), a failing one, a
+/// malformed file, a panic -- can reach the caller or the results it already
+/// holds. Failures are logged and dropped. The handle is for tests; callers
+/// ignore it.
+pub fn fire_post_tool_batch(
+    project_root: &Path,
+    tool_names: Vec<String>,
+    allow_network: bool,
+    home_readonly: bool,
+    sandbox: bool,
+    mask_root: Option<&Path>,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if tool_names.is_empty() || !config_path(project_root).is_file() {
+        return None;
+    }
+    let runtime = tokio::runtime::Handle::try_current().ok()?;
+    let root = project_root.to_path_buf();
+    let mask = mask_root.map(Path::to_path_buf);
+    Some(runtime.spawn(async move {
+        let hooks = match load(&root) {
+            Ok(hooks) => hooks,
+            Err(e) => {
+                eprintln!("post-tool-batch hooks skipped: {}", e.message);
+                return;
+            }
+        };
+        let ctx = Context {
+            project_root: &root,
+            allow_network,
+            home_readonly,
+            sandbox,
+            mask_root: mask.as_deref(),
+            cancel: None,
+        };
+        let decision = run_post_tool_batch(&hooks, &tool_names, &ctx).await;
+        for failure in decision.runs.iter().filter_map(|r| r.error.as_ref()) {
+            eprintln!("post-tool-batch hook failed (ignored): {}", failure.message);
+        }
+    }))
+}
+
 fn bound(text: &str) -> String {
     if text.chars().count() <= MAX_OUTPUT {
         return text.to_string();
@@ -759,6 +874,105 @@ mod tests {
         // was mandatory must not silently become mandatory.
         assert_eq!(hooks[1].on_failure, OnFailure::Warn);
         assert!(hooks[1].tools.is_empty(), "no `tools` means every tool");
+    }
+
+    #[test]
+    fn post_tool_batch_is_a_parsed_event_that_cannot_block() {
+        let hooks = parse("[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"x\"\n").unwrap();
+        assert_eq!(hooks[0].event, Event::PostToolBatch);
+        assert_eq!(Event::PostToolBatch.as_str(), "post-tool-batch");
+        assert!(!Event::PostToolBatch.can_block());
+        let err = parse(
+            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"x\"\non_failure = \"block\"\n",
+        )
+        .unwrap_err();
+        assert_eq!(err.kind, HookErrorKind::CannotBlock);
+        // Still refused, still unfired.
+        assert!(Event::parse("session-start").is_none());
+    }
+
+    #[test]
+    fn no_batch_hook_is_a_cheap_no_op() {
+        let root = dir("batch-none");
+        // No hooks file: nothing is spawned.
+        let _ = std::fs::remove_file(config_path(&root));
+        assert!(fire_post_tool_batch(&root, vec!["bash".into()], false, true, false, None).is_none());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_file_without_a_batch_hook_runs_nothing() {
+        let root = dir("batch-other");
+        write_config(&root, &format!("[[hook]]\nevent = \"post-tool\"\ncommand = \"{FAIL}\"\n"));
+        let hooks = load(&root).unwrap();
+        let names = vec!["bash".to_string()];
+        let decision = run_post_tool_batch(&hooks, &names, &ctx(&root)).await;
+        assert!(decision.runs.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_failing_batch_hook_is_reported_and_never_blocks() {
+        let root = dir("batch-fail");
+        write_config(
+            &root,
+            &format!("[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"{FAIL}\"\n"),
+        );
+        let hooks = load(&root).unwrap();
+        let names = vec!["bash".to_string(), "read".to_string()];
+        let decision = run_post_tool_batch(&hooks, &names, &ctx(&root)).await;
+        assert!(decision.allowed());
+        assert_eq!(decision.runs.len(), 1);
+        assert!(!decision.runs[0].ok);
+        // The fire-and-forget path completes without panicking or surfacing.
+        let handle = fire_post_tool_batch(&root, names, false, true, false, None).unwrap();
+        handle.await.expect("the detached batch task must not panic");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_batch_hook_is_bounded_and_does_not_block() {
+        let root = dir("batch-timeout");
+        write_config(
+            &root,
+            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"sleep 5\"\ntimeout_secs = 1\n",
+        );
+        let hooks = load(&root).unwrap();
+        let names = vec!["bash".to_string()];
+        let started = std::time::Instant::now();
+        let decision = run_post_tool_batch(&hooks, &names, &ctx(&root)).await;
+        assert!(started.elapsed() < Duration::from_secs(4));
+        assert!(decision.allowed());
+        assert_eq!(decision.runs[0].error.as_ref().map(|e| e.kind), Some(HookErrorKind::TimedOut));
+        // The caller is never made to wait: fire returns before the hook ends.
+        let before = std::time::Instant::now();
+        let handle = fire_post_tool_batch(&root, names, false, true, false, None).unwrap();
+        assert!(before.elapsed() < Duration::from_millis(500));
+        handle.abort();
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn a_batch_hook_is_told_the_tools_and_their_count() {
+        let root = dir("batch-env");
+        let out = root.join("seen");
+        let out_path = out.display().to_string().replace('\\', "/");
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo $FLINT_HOOK_EVENT:$FLINT_HOOK_TOOL_NAMES:$FLINT_HOOK_TOOL_COUNT > '{out_path}'\"\ntools = [\"read\"]\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let names = vec!["bash".to_string(), "read".to_string()];
+        let decision = run_post_tool_batch(&hooks, &names, &ctx(&root)).await;
+        assert!(decision.runs[0].ok, "{:?}", decision.runs[0].error);
+        let seen = std::fs::read_to_string(&out).unwrap();
+        assert_eq!(seen.trim(), "post-tool-batch:bash,read:2");
+        // A batch with none of the hook's tools does not run it.
+        let skipped = run_post_tool_batch(&hooks, &["bash".to_string()], &ctx(&root)).await;
+        assert!(skipped.runs.is_empty());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     /// Everything the file can get wrong is a typed refusal, and a wrong file
@@ -1050,6 +1264,70 @@ mod tests {
             assert_eq!(decision.runs.len(), 1);
         }
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Runs a confined `post-tool-batch` hook that writes `out` by a relative
+    /// path, in a project folder named `tag`, and checks the file lands there.
+    ///
+    /// It cannot pass by not running: whether a shell can be confined is
+    /// decided up front. A host that cannot says so and returns; a host that
+    /// can must have run the hook, and any error from it fails the test.
+    /// Returns whether the hook ran, so the caller can say so.
+    async fn confined_relative_hook_lands_in_project(tag: &str, out: &str) -> bool {
+        let root = dir(tag);
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > {out}\"\non_failure = \"warn\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let policy = crate::tools::jail::Policy::new(&root, false).with_home_readonly(true);
+        if let Err(detail) = crate::tools::jail::select_shell(&policy) {
+            eprintln!("SKIPPED {out}: no shell can be confined on this host: {detail}");
+            let _ = std::fs::remove_dir_all(&root);
+            return false;
+        }
+        let decision = run_post_tool_batch(
+            &hooks,
+            &["ls".to_string()],
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: true,
+                mask_root: None,
+                cancel: None,
+            },
+        )
+        .await;
+        let run = decision.runs.first().expect("a confinable host runs the hook");
+        if let Some(e) = &run.error {
+            panic!("a shell can be confined here, so the hook must have run: {}", e.message);
+        }
+        assert!(
+            root.join(out).is_file(),
+            "a relative path in a confined hook must land in the project"
+        );
+        eprintln!("RAN {out}: the confined hook started in the project");
+        let _ = std::fs::remove_dir_all(&root);
+        true
+    }
+
+    /// A confined PowerShell opens in System32 whatever directory it was
+    /// started in, so a relative path in a hook used to land (or fail) there.
+    /// A hook starts in the project, confined or not.
+    #[tokio::test]
+    async fn a_confined_hook_starts_in_the_project() {
+        confined_relative_hook_lands_in_project("confined-cwd", "relative-hook-output.txt").await;
+    }
+
+    /// The project's path reaches a confined PowerShell inside a quoted literal.
+    /// A folder named with quote, space, `&`, `^` and `%` characters must be a
+    /// place to start in, never code.
+    #[tokio::test]
+    async fn a_confined_hook_starts_in_a_project_with_awkward_characters() {
+        confined_relative_hook_lands_in_project("it's a & b ^ 100% $x `t", "awkward-output.txt").await;
     }
 
     /// The security property: a hook file the model could have written is not

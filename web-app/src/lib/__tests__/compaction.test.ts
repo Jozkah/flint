@@ -3,6 +3,7 @@ import type { UIMessage } from 'ai'
 import {
   compactHistory,
   compactionOf,
+  compactionTriggerTokens,
   DEFAULT_COMPACT_THRESHOLD,
   hasUnresolvedToolCall,
   isContextLengthError,
@@ -276,5 +277,33 @@ describe('compactionWindow', () => {
     expect(compactionWindow(null, 200_000)).toBe(200_000)
     expect(compactionWindow(null, null)).toBe(ASSUMED_WINDOW_TOKENS)
     expect(compactionWindow(0, undefined)).toBe(ASSUMED_WINDOW_TOKENS)
+  })
+})
+
+describe('compactionTriggerTokens', () => {
+  const reserve = (w: number) => Math.min(16384, Math.floor(w / 4)) + Math.max(1024, Math.min(Math.ceil(w * 0.02), Math.floor(w / 4)))
+
+  it('keeps the fixed share for a window the trimmer leaves alone', () => {
+    expect(compactionTriggerTokens(128_000, reserve(128_000))).toBe(thresholdTokens(128_000))
+    expect(compactionTriggerTokens(200_000, reserve(200_000))).toBe(thresholdTokens(200_000))
+    expect(compactionTriggerTokens(128_000)).toBe(thresholdTokens(128_000))
+  })
+
+  it('goes under the trimmer for a small window, so compaction gets its chance first', () => {
+    for (const w of [4_096, 8_192, 12_000, 32_000, 64_000]) {
+      const trigger = compactionTriggerTokens(w, reserve(w))
+      expect(trigger).toBeLessThan(thresholdTokens(w))
+      // The trimmer drops messages beyond window - reserve; compaction starts before.
+      expect(trigger).toBeLessThan(w - reserve(w))
+      expect(trigger).toBeGreaterThan(0)
+    }
+  })
+
+  it('never exceeds the fixed share and has a floor', () => {
+    for (let w = 2_000; w <= 400_000; w += 3_333) {
+      const t = compactionTriggerTokens(w, reserve(w))
+      expect(t).toBeLessThanOrEqual(thresholdTokens(w))
+      expect(t).toBeGreaterThanOrEqual(Math.floor(w * 0.1))
+    }
   })
 })

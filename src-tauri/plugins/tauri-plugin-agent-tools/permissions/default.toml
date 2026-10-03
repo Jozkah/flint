@@ -67,6 +67,7 @@ permissions = [
     "allow-execute-tool-unsandboxed-retry",
     "allow-execute-tool-unsandboxed-withdraw",
     "allow-tool-resources-finish-run",
+    "allow-fire-post-tool-batch",
     "allow-undo-journal",
     "allow-undo-turn",
     "allow-redo-turn",

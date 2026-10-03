@@ -38,6 +38,62 @@ const run = (messages: UIMessage[], aborted = false) => {
   return { followUp, send }
 }
 
+describe('post-tool-batch seam', () => {
+  it('reports the finished batch, with every tool name in call order', () => {
+    const onBatchFinished = vi.fn()
+    const messages = [
+      answeredToolRound[0],
+      {
+        id: 'a2',
+        role: 'assistant',
+        parts: [
+          { type: 'tool-ls', toolCallId: 'c1', state: 'output-available', input: {}, output: '' },
+          { type: 'dynamic-tool', toolName: 'mcp_x', toolCallId: 'c2', state: 'output-available', input: {}, output: '' },
+        ],
+      } as UIMessage,
+    ]
+    chatFollowUp({ messages, aborted: false, takeSteering: () => [], send: vi.fn(), onBatchFinished })
+    expect(onBatchFinished).toHaveBeenCalledWith({ key: 'a2:c1,c2', names: ['ls', 'mcp_x'] })
+  })
+
+  it('reports only the latest step of the tool loop, not the earlier steps of the same message', () => {
+    const onBatchFinished = vi.fn()
+    const messages = [
+      answeredToolRound[0],
+      {
+        id: 'a4',
+        role: 'assistant',
+        parts: [
+          { type: 'step-start' },
+          { type: 'tool-ls', toolCallId: 'c1', state: 'output-available', input: {}, output: '' },
+          { type: 'tool-read', toolCallId: 'c2', state: 'output-available', input: {}, output: '' },
+          { type: 'step-start' },
+          { type: 'tool-read', toolCallId: 'c3', state: 'output-available', input: {}, output: '' },
+        ],
+      } as UIMessage,
+    ]
+    chatFollowUp({ messages, aborted: false, takeSteering: () => [], send: vi.fn(), onBatchFinished })
+    expect(onBatchFinished).toHaveBeenCalledWith({ key: 'a4:c3', names: ['read'] })
+  })
+
+  it('says nothing while a call is unanswered, after a stop, or for a plain reply', () => {
+    const onBatchFinished = vi.fn()
+    const pending = [
+      answeredToolRound[0],
+      {
+        id: 'a3',
+        role: 'assistant',
+        parts: [{ type: 'tool-ls', toolCallId: 'c1', state: 'input-available', input: {} }],
+      } as UIMessage,
+    ]
+    const base = { takeSteering: () => [], send: vi.fn(), onBatchFinished }
+    chatFollowUp({ ...base, messages: pending, aborted: false })
+    chatFollowUp({ ...base, messages: answeredToolRound, aborted: true })
+    chatFollowUp({ ...base, messages: finalAnswer, aborted: false })
+    expect(onBatchFinished).not.toHaveBeenCalled()
+  })
+})
+
 describe('chat steering at the tool loop safe point', () => {
   beforeEach(() => useMessageQueue.setState({ queues: {} }))
 

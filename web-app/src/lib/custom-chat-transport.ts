@@ -4,6 +4,14 @@ import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import {
+  fallbackRef,
+  resolveFallbackChain,
+  shouldFallback,
+} from '@/lib/fallbackChain'
+import { i18n } from '@/i18n/react-i18next-compat'
+import { toast } from 'sonner'
 import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
@@ -91,16 +99,29 @@ import {
 import {
   trimMessages,
   estimateTokens,
+  contextSafetyMargin,
+  clearStaleToolResults,
   type ContextManagerConfig,
 } from './context-manager'
 import {
   compactHistory,
   estimateHistoryTokens,
+  planCompaction,
   resolveAutoCompact,
-  shouldCompact,
+  compactionTriggerTokens,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
+import {
+  CompactionLoopError,
+  PRECOMPUTE_FRACTION,
+  cancelPrecompute,
+  isCompactionLooping,
+  recordCompaction,
+  resetCompactionBreaker,
+  startPrecompute,
+  takePrecomputedPrefix,
+} from '@/lib/compactionGuard'
 import {
   acceptsSystemRole,
   foldSummaryIntoSystem,
@@ -836,6 +857,31 @@ function prependContinuationToUIStream(
   })
 }
 
+/**
+ * How long a thread stays on the model its fallback chain moved it to. The
+ * chosen model failed to answer, so the tool follow-ups of the same turn chain
+ * start from the model that did instead of retrying the dead one (each retry
+ * costs its own backoff) -- and the user's next message probes it again.
+ */
+export const PRIMARY_DOWN_MS = 60_000
+const primaryDown = new Map<
+  string,
+  { selection: string; until: number; index: number }
+>()
+/** Forget every thread's moved-off model. For tests. */
+export function resetPrimaryDown(): void {
+  primaryDown.clear()
+}
+
+type SendOptions = {
+  chatId: string
+  messages: UIMessage[]
+  abortSignal: AbortSignal | undefined
+} & {
+  trigger: 'submit-message' | 'regenerate-message'
+  messageId: string | undefined
+} & ChatRequestOptions
+
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
   protected recordsMemoryUsesOnFinish = true
@@ -869,6 +915,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected compactsAtThreshold = true
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
+  /** The compaction the latest attempt of this request announced. */
+  private sentCompaction: CompactionRecord | null = null
+  /** HTTP status of the failure `onError` last reported, for the fallback decision. */
+  private lastFailureStatus: number | undefined
+  /** One a failed attempt made, for the retry's reply to announce. */
+  private carriedCompaction: CompactionRecord | null = null
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1701,6 +1753,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     messages: UIMessage[],
     opts: {
       window: number
+      /** What the trimmer keeps free of the window; compaction starts before it acts. */
+      trimReserveTokens?: number
       systemPromptTokens: number
       keepRecent: number
       summaryMaxTokens: number
@@ -1711,21 +1765,81 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
   ): Promise<UIMessage[]> {
     const inForce = readChatCompaction(threadId)
-    const { history, stale } = applyChatCompaction(messages, inForce)
+    const applied = applyChatCompaction(messages, inForce)
+    const stale = applied.stale
+    let history = applied.history
     // The boundary message was edited or deleted: the summary no longer
     // describes what precedes it.
-    if (stale) writeChatCompaction(threadId, null)
+    if (stale) {
+      writeChatCompaction(threadId, null)
+      cancelPrecompute(threadId)
+    }
 
-    const projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    if (!shouldCompact(projected, opts.window)) return history
+    const trigger = compactionTriggerTokens(opts.window, opts.trimReserveTokens)
+    let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
+    if (projected < trigger) {
+      if (projected >= trigger * PRECOMPUTE_FRACTION) {
+        // When clearing old tool output alone will keep the request well under
+        // the trigger, the summary would never be used: don't write it.
+        const afterClearing =
+          opts.systemPromptTokens +
+          estimateHistoryTokens(clearStaleToolResults(history).messages)
+        if (afterClearing >= trigger * PRECOMPUTE_FRACTION) {
+          this.precomputeSummary(threadId, history, opts)
+        }
+      }
+      return history
+    }
 
+    // Old tool output is the cheapest thing to give up: clear it first and
+    // summarize only if the request is still over.
+    const cleared = clearStaleToolResults(history)
+    if (cleared.clearedCount > 0) {
+      history = cleared.messages
+      projected = opts.systemPromptTokens + estimateHistoryTokens(history)
+      if (projected < trigger) return history
+    }
+
+    if (isCompactionLooping(threadId, history.length)) {
+      throw new CompactionLoopError()
+    }
     const result = await this.runCompaction(threadId, history, {
       ...opts,
       reason: 'threshold',
     })
     if (!result) return history
+    recordCompaction(threadId, history.length, result.messages.length)
     this.announcedCompaction = result.record
     return result.messages
+  }
+
+  /** Start the summary a coming compaction will need, without waiting for it. */
+  private precomputeSummary(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+    }
+  ): void {
+    const plan = planCompaction(history, { keepRecent: opts.keepRecent })
+    if (!plan) return
+    startPrecompute(
+      threadId,
+      plan.summarize,
+      modelSummarizer({
+        provider: opts.provider,
+        modelId: opts.modelId,
+        session: opts.session,
+        maxOutputTokens: opts.summaryMaxTokens,
+        window: opts.window,
+        model: () => this.model,
+      })
+    )
   }
 
   /** Compact, keep the result with the thread, and record it. */
@@ -1755,7 +1869,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       keepRecent: opts.keepRecent,
       reason: opts.reason,
       signal: opts.signal,
+      reusePrefix: (covered) => takePrecomputedPrefix(threadId, covered),
     })
+    cancelPrecompute(threadId)
     if (!result) return null
     // Kept with the thread, so a restart reuses it rather than summarizing
     // the same messages again.
@@ -1801,6 +1917,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       readChatCompaction(threadId)
     )
     if (stale) writeChatCompaction(threadId, null)
+    resetCompactionBreaker(threadId)
     const result = await this.runCompaction(threadId, history, {
       window: usableContextValue(params.max_context_tokens) ?? null,
       keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
@@ -1814,15 +1931,166 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return result?.record ?? null
   }
 
+  /**
+   * Sends on the chosen model; if that fails to answer for a reason another
+   * model could fix (see `shouldFallback`) before any reply content, the same
+   * turn is retried on the next model of the fallback chain.
+   */
   async sendMessages(
-    options: {
-      chatId: string
-      messages: UIMessage[]
-      abortSignal: AbortSignal | undefined
-    } & {
-      trigger: 'submit-message' | 'regenerate-message'
-      messageId: string | undefined
-    } & ChatRequestOptions
+    options: SendOptions
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    const chain = resolveFallbackChain(
+      useGeneralSetting.getState().fallbackModels,
+      {
+        provider: this.getModelSelection().selectedProvider,
+        modelId: this.getModelSelection().selectedModel?.id ?? '',
+      },
+      useModelProvider.getState().providers
+    )
+    if (chain.length === 0) return this.sendOnce(options)
+
+    const original = this.turnModel
+    let next = 0
+    let currentProvider = this.getModelSelection().selectedProvider
+
+    // The chosen model failed on an earlier request of this turn chain and a
+    // fallback answered: keep going from that one for a tool follow-up. A new
+    // user message, a regenerate, another selected model, or the time running
+    // out all forget it, so the chosen model is tried again.
+    const threadKey = this.threadId ?? options.chatId
+    // The chain is part of the key: reordering or editing it must not leave
+    // an index pointing at a different model.
+    const selectionKey = `${fallbackRef(
+      currentProvider,
+      this.getModelSelection().selectedModel?.id ?? ''
+    )}>${chain
+      .map((c) => fallbackRef(c.selectedProvider, c.selectedModel.id))
+      .join('>')}`
+    const isFollowUp =
+      options.trigger === 'submit-message' &&
+      options.messages[options.messages.length - 1]?.role === 'assistant'
+    const moved = primaryDown.get(threadKey)
+    if (moved) {
+      if (
+        moved.selection === selectionKey &&
+        moved.until > Date.now() &&
+        isFollowUp &&
+        moved.index >= 1 &&
+        moved.index <= chain.length
+      ) {
+        next = moved.index
+        this.turnModel = chain[next - 1]
+        currentProvider = chain[next - 1].selectedProvider
+      } else {
+        primaryDown.delete(threadKey)
+      }
+    }
+    // A compaction the first attempt made is already in the thread's saved
+    // state, so a retry finds nothing left to fold and would never announce it.
+    this.sentCompaction = null
+    this.carriedCompaction = null
+    const attempt = async (): Promise<ReadableStream<UIMessageChunk>> => {
+      let failure: unknown
+      let thrown = false
+      this.lastFailureStatus = undefined
+      const held: UIMessageChunk[] = []
+      let reader: ReadableStreamDefaultReader<UIMessageChunk> | undefined
+      try {
+        const stream = await this.sendOnce(options)
+        reader = stream.getReader()
+        // Hold the stream's opening chunks until the first reply content, so a
+        // request that fails at once can be retried without the chat showing it.
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          held.push(value)
+          if (value.type === 'error') {
+            // The chunk carries only the message; `onError` kept the HTTP
+            // status of the same failure, which a reply like "The server had
+            // an error" does not spell out.
+            failure =
+              this.lastFailureStatus === undefined
+                ? value.errorText
+                : Object.assign(new Error(value.errorText), {
+                    statusCode: this.lastFailureStatus,
+                  })
+            break
+          }
+          if (!/^(start|start-step|message-metadata)$/.test(value.type)) break
+        }
+      } catch (error) {
+        failure = error
+        thrown = true
+      }
+      const target = chain[next]
+      if (failure === undefined) {
+        // The chosen model answered: it is up. A fallback answered: stay on it
+        // for the rest of this turn chain.
+        if (next === 0) primaryDown.delete(threadKey)
+        else
+          primaryDown.set(threadKey, {
+            selection: selectionKey,
+            until: Date.now() + PRIMARY_DOWN_MS,
+            index: next,
+          })
+      } else if (!target && next > 0) {
+        // Every model of the chain failed: start from the chosen one again.
+        primaryDown.delete(threadKey)
+      }
+      if (
+        failure === undefined ||
+        !target ||
+        !shouldFallback(
+          failure,
+          options.abortSignal?.aborted,
+          target.selectedProvider !== currentProvider
+        )
+      ) {
+        if (thrown) throw failure
+        // Nothing to retry: hand the stream over exactly as it came, with the
+        // chunks held back put in front.
+        const source = reader as ReadableStreamDefaultReader<UIMessageChunk>
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            for (const chunk of held) controller.enqueue(chunk)
+          },
+          async pull(controller) {
+            const { done, value } = await source.read()
+            if (done) controller.close()
+            else controller.enqueue(value)
+          },
+          cancel: (reason) => source.cancel(reason),
+        })
+      }
+      // The failed attempt's stream is abandoned; stop reading it.
+      void reader?.cancel().catch(() => {})
+      next++
+      this.carriedCompaction = this.sentCompaction ?? this.carriedCompaction
+      this.turnModel = target
+      currentProvider = target.selectedProvider
+      primaryDown.set(threadKey, {
+        selection: selectionKey,
+        until: Date.now() + PRIMARY_DOWN_MS,
+        index: next,
+      })
+      toast.info(
+        i18n.t('common:fallbackSwitched', { model: target.selectedModel.id })
+      )
+      return attempt()
+    }
+    try {
+      return await attempt()
+    } finally {
+      // Only this request moved; the next one (a tool follow-up, the next
+      // message) starts from the chosen model again. The stream built above
+      // reads nothing from here, so it stays on the model that answered it.
+      this.turnModel = original
+      this.carriedCompaction = null
+    }
+  }
+
+  protected async sendOnce(
+    options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     const myGeneration = ++this.streamGeneration
@@ -2047,7 +2315,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      this.announcedCompaction = null
+      this.announcedCompaction = this.carriedCompaction
       if (
         autoCompact &&
         compaction.strategy === 'summarize' &&
@@ -2059,6 +2327,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           messagesToConvert,
           {
             window: maxContextTokens,
+            trimReserveTokens:
+              contextConfig.maxOutputTokens +
+              contextSafetyMargin(maxContextTokens),
             systemPromptTokens,
             keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
             summaryMaxTokens: compaction.summaryMaxTokens,
@@ -2250,6 +2521,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const announced = this.announcedCompaction
     this.announcedCompaction = null
+    this.sentCompaction = announced
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
         // Start the clock at the first sign of output, whatever shape it
@@ -2493,6 +2765,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
         }
         const unwrapped = unwrapRetryError(error)
+        const failed = unwrapped as { statusCode?: unknown; status?: unknown } | null
+        const httpStatus = [failed?.statusCode, failed?.status].find(
+          (v): v is number => typeof v === 'number'
+        )
+        // The error can be reported again, bare, by a stream wrapper; keep the
+        // status the first report carried.
+        if (httpStatus !== undefined) this.lastFailureStatus = httpStatus
         const rawMessage = unwrapped == null
           ? 'Unknown error'
           : typeof unwrapped === 'string'
