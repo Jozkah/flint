@@ -103,9 +103,25 @@ interface reload live. Stop it with `Ctrl+C` in the terminal.
 
 ## 4b. Or build the installable app
 
-The installer bundles Flint's llama.cpp engine, so build that first. On
-Windows, run this one in **Git Bash** (installed with Git; search the Start
-menu for it), not PowerShell, whose `bash` is WSL:
+One command does it, from any terminal including PowerShell, straight after
+cloning (steps 2 and 3 are not needed for it):
+
+```bash
+node scripts/build-installer.mjs
+```
+
+It checks the tools from step 1 and names any that are missing with the
+command that installs them, then builds the llama.cpp engine and the app and
+prints where the installers are. On Windows it needs neither `make` nor Git
+Bash, finds LLVM in its default folder even when it is not on `PATH`, and does
+not need `corepack enable`. Pass an engine variant to build for a GPU, for
+example `node scripts/build-installer.mjs vulkan` (see
+[Local models](#local-models-the-llamacpp-engine) below).
+
+The same build by hand, after steps 2 and 3: the installer bundles Flint's
+llama.cpp engine, so build that first. On Windows, run this one in **Git
+Bash** (installed with Git; search the Start menu for it), not PowerShell,
+whose `bash` is WSL:
 
 ```bash
 make build-engine JAN_ENGINE_VARIANT=cpu
@@ -121,7 +137,7 @@ yarn build
 
 When it finishes, the installers are in `src-tauri/target/release/bundle/`:
 
-- Windows: an `.exe` under `nsis\` and an `.msi` under `msi\` (the app itself is `src-tauri\target\release\Flint.exe`)
+- Windows: an `.exe` under `nsis\` and an `.msi` under `msi\` (the app itself is `src-tauri\target\release\Flint-Desktop.exe`)
 - macOS: a `.dmg` under `dmg/` and the `.app` under `macos/`
 - Linux: `.deb` and `.AppImage` files under `deb/` and `appimage/`
 

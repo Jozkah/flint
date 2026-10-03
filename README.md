@@ -83,17 +83,14 @@ Jan compatibility is kept: `JAN_*` environment variables (with `FLINT_*` preferr
 ```bash
 git clone https://github.com/Jozkah/flint.git
 cd flint
-corepack enable
-yarn install
-make build-engine JAN_ENGINE_VARIANT=cpu
-yarn build
+node scripts/build-installer.mjs
 ```
 
-The installers land in `src-tauri/target/release/bundle/`. On Windows, run the `make` line in Git Bash, not PowerShell.
+That one script works in any terminal (PowerShell, Command Prompt, Git Bash, macOS or Linux Terminal). It first checks your toolchain and, if anything is missing, lists each tool with the command that installs it. Then it builds everything and prints where the installers are: `src-tauri/target/release/bundle/`.
 
-Before you run these commands, install the toolchain (Git, Node 20+, Rust, CMake, Ninja and make, plus LLVM and the Visual Studio Build Tools on Windows). The first build needs about 30 GB of disk space.
+You need Git and Node 20+ to get that far; the script tells you about the rest (Rust, CMake, Ninja, plus LLVM and the Visual Studio Build Tools on Windows). A first build takes 20 to 60 minutes and up to 30 GB of disk space.
 
-To run Flint in development instead of building installers, replace the last two lines with `yarn build:extensions`, `yarn download:bin` and `yarn dev`. That runs without the llama.cpp engine, so local models do not load until you run `make build-engine-dev JAN_ENGINE_VARIANT=cpu` once.
+To run Flint in development instead, see [docs/BUILDING.md](docs/BUILDING.md).
 
 [docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
 
