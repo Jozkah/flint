@@ -539,6 +539,12 @@ class RoomRun {
               extraFolders: this.room.extraFolders ?? [],
               access: args.participant.toolAccess,
               participantName: args.participant.name,
+              // What the room can still spend, for a subagent's budget.
+              tokenBudget: Math.max(
+                0,
+                clampLimits(this.room.limits).maxTotalTokens -
+                  (this.room.usage.inputTokens + this.room.usage.outputTokens)
+              ),
             }
           : undefined
 

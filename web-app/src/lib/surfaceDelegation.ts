@@ -75,6 +75,8 @@ export type SurfaceDelegationSpec = {
   background: boolean
   scope: 'thread' | 'session'
   maxSteps?: number
+  /** Tokens already spent against the surface's budget; see the child runner. */
+  startingTokens?: () => number
   onUsage?: (usage: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | null) => void
 }
 
@@ -151,6 +153,7 @@ export async function createSurfaceDelegation(
       anchorMessageId: () => undefined,
       activitySource: 'chat',
       maxSteps: spec.maxSteps ?? SURFACE_CHILD_MAX_STEPS,
+      startingTokens: spec.startingTokens,
       onUsage: spec.onUsage,
       setup: (resolved) => {
         const identity = {

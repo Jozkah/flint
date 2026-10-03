@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const dispatch = vi.hoisted(() => vi.fn())
+const createSurfaceDelegation = vi.hoisted(() => vi.fn())
+const delegationOn = vi.hoisted(() => ({ value: true }))
 const authorize = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/coworkDispatch', () => ({ dispatchCoworkTool: dispatch }))
@@ -30,7 +32,10 @@ vi.mock('@/hooks/useToolApprovalRequests', () => ({
   useToolApprovalRequests: { getState: () => ({ requestApproval: vi.fn().mockResolvedValue(true) }) },
 }))
 
-import { buildFullFolderTools } from '../fullTools'
+vi.mock('@/lib/surfaceDelegation', () => ({ createSurfaceDelegation }))
+vi.mock('@/lib/chatDelegation', () => ({ chatDelegationEnabled: () => delegationOn.value }))
+
+import { buildFullFolderTools, ROOM_CHILD_MAX_STEPS, type RoomDelegation } from '../fullTools'
 
 const ctx = {
   roomId: 'r1',
@@ -43,6 +48,8 @@ const ctx = {
 beforeEach(() => {
   dispatch.mockReset()
   authorize.mockReset().mockResolvedValue('grant-1')
+  createSurfaceDelegation.mockReset()
+  delegationOn.value = true
 })
 
 describe('buildFullFolderTools', () => {
@@ -93,5 +100,76 @@ describe('buildFullFolderTools', () => {
 
   it('has no tools without a folder', async () => {
     expect(await buildFullFolderTools({ ...ctx, folder: null })).toEqual({})
+  })
+})
+
+describe('delegation in a room', () => {
+  const run = vi.fn()
+  const delegation: RoomDelegation = {
+    model: () => ({}) as never,
+    modelId: 'qwen',
+    providerOptions: () => undefined,
+    turnId: 't1',
+    onUsage: vi.fn(),
+  }
+  beforeEach(() => {
+    run.mockReset().mockResolvedValue({ output: 'child answer' })
+    createSurfaceDelegation.mockResolvedValue({ tools: { task: { description: 'task tool' } }, tasks: {}, run })
+  })
+
+  it('offers the foreground task to a full-access participant, and nothing else of the family', async () => {
+    const tools = await buildFullFolderTools({ ...ctx, tokenBudget: 50_000 }, undefined, delegation)
+    expect(Object.keys(tools)).toContain('task')
+    expect(Object.keys(tools)).not.toContain('await_task')
+    const spec = createSurfaceDelegation.mock.calls[0][0]
+    expect(spec).toMatchObject({
+      id: 'r1',
+      background: false,
+      scope: 'session',
+      maxSteps: ROOM_CHILD_MAX_STEPS,
+      folders: ['C:/proj', 'C:/other'],
+      asker: 'Ada',
+    })
+  })
+
+  it('does not offer it without delegation deps, with the setting off, or with no budget left', async () => {
+    expect(Object.keys(await buildFullFolderTools(ctx))).not.toContain('task')
+    delegationOn.value = false
+    expect(Object.keys(await buildFullFolderTools(ctx, undefined, delegation))).not.toContain('task')
+    delegationOn.value = true
+    expect(Object.keys(await buildFullFolderTools({ ...ctx, tokenBudget: 0 }, undefined, delegation))).not.toContain('task')
+    expect(createSurfaceDelegation).not.toHaveBeenCalled()
+  })
+
+  it('holds a child to the tokens the room has left', async () => {
+    await buildFullFolderTools({ ...ctx, tokenBudget: 80_000 }, undefined, delegation)
+    const { startingTokens } = createSurfaceDelegation.mock.calls[0][0]
+    // The child's own cap is 200k; it starts having "spent" what the room lacks.
+    expect(startingTokens()).toBe(120_000)
+    await buildFullFolderTools({ ...ctx, tokenBudget: 900_000 }, undefined, delegation)
+    expect(createSurfaceDelegation.mock.calls[1][0].startingTokens()).toBe(0)
+  })
+
+  it('runs the call through the shared delegation and reports it as room activity', async () => {
+    const activity = vi.fn()
+    const tools = await buildFullFolderTools({ ...ctx, tokenBudget: 1000 }, activity, delegation)
+    const out = await (tools.task as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute(
+      { subagent_name: 'explorer', description: 'look' },
+      { toolCallId: 'c9' }
+    )
+    expect(out).toBe('child answer')
+    expect(run.mock.calls[0][0]).toMatchObject({ toolCallId: 'c9', toolName: 'task' })
+    expect(activity).toHaveBeenCalledWith(expect.objectContaining({ name: 'task', ok: true }))
+  })
+
+  it('reports a failed child as an error the model can read', async () => {
+    run.mockResolvedValue({ output: 'stopped after 10 steps', isError: true })
+    const tools = await buildFullFolderTools({ ...ctx, tokenBudget: 1000 }, undefined, delegation)
+    const out = await (tools.task as unknown as { execute: (i: unknown, o: unknown) => Promise<string> }).execute({}, {})
+    expect(out).toBe('ERROR: stopped after 10 steps')
+  })
+
+  it('offers it to no one without a folder', async () => {
+    expect(await buildFullFolderTools({ ...ctx, folder: null }, undefined, delegation)).toEqual({})
   })
 })

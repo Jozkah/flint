@@ -85,7 +85,7 @@ function webResultText(content: unknown): string {
   return content == null ? '' : String(content)
 }
 
-import { buildFullFolderTools } from './fullTools'
+import { buildFullFolderTools, type RoomDelegation } from './fullTools'
 
 type ExecOptions = {
   readOnlyProject?: string
@@ -96,7 +96,8 @@ type ExecOptions = {
 
 export async function buildRoomTools(
   ctx: RoomToolContext,
-  onActivity?: (a: RoomToolActivity) => void
+  onActivity?: (a: RoomToolActivity) => void,
+  delegation?: RoomDelegation
 ): Promise<Record<string, Tool>> {
   const tools: Record<string, Tool> = {}
 
@@ -122,7 +123,7 @@ export async function buildRoomTools(
   // File tools only make sense against an attached folder. With `edit` access,
   // mint a write grant confined to that folder so write/edit can be offered.
   if (ctx.folder && ctx.access === 'full') {
-    Object.assign(tools, await buildFullFolderTools(ctx, onActivity))
+    Object.assign(tools, await buildFullFolderTools(ctx, onActivity, delegation))
   } else if (ctx.folder) {
     const extras = ctx.extraFolders ?? []
     let writeGrant: string | undefined

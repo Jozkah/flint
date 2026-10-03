@@ -80,6 +80,12 @@ export type ChildRunnerEnv = {
   activitySource?: 'cowork' | 'chat'
   /** Per-child step budget, when the surface wants less than the default. */
   maxSteps?: number
+  /**
+   * Tokens a surface has already spent, so a child cannot outrun the budget the
+   * surface still has: the run's own cap applies from here, and a child that
+   * starts at the cap stops before it begins.
+   */
+  startingTokens?: () => number
   /** Told how many tokens each finished child used, for a surface that keeps a
    * budget of its own (a Room). */
   onUsage?: (usage: Usage | null) => void
@@ -193,7 +199,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         parentTools: env.parentTools(),
         system: setup.system,
         signal: childAbort.signal,
-        sessionTokens: 0,
+        sessionTokens: env.startingTokens?.() ?? 0,
         ...(env.maxSteps ? { maxSteps: env.maxSteps } : {}),
         dispatch: setup.dispatch,
         events: {
