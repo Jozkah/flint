@@ -53,6 +53,20 @@ describe('AccessRequestDialog', () => {
     expect(await screen.findByTestId('access-mode')).toHaveTextContent('Read and write')
   })
 
+  it('ignores a click outside the dialog', async () => {
+    render(<AccessRequestDialog />)
+    act(() => {
+      void ask()
+    })
+    await screen.findByTestId('access-request-dialog')
+    const overlay = document.querySelector('[data-slot="dialog-overlay"]')!
+    fireEvent.pointerDown(overlay)
+    fireEvent.mouseDown(overlay)
+    fireEvent.click(overlay)
+    expect(screen.getByTestId('access-request-dialog')).toBeInTheDocument()
+    expect(useAccessRequests.getState().queue).toHaveLength(1)
+  })
+
   it('denies when dismissed with Escape', async () => {
     render(<AccessRequestDialog />)
     let answer!: Promise<unknown>

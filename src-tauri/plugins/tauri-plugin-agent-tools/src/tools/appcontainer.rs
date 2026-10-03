@@ -1760,7 +1760,84 @@ mod win {
         result
     }
 
+    /// Most directories one grant will walk looking for protected descendants.
+    const MAX_PROTECTED_WALK: usize = 50_000;
+
+    /// Apply `set_access_one` to `path`, then to every descendant directory that
+    /// stops inheriting (a protected DACL).
+    ///
+    /// The ACE on `path` is inheritable and Windows propagates it down, but it
+    /// skips a folder whose DACL is protected -- so a granted folder's
+    /// subfolder such as `MSI Afterburner\Legacy` stayed closed to the
+    /// container. Each protected folder is given the same entry explicitly, and
+    /// it then propagates through its own subtree. Links and junctions are not
+    /// followed, and `.jan` stays cut off on purpose ([`isolate_path`]).
     fn set_access(path: &Path, sid: PSID, mode: ACCESS_MODE, mask: u32) -> Result<(), String> {
+        set_access_one(path, sid, mode, mask)?;
+        let mut pending = vec![path.to_path_buf()];
+        let mut seen = 0usize;
+        while let Some(dir) = pending.pop() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let child = entry.path();
+                if entry.file_name().eq_ignore_ascii_case(".jan") || is_reparse_point(&child) {
+                    continue;
+                }
+                if !entry.file_type().is_ok_and(|t| t.is_dir()) {
+                    continue;
+                }
+                seen += 1;
+                if seen > MAX_PROTECTED_WALK {
+                    return Ok(());
+                }
+                if dacl_is_protected(&child) {
+                    set_access_one(&child, sid, mode, mask)?;
+                }
+                pending.push(child);
+            }
+        }
+        Ok(())
+    }
+
+    fn is_reparse_point(path: &Path) -> bool {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        std::fs::symlink_metadata(path)
+            .map(|m| m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0)
+            .unwrap_or(true)
+    }
+
+    /// Whether `path` ignores ACEs inherited from its parent.
+    fn dacl_is_protected(path: &Path) -> bool {
+        use windows_sys::Win32::Security::GetSecurityDescriptorControl;
+        const SE_DACL_PROTECTED: u16 = 0x1000;
+        let object = wide(path.as_os_str());
+        let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+        let status = unsafe {
+            GetNamedSecurityInfoW(
+                object.as_ptr(),
+                SE_FILE_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                &mut descriptor,
+            )
+        };
+        if status != ERROR_SUCCESS {
+            return false;
+        }
+        let mut control: u16 = 0;
+        let mut revision: u32 = 0;
+        let ok = unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) };
+        unsafe { LocalFree(descriptor) };
+        ok != 0 && control & SE_DACL_PROTECTED != 0
+    }
+
+    fn set_access_one(path: &Path, sid: PSID, mode: ACCESS_MODE, mask: u32) -> Result<(), String> {
         let mut object = wide(path.as_os_str());
         let mut existing: *mut ACL = std::ptr::null_mut();
         let mut descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
