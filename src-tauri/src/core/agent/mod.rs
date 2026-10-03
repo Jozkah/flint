@@ -14,8 +14,10 @@ pub mod auto_mode;
 pub mod bundle_import;
 // Claude Code import exposes only Tauri commands (desktop-only); the `cli`
 // build has no `tauri` crate linked, so gate it out like `commands`.
+pub mod cc_hooks;
 #[cfg(not(feature = "cli"))]
 pub mod cc_import;
+pub mod cc_links;
 pub mod checkpoint;
 #[cfg(not(feature = "cli"))]
 pub mod commands;
