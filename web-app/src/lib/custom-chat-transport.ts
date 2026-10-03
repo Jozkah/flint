@@ -90,16 +90,29 @@ import {
 import {
   trimMessages,
   estimateTokens,
+  clearStaleToolResults,
   type ContextManagerConfig,
 } from './context-manager'
 import {
   compactHistory,
   estimateHistoryTokens,
+  planCompaction,
   resolveAutoCompact,
   shouldCompact,
+  thresholdTokens,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
+import {
+  CompactionLoopError,
+  PRECOMPUTE_FRACTION,
+  cancelPrecompute,
+  isCompactionLooping,
+  recordCompaction,
+  resetCompactionBreaker,
+  startPrecompute,
+  takePrecomputed,
+} from '@/lib/compactionGuard'
 import {
   acceptsSystemRole,
   foldSummaryIntoSystem,
@@ -1710,21 +1723,73 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
   ): Promise<UIMessage[]> {
     const inForce = readChatCompaction(threadId)
-    const { history, stale } = applyChatCompaction(messages, inForce)
+    const applied = applyChatCompaction(messages, inForce)
+    const stale = applied.stale
+    let history = applied.history
     // The boundary message was edited or deleted: the summary no longer
     // describes what precedes it.
-    if (stale) writeChatCompaction(threadId, null)
+    if (stale) {
+      writeChatCompaction(threadId, null)
+      cancelPrecompute(threadId)
+    }
 
-    const projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    if (!shouldCompact(projected, opts.window)) return history
+    let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
+    if (!shouldCompact(projected, opts.window)) {
+      if (projected >= thresholdTokens(opts.window) * PRECOMPUTE_FRACTION) {
+        this.precomputeSummary(threadId, history, opts)
+      }
+      return history
+    }
 
+    // Old tool output is the cheapest thing to give up: clear it first and
+    // summarize only if the request is still over.
+    const cleared = clearStaleToolResults(history)
+    if (cleared.clearedCount > 0) {
+      history = cleared.messages
+      projected = opts.systemPromptTokens + estimateHistoryTokens(history)
+      if (!shouldCompact(projected, opts.window)) return history
+    }
+
+    if (isCompactionLooping(threadId, history.length)) {
+      throw new CompactionLoopError()
+    }
     const result = await this.runCompaction(threadId, history, {
       ...opts,
       reason: 'threshold',
     })
     if (!result) return history
+    recordCompaction(threadId, history.length, result.messages.length)
     this.announcedCompaction = result.record
     return result.messages
+  }
+
+  /** Start the summary a coming compaction will need, without waiting for it. */
+  private precomputeSummary(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+    }
+  ): void {
+    const plan = planCompaction(history, { keepRecent: opts.keepRecent })
+    if (!plan) return
+    startPrecompute(
+      threadId,
+      plan.summarize,
+      modelSummarizer({
+        provider: opts.provider,
+        modelId: opts.modelId,
+        session: opts.session,
+        maxOutputTokens: opts.summaryMaxTokens,
+        window: opts.window,
+        model: () => this.model,
+      })
+    )
   }
 
   /** Compact, keep the result with the thread, and record it. */
@@ -1754,7 +1819,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       keepRecent: opts.keepRecent,
       reason: opts.reason,
       signal: opts.signal,
+      reuse: (covered) => takePrecomputed(threadId, covered),
     })
+    cancelPrecompute(threadId)
     if (!result) return null
     // Kept with the thread, so a restart reuses it rather than summarizing
     // the same messages again.
@@ -1800,6 +1867,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       readChatCompaction(threadId)
     )
     if (stale) writeChatCompaction(threadId, null)
+    resetCompactionBreaker(threadId)
     const result = await this.runCompaction(threadId, history, {
       window: usableContextValue(params.max_context_tokens) ?? null,
       keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,

@@ -8,6 +8,8 @@ import {
   deriveToolOutputCap,
   contextSafetyMargin,
   inputBudgetTokens,
+  clearStaleToolResults,
+  extractSummary,
   type ContextManagerConfig,
 } from '../context-manager'
 
@@ -295,5 +297,96 @@ describe('trimMessages keeps the request', () => {
     })
     expect(result.messages[0].id).toBe('u')
     expect(result.messages.some((m) => m.role === 'user')).toBe(true)
+  })
+})
+
+function toolMessage(id: string, tool: string, output: string): UIMessage {
+  return {
+    id,
+    role: 'assistant',
+    parts: [
+      {
+        type: `tool-${tool}`,
+        toolCallId: `call-${id}`,
+        state: 'output-available',
+        input: { q: 1 },
+        output,
+      },
+    ],
+  } as unknown as UIMessage
+}
+
+describe('clearStaleToolResults', () => {
+  const big = 'x'.repeat(2000)
+  const outputOf = (m: UIMessage) => (m.parts[0] as { output?: unknown }).output
+
+  function history(): UIMessage[] {
+    return [
+      makeMessage('u1', 'user', 'one'),
+      toolMessage('t1', 'read', big),
+      toolMessage('t2', 'grep', big),
+      makeMessage('u2', 'user', 'two'),
+      toolMessage('t3', 'read', big),
+      makeMessage('u3', 'user', 'three'),
+      toolMessage('t4', 'bash', big),
+    ]
+  }
+
+  it('clears old results with a sized placeholder and keeps the call', () => {
+    const result = clearStaleToolResults(history(), {
+      keepRecentResults: 1,
+      protectedTurns: 2,
+    })
+    expect(result.clearedCount).toBe(2)
+    expect(outputOf(result.messages[4])).toBe(big)
+    expect(outputOf(result.messages[1])).toBe('[tool result cleared: read 2.0k chars]')
+    expect(outputOf(result.messages[2])).toBe('[tool result cleared: grep 2.0k chars]')
+    expect((result.messages[1].parts[0] as { input: unknown }).input).toEqual({ q: 1 })
+  })
+
+  it('never clears the latest turn or the newest K results', () => {
+    const result = clearStaleToolResults(history(), {
+      keepRecentResults: 0,
+      protectedTurns: 1,
+    })
+    expect(outputOf(result.messages[6])).toBe(big)
+    const keepTwo = clearStaleToolResults(history(), {
+      keepRecentResults: 3,
+      protectedTurns: 1,
+    })
+    expect(outputOf(keepTwo.messages[2])).toBe(big)
+    expect(outputOf(keepTwo.messages[1])).toContain('[tool result cleared')
+  })
+
+  it('leaves small results alone, is idempotent and does not mutate', () => {
+    const input = history()
+    input.splice(1, 0, toolMessage('tiny', 'ls', 'ok'))
+    const snapshot = JSON.stringify(input)
+    const once = clearStaleToolResults(input, { keepRecentResults: 0 })
+    expect(outputOf(once.messages[1])).toBe('ok')
+    expect(JSON.stringify(input)).toBe(snapshot)
+    const twice = clearStaleToolResults(once.messages, { keepRecentResults: 0 })
+    expect(twice.clearedCount).toBe(0)
+  })
+})
+
+describe('extractSummary', () => {
+  it('keeps only the summary block', () => {
+    expect(
+      extractSummary('<analysis>thinking</analysis>\n<summary>\n- a\n- b\n</summary>')
+    ).toBe('- a\n- b')
+  })
+
+  it('uses the raw text when the tags are missing', () => {
+    expect(extractSummary('  plain summary ')).toBe('plain summary')
+  })
+
+  it('takes an unterminated summary and drops an unterminated analysis', () => {
+    expect(extractSummary('<analysis>x</analysis><summary>cut off')).toBe('cut off')
+    expect(extractSummary('<analysis>ran out of tokens')).toBe('')
+  })
+
+  it('strips a closed analysis when no summary tag follows', () => {
+    expect(extractSummary('<analysis>x</analysis>the summary')).toBe('the summary')
   })
 })
