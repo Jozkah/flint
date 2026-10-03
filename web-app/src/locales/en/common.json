@@ -1826,7 +1826,7 @@
     "import": {
       "button": "Import from Claude Code",
       "title": "Import from Claude Code",
-      "description": "Scan a folder for Claude Code skills and plugins, then import them into Jan.",
+      "description": "Scan a folder for Claude Code skills and plugins, then import them into Flint. Imported items stay linked: later changes in Claude Code reach Flint without importing again.",
       "root": "Scan folder",
       "rootPlaceholder": "Desktop/Coding",
       "scan": "Scan",
@@ -1834,6 +1834,8 @@
       "scanFailed": "Scan failed: {{error}}",
       "empty": "No skills or plugins found.",
       "installed": "installed",
+      "linked": "live",
+      "linkHooks": "Also run my Claude Code hooks (SessionStart and UserPromptSubmit) from ~/.claude/settings.json and imported plugins. Hooks receive your prompt.",
       "overwrite": "Overwrite existing",
       "importSelected": "Import selected",
       "importing": "Importing...",

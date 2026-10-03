@@ -13,12 +13,18 @@
 //! `<plugin>/commands`, `<plugin>/agents`, plus a handful of top-level
 //! manifest files. Only those are copied in; anything else (`.mcp.json`,
 //! hooks, `.git`, `node_modules`, ...) is left behind.
+//!
+//! An import is a *live link*, not a one-off copy: each imported item is
+//! recorded in `cc-links.json` (see `cc_links`) and [`sync_links`] re-copies it
+//! whenever its source in `~/.claude` changes. Plugin hooks are not copied --
+//! `cc_hooks` runs them from the source, so their scripts keep working.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::core::agent::cc_links::{self, Link, LinkKind};
 use crate::core::agent::skills::{user_plugins_dir, user_skills_dir};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -37,6 +43,8 @@ pub struct CcItem {
     /// `"cc-user"` for `~/.claude`, `"project:<folder>"` for a project scan hit.
     pub origin: String,
     pub already_exists: bool,
+    /// Imported as a live link: edits at the source reach Flint on their own.
+    pub linked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,12 +242,14 @@ pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
 
     let global_skills = user_skills_dir();
     let global_plugins = user_plugins_dir();
+    let links = cc_links::load();
 
     let mut items: Vec<CcItem> = Vec::new();
     for (name, path, origin) in skill_hits {
         items.push(CcItem {
             kind: CcItemKind::Skill,
             already_exists: skill_exists(&name, global_skills.clone()),
+            linked: links.is_linked(LinkKind::Skill, &name),
             name,
             source_path: path.to_string_lossy().into_owned(),
             origin,
@@ -249,6 +259,7 @@ pub async fn agent_cc_scan(root: Option<String>) -> Result<CcScan, String> {
         items.push(CcItem {
             kind: CcItemKind::Plugin,
             already_exists: dir_exists(&name, global_plugins.clone()),
+            linked: links.is_linked(LinkKind::Plugin, &name),
             name,
             source_path: path.to_string_lossy().into_owned(),
             origin,
@@ -420,8 +431,10 @@ fn import_plugin(source_path: &Path, name: &str, overwrite: bool) -> Result<Stri
 pub async fn agent_cc_import(
     items: Vec<CcImportSelection>,
     overwrite: bool,
+    link_hooks: Option<bool>,
 ) -> Result<CcImportResult, String> {
     let mut result = CcImportResult::default();
+    let mut links = cc_links::load();
 
     // One name, two sources (a user skill and a project skill both called
     // `foo`) would land on the same target: the second would silently
@@ -462,13 +475,169 @@ pub async fn agent_cc_import(
             CcItemKind::Plugin => import_plugin(&source_path, name, overwrite),
         };
         match outcome {
-            Ok(_) => result.imported.push(name.to_string()),
+            Ok(_) => {
+                // The import is a live link: remember where it came from so
+                // `sync_links` can bring later edits across.
+                links.upsert(Link {
+                    kind: match item.kind {
+                        CcItemKind::Skill => LinkKind::Skill,
+                        CcItemKind::Plugin => LinkKind::Plugin,
+                    },
+                    name: name.to_string(),
+                    origin: origin_of(&item.source_path),
+                    source_path: item.source_path.clone(),
+                    fingerprint: cc_links::fingerprint(&source_path),
+                });
+                result.imported.push(name.to_string());
+            }
             Err(e) if e == "skipped" => result.skipped.push(name.to_string()),
             Err(e) => result.errors.push(format!("{name}: {e}")),
         }
     }
 
+    if let Some(hooks) = link_hooks {
+        links.hooks = hooks;
+    }
+    if let Err(e) = cc_links::save(&links) {
+        result
+            .errors
+            .push(format!("could not record the live link: {e}"));
+    }
+
     Ok(result)
+}
+
+/// `cc-user` when `source_path` is something Claude Code itself installed
+/// (under `~/.claude`, or a plugin `installed_plugins.json` points at), else
+/// `project`. Only `cc-user` plugins are re-resolved through
+/// `installed_plugins.json` on sync.
+fn origin_of(source_path: &str) -> String {
+    let Some(home) = cc_home() else {
+        return "project".to_string();
+    };
+    if Path::new(source_path).starts_with(&home) {
+        return "cc-user".to_string();
+    }
+    let mut hits = Vec::new();
+    scan_installed_plugins(&home, "cc-user", &mut hits);
+    if hits.iter().any(|(_, p, _)| p == Path::new(source_path)) {
+        "cc-user".to_string()
+    } else {
+        "project".to_string()
+    }
+}
+
+// ---------------------------------------------------------------------
+// Live sync
+// ---------------------------------------------------------------------
+
+/// How long a sync result is trusted. Every reader of the global stores asks
+/// for a refresh; this keeps that from walking `~/.claude` on each call.
+#[cfg(not(test))]
+const SYNC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
+#[cfg(not(test))]
+static SYNCING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+#[cfg(not(test))]
+static LAST_SYNC: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+
+/// Refresh linked items if the last refresh is older than [`SYNC_INTERVAL`].
+/// Re-entrant calls (the refresh itself reads the stores) are ignored.
+#[cfg(not(test))]
+pub(crate) fn sync_if_due() {
+    use std::sync::atomic::Ordering;
+    if SYNCING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            SYNCING.store(false, Ordering::Release);
+        }
+    }
+    let _done = Done;
+    let due = match LAST_SYNC.lock() {
+        Ok(mut last) => match *last {
+            Some(at) if at.elapsed() < SYNC_INTERVAL => false,
+            _ => {
+                *last = Some(std::time::Instant::now());
+                true
+            }
+        },
+        Err(_) => false,
+    };
+    if due {
+        sync_links();
+    }
+}
+
+/// Where a link's item lives now. A `cc-user` plugin is looked up in
+/// `installed_plugins.json` again, because updating it installs a new
+/// versioned directory and leaves the old path behind.
+fn current_source(link: &Link) -> PathBuf {
+    if link.kind == LinkKind::Plugin && link.origin == "cc-user" {
+        if let Some(home) = cc_home() {
+            let mut hits = Vec::new();
+            scan_installed_plugins(&home, "cc-user", &mut hits);
+            if let Some((_, path, _)) = hits.into_iter().find(|(n, _, _)| *n == link.name) {
+                return path;
+            }
+        }
+    }
+    PathBuf::from(&link.source_path)
+}
+
+/// Bring every linked item up to date with its source. Returns how many were
+/// re-copied.
+///
+/// * A source that is gone keeps the last copy: deleting something in Claude
+///   Code must not silently empty Flint mid-session.
+/// * A target the user removed from Flint drops its link instead of being
+///   recreated: removing an item in Flint has to stay removed.
+pub(crate) fn sync_links() -> usize {
+    let mut links = cc_links::load();
+    if links.items.is_empty() {
+        return 0;
+    }
+    let mut refreshed = 0;
+    let mut changed = false;
+    let mut kept: Vec<Link> = Vec::with_capacity(links.items.len());
+    for mut link in std::mem::take(&mut links.items) {
+        let target_present = match link.kind {
+            LinkKind::Skill => skill_exists(&link.name, user_skills_dir()),
+            LinkKind::Plugin => dir_exists(&link.name, user_plugins_dir()),
+        };
+        if !target_present {
+            changed = true;
+            continue;
+        }
+        let source = current_source(&link);
+        if source.exists() {
+            let fingerprint = cc_links::fingerprint(&source);
+            let moved = source.to_string_lossy() != link.source_path;
+            if fingerprint != link.fingerprint || moved {
+                let outcome = match link.kind {
+                    LinkKind::Skill => import_skill(&source, &link.name, true),
+                    LinkKind::Plugin => import_plugin(&source, &link.name, true),
+                };
+                match outcome {
+                    Ok(_) => {
+                        link.fingerprint = fingerprint;
+                        link.source_path = source.to_string_lossy().into_owned();
+                        refreshed += 1;
+                        changed = true;
+                    }
+                    Err(e) => log::warn!("cc link: could not refresh {}: {e}", link.name),
+                }
+            }
+        }
+        kept.push(link);
+    }
+    links.items = kept;
+    if changed {
+        let _ = cc_links::save(&links);
+    }
+    refreshed
 }
 
 #[cfg(test)]
@@ -599,6 +768,7 @@ mod tests {
                 source_path: src.to_string_lossy().into_owned(),
             }],
             false,
+            None,
         ))
         .unwrap();
 
@@ -632,6 +802,7 @@ mod tests {
                 source_path: missing.to_string_lossy().into_owned(),
             }],
             true,
+            None,
         ))
         .unwrap();
         assert!(result.imported.is_empty() && !result.errors.is_empty());
@@ -645,6 +816,7 @@ mod tests {
                 source_path: cc_home.path().join("src").join("keep").to_string_lossy().into_owned(),
             }],
             true,
+            None,
         ))
         .unwrap();
         assert!(std::fs::read_to_string(skills.join("keep").join("SKILL.md")).unwrap().contains("theirs"));
@@ -677,6 +849,7 @@ mod tests {
                 source_path: cc_home.path().join("src").join("foo").to_string_lossy().into_owned(),
             }],
             false,
+            None,
         ))
         .unwrap();
         assert!(result.imported.is_empty(), "{result:?}");
@@ -701,7 +874,7 @@ mod tests {
             source_path: cc_home.path().join(dir).join("foo").to_string_lossy().into_owned(),
         };
         for overwrite in [false, true] {
-            let result = tokio_test_block_on(agent_cc_import(vec![pick("a"), pick("b")], overwrite)).unwrap();
+            let result = tokio_test_block_on(agent_cc_import(vec![pick("a"), pick("b")], overwrite, None)).unwrap();
             assert!(result.imported.is_empty() && result.skipped.is_empty(), "{result:?}");
             assert_eq!(result.errors.len(), 1, "{result:?}");
             assert!(result.errors[0].contains("2 places"));
@@ -739,6 +912,7 @@ mod tests {
                 source_path: plugin_src.to_string_lossy().into_owned(),
             }],
             false,
+            None,
         ))
         .unwrap();
 
@@ -774,6 +948,7 @@ mod tests {
                 source_path: src.to_string_lossy().into_owned(),
             }],
             false,
+            None,
         ))
         .unwrap();
 
@@ -799,6 +974,7 @@ mod tests {
                 source_path: "/tmp/whatever".to_string(),
             }],
             false,
+            None,
         ))
         .unwrap();
 
@@ -807,6 +983,98 @@ mod tests {
         assert_eq!(result.errors.len(), 1);
         assert!(result.errors[0].contains("invalid item name"));
 
+        set_test_user_skills(None);
+    }
+
+    #[test]
+    fn import_links_the_item_and_sync_follows_the_source() {
+        let cc_home = tempdir().unwrap();
+        let store = tempdir().unwrap();
+        set_test_cc_home(Some(cc_home.path().to_path_buf()));
+        set_test_scan_root(None);
+        set_test_user_skills(Some(store.path().to_path_buf()));
+        set_test_user_plugins(None);
+
+        write_skill(&cc_home.path().join("skills"), "caveman", "v1");
+        let source = cc_home.path().join("skills").join("caveman");
+        let target = tauri_plugin_agent_tools::skills::skills_dir(store.path())
+            .join("caveman")
+            .join("SKILL.md");
+
+        let result = tokio_test_block_on(agent_cc_import(
+            vec![CcImportSelection {
+                kind: CcItemKind::Skill,
+                name: "caveman".into(),
+                source_path: source.to_string_lossy().into_owned(),
+            }],
+            false,
+            Some(true),
+        ))
+        .unwrap();
+        assert_eq!(result.imported, vec!["caveman".to_string()]);
+        assert!(cc_links::load().is_linked(LinkKind::Skill, "caveman"));
+        assert!(cc_links::load().hooks, "the hooks opt-in is recorded");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "v1");
+
+        // Nothing changed: nothing re-copied.
+        assert_eq!(sync_links(), 0);
+
+        // An edit in Claude Code reaches Flint without importing again.
+        fs::write(source.join("SKILL.md"), "version two").unwrap();
+        assert_eq!(sync_links(), 1);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "version two");
+
+        // Removing the source keeps the last copy.
+        fs::remove_dir_all(&source).unwrap();
+        assert_eq!(sync_links(), 0);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "version two");
+        assert!(cc_links::load().is_linked(LinkKind::Skill, "caveman"));
+
+        // Removing it from Flint drops the link rather than recreating it.
+        write_skill(&cc_home.path().join("skills"), "caveman", "back again");
+        fs::remove_dir_all(target.parent().unwrap()).unwrap();
+        assert_eq!(sync_links(), 0);
+        assert!(!target.exists());
+        assert!(!cc_links::load().is_linked(LinkKind::Skill, "caveman"));
+
+        set_test_cc_home(None);
+        set_test_user_skills(None);
+    }
+
+    #[test]
+    fn a_skipped_import_is_not_linked() {
+        let cc_home = tempdir().unwrap();
+        let store = tempdir().unwrap();
+        set_test_cc_home(Some(cc_home.path().to_path_buf()));
+        set_test_scan_root(None);
+        set_test_user_skills(Some(store.path().to_path_buf()));
+        set_test_user_plugins(None);
+
+        write_skill(&cc_home.path().join("skills"), "mine", "claude copy");
+        let dir = tauri_plugin_agent_tools::skills::skills_dir(store.path());
+        write_skill(&dir, "mine", "flint copy");
+
+        let result = tokio_test_block_on(agent_cc_import(
+            vec![CcImportSelection {
+                kind: CcItemKind::Skill,
+                name: "mine".into(),
+                source_path: cc_home
+                    .path()
+                    .join("skills")
+                    .join("mine")
+                    .to_string_lossy()
+                    .into_owned(),
+            }],
+            false,
+            None,
+        ))
+        .unwrap();
+        assert_eq!(result.skipped, vec!["mine".to_string()]);
+        // Linking it would let the next sync overwrite a copy the user kept.
+        assert!(!cc_links::load().is_linked(LinkKind::Skill, "mine"));
+        assert_eq!(fs::read_to_string(dir.join("mine").join("SKILL.md")).unwrap(), "flint copy");
+
+        set_test_cc_home(None);
         set_test_user_skills(None);
     }
 
