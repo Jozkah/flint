@@ -1164,6 +1164,10 @@ impl BackgroundSubagents {
             // awaited -- announced its end and settled its checkout then, and
             // announcing either twice (or relabelling a finished child as
             // cancelled) would tell a consumer two different stories about it.
+            // Newer Rust renames `fetch_update` to `try_update`, which the
+            // minimum supported Rust (1.88) does not have yet; the build denies
+            // warnings, so the deprecation is allowed here until that moves.
+            #[allow(deprecated)]
             let previous = match entry.phase.fetch_update(
                 std::sync::atomic::Ordering::SeqCst,
                 std::sync::atomic::Ordering::SeqCst,
