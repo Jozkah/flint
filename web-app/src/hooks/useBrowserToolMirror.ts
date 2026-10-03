@@ -72,15 +72,25 @@ type MirrorState = {
   apply: (activity: unknown, now?: number) => void
   clear: (sessionId?: string) => void
   /**
-   * Start listening, and tell the backend someone is watching (it takes no
-   * pictures otherwise). Returns the function that stops both. A no-op when
-   * the user has turned the in-app preview off.
+   * Start listening for the agent's browser notices (a few short strings; no
+   * picture is taken for them). Returns the function that stops listening. A
+   * no-op when the user has turned the in-app preview off.
    */
   attach: (deps?: Deps) => Promise<() => void>
+  /**
+   * Tell the backend a panel is showing the agent's browser, so it takes the
+   * small pictures the panel displays. Counted: several panels may ask, and
+   * the backend is told to stop only when the last one lets go. Returns the
+   * release function. A no-op when the in-app preview is off.
+   */
+  watch: (deps?: Pick<Deps, 'watch' | 'enabled'>) => () => void
 }
 
 const defaultWatch = (watching: boolean) =>
   invoke('browser_tool_watch', { watching })
+
+/** Panels currently showing the agent's browser. */
+let watchers = 0
 
 export const useBrowserToolMirror = create<MirrorState>()((set, get) => ({
   byId: {},
@@ -122,19 +132,30 @@ export const useBrowserToolMirror = create<MirrorState>()((set, get) => ({
   attach: async (deps = {}) => {
     const enabled = deps.enabled ?? (() => useWebPreviewSettings.getState().interceptLinks)
     if (!enabled()) return () => undefined
-    const watch = deps.watch ?? defaultWatch
     let unlisten: (() => void) | undefined
     try {
       unlisten = await (deps.listen ?? defaultListen)(BROWSER_TOOL_EVENT, (e) =>
         get().apply(e.payload, deps.now?.())
       )
-      await watch(true)
     } catch {
       // Not in the desktop app, or the backend is older: there is nothing to mirror.
     }
+    return () => unlisten?.()
+  },
+  watch: (deps = {}) => {
+    const enabled = deps.enabled ?? (() => useWebPreviewSettings.getState().interceptLinks)
+    if (!enabled()) return () => undefined
+    const tell = deps.watch ?? defaultWatch
+    const send = (on: boolean) =>
+      void Promise.resolve()
+        .then(() => tell(on))
+        .catch(() => undefined)
+    if (watchers++ === 0) send(true)
+    let released = false
     return () => {
-      unlisten?.()
-      void Promise.resolve(watch(false)).catch(() => undefined)
+      if (released) return
+      released = true
+      if (--watchers === 0) send(false)
     }
   },
 }))

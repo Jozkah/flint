@@ -65,11 +65,16 @@ describe('BrowserToolMirror', () => {
 
   it('starts watching when mounted and stops when unmounted', async () => {
     const detach = vi.fn()
+    const release = vi.fn()
     const attach = vi.fn().mockResolvedValue(detach)
-    useBrowserToolMirror.setState({ attach })
+    const watch = vi.fn().mockReturnValue(release)
+    useBrowserToolMirror.setState({ attach, watch })
     const { unmount } = render(<BrowserToolMirror sessionId="s1" />)
     await waitFor(() => expect(attach).toHaveBeenCalledTimes(1))
+    // The panel is showing: the backend is asked for its pictures.
+    expect(watch).toHaveBeenCalledTimes(1)
     unmount()
     await waitFor(() => expect(detach).toHaveBeenCalledTimes(1))
+    expect(release).toHaveBeenCalledTimes(1)
   })
 })

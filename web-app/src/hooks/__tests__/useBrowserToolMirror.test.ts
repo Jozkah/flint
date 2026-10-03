@@ -75,16 +75,42 @@ describe('useBrowserToolMirror', () => {
     expect(useBrowserToolMirror.getState().byId).toEqual({})
   })
 
-  it('listens and tells the backend it is watched, then undoes both', async () => {
+  it('listens for notices, and stops when detached', async () => {
     const unlisten = vi.fn()
     const listen = vi.fn(async () => unlisten)
-    const watch = vi.fn(async () => undefined)
-    const detach = await useBrowserToolMirror.getState().attach({ listen, watch, enabled: () => true })
+    const detach = await useBrowserToolMirror.getState().attach({ listen, enabled: () => true })
     expect(listen).toHaveBeenCalledWith(BROWSER_TOOL_EVENT, expect.any(Function))
-    expect(watch).toHaveBeenCalledWith(true)
     detach()
     expect(unlisten).toHaveBeenCalled()
-    expect(watch).toHaveBeenLastCalledWith(false)
+  })
+
+  it('tells the backend a panel is showing the browser, counted across panels', async () => {
+    const watch = vi.fn(async () => undefined)
+    const flush = () => new Promise((r) => setTimeout(r, 0))
+    const a = useBrowserToolMirror.getState().watch({ watch, enabled: () => true })
+    const b = useBrowserToolMirror.getState().watch({ watch, enabled: () => true })
+    await flush()
+    expect(watch.mock.calls).toEqual([[true]])
+    a()
+    a() // letting go twice counts once
+    await flush()
+    expect(watch.mock.calls).toEqual([[true]])
+    b()
+    await flush()
+    expect(watch.mock.calls).toEqual([[true], [false]])
+  })
+
+  it('asks nothing of the backend when the preview is off or the backend is absent', async () => {
+    const watch = vi.fn(async () => {
+      throw new Error('no tauri')
+    })
+    const flush = () => new Promise((r) => setTimeout(r, 0))
+    useBrowserToolMirror.getState().watch({ watch, enabled: () => false })()
+    await flush()
+    expect(watch).not.toHaveBeenCalled()
+    const release = useBrowserToolMirror.getState().watch({ watch, enabled: () => true })
+    await flush()
+    expect(() => release()).not.toThrow()
   })
 
   it('routes the listener payload into the store', async () => {
@@ -93,25 +119,23 @@ describe('useBrowserToolMirror', () => {
       handler = h
       return () => undefined
     })
-    await useBrowserToolMirror.getState().attach({ listen, watch: async () => undefined, enabled: () => true, now: () => 7 })
+    await useBrowserToolMirror.getState().attach({ listen, enabled: () => true, now: () => 7 })
     handler?.({ payload: note() })
     expect(useBrowserToolMirror.getState().byId.s1.updatedAt).toBe(7)
   })
 
   it('does nothing at all when the user turned the in-app preview off', async () => {
     const listen = vi.fn(async () => () => undefined)
-    const watch = vi.fn(async () => undefined)
-    const detach = await useBrowserToolMirror.getState().attach({ listen, watch, enabled: () => false })
+    const detach = await useBrowserToolMirror.getState().attach({ listen, enabled: () => false })
     detach()
     expect(listen).not.toHaveBeenCalled()
-    expect(watch).not.toHaveBeenCalled()
   })
 
   it('is quiet when the desktop backend is not there', async () => {
     const listen = vi.fn(async () => {
       throw new Error('no tauri')
     })
-    const detach = await useBrowserToolMirror.getState().attach({ listen, watch: async () => undefined, enabled: () => true })
+    const detach = await useBrowserToolMirror.getState().attach({ listen, enabled: () => true })
     expect(() => detach()).not.toThrow()
   })
 })

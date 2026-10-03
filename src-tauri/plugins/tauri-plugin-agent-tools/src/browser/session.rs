@@ -93,9 +93,6 @@ pub fn set_activity_watched(watched: bool) {
 }
 
 fn activity_sink() -> Option<ActivitySink> {
-    if !WATCHED.load(Ordering::SeqCst) {
-        return None;
-    }
     SINK.read().ok().and_then(|s| s.clone())
 }
 
@@ -1343,7 +1340,7 @@ impl Session {
         } else {
             "action"
         };
-        let want_shot = done.mutated && {
+        let want_shot = done.mutated && WATCHED.load(Ordering::SeqCst) && {
             let mut last = self.last_mirror.lock().ok();
             let due = last.as_ref().and_then(|l| l.as_ref()).map_or(true, |t| t.elapsed() >= MIRROR_THROTTLE);
             if due {

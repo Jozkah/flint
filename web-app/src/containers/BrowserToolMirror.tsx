@@ -2,6 +2,25 @@ import { useEffect } from 'react'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useBrowserToolMirror } from '@/hooks/useBrowserToolMirror'
 
+/** Listen for the agent's browser notices while the caller is mounted. */
+export function useBrowserToolMirrorListening(): void {
+  useEffect(() => {
+    let detach: (() => void) | undefined
+    let cancelled = false
+    void useBrowserToolMirror
+      .getState()
+      .attach()
+      .then((d) => {
+        if (cancelled) d()
+        else detach = d
+      })
+    return () => {
+      cancelled = true
+      detach?.()
+    }
+  }, [])
+}
+
 /**
  * Watch what the agent's `browser` tool is doing, in the preview panel.
  *
@@ -23,21 +42,9 @@ export function BrowserToolMirror({
   const { t } = useTranslation()
   const view = useBrowserToolMirror((s) => (sessionId ? s.byId[sessionId] : undefined))
 
-  useEffect(() => {
-    let detach: (() => void) | undefined
-    let cancelled = false
-    void useBrowserToolMirror
-      .getState()
-      .attach()
-      .then((d) => {
-        if (cancelled) d()
-        else detach = d
-      })
-    return () => {
-      cancelled = true
-      detach?.()
-    }
-  }, [])
+  useBrowserToolMirrorListening()
+  // This panel is showing the browser: the backend takes the pictures for it.
+  useEffect(() => useBrowserToolMirror.getState().watch(), [])
 
   if (!view) return null
   return (
