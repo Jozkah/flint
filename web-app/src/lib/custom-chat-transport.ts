@@ -109,9 +109,16 @@ import {
   planCompaction,
   resolveAutoCompact,
   compactionTriggerTokens,
+  clipToolResultsToFit,
+  isContextLengthError,
+  ASSUMED_WINDOW_TOKENS,
+  TRIM_HEADROOM_SHARE,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
+  type CompactResult,
 } from '@/lib/compaction'
+import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
+import { isContextOverflowMessage } from '@/utils/error'
 import {
   CompactionLoopError,
   PRECOMPUTE_FRACTION,
@@ -915,6 +922,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected compactsAtThreshold = true
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
+  /**
+   * Set for the one resend after the provider refused a request for its
+   * length: the request is compacted even though the local estimate said it
+   * fitted, and plans against the window the refusal named when it named one.
+   */
+  private overflowRetry: { learnedWindow: number | null } | null = null
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null
   /** HTTP status of the failure `onError` last reported, for the fallback decision. */
@@ -1762,6 +1775,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       modelId: string
       session: string
       signal?: AbortSignal
+      /** The provider refused the request for its length: compact regardless. */
+      force?: boolean
     }
   ): Promise<UIMessage[]> {
     const inForce = readChatCompaction(threadId)
@@ -1791,12 +1806,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       Math.floor(opts.window * 0.1),
       Math.ceil(Math.max(0, ...recentAssistant) * 1.25)
     )
-    const trigger = Math.max(
+    let trigger = Math.max(
       Math.floor(opts.window * 0.1),
       fullTrigger - headroom
     )
     let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    if (projected < trigger) {
+    // The provider just refused this request: whatever the estimate says, it
+    // did not fit, so aim well under what it measured.
+    const forced = opts.force === true
+    if (forced) trigger = Math.min(trigger, Math.floor(projected * 0.6))
+    if (!forced && projected < trigger) {
       if (projected >= trigger * PRECOMPUTE_FRACTION) {
         // When clearing old tool output alone will keep the request well under
         // the trigger, the summary would never be used: don't write it.
@@ -1819,17 +1838,130 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (projected < trigger) return history
     }
 
-    if (isCompactionLooping(threadId, history.length)) {
+    // A conversation that refills right after a compaction is not helped by
+    // the same compaction again, so it starts at a harder cut instead of
+    // stopping: more of the recent turns, then the middle of the current one,
+    // are folded.
+    const looping = !forced && isCompactionLooping(threadId, history.length)
+    const result = await this.compactToFit(threadId, history, {
+      ...opts,
+      trigger,
+      reason: forced ? 'context-error' : 'threshold',
+      startLevel: looping ? 1 : 0,
+    })
+    let out = result?.messages ?? history
+    // What no summary can shrink is the newest thing in the conversation: a
+    // single tool result that alone fills the window. It keeps its head and
+    // tail and loses the middle, rather than the request being refused.
+    const ceiling = Math.floor(
+      (opts.window - (opts.trimReserveTokens ?? 0)) * TRIM_HEADROOM_SHARE
+    )
+    const room = Math.max(
+      1000,
+      (forced ? Math.min(ceiling, trigger) : ceiling) - opts.systemPromptTokens
+    )
+    let clippedCount = 0
+    if (estimateHistoryTokens(out) > room) {
+      const clipped = clipToolResultsToFit(out, room)
+      out = clipped.messages
+      clippedCount = clipped.clippedCount
+    }
+    if (!result && clippedCount === 0) {
+      // Nothing could be folded or shrunk and the breaker had already seen
+      // this loop: say so rather than send a request that will be refused.
+      if (looping) throw new CompactionLoopError()
+      return history
+    }
+    // Still over the window itself after every cut: the refill loop is real.
+    if (
+      looping &&
+      opts.systemPromptTokens + estimateHistoryTokens(out) >= opts.window
+    ) {
       throw new CompactionLoopError()
     }
-    const result = await this.runCompaction(threadId, history, {
-      ...opts,
-      reason: 'threshold',
-    })
-    if (!result) return history
-    recordCompaction(threadId, history.length, result.messages.length)
-    this.announcedCompaction = result.record
-    return result.messages
+    if (result) {
+      recordCompaction(threadId, history.length, result.messages.length)
+      this.announcedCompaction = result.record
+    }
+    return out
+  }
+
+  /**
+   * Compact until the request is under `trigger`, cutting harder each time it
+   * is not: the configured share of recent turns, then half of it with the cut
+   * allowed inside the current user turn (a long tool loop is one turn), then
+   * only the newest message. A cut whose kept part alone is over is skipped
+   * without a model call. Null when nothing could be folded.
+   */
+  private async compactToFit(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number
+      systemPromptTokens: number
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+      signal?: AbortSignal
+      trigger: number
+      reason: CompactionRecord['reason']
+      startLevel: number
+    }
+  ): Promise<CompactResult | null> {
+    const levels = [
+      { keepRecent: opts.keepRecent, splitTurn: false },
+      {
+        keepRecent: Math.max(2, Math.floor(opts.keepRecent / 2)),
+        splitTurn: true,
+      },
+      { keepRecent: 1, splitTurn: true },
+    ]
+    // What the summary itself will add to the request.
+    const summaryAllowance = opts.summaryMaxTokens + 200
+    let current = history
+    let last: CompactResult | null = null
+    for (
+      let i = Math.min(opts.startLevel, levels.length - 1);
+      i < levels.length;
+      i++
+    ) {
+      const level = levels[i]
+      const isLast = i === levels.length - 1
+      const plan = planCompaction(current, level)
+      if (!plan) continue
+      // Summarizing everything older cannot make this cut fit when what it
+      // keeps is already over: cut deeper instead of paying for a summary
+      // that would not help. The deepest cut always runs; what it keeps is
+      // then shrunk by the caller.
+      const kept =
+        opts.systemPromptTokens +
+        estimateHistoryTokens([...plan.pinned, ...plan.keep]) +
+        summaryAllowance
+      if (kept >= opts.trigger && !isLast) continue
+      const result = await this.runCompaction(threadId, current, {
+        window: opts.window,
+        keepRecent: level.keepRecent,
+        splitTurn: level.splitTurn,
+        summaryMaxTokens: opts.summaryMaxTokens,
+        provider: opts.provider,
+        modelId: opts.modelId,
+        session: opts.session,
+        reason: opts.reason,
+        signal: opts.signal,
+      })
+      if (!result) continue
+      last = result
+      current = result.messages
+      if (
+        opts.systemPromptTokens + estimateHistoryTokens(current) <
+        opts.trigger
+      ) {
+        break
+      }
+    }
+    return last
   }
 
   /** Start the summary a coming compaction will need, without waiting for it. */
@@ -1868,6 +2000,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     opts: {
       window: number | null
       keepRecent: number
+      splitTurn?: boolean
       summaryMaxTokens: number
       provider: string
       modelId: string
@@ -1886,6 +2019,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         model: () => this.model,
       }),
       keepRecent: opts.keepRecent,
+      splitTurn: opts.splitTurn,
       reason: opts.reason,
       signal: opts.signal,
       reusePrefix: (covered) => takePrecomputedPrefix(threadId, covered),
@@ -1937,16 +2071,29 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
     if (stale) writeChatCompaction(threadId, null)
     resetCompactionBreaker(threadId)
-    const result = await this.runCompaction(threadId, history, {
+    const base = {
       window: usableContextValue(params.max_context_tokens) ?? null,
-      keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
       summaryMaxTokens: policy.summaryMaxTokens,
       provider: selection.selectedProvider,
       modelId,
       session: threadId,
-      reason: 'manual',
+      reason: 'manual' as const,
       signal,
+    }
+    const keepRecent = policy.keepRecent || DEFAULT_KEEP_RECENT
+    let result = await this.runCompaction(threadId, history, {
+      ...base,
+      keepRecent,
     })
+    // A long tool loop is one user turn, which the usual cut keeps whole:
+    // fold inside it rather than report that there was nothing to compact.
+    if (!result) {
+      result = await this.runCompaction(threadId, history, {
+        ...base,
+        keepRecent: Math.max(2, Math.floor(keepRecent / 2)),
+        splitTurn: true,
+      })
+    }
     return result?.record ?? null
   }
 
@@ -1956,6 +2103,126 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * turn is retried on the next model of the fallback chain.
    */
   async sendMessages(
+    options: SendOptions
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    // Cowork compacts and retries in its own run loop.
+    if (!this.compactsAtThreshold) return this.sendWithFallback(options)
+
+    // The provider refusing a request for its length is not the end of a run
+    // the window could still hold: compact, harder than the estimate asked
+    // for, and send it once more. Only before any reply content, so nothing
+    // the chat already showed is taken back.
+    const refusedForLength = async (failure: unknown): Promise<boolean> => {
+      const message =
+        failure instanceof Error ? failure.message : String(failure ?? '')
+      return (
+        !options.abortSignal?.aborted &&
+        (isContextLengthError(failure) || isContextOverflowMessage(message)) &&
+        (await this.canRecoverFromOverflow())
+      )
+    }
+    const resend = async (
+      failure: unknown
+    ): Promise<ReadableStream<UIMessageChunk>> => {
+      const message =
+        failure instanceof Error ? failure.message : String(failure ?? '')
+      const learned = parseServerContextLimit(
+        (failure as { data?: unknown } | null)?.data ?? null,
+        message
+      )
+      this.overflowRetry = { learnedWindow: learned?.contextTokens ?? null }
+      try {
+        return await this.sendWithFallback(options)
+      } finally {
+        this.overflowRetry = null
+      }
+    }
+
+    let first: ReadableStream<UIMessageChunk>
+    try {
+      first = await this.sendWithFallback(options)
+    } catch (error) {
+      if (!(await refusedForLength(error))) throw error
+      first = await resend(error)
+      return first
+    }
+
+    let source = first.getReader()
+    let retried = false
+    // Chunks pass straight through. An error before any reply content that is
+    // a length refusal is swallowed instead, and the resent request's stream
+    // continues in its place (its opening chunks were already delivered).
+    let sawContent = false
+    let sentStart = false
+    let sentStep = false
+    return new ReadableStream<UIMessageChunk>({
+      async pull(controller) {
+        for (;;) {
+          const { done, value } = await source.read()
+          if (done) {
+            controller.close()
+            return
+          }
+          if (
+            !sawContent &&
+            !retried &&
+            value.type === 'error' &&
+            (await refusedForLength(value.errorText))
+          ) {
+            retried = true
+            void source.cancel().catch(() => {})
+            try {
+              source = (await resend(value.errorText)).getReader()
+            } catch (error) {
+              controller.error(error)
+              return
+            }
+            continue
+          }
+          if (retried && value.type === 'start' && sentStart) {
+            // Already delivered; its metadata (a compaction the resend made)
+            // still has to reach the message.
+            const metadata = (value as { messageMetadata?: unknown })
+              .messageMetadata
+            if (metadata === undefined) continue
+            controller.enqueue({
+              type: 'message-metadata',
+              messageMetadata: metadata,
+            } as UIMessageChunk)
+            return
+          }
+          if (retried && value.type === 'start-step' && sentStep) continue
+          if (value.type === 'start') sentStart = true
+          if (value.type === 'start-step') sentStep = true
+          if (!/^(start|start-step|message-metadata)$/.test(value.type)) {
+            sawContent = true
+          }
+          controller.enqueue(value)
+          return
+        }
+      },
+      cancel: (reason) => source.cancel(reason),
+    })
+  }
+
+  /**
+   * Whether a request the provider refused for its length can be compacted
+   * and sent again: automatic compaction is on, by summary, and the model does
+   * not shift its own context.
+   */
+  private async canRecoverFromOverflow(): Promise<boolean> {
+    try {
+      const params = this.getActiveInferenceParams()
+      const policy = await getCompactionPolicy()
+      return (
+        resolveAutoCompact(params, policy.auto) && policy.strategy === 'summarize'
+      )
+    } catch {
+      return false
+    }
+  }
+
+  private async sendWithFallback(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const chain = resolveFallbackChain(
@@ -2303,11 +2570,22 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // The router has not loaded the model yet. Preserve the configured limit.
       }
     }
-    const maxContextTokens = effectiveContextWindow(
+    const knownContextTokens = effectiveContextWindow(
       configuredContextTokens,
       liveContextTokens,
       contextShiftEnabled
     )
+    // The resend after a length refusal plans against what the refusal named
+    // when that is smaller, and against an assumed window when nothing is
+    // known: a request that was refused has to shrink, not be sent again.
+    const retryWindow = this.overflowRetry?.learnedWindow ?? null
+    const maxContextTokens = this.overflowRetry
+      ? knownContextTokens > 0
+        ? retryWindow != null && retryWindow < knownContextTokens
+          ? retryWindow
+          : knownContextTokens
+        : (retryWindow ?? ASSUMED_WINDOW_TOKENS)
+      : knownContextTokens
     // AH-076: the shared compaction policy -- the same file the desktop agent
     // loop and the CLI read. A policy file the backend refuses fails the
     // request rather than silently compacting at a default point.
@@ -2356,6 +2634,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             modelId: selectedModel?.id ?? modelId,
             session: options.chatId ?? threadId,
             signal: options.abortSignal,
+            force: this.overflowRetry != null,
           }
         )
       }
