@@ -699,6 +699,15 @@ function Overview() {
                 delay={140}
               />
               <Kpi
+                title={t('overview:cost')}
+                icon="analytics"
+                value={`$${current.cost.toFixed(current.cost < 1 ? 4 : 2)}`}
+                delta={change(current.cost, previous.cost)}
+                series={current.series.map((d) => d.stats.cost ?? 0)}
+                cmpLabel={cmpLabel}
+                delay={170}
+              />
+              <Kpi
                 title={t('overview:toolSuccess')}
                 icon="timer"
                 value={current.toolSuccess === null ? '—' : `${(current.toolSuccess * 100).toFixed(1)}%`}
