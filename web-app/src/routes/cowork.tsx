@@ -17,6 +17,7 @@ import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
 import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
@@ -3255,11 +3256,19 @@ export function CoworkPage() {
         pushLive([
           { role: 'tool', content: '', callId, name, status: 'running' },
         ]),
-      onToolArgsDelta: () => {},
+      // Only a widget's arguments are kept as they stream: it is the one call
+      // whose card draws from them before the call is complete.
+      onToolArgsDelta: (callId, delta) => {
+        const row = runTurns.find((turn) => turn.callId === callId)
+        if (row?.name !== SHOW_WIDGET_TOOL) return
+        row.argsLive = (row.argsLive ?? '') + delta
+        textFrame.schedule()
+      },
       onToolCall: (call) => {
         const row = runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
+          row.argsLive = undefined
           publish()
           // #321: checkpointed now, not at the next step or text delta. A
           // crash between here and the step's end otherwise left the saved

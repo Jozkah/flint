@@ -43,3 +43,51 @@ export function widgetFallbackTitle(code: string): string {
   const heading = /<h[1-3][^>]*>([^<]{2,80})</i.exec(code)
   return heading ? heading[1].trim() : 'Widget'
 }
+
+/** One JSON string value read from possibly unfinished JSON text. */
+function partialJsonString(text: string, key: string): string | undefined {
+  const m = new RegExp(`"${key}"\\s*:\\s*"`).exec(text)
+  if (!m) return undefined
+  let out = ''
+  for (let i = m.index + m[0].length; i < text.length; i++) {
+    const c = text[i]
+    if (c === '"') return out
+    if (c !== '\\') {
+      out += c
+      continue
+    }
+    const n = text[i + 1]
+    if (n === undefined) return out
+    if (n === 'u') {
+      const hex = text.slice(i + 2, i + 6)
+      if (hex.length < 4) return out
+      out += String.fromCharCode(parseInt(hex, 16) || 0)
+      i += 5
+      continue
+    }
+    out += n === 'n' ? '\n' : n === 't' ? '\t' : n === 'r' ? '\r' : n
+    i++
+  }
+  return out
+}
+
+/**
+ * The `show_widget` arguments read so far from the streamed JSON text, for
+ * runners that get argument deltas as raw text rather than a parsed object.
+ */
+export function partialWidgetArgs(jsonText: string): {
+  title?: string
+  widget_code?: string
+  loading_messages?: string[]
+} {
+  const loading: string[] = []
+  const block = /"loading_messages"\s*:\s*\[([^\]]*)\]/.exec(jsonText)
+  if (block) {
+    for (const s of block[1].matchAll(/"((?:[^"\\]|\\.)*)"/g)) loading.push(s[1])
+  }
+  return {
+    title: partialJsonString(jsonText, 'title'),
+    widget_code: partialJsonString(jsonText, 'widget_code'),
+    ...(loading.length ? { loading_messages: loading } : {}),
+  }
+}
