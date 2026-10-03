@@ -302,7 +302,7 @@ export const TokenCounter = memo(function TokenCounter({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="w-[340px] max-w-[calc(100vw-2rem)] bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
         >
           {reconciled ? (
@@ -504,7 +504,7 @@ function TokenCountOnly({
           align="center"
           sideOffset={6}
           showArrow={false}
-          className="w-[340px] max-w-[calc(100vw-2rem)] bg-background border p-0 overflow-hidden"
+          className="w-[340px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl bg-popover p-0 text-left text-xs font-normal leading-normal text-popover-foreground shadow-pop"
           data-testid="token-usage-popover"
         >
           <div className="flex items-center gap-2 px-4 py-3 border-b border-border">

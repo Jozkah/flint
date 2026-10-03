@@ -65,7 +65,7 @@ describe('ContextWindowCard', () => {
 
   it('works with no window size: shares of what is used, no free space, no compaction line', () => {
     render(<ContextWindowCard segments={segments} usedTokens={10000} defaultExpanded />)
-    expect(screen.getByText('10.0K tokens (window unknown)')).toBeTruthy()
+    expect(screen.getByText('10.0K tokens')).toBeTruthy()
     expect(screen.queryByTestId('until-compact')).toBeNull()
     const legend = screen.getByTestId('context-legend')
     expect(legend.textContent).not.toContain('Free space')

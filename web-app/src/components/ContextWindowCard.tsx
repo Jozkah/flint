@@ -103,7 +103,7 @@ export function ContextWindowCard({
       >
         <span className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground">Context window</span>
         <span className="ml-auto flex items-center gap-1 whitespace-nowrap tabular-nums text-muted-foreground">
-          {usage.label}
+          {hasWindow ? usage.label : `${formatTokenCount(usedTokens)} tokens`}
           <ChevronDown
             className={cn('size-3.5 transition-transform', expanded ? '' : '-rotate-90')}
             aria-hidden
