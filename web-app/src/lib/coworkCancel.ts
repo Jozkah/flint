@@ -52,12 +52,18 @@ type Deps = {
   killJob: typeof bashJobKill
 }
 
-const defaultDeps: Deps = { abortAgent: abortSubagent, killJob: bashJobKill }
+// Read when a cancel is attempted, not when this module loads: a surface that
+// only imports `CANCELLED_BY_USER` (the Tasks panel, in chat) must not need the
+// whole plugin API to be present to render.
+const defaultDeps = (): Deps => ({
+  abortAgent: abortSubagent,
+  killJob: bashJobKill,
+})
 
 export async function cancelTask(
   sessionId: string,
   task: ActivityTask,
-  deps: Deps = defaultDeps
+  deps: Deps = defaultDeps()
 ): Promise<CancelResult> {
   if (isFinished(task.status)) {
     return { taskId: task.id, outcome: 'alreadyFinished' }
@@ -190,7 +196,7 @@ export async function cancelWorkflow(
     agentReachable: opts.agentReachable,
   })
   const results = await Promise.all(
-    targets.map((task) => cancelTask(sessionId, task, opts.deps ?? defaultDeps))
+    targets.map((task) => cancelTask(sessionId, task, opts.deps ?? defaultDeps()))
   )
   return {
     workflowId: view.workflow.id,

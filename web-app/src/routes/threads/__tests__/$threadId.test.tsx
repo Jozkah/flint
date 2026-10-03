@@ -415,6 +415,8 @@ vi.mock('@/hooks/useToolAvailable', () => ({ useToolAvailable: h.useToolAvailabl
 vi.mock('@/hooks/useToolApproval', () => ({ useToolApproval: h.useToolApprovalMock }))
 vi.mock('@/hooks/useToolApprovalRequests', () => ({
   useToolApprovalRequests: h.useToolApprovalRequestsMock,
+  // The chat shows approvals a subagent raises; none exist in these tests.
+  allApprovalRequests: () => [],
 }))
 vi.mock('@/hooks/useAgentMode', () => ({ useAgentMode: h.useAgentModeMock }))
 vi.mock('@/stores/message-queue-store', () => ({ useMessageQueue: h.useMessageQueueMock }))

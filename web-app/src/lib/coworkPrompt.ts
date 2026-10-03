@@ -537,14 +537,24 @@ export function subagentsOffered(opts: CoworkPromptOptions): boolean {
 }
 
 /** The system-prompt block that teaches when to delegate. */
-export function subagentGuide(subagentNames: readonly string[]): string {
+export function subagentGuide(
+  subagentNames: readonly string[],
+  opts: { team?: boolean; background?: boolean } = {}
+): string {
+  const { team = true, background = true } = opts
   return [
     '# Subagents',
     '',
     'Your own context window is limited. `task` hands one job to a subagent and',
-    'waits for its answer; with background:true it returns a task_id at once so you',
-    'can start several and collect each with `await_task`. `team` runs a declared',
-    'set, with `depends_on` for order. A subagent works in its own context, so it',
+    ...(background
+      ? [
+          'waits for its answer; with background:true it returns a task_id at once so you',
+          'can start several and collect each with `await_task`.' +
+            (team ? ' `team` runs a declared' : ''),
+          ...(team ? ['set, with `depends_on` for order.'] : []),
+        ]
+      : ['waits for its answer.']),
+    'A subagent works in its own context, so it',
     'can read and search widely and give you back only the conclusion.',
     DELEGATE_WHEN,
     DO_NOT_DELEGATE,

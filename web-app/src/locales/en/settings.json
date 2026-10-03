@@ -279,6 +279,8 @@
     "description": "Give models a private scratch workspace for each conversation, plus memories and skills kept permanently in your Flint data folder.",
     "enable": "Enable Agent Tools",
     "enableDesc": "Advertise the built-in workspace, memory and skill tools to models that support tool use. Tools that need approval stay unavailable.",
+    "chatDelegation": "Let chats delegate to subagents",
+    "chatDelegationDesc": "A chat can hand a job to a subagent, or start several at once. Each subagent works with the same tools and asks before it changes anything, as the chat does. Needs the agent tools above.",
     "shell": "Shell Commands",
     "shellChecking": "Checking for a sandbox...",
     "shellSandboxed": "Commands run confined by {{backend}}: they can only write inside the conversation workspace, and files in your home folder are not readable.",

@@ -98,6 +98,12 @@ function AgentToolsContent() {
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
   )
+  const chatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.chatDelegationEnabled
+  )
+  const setChatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.setChatDelegationEnabled
+  )
   const bashNetworkEnabled = useAgentToolsConfig((s) => s.bashNetworkEnabled)
   const setBashNetworkEnabled = useAgentToolsConfig(
     (s) => s.setBashNetworkEnabled
@@ -353,6 +359,22 @@ function AgentToolsContent() {
               <Switch
                 checked={agentToolsEnabled}
                 onCheckedChange={setAgentToolsEnabled}
+              />
+            }
+          />
+          {/* Chats may hand jobs to subagents. Each child's changes and
+              commands still ask, exactly as the chat's own do. */}
+          <CardItem
+            anchor="settings-agent-tools-chat-delegation"
+            title={t('settings:agentTools.chatDelegation')}
+            description={t('settings:agentTools.chatDelegationDesc')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="chat-delegation-toggle"
+                checked={chatDelegationEnabled}
+                onCheckedChange={setChatDelegationEnabled}
+                disabled={!agentToolsEnabled}
               />
             }
           />

@@ -26,6 +26,13 @@ import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatTasks } from '@/containers/ChatTasks'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import {
+  CHAT_DELEGATION_TOOL_NAMES,
+  runChatDelegation,
+  stopChatDelegation,
+} from '@/lib/chatDelegation'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
@@ -235,7 +242,10 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
-    AGENT_TOOL_NAMES.has(toolName)
+    AGENT_TOOL_NAMES.has(toolName) ||
+    // Handing a job to a subagent asks for nothing itself; what the child then
+    // does is gated call by call, in Ask mode.
+    CHAT_DELEGATION_TOOL_NAMES.has(toolName)
   )
 }
 
@@ -1076,6 +1086,21 @@ export function ThreadConversation({
                   ? { error: settled.output, resources: settled.resources }
                   : { content: settled.output, resources: settled.resources }
               }
+            } else if (CHAT_DELEGATION_TOOL_NAMES.has(toolName)) {
+              // The Cowork `task` family on the chat's own footing.
+              const delegated = await runChatDelegation(
+                threadId,
+                getModelSelection().selectedModel?.id ?? '',
+                {
+                  toolCallId: toolCall.toolCallId,
+                  toolName,
+                  input: toolCall.input,
+                },
+                signal
+              )
+              result = delegated.isError
+                ? { error: delegated.output.replace(/^ERROR:\s*/, '') }
+                : { content: delegated.output }
             } else if (ragToolNames.has(toolName)) {
               result = await serviceHub.rag().callTool({
                 toolName,
@@ -1620,6 +1645,9 @@ export function ThreadConversation({
       toolCallAbortController.current?.abort()
       toolCallAbortController.current = null
       approvalPromises.clear()
+      // Children this conversation started stop with it: nothing is left
+      // running for a chat the person has left.
+      stopChatDelegation(threadId)
       useToolApprovalRequests
         .getState()
         .clearPendingForThread(threadId, { notify: true })
@@ -3078,6 +3106,9 @@ export function ThreadConversation({
             isSplit ? 'px-3' : 'px-4'
           )}
         >
+          {/* Approvals a subagent raises have no tool card to sit under. */}
+          <CoworkChildApprovals sessionId={threadId} />
+          <ChatTasks threadId={threadId} />
           <ChatInput
             model={threadModel}
             // Under the composer, as in Cowork. A phone keeps it in the header.
@@ -3088,7 +3119,11 @@ export function ThreadConversation({
             }
             groupOptions
             onSubmit={handleSubmit}
-            onStop={stop}
+            onStop={() => {
+              // Stop is for the whole turn, subagents it started included.
+              stopChatDelegation(threadId)
+              stop()
+            }}
             chatStatus={effectiveStatus}
             // Named, not inferred from the current thread: in a split the
             // current thread is the other pane half the time.
