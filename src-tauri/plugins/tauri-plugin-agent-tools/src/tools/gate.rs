@@ -563,6 +563,15 @@ pub fn resolve_decision(
         return match crate::tools::browser_tool::class_of(args) {
             crate::tools::browser_tool::Class::Read => Decision::Allow,
             crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
+            // A file from the run's folders is gated like a write; one from
+            // anywhere else is a write escape (refused where nobody can approve it).
+            crate::tools::browser_tool::Class::Upload => {
+                if call_escapes(tool, args, project_root, scratch, read_roots, grants) {
+                    Decision::Prompt(PromptKind::WriteEscape)
+                } else {
+                    gated(PromptKind::Write, grants)
+                }
+            }
             crate::tools::browser_tool::Class::Open
             | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
         };
@@ -840,9 +849,22 @@ mod tests {
             assert_eq!(decide(json!({"action": a}), &grants), Decision::Allow, "{a}");
         }
         // Acting is gated like a write.
-        for a in ["click", "type", "press", "select", "back", "reload"] {
+        for a in ["click", "type", "press", "select", "back", "reload", "tab"] {
             assert_eq!(decide(json!({"action": a, "ref": "e1"}), &grants), Decision::Prompt(PromptKind::Write), "{a}");
         }
+        // An upload inside the working folder is a write; outside it, an escape.
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "a.txt"}), &grants),
+            Decision::Prompt(PromptKind::Write)
+        );
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "/etc/passwd"}), &grants),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
+        assert_eq!(
+            decide(json!({"action": "upload", "ref": "e1", "path": "../outside.txt"}), &grants),
+            Decision::Prompt(PromptKind::WriteEscape)
+        );
         // Opening an address and running script are asked every time.
         let open = json!({"action": "open", "url": "http://localhost:3000/"});
         let eval = json!({"action": "evaluate", "expression": "1"});

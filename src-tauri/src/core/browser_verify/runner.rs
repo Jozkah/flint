@@ -73,7 +73,7 @@ fn record(seen: &Arc<Mutex<Seen>>, observed: Observed) {
             s.document_status = Some(status);
             s.final_url = Some(url);
         }
-        Observed::PageGone(why) => {
+        Observed::PageGone { why, .. } => {
             s.stop.get_or_insert(why);
         }
         Observed::BrowserExited => {
@@ -507,8 +507,7 @@ async fn drive(
         cdp.clone(),
         events,
         policy.clone(),
-        session.clone(),
-        main_frame.clone(),
+        events::Mains::single(&session, &main_frame),
         events::NavigationBlock::Fail,
         move |observed| record(&sink_seen, observed),
     );

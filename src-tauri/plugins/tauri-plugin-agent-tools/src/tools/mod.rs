@@ -718,7 +718,8 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
     BuiltinTool {
         name: "browser",
         capability: Capability::Write,
-        path_args: &[],
+        // Only `upload` carries a path; the gate then checks it like a write's.
+        path_args: &["path"],
     },
     // The assistant's use of the desktop's built-in browser pane. They exist
     // here so the Rust loop (the CLI and durable jobs) knows the names and
@@ -888,7 +889,7 @@ mod tests {
         // Write, so plan mode withholds it and calls run one at a time; the
         // gate then classifies each call (see `browser_tool::class_of`).
         assert_eq!(t.capability, Capability::Write);
-        assert!(t.path_args.is_empty());
+        assert_eq!(t.path_args, &["path"]);
         // It is not one of the desktop-pane tools, nor a workspace tool the
         // gate would allow without asking.
         assert!(!is_browser_tool("browser") && !is_host_tool("browser") && !is_workspace_tool("browser"));

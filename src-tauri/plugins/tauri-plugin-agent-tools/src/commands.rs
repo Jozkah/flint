@@ -1500,7 +1500,7 @@ async fn execute_tool_inner(
             }),
         _ => None,
     };
-    let ((content, diff, _images), read_ok) =
+    let ((content, diff, images), read_ok) =
         handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
     // Transcript audit #12: a refusal of the arguments shows the call it
     // expected, not only the word that was wrong.

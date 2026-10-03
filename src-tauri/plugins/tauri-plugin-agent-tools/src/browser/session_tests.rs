@@ -93,6 +93,8 @@ fn serve() -> App {
                 let (status, extra, body): (&str, &str, String) = match path.as_str() {
                     "/" => ("200 OK", "Content-Type: text/html\r\n", HOME.to_string()),
                     "/next" => ("200 OK", "Content-Type: text/html\r\n", "<html><head><title>Next</title></head><body><h1>Next page</h1><a href=\"/\">Home</a></body></html>".into()),
+                    "/tabs" => ("200 OK", "Content-Type: text/html\r\n", "<html><head><title>Tabs page</title></head><body><a href=\"/next\" target=\"_blank\">Open elsewhere</a></body></html>".into()),
+                    "/upload" => ("200 OK", "Content-Type: text/html\r\n", "<html><head><title>Upload page</title></head><body><label>Resume <input type=\"file\" id=\"f\"></label><button id=\"b\">Not a file</button><div id=\"out\"></div><script>document.getElementById('f').onchange=()=>{const f=document.getElementById('f').files[0];document.getElementById('out').textContent='picked '+f.name+' '+f.size}</script></body></html>".into()),
                     "/file.zip" => ("200 OK", "Content-Type: application/zip\r\nContent-Disposition: attachment; filename=\"a.zip\"\r\n", "PK".into()),
                     _ => ("404 Not Found", "Content-Type: text/plain\r\n", "nope".into()),
                 };
@@ -134,7 +136,8 @@ fn ref_of(outline: &str, needle: &str) -> String {
         .lines()
         .find(|l| l.contains(needle) && l.contains('['))
         .unwrap_or_else(|| panic!("no line with {needle:?} in:\n{outline}"));
-    let start = line.rfind("[e").unwrap() + 1;
+    // A ref is `[e12]`, or `[t2e12]` in a later tab.
+    let start = line.rfind(|c| c == '[').unwrap() + 1;
     let end = line[start..].find(']').unwrap() + start;
     line[start..end].to_string()
 }
@@ -399,9 +402,9 @@ async fn a_screenshot_of_one_element_and_a_full_page_are_bounded_pngs() {
     act(&c, json!({ "action": "open", "url": app.url("/") })).await;
     let snap = act(&c, json!({ "action": "snapshot" })).await;
     let el = session::run(&c, &json!({ "action": "screenshot", "ref": ref_of(&snap, "button \"Greet\"") })).await;
-    let small = el.png.expect("element png");
+    let small = el.image.expect("element png");
     let full = session::run(&c, &json!({ "action": "screenshot", "fullPage": true })).await;
-    let big = full.png.expect("full-page png");
+    let big = full.image.expect("full-page png");
     assert!(big.len() > small.len(), "{} vs {}", big.len(), small.len());
     assert!(full.text.contains("full page"), "{}", full.text);
     act(&c, json!({ "action": "close" })).await;

@@ -420,6 +420,34 @@ impl Resource {
             }
         }
 
+        // The browser tool names what it does, so a rule can say it:
+        // `browser(open*)`, `browser(evaluate)`, `browser(open http://localhost:*)`.
+        // Two command-shaped resources: the bare action (so `browser(open)`
+        // matches) and the action with its target (so a pattern can narrow it).
+        // Typed text is never part of either.
+        if tool_name == "browser" {
+            match args.get("action") {
+                Some(serde_json::Value::String(action)) if !action.trim().is_empty() => {
+                    let action = action.trim().to_ascii_lowercase();
+                    out.push(Resource::Command { program: action.clone(), argv: Vec::new(), git: GitOp::Other });
+                    let target = match action.as_str() {
+                        "open" => args.get("url").and_then(|v| v.as_str()).map(str::to_string),
+                        "tab" => args.get("op").and_then(|v| v.as_str()).map(str::to_string),
+                        "press" => args.get("key").and_then(|v| v.as_str()).map(str::to_string),
+                        "evaluate" => args.get("expression").and_then(|v| v.as_str()).map(str::to_string),
+                        _ => args.get("ref").and_then(|v| v.as_str()).map(str::to_string),
+                    };
+                    if let Some(t) = target.filter(|t| !t.trim().is_empty()) {
+                        out.push(Resource::Command { program: action, argv: vec![t], git: GitOp::Other });
+                    }
+                }
+                _ => out.push(Resource::Unknown {
+                    tool: tool_name.to_string(),
+                    why: "browser needs a string `action`".into(),
+                }),
+            }
+        }
+
         if capability_is_net {
             match args.get("url") {
                 Some(serde_json::Value::String(url)) if !url.trim().is_empty() => {
@@ -846,6 +874,43 @@ mod tests {
                 "{spelling} should normalize to the same resource"
             );
         }
+    }
+
+    /// `browser(open)`, `browser(evaluate*)` and friends: the browser tool names
+    /// its action as a resource, so the existing `tool(pattern)` grammar works.
+    #[test]
+    fn browser_rules_can_name_the_action_and_its_target() {
+        let main = crate::subject::Subject::MainAgent;
+        let res = |args: serde_json::Value| Resource::for_builtin("browser", &["path"], false, &args, None);
+        let open = res(json!({ "action": "open", "url": "http://localhost:5173/app" }));
+        let deny = |rule: &str, r: &[Resource]| ResourceRule::parse(rule).unwrap().matches_deny("browser", r, &main);
+        assert!(deny("browser(open)", &open));
+        assert!(deny("browser(open*)", &open));
+        assert!(deny("browser(open http://localhost:*)", &open));
+        assert!(!deny("browser(open http://127.0.0.1:*)", &open));
+        assert!(!deny("browser(evaluate)", &open));
+        assert!(deny("browser", &open), "the bare tool rule is unchanged");
+        let eval = res(json!({ "action": "evaluate", "expression": "document.cookie" }));
+        assert!(deny("browser(evaluate)", &eval));
+        assert!(deny("browser(evaluate document.*)", &eval));
+        assert!(!deny("browser(click*)", &eval));
+        // Typed text is not part of any resource, so it cannot be matched or leaked.
+        let typed = res(json!({ "action": "type", "ref": "e3", "text": "hunter2" }));
+        let texts: Vec<String> = typed.iter().map(|r| r.match_text()).collect();
+        assert!(texts.iter().all(|t| !t.contains("hunter2")), "{texts:?}");
+        assert!(deny("browser(type e3)", &typed));
+        // An upload also names its file as a path, which the secret and
+        // hidden-folder guards look at.
+        let up = res(json!({ "action": "upload", "ref": "e1", "path": "/work/.env" }));
+        assert!(up.iter().any(|r| matches!(r, Resource::Path(_))));
+        // A call with no readable action is not harmless: it is Unknown, which every deny rule catches.
+        let none = res(json!({}));
+        assert!(none.iter().any(|r| matches!(r, Resource::Unknown { .. })));
+        assert!(deny("browser(open)", &none));
+        // An allow rule must cover every resource of the call.
+        let allow = ResourceRule::parse("browser(open*)").unwrap();
+        assert!(allow.matches_allow("browser", &open, &main));
+        assert!(!allow.matches_allow("browser", &eval, &main));
     }
 
     #[test]

@@ -18,9 +18,11 @@ const MAX_HEADER_FIELD: usize = 300;
 pub const HELPER_JS: &str = include_str!("page_helper.js");
 
 /// A JS expression that calls `method` on the page helper with JSON `args`.
-pub fn call_expression(method: &str, args: &[Value]) -> String {
+/// `prefix` is the tab's ref prefix (`""` for the first tab): it is used when the
+/// helper is first installed in a document and part of every ref it hands out.
+pub fn call_expression(prefix: &str, method: &str, args: &[Value]) -> String {
     let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
-    format!("({HELPER_JS}).{method}({})", args.join(","))
+    format!("({HELPER_JS})({}).{method}({})", Value::String(prefix.to_string()), args.join(","))
 }
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
@@ -178,10 +180,27 @@ pub fn format_with_cap(snap: &Snapshot, cap: usize) -> String {
     out
 }
 
-/// Whether `s` has the shape of a ref this tool hands out.
+/// Whether `s` has the shape of a ref this tool hands out: `e12` for the first
+/// tab, `t2e12` for the second.
 pub fn is_ref(s: &str) -> bool {
-    s.strip_prefix('e')
-        .is_some_and(|d| !d.is_empty() && d.len() <= 7 && d.bytes().all(|b| b.is_ascii_digit()))
+    ref_tab(s).is_some()
+}
+
+/// The tab a ref belongs to (`t1` for a bare `e12`), if `s` is a ref.
+pub fn ref_tab(s: &str) -> Option<String> {
+    let (tab, rest) = match s.strip_prefix('t') {
+        Some(after) => {
+            let n = after.find('e')?;
+            let digits = &after[..n];
+            if digits.is_empty() || digits.len() > 4 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            (format!("t{digits}"), &after[n..])
+        }
+        None => ("t1".to_string(), s),
+    };
+    let d = rest.strip_prefix('e')?;
+    (!d.is_empty() && d.len() <= 7 && d.bytes().all(|b| b.is_ascii_digit())).then_some(tab)
 }
 
 /// What to tell the model when a ref no longer names anything.
@@ -205,6 +224,11 @@ mod tests {
         assert!(is_ref("e1") && is_ref("e12") && is_ref("e1234567"));
         assert!(!is_ref("e") && !is_ref("12") && !is_ref("E3") && !is_ref("e1a") && !is_ref("e 3"));
         assert!(!is_ref("e12345678"), "absurdly long refs are not refs");
+        assert!(is_ref("t2e12") && is_ref("t12e1"));
+        assert!(!is_ref("t2") && !is_ref("te1") && !is_ref("t2x1") && !is_ref("t99999e1") && !is_ref("t2e"));
+        assert_eq!(ref_tab("e7").as_deref(), Some("t1"));
+        assert_eq!(ref_tab("t3e7").as_deref(), Some("t3"));
+        assert_eq!(ref_tab("nope"), None);
     }
 
     #[test]
@@ -287,8 +311,8 @@ mod tests {
 
     #[test]
     fn a_call_expression_embeds_the_helper_and_json_args() {
-        let e = call_expression("locate", &[json!("e3")]);
-        assert!(e.starts_with("(") && e.contains(").locate(\"e3\")"), "{}", &e[e.len() - 30..]);
+        let e = call_expression("t2", "locate", &[json!("t2e3")]);
+        assert!(e.starts_with("(") && e.contains(")(\"t2\").locate(\"t2e3\")"), "{}", &e[e.len() - 40..]);
         assert!(HELPER_JS.contains("Symbol.for('flint.browser.v1')"));
     }
 }

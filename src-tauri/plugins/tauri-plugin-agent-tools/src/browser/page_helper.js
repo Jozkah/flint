@@ -1,9 +1,10 @@
 // Installed into the page being driven (idempotent). It reads the DOM into a
 // compact outline and resolves the short refs (e1, e2, ...) the model uses.
 // It runs with the page's own privileges and nothing more: no host access.
-// Refs live in this document only, so a navigation drops them, which is how a
+// `prefix` ("" for the first tab, "t2" for the second, ...) is part of every ref,
+// so a ref says which tab it belongs to. Refs live in this document only, so a navigation drops them, which is how a
 // stale ref is detected (the helper is gone, or the element is detached).
-(() => {
+((prefix) => {
   const KEY = Symbol.for('flint.browser.v1');
   if (window[KEY]) return window[KEY];
 
@@ -19,7 +20,7 @@
   const refOf = (el) => {
     let id = ids.get(el);
     if (!id) {
-      id = 'e' + next++;
+      id = prefix + 'e' + next++;
       ids.set(el, id);
       refs.set(id, new WeakRef(el));
     }
@@ -316,7 +317,17 @@
     return { ok: true, tag: el.localName };
   };
 
-  const api = { snapshot, locate, rectOf, focusField, choose, scrollBy, scrollTo, hasText, hasSelector, meta, pos, focus };
+  // What an upload needs to know before the browser attaches a file.
+  const fileCheck = (ref) => {
+    const el = get(ref);
+    if (!el) return { stale: true };
+    if (el.tagName !== 'INPUT' || (el.type || '').toLowerCase() !== 'file') return { notFile: true, role: roleOf(el) || el.localName };
+    if (el.disabled) return { disabled: true };
+    return { ok: true, multiple: !!el.multiple, accept: el.accept || '' };
+  };
+  const element = (ref) => get(ref);
+
+  const api = { snapshot, locate, rectOf, focusField, choose, scrollBy, scrollTo, hasText, hasSelector, meta, pos, focus, fileCheck, element };
   Object.defineProperty(window, KEY, { value: api, enumerable: false, configurable: true });
   return api;
-})()
+})

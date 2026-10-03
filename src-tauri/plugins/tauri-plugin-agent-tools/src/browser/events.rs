@@ -6,6 +6,9 @@
 //! *do* about an observation (stop a run, auto-dismiss a dialog) is the
 //! consumer's: the loop only decides what is allowed to load.
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
 use serde_json::{json, Value};
 use tokio::sync::mpsc::UnboundedReceiver;
 use url::Url;
@@ -22,6 +25,76 @@ pub fn clip(text: &str) -> String {
         format!("{t}…")
     } else {
         t
+    }
+}
+
+/// The tabs the browser works in: each one's DevTools session and main frame,
+/// shared with the event loop so it knows which requests are a tab's own
+/// navigation and which targets are tabs this session made.
+#[derive(Clone, Default)]
+pub struct Mains {
+    tabs: Arc<Mutex<Vec<(String, String)>>>,
+    popups: Arc<AtomicBool>,
+    /// Tabs this session is about to create itself: their `targetCreated`
+    /// is not a window the page opened.
+    own: Arc<AtomicUsize>,
+}
+
+impl Mains {
+    /// A browser with the one tab `(session, frame)`.
+    pub fn single(session: &str, frame: &str) -> Self {
+        let m = Mains::default();
+        m.add(session, frame);
+        m
+    }
+
+    pub fn add(&self, session: &str, frame: &str) {
+        if let Ok(mut t) = self.tabs.lock() {
+            if !t.iter().any(|(s, _)| s == session) {
+                t.push((session.to_string(), frame.to_string()));
+            }
+        }
+    }
+
+    pub fn remove_session(&self, session: &str) {
+        if let Ok(mut t) = self.tabs.lock() {
+            t.retain(|(s, _)| s != session);
+        }
+    }
+
+    pub fn contains(&self, session: Option<&str>, frame: Option<&str>) -> bool {
+        match (session, frame) {
+            (Some(s), Some(f)) => self.tabs.lock().map(|t| t.iter().any(|(ts, tf)| ts == s && tf == f)).unwrap_or(false),
+            _ => false,
+        }
+    }
+
+    pub fn has_frame(&self, frame: Option<&str>) -> bool {
+        frame.is_some_and(|f| self.tabs.lock().map(|t| t.iter().any(|(_, tf)| tf == f)).unwrap_or(false))
+    }
+
+    pub fn has_session(&self, session: Option<&str>) -> bool {
+        session.is_some_and(|s| self.tabs.lock().map(|t| t.iter().any(|(ts, _)| ts == s)).unwrap_or(false))
+    }
+
+    /// Whether windows the page opens are kept (confined) rather than closed.
+    pub fn set_popups(&self, on: bool) {
+        self.popups.store(on, Ordering::SeqCst);
+    }
+
+    pub fn popups(&self) -> bool {
+        self.popups.load(Ordering::SeqCst)
+    }
+
+    /// A tab this session creates is on its way; its `targetCreated` is ours.
+    pub fn expect_own(&self) {
+        self.own.fetch_add(1, Ordering::SeqCst);
+    }
+
+    fn take_own(&self) -> bool {
+        self.own
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
+            .is_ok()
     }
 }
 
@@ -46,10 +119,13 @@ pub enum Observed {
     Dialog { session: Option<String>, kind: String, message: String, default_prompt: String },
     /// A download started (and is refused).
     Download { url: String, filename: String },
-    /// The page opened another tab or window; it is closed by the loop.
+    /// The page opened another tab or window and popups are off: it was closed.
     Popup { url: String },
-    /// The tab crashed or was closed.
-    PageGone(String),
+    /// The page opened a window and popups are on: the consumer attaches to it
+    /// (confining it) and adds it to the tabs.
+    NewTab { target_id: String, url: String },
+    /// A tab crashed or was closed.
+    PageGone { session: String, why: String },
     /// The browser connection ended.
     BrowserExited,
 }
@@ -72,8 +148,7 @@ pub fn spawn(
     cdp: Cdp,
     mut events: UnboundedReceiver<Event>,
     policy: OriginPolicy,
-    main_session: String,
-    main_frame: String,
+    mains: Mains,
     navigation_block: NavigationBlock,
     mut sink: impl FnMut(Observed) + Send + 'static,
 ) -> tokio::task::JoinHandle<()> {
@@ -93,8 +168,7 @@ pub fn spawn(
                     }
                     let resource_type = p["resourceType"].as_str().unwrap_or("Other").to_string();
                     let navigation = resource_type == "Document"
-                        && session == Some(main_session.as_str())
-                        && p["frameId"].as_str() == Some(main_frame.as_str());
+                        && mains.contains(session, p["frameId"].as_str());
                     if navigation && navigation_block == NavigationBlock::Stay {
                         cdp.fire(
                             "Fetch.fulfillRequest",
@@ -168,9 +242,7 @@ pub fn spawn(
                 }
                 "Network.responseReceived" => {
                     let status = p["response"]["status"].as_u64().map(|n| n as u16);
-                    if p["type"].as_str() == Some("Document")
-                        && p["frameId"].as_str() == Some(main_frame.as_str())
-                    {
+                    if p["type"].as_str() == Some("Document") && mains.has_frame(p["frameId"].as_str()) {
                         sink(Observed::Document {
                             status: status.unwrap_or(0),
                             url: p["response"]["url"].as_str().map(display_url).unwrap_or_default(),
@@ -209,15 +281,13 @@ pub fn spawn(
                         }
                     }
                 }
-                "Page.frameNavigated" | "Page.navigatedWithinDocument"
-                    if session == Some(main_session.as_str()) =>
-                {
+                "Page.frameNavigated" | "Page.navigatedWithinDocument" if mains.has_session(session) => {
                     let (frame, url) = if ev.method == "Page.frameNavigated" {
                         (p["frame"]["id"].as_str(), p["frame"]["url"].as_str())
                     } else {
                         (p["frameId"].as_str(), p["url"].as_str())
                     };
-                    if frame == Some(main_frame.as_str()) {
+                    if mains.has_frame(frame) {
                         if let Some(url) = url {
                             sink(Observed::Navigated { url: url.to_string() });
                         }
@@ -242,16 +312,29 @@ pub fn spawn(
                 // proxy) and reported with the address it was opened for.
                 "Target.targetCreated" => {
                     let info = &p["targetInfo"];
-                    if info["type"] == "page" && info["targetId"].as_str() != Some(main_frame.as_str()) {
-                        cdp.fire("Target.closeTarget", json!({ "targetId": info["targetId"] }), None);
-                        sink(Observed::Popup { url: display_url(info["url"].as_str().unwrap_or_default()) });
+                    if info["type"] == "page" && !mains.has_frame(info["targetId"].as_str()) && !mains.take_own() {
+                        if mains.popups() {
+                            sink(Observed::NewTab {
+                                target_id: info["targetId"].as_str().unwrap_or_default().to_string(),
+                                url: display_url(info["url"].as_str().unwrap_or_default()),
+                            });
+                        } else {
+                            cdp.fire("Target.closeTarget", json!({ "targetId": info["targetId"] }), None);
+                            sink(Observed::Popup { url: display_url(info["url"].as_str().unwrap_or_default()) });
+                        }
                     }
                 }
-                "Inspector.detached" | "Inspector.targetCrashed" if session == Some(main_session.as_str()) => {
-                    sink(Observed::PageGone("The page crashed or was closed.".to_string()));
+                "Inspector.detached" | "Inspector.targetCrashed" if mains.has_session(session) => {
+                    sink(Observed::PageGone {
+                        session: session.unwrap_or_default().to_string(),
+                        why: "The page crashed or was closed.".to_string(),
+                    });
                 }
-                "Target.detachedFromTarget" if p["sessionId"].as_str() == Some(main_session.as_str()) => {
-                    sink(Observed::PageGone("The page was closed.".to_string()));
+                "Target.detachedFromTarget" if mains.has_session(p["sessionId"].as_str()) => {
+                    sink(Observed::PageGone {
+                        session: p["sessionId"].as_str().unwrap_or_default().to_string(),
+                        why: "The page was closed.".to_string(),
+                    });
                 }
                 _ => {}
             }

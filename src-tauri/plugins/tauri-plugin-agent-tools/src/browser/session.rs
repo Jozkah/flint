@@ -23,7 +23,7 @@ use tokio::process::Child;
 
 use super::cdp::Cdp;
 use super::confine::{display_url, local_origin, Origin, OriginPolicy};
-use super::events::{self, clip, Observed};
+use super::events::{self, clip, Mains, Observed};
 use super::fence;
 use super::keys;
 use super::launch::{self, ProfileDir};
@@ -49,8 +49,11 @@ const HINT_ENTRIES: usize = 6;
 /// Every action the tool takes.
 pub const ACTIONS: &[&str] = &[
     "open", "snapshot", "click", "type", "press", "select", "scroll", "wait", "back", "reload",
-    "screenshot", "console", "evaluate", "close",
+    "screenshot", "console", "evaluate", "tab", "upload", "close",
 ];
+
+/// The largest file `upload` attaches.
+pub const MAX_UPLOAD_BYTES: u64 = 25 * 1024 * 1024;
 
 // --- the activity mirror -------------------------------------------------------
 
@@ -75,8 +78,8 @@ pub struct Activity {
 pub type ActivitySink = Arc<dyn Fn(Activity) + Send + Sync>;
 
 static SINK: RwLock<Option<ActivitySink>> = RwLock::new(None);
-/// Whether anyone is looking. Without a watcher the mirror does nothing at all:
-/// no screenshot is taken and no notice is built.
+/// Whether a panel is showing the browser. Notices (a few short strings) go out
+/// regardless, so a panel can appear; without a viewer no screenshot is taken.
 static WATCHED: AtomicBool = AtomicBool::new(false);
 
 /// Install (or clear) the receiver of [`Activity`] notices. The desktop sets one
@@ -253,10 +256,16 @@ fn apply(seen: &mut Seen, observed: Observed) -> Option<Reaction> {
             let to = if url.is_empty() || url == "about:blank" { "a new page".to_string() } else { url };
             seen.ring.push(
                 Kind::Popup,
-                format!("the page opened a new window for {to}; it was closed (this browser has one tab). Use open to load it here"),
+                format!("the page opened a new window for {to}; it was closed (popups are off). Use open to load it here, or open with popups true to keep new windows as tabs"),
             );
         }
-        Observed::PageGone(why) => {
+        // Tabs coming and going are the session's to track (see `start`); the
+        // ring only needs to say a window was kept.
+        Observed::NewTab { url, .. } => {
+            let to = if url.is_empty() || url == "about:blank" { "a new page".to_string() } else { url };
+            seen.ring.push(Kind::Popup, format!("the page opened a new tab for {to}. Use the tab action to list or switch to it"));
+        }
+        Observed::PageGone { why, .. } => {
             seen.dead.get_or_insert(why);
         }
         Observed::BrowserExited => {
@@ -351,9 +360,60 @@ impl Control {
     }
 }
 
+/// One tab: its DevTools target and flat-mode session, and the prefix its refs carry.
+#[derive(Debug, Clone)]
+struct TabInfo {
+    /// `t1`, `t2`, ... never reused in a session.
+    id: String,
+    target: String,
+    session: String,
+}
+
+impl TabInfo {
+    /// `""` for the first tab, so its refs stay `e12`; `t2` for the second, `t2e12`.
+    fn prefix(&self) -> String {
+        if self.id == "t1" { String::new() } else { self.id.clone() }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Tabs {
+    list: Vec<TabInfo>,
+    active: String,
+    next: u32,
+}
+
+impl Tabs {
+    fn add(&mut self, target: &str, session: &str) -> TabInfo {
+        self.next += 1;
+        let tab = TabInfo { id: format!("t{}", self.next), target: target.to_string(), session: session.to_string() };
+        self.list.push(tab.clone());
+        tab
+    }
+
+    fn active_tab(&self) -> Option<TabInfo> {
+        self.list.iter().find(|t| t.id == self.active).cloned()
+    }
+
+    fn find(&self, id: &str) -> Option<TabInfo> {
+        self.list.iter().find(|t| t.id == id).cloned()
+    }
+
+    /// Drop the tab with this session; true when none is left. The active tab
+    /// falls back to the most recent one.
+    fn remove_session(&mut self, session: &str) -> bool {
+        self.list.retain(|t| t.session != session);
+        if !self.list.iter().any(|t| t.id == self.active) {
+            self.active = self.list.last().map(|t| t.id.clone()).unwrap_or_default();
+        }
+        self.list.is_empty()
+    }
+}
+
 struct Page {
     cdp: Cdp,
-    session: String,
+    tabs: Arc<Mutex<Tabs>>,
+    mains: Mains,
     ctl: Arc<Control>,
     seen: Arc<Mutex<Seen>>,
 }
@@ -363,6 +423,7 @@ pub struct Session {
     page: tokio::sync::Mutex<Page>,
     seen: Arc<Mutex<Seen>>,
     policy: OriginPolicy,
+    mains: Mains,
     browser_name: String,
     caller: Caller,
     last_mirror: Mutex<Option<Instant>>,
@@ -460,7 +521,8 @@ pub fn close_all() {
     }
 }
 
-/// What the tool hands back: text, and a PNG for `screenshot`.
+/// What the tool hands back: text, and an image for `screenshot` (a PNG, or a
+/// small JPEG where the surface asked for compact images).
 #[derive(Debug, Default)]
 pub struct Reply {
     pub text: String,
@@ -681,9 +743,6 @@ async fn start(
     caller: &Caller,
     browser_path: &str,
     browser_name: String,
-                if let Some(p) = popups {
-                    existing.mains.set_popups(p);
-                }
     policy: OriginPolicy,
 ) -> Result<Arc<Session>, String> {
     let launch::Spawned { mut child, profile } = launch::spawn(browser_path, "flint-browser-", &policy)?;
@@ -720,17 +779,41 @@ async fn start(
         token,
         registered: Mutex::new(Some(registered)),
     });
-    let sink_seen = seen.clone();
-    if let Some(p) = popups {
-        session.mains.set_popups(p);
+    let mains = Mains::single(&session_id, &target);
+    let tabs = Arc::new(Mutex::new(Tabs::default()));
+    if let Ok(mut t) = tabs.lock() {
+        let first = t.add(&target, &session_id);
+        t.active = first.id;
     }
     let sink_cdp = cdp.clone();
     // A refused navigation leaves the page where it was (204), so the session carries on.
-    events::spawn(cdp.clone(), events, policy.clone(), session_id.clone(), target, events::NavigationBlock::Stay, move |observed| {
+    events::spawn(cdp.clone(), events, policy.clone(), mains.clone(), events::NavigationBlock::Stay, move |observed| {
+        match &observed {
+            // A tab the page opened (popups on): confined and added by the task below.
+            Observed::NewTab { target_id, .. } => {
+                let _ = newtab_tx.send(target_id.clone());
+            }
+            // A tab went away. Only the last one ends the session.
+            Observed::PageGone { session, why } => {
+                sink_mains.remove_session(session);
+                let none_left = sink_tabs.lock().map(|mut t| t.remove_session(session)).unwrap_or(true);
+                if !none_left {
+                    if let Ok(mut s) = sink_seen.lock() {
+                        s.ring.push(Kind::Popup, format!("a tab closed: {why}"));
+                    }
+                    return;
+                }
+            }
+            _ => {}
+        }
         let reaction = sink_seen.lock().ok().and_then(|mut s| apply(&mut s, observed));
         if let Some(Reaction::Dialog { session, accept, prompt }) = reaction {
             let mut p = json!({ "accept": accept });
+    let sink_seen = seen.clone();
             if let Some(t) = prompt {
+    let sink_tabs = tabs.clone();
+    let sink_mains = mains.clone();
+    let (newtab_tx, mut newtab_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                 p["promptText"] = json!(t);
             }
             sink_cdp.fire("Page.handleJavaScriptDialog", p, session.as_deref());
@@ -738,10 +821,34 @@ async fn start(
     });
     let setup = async {
         launch::enable_tab(&cdp, &session_id).await?;
-        // Refuse downloads, and learn of (and close) any window the page opens.
+        // Refuse downloads, and learn of any window the page opens (closed, or
+        // kept as a confined tab when the run opted into popups).
         cdp.call("Browser.setDownloadBehavior", json!({ "behavior": "deny", "eventsEnabled": true }), None)
             .await
             .map_err(|e| format!("could not refuse downloads: {e}"))?;
+    // Confine and register each window the page opens while popups are on.
+    {
+        let (cdp, tabs, mains, seen) = (cdp.clone(), tabs.clone(), mains.clone(), seen.clone());
+        tokio::spawn(async move {
+            while let Some(target_id) = newtab_rx.recv().await {
+                let attached = cdp.call("Target.attachToTarget", json!({ "targetId": target_id, "flatten": true }), None).await;
+                let Some(session) = attached.ok().and_then(|a| a["sessionId"].as_str().map(str::to_string)) else { continue };
+                mains.add(&session, &target_id);
+                let id = tabs.lock().map(|mut t| t.add(&target_id, &session).id).unwrap_or_default();
+                if launch::enable_tab(&cdp, &session).await.is_err() {
+                    let _ = cdp.call("Target.closeTarget", json!({ "targetId": target_id }), None).await;
+                    mains.remove_session(&session);
+                    if let Ok(mut t) = tabs.lock() {
+                        t.remove_session(&session);
+                    }
+                    continue;
+                }
+                if let Ok(mut s) = seen.lock() {
+                    s.ring.push(Kind::Popup, format!("the page's new window is open as tab {id} (switch to it with the tab action)"));
+                }
+            }
+        });
+    }
         let _ = cdp.call("Target.setDiscoverTargets", json!({ "discover": true }), None).await;
         Ok::<_, String>(())
     };
@@ -752,7 +859,7 @@ async fn start(
     let (notices_tx, notices_rx) = tokio::sync::mpsc::unbounded_channel();
     let session = Arc::new(Session {
         ctl: ctl.clone(),
-        page: tokio::sync::Mutex::new(Page { cdp, session: session_id, ctl: ctl.clone(), seen: seen.clone() }),
+        page: tokio::sync::Mutex::new(Page { cdp, tabs, mains: mains.clone(), ctl: ctl.clone(), seen: seen.clone() }),
         seen,
         policy,
         browser_name,
@@ -761,6 +868,7 @@ async fn start(
         notices: notices_tx,
     });
     spawn_notice_loop(notices_rx);
+        mains,
     // Killing the old one takes this lock too, so it happens after it is released.
     let replaced = SESSIONS.lock().ok().and_then(|mut map| map.insert(caller.key.clone(), session.clone()));
     if let Some(old) = replaced {
@@ -816,8 +924,38 @@ impl Page {
         if self.ctl.is_closed() {
             return Err("the browser session ended".to_string());
         }
-        match tokio::time::timeout(CALL_TIMEOUT, self.cdp.call(method, params, Some(&self.session))).await {
+        let session = self.session();
+        match tokio::time::timeout(CALL_TIMEOUT, self.cdp.call(method, params, Some(&session))).await {
             Ok(r) => r,
+    fn active(&self) -> Result<TabInfo, String> {
+        self.tabs.lock().ok().and_then(|t| t.active_tab()).ok_or_else(|| "the browser has no open tab".to_string())
+    }
+
+    /// The DevTools session of the active tab.
+    fn session(&self) -> String {
+        self.active().map(|t| t.session).unwrap_or_default()
+    }
+
+    /// The `ref` argument, shaped like a ref and belonging to the active tab.
+    fn ref_for(&self, args: &Value) -> Result<String, String> {
+        let r = ref_arg(args)?;
+        self.check_ref_tab(&r)?;
+        Ok(r)
+    }
+
+    /// A ref must belong to the tab being driven: refs name their tab.
+    fn check_ref_tab(&self, r: &str) -> Result<(), String> {
+        let tab = self.active()?;
+        match outline::ref_tab(r) {
+            Some(t) if t == tab.id => Ok(()),
+            Some(t) => Err(format!(
+                "ref {r} belongs to tab {t}, but the active tab is {}. Switch with the tab action (op \"switch\"), then snapshot, or use a ref from this tab's snapshot.",
+                tab.id
+            )),
+            None => Err(format!("\"{r}\" is not a ref.")),
+        }
+    }
+
             Err(_) => Err(format!("{method} did not answer in time")),
         }
     }
@@ -833,7 +971,8 @@ impl Page {
     }
 
     async fn helper(&self, method: &str, args: &[Value]) -> Result<Value, String> {
-        self.eval(&outline::call_expression(method, args)).await
+        let prefix = self.active()?.prefix();
+        self.eval(&outline::call_expression(&prefix, method, args)).await
     }
 
     /// Wait for the document to finish loading, then a short settle for what it starts.
@@ -890,6 +1029,18 @@ fn stale(v: &Value, r: &str) -> Result<(), String> {
     }
     Ok(())
 }
+/// The most tabs one session keeps open.
+pub const MAX_TABS: usize = 8;
+
+fn tab_id_arg(args: &Value) -> Result<String, String> {
+    let id = args.get("tab_id").and_then(Value::as_str).map(str::trim).ok_or("this needs a `tab_id` like t2 (see tab op \"list\").")?;
+    let ok = id.strip_prefix('t').is_some_and(|d| !d.is_empty() && d.len() <= 4 && d.bytes().all(|b| b.is_ascii_digit()));
+    if !ok {
+        return Err(format!("\"{}\" is not a tab id. Tab ids look like t2.", plain(&clip(id))));
+    }
+    Ok(id.to_string())
+}
+
 
 impl Session {
     async fn dispatch(&self, page: &Page, action: &str, args: &Value, opts: &Options<'_>) -> Result<Done, String> {
@@ -900,6 +1051,8 @@ impl Session {
             "press" => self.press(page, args).await,
             "select" => self.select(page, args).await,
             "scroll" => self.scroll(page, args).await,
+            "tab" => self.tab(page, args).await,
+            "upload" => self.upload(page, args, opts.upload).await,
             "wait" => self.wait(page, args).await,
             "back" => self.back(page).await,
             "reload" => self.reload(page).await,
@@ -951,7 +1104,7 @@ impl Session {
 
     async fn snapshot(&self, page: &Page, args: &Value) -> Result<Done, String> {
         let scope = match args.get("ref").and_then(Value::as_str) {
-            Some(_) => Some(ref_arg(args)?),
+            Some(_) => Some(page.ref_for(args)?),
             None => None,
         };
         let v = page.helper("snapshot", &[json!(scope)]).await?;
@@ -971,7 +1124,12 @@ impl Session {
                 }
             }
         }
-        let text = outline::format(&snap);
+        let mut text = outline::format(&snap);
+        if let Ok(t) = page.tabs.lock() {
+            if t.list.len() > 1 {
+                text = format!("tab: {} of {} open (action tab lists and switches)\n{text}", t.active, t.list.len());
+            }
+        }
         let body = fence::fence("snapshot", &snap.url, &text, outline::MAX_OUTLINE_CHARS + 600);
         let mut done = Done::new("", "snapshot", false);
         done.status = false;
@@ -1004,7 +1162,7 @@ impl Session {
     }
 
     async fn click(&self, page: &Page, args: &Value) -> Result<Done, String> {
-        let r = ref_arg(args)?;
+        let r = page.ref_for(args)?;
         let loc = self.locate(page, &r).await?;
         let (x, y) = (loc["x"].as_f64().unwrap_or(0.0), loc["y"].as_f64().unwrap_or(0.0));
         for kind in ["mouseMoved", "mousePressed", "mouseReleased"] {
@@ -1023,7 +1181,7 @@ impl Session {
     }
 
     async fn type_text(&self, page: &Page, args: &Value) -> Result<Done, String> {
-        let r = ref_arg(args)?;
+        let r = page.ref_for(args)?;
         let text = args.get("text").and_then(Value::as_str).ok_or("type needs `text`.")?;
         if text.chars().count() > MAX_TYPE_CHARS {
             return Err(format!("text is over {MAX_TYPE_CHARS} characters; type it in parts."));
@@ -1064,7 +1222,7 @@ impl Session {
             format!("\"{}\" is not a key I know. Use Enter, Escape, Tab, Backspace, Delete, Arrow keys, Home, End, PageUp, PageDown, Space, a single character, or Control/Shift/Alt+key.", plain(&clip(key)))
         })?;
         if args.get("ref").is_some() {
-            let r = ref_arg(args)?;
+            let r = page.ref_for(args)?;
             let f = page.helper("focus", &[json!(r)]).await?;
             stale(&f, &r)?;
         }
@@ -1074,7 +1232,7 @@ impl Session {
     }
 
     async fn select(&self, page: &Page, args: &Value) -> Result<Done, String> {
-        let r = ref_arg(args)?;
+        let r = page.ref_for(args)?;
         let value = args.get("value").and_then(Value::as_str).ok_or("select needs a `value` (an option's value or visible text).")?;
         let v = page.helper("choose", &[json!(r), json!(value)]).await?;
         stale(&v, &r)?;
@@ -1095,7 +1253,7 @@ impl Session {
 
     async fn scroll(&self, page: &Page, args: &Value) -> Result<Done, String> {
         let pos = if args.get("ref").is_some() {
-            let r = ref_arg(args)?;
+            let r = page.ref_for(args)?;
             let p = page.helper("scrollTo", &[json!(r)]).await?;
             stale(&p, &r)?;
             p
@@ -1200,7 +1358,7 @@ impl Session {
         let mut params = if compact { json!({ "format": "jpeg", "quality": 70 }) } else { json!({ "format": "png" }) };
         let mut what = "viewport".to_string();
         if args.get("ref").is_some() {
-            let r = ref_arg(args)?;
+            let r = page.ref_for(args)?;
             let rect = page.helper("rectOf", &[json!(r)]).await?;
             stale(&rect, &r)?;
             if rect.get("hidden").is_some() {
@@ -1217,10 +1375,9 @@ impl Session {
             params["captureBeyondViewport"] = json!(true);
             what = format!("full page ({}x{})", w as i64, h as i64);
         }
-        let r = page.call("Page.captureScreenshot", params).await?;
-        let data = r["data"].as_str().ok_or("the browser returned no image")?;
-        let png = base64::engine::general_purpose::STANDARD
-            .decode(data)
+        let mut r = page.call("Page.captureScreenshot", params.clone()).await?;
+        let mut png = base64::engine::general_purpose::STANDARD
+            .decode(r["data"].as_str().ok_or("the browser returned no image")?)
             .map_err(|e| format!("the browser returned a bad image: {e}"))?;
         if png.is_empty() {
             return Err("the browser produced an empty screenshot".to_string());
@@ -1228,9 +1385,9 @@ impl Session {
         let cap = if compact { MAX_COMPACT_IMAGE_BYTES } else { MAX_PNG_BYTES };
         if png.len() > cap {
             return Err(format!(
-                "screenshot is {} KiB, over the {}-MiB cap; capture the viewport or one element (ref) instead",
+                "screenshot is {} KiB, over the {}-KiB cap; capture the viewport or one element (ref) instead",
                 png.len() / 1024,
-                MAX_PNG_BYTES / 1024 / 1024
+                cap / 1024
             ));
         }
         let (url, _) = page.meta().await;
@@ -1310,6 +1467,152 @@ impl Session {
         let (mut url, mut title) = (String::new(), String::new());
         if done.status || done.mutated {
             let m = page.meta().await;
+    // --- tabs --------------------------------------------------------------------------
+
+    async fn tab(&self, page: &Page, args: &Value) -> Result<Done, String> {
+        let op = args.get("op").and_then(Value::as_str).unwrap_or("list").trim().to_ascii_lowercase();
+        match op.as_str() {
+            "list" => self.tab_list(page).await,
+            "new" => self.tab_new(page, args).await,
+            "switch" => {
+                let id = tab_id_arg(args)?;
+                let tab = page.tabs.lock().ok().and_then(|t| t.find(&id)).ok_or_else(|| format!("there is no tab {id}. Use tab with op \"list\"."))?;
+                if let Ok(mut t) = page.tabs.lock() {
+                    t.active = tab.id.clone();
+                }
+                let _ = page.cdp.call("Target.activateTarget", json!({ "targetId": tab.target }), None).await;
+                let mut d = Done::new(
+                    format!("Switched to tab {}. Refs from other tabs do not work here: snapshot this tab.", tab.id),
+                    format!("switch to tab {}", tab.id),
+                    true,
+                );
+                d.headline.push_str("");
+                Ok(d)
+            }
+            "close" => {
+                let (id, session, target, remaining) = {
+                    let t = page.tabs.lock().map_err(|_| "tabs are unavailable")?;
+                    let id = match args.get("tab_id").and_then(Value::as_str) {
+                        Some(_) => tab_id_arg(args)?,
+                        None => t.active.clone(),
+                    };
+                    let tab = t.find(&id).ok_or_else(|| format!("there is no tab {id}. Use tab with op \"list\"."))?;
+                    (id, tab.session, tab.target, t.list.len())
+                };
+                if remaining <= 1 {
+                    return Err("that is the only tab. To end the browser use action close.".to_string());
+                }
+                page.mains.remove_session(&session);
+                if let Ok(mut t) = page.tabs.lock() {
+                    t.remove_session(&session);
+                }
+                let _ = page.cdp.call("Target.closeTarget", json!({ "targetId": target }), None).await;
+                let now = page.tabs.lock().map(|t| t.active.clone()).unwrap_or_default();
+                Ok(Done::new(format!("Closed tab {id}. The active tab is {now}."), format!("close tab {id}"), true))
+            }
+            other => Err(format!("tab op \"{}\" is not list, new, switch or close.", plain(&clip(other)))),
+        }
+    }
+
+    async fn tab_list(&self, page: &Page) -> Result<Done, String> {
+        let infos = page.cdp.call("Target.getTargets", json!({}), None).await?;
+        let infos = infos["targetInfos"].as_array().cloned().unwrap_or_default();
+        let (list, active) = {
+            let t = page.tabs.lock().map_err(|_| "tabs are unavailable")?;
+            (t.list.clone(), t.active.clone())
+        };
+        let mut lines = Vec::new();
+        for tab in &list {
+            let info = infos.iter().find(|i| i["targetId"].as_str() == Some(tab.target.as_str()));
+            let url = info.and_then(|i| i["url"].as_str()).unwrap_or_default();
+            let title = info.and_then(|i| i["title"].as_str()).unwrap_or_default();
+            lines.push(format!(
+                "{} {} \"{}\" {}",
+                if tab.id == active { "*" } else { "-" },
+                tab.id,
+                clip(&plain(title)),
+                display_url(url)
+            ));
+        }
+        let mut d = Done::new("", "tabs", false);
+        d.status = false;
+        d.body = Some(fence::fence("tabs", "", &lines.join("\n"), 3_000));
+        d.headline = format!("{} tab(s); * marks the active one.", list.len());
+        Ok(d)
+    }
+
+    async fn tab_new(&self, page: &Page, args: &Value) -> Result<Done, String> {
+        let url = args.get("url").and_then(Value::as_str).ok_or("tab new needs a `url`.")?;
+        if !self.policy.permits(url) || !url.starts_with("http") {
+            return Err(format!(
+                "{} is outside the origins this browser may load ({}).",
+                display_url(url),
+                self.policy.allowed().iter().map(Origin::serialize).collect::<Vec<_>>().join(", ")
+            ));
+        }
+        if page.tabs.lock().map(|t| t.list.len()).unwrap_or(0) >= MAX_TABS {
+            return Err(format!("at most {MAX_TABS} tabs can be open. Close one with tab op \"close\"."));
+        }
+        page.mains.expect_own();
+        let created = page.cdp.call("Target.createTarget", json!({ "url": "about:blank" }), None).await?;
+        let target = created["targetId"].as_str().ok_or("the browser made no tab")?.to_string();
+        let attached = page.cdp.call("Target.attachToTarget", json!({ "targetId": target, "flatten": true }), None).await?;
+        let session = attached["sessionId"].as_str().ok_or("could not attach to the new tab")?.to_string();
+        page.mains.add(&session, &target);
+        let id = {
+            let mut t = page.tabs.lock().map_err(|_| "tabs are unavailable")?;
+            let tab = t.add(&target, &session);
+            t.active = tab.id.clone();
+            tab.id
+        };
+        if let Err(e) = launch::enable_tab(&page.cdp, &session).await {
+            page.mains.remove_session(&session);
+            if let Ok(mut t) = page.tabs.lock() {
+                t.remove_session(&session);
+            }
+            let _ = page.cdp.call("Target.closeTarget", json!({ "targetId": target }), None).await;
+            return Err(e);
+        }
+        let mut d = self.navigate(page, url).await.map_err(|e| format!("tab {id} was opened but: {e}"))?;
+        d.headline = format!("Opened tab {id} (now active). {}", d.headline);
+        Ok(d)
+    }
+
+    // --- upload --------------------------------------------------------------------------
+
+    async fn upload(&self, page: &Page, args: &Value, file: Option<&std::path::Path>) -> Result<Done, String> {
+        let r = page.ref_for(args)?;
+        let file = file.ok_or("upload needs a `path` to a file inside your working folder.")?;
+        let check = page.helper("fileCheck", &[json!(r)]).await?;
+        stale(&check, &r)?;
+        if check.get("notFile").is_some() {
+            return Err(format!(
+                "{r} is a {}, not a file input. Upload needs a ref whose snapshot role is filebutton (an <input type=file>). A file input hidden by the page does not appear in the snapshot.",
+                check["role"].as_str().unwrap_or("element")
+            ));
+        }
+        if check.get("disabled").is_some() {
+            return Err(format!("{r} is disabled."));
+        }
+        let prefix = page.active()?.prefix();
+        let found = page
+            .call(
+                "Runtime.evaluate",
+                json!({ "expression": outline::call_expression(&prefix, "element", &[json!(r)]), "returnByValue": false }),
+            )
+            .await?;
+        let object_id = found["result"]["objectId"].as_str().ok_or_else(|| outline::stale_message(&r))?.to_string();
+        page.call("DOM.setFileInputFiles", json!({ "files": [file.to_string_lossy()], "objectId": object_id })).await?;
+        page.settle(Duration::from_secs(3)).await;
+        let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let size = std::fs::metadata(file).map(|m| m.len()).unwrap_or(0);
+        Ok(Done::new(
+            format!("Attached {} ({} bytes) to {r}. The page now holds the file; submit its form to send it.", plain(&clip(&name)), size),
+            format!("upload {r} <- {}", clip(&plain(&name))),
+            true,
+        ))
+    }
+
             url = m.0;
             title = m.1;
         }
@@ -1359,7 +1662,7 @@ impl Session {
             title: clip(&plain(title)),
             screenshot: None,
         };
-        let shot = want_shot.then(|| (page.cdp.clone(), page.session.clone()));
+        let shot = want_shot.then(|| (page.cdp.clone(), page.session()));
         let _ = self.notices.send(Notice { activity, shot, sink, ctl: self.ctl.clone() });
     }
 
@@ -1497,7 +1800,7 @@ mod tests {
     #[test]
     fn a_page_death_is_remembered() {
         let mut s = Seen::default();
-        apply(&mut s, Observed::PageGone("The page crashed or was closed.".into()));
+        apply(&mut s, Observed::PageGone { session: "s1".into(), why: "The page crashed or was closed.".into() });
         apply(&mut s, Observed::BrowserExited);
         assert_eq!(s.dead.as_deref(), Some("The page crashed or was closed."));
     }
