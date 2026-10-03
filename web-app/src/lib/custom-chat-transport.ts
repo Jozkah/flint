@@ -2719,7 +2719,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       parts.push(
         'When a file or folder outside the workspace is needed and a tool was',
         'refused for it, call request_access with the narrowest absolute path and',
-        'a one-sentence reason; the user decides. If it is granted, retry the',
+        'a one-sentence reason (access_mode "write" when you must create or change',
+        'files there, e.g. after a write or "Access is denied" failure); the user',
+        'decides. Ask instead of reporting the folder as read-only. If it is granted, retry the',
         'refused call. If it is denied, do not ask again for that path: offer',
         'another way (the user pastes or attaches it, or another source).'
       )

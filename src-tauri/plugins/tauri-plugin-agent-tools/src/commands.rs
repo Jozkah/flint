@@ -1328,13 +1328,18 @@ async fn execute_tool_inner(
         Decision::Prompt(PromptKind::WriteEscape) => {
             return Err(match read_roots.first() {
                 Some(attached) => format!(
-                    "tool '{name}' cannot write outside the agent workspace. The attached \
-                     folder {} is mounted read-only; copy the file into the workspace and \
-                     edit it there.",
+                    "tool '{name}' cannot write outside the agent workspace yet. The attached \
+                     folder {} is mounted read-only. Call request_access with access_mode \
+                     \"write\", the narrowest path you must change and a one-sentence reason: \
+                     the user decides, and on a grant you retry this call. If it is denied, \
+                     copy the file into the workspace and edit it there.",
                     attached.display()
                 ),
                 None => format!(
-                    "tool '{name}' tried to write outside the agent workspace and was refused"
+                    "tool '{name}' tried to write outside the agent workspace and was refused. \
+                     Call request_access with access_mode \"write\", the narrowest path you \
+                     must change and a one-sentence reason: the user decides, and on a grant \
+                     you retry this call."
                 ),
             }
             .into());
