@@ -4106,11 +4106,6 @@ export function CoworkPage() {
                             .getState()
                             .patchTask(taskIdFor(sid, runId, childId), {
                               detail: `own checkout: ${destination.path}`,
-                              checkout: {
-                                path: destination.path,
-                                branch: destination.branch,
-                                taskId: one.id,
-                              },
                             })
                           // AH-109: recorded before it runs, so its worktree is
                           // listed for review whatever becomes of the run -- and
@@ -4170,7 +4165,8 @@ export function CoworkPage() {
                             },
                             signal,
                             teamTaskId,
-                            destination
+                            destination,
+                            one.id
                           )
                           status = endedAs(result.isError === true)
                           detail = result.output.slice(0, 500)

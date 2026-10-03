@@ -96,11 +96,13 @@ export type ChildRunner = (
   req: SubagentRequest,
   teamSignal?: AbortSignal,
   parentTaskId?: string,
-  destination?: Destination
+  destination?: Destination,
+  /** The team task id the checkout's review is listed under. */
+  checkoutTaskId?: string
 ) => Promise<ToolOutcome>
 
 export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
-  return async (callId, req, teamSignal, parentTaskId, destination) => {
+  return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId) => {
     const resolved = resolveSubagent(
       req,
       env.definitions,
@@ -146,6 +148,19 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     // Its own controller, chained to the run's, so this one child can be
     // stopped without stopping the turn.
     const childTaskId = taskIdFor(env.sessionId, env.runId, callId)
+    // Said on the record, now that it exists: a patch made before the dispatch
+    // is recorded lands on nothing. The row then shows where this child works
+    // and leads to its review.
+    if (destination) {
+      useCoworkActivity.getState().patchTask(childTaskId, {
+        detail: `own checkout: ${destination.path}`,
+        checkout: {
+          path: destination.path,
+          branch: destination.branch,
+          taskId: checkoutTaskId ?? callId,
+        },
+      })
+    }
     const childAbort = registerSubagent(env.sessionId, childTaskId)
     const stopChild = () => childAbort.abort('cancelled')
     env.signal.addEventListener('abort', stopChild, { once: true })

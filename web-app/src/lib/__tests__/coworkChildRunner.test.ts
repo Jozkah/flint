@@ -115,6 +115,20 @@ describe('createChildRunner', () => {
     expect(task('member').parentTaskId).toBe('team-row')
   })
 
+  it('records the checkout an isolated child works in, on its own record, so its row can lead to the review', async () => {
+    answers('x')
+    const destination = { ownerId: 'o', path: 'C:/wt/one', branch: 'jan/cowork/one', baseSha: 'abc', grantId: 'g' }
+    await createChildRunner(env())('c1:one', { subagent_name: 'explorer', description: 'd' }, undefined, 'team-row', destination as never, 'one')
+    expect(useCoworkActivity.getState().tasks[id('c1:one')].checkout).toEqual({
+      path: 'C:/wt/one',
+      branch: 'jan/cowork/one',
+      taskId: 'one',
+    })
+    // A child that shares the folder records none.
+    await createChildRunner(env())('c2', { subagent_name: 'explorer', description: 'd' })
+    expect(task('c2').checkout).toBeUndefined()
+  })
+
   it('records an error result as an error, and flags a cut or step-limited answer', async () => {
     answers('partial', { isError: true, capped: true, stoppedAtLimit: true, full: 'partial+' })
     const out = await createChildRunner(env())('c1', { subagent_name: 'explorer', description: 'd' })
