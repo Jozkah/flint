@@ -810,6 +810,16 @@ function TaskItem({
                   {task.model}
                 </span>
               )}
+              {task.assistant && (
+                <span className="truncate rounded-md border-[0.8px] border-border px-1.5" data-testid="task-assistant-chip">
+                  {task.assistant}
+                </span>
+              )}
+              {task.profile && (
+                <span className="truncate rounded-md border-[0.8px] border-border px-1.5" data-testid="task-profile-chip">
+                  {task.profile}
+                </span>
+              )}
               {task.jobId && (
                 <span className="rounded-sm bg-muted px-1 font-mono text-fg-2">
                   {t('common:tasks.background', { jobId: task.jobId })}

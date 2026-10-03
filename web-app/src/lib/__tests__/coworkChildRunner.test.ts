@@ -16,6 +16,7 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { emptyActivityState, taskIdFor } from '../coworkActivity'
 import { abortSubagent, beginRun, endRun } from '../coworkRunner'
 import type { SubagentEvents } from '../coworkSubagent'
+import { useSubagentSettings } from '@/hooks/useSubagentSettings'
 
 const defs = [
   {
@@ -59,6 +60,7 @@ beforeEach(() => {
   runSubagent.mockReset()
   useCoworkActivity.setState({ ...emptyActivityState() })
   beginRun(SID, RUN, new AbortController())
+  useSubagentSettings.getState().reset()
 })
 
 /** Drives the events a real child would emit, then answers. */
@@ -214,5 +216,45 @@ describe('createChildRunner', () => {
     await createChildRunner(env())('c1', { subagent_name: 'explorer', description: 'd' })
     expect(abortSubagent(SID, id('c1'))).toBe(false)
     endRun(SID, RUN)
+  })
+
+  it('titles the row by the errand, not the role', async () => {
+    answers('x')
+    const run = createChildRunner(env())
+    await run('a', { subagent_name: 'explorer', description: 'Survey the radar package. Then list its tests.' })
+    await run('b', { subagent_name: 'explorer', description: 'Survey the rooms engine.', title: 'Rooms engine' })
+    await run('c', { subagent_name: 'explorer', description: '   ' })
+    expect(task('a').title).toBe('Survey the radar package')
+    expect(task('b').title).toBe('Rooms engine')
+    expect(task('a').agentName).toBe('explorer')
+    expect(task('c').title).toBe('explorer')
+  })
+
+  it('applies the Subagents settings to the child and records what it used, without touching its tools', async () => {
+    answers('x')
+    useSubagentSettings.getState().setGlobal('workProfile', 'review')
+    const parentTools = { read: {}, bash: {} } as never
+    await createChildRunner(env({ parentTools: () => parentTools }))('s', { subagent_name: 'explorer', description: 'd' })
+    const opts = runSubagent.mock.calls[0][0]
+    expect(opts.extraSystem?.join('\n')).toContain('Review')
+    expect(opts.extraSystem?.join('\n')).toContain('does not change which tools')
+    // The child still gets exactly the parent's tools and definition allowlist.
+    expect(opts.parentTools).toBe(parentTools)
+    expect(opts.resolved.allowedTools).toBeNull()
+    expect(task('s').profile).toBe('Review')
+  })
+
+  it('a child never gets tools beyond its parent, whatever the settings say', async () => {
+    answers('x')
+    useSubagentSettings.getState().setGlobal('workProfile', 'execute')
+    useSubagentSettings.getState().setRole('explorer', 'assistantId', 'jan')
+    const narrow = [{ ...defs[0], allowed_tools: ['read', 'bash'] }]
+    await createChildRunner(env({ definitions: narrow, parentTools: () => ({ read: {} }) as never }))('n', {
+      subagent_name: 'explorer',
+      description: 'd',
+    })
+    // `bash` is outside the parent's tools, so it is intersected away: the
+    // settings add a prompt block and nothing else.
+    expect(runSubagent.mock.calls[0][0].resolved.allowedTools).toEqual(['read'])
   })
 })

@@ -36,6 +36,7 @@ import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { countToolCalls } from '@/lib/coworkTasks'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
+import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
 import type { CoworkTurn, Usage } from '@/types/coworkSession'
 
 /** How a surface gates, informs and attributes one child. */
@@ -65,6 +66,10 @@ export type ChildRunnerEnv = {
   run: RunContext
   /** The parent's model id, recorded on each child's task. */
   modelId: string
+  /** The parent's provider, so an unchanged model is recognised as the parent's. */
+  providerId?: string
+  /** The parent's own assistant and work profile, for children that inherit them. */
+  parent?: () => ParentPersona | undefined
   definitions: SubagentDefinition[]
   /** Stopping the run stops every child it started. */
   signal: AbortSignal
@@ -119,6 +124,14 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         isError: true,
       }
     }
+    // Which model, assistant and work profile this child runs with: the
+    // Subagents settings over the parent's (lib/subagentSettings.ts). Tools and
+    // approvals are not part of it.
+    const choice = await prepareChildChoice({
+      role: resolved.name,
+      parentModel: { provider: env.providerId ?? '', id: env.modelId },
+      parent: env.parent?.(),
+    })
     // Recorded before the child starts: the dispatch is the only moment the
     // agent name, description and model are known together, and the record has
     // to exist for the queue position that arrives next to land on something.
@@ -130,7 +143,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         kind: 'agent.dispatched',
         payload: {
           agent: resolved.name,
-          model: env.modelId,
+          model: choice.modelId,
           description: req.description,
         },
       },
@@ -140,7 +153,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       agentName: resolved.name,
       title: req.title,
       description: req.description,
-      model: env.modelId,
+      model: choice.modelId,
       // A team's children hang under the team's own row, so the panel shows one
       // piece of work with parts rather than several unrelated errands.
       parentTaskId,
@@ -161,6 +174,13 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
           branch: destination.branch,
           taskId: checkoutTaskId ?? callId,
         },
+      })
+    }
+    if (choice.assistant || choice.profile || choice.note) {
+      useCoworkActivity.getState().patchTask(childTaskId, {
+        ...(choice.assistant ? { assistant: choice.assistant.name } : {}),
+        ...(choice.profile ? { profile: profileLabel(choice.profile) } : {}),
+        ...(choice.note ? { detail: choice.note } : {}),
       })
     }
     const childAbort = registerSubagent(env.sessionId, childTaskId)
@@ -211,8 +231,9 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.
         activity: setup.activity,
-        model,
-        supportsVision: env.supportsVision?.() ?? false,
+        model: choice.model ?? model,
+        supportsVision: choice.supportsVision ?? env.supportsVision?.() ?? false,
+        ...(choice.extraSystem.length > 0 ? { extraSystem: choice.extraSystem } : {}),
         providerOptions: env.providerOptions(),
         parentTools: env.parentTools(),
         system: setup.system,

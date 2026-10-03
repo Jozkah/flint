@@ -238,6 +238,16 @@ function BackgroundRow({
             {isAgent && task.model && (
               <span className="rounded-md border-[0.8px] border-border px-1.5">{task.model}</span>
             )}
+            {isAgent && task.assistant && (
+              <span className="rounded-md border-[0.8px] border-border px-1.5" data-testid="task-assistant-chip">
+                {task.assistant}
+              </span>
+            )}
+            {isAgent && task.profile && (
+              <span className="rounded-md border-[0.8px] border-border px-1.5" data-testid="task-profile-chip">
+                {task.profile}
+              </span>
+            )}
             <span data-testid="background-elapsed">
               {formatCompactDuration(Math.round(taskElapsedMs(task, now) / 1000), t)}
             </span>

@@ -196,6 +196,9 @@ vi.mock('@/lib/coworkTransport', () => ({
       this.config = config
     }
     unfreezeTools() {}
+    persona() {
+      return {}
+    }
     reasoningProviderOptions() {
       return undefined
     }

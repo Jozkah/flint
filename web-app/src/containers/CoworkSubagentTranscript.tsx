@@ -387,6 +387,16 @@ export function CoworkSubagentTranscript({
               {task.model}
             </span>
           )}
+          {task.assistant && (
+            <span className="rounded-md border-[0.8px] border-border px-1.5 py-0.5 text-muted-foreground" data-testid="task-assistant-chip">
+              {task.assistant}
+            </span>
+          )}
+          {task.profile && (
+            <span className="rounded-md border-[0.8px] border-border px-1.5 py-0.5 text-muted-foreground" data-testid="task-profile-chip">
+              {task.profile}
+            </span>
+          )}
           <span
             data-testid="transcript-status"
             className={cn('font-medium', STATUS_TEXT[line])}

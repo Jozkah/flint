@@ -399,6 +399,12 @@ export type RunSubagentOptions = {
     /** The managed worktree's own branch, handed down like the access. */
     worktreeBranch?: string | null
   } & CoworkEnvironmentOptions
+  /**
+   * Blocks appended to the child's system prompt after everything else: the
+   * assistant or work profile the Subagents settings chose. Prompt text only;
+   * the child's tools and approvals are not read from here.
+   */
+  extraSystem?: string[]
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /** Who the child's calls are recorded as (see `RunDeps.activity`). */
@@ -506,7 +512,7 @@ export async function runSubagent(
     events.onStart()
 
     const tools = subagentTools(opts.parentTools, resolved.allowedTools)
-    const system = buildSubagentSystemPrompt(resolved.systemPrompt, {
+    const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
@@ -521,6 +527,8 @@ export async function runSubagent(
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })
+
+    const system = [baseSystem, ...(opts.extraSystem ?? [])].join('\n\n')
 
     // A fresh history: the child does not see the parent's conversation, so the
     // description is the whole brief.

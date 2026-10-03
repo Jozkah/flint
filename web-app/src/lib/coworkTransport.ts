@@ -1,4 +1,5 @@
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import type { ParentPersona } from '@/lib/subagentChoice'
 import { useAssistant } from '@/hooks/useAssistant'
 import type { Tool, UIMessage } from 'ai'
 import { CustomChatTransport } from '@/lib/custom-chat-transport'
@@ -142,6 +143,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   private lastModelRoutedFor: string | null = null
   /** Persona selected for this turn. Flint keeps Cowork's existing baseline. */
   private routedAssistantInstructions: string | undefined
+  private routedAssistantId: string | undefined
   /** Behavioural suggestion only; never used by the permission gate. */
   private routedMode: JevSuggestedMode | null = null
   /** The assistant the session started with (per session, not per app). */
@@ -303,6 +305,7 @@ export class CoworkChatTransport extends CustomChatTransport {
     // edit. Any non-Flint assistant that is selected intentionally -- including
     // a custom/project assistant that Jev is not allowed to route away from --
     // contributes its persona beneath Cowork's policy.
+    this.routedAssistantId = selected && selected.id !== 'jan' ? selected.id : undefined
     this.routedAssistantInstructions =
       selected && selected.id !== 'jan' ? selected.instructions : undefined
     this.answeringAssistant = selected?.name
@@ -318,6 +321,17 @@ export class CoworkChatTransport extends CustomChatTransport {
     // The global assistant store is deliberately not touched: routing is per
     // session, and mirroring it there would leak into other conversations and
     // be saved as the user's "last used" assistant.
+  }
+
+  /** The assistant and work profile this run is using, for subagents that inherit them. */
+  persona(): ParentPersona {
+    const profiles = useWorkProfiles.getState()
+    return {
+      assistantId: this.routedAssistantId,
+      assistantName: this.answeringAssistant?.name,
+      assistantInstructions: this.routedAssistantInstructions,
+      workProfile: profiles.enabled && this.threadId ? profiles.sessions[this.threadId]?.id : undefined,
+    }
   }
 
   /** The assistant answering this session's turns, for naming its replies. */

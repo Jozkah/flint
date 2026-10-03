@@ -3353,6 +3353,8 @@ export function CoworkPage() {
       runId,
       run,
       modelId: selectedModel.id,
+      providerId: selectedProvider,
+      parent: () => transport.persona(),
       definitions: runAgents,
       signal: controller.signal,
       // The parent's instance: a second one would mean a second llama-server

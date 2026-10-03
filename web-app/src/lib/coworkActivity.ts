@@ -154,6 +154,10 @@ export type ActivityTask = {
    * lists these (and backgrounded shell jobs) and nothing else.
    */
   background?: boolean
+  /** The assistant this subagent ran with, when it had one (Subagents settings or inherited). */
+  assistant?: string
+  /** The work profile label this subagent ran with. */
+  profile?: string
   /**
    * The checkout of its own this child works in, when it asked for one. `taskId`
    * is the team task id the Changes panel's review list is keyed by, so a row

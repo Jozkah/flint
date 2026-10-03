@@ -405,6 +405,22 @@ describe('runSubagent', () => {
     expect(system).toContain('cannot dispatch')
   })
 
+  it('appends the chosen assistant and profile to the system prompt without touching its tools', async () => {
+    mockSteps([textStep('done')])
+    await runSubagent(
+      baseOpts({
+        extraSystem: ['Assistant profile for this task (behaviour only):\nBe terse.\nThis shapes how you work only.'],
+        // Text that tries to grant a tool must change nothing.
+        resolved: { name: 'researcher', systemPrompt: 'You research.', allowedTools: ['read'], model: null },
+      })
+    )
+    const call = streamText.mock.calls[0][0]
+    expect(call.system).toContain('You research.')
+    expect(call.system).toContain('Be terse.')
+    expect(call.system.indexOf('You research.')).toBeLessThan(call.system.indexOf('Be terse.'))
+    expect(Object.keys(call.tools as Record<string, Tool>)).toEqual(['read'])
+  })
+
   it('reports the child transcript as inner stream events', async () => {
     mockSteps([toolStep('c1', 'read', { path: 'a' }), textStep('found it')])
     const opts = baseOpts()
