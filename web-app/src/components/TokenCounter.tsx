@@ -15,7 +15,7 @@ import {
   summarizeUsage,
   type TokenUsage,
 } from '@/lib/tokenUsage'
-import { TokenUsageBreakdown } from '@/components/TokenUsageBreakdown'
+import { TokenUsageSummary, type UsageSpeed } from '@/components/TokenUsageSummary'
 import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
@@ -27,16 +27,7 @@ import {
   getCompactionPolicy,
   type CompactionPolicy,
 } from '@/lib/compactionPolicy'
-import {
-  Brain,
-  Gauge,
-  Ruler,
-  Layers2,
-  Image,
-  Mic,
-  Moon,
-  Sliders,
-} from 'lucide-react'
+import { Brain, Layers2, Image, Mic, Moon, Sliders } from 'lucide-react'
 
 interface TokenCounterProps {
   messages?: ThreadMessage[]
@@ -46,7 +37,7 @@ interface TokenCounterProps {
   /** Usage reported directly, for a surface that keeps no thread messages. */
   source?: TokenUsageSource
   /** Generation speed of the latest reply and the conversation's average. */
-  speed?: { last?: number; average?: number }
+  speed?: UsageSpeed
   /** Compacts the conversation; offered from the context card when given. */
   onCompact?: () => void
 }
@@ -96,7 +87,8 @@ export const TokenCounter = memo(function TokenCounter({
           return {
             tokenSpeed: ts.tokenSpeed,
             durationMs: ts.durationMs,
-            tokenCount: readTokenUsage(meta?.usage)?.outputTokens ?? ts.tokenCount,
+            source: ts.source,
+            tokenCount: ts.tokenCount ?? readTokenUsage(meta?.usage)?.outputTokens,
           }
         })
       ),
@@ -369,7 +361,11 @@ export const TokenCounter = memo(function TokenCounter({
               >
                 {usage.pct.toFixed(1)}%
               </span>
-              <span className="text-xs text-muted-foreground tabular-nums font-mono">
+              <span
+                className="text-xs text-muted-foreground tabular-nums font-mono"
+                data-testid="context-used-of"
+                title={`${formatExact(remaining)} tokens left`}
+              >
                 {formatTokenCount(totalTokens)} /{' '}
                 {formatTokenCount(tokenData.maxTokens)}
               </span>
@@ -393,19 +389,12 @@ export const TokenCounter = memo(function TokenCounter({
             </>
           )}
 
-          <SpeedSection speed={speed} />
-
-          {/* Token breakdown */}
-          <div className="px-3 py-2 border-t border-border space-y-1.5">
-            <TokenUsageBreakdown usage={breakdown} scope={scope} />
-            <Row
-              icon={<Ruler className="size-3.5" />}
-              label="Remaining"
-              value={formatExact(remaining)}
-            />
-          </div>
-
-          <SessionUsageSection usage={sessionUsage} scope={scope} />
+          <TokenUsageSummary
+            usage={breakdown}
+            session={sessionUsage}
+            speed={speed}
+            scope={scope}
+          />
 
           {/* Footer: fit + slots + modalities */}
           {showFooter && (
@@ -468,7 +457,7 @@ function TokenCountOnly({
   sessionUsage?: TokenUsage
   scope?: string
   modelDisplayName?: string
-  speed?: { last?: number; average?: number }
+  speed?: UsageSpeed
   card?: React.ReactNode
   ringUsage: ContextUsage
   className?: string
@@ -514,11 +503,12 @@ function TokenCountOnly({
             </div>
           </div>
           {card ? <div className="border-b border-border">{card}</div> : null}
-          <div className="px-3 py-2">
-            <TokenUsageBreakdown usage={usage} scope={scope} />
-          </div>
-          <SpeedSection speed={speed} />
-          <SessionUsageSection usage={sessionUsage} scope={scope} />
+          <TokenUsageSummary
+            usage={usage}
+            session={sessionUsage}
+            speed={speed}
+            scope={scope}
+          />
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -574,80 +564,5 @@ function ContextRing({
         />
       )}
     </svg>
-  )
-}
-
-/** Generation speed, when at least one reply was long enough to time. */
-function SpeedSection({ speed }: { speed?: { last?: number; average?: number } }) {
-  if (!speed?.last && !speed?.average) return null
-  const fmt = (n: number) => `${n >= 100 ? Math.round(n) : n.toFixed(1)} tokens/sec`
-  return (
-    <div className="px-3 py-2 border-t border-border space-y-1" data-testid="speed-section">
-      <div className="text-[11px] font-medium text-foreground">Generation speed</div>
-      {speed.last ? (
-        <Row icon={<Gauge className="size-3.5" />} label="Latest reply" value={fmt(speed.last)} />
-      ) : null}
-      {speed.average ? (
-        <Row icon={<Gauge className="size-3.5" />} label="Average" value={fmt(speed.average)} />
-      ) : null}
-    </div>
-  )
-}
-
-function Row({
-  icon,
-  label,
-  value,
-  strong,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: string
-  strong?: boolean
-}) {
-  return (
-    <div className="flex items-center justify-between text-xs">
-      <span className="flex items-center gap-1.5 text-muted-foreground">
-        {icon}
-        {label}
-      </span>
-      <span
-        className={cn(
-          'font-mono tabular-nums',
-          strong ? 'text-foreground font-semibold' : 'text-foreground'
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
-/**
- * Every request of this conversation, added up: how many requests there were
- * and how many reused the provider's cache, apart from the token totals.
- */
-function SessionUsageSection({
-  usage,
-  scope,
-}: {
-  usage?: TokenUsage
-  scope?: string
-}) {
-  if (!usage || (usage.requests ?? 0) <= 0) return null
-  return (
-    <div
-      className="px-3 py-2 border-t border-border space-y-1"
-      data-testid="session-usage"
-      data-usage-scope={scope}
-      data-requests={usage.requests}
-      data-cache-hit-requests={usage.cacheHitRequests}
-    >
-      <div className="text-[11px] font-medium text-foreground">
-        This conversation ({usage.requests}{' '}
-        {usage.requests === 1 ? 'request' : 'requests'})
-      </div>
-      <TokenUsageBreakdown usage={usage} scope={scope} testIdPrefix="session-token-usage" />
-    </div>
   )
 }

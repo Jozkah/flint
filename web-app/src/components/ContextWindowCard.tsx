@@ -227,22 +227,16 @@ export function ContextWindowCard({
           className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
           data-testid="window-unknown"
         >
-          This server does not say how large its window is, so there is no
-          fraction to show; the shares below are of what is in use.
+          This server does not report its window size.
         </p>
       )}
 
-      {age && (
-        <p
-          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
-          data-testid="context-age"
-        >
-          Last updated {age}. Send a message to refresh.
-        </p>
-      )}
-
-      <p className="px-3 pb-2 pt-2 text-[10.5px] leading-snug text-muted-foreground">
-        Estimated from what the last request carried (about 4 characters per token).
+      <p
+        className="px-3 pb-2 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+        title="Estimated from what the last request carried, at about 4 characters per token. Send a message to refresh."
+      >
+        Estimated
+        {age && <span data-testid="context-age">{` · updated ${age}`}</span>}
       </p>
     </div>
   )

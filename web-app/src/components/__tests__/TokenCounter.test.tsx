@@ -28,6 +28,9 @@ vi.mock('@/components/ui/tooltip', async () => {
 
 const mockUseTokensCount = vi.mocked(useTokensCount)
 
+// The info tooltips render inline here too, so the popover is the first one.
+const popover = () => screen.getAllByTestId('tooltip-content')[0]
+
 function mockTokens(overrides: Partial<ReturnType<typeof useTokensCount>> = {}) {
   const defaults = {
     tokenCount: 0,
@@ -125,10 +128,8 @@ describe('TokenCounter', () => {
   it('renders the SVG progress ring', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000 })
     const { container } = render(<TokenCounter />)
-    const svg = container.querySelector('svg')
-    expect(svg).toBeTruthy()
-    const circles = container.querySelectorAll('circle')
-    expect(circles.length).toBe(2)
+    const ring = screen.getByTestId('context-ring')
+    expect(ring.querySelectorAll('circle').length).toBe(2)
     expect(stopColor(container)).toBe('var(--success)')
   })
 
@@ -201,6 +202,7 @@ describe('TokenCounter', () => {
       const block = screen.getByTestId('session-usage')
       expect(block.dataset.requests).toBe('2')
       expect(block.dataset.cacheHitRequests).toBe('2')
+      expect(block.textContent).toContain('2 requests')
       expect(screen.getByTestId('session-token-usage-cache-status').dataset.cacheStatus).toBe('reused')
       unmount()
     }
@@ -210,7 +212,7 @@ describe('TokenCounter', () => {
     mockTokens({ tokenCount: 10, maxTokens: undefined, inputTokens: 5, outputTokens: 5 })
     render(
       <TokenCounter
-        source={{ threadId: 'a', session: { inputTokens: 5, requests: 1, cacheReportedRequests: 0, cacheHitRequests: 0 } }}
+        source={{ threadId: 'a', session: { inputTokens: 5, requests: 3, cacheReportedRequests: 0, cacheHitRequests: 0 } }}
         messages={[{ thread_id: 'b', metadata: { usage: { inputTokens: 999, requests: 1 } } }] as any}
       />
     )
@@ -238,19 +240,45 @@ describe('TokenCounter', () => {
     })
   })
 
-  it('shows token breakdown with Total and Remaining labels', () => {
-    mockTokens({ tokenCount: 500, maxTokens: 1000 })
+  it('shows the last reply with its Total, and no conversation block for a single request', () => {
+    mockTokens({ tokenCount: 500, maxTokens: 1000, usage: { inputTokens: 400, outputTokens: 100, totalTokens: 500 } })
     render(<TokenCounter />)
-    const tooltipContent = screen.getAllByTestId('tooltip-content')[0]
+    const tooltipContent = popover()
+    expect(tooltipContent.textContent).toContain('Last reply')
     expect(tooltipContent.textContent).toContain('Total')
-    expect(tooltipContent.textContent).toContain('Remaining')
+    expect(screen.queryByTestId('session-usage')).toBeNull()
+  })
+
+  it('keeps jargon out of the visible text, and the provenance in tooltips', () => {
+    mockTokens({
+      tokenCount: 110,
+      maxTokens: undefined,
+      usage: {
+        inputTokens: 100,
+        cachedInputTokens: 60,
+        uncachedInputTokens: 40,
+        outputTokens: 10,
+        totalTokens: 110,
+        cacheSource: 'openai-chat',
+      },
+    })
+    render(<TokenCounter />)
+    const text = Array.from(screen.getAllByTestId('tooltip-content'))
+      .map((el) => el.textContent)
+      .join(' ')
+    // Tooltips are inline in this test, so look at what is NOT inside one.
+    const visible = screen.getByTestId('token-usage-breakdown').cloneNode(true) as HTMLElement
+    visible.querySelectorAll('[data-testid="tooltip-content"]').forEach((n) => n.remove())
+    expect(visible.textContent).not.toMatch(/derived|prompt_tokens_details|cached_tokens|Uncached/)
+    expect(text).toMatch(/Input plus output/)
+    expect(text).toMatch(/usage report/)
   })
 
   describe('cache breakdown', () => {
-    const value = (testId: string) =>
-      screen.getByTestId(testId).getAttribute('data-value')
+    const attr = (testId: string, name = 'value') =>
+      screen.getByTestId(testId).getAttribute(`data-${name}`)
 
-    it('itemises cached and uncached input when the provider reported a cache', () => {
+    it('shows input with how much was cached, output and total when the provider reported a cache', () => {
       mockTokens({
         tokenCount: 5982,
         maxTokens: 32768,
@@ -264,18 +292,17 @@ describe('TokenCounter', () => {
         },
       })
       render(<TokenCounter />)
-      expect(value('token-usage-input')).toBe('5974')
-      expect(value('token-usage-cached')).toBe('5957')
-      expect(value('token-usage-uncached')).toBe('17')
-      expect(value('token-usage-output')).toBe('8')
-      expect(value('token-usage-total')).toBe('5982')
+      expect(attr('token-usage-input')).toBe('5974')
+      expect(attr('token-usage-input', 'cached')).toBe('5957')
+      expect(attr('token-usage-input', 'uncached')).toBe('17')
+      expect(attr('token-usage-output')).toBe('8')
+      expect(attr('token-usage-total')).toBe('5982')
       expect(screen.getByTestId('token-usage-cache-bar')).toBeTruthy()
-      expect(screen.queryByTestId('token-usage-cache-unreported')).toBeNull()
-      // Reported by Anthropic only, so no write row here.
-      expect(screen.queryByTestId('token-usage-cache-write')).toBeNull()
+      expect(screen.getByTestId('token-usage-cache-status').textContent).toBe('100% cached')
+      expect(attr('token-usage-input', 'cache-write')).toBeNull()
     })
 
-    it('explains that uncached input is derived and is not a count of cache misses', () => {
+    it('says in a tooltip, not in a row, what the cached split means', () => {
       mockTokens({
         tokenCount: 110,
         maxTokens: 1000,
@@ -288,17 +315,12 @@ describe('TokenCounter', () => {
         },
       })
       render(<TokenCounter />)
-      const note = screen.getByTestId('token-usage-uncached-note')
-      expect(note.getAttribute('aria-label')).toMatch(/input tokens minus cached input tokens/i)
-      expect(note.getAttribute('aria-label')).toMatch(/not a number of cache-miss events/i)
-      // The label itself never calls the figure "misses".
-      expect(screen.getByTestId('token-usage-uncached').textContent).toMatch(
-        /^Uncached input/
-      )
+      const note = screen.getByTestId('token-usage-cache-note')
+      expect(note.getAttribute('aria-label')).toMatch(/60 read from the cache, 40 new/)
       expect(screen.queryByText(/cache misses?$/i)).toBeNull()
     })
 
-    it('shows a cache write row, reported by Anthropic, as part of the uncached input', () => {
+    it('notes a cache write, reported by Anthropic, in the same tooltip; total stays input plus output', () => {
       mockTokens({
         tokenCount: 2318,
         maxTokens: undefined,
@@ -313,25 +335,29 @@ describe('TokenCounter', () => {
         },
       })
       render(<TokenCounter />)
-      expect(value('token-usage-cache-write')).toBe('300')
-      // Not added twice: total is input + output.
-      expect(value('token-usage-total')).toBe('2318')
+      expect(attr('token-usage-input', 'cache-write')).toBe('300')
+      expect(screen.getByTestId('token-usage-cache-note').getAttribute('aria-label')).toMatch(
+        /300 written to the cache/
+      )
+      expect(attr('token-usage-total')).toBe('2318')
     })
 
-    it('says "Not reported" instead of showing 0 cached when the provider sent no cache data', () => {
+    it('shows no cache figure instead of 0 when the provider sent no cache data', () => {
       mockTokens({
         tokenCount: 6103,
         maxTokens: undefined,
         usage: { inputTokens: 6100, outputTokens: 3, totalTokens: 6103 },
       })
       render(<TokenCounter />)
-      const row = screen.getByTestId('token-usage-cache-unreported')
-      expect(row.textContent).toContain('Not reported')
-      expect(row.getAttribute('data-value')).toBeNull()
-      expect(screen.queryByTestId('token-usage-cached')).toBeNull()
-      expect(screen.queryByTestId('token-usage-uncached')).toBeNull()
+      expect(attr('token-usage-input', 'cached')).toBeNull()
+      expect(screen.getByTestId('token-usage-cache-status').getAttribute('data-cache-status')).toBe(
+        'not-reported'
+      )
       expect(screen.queryByTestId('token-usage-cache-bar')).toBeNull()
-      expect(screen.getByTestId('tooltip-content').textContent).not.toMatch(/Cached input\s*0/)
+      expect(screen.getByTestId('token-usage-cache-note').getAttribute('aria-label')).toMatch(
+        /did not report/
+      )
+      expect(screen.getByTestId('token-usage-breakdown').textContent).not.toMatch(/Cached\s*0/)
     })
 
     it('shows a measured zero as zero', () => {
@@ -347,11 +373,12 @@ describe('TokenCounter', () => {
         },
       })
       render(<TokenCounter />)
-      expect(value('token-usage-cached')).toBe('0')
-      expect(value('token-usage-uncached')).toBe('5974')
+      expect(attr('token-usage-input', 'cached')).toBe('0')
+      expect(attr('token-usage-input', 'uncached')).toBe('5974')
+      expect(screen.getByTestId('token-usage-cache-status').getAttribute('data-cache-status')).toBe('none')
     })
 
-    it('flags clamped provider values with what was actually reported', () => {
+    it('says what the provider actually reported when it was clamped', () => {
       mockTokens({
         tokenCount: 101,
         maxTokens: 1000,
@@ -365,7 +392,7 @@ describe('TokenCounter', () => {
         },
       })
       render(<TokenCounter />)
-      expect(screen.getByTestId('token-usage-clamped').textContent).toContain('250')
+      expect(screen.getByTestId('token-usage-cache-note').getAttribute('aria-label')).toContain('250')
     })
 
     // The restart check's first attempt once read Chat's numbers while
@@ -400,15 +427,15 @@ describe('TokenCounter', () => {
       expect(screen.getByTestId('token-usage-breakdown').getAttribute('data-usage-scope')).toBe(
         'session-a'
       )
-      expect(value('token-usage-input')).toBe('2801')
+      expect(attr('token-usage-input')).toBe('2801')
 
       rerender(<TokenCounter source={{ threadId: 'session-b', usage: b }} />)
       expect(screen.getByTestId('token-counter').getAttribute('data-usage-scope')).toBe('session-b')
       expect(screen.getByTestId('token-usage-breakdown').getAttribute('data-usage-scope')).toBe(
         'session-b'
       )
-      expect(value('token-usage-input')).toBe('5900')
-      expect(value('token-usage-cached')).toBe('5863')
+      expect(attr('token-usage-input')).toBe('5900')
+      expect(attr('token-usage-input', 'cached')).toBe('5863')
     })
 
     it('keeps the compact counter free of the breakdown', () => {
@@ -522,22 +549,43 @@ describe('TokenCounter', () => {
   })
 
   describe('generation speed on hover', () => {
-    it('shows the latest and the average speed when there are some', () => {
+    const two = { inputTokens: 5, requests: 2, cacheReportedRequests: 0, cacheHitRequests: 0 }
+
+    it('shows the latest reply speed, and the average beside the conversation totals', () => {
       mockTokens({ tokenCount: 1400, maxTokens: undefined })
-      render(<TokenCounter speed={{ last: 41.26, average: 38 }} />)
-      expect(screen.getByTestId('speed-section')).toBeTruthy()
-      expect(screen.getByText('41.3 tokens/sec')).toBeTruthy()
-      expect(screen.getByText('38.0 tokens/sec')).toBeTruthy()
+      render(
+        <TokenCounter
+          speed={{ last: 41.26, average: 38, source: 'measured' }}
+          source={{ threadId: 'a', session: two }}
+        />
+      )
+      expect(screen.getByTestId('token-usage-speed').textContent).toContain('41.3 tok/s')
+      expect(screen.getByTestId('session-token-usage-speed').textContent).toContain('38.0 tok/s')
+    })
+
+    it('marks an estimated speed with ~, and says in a tooltip how it was worked out', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: undefined })
+      render(<TokenCounter speed={{ last: 120, source: 'estimated' }} />)
+      const row = screen.getByTestId('token-usage-speed')
+      expect(row.textContent).toContain('~120 tok/s')
+      expect(row.querySelector('button')!.getAttribute('aria-label')).toMatch(/Estimated/)
+    })
+
+    it('says in a tooltip when the server measured the speed itself', () => {
+      mockTokens({ tokenCount: 1400, maxTokens: undefined })
+      render(<TokenCounter speed={{ last: 58.2, source: 'server' }} />)
+      const row = screen.getByTestId('token-usage-speed')
+      expect(row.textContent).not.toContain('~')
+      expect(row.querySelector('button')!.getAttribute('aria-label')).toMatch(/server/)
     })
 
     it('reads the speed off the messages when none is handed in', () => {
       mockTokens({ tokenCount: 1400, maxTokens: 8000 })
       const messages = [
-        { id: 'a', role: 'assistant', metadata: { tokenSpeed: { tokenSpeed: 50, tokenCount: 200, durationMs: 4000 } } },
+        { id: 'a', role: 'assistant', metadata: { tokenSpeed: { tokenSpeed: 50, tokenCount: 200, durationMs: 4000, source: 'measured' } } },
       ] as never
       render(<TokenCounter messages={messages} />)
-      // One reply: it is both the latest and the average.
-      expect(screen.getAllByText('50.0 tokens/sec')).toHaveLength(2)
+      expect(screen.getByTestId('token-usage-speed').textContent).toContain('50.0 tok/s')
     })
 
     it('says nothing about speed when no reply was long enough to time', () => {
@@ -546,37 +594,32 @@ describe('TokenCounter', () => {
         { id: 'a', role: 'assistant', metadata: { tokenSpeed: { tokenSpeed: 900, tokenCount: 3, durationMs: 4 } } },
       ] as never
       render(<TokenCounter messages={messages} />)
-      expect(screen.queryByTestId('speed-section')).toBeNull()
+      expect(screen.queryByTestId('token-usage-speed')).toBeNull()
     })
   })
 
   it('shows Context window header', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000 })
     render(<TokenCounter />)
-    expect(
-      screen.getByTestId('tooltip-content').textContent
-    ).toContain('Context window')
+    expect(popover().textContent).toContain('Context window')
   })
 
-  it('shows correct remaining tokens', () => {
+  it('keeps the remaining tokens one hover away on the plain meter', () => {
     mockTokens({ tokenCount: 300, maxTokens: 1000 })
-    const { container } = render(<TokenCounter />)
-    const tooltipContent = screen.getByTestId('tooltip-content')
-    expect(tooltipContent.textContent).toContain('700')
+    render(<TokenCounter />)
+    expect(screen.getByTestId('context-used-of').getAttribute('title')).toBe('700 tokens left')
   })
 
-  it('shows 0 remaining when over limit', () => {
+  it('says 0 tokens left when over the limit', () => {
     mockTokens({ tokenCount: 1500, maxTokens: 1000 })
-    const { container } = render(<TokenCounter />)
-    const tooltipContent = screen.getByTestId('tooltip-content')
-    expect(tooltipContent.textContent).toContain('Remaining')
-    expect(tooltipContent.textContent).toMatch(/Remaining\s*0/)
+    render(<TokenCounter />)
+    expect(screen.getByTestId('context-used-of').getAttribute('title')).toBe('0 tokens left')
   })
 
   it('shows the overflow note and failing-request numbers when isOverflow', () => {
     mockTokens({ tokenCount: 1200, maxTokens: 1000, isOverflow: true })
-    const { container } = render(<TokenCounter />)
-    const tooltipContent = screen.getByTestId('tooltip-content')
+    render(<TokenCounter />)
+    const tooltipContent = popover()
     expect(tooltipContent.textContent).toMatch(/overflow/i)
     expect(screen.getAllByText('100.0%').length).toBeGreaterThanOrEqual(1)
   })
@@ -584,9 +627,7 @@ describe('TokenCounter', () => {
   it('does not show the overflow note when not overflowing', () => {
     mockTokens({ tokenCount: 500, maxTokens: 1000, isOverflow: false })
     render(<TokenCounter />)
-    expect(screen.getByTestId('tooltip-content').textContent).not.toMatch(
-      /overflow/i
-    )
+    expect(popover().textContent).not.toMatch(/overflow/i)
   })
 
   it('accepts className prop', () => {

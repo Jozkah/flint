@@ -95,7 +95,7 @@ describe('ContextWindowCard', () => {
     it('does not read as full when the window is not known, and says why', () => {
       render(<ContextWindowCard segments={segments} usedTokens={10000} />)
       expect(screen.getByTestId('window-unknown').textContent).toContain(
-        'no fraction to show'
+        'does not report its window size'
       )
       const bar = screen.getByTestId('context-bar')
       expect(bar.getAttribute('data-window')).toBe('unknown')
@@ -147,7 +147,7 @@ describe('ContextWindowCard', () => {
     it('says so for a request sent hours ago', () => {
       render(<ContextWindowCard {...local} updatedAt={now - 2 * 3_600_000} now={now} />)
       expect(screen.getByTestId('context-age').textContent).toBe(
-        'Last updated 2 hours ago. Send a message to refresh.'
+        ' · updated 2 hours ago'
       )
     })
 
