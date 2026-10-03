@@ -3,6 +3,12 @@ name: Flint Release
 # Builds the unsigned Flint desktop bundles on GitHub-hosted runners and
 # attaches them to an existing GitHub release. The release itself (title,
 # notes) is created by hand; this workflow never creates or edits one.
+#
+# A push to main is a release too: the tag named by the app version in
+# src-tauri/tauri.conf.json (v0.9.0 while that is the version) is moved to the
+# pushed commit and rebuilt, so the rolling release follows main without a
+# manual retag. Pushes that only touch documentation or the website are
+# skipped; the tag catches up on the next push that changes the app.
 on:
   workflow_dispatch:
     inputs:
@@ -16,16 +22,22 @@ on:
         default: false
   push:
     tags: ['v*']
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'website/**'
 
+# One group for every trigger: a push to main and a manual retag both upload to
+# the same release, so the newer run has to cancel the older one.
 concurrency:
-  group: flint-release-${{ github.ref }}
+  group: flint-release
   cancel-in-progress: true
 
 permissions:
   contents: write
 
 env:
-  TAG: ${{ inputs.tag || github.ref_name }}
   CARGO_TERM_COLOR: always
   NODE_OPTIONS: '--max-old-space-size=4096'
   # Tag builds are unsigned and mostly for trying a release out, so they use
@@ -43,17 +55,47 @@ jobs:
   check-release:
     name: Check the release exists
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
+      - name: Check out the pushed commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      # A branch push names no tag, so it takes the one for the app version.
+      - name: Resolve the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = branch ]; then
+            tag="v$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          else
+            tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+
       - name: Look up the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft
+
+      # Through the API rather than `git push`: a ref moved with GITHUB_TOKEN
+      # starts no second run of this workflow, which is what keeps a push to
+      # main at one build instead of two.
+      - name: Move the tag to the pushed commit
+        if: github.event_name == 'push' && github.ref_type == 'branch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true
 
   build:
     name: Build (${{ matrix.name }})
     needs: check-release
     runs-on: ${{ matrix.os }}
     timeout-minutes: 240
+    env:
+      TAG: ${{ needs.check-release.outputs.tag }}
     strategy:
       fail-fast: false
       matrix:
