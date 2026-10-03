@@ -210,7 +210,7 @@ ${OUT_OF_STEPS_NOTICE}`,
               const names = (step.toolCalls ?? []).map((c) => c.toolName)
               if (names.length === 0) return
               try {
-                ;(deps.notifyBatch ?? notifyToolBatch)(input.toolContext!.roomId, names)
+                (deps.notifyBatch ?? notifyToolBatch)(input.toolContext!.roomId, names)
               } catch {
                 // Observing a batch must never fail the turn.
               }
