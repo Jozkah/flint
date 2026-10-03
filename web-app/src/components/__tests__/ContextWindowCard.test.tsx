@@ -76,4 +76,65 @@ describe('ContextWindowCard', () => {
     render(<ContextWindowCard {...local} autoCompactOn={false} onCompact={() => {}} />)
     expect(screen.getByTestId('until-compact').textContent).toBe('Auto-compact is off')
   })
+
+  describe('how full the window is', () => {
+    const width = (el: Element | null) =>
+      Number.parseFloat((el as HTMLElement).style.width)
+
+    it('scales every kind to the window, so the unused part is what is left grey', () => {
+      render(<ContextWindowCard {...local} />)
+      const bar = screen.getByTestId('context-bar')
+      const used = Array.from(bar.querySelectorAll('[data-segment]'))
+        .filter((el) => el.getAttribute('data-segment') !== 'buffer')
+        .reduce((sum, el) => sum + width(el), 0)
+      // 10K used of a 100K window: a tenth of the bar, not all of it.
+      expect(used).toBeCloseTo(10, 1)
+      expect(used).toBeLessThan(100)
+    })
+
+    it('does not read as full when the window is not known, and says why', () => {
+      render(<ContextWindowCard segments={segments} usedTokens={10000} />)
+      expect(screen.getByTestId('window-unknown').textContent).toContain(
+        'not how full it is'
+      )
+      expect(
+        (screen.getByTestId('context-bar') as HTMLElement).style.maskImage
+      ).toContain('linear-gradient')
+    })
+
+    it('says nothing about an unknown window when it is known', () => {
+      render(<ContextWindowCard {...local} />)
+      expect(screen.queryByTestId('window-unknown')).toBeNull()
+      expect((screen.getByTestId('context-bar') as HTMLElement).style.maskImage).toBeFalsy()
+    })
+  })
+
+  describe('how old the figures are', () => {
+    const now = Date.UTC(2026, 9, 3, 12, 0, 0)
+
+    it('says so for a request sent hours ago', () => {
+      render(<ContextWindowCard {...local} updatedAt={now - 2 * 3_600_000} now={now} />)
+      expect(screen.getByTestId('context-age').textContent).toBe(
+        'Last updated 2 hours ago. Send a message to refresh.'
+      )
+    })
+
+    it('counts minutes and days too', () => {
+      const { rerender } = render(
+        <ContextWindowCard {...local} updatedAt={now - 5 * 60_000} now={now} />
+      )
+      expect(screen.getByTestId('context-age').textContent).toContain('5 minutes ago')
+      rerender(<ContextWindowCard {...local} updatedAt={now - 3 * 86_400_000} now={now} />)
+      expect(screen.getByTestId('context-age').textContent).toContain('3 days ago')
+    })
+
+    it('stays quiet for a request that has just been sent, or one with no time', () => {
+      const { rerender } = render(
+        <ContextWindowCard {...local} updatedAt={now - 20_000} now={now} />
+      )
+      expect(screen.queryByTestId('context-age')).toBeNull()
+      rerender(<ContextWindowCard {...local} />)
+      expect(screen.queryByTestId('context-age')).toBeNull()
+    })
+  })
 })

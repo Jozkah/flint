@@ -71,4 +71,24 @@ describe('the window of a custom server', () => {
     renderHook(() => useTokensCount([reply]))
     expect(h.fetchWindow).not.toHaveBeenCalled()
   })
+
+  it('uses a window the user set for the model, before asking the server', () => {
+    const set = (v: unknown) =>
+      Object.assign(state.selectedModel, {
+        settings: { ctx_len: { controller_props: { value: v } } },
+      })
+    set(131072)
+    h.fetchWindow.mockReturnValue(new Promise(() => undefined))
+    const { result } = renderHook(() => useTokensCount([reply]))
+    expect(result.current.maxTokens).toBe(131072)
+    delete (state.selectedModel as Record<string, unknown>).settings
+  })
+
+  it('uses a window the provider listed for the model', () => {
+    Object.assign(state.selectedModel, { max_model_len: 245000 })
+    h.fetchWindow.mockReturnValue(new Promise(() => undefined))
+    const { result } = renderHook(() => useTokensCount([reply]))
+    expect(result.current.maxTokens).toBe(245000)
+    delete (state.selectedModel as Record<string, unknown>).max_model_len
+  })
 })
