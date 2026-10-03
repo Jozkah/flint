@@ -228,3 +228,33 @@ describe('the computer’s other prompts and a stopped run', () => {
     )
   })
 })
+
+describe('transcript content besides text', () => {
+  it('a chat reply shows its reasoning, its tool calls with their result, and why it failed', async () => {
+    useFixtures({
+      'thread.messages': {
+        messages: [
+          { id: 'u1', role: 'user', text: 'What is in the picture?', createdAt: 1, attachments: [{ name: 'radar.png', kind: 'image' }] },
+          {
+            id: 'a1',
+            role: 'assistant',
+            text: 'A radar sweep.',
+            createdAt: 2,
+            reasoning: 'I should look at the image first.',
+            tools: [{ id: 't1', name: 'web_search', kind: 'web', status: 'done', arg: 'radar', input: '{"q":"radar"}', output: '3 results' }],
+            notes: [{ kind: 'error', text: 'The reply failed: rate limited' }],
+          },
+        ],
+        start: 0,
+        total: 2,
+      },
+    })
+    show({ name: 'chat', id: 'c1' })
+    expect(await screen.findByText('radar.png', {}, T)).toBeInTheDocument()
+    expect(screen.getByTestId('reasoning')).toHaveTextContent('I should look at the image first.')
+    expect(screen.getByTestId('transcript-note')).toHaveTextContent('The reply failed: rate limited')
+    fireEvent.click(within(screen.getByTestId('tool-step')).getByRole('button'))
+    expect(screen.getByTestId('tool-input')).toHaveTextContent('{"q":"radar"}')
+    expect(screen.getByTestId('tool-output')).toHaveTextContent('3 results')
+  })
+})

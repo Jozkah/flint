@@ -153,7 +153,7 @@ export default function Chat({ id }: { id: string }) {
         {allMessages.map((m) =>
           m.role === 'user' ? (
             <Fragment key={m.id}>
-              <UserBubble text={m.text} />
+              <UserBubble text={m.text} attachments={m.attachments} />
               <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
             </Fragment>
           ) : m.role === 'assistant' ? (

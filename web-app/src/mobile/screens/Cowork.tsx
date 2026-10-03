@@ -4,7 +4,7 @@ import { Composer } from '../shell/Composer'
 import { accessLabel, modeLabel } from '../shell/labels'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
-import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
+import { AssistantHeader, Notes, Prose, Reasoning, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
 import { AskCard } from '../ui/AskCard'
 import { PromptCard } from '../ui/PromptCard'
@@ -137,18 +137,20 @@ export default function Cowork({ id }: { id: string }) {
           </button>
         )}
         {messages.map((m) => {
-          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />
+          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} attachments={m.attachments} />
           if (m.role !== 'assistant') return null
           const isLast = m.id === lastAssistant
           return (
             <div key={m.id} style={{ display: 'contents' }}>
-              {m.text && (
+              {(m.text || m.reasoning) && (
                 <div className="msg">
                   <AssistantHeader model={d?.model?.id} at={m.createdAt} />
-                  <Prose text={m.text} />
+                  <Reasoning text={m.reasoning} />
+                  {m.text && <Prose text={m.text} />}
                 </div>
               )}
               {m.tools && m.tools.length > 0 && <ToolTimeline steps={m.tools} />}
+              <Notes items={m.notes} />
               {isLast && mine.map((a) => <ApprovalCard key={a.requestId} a={a} />)}
             </div>
           )

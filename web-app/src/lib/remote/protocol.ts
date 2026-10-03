@@ -74,7 +74,17 @@ export type RemoteToolStep = {
   arg?: string
   /** Where it came from: Workspace, Web, `MCP · github`. */
   origin?: string
+  /** What it was called with and what came back, cut to a phone-sized
+   * length. Stored messages only; a live step carries neither. */
+  input?: string
+  output?: string
 }
+
+/** A file sent with a message: its name and kind, never its bytes. */
+export type RemoteAttachment = { name: string; kind: 'image' | 'audio' | 'video' | 'file' }
+
+/** A line the desktop draws in the transcript that is not a message. */
+export type RemoteNote = { kind: 'compaction' | 'stopped' | 'answered' | 'error'; text: string }
 
 export type RemoteMessage = {
   id: string
@@ -88,8 +98,12 @@ export type RemoteMessage = {
   /** Room speaker's role and model, when known. */
   authorRole?: string
   authorModel?: string
-  /** Tool calls the message made, in order (Cowork). */
+  /** Tool calls the message made, in order. */
   tools?: RemoteToolStep[]
+  /** The model's reasoning before the reply, cut to a phone-sized length. */
+  reasoning?: string
+  attachments?: RemoteAttachment[]
+  notes?: RemoteNote[]
   /** A reply's footer facts, as the desktop's reply row shows them. */
   meta?: ReplyMeta
   /**

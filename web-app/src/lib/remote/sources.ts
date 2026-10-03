@@ -32,7 +32,8 @@ import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { buildBootAppearance } from '@/lib/bootAppearance'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { uiMessageText, type RemoteSources } from './handlers'
-import { approvalOf, coworkDetailOf, roomDetailOf, toolStepsOf } from './details'
+import { approvalOf, coworkDetailOf, messageExtrasOf, roomDetailOf, toolStepsOf } from './details'
+import { convertThreadMessageToUIMessage } from '@/lib/messages'
 import { appAsks } from './appAsks'
 import { appPrompts } from './appPrompts'
 import { isInterrupted } from '@/lib/coworkInflight'
@@ -127,6 +128,22 @@ export function coworkTurnsOf(id: string) {
   }
 }
 
+/** Why a chat reply failed, in the provider's words when it gave any. */
+function chatErrorText(m: ThreadMessage): string {
+  const meta = (m.metadata ?? {}) as { error?: unknown; errorMessage?: unknown }
+  const said =
+    typeof meta.error === 'string'
+      ? meta.error
+      : typeof meta.errorMessage === 'string'
+        ? meta.errorMessage
+        : typeof (meta.error as { message?: unknown } | undefined)?.message === 'string'
+          ? ((meta.error as { message: string }).message)
+          : ''
+  const code = m.error_code ? String(m.error_code) : ''
+  const text = said || code
+  return text ? `The reply failed: ${text.slice(0, 300)}` : 'The reply failed'
+}
+
 function threadMessageText(m: ThreadMessage): string {
   return (m.content ?? [])
     .map((c) => removeReasoningContent(c.text?.value ?? ''))
@@ -211,6 +228,13 @@ export const appSources: RemoteSources = {
     const branched = hasBranching(stored)
     return messages.map((m): RemoteMessage => {
       const info = branched ? getVersionInfo(stored, m) : undefined
+      // The message as the desktop draws it: its tool calls, its reasoning,
+      // the files sent with it.
+      const ui = convertThreadMessageToUIMessage(m)
+      const tools = m.role === 'assistant' ? toolStepsOf(ui) : []
+      const extras = messageExtrasOf(ui)
+      const failed = String(m.status) === 'error'
+      const notes = [...(extras.notes ?? []), ...(failed ? [{ kind: 'error' as const, text: chatErrorText(m) }] : [])]
       return {
         id: m.id,
         role: m.role as RemoteMessage['role'],
@@ -218,6 +242,10 @@ export const appSources: RemoteSources = {
         createdAt: ms(m.created_at),
         ...(m.role === 'assistant' ? replyMetaOf(m) : {}),
         ...(info && info.count > 1 ? { versions: info } : {}),
+        ...(tools.length ? { tools } : {}),
+        ...(extras.reasoning ? { reasoning: extras.reasoning } : {}),
+        ...(extras.attachments ? { attachments: extras.attachments } : {}),
+        ...(notes.length ? { notes } : {}),
       }
     })
   },
@@ -238,6 +266,7 @@ export const appSources: RemoteSources = {
         text: uiMessageText(m),
         createdAt: session.updated,
         ...(tools.length ? { tools } : {}),
+        ...messageExtrasOf(m),
       }
     })
   },
