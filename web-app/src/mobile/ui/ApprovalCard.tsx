@@ -18,9 +18,23 @@ export function ApprovalCard({ a }: { a: RemoteApproval }) {
       <div className="aph">
         <span>Approval needed</span>
         <span className="aptool">{a.toolName}</span>
+        {a.origin && <span className="apfrom">from {a.origin}</span>}
       </div>
       <div className="apt">{a.title}</div>
       {a.subject && <div className="apcmd">{a.subject}</div>}
+      {a.preview && (
+        <details className="apdiff" data-testid="approval-diff">
+          <summary>What would change</summary>
+          <pre>
+            {a.preview.split('\n').map((line, i) => (
+              <span key={i} className={line.startsWith('+') ? 'add' : line.startsWith('-') ? 'del' : undefined}>
+                {line}
+                {'\n'}
+              </span>
+            ))}
+          </pre>
+        </details>
+      )}
       {(a.why || a.consequences.length > 0) && (
         <dl className="apdl">
           {a.why && (

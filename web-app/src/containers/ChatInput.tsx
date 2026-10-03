@@ -125,7 +125,6 @@ import { useAttachments } from '@/hooks/useAttachments'
 import { toast } from 'sonner'
 import { requestChatCompaction } from '@/lib/chatCompaction'
 import { isPlatformTauri } from '@/lib/platform/utils'
-import { shouldShowTokenCounter } from '@/lib/tokenCounterVisibility'
 import { useAttachmentIngestionPrompt } from '@/hooks/useAttachmentIngestionPrompt'
 import {
   NEW_THREAD_ATTACHMENT_KEY,
@@ -353,7 +352,6 @@ const videoMimeForExt = (ext: string | undefined): string => {
 
 const ChatInput = memo(function ChatInput({
   className,
-  initialMessage,
   projectId,
   projectAssistantId,
   onSubmit,
@@ -873,17 +871,9 @@ const ChatInput = memo(function ChatInput({
         }
       : undefined)
 
-  const tokenCounterVisible =
-    !hideTokenCounter &&
-    shouldShowTokenCounter({
-      hasSelectedModel: !!selectedModel,
-      isAgentMode: effectiveAgentMode,
-      isInitialMessage: !!initialMessage,
-      hasMessages: (threadMessages?.length ?? 0) > 0,
-      hasPromptText: prompt.trim().length > 0,
-      hasReportedUsage:
-        (tokenSource?.usage?.totalTokens ?? 0) > 0 || !!tokenSource?.contextError,
-    })
+  // Always there, so its slot never shifts the controls beside it; with
+  // nothing counted yet it is an empty ring.
+  const tokenCounterVisible = !hideTokenCounter
   const [selectedAssistantId, setSelectedAssistantId] = useState<
     string | undefined
   >(loading ? undefined : projectAssistantId || currentAssistant?.id || '')

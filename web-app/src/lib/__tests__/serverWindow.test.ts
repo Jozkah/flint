@@ -136,6 +136,15 @@ describe('reading a server window', () => {
       )
     })
 
+    it('probes a bare hostname too: a LAN box named by the user, not a hosted service', async () => {
+      h.fetch.mockImplementation((url: string) =>
+        url.endsWith('/props') ? answer({}, false) : answer(list)
+      )
+      expect(
+        await fetchServerWindow('http://v100:8559/v1', 'qwen3.8-flash-next')
+      ).toBe(245000)
+    })
+
     it('keeps one answer per model when a box serves several', async () => {
       h.fetch.mockImplementation((url: string) =>
         url.endsWith('/props') ? answer({}, false) : answer(list)
