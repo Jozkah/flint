@@ -2,7 +2,7 @@ import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markConversationOpened } from '@/lib/messageEntry'
-import { useRemoteComposer } from '@/lib/remote/composer'
+import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
@@ -2273,6 +2273,9 @@ export function ThreadConversation({
   )
 
   // Handle delete message
+  // A paired phone regenerates and edits through these same handlers.
+  useRemoteChatActions(threadId, { regenerate: handleRegenerate, edit: handleEditMessage })
+
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
       // Re-link what hangs below the message before it goes. Deleting only the

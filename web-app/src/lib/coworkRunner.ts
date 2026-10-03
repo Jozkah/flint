@@ -588,6 +588,11 @@ export type StreamSink = {
   onToolStart: (toolCallId: string, toolName: string) => void
   onToolArgsDelta: (toolCallId: string, delta: string) => void
   onToolCall: (call: PendingToolCall) => void
+  /**
+   * Any generated output arrived: text, reasoning or tool-call arguments. The
+   * span between the first and last is what a generation speed divides by.
+   */
+  onOutput?: (chars: number) => void
 }
 
 function stopReason(signal: AbortSignal): unknown {
@@ -669,12 +674,17 @@ export async function consumeStep(
       switch (chunk.type) {
         case 'text-delta':
           result.text += chunk.delta
+          sink.onOutput?.(chunk.delta.length)
           sink.onText(chunk.delta)
+          break
+        case 'reasoning-delta':
+          sink.onOutput?.(chunk.delta?.length ?? 0)
           break
         case 'tool-input-start':
           sink.onToolStart(chunk.toolCallId, chunk.toolName)
           break
         case 'tool-input-delta':
+          sink.onOutput?.(chunk.inputTextDelta?.length ?? 0)
           sink.onToolArgsDelta(chunk.toolCallId, chunk.inputTextDelta)
           break
         case 'tool-input-available': {

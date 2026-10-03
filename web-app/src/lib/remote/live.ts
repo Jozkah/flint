@@ -39,7 +39,11 @@ const FAILED_STATES = new Set(['failed', 'refused', 'cancelled', 'stale'])
 export function coworkToolStep(turn: CoworkTurn, awaiting: ReadonlySet<string>): RemoteToolStep | null {
   if (turn.role !== 'tool' || !turn.callId) return null
   const name = turn.name ?? 'tool'
-  const isAwaiting = awaiting.has(turn.callId) || turn.toolState === 'awaiting-permission'
+  const isAwaiting =
+    awaiting.has(turn.callId) ||
+    turn.toolState === 'awaiting-permission' ||
+    // A question the run is waiting on: the call is open until it is answered.
+    (name === 'ask' && turn.status !== 'done' && !turn.isError)
   const failed = turn.isError === true || FAILED_STATES.has(turn.toolState ?? '')
   const status: RemoteToolStep['status'] = isAwaiting
     ? 'awaiting'

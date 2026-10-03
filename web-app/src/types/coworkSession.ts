@@ -119,6 +119,8 @@ export type CoworkTurn = {
     promptSpeed?: number
     tokenCount?: number
     durationMs?: number
+    /** Where the speed came from: the server, measured, or estimated. */
+    source?: 'server' | 'measured' | 'estimated'
   }
   /**
    * Questions the run asked at this point in the conversation.

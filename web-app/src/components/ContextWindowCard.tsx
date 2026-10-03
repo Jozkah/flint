@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn, formatTokenCount } from '@/lib/utils'
 import type { ContextSegment } from '@/lib/contextBreakdown'
+import { contextUsage } from '@/lib/contextUsage'
 
 /** How long ago, in words: "2 hours ago". Nothing under a minute. */
 function ago(ms: number): string | null {
@@ -65,13 +66,14 @@ export function ContextWindowCard({
   const [expanded, setExpanded] = useState(defaultExpanded)
   const [open, setOpen] = useState<Record<string, boolean>>({})
 
-  const hasWindow = !!windowTokens && windowTokens > 0
+  const usage = contextUsage(usedTokens, windowTokens, autoCompactOn ? autoCompactBuffer : 0)
+  const hasWindow = usage.known
   const buffer = hasWindow && autoCompactOn ? (autoCompactBuffer ?? 0) : 0
-  const free = hasWindow ? Math.max(0, windowTokens - usedTokens - buffer) : 0
-  // The bar's whole: the window, or (no window known) what is in use.
-  const whole = hasWindow ? Math.max(windowTokens, usedTokens) : Math.max(usedTokens, 1)
+  const free = hasWindow ? Math.max(0, usage.window! - usedTokens - buffer) : 0
+  // The legend's whole: the window, or (no window known) what is in use.
+  const whole = hasWindow ? Math.max(usage.window!, usedTokens) : Math.max(usedTokens, 1)
   const untilCompact =
-    hasWindow && autoCompactOn ? Math.max(0, windowTokens - buffer - usedTokens) : null
+    hasWindow && autoCompactOn ? Math.max(0, usage.window! - buffer - usedTokens) : null
 
   const rows: Row[] = [
     ...segments.map((s) => ({
@@ -90,7 +92,6 @@ export function ContextWindowCard({
   ]
 
   const age = updatedAt ? ago(now - updatedAt) : null
-  const usedPct = hasWindow ? Math.min(100, (usedTokens / windowTokens) * 100) : undefined
 
   return (
     <div className="text-xs" data-testid="context-window-card">
@@ -98,13 +99,11 @@ export function ContextWindowCard({
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-0.5 px-3 pt-3 text-left"
+        className="flex w-full items-center justify-between gap-x-4 px-4 pt-4 text-left"
       >
-        <span className="shrink-0 whitespace-nowrap font-medium text-foreground">Context window</span>
+        <span className="shrink-0 whitespace-nowrap text-xs font-medium text-foreground">Context window</span>
         <span className="ml-auto flex items-center gap-1 whitespace-nowrap tabular-nums text-muted-foreground">
-          {hasWindow
-            ? `${formatTokenCount(usedTokens)} / ${formatTokenCount(windowTokens)} (${usedPct!.toFixed(0)}%)`
-            : `${formatTokenCount(usedTokens)} tokens`}
+          {hasWindow ? usage.label : `${formatTokenCount(usedTokens)} tokens`}
           <ChevronDown
             className={cn('size-3.5 transition-transform', expanded ? '' : '-rotate-90')}
             aria-hidden
@@ -112,33 +111,34 @@ export function ContextWindowCard({
         </span>
       </button>
 
-      <div className="px-3 pt-2">
+      <div className="px-4 pt-3">
         <div
-          className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted"
+          className={cn(
+            'relative flex h-1.5 w-full overflow-hidden rounded-full bg-track',
+            // Without a window there is nothing to be a fraction of: a hatched
+            // empty track, never a full one.
+            !hasWindow &&
+              'bg-[repeating-linear-gradient(135deg,transparent_0_3px,var(--border-strong)_3px_5px)]'
+          )}
           role="img"
-          aria-label="Context window usage by kind"
+          aria-label={`Context window usage by kind: ${usage.label}`}
           data-testid="context-bar"
-          // No window known: the bar shows what the used part is made of, and
-          // fades out at the end rather than reading as a full window.
-          style={
-            hasWindow
-              ? undefined
-              : { maskImage: 'linear-gradient(to right, black 60%, transparent)' }
-          }
+          data-window={hasWindow ? 'known' : 'unknown'}
         >
-          {segments.map((s) => (
-            <div
-              key={s.id}
-              className={cn('h-full shrink-0', s.color, !hasWindow && 'opacity-60')}
-              style={{ width: `${(s.tokens / whole) * 100}%` }}
-              title={`${s.label}: ${formatTokenCount(s.tokens)}`}
-              data-segment={s.id}
-            />
-          ))}
+          {hasWindow &&
+            segments.map((s) => (
+              <div
+                key={s.id}
+                className={cn('h-full shrink-0', s.color)}
+                style={{ width: `${usage.share(s.tokens) * 100}%` }}
+                title={`${s.label}: ${formatTokenCount(s.tokens)}`}
+                data-segment={s.id}
+              />
+            ))}
           {buffer > 0 && (
             <div
               className="ml-auto h-full shrink-0 bg-zinc-500/60"
-              style={{ width: `${(buffer / whole) * 100}%` }}
+              style={{ width: `${usage.share(buffer) * 100}%` }}
               data-segment="buffer"
             />
           )}
@@ -146,7 +146,7 @@ export function ContextWindowCard({
       </div>
 
       {(untilCompact !== null || onCompact) && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-3 pt-3 text-muted-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-3 text-muted-foreground">
           <span data-testid="until-compact" className="min-w-0">
             {untilCompact !== null
               ? `${formatTokenCount(untilCompact)} until auto-compact`
@@ -167,14 +167,14 @@ export function ContextWindowCard({
       )}
 
       {expanded && (
-        <ul className="mt-2 space-y-0.5 border-t border-border px-3 pt-2" data-testid="context-legend">
+        <ul className="mt-3 space-y-2 border-t border-border px-4 pt-3" data-testid="context-legend">
           {rows.map((row) => {
             const expandable = !!row.children && row.children.length > 0
             const isOpen = !!open[row.key]
             const share = row.tokens / whole
             return (
               <li key={row.key}>
-                <div className="flex items-center gap-2 py-0.5">
+                <div className="flex items-center gap-2">
                   <span
                     aria-hidden
                     className={cn('size-2.5 shrink-0 rounded-[3px]', row.color)}
@@ -224,25 +224,19 @@ export function ContextWindowCard({
 
       {!hasWindow && (
         <p
-          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
+          className="px-4 pt-3 text-[11px] leading-snug text-muted-foreground"
           data-testid="window-unknown"
         >
-          This server does not say how large its window is, so the bar shows
-          what the used part is made of, not how full it is.
+          This server does not report its window size.
         </p>
       )}
 
-      {age && (
-        <p
-          className="px-3 pt-2 text-[10.5px] leading-snug text-muted-foreground"
-          data-testid="context-age"
-        >
-          Last updated {age}. Send a message to refresh.
-        </p>
-      )}
-
-      <p className="px-3 pb-2 pt-2 text-[10.5px] leading-snug text-muted-foreground">
-        Estimated from what the last request carried (about 4 characters per token).
+      <p
+        className="px-4 pb-4 pt-3 text-[11px] leading-snug text-muted-foreground"
+        title="Estimated from what the last request carried, at about 4 characters per token. Send a message to refresh."
+      >
+        Estimated
+        {age && <span data-testid="context-age">{` · updated ${age}`}</span>}
       </p>
     </div>
   )
