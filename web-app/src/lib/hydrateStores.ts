@@ -14,6 +14,7 @@ import { useProxyConfig, seedProxyPassword } from '@/hooks/useProxyConfig'
 import { useVulkan } from '@/hooks/useVulkan'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useModelOrder } from '@/hooks/useModelOrder'
+import { useModelFilter } from '@/hooks/useModelFilter'
 import { useDefaultEmbeddingModel } from '@/hooks/useDefaultEmbeddingModel'
 import { useAgentMode } from '@/hooks/useAgentMode'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
@@ -74,6 +75,7 @@ const secondaryStores = [
   useVulkan,
   useFavoriteModel,
   useModelOrder,
+  useModelFilter,
   useDefaultEmbeddingModel,
   useAgentMode,
   useWebSearchConfig,

@@ -9,6 +9,8 @@ export type RemoteConfig = {
   port: number
   certPath: string | null
   keyPath: string | null
+  /** A DNS name of the user's own for this computer; phones connect to it. */
+  customHost?: string | null
   allowApprovals: boolean
   allowAlwaysAllow: boolean
   /** Largest file a phone may upload, MiB. */

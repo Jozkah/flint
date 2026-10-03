@@ -107,6 +107,9 @@
   "editModel": {
     "title": "Edit Model: {{modelId}}",
     "description": "Configure model capabilities by toggling the options below.",
+    "inputCost": "Input cost (USD per 1M tokens)",
+    "outputCost": "Output cost (USD per 1M tokens)",
+    "costHelp": "Leave blank to use the built-in price for well-known models; local models are free.",
     "displayName": "Display Name",
     "displayNamePlaceholder": "Enter a display name",
     "displayNameHelp": "Shown wherever this model is listed. Requests still use the original identifier, {{modelId}}.",

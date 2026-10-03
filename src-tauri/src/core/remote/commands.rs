@@ -66,7 +66,8 @@ impl<R: Runtime> Frontend for TauriFrontend<R> {
 #[serde(rename_all = "camelCase")]
 pub struct ServeInfo {
     pub address: String,
-    /// What a phone should connect to: the certificate's DNS name, or the IP.
+    /// What a phone should connect to: the custom host name, else the
+    /// certificate's DNS name, else the IP.
     pub host: String,
     pub port: u16,
     pub https: bool,
@@ -189,6 +190,7 @@ async fn start(
     let ip = select_bind_ip(iface, ts, lan)?;
     let tls_dir = state.dir.join("tls");
     let custom = cfg.custom_cert();
+    let custom_host = cfg.custom_host();
     let ts_cert = if custom.is_none() && iface == Interface::Tailscale {
         let dir = tls_dir.clone();
         tauri::async_runtime::spawn_blocking(move || tls::tailscale_cert(&dir))
@@ -208,7 +210,11 @@ async fn start(
             let (c, k, name) = ts_cert.expect("planned from tailscale cert");
             Some(tls::load_pem(&c, &k, Some(name))?)
         }
-        TlsSource::SelfSigned => Some(tls::self_signed(&tls_dir, &ip.to_string())?),
+        TlsSource::SelfSigned => Some(tls::self_signed(
+            &tls_dir,
+            &ip.to_string(),
+            custom_host.as_deref(),
+        )?),
         TlsSource::None => None,
     };
     let hostname = loaded.as_ref().and_then(|l| l.hostname.clone());
@@ -218,12 +224,14 @@ async fn start(
         state.hub.clone(),
         addr,
         loaded.map(|l| l.config),
-        hostname.clone(),
+        hostname.iter().chain(&custom_host).cloned().collect(),
     )
     .await
     .map_err(|e| format!("Cannot listen on {addr}: {e}"))?;
     let https = source != TlsSource::None;
-    let host = hostname.unwrap_or_else(|| ip.to_string());
+    let host = custom_host
+        .or(hostname)
+        .unwrap_or_else(|| ip.to_string());
     let info = ServeInfo {
         address: ip.to_string(),
         base_url: format!(
@@ -293,7 +301,8 @@ pub async fn remote_set_config(
         || previous.interface != config.interface
         || previous.port != config.port
         || previous.cert_path != config.cert_path
-        || previous.key_path != config.key_path;
+        || previous.key_path != config.key_path
+        || previous.custom_host() != config.custom_host();
     let not_running = state.rt.lock().await.server.is_none();
     if listener_changed || (config.enabled && not_running) {
         apply(&state).await;

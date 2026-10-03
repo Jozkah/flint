@@ -341,7 +341,7 @@ jobs:
         if: inputs.public_provider == 'github'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        uses: actions/upload-release-asset@64e5e85fc528f162d7ba7ce2d15a3bb67efb3d80 # v1.0.1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         with:
           upload_url: ${{ inputs.upload_url }}
           asset_path: ./src-tauri/target/release/bundle/appimage/${{ steps.packageinfo.outputs.APPIMAGE_FILE_NAME }}
@@ -352,7 +352,7 @@ jobs:
         if: inputs.public_provider == 'github'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        uses: actions/upload-release-asset@64e5e85fc528f162d7ba7ce2d15a3bb67efb3d80 # v1.0.1
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1.0.2
         with:
           upload_url: ${{ inputs.upload_url }}
           asset_path: ./src-tauri/target/release/bundle/deb/${{ steps.packageinfo.outputs.DEB_FILE_NAME }}

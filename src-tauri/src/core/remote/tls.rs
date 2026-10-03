@@ -66,21 +66,29 @@ pub fn load_pem(cert: &Path, key: &Path, hostname: Option<String>) -> Result<Loa
     })
 }
 
-/// The self-signed certificate for `ip`, made once and reused while the
-/// address stays the same (so a phone that trusted it keeps trusting it).
-pub fn self_signed(dir: &Path, ip: &str) -> Result<LoadedTls, String> {
+/// The self-signed certificate for `ip` (and `host`, the custom host name,
+/// when set), made once and reused while both stay the same (so a phone that
+/// trusted it keeps trusting it).
+pub fn self_signed(dir: &Path, ip: &str, host: Option<&str>) -> Result<LoadedTls, String> {
     let cert_path = dir.join("lan-cert.pem");
     let key_path = dir.join("lan-key.pem");
     let ip_path = dir.join("lan-cert.ip");
     let current = std::fs::read_to_string(&ip_path).ok();
-    if current.as_deref() != Some(ip) || !cert_path.exists() || !key_path.exists() {
-        let names = vec![ip.to_string(), "localhost".to_string()];
+    // Without a host name this is the bare address, as before, so existing
+    // certificates stay in use.
+    let subject = match host {
+        Some(h) => format!("{ip} {h}"),
+        None => ip.to_string(),
+    };
+    if current.as_deref() != Some(subject.as_str()) || !cert_path.exists() || !key_path.exists() {
+        let mut names = vec![ip.to_string(), "localhost".to_string()];
+        names.extend(host.map(str::to_string));
         let generated = rcgen::generate_simple_self_signed(names).map_err(|e| e.to_string())?;
         write_private(&cert_path, generated.cert.pem().as_bytes()).map_err(|e| e.to_string())?;
         write_private(&key_path, generated.key_pair.serialize_pem().as_bytes())
             .map_err(|e| e.to_string())?;
-        write_private(&ip_path, ip.as_bytes()).map_err(|e| e.to_string())?;
-        log::info!("remote: generated a self-signed certificate for {ip}");
+        write_private(&ip_path, subject.as_bytes()).map_err(|e| e.to_string())?;
+        log::info!("remote: generated a self-signed certificate for {subject}");
     }
     load_pem(&cert_path, &key_path, None)
 }
@@ -91,7 +99,7 @@ const TAILSCALE_CERT_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 3600);
 
 /// The MagicDNS name of this machine, without the trailing dot.
 fn tailscale_dns_name() -> Option<String> {
-    let out = std::process::Command::new("tailscale")
+    let out = super::config::tailscale_command()
         .args(["status", "--json"])
         .output()
         .ok()?;
@@ -124,7 +132,7 @@ pub fn tailscale_cert(dir: &Path) -> Option<(PathBuf, PathBuf, String)> {
     let same_name = std::fs::read_to_string(&name_path).ok().as_deref() == Some(name.as_str());
     if !(fresh && same_name && key.exists()) {
         std::fs::create_dir_all(dir).ok()?;
-        let status = std::process::Command::new("tailscale")
+        let status = super::config::tailscale_command()
             .arg("cert")
             .arg("--cert-file")
             .arg(&cert)

@@ -102,6 +102,27 @@ export const DialogEditModel = ({
     }
   }, [selectedModel])
 
+  const costText = (n?: number) => (typeof n === 'number' ? String(n) : '')
+  const [inputCost, setInputCost] = useState('')
+  const [outputCost, setOutputCost] = useState('')
+  useEffect(() => {
+    setInputCost(costText(selectedModel?.inputCostPerMillion))
+    setOutputCost(costText(selectedModel?.outputCostPerMillion))
+  }, [selectedModel?.id, selectedModel?.inputCostPerMillion, selectedModel?.outputCostPerMillion])
+  // Blank = unset; a non-number or negative is invalid.
+  const parseCost = (s: string): number | undefined | 'bad' => {
+    if (s.trim() === '') return undefined
+    const n = Number(s)
+    return Number.isFinite(n) && n >= 0 ? n : 'bad'
+  }
+  const inputParsed = parseCost(inputCost)
+  const outputParsed = parseCost(outputCost)
+  const costsValid = inputParsed !== 'bad' && outputParsed !== 'bad'
+  const costsChanged =
+    costsValid &&
+    (inputParsed !== selectedModel?.inputCostPerMillion ||
+      outputParsed !== selectedModel?.outputCostPerMillion)
+
   // Update model capabilities - only update local state
   const handleCapabilityChange = (capability: string, enabled: boolean) => {
     setCapabilities((prev) => ({
@@ -120,12 +141,12 @@ export const DialogEditModel = ({
     const nameChanged = displayName !== originalDisplayName
     const capabilitiesChanged =
       JSON.stringify(capabilities) !== JSON.stringify(originalCapabilities)
-    return nameChanged || capabilitiesChanged
+    return nameChanged || capabilitiesChanged || costsChanged
   }
 
   // Handle save changes
   const handleSaveChanges = async () => {
-    if (!selectedModel?.id || isLoading || !validation.ok) return
+    if (!selectedModel?.id || isLoading || !validation.ok || !costsValid) return
 
     setIsLoading(true)
     try {
@@ -146,6 +167,11 @@ export const DialogEditModel = ({
           .filter(([, isEnabled]) => isEnabled)
           .map(([capName]) => capName)
         modelUpdate._userConfiguredCapabilities = true
+      }
+
+      if (costsChanged) {
+        modelUpdate.inputCostPerMillion = inputParsed as number | undefined
+        modelUpdate.outputCostPerMillion = outputParsed as number | undefined
       }
 
       // Update the model in the provider models array
@@ -184,6 +210,8 @@ export const DialogEditModel = ({
       // Reset to original values when closing without saving
       setDisplayName(originalDisplayName)
       setCapabilities(originalCapabilities)
+      setInputCost(costText(selectedModel?.inputCostPerMillion))
+      setOutputCost(costText(selectedModel?.outputCostPerMillion))
     }
     setIsOpen(open)
   }
@@ -254,6 +282,46 @@ export const DialogEditModel = ({
                   : t('providers:editModel.displayNameDuplicate')}
               </span>
             )}
+          </p>
+        </div>
+
+        <div className="py-1">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="input-cost" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.inputCost')}
+              </label>
+              <Input
+                id="input-cost"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={inputCost}
+                onChange={(e) => setInputCost(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={inputParsed === 'bad'}
+              />
+            </div>
+            <div>
+              <label htmlFor="output-cost" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.outputCost')}
+              </label>
+              <Input
+                id="output-cost"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={outputCost}
+                onChange={(e) => setOutputCost(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={outputParsed === 'bad'}
+              />
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t('providers:editModel.costHelp')}
           </p>
         </div>
 
@@ -354,7 +422,7 @@ export const DialogEditModel = ({
         <div className={`flex justify-end ${STICKY_DIALOG_FOOTER}`}>
           <Button
             onClick={handleSaveChanges}
-            disabled={!hasUnsavedChanges() || !validation.ok || isLoading}
+            disabled={!hasUnsavedChanges() || !validation.ok || !costsValid || isLoading}
             size="sm"
             className="pointer-coarse:h-11"
           >

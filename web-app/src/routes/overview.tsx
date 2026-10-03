@@ -619,8 +619,7 @@ function Overview() {
   const now = Date.now()
   const current = useMemo(() => summarize(days, range, now), [days, range, now])
   const previous = useMemo(() => summarize(days, range, now - range * 86_400_000), [days, range, now])
-  const cmpLabel = range === 7 ? t('overview:vsLastWeek') : t('overview:vsLastMonth')
-  const showCost = current.cost > 0 || previous.cost > 0
+  const cmpLabel = range === 7 ? t('overview:vsLastWeek') : t('overview:vsLastMonth')
   const rangeLabel = range === 7 ? t('overview:lastWeek') : t('overview:last30')
   const rangeMenu = (variant: 'outline' | 'surface') => (
             <DropdownMenu>
@@ -678,13 +677,7 @@ function Overview() {
             {/* Sized by the column, not the window: three across only when
                 each card has room for its title, figure and sparkline. */}
             <div className="@container/kpis w-full">
-            <div
-              className={cn(
-                'grid w-full grid-cols-1 gap-4 @md/kpis:grid-cols-2',
-                // Four cards would leave one alone on a second row of three.
-                showCost ? '@5xl/kpis:grid-cols-4' : '@3xl/kpis:grid-cols-3'
-              )}
-            >
+            <div className="grid w-full grid-cols-1 gap-4 @md/kpis:grid-cols-2 @3xl/kpis:grid-cols-3">
               <Kpi
                 title={t('overview:tokens')}
                 icon="analytics"
@@ -694,17 +687,6 @@ function Overview() {
                 cmpLabel={cmpLabel}
                 delay={80}
               />
-              {showCost && (
-                <Kpi
-                  title={t('overview:cost')}
-                  icon="analytics"
-                  value={`$${current.cost.toFixed(2)}`}
-                  delta={change(current.cost, previous.cost)}
-                  series={current.series.map((d) => d.stats.cost ?? 0)}
-                  cmpLabel={cmpLabel}
-                  delay={110}
-                />
-              )}
               <Kpi
                 title={t('overview:speed')}
                 icon="zap"
@@ -715,6 +697,15 @@ function Overview() {
                 )}
                 cmpLabel={cmpLabel}
                 delay={140}
+              />
+              <Kpi
+                title={t('overview:cost')}
+                icon="analytics"
+                value={`$${current.cost.toFixed(current.cost < 1 ? 4 : 2)}`}
+                delta={change(current.cost, previous.cost)}
+                series={current.series.map((d) => d.stats.cost ?? 0)}
+                cmpLabel={cmpLabel}
+                delay={170}
               />
               <Kpi
                 title={t('overview:toolSuccess')}

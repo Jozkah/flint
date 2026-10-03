@@ -12,6 +12,7 @@ import {
 } from '@/lib/fallbackChain'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
+import { replyCost, resolvePricing } from '@/lib/modelPricing'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
 import {
@@ -2635,11 +2636,21 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
 
           // Counted for the Overview dashboard, on this computer only.
+          const pricedModel = useModelProvider
+            .getState()
+            .getProviderByName(providerId ?? '')
+            ?.models.find((m: Model) => m.id === modelId)
           useUsageStats.getState().recordGeneration({
             tokens: outputTokens,
             durationMs: tokenSpeed > 0 ? (outputTokens / tokenSpeed) * 1000 : 0,
-            model: modelId,
-            inputTokens: usage.inputTokens,
+            cost: replyCost(
+              resolvePricing(
+                providerId,
+                pricedModel ?? (modelId ? { id: modelId } : undefined)
+              ),
+              usage.inputTokens,
+              outputTokens
+            ),
           })
 
           // AH-083: where each carried memory was used -- now naming the
@@ -2987,7 +2998,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       parts.push(
         'When a file or folder outside the workspace is needed and a tool was',
         'refused for it, call request_access with the narrowest absolute path and',
-        'a one-sentence reason; the user decides. If it is granted, retry the',
+        'a one-sentence reason (access_mode "write" when you must create or change',
+        'files there, e.g. after a write or "Access is denied" failure); the user',
+        'decides. Ask instead of reporting the folder as read-only. If it is granted, retry the',
         'refused call. If it is denied, do not ask again for that path: offer',
         'another way (the user pastes or attaches it, or another source).'
       )

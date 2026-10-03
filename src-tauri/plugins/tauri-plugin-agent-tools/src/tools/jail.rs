@@ -1083,17 +1083,20 @@ pub fn unreachable_grant_note(policy: &Policy, output: &str) -> Option<String> {
     }
     Some(format!(
         "\n[sandbox: {} is attached read-only (Review only): shell commands can read and build \
-         from it but cannot write there, so a write fails with \"Access is denied\". Write in \
-         the session workspace instead; the user brings changes across with Review changes > \
-         Apply to folder, or switches the folder to Edit this folder. Do not retry the write \
-         there.]",
+         from it but cannot write there, so a write fails with \"Access is denied\". If the \
+         task needs to change files there, call request_access with access_mode \"write\" for \
+         the narrowest path and a one-sentence reason: the user answers, and on a grant you \
+         retry. If it is denied, write in the session workspace instead; the user brings \
+         changes across with Review changes > Apply to folder, or switches the folder to Edit \
+         this folder. Do not retry the write before it is granted.]",
         ro.join(", ")
     ))
 }
 
 /// What a model is told when granting access would fix the failure.
 pub const REQUEST_ACCESS_ADVICE: &str = " Call request_access with the narrowest required path \
-     and explain why access is needed. Do not retry the same command before it is granted.";
+     and explain why access is needed (access_mode \"write\" if the command must create or \
+     change files there). Do not retry the same command before it is granted.";
 
 /// The note appended to a failed sandboxed command, chosen by why it failed.
 ///

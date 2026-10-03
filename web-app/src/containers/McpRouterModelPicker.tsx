@@ -11,6 +11,8 @@ import { ChevronDown, X } from 'lucide-react'
 import ProvidersAvatar from '@/containers/ProvidersAvatar'
 import Capabilities from '@/containers/Capabilities'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
+import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
+import { ModelFilterButton } from '@/containers/ModelFilterButton'
 
 type Entry = {
   model: Model
@@ -49,6 +51,7 @@ export function McpRouterModelPicker({
   const [open, setOpen] = useState(false)
   const [searchValue, setSearchValue] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const hideProvider = useHideUnavailable()
 
   const availableModels = useMemo((): Entry[] => {
     // Dedupe by `${provider}:${modelId}` — provider model lists can carry
@@ -58,8 +61,15 @@ export function McpRouterModelPicker({
     const entries: Entry[] = []
     for (const p of providers) {
       if (!p.active) continue
+      const filteredOut = hideProvider(p)
       for (const m of p.models) {
         if (!isRouterModelSelectable(p, m)) continue
+        // The filter never hides the model in use.
+        if (
+          filteredOut &&
+          !(p.provider === selectedProvider && m.id === selectedModelId)
+        )
+          continue
         const key = `${p.provider}:${m.id}`
         if (seen.has(key)) continue
         seen.add(key)
@@ -77,7 +87,7 @@ export function McpRouterModelPicker({
       }
     }
     return entries
-  }, [providers])
+  }, [providers, hideProvider, selectedProvider, selectedModelId])
 
   const filteredModels = useMemo(() => {
     if (!searchValue.trim()) return availableModels
@@ -166,23 +176,22 @@ export function McpRouterModelPicker({
         sideOffset={8}
       >
         <div className="flex flex-col size-full">
-          <div className="relative border-b border-border p-2">
+          <div className="flex items-center gap-1 border-b border-border p-2">
             <input
               ref={searchInputRef}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full bg-transparent pr-8 text-base font-normal outline-0 md:text-sm"
+              className="min-w-0 flex-1 bg-transparent text-base font-normal outline-0 md:text-sm"
             />
             {searchValue.length > 0 && (
-              <div className="absolute right-2 top-0 bottom-0 flex items-center justify-center">
-                <X
-                  size={16}
-                  className="text-muted-foreground cursor-pointer"
-                  onClick={() => setSearchValue('')}
-                />
-              </div>
+              <X
+                size={16}
+                className="shrink-0 text-muted-foreground cursor-pointer"
+                onClick={() => setSearchValue('')}
+              />
             )}
+            <ModelFilterButton />
           </div>
 
           <div className="max-h-[300px] overflow-y-auto">

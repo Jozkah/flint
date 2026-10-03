@@ -8,6 +8,8 @@ import { getProviderTitle } from '@/lib/utils'
 import { PickerDropdown, type PickerGroup } from './PickerDropdown'
 import { ModelAvatar } from '@/containers/ModelAvatar'
 import { VOICE_MODEL_ID } from '@/lib/voice/voiceModel'
+import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
+import { ModelFilterToggle } from '@/containers/ModelFilterButton'
 
 type ProviderLike = Pick<ModelProvider, 'provider' | 'models'> &
   Partial<Pick<ModelProvider, 'api_key' | 'api_key_fallbacks'>>
@@ -67,12 +69,23 @@ export function RoomModelSelect({
   // The same set of models the Home/Cowork model bar offers: active providers
   // that `offersModels` would surface, with embedding models excluded. Shared
   // so the Rooms picker cannot drift from the rest of the app.
+  const hideProvider = useHideUnavailable()
   const groups = providers
     .filter((p) => p.active && offersModels(p))
-    .map((p) => ({
-      provider: p,
-      models: p.models.filter((m) => !m.embedding && m.id !== VOICE_MODEL_ID),
-    }))
+    .map((p) => {
+      const filteredOut = hideProvider(p)
+      return {
+        provider: p,
+        models: p.models.filter(
+          (m) =>
+            !m.embedding &&
+            m.id !== VOICE_MODEL_ID &&
+            // The filter never hides the model already chosen.
+            (!filteredOut ||
+              (value?.provider === p.provider && value.id === m.id))
+        ),
+      }
+    })
     .filter((g) => g.models.length > 0)
 
   const missing = value && !findModel(providers, value)
@@ -132,6 +145,7 @@ export function RoomModelSelect({
       groups={pickerGroups}
       placeholder={groups.length === 0 ? t('rooms:model.noProviders') : t('rooms:model.placeholder')}
       searchPlaceholder={t('rooms:model.search')}
+      searchAction={<ModelFilterToggle />}
       disabled={disabled}
       invalid={invalid}
       describedBy={describedBy}

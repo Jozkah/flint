@@ -37,7 +37,7 @@ jobs:
         working-directory: website
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -50,7 +50,7 @@ jobs:
           SITE_BASE: /flint/
           SITE_URL: https://jozkah.github.io/flint/
       - run: npm test
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: website/dist
