@@ -11,10 +11,10 @@ The assistant can draw an interactive HTML/SVG widget inline in a conversation
 | `visualize_read_me` | `modules`: any of `diagram`, `mockup`, `chart`, `interactive`, `art` | The design guide (core plus the requested modules) |
 | `show_widget` | `title`, `widget_code` (HTML fragment), `loading_messages` (0 to 4 short lines) | `Widget rendered: <title>, N chars.` |
 
-Both are renderer-side tools. They are offered in plain chat and in Cowork when
-Settings > Agent tools > Behaviour > Visual widgets is on (default on), whether
-or not the agent tools are on. Rooms do not offer them (their transcript has no
-widget card yet).
+Both are renderer-side tools. They are offered in plain chat, in Cowork and in
+Rooms (the card is drawn in the Rooms transcript) when Settings > Agent tools >
+Behaviour > Visual widgets is on (default on), whether or not the agent tools
+are on.
 
 The guide must be read once per conversation. If the model forgets,
 `show_widget` still draws, and its short result reminds the model to read it.
@@ -68,8 +68,12 @@ the model read. Treat it as hostile code that the user did not review.
   4 loading messages; an inline widget grows to the configured height
   (default 640 px, 240 to 1600) then scrolls; off-screen widgets are unmounted
   after a pause and show a placeholder with Re-run.
-- **Streaming.** While arguments stream, only complete markup is painted (at most
-  every 300 ms) as inert HTML. Scripts run once, when the call is complete.
+- **Streaming.** While arguments stream (chat and Cowork), only complete markup is
+  painted (at most every 300 ms) as inert HTML. Scripts run once, when the call
+  is complete.
+- **Freeze watchdog.** The shell sends a heartbeat. A frame silent for 10 seconds
+  (a script stuck in a loop) is replaced by a "Widget stopped responding"
+  placeholder with Re-run.
 - **Document-level tags.** `<html>`, `<head>`, `<body>`, `<meta>`, `<base>` and
   `<link>` are stripped from the fragment (a meta refresh would navigate the frame).
 
@@ -83,8 +87,9 @@ the model read. Treat it as hostile code that the user did not review.
 - The widget cannot be proven to be benign: it can show misleading UI. It cannot
   act for the user except through a user-gesture `sendPrompt`, which lands as a
   visible message the user can see and stop.
-- CPU: a widget can spin a script loop. It is confined to its frame's renderer
-  but not time-limited.
+- CPU: a widget can spin a script loop. It is confined to its frame's renderer;
+  the freeze watchdog removes the frame after 10 seconds but cannot stop the
+  loop sooner.
 
 ## Settings
 
