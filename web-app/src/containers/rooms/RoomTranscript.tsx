@@ -29,6 +29,8 @@ import {
 import { RoomMessageText } from './RoomMessageText'
 import { RoomAvatar } from './RoomAvatar'
 import { CompactionDivider } from '@/containers/CompactionDivider'
+import { WidgetCard } from '@/containers/message/WidgetCard'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 
 type T = (key: string, options?: Record<string, unknown>) => string
 
@@ -387,6 +389,10 @@ function ToolTrace({ calls, t }: { calls: RoomToolActivity[]; t: T }) {
   )
 }
 
+/** A drawn widget is shown as a card, not folded into the tool trace. */
+const isWidgetCall = (c: RoomToolActivity): boolean =>
+  c.name === SHOW_WIDGET_TOOL && c.ok
+
 function MessageBody({
   message,
   tally,
@@ -400,9 +406,25 @@ function MessageBody({
 }) {
   return (
     <>
-      {message.toolCalls && message.toolCalls.length > 0 && (
-        <ToolTrace calls={message.toolCalls} t={t} />
+      {message.toolCalls && message.toolCalls.some((c) => !isWidgetCall(c)) && (
+        <ToolTrace
+          calls={message.toolCalls.filter((c) => !isWidgetCall(c))}
+          t={t}
+        />
       )}
+      {(message.toolCalls ?? []).filter(isWidgetCall).map((c, i) => (
+        <WidgetCard
+          key={`widget-${i}`}
+          messageId={message.id}
+          part={{
+            type: 'tool-show_widget',
+            toolCallId: `${message.id}-widget-${i}`,
+            state: 'output-available',
+            input: c.args as never,
+            output: c.output,
+          }}
+        />
+      ))}
       <RoomMessageText
         text={stripConclusion(message.text).text}
         mentionColors={mentionColors}
