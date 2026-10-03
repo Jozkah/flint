@@ -143,6 +143,67 @@ export function subagentStats(
   }
 }
 
+/** What a background row says it is doing right now. */
+export type StatusLine =
+  | 'queued'
+  | 'thinking'
+  | 'command'
+  | 'reading'
+  | 'searching'
+  | 'editing'
+  | 'web'
+  | 'tool'
+  | 'finished'
+  | 'failed'
+  | 'cancelled'
+
+const TOOL_LINE: Record<string, StatusLine> = {
+  bash: 'command',
+  read: 'reading',
+  ls: 'reading',
+  grep: 'searching',
+  find: 'searching',
+  write: 'editing',
+  edit: 'editing',
+  web_search: 'web',
+  web_fetch: 'web',
+}
+
+/**
+ * The one-line state of a task: what its latest unfinished tool call is doing,
+ * else that it is thinking, else how it ended. Derived from the record, so a
+ * row never says "running a command" for work that has stopped.
+ */
+export function statusLine(
+  task: Pick<ActivityTask, 'status' | 'transcript' | 'kind'>
+): StatusLine {
+  switch (task.status) {
+    case 'queued':
+      return 'queued'
+    case 'done':
+      return 'finished'
+    case 'error':
+      return 'failed'
+    case 'cancelled':
+    case 'interrupted':
+      return 'cancelled'
+  }
+  if (task.kind === 'shell') return 'command'
+  const turns = task.transcript ?? []
+  for (let i = turns.length - 1; i >= 0; i -= 1) {
+    const turn = turns[i]
+    if (turn.role !== 'tool') {
+      if (turn.role === 'assistant') break
+      continue
+    }
+    if (toolOutcome(turn) === 'active') {
+      return TOOL_LINE[turn.name ?? ''] ?? 'tool'
+    }
+    break
+  }
+  return 'thinking'
+}
+
 /** Totals over a group of children (a team, or a workflow's agents). */
 export function aggregateStats(stats: readonly SubagentStats[]): SubagentStats {
   const byTool: Record<string, number> = {}

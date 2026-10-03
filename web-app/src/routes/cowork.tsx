@@ -101,6 +101,7 @@ import {
 import {
   INTERRUPTED_BY_RUN_END,
   findTaskByJob,
+  backgroundTasksOf,
   sessionTotals,
   sessionWorkflows,
   taskIdFor,
@@ -275,6 +276,7 @@ import {
 } from '@/hooks/useCoworkUserEdits'
 import { withUserEditNotice } from '@/lib/coworkCodeEdit'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
+import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPanel'
 import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
 import {
@@ -2369,6 +2371,22 @@ export function CoworkPage() {
     () => sessionTotals(activity, session?.id),
     [activity, session?.id]
   )
+  // The Background tasks tab reads the same record; it exists only while it
+  // has rows.
+  const backgroundTasks = useMemo(
+    () =>
+      session?.id
+        ? backgroundTasksOf(activity, session.id)
+        : { running: [], finished: [] },
+    [activity, session?.id]
+  )
+  // Clearing the last row removes the tab, so its panel does not stay open on
+  // nothing.
+  const backgroundCount =
+    backgroundTasks.running.length + backgroundTasks.finished.length
+  useEffect(() => {
+    if (rail?.kind === 'background' && backgroundCount === 0) setRail(null)
+  }, [rail?.kind, backgroundCount, setRail])
 
   // The backend is the authority on whether a backgrounded shell is still
   // running: the agent may not collect a job for many turns, and until it does
@@ -3383,6 +3401,7 @@ export function CoworkPage() {
         // one piece of work with parts rather than several unrelated errands.
         parentTaskId,
         anchorMessageId: anchorMessageId(),
+        background: req.background === true || parentTaskId !== undefined,
       })
       // Its own controller, chained to the run's, so this one child
       // can be stopped without stopping the turn.
@@ -5137,6 +5156,7 @@ export function CoworkPage() {
     (rail.kind === 'preview' ||
       rail.kind === 'diff' ||
       rail.kind === 'tasks' ||
+      rail.kind === 'background' ||
       Boolean(session?.id))
   const inspectorLayout: InspectorLayout = phone
     ? 'full'
@@ -5182,6 +5202,10 @@ export function CoworkPage() {
       deletions={changeCounts.deletions}
       changeSummary={formatChangeSummary(changeCounts)}
       activity={taskCounts}
+      background={{
+        running: backgroundTasks.running.length,
+        total: backgroundTasks.running.length + backgroundTasks.finished.length,
+      }}
     />
   )
 
@@ -6394,6 +6418,24 @@ export function CoworkPage() {
                 useCoworkActivity.getState().clearFinished(session.id)
               }
             }}
+            onClose={closeRail}
+          />
+        )}
+        {rail?.kind === 'background' && session?.id && (
+          <CoworkBackgroundTasksPanel
+            sessionId={session.id}
+            running={backgroundTasks.running}
+            finished={backgroundTasks.finished}
+            agentReachable={agentReachable}
+            onCancelTask={cancelTask}
+            onDismiss={(task) =>
+              useCoworkActivity.getState().clearBackground({ id: task.id })
+            }
+            onClearFinished={() =>
+              useCoworkActivity
+                .getState()
+                .clearBackground({ sessionId: session.id })
+            }
             onClose={closeRail}
           />
         )}

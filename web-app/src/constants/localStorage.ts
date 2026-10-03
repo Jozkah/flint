@@ -38,6 +38,7 @@ export const localStorageKey = {
   fileActivity: 'file-activity',
   coworkSessions: 'code-sessions',
   coworkActivity: 'cowork-activity',
+  coworkBackgroundTab: 'cowork-background-tab',
   claudeCompat: 'claude-compat',
   coworkCheckpoints: 'cowork-checkpoints',
   keybindings: 'keybindings',

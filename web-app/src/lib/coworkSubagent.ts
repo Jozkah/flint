@@ -132,6 +132,8 @@ export type SubagentRequest = {
   description: string
   system_prompt?: string
   allowed_tools?: string[]
+  /** The parent did not wait for this child (`task` with `background: true`). */
+  background?: boolean
 }
 
 export type ResolvedSubagent = {
@@ -181,6 +183,7 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
       (t): t is string => typeof t === 'string'
     )
   }
+  if (raw.background === true) req.background = true
   return req
 }
 

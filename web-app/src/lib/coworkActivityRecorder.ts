@@ -130,6 +130,8 @@ export function recordAgentDispatch(
     model?: string
     parentTaskId?: string
     anchorMessageId?: string
+    /** Started without the parent waiting; listed in Background tasks. */
+    background?: boolean
   }
 ): void {
   const phaseId = openWorkflow(run, task.anchorMessageId)
@@ -140,6 +142,7 @@ export function recordAgentDispatch(
     workflowId: run.runId,
     phaseId,
     parentTaskId: task.parentTaskId,
+    ...(task.background ? { background: true } : {}),
     kind: 'agent',
     title: task.agentName,
     agentName: task.agentName,

@@ -1068,7 +1068,7 @@ function turnSummary(turn: CoworkTurn): string {
 }
 
 /** Compact token counts, matching how the transcript header shows them. */
-function formatTokens(tokens: number): string {
+export function formatTokens(tokens: number): string {
   if (tokens < 1000) return String(tokens)
   return `${(tokens / 1000).toFixed(1)}k`
 }
