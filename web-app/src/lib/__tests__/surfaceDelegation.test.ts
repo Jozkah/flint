@@ -34,7 +34,7 @@ vi.mock('@/hooks/useWebSearchConfig', () => ({
 import { createSurfaceDelegation, SURFACE_CHILD_MAX_STEPS, SURFACE_CHILD_TOOLS, SURFACE_DELEGATION_TOOL_NAMES } from '../surfaceDelegation'
 import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { emptyActivityState, taskIdFor } from '../coworkActivity'
-import { beginRun, endRun } from '../coworkRunner'
+import { abortRun } from '../coworkRunner'
 import type { SubagentEvents } from '../coworkSubagent'
 
 const schema = (name: string) => ({
@@ -68,7 +68,9 @@ beforeEach(() => {
     ['read', 'ls', 'grep', 'write', 'bash', 'memory_write', 'git', 'request_access'].map(schema)
   )
   useCoworkActivity.setState({ ...emptyActivityState() })
-  beginRun('thread-1', 'chat:thread-1:7', new AbortController())
+  // No run is begun here: a chat has none, and the delegation must make its
+  // own place for a child's Stop (a child cancelled at birth was the live bug).
+  abortRun('thread-1')
 })
 
 describe('surface delegation (plain chat and Rooms)', () => {
@@ -194,6 +196,18 @@ describe('surface delegation (plain chat and Rooms)', () => {
     await d.tasks.settleAll()
     expect(task('c1').status).toBe('cancelled')
     void gate
-    endRun('thread-1', 'chat:thread-1:7')
+    abortRun('thread-1')
+  })
+
+  it('does not start a child already cancelled, with no Cowork run behind it', async () => {
+    runSubagent.mockImplementation(async (opts: { signal: AbortSignal }) => ({
+      output: opts.signal.aborted ? '(cancelled at birth)' : 'ran',
+      usage: null,
+      sessionTokens: 0,
+    }))
+    const d = await createSurfaceDelegation(spec())
+    const out = await d.run(call('task', { subagent_name: 'explorer', description: 'look' }))
+    expect(out.output).toBe('ran')
+    expect(task('c1').status).toBe('done')
   })
 })

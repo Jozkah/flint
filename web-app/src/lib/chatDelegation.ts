@@ -17,7 +17,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useThreads } from '@/hooks/useThreads'
 import { chatFoldersOf } from '@/lib/chatFolders'
 import { chatRunOf } from '@/lib/chatRun'
-import { type PendingToolCall, type ToolOutcome } from '@/lib/coworkRunner'
+import { abortRun, type PendingToolCall, type ToolOutcome } from '@/lib/coworkRunner'
 import { listSubagents } from '@/lib/coworkSubagentRegistry'
 import { delegationTools } from '@/lib/coworkTools'
 import {
@@ -108,6 +108,8 @@ export function stopChatDelegation(threadId: string): void {
   const entry = held.get(threadId)
   if (!entry) return
   entry.controller.abort('cancelled')
+  // And the handle each child's own Stop lives on, so none is left reachable.
+  abortRun(threadId, 'cancelled')
   held.delete(threadId)
 }
 

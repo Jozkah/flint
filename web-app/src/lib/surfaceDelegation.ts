@@ -22,7 +22,12 @@ import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
 import { dispatchCoworkTool, routeDelegationTool } from '@/lib/coworkDispatch'
-import { abortSubagent, type PendingToolCall, type ToolOutcome } from '@/lib/coworkRunner'
+import {
+  abortSubagent,
+  ensureRun,
+  type PendingToolCall,
+  type ToolOutcome,
+} from '@/lib/coworkRunner'
 import {
   parseSubagentRequest,
   SUBAGENT_RESULT_HEAD_CHARS,
@@ -223,6 +228,8 @@ export async function createSurfaceDelegation(
     })
 
   const run = async (call: PendingToolCall, signal?: AbortSignal): Promise<ToolOutcome> => {
+    // Somewhere for each child's own Stop to live; see `ensureRun`.
+    ensureRun(spec.id, spec.runId(), new AbortController())
     const runner = runnerFor()
     return routeDelegationTool(
       call,

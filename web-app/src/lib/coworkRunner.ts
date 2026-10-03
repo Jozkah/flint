@@ -374,6 +374,20 @@ export function beginRun(
   return handle
 }
 
+/**
+ * Make sure `sid` has a run handle, creating one only when there is none.
+ *
+ * Cowork begins a run per turn. A surface with no such turn (plain chat, a
+ * Room) still needs somewhere for a child's own cancellation to live, or
+ * `registerSubagent` hands back a controller that is already aborted and every
+ * child it starts is cancelled before it begins. Unlike `beginRun` this never
+ * replaces a handle that is already there.
+ */
+export function ensureRun(sid: string, runId: string, outer: AbortController): void {
+  if (handles.has(sid)) return
+  beginRun(sid, runId, outer)
+}
+
 /** Forget a run once it is over, without aborting anything. */
 export function endRun(sid: string, runId?: string): void {
   const handle = handles.get(sid)
