@@ -2,6 +2,7 @@ import * as React from 'react'
 import { SliderProps } from '@radix-ui/react-slider'
 import { Slider } from '@/components/ui/slider'
 import { Input } from '@/components/ui/input'
+import { parseDecimalInput, readCommittedDecimal } from '@/lib/parseDecimalInput'
 
 interface SliderControlProps {
   key?: string
@@ -43,7 +44,11 @@ export function SliderControl({
   React.useEffect(() => {
     if (Array.isArray(value) && value[0] !== undefined) {
       setCurrentValue(value)
-      setInputValue(value[0].toString())
+      // Keep what is being typed ("0.", "0,5") while it already means this
+      // value; resetting it here ate the decimal point on every keystroke.
+      setInputValue((typed) =>
+        readCommittedDecimal(typed) === value[0] ? typed : value[0].toString()
+      )
       setInputNumber(value[0])
     }
   }, [value])
@@ -60,11 +65,12 @@ export function SliderControl({
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value
     setInputValue(v)
-    const parsed = parseFloat(v)
-    if (!isNaN(parsed)) {
-      setInputNumber(parsed)
-      if (parsed >= min && parsed <= max) {
-        handleValueChange([parsed])
+    const parsed = parseDecimalInput(v)
+    if (parsed.status === 'valid') {
+      setInputNumber(parsed.value)
+      if (parsed.value >= min && parsed.value <= max) {
+        onChange?.([parsed.value])
+        setCurrentValue([parsed.value])
       }
     }
   }
