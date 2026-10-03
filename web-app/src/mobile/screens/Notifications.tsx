@@ -4,6 +4,7 @@ import { I, type IconId } from '../ui/icons'
 import { Empty, Pills } from '../ui/bits'
 import { ago } from '../ui/format'
 import { respond } from '../ui/respond'
+import { PromptCard } from '../ui/PromptCard'
 import { go, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
 import { routeFor, useSessions } from '../state/sessions'
@@ -23,6 +24,7 @@ export default function Notifications() {
   const { sessions } = useSessions()
   const approvals = data?.approvals ?? []
   const asks = useRpc('asks.list', {}).data?.asks ?? []
+  const prompts = useRpc('prompts.list', {}).data?.prompts ?? []
   const shown = notices.filter((n) => n.kind !== 'approval' && (filter === 'all' || n.kind === filter))
   return (
     <>
@@ -46,6 +48,7 @@ export default function Notifications() {
           value={filter}
           onChange={setFilter}
         />
+        {(filter === 'all' || filter === 'approval') && prompts.map((p) => <PromptCard key={p.id} p={p} />)}
         {(filter === 'all' || filter === 'approval') &&
           asks.map((a) => (
             <button

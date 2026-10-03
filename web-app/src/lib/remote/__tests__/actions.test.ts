@@ -259,3 +259,22 @@ describe('settings.set', () => {
     })
   })
 })
+
+describe('cowork.send resume', () => {
+  it('keeps what an interrupted turn finished before carrying on', async () => {
+    const recoverInterrupted = vi.fn()
+    setup({ recoverInterrupted })
+    await call('cowork.send', { clientId: 'm-res001', id: 'w1', text: 'Continue.', resume: true })
+    expect(recoverInterrupted).toHaveBeenCalledWith('w1')
+    expect(a.sendViaComposer).toHaveBeenCalledWith('cowork', 'w1', 'Continue.')
+  })
+
+  it('leaves a running session alone: the message is queued', async () => {
+    const recoverInterrupted = vi.fn()
+    setup({ recoverInterrupted, coworkBusy: vi.fn(() => true) })
+    expect(await call('cowork.send', { clientId: 'm-res002', id: 'w1', text: 'Continue.', resume: true })).toMatchObject({
+      result: { delivery: 'queued' },
+    })
+    expect(recoverInterrupted).not.toHaveBeenCalled()
+  })
+})

@@ -17,6 +17,10 @@ import { usePrStatusStore } from '@/stores/pr-status-store'
 import type { PushNotice, RemoteEvent, SessionKind } from './protocol'
 import { watchIds } from './events'
 import { asksIn } from './appAsks'
+import { appPrompts } from './appPrompts'
+import { useAccessRequests } from '@/lib/accessRequests'
+import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 
 export type PushEmit = (event: RemoteEvent) => void
 
@@ -46,6 +50,26 @@ export function askNotice(threadId: string, title: string | undefined): PushNoti
     body: title ? clip(title) : 'Your Cowork session is waiting for your answer',
     url: pushUrl('cowork', threadId),
     tag: `ask-${threadId}`,
+  }
+}
+
+/** One of the other blocking prompts is waiting. No path or address in the
+ * notification: only that something needs an answer, and where. */
+export function promptNotice(p: { id: string; kind: string; threadId?: string }, where?: { kind: SessionKind; title?: string }): PushNotice {
+  const what =
+    p.kind === 'access'
+      ? 'Flint asks for access to a folder'
+      : p.kind === 'domain'
+        ? 'Flint asks to open a site'
+        : p.kind === 'conflict'
+          ? 'Team tasks overlap'
+          : 'A model needs your decision'
+  return {
+    category: 'approval',
+    title: what,
+    body: where?.title ? clip(where.title) : 'Open Flint to answer',
+    url: p.threadId && where ? pushUrl(where.kind, p.threadId) : '/m/#/notifications',
+    tag: `prompt-${p.id}`,
   }
 }
 
@@ -102,7 +126,18 @@ export function startPushForwarding(emit: PushEmit): () => void {
   let roomStatus = useRoomsStore.getState().room?.status
   let journalLen = useRoomsStore.getState().journal.length
   let prs = new Map<string, PrLike>()
+  let promptIds = new Set(appPrompts().map((p) => p.id))
+  const checkPrompts = () => {
+    const now = appPrompts()
+    for (const p of now) {
+      if (!promptIds.has(p.id)) send(promptNotice(p, p.threadId ? sessionWhere(p.threadId) : undefined))
+    }
+    promptIds = new Set(now.map((p) => p.id))
+  }
   const stops = [
+    useAccessRequests.subscribe(checkPrompts),
+    useBrowserAgentPrompt.subscribe(checkPrompts),
+    useTeamConflictRequests.subscribe(checkPrompts),
     watchIds(
       useToolApprovalRequests,
       (s) => new Set(allApprovalRequests(s).map((a) => a.requestId)),

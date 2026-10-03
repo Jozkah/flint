@@ -21,6 +21,7 @@ import type {
   McpServerInfo,
   RemoteApproval,
   RemoteAsk,
+  RemotePrompt,
   RoomDetail,
   SettingsSnapshot,
   SystemInfo,
@@ -78,6 +79,8 @@ export type RemoteSources = {
   approvalDetails: () => RemoteApproval[]
   /** Questions a Cowork run is waiting on. */
   asks?: () => RemoteAsk[]
+  /** The other blocking prompts (see `prompts.ts`). */
+  prompts?: () => RemotePrompt[]
   systemInfo: () => Promise<SystemInfo>
   mcpServers: () => McpServerInfo[]
   settings: () => Promise<SettingsSnapshot>
@@ -221,6 +224,7 @@ export function createRemoteHandlers(
       const waiting = new Set([
         ...src.approvals().map((a) => a.threadId),
         ...(src.asks?.() ?? []).map((a) => a.threadId),
+        ...(src.prompts?.() ?? []).flatMap((p) => (p.threadId ? [p.threadId] : [])),
       ])
       const status = (k: SessionKind, id: string): SessionStatus =>
         waiting.has(id) ? 'waiting' : running[k].has(id) ? 'running' : 'idle'
@@ -313,13 +317,15 @@ export function createRemoteHandlers(
       if (!detail) throw new RemoteRpcError('not_found', 'No such session')
       const waiting =
         src.approvals().some((a) => a.threadId === id) ||
-        (src.asks?.() ?? []).some((a) => a.threadId === id)
+        (src.asks?.() ?? []).some((a) => a.threadId === id) ||
+        (src.prompts?.() ?? []).some((p) => p.threadId === id)
       const running = src.running().cowork.has(id)
       return { ...detail, status: waiting ? 'waiting' : running ? 'running' : detail.status }
     },
 
     'approvals.list': () => ({ approvals: src.approvalDetails() }),
     'asks.list': () => ({ asks: src.asks?.() ?? [] }),
+    'prompts.list': () => ({ prompts: src.prompts?.() ?? [] }),
     'system.info': () => src.systemInfo(),
     'tools.list': () => ({ servers: src.mcpServers() }),
 
@@ -340,6 +346,7 @@ export function createRemoteHandlers(
         runs,
         approvalsWaiting: src.approvals().length,
         questionsWaiting: (src.asks?.() ?? []).length,
+        promptsWaiting: (src.prompts?.() ?? []).length,
         ...(permissions ? { permissions } : {}),
       }
     },

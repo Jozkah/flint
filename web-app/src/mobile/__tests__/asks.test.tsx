@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { Shell } from '../shell/Shell'
 import { app, handleEvent } from '../state/app'
@@ -160,5 +160,71 @@ describe('approvals outside Cowork', () => {
     const diff = within(card).getByTestId('approval-diff')
     expect(within(diff).getByText('+new')).toHaveClass('add')
     expect(within(diff).getByText('-old')).toHaveClass('del')
+  })
+})
+
+describe('the computer’s other prompts and a stopped run', () => {
+  beforeEach(() => live.set({ streams: {}, pending: [], resolved: {} }))
+
+  const PROMPT = {
+    id: 'access:a1',
+    kind: 'access' as const,
+    threadId: 'w1',
+    title: "Flint wants to read a folder outside this session's folder",
+    detail: '/data/fixtures',
+    body: 'Needs the fixtures',
+    actions: [
+      { id: 'deny', label: 'Deny', style: 'danger' as const },
+      { id: 'session', label: 'Allow for this session', style: 'primary' as const },
+    ],
+  }
+  const withPrompt = {
+    'prompts.list': { prompts: [PROMPT] },
+    'approvals.list': { approvals: [] },
+    status: { ...(fx.rpc.status as object), approvalsWaiting: 0, promptsWaiting: 1 },
+  }
+
+  it('shows the prompt in its session and answers with one of its actions', async () => {
+    const client = useFixtures(withPrompt)
+    show({ name: 'cowork', id: 'w1' })
+    const card = await screen.findByTestId('prompt-card', {}, T)
+    expect(within(card).getByText('/data/fixtures')).toBeInTheDocument()
+    client.rpc.mockImplementationOnce(async () => ({ status: 'answered' }))
+    fireEvent.click(within(card).getByRole('button', { name: 'Allow for this session' }))
+    expect(await screen.findByText('Allow for this session · from this phone', {}, T)).toBeInTheDocument()
+    expect(client.rpc).toHaveBeenCalledWith('approvals.prompt', { id: 'access:a1', action: 'session' })
+  })
+
+  it('lists it under Notifications and on the home screen, whatever conversation it is from', async () => {
+    useFixtures({ ...withPrompt, 'prompts.list': { prompts: [{ ...PROMPT, threadId: undefined }] } })
+    show({ name: 'notifications' })
+    expect(await screen.findByTestId('prompt-card', {}, T)).toBeInTheDocument()
+    show({ name: 'home' })
+    expect((await screen.findAllByTestId('prompt-waiting', {}, T)).length).toBeGreaterThan(0)
+  })
+
+  it('cannot be answered when approvals from phones are off', async () => {
+    useFixtures({ ...withPrompt, status: { ...withPrompt.status, permissions: { approvals: false, alwaysAllow: false } } })
+    show({ name: 'cowork', id: 'w1' })
+    const card = await screen.findByTestId('prompt-card', {}, T)
+    expect(within(card).getByText('Answer this on the computer')).toBeInTheDocument()
+    expect(within(card).queryByRole('button', { name: 'Deny' })).toBeNull()
+  })
+
+  it('a run that stopped at the step limit offers Keep going', async () => {
+    const detail = (fx.rpc['cowork.get'] as Record<string, Record<string, unknown>>).w1
+    const client = useFixtures({
+      'approvals.list': { approvals: [] },
+      status: { ...(fx.rpc.status as object), approvalsWaiting: 0, runs: [] },
+      'cowork.get': { w1: { ...detail, status: 'idle', ending: { by: 'steps' } } },
+    })
+    show({ name: 'cowork', id: 'w1' })
+    const note = await screen.findByTestId('run-ending', {}, T)
+    expect(note).toHaveTextContent('Stopped at the step limit')
+    client.rpc.mockImplementationOnce(async () => ({ kind: 'cowork', id: 'w1', delivery: 'sent' }))
+    fireEvent.click(within(note).getByRole('button', { name: 'Keep going' }))
+    await vi.waitFor(() =>
+      expect(client.rpc).toHaveBeenCalledWith('cowork.send', expect.objectContaining({ id: 'w1', text: 'Continue.', resume: true }))
+    )
   })
 })

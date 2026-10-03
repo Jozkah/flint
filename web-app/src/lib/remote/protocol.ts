@@ -160,6 +160,8 @@ export type StatusResult = {
   approvalsWaiting: number
   /** Questions a Cowork run is waiting on. Absent from an older computer. */
   questionsWaiting?: number
+  /** Other prompts waiting (`prompts.list`). Absent from an older computer. */
+  promptsWaiting?: number
   /** What the computer lets phones do (Settings › Remote access). Absent when
    * the window could not read its own settings. */
   permissions?: { approvals: boolean; alwaysAllow: boolean }
@@ -225,7 +227,12 @@ export type CoworkDetail = {
   usage: { inputTokens: number; outputTokens: number } | null
   /** The last request against the session's context window (the ring). */
   context?: { usedTokens: number; windowTokens: number | null }
+  /** How the last run ended, when it did not simply finish: the desktop shows
+   * a notice with "Keep going" or "Try again" there. `interrupted`: the app
+   * closed mid-turn. */
+  ending?: { by: CoworkEndingKind; message?: string }
 }
+export type CoworkEndingKind = 'steps' | 'tokens' | 'error' | 'deadline' | 'timeout' | 'loop' | 'interrupted'
 
 /** A waiting permission prompt, worded as the desktop's approval card. */
 export type RemoteApproval = {
@@ -372,6 +379,9 @@ export type CoworkSendParams = {
   access?: CoworkAccessId
   model?: ModelRef
   steer?: boolean
+  /** Carry on a run that stopped (the desktop's "Keep going"); an
+   * interrupted turn's finished steps are kept first. */
+  resume?: boolean
 }
 
 export type RoomSendParams = {
@@ -454,6 +464,26 @@ export type AskRespondParams = {
   answers: RemoteAskAnswer[] | null
 }
 export type AskRespondResult = { status: 'answered' | 'gone' }
+
+/** One of the desktop's other blocking prompts (a folder outside the
+ * workspace, a site for the assistant's browser, overlapping team tasks, a
+ * local model out of context), with the answers a phone may give. */
+export type RemotePrompt = {
+  id: string
+  kind: 'access' | 'domain' | 'conflict' | 'context'
+  /** The conversation that waits on it, when it belongs to one. */
+  threadId?: string
+  title: string
+  body?: string
+  /** The path, address or files it is about. */
+  detail?: string
+  /** Who is asking, when it is a subagent or a team child. */
+  origin?: string
+  actions: { id: string; label: string; style?: 'primary' | 'danger' }[]
+}
+export type PromptsListResult = { prompts: RemotePrompt[] }
+export type PromptRespondParams = { id: string; action: string }
+export type PromptRespondResult = { status: 'answered' | 'gone' }
 
 export type NotificationPrefs = {
   approvals: boolean
@@ -860,6 +890,10 @@ export type RemoteMethods = {
   'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
   'asks.list': { params: Record<string, never>; result: AsksListResult }
   'asks.respond': { params: AskRespondParams; result: AskRespondResult }
+  'prompts.list': { params: Record<string, never>; result: PromptsListResult }
+  /** An approval like any other: off when "Approvals from phones" is off
+   * (the server checks the `approvals.` name too). */
+  'approvals.prompt': { params: PromptRespondParams; result: PromptRespondResult }
   'chat.details': { params: IdParams; result: ChatDetails }
   'chat.effort': { params: ChatEffortParams; result: { ok: true } }
   'chat.assistant': { params: ChatAssistantParams; result: { ok: true } }
@@ -912,6 +946,8 @@ export type RemoteEvent =
   | { type: 'approval.resolved'; requestId: string }
   | { type: 'ask.requested'; requestId: string; threadId: string; question: string }
   | { type: 'ask.resolved'; requestId: string }
+  | { type: 'prompt.requested'; id: string; kind: RemotePrompt['kind']; title: string; threadId?: string }
+  | { type: 'prompt.resolved'; id: string }
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }

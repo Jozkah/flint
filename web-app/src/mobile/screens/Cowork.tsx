@@ -1,4 +1,4 @@
-import type { RemoteMessage, SessionStatus } from '@/lib/remote/protocol'
+import type { CoworkDetail, RemoteMessage, SessionStatus } from '@/lib/remote/protocol'
 import { TopThread } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { accessLabel, modeLabel } from '../shell/labels'
@@ -7,6 +7,7 @@ import { Empty, Loading } from '../ui/bits'
 import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
 import { AskCard } from '../ui/AskCard'
+import { PromptCard } from '../ui/PromptCard'
 import { ChangeBars, WhatChanged } from '../ui/changes'
 import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
 import { client, openDrawer, openSheet, sendMessage, toast, useApp } from '../state/app'
@@ -24,6 +25,17 @@ const STATUS: Record<SessionStatus, string> = {
   done: 'Completed',
 }
 
+/** How the last run ended, in the words of the desktop's notices. */
+const ENDING: Record<NonNullable<CoworkDetail['ending']>['by'], string> = {
+  steps: 'Stopped at the step limit',
+  tokens: 'Stopped: out of token budget or context',
+  error: 'The run failed',
+  deadline: 'Stopped at its time limit',
+  timeout: 'Stopped: the model took too long',
+  loop: 'Stopped: it was repeating itself',
+  interrupted: 'Flint was closed in the middle of this turn',
+}
+
 export default function Cowork({ id }: { id: string }) {
   const detail = useRpc('cowork.get', { id })
   const msgs = useRpc('thread.messages', { id, kind: 'cowork', limit: 100 })
@@ -33,6 +45,7 @@ export default function Cowork({ id }: { id: string }) {
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
   const asks = useRpc('asks.list', {}, (status.data?.questionsWaiting ?? 0) > 0)
+  const promptList = useRpc('prompts.list', {}, (status.data?.promptsWaiting ?? 0) > 0)
   const changes = useRpc('cowork.changes', { id })
   const queue = useRpc('thread.queue', { id })
   const d = detail.data
@@ -49,6 +62,7 @@ export default function Cowork({ id }: { id: string }) {
   }
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
   const questions = (asks.data?.asks ?? []).filter((a) => a.threadId === id)
+  const prompts = (promptList.data?.prompts ?? []).filter((p) => p.threadId === id)
   const stream = useLive((s) => s.streams[id])
   const pending = pendingFor(
     useLive((s) => s.pending),
@@ -58,7 +72,10 @@ export default function Cowork({ id }: { id: string }) {
   const resolvedAll = useLive((s) => s.resolved)
   const resolved = Object.entries(resolvedAll).filter(
     ([rid, r]) =>
-      r.threadId === id && !mine.some((a) => a.requestId === rid) && !questions.some((a) => a.requestId === rid)
+      r.threadId === id &&
+      !mine.some((a) => a.requestId === rid) &&
+      !questions.some((a) => a.requestId === rid) &&
+      !prompts.some((p) => p.id === rid)
   )
   useFollow('cowork', id)
   useEffect(() => {
@@ -145,6 +162,9 @@ export default function Cowork({ id }: { id: string }) {
         {questions.map((a) => (
           <AskCard key={a.requestId} a={a} />
         ))}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} p={p} />
+        ))}
         {resolved.map(([rid, r]) => (
           <ResolvedLine key={rid} r={r} />
         ))}
@@ -152,6 +172,21 @@ export default function Cowork({ id }: { id: string }) {
           <div className="compacting" role="status">
             <I n="loader" spin size={14} />
             Compacting the conversation…
+          </div>
+        )}
+        {d?.ending && !running && (
+          <div className="endnote" role="status" data-testid="run-ending" data-ending={d.ending.by}>
+            <span className="tx">
+              <b>{ENDING[d.ending.by]}</b>
+              {d.ending.message && <small>{d.ending.message}</small>}
+            </span>
+            <button
+              type="button"
+              className="btn sm pri"
+              onClick={() => void sendMessage('cowork.send', { id, text: 'Continue.', resume: true })}
+            >
+              {d.ending.by === 'steps' || d.ending.by === 'tokens' || d.ending.by === 'interrupted' ? 'Keep going' : 'Try again'}
+            </button>
           </div>
         )}
         {changes.data && !running && <WhatChanged c={changes.data} />}

@@ -168,7 +168,7 @@ describe('handlers', () => {
   })
 
   it('status counts loaded models, runs and approvals', async () => {
-    expect(await call('status')).toEqual({ modelsLoaded: 1, runs: [{ kind: 'chat', id: 'c2' }], approvalsWaiting: 1, questionsWaiting: 0 })
+    expect(await call('status')).toEqual({ modelsLoaded: 1, runs: [{ kind: 'chat', id: 'c2' }], approvalsWaiting: 1, questionsWaiting: 0, promptsWaiting: 0 })
   })
 
   it('pageOf clamps before to the range', () => {

@@ -7,6 +7,7 @@ import { Empty, Loading } from '../ui/bits'
 import { AssistantMessage, UserBubble, VersionNav } from '../ui/messages'
 import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
 import { ApprovalCard } from '../ui/ApprovalCard'
+import { PromptCard } from '../ui/PromptCard'
 import { client, openSheet, sendMessage, toast } from '../state/app'
 import { forkFrom, stepVersion } from '../state/controls'
 import { effortStops, stopLabel } from '../ui/effort'
@@ -41,9 +42,11 @@ export default function Chat({ id }: { id: string }) {
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
+  const promptList = useRpc('prompts.list', {}, (status.data?.promptsWaiting ?? 0) > 0)
+  const prompts = (promptList.data?.prompts ?? []).filter((p) => p.threadId === id)
   const resolvedAll = useLive((s) => s.resolved)
   const resolved = Object.entries(resolvedAll).filter(
-    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid)
+    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid) && !prompts.some((p) => p.id === rid)
   )
   const det = details.data
   const stream = useLive((s) => s.streams[id])
@@ -193,6 +196,9 @@ export default function Chat({ id }: { id: string }) {
         {streamShown && <StreamingMessage s={streamShown} />}
         {mine.map((a) => (
           <ApprovalCard key={a.requestId} a={a} />
+        ))}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} p={p} />
         ))}
         {resolved.map(([rid, r]) => (
           <ResolvedLine key={rid} r={r} />

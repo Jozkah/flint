@@ -9,11 +9,14 @@ import type { PlannedAttachments } from './attachments'
 import { RemoteRpcError, type RemoteHandlers } from './bridge'
 import { createIdempotencyCache, type IdempotencyCache } from './idempotency'
 import { checkAskAnswers } from './asks'
+import { offers } from './prompts'
 import type { AskAnswer } from '@/types/coworkSession'
 import type {
   ApprovalRespondParams,
   AskRespondParams,
+  PromptRespondParams,
   RemoteAsk,
+  RemotePrompt,
   ChatSendParams,
   CoworkAccessId,
   CoworkModeId,
@@ -101,6 +104,12 @@ export type RemoteActions = {
   /** Hands the run its answer (`null`: skipped), as the desktop's card does.
    * False when nothing waits under that id any more. */
   answerAsk?(threadId: string, requestId: string, answers: AskAnswer[] | null): boolean
+  /** One of the other blocking prompts (see `prompts.ts`). */
+  findPrompt?(id: string): RemotePrompt | null
+  /** Answers it as the desktop's own dialog would. False when it is gone. */
+  respondPrompt?(id: string, action: string): boolean
+  /** Keeps what an interrupted turn finished, so the session can go on. */
+  recoverInterrupted?(id: string): void
 
   // -- Rooms -----------------------------------------------------------------
   roomExists(id: string): Promise<boolean>
@@ -187,6 +196,7 @@ type ActionMethods =
   | 'settings.set'
   | 'approvals.respond'
   | 'asks.respond'
+  | 'approvals.prompt'
 
 export function createActionHandlers(
   a: RemoteActions,
@@ -295,6 +305,7 @@ export function createActionHandlers(
         const att = await prepare(ctx.device.id, { kind: 'cowork', id: isNew ? null : id, model }, p, text)
         const sid = isNew ? a.createCowork({ folder, mode, model }) : id
         if (!isNew && mode) a.setCoworkMode(sid, mode)
+        if (!isNew && p.resume === true && !a.coworkBusy(sid)) a.recoverInterrupted?.(sid)
         return deliver('cowork', sid, textWith(text, att), p.steer === true, () => a.coworkBusy(sid), att)
       })
     },
@@ -361,6 +372,25 @@ export function createActionHandlers(
         answers = checked
       }
       return { status: a.answerAsk(threadId, requestId, answers) ? 'answered' : 'gone' }
+    },
+
+    'approvals.prompt': async (params) => {
+      const p = (isRecord(params) ? params : {}) as Partial<PromptRespondParams>
+      const id = str(p.id)
+      if (!id || typeof p.action !== 'string') throw new RemoteRpcError('bad_params', 'id and action are required')
+      if (!a.findPrompt || !a.respondPrompt) {
+        throw new RemoteRpcError('not_implemented', 'Answering this is not available from phones yet')
+      }
+      // The server already refused it when approvals from phones are off; the
+      // window checks again, since it is the one that acts.
+      const perms = await a.permissions()
+      if (perms && !perms.approvals) {
+        throw new RemoteRpcError('forbidden', 'Approvals from phones are turned off on the computer')
+      }
+      const prompt = a.findPrompt(id)
+      if (!prompt) return { status: 'gone' }
+      if (!offers(prompt, p.action)) throw new RemoteRpcError('bad_params', 'That answer is not offered for this prompt')
+      return { status: a.respondPrompt(id, p.action) ? 'answered' : 'gone' }
     },
 
     'room.send': async (params, ctx) => {

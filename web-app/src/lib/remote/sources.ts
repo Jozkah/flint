@@ -34,6 +34,9 @@ import { i18n } from '@/i18n/react-i18next-compat'
 import { uiMessageText, type RemoteSources } from './handlers'
 import { approvalOf, coworkDetailOf, roomDetailOf, toolStepsOf } from './details'
 import { appAsks } from './appAsks'
+import { appPrompts } from './appPrompts'
+import { isInterrupted } from '@/lib/coworkInflight'
+import type { CoworkEndingKind } from './protocol'
 import { remoteApi } from './api'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { sessionPrStatuses, usePrStatusStore } from '@/stores/pr-status-store'
@@ -132,6 +135,21 @@ function threadMessageText(m: ThreadMessage): string {
 }
 
 const ms = (t: number) => (t < 1e12 ? Math.round(t * 1000) : t)
+
+const ENDINGS: readonly CoworkEndingKind[] = ['steps', 'tokens', 'error', 'deadline', 'timeout', 'loop']
+
+/** How the session's last run ended, when the desktop shows a notice for it. */
+function coworkEndingOf(session: CoworkSession): { by: CoworkEndingKind; message?: string } | null {
+  const run = useCoworkRun.getState()
+  const live = run.runs[session.id]
+  if (isInterrupted(session.inFlight, live?.runId)) return { by: 'interrupted' }
+  if (live) return null
+  const ending = run.outcomes[session.id]
+  const by = ending?.stoppedBy as CoworkEndingKind | undefined
+  if (!by || !ENDINGS.includes(by)) return null
+  const message = ending?.errorText?.trim()
+  return { by, ...(message ? { message: message.slice(0, 500) } : {}) }
+}
 
 export const appSources: RemoteSources = {
   chats: () =>
@@ -281,7 +299,8 @@ export const appSources: RemoteSources = {
     const session = useCoworkSessions.getState().sessions.find((s) => s.id === id)
     if (!session) return null
     const context = coworkContextOf(session)
-    return { ...coworkDetailOf(session), ...(context ? { context } : {}) }
+    const ending = coworkEndingOf(session)
+    return { ...coworkDetailOf(session), ...(context ? { context } : {}), ...(ending ? { ending } : {}) }
   },
 
   approvalDetails: () =>
@@ -290,6 +309,7 @@ export const appSources: RemoteSources = {
     ),
 
   asks: () => appAsks(),
+  prompts: () => appPrompts(),
 
   systemInfo: async () => {
     const { hardwareData: hw, systemUsage: use } = useHardware.getState()

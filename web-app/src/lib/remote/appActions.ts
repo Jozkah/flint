@@ -18,6 +18,7 @@ import { useMessageQueue } from '@/stores/message-queue-store'
 import { holdQueueThenStop } from '@/lib/chatSteering'
 import { abortAll, abortRun, answerAsk } from '@/lib/coworkRunner'
 import { appAsks } from './appAsks'
+import { appPrompts, respondAppPrompt } from './appPrompts'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
 import { useRoomsStore } from '@/lib/rooms/store'
@@ -327,6 +328,15 @@ export function appActions(navigate: Navigate): RemoteActions {
     // run's own resolver settles the card and applies what the answer means
     // (leaving plan mode, continuing an accepted proposal).
     answerAsk: (threadId, requestId, answers) => answerAsk(threadId, requestId, answers),
+
+    findPrompt: (id) => appPrompts().find((p) => p.id === id) ?? null,
+    respondPrompt: (id, action) => respondAppPrompt(id, action),
+
+    // The completed steps are kept and the unfinished reply with them, as the
+    // desktop's "Continue" on an interrupted turn does.
+    recoverInterrupted: (id) => {
+      useCoworkSessions.getState().recoverInFlight(id, 'continue')
+    },
 
     permissions: async () => {
       const status = await remoteApi.getStatus().catch(() => null)

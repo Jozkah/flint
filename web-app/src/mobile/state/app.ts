@@ -8,6 +8,7 @@ import type {
   RemoteApproval,
   RemoteAsk,
   RemoteAskAnswer,
+  RemotePrompt,
   RemoteEvent,
   RemoteMethod,
   RemoteMethods,
@@ -391,7 +392,21 @@ export async function respondAsk(a: Pick<RemoteAsk, 'requestId' | 'threadId'>, a
     const words = answers ? 'Answered' : 'Skipped'
     markResolved(a.requestId, { by: 'phone', label: `${words} · from this phone`, threadId: a.threadId })
   }
-  invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+  invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
+  return r
+}
+
+/** Answers one of the computer's other prompts with an action it offers. */
+export async function respondPrompt(p: Pick<RemotePrompt, 'id' | 'threadId'>, action: string, label: string) {
+  const r = await act('approvals.prompt', { id: p.id, action })
+  if (!r) return undefined
+  if (r.status === 'gone') {
+    markResolved(p.id, { by: 'computer', label: 'Answered from the computer', threadId: p.threadId })
+    toast('Already answered from the computer')
+  } else {
+    markResolved(p.id, { by: 'phone', label: `${label} · from this phone`, threadId: p.threadId })
+  }
+  invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
   return r
 }
 
@@ -472,7 +487,7 @@ export function handleEvent(e: RemoteEvent) {
       })
       break
     case 'ask.requested':
-      invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+      invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       addNotice({
         kind: 'approval',
         title: 'Flint has a question',
@@ -480,13 +495,30 @@ export function handleEvent(e: RemoteEvent) {
         route: { name: 'cowork', id: e.threadId },
       })
       break
+    case 'prompt.requested':
+      invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
+      addNotice({
+        kind: 'approval',
+        title: 'Flint needs you',
+        body: e.title,
+        route: e.threadId ? { name: kindOf(e.threadId), id: e.threadId } : { name: 'notifications' },
+      })
+      break
+    case 'prompt.resolved': {
+      const shown = peekRpc('prompts.list', {})?.prompts.find((p) => p.id === e.id)
+      if (shown && !live.get().resolved[e.id]) {
+        markResolved(e.id, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
+      }
+      invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
+      break
+    }
     case 'ask.resolved': {
       // Answered on the computer (or another phone) while this phone showed it.
       const shown = peekRpc('asks.list', {})?.asks.find((a) => a.requestId === e.requestId)
       if (shown && !live.get().resolved[e.requestId]) {
         markResolved(e.requestId, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
       }
-      invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+      invalidate(['approvals.list', 'asks.list', 'prompts.list', 'status', 'sessions.list', 'cowork.get'])
       break
     }
     case 'approval.resolved': {

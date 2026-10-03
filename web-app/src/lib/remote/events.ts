@@ -16,6 +16,11 @@ import { coworkLiveReply, type LiveReply } from './live'
 import { reportLiveReply, setStreamSink } from './streams'
 import { threadTopic, type RemoteEvent, type SessionKind } from './protocol'
 import { asksIn } from './appAsks'
+import { appPrompts } from './appPrompts'
+import { useAccessRequests } from '@/lib/accessRequests'
+import { useBrowserAgentPrompt } from '@/hooks/useBrowserAgentPrompt'
+import { useContextSizeApproval } from '@/hooks/useModelContextApproval'
+import { useTeamConflictRequests } from '@/hooks/useTeamConflictRequests'
 import type { CoworkTurn } from '@/types/coworkSession'
 
 /** The questions waiting in the live lanes, by request id. */
@@ -130,6 +135,35 @@ export function roomReplyOf(roomId: string): LiveReply | null {
 const queueKind = (id: string): SessionKind =>
   useCoworkSessions.getState().sessions.some((s) => s.id === id) ? 'cowork' : 'chat'
 
+function watchPrompts(emit: RemoteEmit): (() => void)[] {
+  let prev = new Set(appPrompts().map((p) => p.id))
+  const check = () => {
+    const now = appPrompts()
+    const next = new Set(now.map((p) => p.id))
+    const d = diffIds(prev, next)
+    prev = next
+    for (const id of d.added) {
+      const p = now.find((x) => x.id === id)
+      if (p) {
+        emit({
+          type: 'prompt.requested',
+          id,
+          kind: p.kind,
+          title: p.title,
+          ...(p.threadId ? { threadId: p.threadId } : {}),
+        })
+      }
+    }
+    d.removed.forEach((id) => emit({ type: 'prompt.resolved', id }))
+  }
+  return [
+    useAccessRequests.subscribe(check),
+    useBrowserAgentPrompt.subscribe(check),
+    useTeamConflictRequests.subscribe(check),
+    useContextSizeApproval.subscribe(check),
+  ]
+}
+
 export function startRemoteEventForwarding(emit: RemoteEmit): () => void {
   notify = emit
   setStreamSink((event, topic) => emit(event, topic))
@@ -189,6 +223,9 @@ export function startRemoteEventForwarding(emit: RemoteEmit): () => void {
         removed.forEach((id) => emit({ type: 'approval.resolved', requestId: id }))
       }
     ),
+    // The other blocking prompts: any of their stores changing is a reason to
+    // compare what is waiting now with what was.
+    ...watchPrompts(emit),
     // A Cowork run asked something, or its question was answered.
     watchIds(
       useCoworkRun,
