@@ -210,7 +210,8 @@ async fn a_model_style_sequence_works_end_to_end_and_leaves_nothing_behind() {
     assert!(after.contains("value=\"Ada\""), "{after}");
 
     let shot = session::run(&c, &json!({ "action": "screenshot" })).await;
-    let png = shot.png.expect("a screenshot returns a PNG");
+    let png = shot.image.expect("a screenshot returns a PNG");
+    assert_eq!(shot.image_mime, "image/png");
     assert_eq!(&png[..8], b"\x89PNG\r\n\x1a\n");
     assert!(png.len() < session::MAX_PNG_BYTES);
     assert!(shot.text.starts_with("Screenshot of http://127.0.0.1:"), "{}", shot.text);

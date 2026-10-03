@@ -108,11 +108,25 @@ pub fn display(args: &Value, key: &str) -> String {
 /// Run the call against the run's session.
 pub async fn run(args: &Value, ctx: &ToolContext<'_>) -> (String, Option<Vec<ImageContentPart>>) {
     let caller = caller_of(ctx);
-    let reply = session::run(&caller, args).await;
-    let images = reply.png.map(|png| {
+    let is_upload = class_of(args) == Class::Upload;
+    let upload = if is_upload {
+        match resolve_upload(args, ctx) {
+            Ok(p) => Some(p),
+            Err(e) => return (e, None),
+        }
+    } else {
+        None
+    };
+    let opts = session::Options { upload: upload.as_deref(), compact_image: ctx.compact_images };
+    let reply = session::run_with(&caller, args, &opts).await;
+    let images = reply.image.map(|bytes| {
         use base64::Engine as _;
-        let b64 = base64::engine::general_purpose::STANDARD.encode(&png);
-        vec![ImageContentPart { data_url: format!("data:image/png;base64,{b64}"), name: "browser-screenshot.png".to_string() }]
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+        let ext = if reply.image_mime == "image/jpeg" { "jpg" } else { "png" };
+        vec![ImageContentPart {
+            data_url: format!("data:{};base64,{b64}", reply.image_mime),
+            name: format!("browser-screenshot.{ext}"),
+        }]
     });
     (reply.text, images)
 }

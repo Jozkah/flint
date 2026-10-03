@@ -36,6 +36,7 @@ import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
+import { putToolScreenshot, SCREENSHOT_RESULT_NOTE } from '@/lib/toolScreenshots'
 import {
   BROWSER_TOOL_NAME,
   browserAlwaysAsks,
@@ -569,6 +570,18 @@ export async function executeAgentTool(
             approvalOf(options)
           )
     const resources = result.resources ?? undefined
+    // A browser screenshot is kept beside the transcript and the result says
+    // so; the stored result stays text (see lib/toolScreenshots.ts).
+    let content = result.content
+    if (
+      !result.isError &&
+      toolName === BROWSER_TOOL_NAME &&
+      options.callId &&
+      result.images?.[0] &&
+      putToolScreenshot(options.callId, result.images[0].dataUrl)
+    ) {
+      content = `${content}\n${SCREENSHOT_RESULT_NOTE}`
+    }
     if (result.isError) {
       return {
         error: result.content,

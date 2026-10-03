@@ -228,6 +228,9 @@ pub struct ToolContext<'a> {
     /// and `skill_read` consult it after `store_root`, which shadows it. `None`
     /// where the store already is the user store (the desktop) or none exists.
     pub user_skills_root: Option<&'a Path>,
+    /// The surface keeps a tool's picture beside the transcript rather than in
+    /// it, so pictures are sent small (a bounded JPEG). Only the desktop sets it.
+    pub compact_images: bool,
 }
 
 impl std::fmt::Debug for ToolContext<'_> {
@@ -295,7 +298,14 @@ impl<'a> ToolContext<'a> {
             job_owner: None,
             job_record_to: None,
             user_skills_root: None,
+            compact_images: false,
         }
+    }
+
+    /// Ask for small pictures. See [`Self::compact_images`].
+    pub fn with_compact_images(mut self) -> Self {
+        self.compact_images = true;
+        self
     }
 
     /// Give the session-messaging tools a mailbox. See [`Self::mailbox_root`].

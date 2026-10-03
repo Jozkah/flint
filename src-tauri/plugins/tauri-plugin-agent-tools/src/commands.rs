@@ -89,6 +89,20 @@ pub struct ToolResult {
     /// same call outside the sandbox. Never part of model context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unsandboxed_retry: Option<String>,
+    /// A picture the tool produced for the model (the `browser` tool's
+    /// screenshot), as a bounded data URL. The renderer keeps it beside the
+    /// transcript and sends it only to a model that can see. Empty for every
+    /// other tool.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<ToolImage>,
+}
+
+/// One picture in a [`ToolResult`].
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolImage {
+    pub data_url: String,
+    pub name: String,
 }
 
 /// How the renderer came to allow a call before sending it here: the user
@@ -1413,6 +1427,9 @@ async fn execute_tool_inner(
         _ => read_roots.first().map(|r| workspace::project_store(r)),
     };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
+        // The desktop shows a browser screenshot beside the transcript and
+        // sends the model a small one.
+        .with_compact_images()
         // The toggle, clamped by the project's `agent.toml` and the machine's
         // policy: either one can turn the shell's network off.
         .with_network(policy.network.allowed && allow_network.unwrap_or(false))
@@ -1539,6 +1556,17 @@ async fn execute_tool_inner(
         error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
         resources,
         unsandboxed_retry,
+        // Only the browser tool's picture reaches the renderer; the other tools
+        // that return one (`read`, `screenshot`) are unchanged.
+        images: if name == "browser" && !is_error {
+            images
+                .unwrap_or_default()
+                .into_iter()
+                .map(|i| ToolImage { data_url: i.data_url, name: i.name })
+                .collect()
+        } else {
+            Vec::new()
+        },
     })
 }
 

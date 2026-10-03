@@ -467,12 +467,14 @@ pub fn close_all() {
 #[derive(Debug, Default)]
 pub struct Reply {
     pub text: String,
-    pub png: Option<Vec<u8>>,
+    pub image: Option<Vec<u8>>,
+    /// `image/png` or `image/jpeg`; empty when there is no image.
+    pub image_mime: &'static str,
 }
 
 impl Reply {
     fn text(t: impl Into<String>) -> Self {
-        Reply { text: t.into(), png: None }
+        Reply { text: t.into(), image: None, image_mime: "" }
     }
 }
 
@@ -485,14 +487,15 @@ struct Done {
     mutated: bool,
     /// Report the page status block (url, title, what happened).
     status: bool,
-    png: Option<Vec<u8>>,
+    image: Option<Vec<u8>>,
+    image_mime: &'static str,
     /// Pre-fenced body returned as is.
     body: Option<String>,
 }
 
 impl Done {
     fn new(headline: impl Into<String>, summary: impl Into<String>, mutated: bool) -> Self {
-        Done { headline: headline.into(), summary: summary.into(), mutated, status: true, png: None, body: None }
+        Done { headline: headline.into(), summary: summary.into(), mutated, status: true, image: None, image_mime: "", body: None }
     }
 }
 
@@ -505,7 +508,8 @@ fn usage() -> String {
     format!("browser needs an `action`: one of {}.", ACTIONS.join(", "))
 }
 
-/// Run one `browser` action for `caller`.
+/// Run one `browser` action for `caller`. `upload` is refused here: it needs a
+/// file the tool layer has checked (`run_with`).
 pub async fn run(caller: &Caller, args: &Value) -> Reply {
     let action = args.get("action").and_then(Value::as_str).unwrap_or("").trim().to_ascii_lowercase();
     match action.as_str() {
@@ -537,7 +541,7 @@ pub fn close_for(id: &str) -> usize {
 
 const NO_PAGE: &str = "No browser page is open. Call browser with action \"open\" and a URL on this machine (for example http://localhost:5173/) first.";
 
-async fn with_session(caller: &Caller, action: &str, args: &Value) -> Reply {
+async fn with_session(caller: &Caller, action: &str, args: &Value, opts: &Options<'_>) -> Reply {
     let Some(session) = find(&caller.key) else { return err(NO_PAGE) };
     if session.ctl.is_closed() {
         let why = session.ctl.why();
@@ -550,9 +554,24 @@ async fn with_session(caller: &Caller, action: &str, args: &Value) -> Reply {
         s.accept_dialogs = args.get("dialog").and_then(Value::as_str) == Some("accept");
         s.prompt_text = args.get("dialog_text").and_then(Value::as_str).map(str::to_string);
     }
-    let result = session.dispatch(&page, action, args).await;
+    let result = session.dispatch(&page, action, args, opts).await;
     session.ctl.touch();
     let reply = match result {
+/// What the surface running the tool lets it do beyond the call's own arguments.
+/// None of this comes from the model.
+#[derive(Debug, Default, Clone)]
+pub struct Options<'a> {
+    /// The file an `upload` may attach: an absolute path the caller has already
+    /// confined to the run's folders.
+    pub upload: Option<&'a std::path::Path>,
+    /// Return screenshots as a small JPEG instead of a PNG, for a surface that
+    /// keeps the picture beside the transcript (the desktop).
+    pub compact_image: bool,
+}
+
+/// The largest compact (JPEG) screenshot.
+pub const MAX_COMPACT_IMAGE_BYTES: usize = 400 * 1024;
+
         Ok(done) => session.finish(&page, done, mark).await,
         Err(e) => {
             if session.ctl.is_closed() {
@@ -584,6 +603,12 @@ fn parse_origins(args: &Value) -> Result<(url::Url, OriginPolicy), String> {
         .unwrap_or_default();
     let policy = OriginPolicy::new(origin, &extra).map_err(|e| format!("allow_origins refused: {e}"))?;
     Ok((url, policy))
+    run_with(caller, args, &Options::default()).await
+}
+
+/// `run`, with what the surface allows: the file an `upload` may attach (never
+/// taken from `args`, which the model writes) and the screenshot format.
+pub async fn run_with(caller: &Caller, args: &Value, opts: &Options<'_>) -> Reply {
 }
 
 async fn open(caller: &Caller, args: &Value) -> Reply {
@@ -650,6 +675,7 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
             drop(page);
             session.ctl.kill_and_wait("open failed").await;
             err(e)
+    let popups = args.get("popups").and_then(Value::as_bool);
         }
     }
 }
@@ -658,6 +684,9 @@ async fn start(
     caller: &Caller,
     browser_path: &str,
     browser_name: String,
+                if let Some(p) = popups {
+                    existing.mains.set_popups(p);
+                }
     policy: OriginPolicy,
 ) -> Result<Arc<Session>, String> {
     let launch::Spawned { mut child, profile } = launch::spawn(browser_path, "flint-browser-", &policy)?;
@@ -695,6 +724,9 @@ async fn start(
         registered: Mutex::new(Some(registered)),
     });
     let sink_seen = seen.clone();
+    if let Some(p) = popups {
+        session.mains.set_popups(p);
+    }
     let sink_cdp = cdp.clone();
     // A refused navigation leaves the page where it was (204), so the session carries on.
     events::spawn(cdp.clone(), events, policy.clone(), session_id.clone(), target, events::NavigationBlock::Stay, move |observed| {
@@ -863,7 +895,7 @@ fn stale(v: &Value, r: &str) -> Result<(), String> {
 }
 
 impl Session {
-    async fn dispatch(&self, page: &Page, action: &str, args: &Value) -> Result<Done, String> {
+    async fn dispatch(&self, page: &Page, action: &str, args: &Value, opts: &Options<'_>) -> Result<Done, String> {
         match action {
             "snapshot" => self.snapshot(page, args).await,
             "click" => self.click(page, args).await,
@@ -874,7 +906,7 @@ impl Session {
             "wait" => self.wait(page, args).await,
             "back" => self.back(page).await,
             "reload" => self.reload(page).await,
-            "screenshot" => self.screenshot(page, args).await,
+            "screenshot" => self.screenshot(page, args, opts.compact_image).await,
             "console" => self.console(args),
             "evaluate" => self.evaluate(page, args).await,
             other => Err(format!("unknown browser action \"{other}\"")),
@@ -1097,7 +1129,8 @@ impl Session {
             summary: "scroll".to_string(),
             mutated: false,
             status: false,
-            png: None,
+            image: None,
+            image_mime: "",
             body: None,
         })
     }
@@ -1165,9 +1198,9 @@ impl Session {
         Ok(Done::new("Reloaded the page. Refs from before are gone: snapshot again.", "reload", true))
     }
 
-    async fn screenshot(&self, page: &Page, args: &Value) -> Result<Done, String> {
+    async fn screenshot(&self, page: &Page, args: &Value, compact: bool) -> Result<Done, String> {
         let full = args.get("fullPage").and_then(Value::as_bool).unwrap_or(false);
-        let mut params = json!({ "format": "png" });
+        let mut params = if compact { json!({ "format": "jpeg", "quality": 70 }) } else { json!({ "format": "png" }) };
         let mut what = "viewport".to_string();
         if args.get("ref").is_some() {
             let r = ref_arg(args)?;
@@ -1195,7 +1228,8 @@ impl Session {
         if png.is_empty() {
             return Err("the browser produced an empty screenshot".to_string());
         }
-        if png.len() > MAX_PNG_BYTES {
+        let cap = if compact { MAX_COMPACT_IMAGE_BYTES } else { MAX_PNG_BYTES };
+        if png.len() > cap {
             return Err(format!(
                 "screenshot is {} KiB, over the {}-MiB cap; capture the viewport or one element (ref) instead",
                 png.len() / 1024,
@@ -1205,7 +1239,8 @@ impl Session {
         let (url, _) = page.meta().await;
         let mut d = Done::new(format!("Screenshot of {} ({what}).", display_url(&url)), format!("screenshot ({what})"), true);
         d.status = false;
-        d.png = Some(png);
+        d.image = Some(png);
+        d.image_mime = if compact { "image/jpeg" } else { "image/png" };
         Ok(d)
     }
 
@@ -1294,7 +1329,7 @@ impl Session {
             text.push_str(&fence::fence("status", &url, &block, 2_400));
         }
         self.announce(page, &done, &url, &title);
-        Reply { text, png: done.png }
+        Reply { text, image: done.image, image_mime: done.image_mime }
     }
 
     // --- the mirror ----------------------------------------------------------------------
@@ -1352,6 +1387,14 @@ async fn mirror_shot(cdp: &Cdp, session: &str) -> Option<String> {
     for quality in [60, 35] {
         let call = cdp.call(
             "Page.captureScreenshot",
+        // A compact picture that is still large is retried at a lower quality.
+        if compact && png.len() > MAX_COMPACT_IMAGE_BYTES {
+            params["quality"] = json!(40);
+            r = page.call("Page.captureScreenshot", params).await?;
+            png = base64::engine::general_purpose::STANDARD
+                .decode(r["data"].as_str().ok_or("the browser returned no image")?)
+                .map_err(|e| format!("the browser returned a bad image: {e}"))?;
+        }
             json!({ "format": "jpeg", "quality": quality }),
             Some(session),
         );
