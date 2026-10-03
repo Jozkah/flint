@@ -77,6 +77,7 @@ import {
 } from '@/lib/reasoningProviderOptions'
 import { resolveModel } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { threadToolsGranted } from '@/hooks/useThreadToolGrants'
 import {
   ExtensionTypeEnum,
   VectorDBExtension,
@@ -1227,7 +1228,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
 
     const selectedModel = this.getModelSelection().selectedModel
-    const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
+    const modelSupportsTools =
+      (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools) ||
+      threadToolsGranted(this.threadId)
     // Whether there are documents is read live, before the cache check: a
     // file attached to the thread's project mid-thread changes nothing else
     // in the key, and `this.hasDocuments` is only refreshed by the thread
@@ -2070,7 +2073,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     // Include tools only if we have tools loaded AND model supports them
     const hasTools = Object.keys(this.tools).length > 0
-    const modelSupportsTools = selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools
+    const modelSupportsTools =
+      (selectedModel?.capabilities?.includes('tools') ?? this.modelSupportsTools) ||
+      threadToolsGranted(this.threadId)
     const shouldEnableTools = hasTools && modelSupportsTools
 
     // Cloud providers take reasoning via the AI SDK's per-request

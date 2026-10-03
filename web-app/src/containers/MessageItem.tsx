@@ -5,7 +5,8 @@ import { parseSlashMarker } from '@/lib/slashCommands'
 import type { UIMessage, ChatStatus } from 'ai'
 import { RenderMarkdown } from './RenderMarkdown'
 import { explainRawToolCall, hasRawToolCall } from '@/lib/rawToolCallText'
-import { EnableModelCapabilityDialog } from '@/containers/dialogs/EnableModelCapabilityDialog'
+import { EnableToolsCard } from '@/containers/message/EnableToolsCard'
+import { useModelToolsEnabled, useThreadToolGrants } from '@/hooks/useThreadToolGrants'
 import { enableModelCapabilities } from '@/lib/modelCapabilityEnable'
 import { cn } from '@/lib/utils'
 import { formatDuration } from '@/lib/utils'
@@ -52,10 +53,13 @@ import {
   type PartEntry,
 } from './message/types'
 import { CopyButton } from './CopyButton'
-import { emptyRunFallback } from '@/lib/emptyRunFallback'
+import { calledUnavailableTool, emptyRunFallback } from '@/lib/emptyRunFallback'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { formatMessageTime } from '@/utils/formatMessageTime'
-import { useConversationModel } from '@/hooks/useConversationPane'
+import {
+  useConversationModel,
+  useConversationPane,
+} from '@/hooks/useConversationPane'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useInterfaceSettings } from '@/hooks/useInterfaceSettings'
 import { useMessageErrors } from '@/stores/message-errors'
@@ -145,7 +149,9 @@ export const MessageItem = memo(
       (state) => state.getProviderByName
     )
     const updateProvider = useModelProvider((state) => state.updateProvider)
-    const [enableToolsOpen, setEnableToolsOpen] = useState(false)
+    const threadId = useConversationPane()?.threadId
+    const toolsEnabled = useModelToolsEnabled(selectedModel, threadId)
+    const grantThreadTools = useThreadToolGrants((s) => s.grant)
     const coloredUserBubble = useInterfaceSettings((s) => s.coloredUserBubble)
     const metadata = message.metadata as Record<string, unknown> | undefined
     const messageError = useMessageErrors((s) => s.errors[message.id])
@@ -161,6 +167,26 @@ export const MessageItem = memo(
       e.stopPropagation()
       setCtxMenuOpen(true)
     }, [])
+
+    // Turn tool calls on, for this conversation or on the model itself, then
+    // run the reply again now that the model can be offered its tools.
+    const enableTools = (scope: 'thread' | 'always') => {
+      if (scope === 'thread') {
+        if (!threadId) return
+        grantThreadTools(threadId)
+      } else {
+        if (!selectedProvider || !selectedModel) return
+        const provider = getProviderByName(selectedProvider)
+        if (!provider) return
+        updateProvider(selectedProvider, {
+          ...provider,
+          models: enableModelCapabilities(provider.models, selectedModel.id, [
+            'tools',
+          ]),
+        })
+      }
+      if (isLastMessage) onRegenerate?.(message.id)
+    }
 
     const handleRegenerate = useCallback(() => {
       onRegenerate?.(message.id)
@@ -479,20 +505,6 @@ export const MessageItem = memo(
                 messageId={message.id}
                 isAnimating={isAnimating}
               />
-              {message.role === 'assistant' &&
-                !isStreaming &&
-                selectedModel &&
-                !selectedModel.capabilities?.includes('tools') &&
-                hasRawToolCall(part.text) && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-2"
-                    onClick={() => setEnableToolsOpen(true)}
-                  >
-                    {t('common:modelCapability.enableTools')}
-                  </Button>
-                )}
             </>
           )}
         </div>
@@ -649,11 +661,34 @@ export const MessageItem = memo(
             </p>
           )
         }
+        // The model tried to use a tool while tool calls are off for it (a
+        // call to a tool it was never offered, or one printed as text): ask
+        // whether to turn them on, the way a tool approval asks.
+        if (
+          selectedModel &&
+          !toolsEnabled &&
+          (calledUnavailableTool(parts) ||
+            parts.some((p) => p.type === 'text' && hasRawToolCall(p.text ?? '')))
+        ) {
+          elements.push(
+            <EnableToolsCard
+              key={`${message.id}-enable-tools`}
+              modelName={selectedModel.displayName || selectedModel.id}
+              onEnableThread={
+                threadId ? () => enableTools('thread') : undefined
+              }
+              onEnableAlways={() => enableTools('always')}
+            />
+          )
+        }
       }
       return elements
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       message.parts,
+      selectedModel,
+      toolsEnabled,
+      threadId,
       isStreaming,
       isReasoningAtBottom,
       grounding,
@@ -977,26 +1012,6 @@ export const MessageItem = memo(
         </DropdownMenu>
 
         {/* Image Preview Dialog */}
-        <EnableModelCapabilityDialog
-          open={enableToolsOpen}
-          modelName={selectedModel?.displayName || selectedModel?.id || ''}
-          capabilities={['tools']}
-          onCancel={() => setEnableToolsOpen(false)}
-          onEnable={() => {
-            setEnableToolsOpen(false)
-            if (!selectedProvider || !selectedModel) return
-            const provider = getProviderByName(selectedProvider)
-            if (!provider) return
-            updateProvider(selectedProvider, {
-              ...provider,
-              models: enableModelCapabilities(
-                provider.models,
-                selectedModel.id,
-                ['tools']
-              ),
-            })
-          }}
-        />
         {previewImage && (
           <div
             className="fixed inset-0 z-100 bg-background/80 backdrop-blur-md flex items-center justify-center cursor-pointer"
