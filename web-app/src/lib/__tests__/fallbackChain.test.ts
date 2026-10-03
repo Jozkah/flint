@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   fallbackRef,
+  moveFallback,
   parseFallbackRef,
   resolveFallbackChain,
   shouldFallback,
@@ -108,5 +109,24 @@ describe('shouldFallback on credential failures', () => {
 
   it('treats a model that failed to start as unavailable', () => {
     expect(shouldFallback(new Error('Failed to create model: engine exited'))).toBe(true)
+  })
+})
+
+describe('moveFallback', () => {
+  const refs = ['a::1', 'b::2', 'c::3']
+  it('moves an entry up or down by one', () => {
+    expect(moveFallback(refs, 1, -1)).toEqual(['b::2', 'a::1', 'c::3'])
+    expect(moveFallback(refs, 1, 1)).toEqual(['a::1', 'c::3', 'b::2'])
+  })
+  it('leaves the order alone at either end and for a bad index, without mutating', () => {
+    expect(moveFallback(refs, 0, -1)).toEqual(refs)
+    expect(moveFallback(refs, 2, 1)).toEqual(refs)
+    expect(moveFallback(refs, 9, 1)).toEqual(refs)
+    expect(refs).toEqual(['a::1', 'b::2', 'c::3'])
+  })
+  it('the moved order is the order the chain is walked in', () => {
+    const providers = [{ provider: 'a', models: [{ id: '1' }] }, { provider: 'b', models: [{ id: '2' }] }, { provider: 'c', models: [{ id: '3' }] }]
+    const chain = resolveFallbackChain(moveFallback(refs, 2, -1), { provider: 'x', modelId: 'y' }, providers)
+    expect(chain.map((c) => c.selectedModel.id)).toEqual(['1', '3', '2'])
   })
 })

@@ -212,3 +212,60 @@ describe('the last tool step', () => {
     expect(last?.system).toContain('used all your tool steps')
   })
 })
+
+describe('post-tool-batch report from a room turn', () => {
+  const lookupA = providerLookup([makeProvider('provider-a', ['model-1'])])
+  const toolInput = () =>
+    input({ toolContext: { roomId: 'room-1', folder: null, extraFolders: [], access: 'read' } as never })
+  const run = async (
+    steps: Array<Array<{ toolName: string }>>,
+    notifyBatch: (id: string, names: string[]) => void
+  ) => {
+    const stream = vi.fn((args: Record<string, unknown>) => ({
+      fullStream: (async function* () {
+        for (const calls of steps) {
+          ;(args.onStepFinish as (s: unknown) => void)({ toolCalls: calls })
+        }
+        yield { type: 'text-delta', id: 't', text: 'ok' }
+      })(),
+      totalUsage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      finishReason: Promise.resolve('stop'),
+    }))
+    return streamParticipantReply(toolInput(), {
+      lookup: lookupA,
+      createModel: vi.fn(async () => ({}) as LanguageModel),
+      streamText: stream as never,
+      notifyBatch,
+    })
+  }
+
+  it('reports each step that ran tools, once, with the room id and names in order', async () => {
+    const notifyBatch = vi.fn()
+    await run([[{ toolName: 'ls' }, { toolName: 'read' }], [{ toolName: 'grep' }]], notifyBatch)
+    expect(notifyBatch.mock.calls).toEqual([
+      ['room-1', ['ls', 'read']],
+      ['room-1', ['grep']],
+    ])
+  })
+
+  it('says nothing for a step with no tool calls, or when the room has no tools', async () => {
+    const notifyBatch = vi.fn()
+    await run([[]], notifyBatch)
+    expect(notifyBatch).not.toHaveBeenCalled()
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'plain' }])
+    await streamParticipantReply(input(), {
+      lookup: lookupA,
+      createModel: vi.fn(async () => ({}) as LanguageModel),
+      streamText: stream as never,
+      notifyBatch,
+    })
+    expect(stream.mock.calls[0][0]).not.toHaveProperty('onStepFinish')
+  })
+
+  it('a throwing observer does not fail the turn', async () => {
+    const res = await run([[{ toolName: 'ls' }]], () => {
+      throw new Error('hook blew up')
+    })
+    expect(res.text).toBe('ok')
+  })
+})

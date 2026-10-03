@@ -363,6 +363,8 @@
     "fallbackModelsDesc": "If the chosen model is overloaded, unreachable or not loaded, retry the message on these models in order.",
     "fallbackModelsAdd": "Add model",
     "fallbackModelsRemove": "Remove",
+    "fallbackModelsMoveUp": "Move up",
+    "fallbackModelsMoveDown": "Move down",
     "showInFinder": "Show in Finder",
     "showInFileExplorer": "Show in File Explorer",
     "openContainingFolder": "Open Containing Folder",

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
-import { fallbackRef, parseFallbackRef } from '@/lib/fallbackChain'
+import { fallbackRef, moveFallback, parseFallbackRef } from '@/lib/fallbackChain'
 
 /** The ordered models a chat falls back to when the chosen one fails to answer. */
 export default function FallbackModelsPicker() {
@@ -30,6 +30,26 @@ export default function FallbackModelsPicker() {
         <div key={ref} className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">{i + 1}.</span>
           <span>{parseFallbackRef(ref)?.modelId ?? ref}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t('settings:general.fallbackModelsMoveUp')}
+            title={t('settings:general.fallbackModelsMoveUp')}
+            disabled={i === 0}
+            onClick={() => setRefs(moveFallback(refs, i, -1))}
+          >
+            <Icon name="arrow-up" size={12} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={t('settings:general.fallbackModelsMoveDown')}
+            title={t('settings:general.fallbackModelsMoveDown')}
+            disabled={i === refs.length - 1}
+            onClick={() => setRefs(moveFallback(refs, i, 1))}
+          >
+            <Icon name="arrow-down" size={12} />
+          </Button>
           <Button
             variant="ghost"
             size="sm"

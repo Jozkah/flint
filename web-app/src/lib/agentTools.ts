@@ -522,11 +522,17 @@ export async function executeAgentTool(
 }
 
 /**
- * A chat turn's tool calls all have results: let the project's
- * `post-tool-batch` hooks run. Observe-only and never awaited by the chat --
- * nothing here can delay the next request or change a tool result.
+ * An assistant turn's tool calls all have results: let the project's
+ * `post-tool-batch` hooks run. Observe-only and never awaited by the caller --
+ * nothing here can delay the next request or change a tool result. Shared by
+ * the chat, Cowork (`scope: 'session'`) and Rooms: each reports from the point
+ * in its own loop where a turn's results are in.
  */
-export function notifyToolBatch(threadId: string, toolNames: string[]): void {
+export function notifyToolBatch(
+  threadId: string,
+  toolNames: string[],
+  scope: 'thread' | 'session' = 'thread'
+): void {
   if (toolNames.length === 0) return
   void (async () => {
     try {
@@ -537,7 +543,7 @@ export function notifyToolBatch(threadId: string, toolNames: string[]): void {
         threadId,
         toolNames,
         useAgentToolsConfig.getState().bashNetworkEnabled,
-        'thread' as WorkspaceScope
+        scope as WorkspaceScope
       )
     } catch {
       // A hook problem is the backend's to log; the chat goes on.

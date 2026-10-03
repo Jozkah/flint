@@ -91,3 +91,12 @@ export function shouldFallback(
   if (status !== null) return status === 408 || status === 429 || status >= 500
   return TRANSIENT.test(message) || TRANSPORT_FAILURE.test(message)
 }
+
+/** The list with the entry at `index` moved by `delta` places (-1 up, 1 down); unchanged at either end. */
+export function moveFallback(refs: readonly string[], index: number, delta: -1 | 1): string[] {
+  const to = index + delta
+  if (index < 0 || index >= refs.length || to < 0 || to >= refs.length) return [...refs]
+  const next = [...refs]
+  ;[next[index], next[to]] = [next[to], next[index]]
+  return next
+}

@@ -1142,3 +1142,63 @@ describe('harness refusals and steering yields', () => {
     expect(told).toContain('Re-issue it if it is still needed')
   })
 })
+
+describe('post-tool-batch report from the run loop', () => {
+  const twoCalls = [...toolStep('ls', 'c1'), ...toolStep('read', 'c2')]
+  const run = (d: ReturnType<typeof deps> & { onBatchFinished?: (n: string[]) => void }) =>
+    runTurn({ messages: [user('go')], signal: new AbortController().signal, deps: d } as never)
+
+  it('reports each step once, with its tool names in call order', async () => {
+    const onBatchFinished = vi.fn()
+    const out = await run({ ...deps([twoCalls, toolStep('write', 'c3'), textStep('done')]), onBatchFinished })
+    expect(out.stoppedBy).toBe('done')
+    expect(onBatchFinished.mock.calls).toEqual([[['ls', 'read']], [['write']]])
+  })
+
+  it('says nothing for a turn with no tool calls', async () => {
+    const onBatchFinished = vi.fn()
+    await run({ ...deps([textStep('just text')]), onBatchFinished })
+    expect(onBatchFinished).not.toHaveBeenCalled()
+  })
+
+  it('reports after every result is in, before the next model request', async () => {
+    const order: string[] = []
+    const d = deps([twoCalls, textStep('done')], vi.fn(async (): Promise<ToolOutcome> => {
+      order.push('dispatch')
+      return { output: 'ok' }
+    }))
+    const send = d.sendStep
+    d.sendStep = vi.fn(async () => {
+      order.push('send')
+      return send()
+    }) as never
+    await run({ ...d, onBatchFinished: () => order.push('batch') })
+    expect(order).toEqual(['send', 'dispatch', 'dispatch', 'batch', 'send'])
+  })
+
+  it('a throwing observer neither ends the run nor changes a result', async () => {
+    const dispatch = vi.fn(async (): Promise<ToolOutcome> => ({ output: 'RESULT' }))
+    const out = await run({
+      ...deps([twoCalls, textStep('done')], dispatch),
+      onBatchFinished: () => {
+        throw new Error('hook blew up')
+      },
+    })
+    expect(out.stoppedBy).toBe('done')
+    expect(dispatch).toHaveBeenCalledTimes(2)
+    const results = out.messages.flatMap((m) => m.parts).filter((p) => String(p.type).startsWith('tool-'))
+    expect(results.every((p) => (p as { output?: unknown }).output === 'RESULT')).toBe(true)
+  })
+
+  it('a slow observer does not hold the run (it is never awaited)', async () => {
+    const t0 = Date.now()
+    const out = await run({
+      ...deps([twoCalls, textStep('done')]),
+      onBatchFinished: () => {
+        void new Promise((r) => setTimeout(r, 5000))
+      },
+    })
+    expect(out.stoppedBy).toBe('done')
+    expect(Date.now() - t0).toBeLessThan(2000)
+  })
+})

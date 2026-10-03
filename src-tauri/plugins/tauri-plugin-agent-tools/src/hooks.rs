@@ -1266,77 +1266,68 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// Runs a confined `post-tool-batch` hook that writes `out` by a relative
+    /// path, in a project folder named `tag`, and checks the file lands there.
+    ///
+    /// It cannot pass by not running: whether a shell can be confined is
+    /// decided up front. A host that cannot says so and returns; a host that
+    /// can must have run the hook, and any error from it fails the test.
+    /// Returns whether the hook ran, so the caller can say so.
+    async fn confined_relative_hook_lands_in_project(tag: &str, out: &str) -> bool {
+        let root = dir(tag);
+        write_config(
+            &root,
+            &format!(
+                "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > {out}\"\non_failure = \"warn\"\n"
+            ),
+        );
+        let hooks = load(&root).unwrap();
+        let policy = crate::tools::jail::Policy::new(&root, false).with_home_readonly(true);
+        if let Err(detail) = crate::tools::jail::select_shell(&policy) {
+            eprintln!("SKIPPED {out}: no shell can be confined on this host: {detail}");
+            let _ = std::fs::remove_dir_all(&root);
+            return false;
+        }
+        let decision = run_post_tool_batch(
+            &hooks,
+            &["ls".to_string()],
+            &Context {
+                project_root: &root,
+                allow_network: false,
+                home_readonly: true,
+                sandbox: true,
+                mask_root: None,
+                cancel: None,
+            },
+        )
+        .await;
+        let run = decision.runs.first().expect("a confinable host runs the hook");
+        if let Some(e) = &run.error {
+            panic!("a shell can be confined here, so the hook must have run: {}", e.message);
+        }
+        assert!(
+            root.join(out).is_file(),
+            "a relative path in a confined hook must land in the project"
+        );
+        eprintln!("RAN {out}: the confined hook started in the project");
+        let _ = std::fs::remove_dir_all(&root);
+        true
+    }
+
     /// A confined PowerShell opens in System32 whatever directory it was
     /// started in, so a relative path in a hook used to land (or fail) there.
     /// A hook starts in the project, confined or not.
     #[tokio::test]
     async fn a_confined_hook_starts_in_the_project() {
-        let root = dir("confined-cwd");
-        write_config(
-            &root,
-            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > relative-hook-output.txt\"\non_failure = \"warn\"\n",
-        );
-        let hooks = load(&root).unwrap();
-        let decision = run_post_tool_batch(
-            &hooks,
-            &["ls".to_string()],
-            &Context {
-                project_root: &root,
-                allow_network: false,
-                home_readonly: true,
-                sandbox: true,
-                mask_root: None,
-                cancel: None,
-            },
-        )
-        .await;
-        let run = decision.runs.first().expect("the hook ran or was refused");
-        match &run.error {
-            // No shell can be confined on this host: nothing to check here.
-            Some(e) if e.kind == HookErrorKind::ShellUnavailable => {}
-            Some(e) => panic!("the confined hook failed: {}", e.message),
-            None => assert!(
-                root.join("relative-hook-output.txt").is_file(),
-                "a relative path in a confined hook must land in the project"
-            ),
-        }
-        let _ = std::fs::remove_dir_all(&root);
+        confined_relative_hook_lands_in_project("confined-cwd", "relative-hook-output.txt").await;
     }
 
     /// The project's path reaches a confined PowerShell inside a quoted literal.
     /// A folder named with quote, space, `&`, `^` and `%` characters must be a
-    /// place to start in, never code: the hook still lands its file there.
+    /// place to start in, never code.
     #[tokio::test]
     async fn a_confined_hook_starts_in_a_project_with_awkward_characters() {
-        let root = dir("it's a & b ^ 100% $x `t");
-        write_config(
-            &root,
-            "[[hook]]\nevent = \"post-tool-batch\"\ncommand = \"echo here > awkward-output.txt\"\non_failure = \"warn\"\n",
-        );
-        let hooks = load(&root).unwrap();
-        let decision = run_post_tool_batch(
-            &hooks,
-            &["ls".to_string()],
-            &Context {
-                project_root: &root,
-                allow_network: false,
-                home_readonly: true,
-                sandbox: true,
-                mask_root: None,
-                cancel: None,
-            },
-        )
-        .await;
-        let run = decision.runs.first().expect("the hook ran or was refused");
-        match &run.error {
-            Some(e) if e.kind == HookErrorKind::ShellUnavailable => {}
-            Some(e) => panic!("the confined hook failed: {}", e.message),
-            None => assert!(
-                root.join("awkward-output.txt").is_file(),
-                "the hook must start in the awkwardly named project"
-            ),
-        }
-        let _ = std::fs::remove_dir_all(&root);
+        confined_relative_hook_lands_in_project("it's a & b ^ 100% $x `t", "awkward-output.txt").await;
     }
 
     /// The security property: a hook file the model could have written is not

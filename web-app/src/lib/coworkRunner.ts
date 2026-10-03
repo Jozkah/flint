@@ -835,6 +835,12 @@ export type RunDeps = {
   ) => Promise<ReadableStream<UIMessageChunk>>
   /** Run one tool call. Must resolve, never reject. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
+  /**
+   * Told, with the tool names in call order, once every call of a step has its
+   * result and before the next model request. Observe-only: not awaited, and
+   * a throw here never reaches the run.
+   */
+  onBatchFinished?: (toolNames: string[]) => void
   sink: StreamSink
   /** Called once per completed step with everything that step produced. */
   onStep: (info: {
@@ -1302,6 +1308,14 @@ export async function runTurn(opts: {
         after: outcome.diff,
       })
       if (await yieldToSteering(index)) break
+    }
+
+    if (result.toolCalls.length > 0 && !signal.aborted) {
+      try {
+        deps.onBatchFinished?.(result.toolCalls.map((c) => c.toolName))
+      } catch {
+        // Observing a batch must never end a run.
+      }
     }
 
     /**

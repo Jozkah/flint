@@ -391,7 +391,7 @@ import {
 } from '@/lib/coworkReadiness'
 import { measureContextPack } from '@/lib/coworkContext'
 import { coworkPreRunContext } from '@/lib/coworkPreRun'
-import { peekAgentToolSchemas } from '@/lib/agentTools'
+import { notifyToolBatch, peekAgentToolSchemas } from '@/lib/agentTools'
 import {
   CONTINUE_QUESTION_ID,
   decideOpening,
@@ -3826,6 +3826,10 @@ export function CoworkPage() {
         // seeding with it would pre-charge the whole replayed prompt.
         sessionTokens: 0,
         deps: {
+          // The session's `post-tool-batch` hooks, once a step's calls are all
+          // answered; detached, so the run never waits for them.
+          onBatchFinished: (names) =>
+            notifyToolBatch(sid, names, 'session'),
           sendStep: (msgs, signal, stepOpts) => {
             transport.textOnlyNext = stepOpts?.textOnly === true
             return transport.sendMessages({

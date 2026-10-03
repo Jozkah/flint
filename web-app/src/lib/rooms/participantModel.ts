@@ -17,6 +17,7 @@ import {
 import { recoverToolArgs } from '@/lib/toolCallRepair'
 import { ModelFactory } from '@/lib/model-factory'
 import { isAbortLike } from '@/lib/coworkRunner'
+import { notifyToolBatch } from '@/lib/agentTools'
 import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
 import { buildRoomTools, ROOM_FULL_TOOL_MAX_STEPS, ROOM_TOOL_MAX_STEPS } from './roomTools'
@@ -89,6 +90,8 @@ export function createModelOrAbort(
 }
 
 export type ParticipantModelDeps = {
+  /** Reports a finished tool batch to the room's hooks. Defaults to the shared helper. */
+  notifyBatch?: (roomId: string, toolNames: string[]) => void
   lookup?: ProviderLookup
   createModel?: CreateModel
   streamText?: typeof streamText
@@ -196,6 +199,21 @@ ${OUT_OF_STEPS_NOTICE}`,
               if (!InvalidToolInputError.isInstance(error)) return null
               const fixed = recoverToolArgs(toolCall.input)
               return fixed ? { ...toolCall, input: JSON.stringify(fixed) } : null
+            },
+          }
+        : {}),
+      // A step's tool calls have their results once the step finishes; the
+      // room's hooks hear of it without the turn waiting on them.
+      ...(tools && input.toolContext
+        ? {
+            onStepFinish: (step: { toolCalls?: Array<{ toolName: string }> }) => {
+              const names = (step.toolCalls ?? []).map((c) => c.toolName)
+              if (names.length === 0) return
+              try {
+                ;(deps.notifyBatch ?? notifyToolBatch)(input.toolContext!.roomId, names)
+              } catch {
+                // Observing a batch must never fail the turn.
+              }
             },
           }
         : {}),
