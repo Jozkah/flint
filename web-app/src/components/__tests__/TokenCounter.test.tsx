@@ -93,7 +93,7 @@ describe('TokenCounter', () => {
   it('applies destructive styling when over limit (>100%)', () => {
     mockTokens({ tokenCount: 1500, maxTokens: 1000 })
     render(<TokenCounter />)
-    const percentElements = screen.getAllByText('150.0%')
+    const percentElements = screen.getAllByText('100.0%')
     expect(percentElements.length).toBeGreaterThanOrEqual(1)
     const span = percentElements[0]
     expect(span.className).toContain('text-destructive')
@@ -441,11 +441,46 @@ describe('TokenCounter', () => {
       expect(trigger.textContent).toBe('Context 37% full')
     })
 
-    it('is a circle for a provider with no window size too', () => {
+    it('is a circle for a provider with no window size too, dashed and empty', () => {
       mockTokens({ tokenCount: 1400, maxTokens: undefined })
       render(<TokenCounter />)
-      const trigger = screen.getByTestId('token-counter')
-      expect(trigger.querySelector('svg')).toBeTruthy()
+      const ring = screen.getByTestId('context-ring')
+      expect(ring.getAttribute('data-window')).toBe('unknown')
+      expect(ring.querySelectorAll('circle')).toHaveLength(1)
+    })
+
+    it('draws the arc to the same fraction the bar uses', () => {
+      useContextBreakdown.setState({
+        byId: {
+          t1: {
+            at: 1,
+            segments: [
+              { id: 'messages' as const, label: 'Messages', tokens: 300, color: 'bg-blue-500' },
+            ],
+          },
+        },
+      })
+      mockTokens({ tokenCount: 250, maxTokens: 1000 })
+      render(<TokenCounter source={{ threadId: 't1' }} />)
+      const ring = screen.getByTestId('context-ring')
+      expect(ring.getAttribute('data-fraction')).toBe('0.2500')
+      const arc = ring.querySelectorAll('circle')[1]
+      const c = 2 * Math.PI * 8
+      expect(Number(arc.getAttribute('stroke-dashoffset'))).toBeCloseTo(c * 0.75, 3)
+      const bar = screen.getByTestId('context-bar')
+      expect(
+        Number.parseFloat(
+          (bar.querySelector('[data-segment="messages"]') as HTMLElement).style.width
+        )
+      ).toBeCloseTo(25, 5)
+      expect(screen.getByText(/250 \/ 1\.0K \(25%\)/)).toBeTruthy()
+      useContextBreakdown.setState({ byId: {} })
+    })
+
+    it('clamps the arc when usage is past the window', () => {
+      mockTokens({ tokenCount: 5000, maxTokens: 1000 })
+      render(<TokenCounter />)
+      expect(screen.getByTestId('context-ring').getAttribute('data-fraction')).toBe('1.0000')
     })
   })
 
@@ -543,7 +578,7 @@ describe('TokenCounter', () => {
     const { container } = render(<TokenCounter />)
     const tooltipContent = screen.getByTestId('tooltip-content')
     expect(tooltipContent.textContent).toMatch(/overflow/i)
-    expect(screen.getAllByText('120.0%').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('100.0%').length).toBeGreaterThanOrEqual(1)
   })
 
   it('does not show the overflow note when not overflowing', () => {

@@ -20,6 +20,7 @@ import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { reconcileBreakdown } from '@/lib/contextBreakdown'
+import { contextUsage, type ContextUsage } from '@/lib/contextUsage'
 import {
   DEFAULT_COMPACTION_POLICY,
   effectiveReserve,
@@ -50,9 +51,6 @@ interface TokenCounterProps {
   onCompact?: () => void
 }
 
-const WARN_PCT = 85
-const OVER_PCT = 100
-
 const formatExact = (num: number) => num.toLocaleString()
 
 export const TokenCounter = memo(function TokenCounter({
@@ -65,7 +63,6 @@ export const TokenCounter = memo(function TokenCounter({
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
-  const ringGradientId = useId()
   // Which conversation these numbers belong to, stamped on the badge and its
   // popover so nothing -- a test, a screen reader, a stale portal left over
   // from the previous session -- can mistake one session's usage for another's.
@@ -162,10 +159,12 @@ export const TokenCounter = memo(function TokenCounter({
     [stored, totalTokens]
   )
 
-  const pct = useMemo(() => {
-    if (!tokenData.maxTokens) return undefined
-    return (totalTokens / tokenData.maxTokens) * 100
-  }, [totalTokens, tokenData.maxTokens])
+  // The ring and the card both read this one figure, so they cannot differ.
+  const usage = contextUsage(
+    reconciled?.usedTokens ?? totalTokens,
+    tokenData.maxTokens,
+    policy.auto ? effectiveReserve(tokenData.maxTokens ?? 0, policy) : 0
+  )
 
   // What the popover itemises. A caller that reported no breakdown still has
   // its input/output/total, which is all the older counter showed.
@@ -185,12 +184,7 @@ export const TokenCounter = memo(function TokenCounter({
     ]
   )
 
-  const tier: 'ok' | 'warn' | 'over' = useMemo(() => {
-    if (pct === undefined) return 'ok'
-    if (pct >= OVER_PCT) return 'over'
-    if (pct >= WARN_PCT) return 'warn'
-    return 'ok'
-  }, [pct])
+  const tier = usage.tier
 
   // Remote providers report no context-window denominator, so a percentage is
   // meaningless. Show a plain total-tokens badge once a turn has counted tokens.
@@ -204,6 +198,7 @@ export const TokenCounter = memo(function TokenCounter({
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         speed={speed}
+        ringUsage={usage}
         card={
           reconciled ? (
             <ContextWindowCard
@@ -274,40 +269,9 @@ export const TokenCounter = memo(function TokenCounter({
                 isAnimating && 'scale-110'
               )}
             >
-              <svg
-                aria-hidden
-                className="size-[18px] shrink-0 -rotate-90"
-                viewBox="0 0 20 20"
-              >
-                <defs>
-                  <linearGradient id={ringGradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
-                    <stop style={{ stopColor: ringColors[0] }} />
-                    <stop offset="1" style={{ stopColor: ringColors[1] }} />
-                  </linearGradient>
-                </defs>
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  className="stroke-track"
-                />
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  strokeLinecap="round"
-                  stroke={`url(#${ringGradientId})`}
-                  strokeDasharray={`${2 * Math.PI * 8}`}
-                  strokeDashoffset={`${2 * Math.PI * 8 * (1 - Math.min(pct ?? 0, 100) / 100)}`}
-                  className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
-                />
-              </svg>
+              <ContextRing usage={usage} colors={ringColors} />
               <span className="sr-only" data-testid="context-percent">
-                {`Context ${pct?.toFixed(0) ?? '0'}% full`}
+                {`Context ${usage.pct.toFixed(0)}% full`}
               </span>
               {tier !== 'ok' && (
                 // AH-077: said in words, not only by colour, and announced.
@@ -403,20 +367,20 @@ export const TokenCounter = memo(function TokenCounter({
                   textCls
                 )}
               >
-                {pct?.toFixed(1) ?? '0.0'}%
+                {usage.pct.toFixed(1)}%
               </span>
               <span className="text-xs text-muted-foreground tabular-nums font-mono">
                 {formatTokenCount(totalTokens)} /{' '}
                 {formatTokenCount(tokenData.maxTokens)}
               </span>
             </div>
-            <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+            <div className="w-full h-1.5 bg-track rounded-full overflow-hidden">
               <div
                 className={cn(
                   'h-full rounded-full transition-all duration-500 ease-out',
                   barCls
                 )}
-                style={{ width: `${Math.min(pct ?? 0, 100)}%` }}
+                style={{ width: `${usage.pct}%` }}
               />
             </div>
             {tokenData.isOverflow && (
@@ -496,6 +460,7 @@ function TokenCountOnly({
   modelDisplayName,
   speed,
   card,
+  ringUsage,
   className,
 }: {
   totalTokens: number
@@ -505,6 +470,7 @@ function TokenCountOnly({
   modelDisplayName?: string
   speed?: { last?: number; average?: number }
   card?: React.ReactNode
+  ringUsage: ContextUsage
   className?: string
 }) {
   return (
@@ -518,21 +484,10 @@ function TokenCountOnly({
             data-usage-scope={scope}
             className={cn('relative cursor-default', className)}
           >
-            {/* No window size is known for this provider, so there is no
-                fill to show: the circle is the same one the local models get,
-                empty, with the total on hover. */}
+            {/* No window size is known for this provider, so the ring has no
+                fill to show: the same ring the local models get, dashed. */}
             <div className="grid size-7 place-items-center rounded-full transition-colors hover:bg-accent">
-              <svg aria-hidden className="size-[18px] shrink-0" viewBox="0 0 20 20">
-                <circle
-                  cx="10"
-                  cy="10"
-                  r="8"
-                  strokeWidth="2.4"
-                  fill="none"
-                  className="stroke-track"
-                />
-                <circle cx="10" cy="10" r="2.2" className="fill-muted-foreground" />
-              </svg>
+              <ContextRing usage={ringUsage} />
               <span className="sr-only">{`Token usage ${formatTokenCount(totalTokens)}`}</span>
             </div>
           </button>
@@ -567,6 +522,58 @@ function TokenCountOnly({
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  )
+}
+
+/** The composer's ring: a dashed empty one when the window is not known. */
+function ContextRing({
+  usage,
+  colors = ['var(--success)', 'var(--success)'],
+}: {
+  usage: ContextUsage
+  colors?: string[]
+}) {
+  const gradientId = useId()
+  const c = 2 * Math.PI * 8
+  return (
+    <svg
+      aria-hidden
+      className="size-[18px] shrink-0 -rotate-90"
+      viewBox="0 0 20 20"
+      data-testid="context-ring"
+      data-window={usage.known ? 'known' : 'unknown'}
+      data-fraction={usage.fraction.toFixed(4)}
+    >
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="20" y2="20" gradientUnits="userSpaceOnUse">
+          <stop style={{ stopColor: colors[0] }} />
+          <stop offset="1" style={{ stopColor: colors[1] }} />
+        </linearGradient>
+      </defs>
+      <circle
+        cx="10"
+        cy="10"
+        r="8"
+        strokeWidth="2.4"
+        fill="none"
+        className={usage.known ? 'stroke-track' : 'stroke-muted-foreground/50'}
+        strokeDasharray={usage.known ? undefined : '2.5 2.5'}
+      />
+      {usage.known && (
+        <circle
+          cx="10"
+          cy="10"
+          r="8"
+          strokeWidth="2.4"
+          fill="none"
+          strokeLinecap="round"
+          stroke={`url(#${gradientId})`}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - usage.fraction)}
+          className="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-700 motion-safe:ease-expo"
+        />
+      )}
+    </svg>
   )
 }
 
