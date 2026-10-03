@@ -76,16 +76,16 @@ type Resp = Response<Full<Bytes>>;
 pub struct Listener {
     pub https: bool,
     /// Every `host[:port]` a request may name: the bound IP, the certificate's
-    /// DNS name, and `localhost` when bound to loopback.
+    /// DNS name, the custom host name, and `localhost` when bound to loopback.
     pub hosts: HashSet<String>,
 }
 
 impl Listener {
-    pub fn new(https: bool, addr: SocketAddr, hostname: Option<&str>) -> Self {
+    pub fn new(https: bool, addr: SocketAddr, hostnames: &[String]) -> Self {
         let port = addr.port();
         let mut hosts = HashSet::new();
         hosts.insert(format!("{}:{port}", addr.ip()));
-        if let Some(h) = hostname {
+        for h in hostnames {
             hosts.insert(format!("{}:{port}", h.to_ascii_lowercase()));
         }
         if addr.ip().is_loopback() {
@@ -954,11 +954,11 @@ pub async fn start(
     hub: Arc<RemoteHub>,
     addr: SocketAddr,
     tls: Option<Arc<rustls::ServerConfig>>,
-    hostname: Option<String>,
+    hostnames: Vec<String>,
 ) -> std::io::Result<RunningServer> {
     let tcp = TcpListener::bind(addr).await?;
     let bound = tcp.local_addr()?;
-    let listener = Arc::new(Listener::new(tls.is_some(), bound, hostname.as_deref()));
+    let listener = Arc::new(Listener::new(tls.is_some(), bound, &hostnames));
     let https = tls.is_some();
     let acceptor = tls.map(TlsAcceptor::from);
     let (tx, rx) = watch::channel(false);

@@ -41,6 +41,10 @@ pub struct RemoteConfig {
     pub port: u16,
     pub cert_path: Option<String>,
     pub key_path: Option<String>,
+    /// The name phones use to reach this computer, in place of the detected
+    /// address: a DNS name of the user's own that points at it. The pairing
+    /// link carries it and the listener accepts it in `Host`.
+    pub custom_host: Option<String>,
     /// Phones may answer tool-approval prompts.
     pub allow_approvals: bool,
     /// Phones may grant "Always allow". Off by default: a standing grant from
@@ -61,6 +65,7 @@ impl Default for RemoteConfig {
             port: DEFAULT_PORT,
             cert_path: None,
             key_path: None,
+            custom_host: None,
             allow_approvals: true,
             allow_always_allow: false,
             max_upload_mb: 25,
@@ -90,6 +95,14 @@ impl RemoteConfig {
         if !(1..=200).contains(&self.max_upload_mb) {
             return Err("The upload limit must be between 1 and 200 MB".into());
         }
+        if let Some(host) = self.custom_host() {
+            if !is_host_name(&host) {
+                return Err(
+                    "The host name may only be a name like flint.example.com: no http://, port or path"
+                        .into(),
+                );
+            }
+        }
         match (&self.cert_path, &self.key_path) {
             (Some(c), Some(k)) if !c.trim().is_empty() && !k.trim().is_empty() => Ok(()),
             (None, None) => Ok(()),
@@ -105,6 +118,27 @@ impl RemoteConfig {
             _ => None,
         }
     }
+
+    /// The custom host name, trimmed and lowercased; `None` when unset.
+    pub fn custom_host(&self) -> Option<String> {
+        self.custom_host
+            .as_deref()
+            .map(|h| h.trim().to_ascii_lowercase())
+            .filter(|h| !h.is_empty())
+    }
+}
+
+/// A DNS name (or dotted address): labels of letters, digits and hyphens.
+/// Anything else (a scheme, a port, a path, a space) is refused, since the
+/// name goes into URLs and is matched against `Host`.
+pub fn is_host_name(host: &str) -> bool {
+    host.len() <= 253
+        && host.split('.').all(|label| {
+            (1..=63).contains(&label.len())
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+                && label.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        })
 }
 
 /// Tailscale hands out addresses from the CGNAT range 100.64.0.0/10.
