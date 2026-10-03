@@ -213,6 +213,64 @@ describe('the last tool step', () => {
   })
 })
 
+describe('keeping a tool loop inside the window', () => {
+  const toolResult = (id: string, chars: number) => ({
+    role: 'tool',
+    content: [
+      { type: 'tool-result', toolCallId: id, toolName: 'read', output: { type: 'text', value: `${id}:`.padEnd(chars, 'x') } },
+    ],
+  })
+  const loopMessages = (...sizes: number[]) => [
+    { role: 'user', content: 'start' },
+    ...sizes.flatMap((n, i) => [
+      { role: 'assistant', content: [{ type: 'tool-call', toolCallId: `c${i}`, toolName: 'read', input: {} }] },
+      toolResult(`c${i}`, n),
+    ]),
+  ]
+  const prepare = async (contextBudget: { window: number } | undefined) => {
+    const stream = fakeStream([{ type: 'text-delta', id: 't', text: 'ok' }])
+    await streamParticipantReply(
+      input({
+        contextBudget,
+        toolContext: { roomId: 'r', folder: '/w', extraFolders: [], access: 'edit' } as never,
+      }),
+      { lookup, createModel: async () => ({}) as LanguageModel, streamText: stream as never }
+    )
+    return (stream.mock.calls[0][0] as { prepareStep: (o: unknown) => Record<string, unknown> | undefined }).prepareStep
+  }
+
+  it('clears old tool output before a step that would not fit', async () => {
+    const step = await prepare({ window: 8000 })
+    const messages = loopMessages(17_500, 17_500, 17_500)
+    const out = step({ stepNumber: 3, messages, steps: [] })
+    const sent = (out?.messages ?? []) as Array<{ content: unknown }>
+    expect(sent).toHaveLength(messages.length)
+    expect(JSON.stringify(sent[2].content)).toContain('Earlier tool output cleared')
+    expect(JSON.stringify(sent[6].content)).not.toContain('Earlier tool output cleared')
+  })
+
+  it('turns tools off and asks for a reply when no room is left', async () => {
+    const step = await prepare({ window: 3000 })
+    const out = step({ stepNumber: 2, messages: loopMessages(30_000, 30_000), steps: [] })
+    expect(out?.toolChoice).toBe('none')
+    expect(String(out?.system)).toContain('no room left for more tool output')
+  })
+
+  it('does nothing while the request fits, or without a window', async () => {
+    const small = await prepare({ window: 32_000 })
+    expect(small({ stepNumber: 2, messages: loopMessages(500, 500), steps: [] })).toBeUndefined()
+    const none = await prepare(undefined)
+    expect(none({ stepNumber: 2, messages: loopMessages(90_000), steps: [] })).toBeUndefined()
+  })
+
+  it('still ends on the last step, with the step-limit notice', async () => {
+    const step = await prepare({ window: 32_000 })
+    const out = step({ stepNumber: 7, messages: loopMessages(500), steps: [] })
+    expect(out?.toolChoice).toBe('none')
+    expect(String(out?.system)).toContain('used all your tool steps')
+  })
+})
+
 describe('post-tool-batch report from a room turn', () => {
   const lookupA = providerLookup([makeProvider('provider-a', ['model-1'])])
   const toolInput = () =>

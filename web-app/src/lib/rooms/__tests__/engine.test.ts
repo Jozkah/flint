@@ -21,7 +21,7 @@ import {
   speakerOf,
   uniqueText,
 } from './helpers'
-import type { Room, RoomJournalRecord } from '../types'
+import { ROOM_SCHEMA_VERSION, type Room, type RoomJournalRecord } from '../types'
 
 // buildPrompt resolves the rooms skill catalog via the Tauri bridge; these
 // engine tests exercise turn-taking, not extension resolution, so stub it to
@@ -475,8 +475,10 @@ describe('engine: context fitting', () => {
       input.system.startsWith('You summarise') ? { text: 'MODEL-SUMMARY' } : { text: uniqueText() }
     )
     await runRoom('room-1', engineDeps(p, fn, { contextWindow: () => 2000 }), signal())
-    expect(calls).toHaveLength(2)
-    expect(calls[1].messages[0].content).toContain('MODEL-SUMMARY')
+    // A 2,000-token window reads the history in passes, then the turn is taken.
+    const summaryCalls = calls.filter((c) => c.system.startsWith('You summarise'))
+    expect(summaryCalls.length).toBeGreaterThanOrEqual(1)
+    expect(calls[calls.length - 1].messages[0].content).toContain('MODEL-SUMMARY')
   })
 
   it('drops the oldest messages with a system note when summarisation fails', async () => {
@@ -498,6 +500,189 @@ describe('engine: context fitting', () => {
     expect(size(1)).toBeLessThan(size(0))
     expect(messagesOf(p).find((m) => m.kind === 'speech' && m.turnId)?.status).toBe('complete')
     expect(room.usage.turns).toBe(1)
+  })
+})
+
+describe('engine: compaction gaps', () => {
+  const longHistory = (count = 40) =>
+    Array.from({ length: count }, (_, i) => ({
+      author:
+        i % 2
+          ? { kind: 'participant' as const, participantId: 'p-b', name: 'Bob' }
+          : { kind: 'participant' as const, participantId: 'p-a', name: 'Alice' },
+      text: `point ${i} ${'details about the plan '.repeat(12)}`,
+    }))
+  const promptTokens = (c: StreamReplyInput) =>
+    Math.ceil([c.system, ...c.messages.map((x) => x.content)].join('\n').length / 3.5)
+  const isSummaryCall = (c: StreamReplyInput) => c.system.startsWith('You summarise')
+
+  it('plans the retry against the window the server named, not the one it assumed', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1, maxOutputTokensPerTurn: 256 } }))
+    await seedMessages(p, 'room-1', longHistory())
+    const { fn, calls } = scriptedStream((_i, index) =>
+      index === 0
+        ? { error: new Error("This model's maximum context length is 2500 tokens. However, you requested 6000 tokens") }
+        : { text: uniqueText() }
+    )
+    // 32k assumed: the first prompt takes the whole history; the server says 2.5k.
+    await runRoom('room-1', engineDeps(p, fn, { summarize: async () => 'S', contextWindow: () => 32_000 }), signal())
+    expect(calls).toHaveLength(2)
+    expect(promptTokens(calls[0])).toBeGreaterThan(2500)
+    expect(promptTokens(calls[1]) + 256).toBeLessThan(2500)
+  })
+
+  it('retries a refusal for length once, then ends the turn rather than looping', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    await seedMessages(p, 'room-1', longHistory())
+    const { fn, calls } = scriptedStream(() => ({ error: new Error('prompt is too long for this context window') }))
+    await runRoom('room-1', engineDeps(p, fn, { summarize: async () => 'S', contextWindow: () => 3000 }), signal())
+    // The turn was sent, compacted harder and sent once more; the same turn
+    // is not tried a third time.
+    const cue = calls[0].messages[calls[0].messages.length - 1].content
+    expect(calls.filter((c) => c.messages[c.messages.length - 1].content === cue)).toHaveLength(2)
+    expect(messagesOf(p).some((m) => m.status === 'failed' && m.error?.code === 'context-overflow')).toBe(true)
+  })
+
+  it('does not treat throttling ("too many tokens per minute") as a refusal for length', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    let n = 0
+    const { fn, calls } = scriptedStream(() =>
+      n++ === 0
+        ? { error: Object.assign(new Error('Rate limit: too many tokens per minute'), { statusCode: 429 }) }
+        : { text: uniqueText() }
+    )
+    await runRoom('room-1', engineDeps(p, fn), signal())
+    expect(calls).toHaveLength(2)
+    // Same history both times: backed off and retried, nothing was compacted.
+    expect(calls[1].messages).toEqual(calls[0].messages)
+  })
+
+  it('tells a retried tool turn what already ran, so it does not repeat changes', async () => {
+    const room = makeRoom({
+      participants: [
+        participant('p-a', 'Alice', 'provider-a', 'model-1', { order: 0, toolAccess: 'edit' }),
+        participant('p-b', 'Bob', 'provider-b', 'model-2', { order: 1 }),
+      ],
+      limits: { maxTurns: 1 },
+    })
+    const p = await setup(room)
+    await seedMessages(p, 'room-1', longHistory())
+    const { fn, calls } = scriptedStream((input, index) => {
+      if (index === 0) {
+        input.onToolActivity?.({ name: 'write', ok: true, args: { path: '/w/a.txt' }, output: 'ok' })
+        return { error: new Error('maximum context length is 4096 tokens') }
+      }
+      return { text: uniqueText() }
+    })
+    await runRoom('room-1', engineDeps(p, fn, { summarize: async () => 'S', contextWindow: () => 8000 }), signal())
+    expect(calls).toHaveLength(2)
+    const second = calls[1].messages[calls[1].messages.length - 1].content
+    expect(second).toContain('already ran tools')
+    expect(second).toContain('write')
+  })
+
+  it('passes a tool participant its own window and keeps room for tool output in the first prompt', async () => {
+    const room = makeRoom({
+      participants: [
+        participant('p-a', 'Alice', 'provider-a', 'model-1', { order: 0, toolAccess: 'edit' }),
+        participant('p-b', 'Bob', 'provider-b', 'model-2', { order: 1 }),
+      ],
+      limits: { maxTurns: 1 },
+    })
+    const p = await setup(room)
+    await seedMessages(p, 'room-1', longHistory(60))
+    const { fn, calls } = scriptedStream(() => ({ text: uniqueText() }))
+    await runRoom('room-1', engineDeps(p, fn, { summarize: async () => 'S', contextWindow: () => 6000 }), signal())
+    expect(calls[0].contextBudget).toEqual({ window: 6000 })
+    // The same room with a participant that has no tools keeps more history.
+    const plain = await setup(
+      makeRoom({
+        participants: [
+          participant('p-a', 'Alice', 'provider-b', 'model-2', { order: 0 }),
+          participant('p-b', 'Bob', 'provider-c', 'model-3', { order: 1 }),
+        ],
+        limits: { maxTurns: 1 },
+      })
+    )
+    await seedMessages(plain, 'room-1', longHistory(60))
+    const other = scriptedStream(() => ({ text: uniqueText() }))
+    await runRoom('room-1', engineDeps(plain, other.fn, { summarize: async () => 'S', contextWindow: () => 6000 }), signal())
+    expect(other.calls[0].contextBudget).toBeUndefined()
+    expect(promptTokens(calls[0])).toBeLessThan(promptTokens(other.calls[0]))
+  })
+
+  it('each pass of a summary fits the summariser window, and later passes fold in the summary so far', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    await seedMessages(p, 'room-1', longHistory(60))
+    const { fn, calls } = scriptedStream((input) =>
+      isSummaryCall(input) ? { text: 'PASS-SUMMARY' } : { text: uniqueText() }
+    )
+    await runRoom('room-1', engineDeps(p, fn, { contextWindow: () => 2500 }), signal())
+    const passes = calls.filter(isSummaryCall)
+    expect(passes.length).toBeGreaterThan(1)
+    for (const c of passes) expect(promptTokens(c) + c.maxOutputTokens).toBeLessThan(2500)
+    expect(passes[1].messages[0].content).toContain('Summary of the discussion so far:\nPASS-SUMMARY')
+  })
+
+  it('writes a summary within what the compaction policy allows', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    await seedMessages(p, 'room-1', longHistory())
+    const { fn, calls } = scriptedStream((input) => (isSummaryCall(input) ? { text: 'S' } : { text: uniqueText() }))
+    await runRoom(
+      'room-1',
+      engineDeps(p, fn, {
+        contextWindow: () => 3000,
+        compaction: () => ({ enabled: true, summaryMaxTokens: 200 }),
+      }),
+      signal()
+    )
+    const pass = calls.find(isSummaryCall)!
+    expect(pass.maxOutputTokens).toBeLessThanOrEqual(200)
+  })
+
+  it('writes the summary with the speaker model when the moderator is unavailable', async () => {
+    const room = makeRoom({
+      mode: 'round-robin',
+      moderator: { enabled: true, name: 'Chair', model: { provider: 'gone', id: 'nope' } },
+      limits: { maxTurns: 1 },
+    })
+    const p = await setup(room)
+    await seedMessages(p, 'room-1', longHistory())
+    const { fn, calls } = scriptedStream((input) => (isSummaryCall(input) ? { text: 'S' } : { text: uniqueText() }))
+    await runRoom('room-1', engineDeps(p, fn, { contextWindow: () => 2500 }), signal())
+    const pass = calls.find(isSummaryCall)!
+    expect(pass.model.provider).not.toBe('gone')
+  })
+
+  it('builds on the summary journaled before a pause instead of reading the room again', async () => {
+    const p = await setup(makeRoom({ limits: { maxTurns: 1 } }))
+    await seedMessages(p, 'room-1', longHistory(60))
+    // A divider from an earlier run: it folded the first 30 messages.
+    await p.appendRoomRecord('room-1', {
+      type: 'message',
+      message: {
+        v: ROOM_SCHEMA_VERSION,
+        id: 'divider',
+        roomId: 'room-1',
+        seq: 0,
+        turnId: null,
+        author: { kind: 'system' },
+        to: { kind: 'room' },
+        kind: 'system',
+        text: 'compacted',
+        round: 1,
+        createdAt: 1,
+        status: 'complete',
+        compaction: { summarizedCount: 30, summary: 'JOURNALED-SUMMARY' },
+      },
+    })
+    const { fn, calls } = scriptedStream((input) => (isSummaryCall(input) ? { text: 'S2' } : { text: uniqueText() }))
+    await runRoom('room-1', engineDeps(p, fn, { contextWindow: () => 4000 }), signal())
+    const pass = calls.find(isSummaryCall)!
+    const sent = pass.messages[0].content
+    expect(sent).toContain('JOURNALED-SUMMARY')
+    expect(sent).not.toContain('point 0 ')
+    expect(sent).toContain('point 30 ')
   })
 })
 
