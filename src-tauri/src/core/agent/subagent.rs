@@ -692,6 +692,83 @@ pub struct SubagentRequest {
     /// Run the child as a job of its own that outlives this process (AH-101),
     /// rather than as a background task inside it.
     pub durable: bool,
+    /// How many model turns the child may take before it is stopped with a
+    /// clear "ran out of turns" status. `None` is [`DEFAULT_CHILD_MAX_TURNS`];
+    /// an explicit value is clamped to `1..=MAX_CHILD_MAX_TURNS`.
+    pub max_turns: Option<u32>,
+}
+
+/// Turns a child may take when the dispatch does not say. A runaway child (a
+/// model going in circles on a tool) ends with a status the parent can act on
+/// instead of burning the whole session budget; sixty is far more than a
+/// focused errand needs.
+pub(crate) const DEFAULT_CHILD_MAX_TURNS: u32 = 60;
+/// The most a dispatch may ask for.
+pub(crate) const MAX_CHILD_MAX_TURNS: u32 = 400;
+
+/// The turn limit a request resolves to.
+pub(crate) fn effective_child_turns(requested: Option<u32>) -> u32 {
+    requested
+        .unwrap_or(DEFAULT_CHILD_MAX_TURNS)
+        .clamp(1, MAX_CHILD_MAX_TURNS)
+}
+
+/// Longest child answer handed back to the parent whole. Past this the middle
+/// is cut: a child that dumps a whole file listing into its final message would
+/// otherwise spend the parent's context window on exactly what delegating was
+/// meant to keep out of it.
+pub(crate) const MAX_CHILD_RESULT_CHARS: usize = 14_000;
+/// How much of the start and end survive the cut. The start carries the
+/// conclusion, the end carries the caveats.
+const CHILD_RESULT_HEAD_CHARS: usize = 9_000;
+const CHILD_RESULT_TAIL_CHARS: usize = 3_500;
+
+/// A child's final message, capped for the parent. A short answer comes back
+/// untouched. A long one keeps its head and tail with a note saying how much
+/// was dropped and, when `spill` could write it, where the full text is.
+pub(crate) fn compact_child_result(
+    text: &str,
+    spill: impl FnOnce(&str) -> Option<std::path::PathBuf>,
+) -> String {
+    let total = text.chars().count();
+    if total <= MAX_CHILD_RESULT_CHARS {
+        return text.to_string();
+    }
+    let head_end = text
+        .char_indices()
+        .nth(CHILD_RESULT_HEAD_CHARS)
+        .map_or(text.len(), |(i, _)| i);
+    let tail_start = text
+        .char_indices()
+        .nth(total - CHILD_RESULT_TAIL_CHARS)
+        .map_or(text.len(), |(i, _)| i);
+    let omitted = total - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
+    let saved = match spill(text) {
+        Some(path) => format!(
+            " The full {total}-character answer is saved at {}; read it with `read` if you need the detail.",
+            path.display()
+        ),
+        None => String::new(),
+    };
+    format!(
+        "{}\n\n[... {omitted} characters omitted from the middle of the subagent's answer.{saved} ...]\n\n{}",
+        &text[..head_end],
+        &text[tail_start..]
+    )
+}
+
+/// Write an over-long child answer to the session scratch, returning where.
+fn spill_child_result(session_id: Option<&str>, run_id: &str, text: &str) -> Option<std::path::PathBuf> {
+    let session = session_id.filter(|s| !s.is_empty()).unwrap_or("anon");
+    let dir = tauri_plugin_agent_tools::workspace::scratch_dir(session).join("subagent-results");
+    std::fs::create_dir_all(&dir).ok()?;
+    let safe: String = run_id
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect();
+    let path = dir.join(format!("{safe}.md"));
+    std::fs::write(&path, text).ok()?;
+    Some(path)
 }
 
 /// The resolved plan for a dispatch: the winning definition plus the effective
@@ -1254,6 +1331,7 @@ pub(crate) fn child_body(
     description: &str,
     parent: &ParentRun,
     forked: Option<&[serde_json::Value]>,
+    max_turns: Option<u32>,
 ) -> serde_json::Value {
     let model = resolved
         .definition
@@ -1281,8 +1359,13 @@ pub(crate) fn child_body(
         None => vec![serde_json::json!({ "role": "user", "content": description })],
     };
     body.insert("messages".to_string(), serde_json::json!(messages));
-    // Unbounded turns: guarded by the inherited budget and parent teardown.
-    body.insert("max_turns".to_string(), serde_json::json!(0));
+    // Bounded turns: a child that keeps calling tools without finishing stops
+    // with a clear status (see `run_subagent`) instead of spending the
+    // inherited budget. The budget and parent teardown still apply as well.
+    body.insert(
+        "max_turns".to_string(),
+        serde_json::json!(effective_child_turns(max_turns)),
+    );
     body.insert("stream".to_string(), serde_json::json!(true));
     if let Some(tools) = &resolved.allowed_tools {
         body.insert("allowed_tools".to_string(), serde_json::json!(tools));
@@ -1312,11 +1395,13 @@ async fn run_subagent(
     parent: ParentRun,
     events: tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
     run_id: String,
+    max_turns: Option<u32>,
 ) -> Result<String, SubagentError> {
     use crate::core::agent::events::StreamEvent;
     use crate::core::agent::r#loop::run_orchestration_streamed;
 
     let name = resolved.definition.name.clone();
+    let session_id = parent_args.session_id.clone();
     // Host tools are the client's to execute, and a client answers only a
     // `tool_request` it can see at the top level. A child's own events reach
     // stdout wrapped in `Subagent { .. }`, a shape no client may answer, so the
@@ -1346,6 +1431,7 @@ async fn run_subagent(
         &description,
         &parent,
         parent.conversation.as_deref(),
+        max_turns,
     );
 
     let _ = events.send(StreamEvent::SubagentStart {
@@ -1374,12 +1460,41 @@ async fn run_subagent(
     drop(child_tx);
     let _ = forwarder.await;
 
-    let _ = events.send(StreamEvent::SubagentEnd { run_id, name });
+    let _ = events.send(StreamEvent::SubagentEnd {
+        run_id: run_id.clone(),
+        name,
+    });
 
     match result {
-        Ok(completion) => Ok(final_assistant_text(&completion)),
-        Err(message) => Err(SubagentError::Upstream(message.message().to_string())),
+        Ok(completion) => Ok(compact_child_result(&final_assistant_text(&completion), |full| {
+            spill_child_result(session_id.as_deref(), &run_id, full)
+        })),
+        Err(message) => Err(SubagentError::Upstream(child_failure_text(
+            message.kind(),
+            message.message(),
+            effective_child_turns(max_turns),
+        ))),
     }
+}
+
+/// What the parent reads when a child's run failed. Running out of turns gets
+/// its own wording: it is the one failure the parent can fix by re-asking
+/// differently, and "reached the 60-turn limit" alone reads like an upstream
+/// outage.
+pub(crate) fn child_failure_text(
+    kind: tauri_plugin_agent_tools::harness_error::ErrorKind,
+    message: &str,
+    turns: u32,
+) -> String {
+    use tauri_plugin_agent_tools::harness_error::ErrorKind;
+    if kind == ErrorKind::BudgetExhausted && message.contains("-turn limit") {
+        return format!(
+            "The subagent stopped after using all {turns} of its turns without finishing, so it \
+             returned no answer. Any files it already changed stay as they are. Re-dispatch with a \
+             narrower task, or pass a larger max_turns if the work is genuinely long."
+        );
+    }
+    message.to_string()
 }
 
 /// A child's own run configuration, from its parent's: the definition's
@@ -1544,6 +1659,7 @@ pub(crate) fn spawn_subagent(
     let entry_events = events.clone();
     let inherited = parent.clone();
     let description = req.description.clone();
+    let max_turns = req.max_turns;
     let run_id_task = run_id.clone();
     let queued_counter = bg.clone();
     // AH-023. A spawned task does not inherit task-locals, so the parent's
@@ -1601,6 +1717,7 @@ pub(crate) fn spawn_subagent(
             inherited,
             task_events,
             run_id_task,
+            max_turns,
         );
         // The parent's stop reaches the child: the body races the token, and
         // whatever the child had produced is discarded rather than reported,
@@ -1833,7 +1950,8 @@ pub fn subagent_tool_schemas(
                         },
                         "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." },
                         "durable": { "type": "boolean", "description": "Whether the subagent runs as a job of its own that keeps running if this app or process exits, and can be awaited, listed or cancelled later by its run_id -- including after a restart. Default: false, a background task inside this run. Pass true for long work that should survive an interruption. It cannot fork this conversation." },
-                        "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." }
+                        "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." },
+                        "max_turns": { "type": "integer", "minimum": 1, "description": "Most model turns the subagent may take before it is stopped without an answer. Default 60; raise it only for genuinely long work." }
                     },
                     "required": ["subagent_name", "description"]
                 }
@@ -1968,6 +2086,13 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .get("durable")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        // A positive whole number is a choice; anything else (absent, zero,
+        // negative, a string) takes the default rather than failing the call.
+        max_turns: args
+            .get("max_turns")
+            .and_then(|v| v.as_u64())
+            .filter(|n| *n > 0)
+            .map(|n| n.min(u64::from(u32::MAX)) as u32),
     })
 }
 
@@ -2364,13 +2489,13 @@ mod tests {
         let resolved =
             resolve_dispatch(&reg, &req("reviewer", None), &permissions).expect("resolves");
         let parent = parent_run();
-        let plain = child_body(&resolved, "the task", &parent, None);
+        let plain = child_body(&resolved, "the task", &parent, None, None);
         let messages = plain["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["content"], "the task");
 
         let history = plain_turns(3);
-        let forked = child_body(&resolved, "the task", &parent, Some(&history));
+        let forked = child_body(&resolved, "the task", &parent, Some(&history), None);
         let messages = forked["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 4, "{messages:#?}");
         assert_eq!(messages[0]["content"], "message 0");
@@ -2971,6 +3096,7 @@ mod tests {
             allowed_tools: allowed,
             system_prompt: None,
             isolate: None,
+            max_turns: None,
         }
     }
 
@@ -2995,7 +3121,7 @@ mod tests {
         let reg = registry_with("reviewer", None);
         let p = ToolPermissions::allow_all();
         let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
-        let on = child_body(&resolved, "task", &parent_run(), None);
+        let on = child_body(&resolved, "task", &parent_run(), None, None);
         assert!(
             on.get("send_reasoning").is_none(),
             "the default is inherited implicitly: {on}"
@@ -3007,6 +3133,7 @@ mod tests {
                 send_reasoning: false,
                 ..parent_run()
             },
+            None,
             None,
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
@@ -3032,6 +3159,7 @@ mod tests {
             isolate: None,
             fork_context: false,
             durable: false,
+            max_turns: None,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");
@@ -3937,6 +4065,138 @@ mod tests {
         }
         // ~4 chars per token: well under 450 tokens for a small local model.
         assert!(desc.len() < 1800, "description is {} chars", desc.len());
+    }
+
+    // ── Child result cap ─────────────────────────────────────────────────
+
+    #[test]
+    fn a_short_child_answer_comes_back_untouched() {
+        let text = "x".repeat(MAX_CHILD_RESULT_CHARS);
+        let spilled = std::cell::Cell::new(false);
+        let out = compact_child_result(&text, |_| {
+            spilled.set(true);
+            None
+        });
+        assert_eq!(out, text);
+        assert!(!spilled.get(), "nothing is written for an answer that fits");
+    }
+
+    #[test]
+    fn a_long_child_answer_keeps_head_and_tail_and_says_what_was_cut() {
+        let text = format!(
+            "HEAD-{}-MIDDLE-{}-TAIL",
+            "a".repeat(30_000),
+            "b".repeat(30_000)
+        );
+        let out = compact_child_result(&text, |_| Some(std::path::PathBuf::from("C:/scratch/full.md")));
+        assert!(out.starts_with("HEAD-"), "the conclusion at the start survives");
+        assert!(out.ends_with("-TAIL"), "the caveats at the end survive");
+        assert!(out.contains("characters omitted from the middle"), "{out}");
+        assert!(out.contains("C:/scratch/full.md"), "names where the full text is");
+        // Bounded: head + tail + a one-paragraph note.
+        assert!(out.chars().count() < CHILD_RESULT_HEAD_CHARS + CHILD_RESULT_TAIL_CHARS + 400);
+        let omitted = text.chars().count() - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
+        assert!(out.contains(&format!("{omitted} characters omitted")), "{out}");
+    }
+
+    #[test]
+    fn a_failed_spill_still_caps_without_promising_a_file() {
+        let text = "z".repeat(MAX_CHILD_RESULT_CHARS + 5_000);
+        let out = compact_child_result(&text, |_| None);
+        assert!(out.contains("omitted from the middle"));
+        assert!(!out.contains("is saved at"), "{out}");
+    }
+
+    #[test]
+    fn the_cap_never_splits_a_multibyte_character() {
+        // 4-byte characters, so any byte-offset slicing would panic.
+        let text = "𝔘".repeat(MAX_CHILD_RESULT_CHARS + 2_000);
+        let out = compact_child_result(&text, |_| None);
+        assert!(out.starts_with('𝔘') && out.ends_with('𝔘'));
+    }
+
+    #[test]
+    fn the_full_answer_is_spilled_to_the_session_scratch() {
+        let run = format!("sub-spill-{}", std::process::id());
+        let text = "q".repeat(MAX_CHILD_RESULT_CHARS + 100);
+        let path = spill_child_result(Some("spill-session"), &run, &text).expect("written");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
+        assert!(path.to_string_lossy().contains("subagent-results"));
+        let _ = std::fs::remove_file(&path);
+        // A run id with separators cannot escape the directory.
+        let sneaky = spill_child_result(Some("spill-session"), "../../evil", "x").expect("written");
+        assert!(sneaky.to_string_lossy().contains("subagent-results"));
+        assert!(!sneaky.to_string_lossy().contains("evil/"));
+        let _ = std::fs::remove_file(&sneaky);
+    }
+
+    // ── Child turn limit ─────────────────────────────────────────────────
+
+    #[test]
+    fn the_child_turn_limit_defaults_and_clamps() {
+        assert_eq!(effective_child_turns(None), DEFAULT_CHILD_MAX_TURNS);
+        assert_eq!(effective_child_turns(Some(7)), 7);
+        assert_eq!(effective_child_turns(Some(0)), 1);
+        assert_eq!(effective_child_turns(Some(u32::MAX)), MAX_CHILD_MAX_TURNS);
+    }
+
+    #[test]
+    fn the_child_body_is_bounded_by_default_and_by_the_dispatch() {
+        let reg = registry_with("reviewer", None);
+        let p = ToolPermissions::allow_all();
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+        let default = child_body(&resolved, "t", &parent_run(), None, None);
+        assert_eq!(default["max_turns"], serde_json::json!(DEFAULT_CHILD_MAX_TURNS));
+        let asked = child_body(&resolved, "t", &parent_run(), None, Some(12));
+        assert_eq!(asked["max_turns"], serde_json::json!(12));
+    }
+
+    #[test]
+    fn dispatch_reads_max_turns_and_ignores_nonsense() {
+        let parse = |v: serde_json::Value| {
+            let mut args = serde_json::json!({ "subagent_name": "r", "description": "d" });
+            args["max_turns"] = v;
+            parse_dispatch_args(&args).unwrap().max_turns
+        };
+        assert_eq!(parse(serde_json::json!(25)), Some(25));
+        assert_eq!(parse(serde_json::json!(0)), None);
+        assert_eq!(parse(serde_json::json!(-3)), None);
+        assert_eq!(parse(serde_json::json!("many")), None);
+        assert_eq!(
+            parse_dispatch_args(&serde_json::json!({ "subagent_name": "r", "description": "d" }))
+                .unwrap()
+                .max_turns,
+            None
+        );
+    }
+
+    #[test]
+    fn the_schema_offers_max_turns_with_the_real_default() {
+        let schemas = subagent_tool_schemas(&registry_with("reviewer", None), 3);
+        let prop = &schemas[0]["function"]["parameters"]["properties"]["max_turns"];
+        assert_eq!(prop["type"], "integer");
+        assert!(
+            prop["description"].as_str().unwrap().contains(&DEFAULT_CHILD_MAX_TURNS.to_string()),
+            "the description quotes the real default"
+        );
+        // Optional: the required list is unchanged, so old callers still work.
+        let required = schemas[0]["function"]["parameters"]["required"].as_array().unwrap();
+        assert_eq!(required.len(), 2);
+    }
+
+    #[test]
+    fn running_out_of_turns_reads_as_a_clear_status_not_an_outage() {
+        use tauri_plugin_agent_tools::harness_error::ErrorKind;
+        let turned_out = child_failure_text(
+            ErrorKind::BudgetExhausted,
+            "reached the 60-turn limit while the model was still calling tools",
+            60,
+        );
+        assert!(turned_out.contains("all 60 of its turns"), "{turned_out}");
+        assert!(turned_out.contains("max_turns"), "{turned_out}");
+        // Any other failure, and a token-budget stop, pass through unchanged.
+        assert_eq!(child_failure_text(ErrorKind::BudgetExhausted, "token budget spent", 60), "token budget spent");
+        assert_eq!(child_failure_text(ErrorKind::InvalidInput, "bad", 60), "bad");
     }
 
     #[test]

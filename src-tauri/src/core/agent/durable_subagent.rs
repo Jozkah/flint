@@ -55,6 +55,10 @@ pub struct ChildSpec {
     pub max_session_tokens: Option<u64>,
     #[serde(default = "yes")]
     pub send_reasoning: bool,
+    /// The turn limit the dispatch asked for. A durable job that asked for none
+    /// stays unbounded, as before: it is the one built to run long.
+    #[serde(default)]
+    pub max_turns: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -169,7 +173,7 @@ pub(crate) fn dispatch(
     let session = admissible(&req, project_root, parent_args.session_id.as_deref())?;
     let registry = sub::SubagentRegistry::load(project_root);
     let resolved = sub::resolve_dispatch(&registry, &req, &parent_args.permissions)?;
-    let body = sub::child_body(&resolved, &req.description, parent, None);
+    let body = sub::child_body(&resolved, &req.description, parent, None, req.max_turns);
     let name = resolved.definition.name.clone();
     let dispatch_id = sub::next_subagent_run_id(&name);
     let data_folder = std::path::PathBuf::from(&parent_args.jan_data_folder);
@@ -187,6 +191,7 @@ pub(crate) fn dispatch(
         data_folder: parent_args.jan_data_folder.clone(),
         max_session_tokens: parent.budget_remaining,
         send_reasoning: parent.send_reasoning,
+        max_turns: req.max_turns,
     };
     let upstream = |e: HarnessError| SubagentError::Upstream(e.message().to_string());
     let path = write_spec(&data_folder, &spec).map_err(upstream)?;
@@ -342,6 +347,7 @@ mod tests {
             data_folder: dir.to_string_lossy().to_string(),
             max_session_tokens: None,
             send_reasoning: true,
+            max_turns: None,
         }
     }
 
@@ -400,6 +406,7 @@ mod tests {
             isolate,
             fork_context: fork,
             durable: true,
+            max_turns: None,
         }
     }
 

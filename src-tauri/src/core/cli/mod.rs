@@ -2810,6 +2810,7 @@ pub async fn run_durable_subagent(
         isolate: Some(false),
         fork_context: false,
         durable: true,
+        max_turns: spec.max_turns,
     };
     let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
         .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
@@ -2821,7 +2822,11 @@ pub async fn run_durable_subagent(
         budget_remaining: spec.max_session_tokens,
         send_reasoning: spec.send_reasoning,
     };
-    let mut body = sub::child_body(&resolved, &spec.description, &parent, None);
+    let mut body = sub::child_body(&resolved, &spec.description, &parent, None, spec.max_turns);
+    if spec.max_turns.is_none() {
+        // A durable job that asked for no limit is unbounded, as it always was.
+        body["max_turns"] = serde_json::json!(0);
+    }
     // Routed when it was dispatched; the child runs what its parent chose.
     body["model"] = serde_json::json!(spec.model);
 

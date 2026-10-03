@@ -59,6 +59,41 @@ import type { StreamEvent } from '@/hooks/useCoworkRun'
 export const MAX_PARALLEL_SUBAGENTS = 3
 
 /**
+ * Longest child answer handed to the parent whole. Past this the middle is cut:
+ * a child that pastes a whole listing into its final message would otherwise
+ * spend the parent's context window on exactly what delegating was meant to
+ * keep out of it. Mirrors `MAX_CHILD_RESULT_CHARS` in `core/agent/subagent.rs`.
+ */
+export const MAX_SUBAGENT_RESULT_CHARS = 14_000
+/** What survives the cut: the conclusion at the start, the caveats at the end. */
+export const SUBAGENT_RESULT_HEAD_CHARS = 9_000
+export const SUBAGENT_RESULT_TAIL_CHARS = 3_500
+
+/**
+ * A child's final message, capped for its parent.
+ *
+ * A short answer comes back untouched. A long one keeps its head and tail with a
+ * note saying how much was dropped. Unlike the Rust path the full text is not
+ * spilled to a file: a Cowork child's workspace is a sandbox that the parent
+ * reaches only through approved tool calls, so writing there unasked would
+ * raise a permission prompt for housekeeping. The note says so instead of
+ * naming a path that does not exist.
+ */
+export function capSubagentOutput(text: string): string {
+  // Code points, not UTF-16 units, so a surrogate pair is never split.
+  const chars = Array.from(text)
+  if (chars.length <= MAX_SUBAGENT_RESULT_CHARS) return text
+  const omitted =
+    chars.length - SUBAGENT_RESULT_HEAD_CHARS - SUBAGENT_RESULT_TAIL_CHARS
+  return (
+    chars.slice(0, SUBAGENT_RESULT_HEAD_CHARS).join('') +
+    `\n\n[... ${omitted} characters omitted from the middle of the subagent's answer. ` +
+    'The rest was not kept; ask it again with a narrower question if you need the detail. ...]\n\n' +
+    chars.slice(chars.length - SUBAGENT_RESULT_TAIL_CHARS).join('')
+  )
+}
+
+/**
  * Always granted to a child, whatever the allowlist says.
  *
  * A skill is a procedure the child may need to follow, and a Claude-style
@@ -560,14 +595,18 @@ export async function runSubagent(
       return {
         output:
           `The subagent '${resolved.name}' stopped at ${cap} without finishing.` +
-          (finalText ? `\n\nIts last output was:\n${finalText}` : ''),
+          (finalText
+            ? `\n\nIts last output was:\n${capSubagentOutput(finalText)}`
+            : ''),
         usage: outcome.usage,
         isError: true,
         sessionTokens,
       }
     }
     return {
-      output: finalText || '(the subagent returned no answer)',
+      output: finalText
+        ? capSubagentOutput(finalText)
+        : '(the subagent returned no answer)',
       usage: outcome.usage,
       sessionTokens,
     }

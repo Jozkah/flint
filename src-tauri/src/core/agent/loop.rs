@@ -2279,6 +2279,7 @@ impl CompositeToolInvoker {
                         isolate: None,
                         fork_context: false,
                         durable: false,
+                        max_turns: None,
                     };
                     let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
                     dispatched.push((reviewer.clone(), run));
@@ -10399,6 +10400,52 @@ mod tests {
         .unwrap();
 
         assert_eq!(result["choices"][0]["message"]["content"], "done");
+    }
+
+    /// A subagent child runs with a finite `max_turns` (see
+    /// `subagent::child_body`). One that keeps calling tools has to stop with
+    /// the turn-limit failure the parent turns into a clear status, rather than
+    /// run on.
+    #[tokio::test]
+    async fn turn_cycle_with_a_cap_stops_a_child_that_never_finishes() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // Different arguments each turn, so the repeated-call guard stays out
+        // of it and the turn cap is what ends the run.
+        let call = |n: u32| {
+            let mut c = tool_call_completion();
+            c["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                json!(format!("{{\"q\":\"query {n}\"}}"));
+            c
+        };
+        let model = MockModel::new(vec![call(1), call(2), call(3), call(4)]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            3,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a child that never answers must be stopped");
+
+        assert_eq!(err.kind(), ErrorKind::BudgetExhausted, "{}", err.message());
+        assert!(err.message().contains("3-turn limit"), "{}", err.message());
+        let shown = crate::core::agent::subagent::child_failure_text(err.kind(), err.message(), 3);
+        assert!(shown.contains("all 3 of its turns"), "{shown}");
+        assert_eq!(tool.calls.lock().unwrap().len(), 3, "it ran exactly its turns, no more");
     }
 
     #[test]
