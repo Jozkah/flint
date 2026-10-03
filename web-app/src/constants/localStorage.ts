@@ -32,6 +32,7 @@ export const localStorageKey = {
   sessionMessaging: 'session-messaging',
   defaultEmbeddingModel: 'default-embedding-model',
   modelOverrides: 'model-overrides',
+  contextBreakdown: 'context-breakdown',
   // Value predates the Cowork rename; changing it would orphan saved sessions.
   fileActivity: 'file-activity',
   coworkSessions: 'code-sessions',

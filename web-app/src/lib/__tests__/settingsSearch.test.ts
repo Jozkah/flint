@@ -449,7 +449,6 @@ const ROUTE_FILES: Record<string, string> = {
   'agent-tools': 'routes/settings/agent-tools.tsx',
   permissions: 'routes/settings/permissions.tsx',
   shortcuts: 'routes/settings/shortcuts.tsx',
-  hardware: 'routes/settings/hardware.tsx',
   'mcp-servers': 'routes/settings/mcp-servers.tsx',
   'claude-code': 'routes/settings/claude-code.tsx',
 }

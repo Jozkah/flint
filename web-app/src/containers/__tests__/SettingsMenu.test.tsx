@@ -66,7 +66,7 @@ describe('SettingsMenu', () => {
   it('keeps the advanced pages visible, not behind a disclosure', () => {
     render(<SettingsMenu />)
     expect(screen.getByText('common:local_api_server')).toBeInTheDocument()
-    expect(screen.getByText('common:hardware')).toBeInTheDocument()
+    expect(screen.getByText('common:agent_tools')).toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'navigation:advancedSettings' })
     ).toBeNull()

@@ -33,7 +33,6 @@ export const route = {
     memory: '/settings/memory',
     schedules: '/settings/schedules',
     permissions: '/settings/permissions',
-    hardware: '/settings/hardware',
     assistant: '/settings/assistant',
     claude_code: '/settings/claude-code',
     jev: '/settings/jev',

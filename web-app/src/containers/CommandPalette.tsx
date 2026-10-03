@@ -143,7 +143,7 @@ export function CommandPalette() {
         id: 'nav-system-monitor',
         section: 'navigation',
         title: t('common:commandPalette.openSystemMonitor'),
-        keywords: ['hardware', 'gpu', 'memory'],
+        keywords: ['hardware', 'gpu', 'cpu', 'memory', 'vram'],
         run: go(route.systemMonitor),
       },
       {

@@ -76,7 +76,12 @@ import {
   isThinkingOff,
   type EffortChoice,
 } from '@/lib/modelEffort'
-import { isOverridden, resolveModel } from '@/lib/modelOverrides'
+import {
+  isOverridden,
+  resolveModel,
+  withSettings,
+  type SettingWrite,
+} from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import {
   THINKING_BUDGET_LEVELS,
@@ -2777,12 +2782,12 @@ const ChatInput = memo(function ChatInput({
 
   const isStreaming = chatStatus === 'submitted' || chatStatus === 'streaming'
 
-  const updateModelSetting = (
-    settingKey: string,
-    title: string,
-    controllerType: string,
-    value: unknown
-  ) => {
+  /**
+   * Write one or more settings into the model's own configuration, in one
+   * update. Built from the provider's current copy of the model, not the
+   * `selectedModel` snapshot, which is stale by the time a second write runs.
+   */
+  const updateModelSettings = (writes: SettingWrite[]) => {
     if (!selectedProvider || !selectedModel) return
     const providerObj = getProviderByName(selectedProvider)
     if (!providerObj) return
@@ -2790,26 +2795,7 @@ const ChatInput = memo(function ChatInput({
       (m) => m.id === selectedModel.id
     )
     if (modelIndex === -1) return
-    const existing = selectedModel.settings?.[settingKey] ?? {
-      key: settingKey,
-      title,
-      description: '',
-      controller_type: controllerType,
-      controller_props: { value },
-    }
-    const updatedModel = {
-      ...selectedModel,
-      settings: {
-        ...selectedModel.settings,
-        [settingKey]: {
-          ...existing,
-          controller_props: {
-            ...(existing.controller_props ?? {}),
-            value,
-          },
-        },
-      },
-    } as Model
+    const updatedModel = withSettings(providerObj.models[modelIndex], writes)
     const updatedModels = [...providerObj.models]
     updatedModels[modelIndex] = updatedModel
     updateProvider(selectedProvider, {
@@ -2823,6 +2809,20 @@ const ChatInput = memo(function ChatInput({
       selectModelProvider(selectedProvider, selectedModel.id)
     }
   }
+  const updateModelSetting = (
+    settingKey: string,
+    title: string,
+    controllerType: string,
+    value: unknown
+  ) =>
+    updateModelSettings([
+      {
+        key: settingKey,
+        title,
+        controllerType,
+        value: value as SettingWrite['value'],
+      },
+    ])
 
   // Which discrete effort levels this provider will act on. Empty for
   // providers that size their own thinking, in which case the control is not
@@ -2849,26 +2849,33 @@ const ChatInput = memo(function ChatInput({
    * yet, and the control still has to work — so it writes the global model
    * setting there.
    */
-  const setChatSetting = (
-    key: string,
-    title: string,
-    value: 'auto' | 'off' | string
+  const setChatSettings = (
+    writes: Array<{ key: string; title: string; value: string }>
   ) => {
     if (overrideScope) {
-      setThreadOverride(overrideScope, key, value)
+      for (const { key, value } of writes) {
+        setThreadOverride(overrideScope, key, value)
+      }
       return
     }
-    updateModelSetting(key, title, 'dropdown', value)
+    // One update for all of them: see `updateModelSettings`.
+    updateModelSettings(
+      writes.map((w) => ({ ...w, controllerType: 'dropdown' }))
+    )
   }
   /** Choose a stop: a level, or Off where the model can be told not to think. */
   const setEffort = (choice: EffortChoice) => {
     if (choice === 'off') {
-      setChatSetting('reasoning', 'Reasoning', 'off')
+      setChatSettings([{ key: 'reasoning', title: 'Reasoning', value: 'off' }])
       return
     }
     // Picking a level ends Off; the effort says how hard from there.
-    if (currentEffort === 'off') setChatSetting('reasoning', 'Reasoning', 'auto')
-    setChatSetting(EFFORT_SETTING_KEY, 'Reasoning Effort', choice)
+    setChatSettings([
+      ...(currentEffort === 'off'
+        ? [{ key: 'reasoning', title: 'Reasoning', value: 'auto' }]
+        : []),
+      { key: EFFORT_SETTING_KEY, title: 'Reasoning Effort', value: choice },
+    ])
   }
 
   return (
