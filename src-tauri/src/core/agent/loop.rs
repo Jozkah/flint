@@ -3348,6 +3348,10 @@ impl ToolInvoker for CompositeToolInvoker {
         let out = self.dispatch_calls(tool_calls).await;
         if let Ok(outcomes) = &out {
             self.record_outcomes(tool_calls, outcomes);
+            // Observe-only `post-tool-batch` hook: results are final here, and
+            // the hook runs on a detached task that owns its inputs, so it can
+            // neither delay the next model request nor reach `out`.
+            self.fire_post_tool_batch_hook(tool_calls);
         }
         out
     }
@@ -3495,6 +3499,28 @@ impl CompositeToolInvoker {
             e.resources = tauri_plugin_agent_tools::resources::take_call(&self.cancel_scope.run, &outcome.id);
             tauri_plugin_agent_tools::activity::append(data, &e.redacted());
         }
+    }
+
+    /// Fire-and-forget `post-tool-batch` hooks for this turn's calls. Returns
+    /// at once; see `tauri_plugin_agent_tools::hooks::fire_post_tool_batch`.
+    fn fire_post_tool_batch_hook(&self, tool_calls: &[serde_json::Value]) {
+        let names: Vec<String> = tool_calls
+            .iter()
+            .filter_map(|tc| {
+                tc.get("function")
+                    .and_then(|f| f.get("name"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .collect();
+        let _ = tauri_plugin_agent_tools::hooks::fire_post_tool_batch(
+            &self.project_root,
+            names,
+            self.allow_network,
+            self.allow_home_read,
+            self.sandbox,
+            None,
+        );
     }
 
     async fn dispatch_calls(&self, tool_calls: &[serde_json::Value]) -> Result<Vec<ToolOutcome>, HarnessError> {

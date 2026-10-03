@@ -18,7 +18,7 @@ outside the project is not read. A project without the file has no hooks.
 
 ```toml
 [[hook]]
-event = "pre-tool"          # required: pre-tool | post-tool | run-end
+event = "pre-tool"          # required: pre-tool | post-tool | post-tool-batch | run-end
 command = "npm run lint"    # required: a shell command, at most 4096 characters
 on_failure = "block"        # optional: block | warn | ignore (default warn)
 timeout_secs = 30           # optional: 1 to 120 (default 30)
@@ -38,7 +38,15 @@ running the subset that happened to parse.
 | --- | --- | --- |
 | `pre-tool` | before a tool call executes | yes |
 | `post-tool` | after a tool call has produced its result | no |
+| `post-tool-batch` | once per assistant turn, after all its tool calls have results, before the next model request | no |
 | `run-end` | accepted by the parser; not fired by the current tool path | no |
+
+`post-tool-batch` is observe-only and runs detached: the next model request
+does not wait for it, its failure or timeout is logged and dropped (never added
+to a tool result), and `block` is refused for it. A `tools` list matches when
+any call in the turn used one of those tools. It fires from the Rust agent loop
+(CLI and desktop agent runs); a renderer that executes tool calls one at a time
+through the `execute` command does not fire it.
 
 `session-start` is refused: nothing fires it yet.
 
@@ -59,6 +67,10 @@ with the same values):
 
 - `FLINT_HOOK_EVENT` / `JAN_HOOK_EVENT`: the event name
 - `FLINT_HOOK_TOOL` / `JAN_HOOK_TOOL`: the tool name, when there is one
+- `FLINT_HOOK_TOOL_NAMES` / `JAN_HOOK_TOOL_NAMES`: `post-tool-batch` only, the
+  turn's tool names, comma-separated, in call order
+- `FLINT_HOOK_TOOL_COUNT` / `JAN_HOOK_TOOL_COUNT`: `post-tool-batch` only, how
+  many calls the turn made
 - `FLINT_PROJECT_ROOT` / `JAN_PROJECT_ROOT`: the project root
 
 Stdin is empty. The prompt, the tool's arguments and provider keys are never
