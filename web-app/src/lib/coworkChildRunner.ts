@@ -131,6 +131,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       role: resolved.name,
       parentModel: { provider: env.providerId ?? '', id: env.modelId },
       parent: env.parent?.(),
+      requestedModel: req.model,
     })
     // Recorded before the child starts: the dispatch is the only moment the
     // agent name, description and model are known together, and the record has
@@ -180,6 +181,14 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
       useCoworkActivity.getState().patchTask(childTaskId, {
         ...(choice.assistant ? { assistant: choice.assistant.name } : {}),
         ...(choice.profile ? { profile: profileLabel(choice.profile) } : {}),
+        ...(choice.inherited.assistant || choice.inherited.profile
+          ? {
+              inherited: [
+                ...(choice.inherited.assistant ? ['assistant' as const] : []),
+                ...(choice.inherited.profile ? ['profile' as const] : []),
+              ],
+            }
+          : {}),
         ...(choice.note ? { detail: choice.note } : {}),
       })
     }

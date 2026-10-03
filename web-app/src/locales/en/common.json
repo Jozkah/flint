@@ -1299,6 +1299,7 @@
     "waitingToStart": "Waiting to start.",
     "starting": "Starting…",
     "jumpToLatest": "Jump to latest",
+    "inherits": "Inherits {{name}}",
     "step": {
       "read": "Read",
       "searched": "Searched for",

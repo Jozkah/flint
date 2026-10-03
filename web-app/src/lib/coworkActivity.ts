@@ -158,6 +158,8 @@ export type ActivityTask = {
   assistant?: string
   /** The work profile label this subagent ran with. */
   profile?: string
+  /** Which of the two the child inherited from the parent run rather than a setting. */
+  inherited?: ('assistant' | 'profile')[]
   /**
    * The checkout of its own this child works in, when it asked for one. `taskId`
    * is the team task id the Changes panel's review list is keyed by, so a row

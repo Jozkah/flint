@@ -488,6 +488,7 @@ import {
 } from '@/lib/coworkSubagent'
 import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { createChildRunner } from '@/lib/coworkChildRunner'
+import { DelegationNudge } from '@/lib/delegationNudge'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
@@ -3348,6 +3349,8 @@ export function CoworkPage() {
      * only what is particular to this run: where a child works, what it holds,
      * and how its calls are gated.
      */
+    // One hint per run, for a survey the model reads itself.
+    const delegationNudge = new DelegationNudge(() => true)
     const dispatchChild = createChildRunner({
       sessionId: sid,
       runId,
@@ -3946,6 +3949,7 @@ export function CoworkPage() {
                       )
                     })
                   }),
+                nudge: delegationNudge,
                 onTask: async (callId, input) => {
                   const req = parseSubagentRequest(input)
                   if (typeof req === 'string') {
@@ -4184,6 +4188,7 @@ export function CoworkPage() {
                               subagent_name: one.subagentName ?? 'worker',
                               description: one.description,
                               ...(one.title ? { title: one.title } : {}),
+                              ...(one.model ? { model: one.model } : {}),
                               // A task that names no saved agent still has to be
                               // runnable: without a prompt it resolves to nothing
                               // and is refused as unknown, which would make the

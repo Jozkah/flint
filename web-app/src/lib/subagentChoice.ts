@@ -32,8 +32,47 @@ export type ParentPersona = {
   workProfile?: WorkProfileId
 }
 
+/** Longest an inherited persona may be: it rides along on every child turn, and
+ * a long one would crowd a small context or fight the role's own prompt. */
+export const MAX_INHERITED_PERSONA_CHARS = 1500
+/** The same bound for a persona the user picked for subagents on purpose. */
+export const MAX_CHOSEN_PERSONA_CHARS = 4000
+
+const SHORTENED = '\n[Persona shortened to fit.]'
+
+/** `text` cut to `max` characters at a line or word edge, with a marker. */
+export function capPersona(text: string | undefined, max: number): string | undefined {
+  const t = text?.trim()
+  if (!t) return undefined
+  if (t.length <= max) return t
+  const cut = t.slice(0, max)
+  const edge = Math.max(cut.lastIndexOf('\n'), cut.lastIndexOf(' '))
+  return `${(edge > max * 0.6 ? cut.slice(0, edge) : cut).trimEnd()}${SHORTENED}`
+}
+
+/** The configured models a subagent could run on: tool-capable ones only. */
+export type AvailableModel = ModelRef
+
+/**
+ * A `model` argument as the calling model wrote it: a configured model's id, or
+ * `provider/id`. `undefined` when it names nothing configured.
+ */
+export function resolveModelArg(
+  value: string | undefined,
+  models: readonly AvailableModel[]
+): ModelRef | undefined {
+  const v = value?.trim()
+  if (!v) return undefined
+  return (
+    models.find((m) => m.id === v) ??
+    models.find((m) => `${m.provider}/${m.id}` === v || `${m.provider}::${m.id}` === v)
+  )
+}
+
 export type ChoiceDeps = {
   settings: () => SubagentSettings
+  /** Models a call may name; absent means none can be named. */
+  models?: () => readonly AvailableModel[]
   assistants: () => { id: string; name?: string; instructions?: string }[]
   profileText: (id: WorkProfileId) => string
   /** A model instance for `ref`, or null when it cannot be had (unknown provider, no tool support). */
@@ -42,6 +81,14 @@ export type ChoiceDeps = {
 
 export const defaultChoiceDeps: ChoiceDeps = {
   settings: currentSubagentSettings,
+  models: () =>
+    useModelProvider
+      .getState()
+      .providers.flatMap((p) =>
+        (p.models ?? [])
+          .filter((m) => m.capabilities?.includes('tools'))
+          .map((m) => ({ provider: p.provider, id: m.id }))
+      ),
   assistants: () => useAssistant.getState().assistants,
   profileText: (id) => useWorkProfiles.getState().textFor(id),
   createModel: async (ref) => {
@@ -63,6 +110,8 @@ export type ChildChoice = {
   modelId: string
   assistant?: { id: string; name: string }
   profile?: WorkProfileId
+  /** The assistant / profile came from the parent run, not from a setting. */
+  inherited: { assistant: boolean; profile: boolean }
   /** Blocks appended to the child's system prompt, persona first. */
   extraSystem: string[]
   /** Why a chosen model was not used, when it was not. */
@@ -75,6 +124,8 @@ export async function prepareChildChoice(input: {
   parentModel: ModelRef
   parent?: ParentPersona
   requested?: SubagentPick
+  /** The `model` argument the call carried, to be checked against configured models. */
+  requestedModel?: string
   deps?: ChoiceDeps
 }): Promise<ChildChoice> {
   const deps = input.deps ?? defaultChoiceDeps
@@ -82,10 +133,23 @@ export async function prepareChildChoice(input: {
     ...(input.parent?.assistantId ? { assistantId: input.parent.assistantId } : {}),
     ...(input.parent?.workProfile ? { workProfile: input.parent.workProfile } : {}),
   }
+  const settings = deps.settings()
+  let argNote: string | undefined
+  let requested = input.requested
+  if (input.requestedModel?.trim()) {
+    const ref = resolveModelArg(input.requestedModel, deps.models?.() ?? [])
+    if (!ref) {
+      argNote = `model "${input.requestedModel.trim()}" is not a configured model; ignored`
+    } else if (!settings.letModelChoose) {
+      argNote = `model "${ref.id}" ignored: Subagents settings choose the model`
+    } else {
+      requested = { ...(requested ?? {}), model: ref }
+    }
+  }
   const choice = resolveSubagentChoice({
-    settings: deps.settings(),
+    settings,
     role: input.role,
-    requested: input.requested,
+    requested,
     parent: parentPick,
   })
 
@@ -96,12 +160,12 @@ export async function prepareChildChoice(input: {
   const assistantId = choice.assistantId.value
   if (assistantId !== undefined) {
     if (choice.assistantId.source === 'parent') {
-      instructions = input.parent?.assistantInstructions
+      instructions = capPersona(input.parent?.assistantInstructions, MAX_INHERITED_PERSONA_CHARS)
       assistant = { id: assistantId, name: input.parent?.assistantName ?? assistantId }
     } else {
       const found = deps.assistants().find((a) => a.id === assistantId)
       if (found) {
-        instructions = found.id === 'jan' ? undefined : found.instructions
+        instructions = found.id === 'jan' ? undefined : capPersona(found.instructions, MAX_CHOSEN_PERSONA_CHARS)
         assistant = { id: found.id, name: found.name ?? found.id }
       }
     }
@@ -116,7 +180,7 @@ export async function prepareChildChoice(input: {
   let model: LanguageModel | undefined
   let supportsVision: boolean | undefined
   let modelId = input.parentModel.id
-  let note: string | undefined
+  let note: string | undefined = argNote
   const ref = choice.model.value
   const differs =
     ref &&
@@ -130,10 +194,10 @@ export async function prepareChildChoice(input: {
         supportsVision = created.supportsVision
         modelId = ref.id
       } else {
-        note = `model ${ref.id} is not available for subagents; used the parent's model`
+        note = note ?? `model ${ref.id} is not available for subagents; used the parent's model`
       }
     } catch (e) {
-      note = `model ${ref.id} could not be loaded (${e instanceof Error ? e.message : String(e)}); used the parent's model`
+      note = note ?? `model ${ref.id} could not be loaded (${e instanceof Error ? e.message : String(e)}); used the parent's model`
     }
   }
 
@@ -142,6 +206,10 @@ export async function prepareChildChoice(input: {
     modelId,
     assistant,
     profile,
+    inherited: {
+      assistant: assistant !== undefined && choice.assistantId.source === 'parent',
+      profile: profile !== undefined && choice.workProfile.source === 'parent',
+    },
     extraSystem,
     note,
     sources: {

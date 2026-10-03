@@ -65,6 +65,7 @@ import {
   type GitPlan,
 } from '@/lib/gitTool'
 import { usePrStatusStore } from '@/stores/pr-status-store'
+import type { DelegationNudge } from '@/lib/delegationNudge'
 import { recordSessionPr } from '@/lib/prClaimBackfill'
 import { attributeGitInput } from '@/lib/gitAttribution'
 
@@ -169,6 +170,12 @@ export type DispatchContext = {
    * an activity row, or anything a user or model can read.
    */
   writeGrant?: string | null
+  /**
+   * Gives a model that keeps reading a survey itself a one-line pointer to
+   * the delegation tool (see `DelegationNudge`). Only the run's own dispatcher
+   * has one; a child's has none.
+   */
+  nudge?: DelegationNudge
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
   /**
@@ -376,6 +383,9 @@ export async function dispatchCoworkTool(
     signal,
     () => routeCoworkTool(call, ctx, signal)
   )
+  // A hint rides on the result the model is about to read, so it is read.
+  const hint = ctx.nudge?.observe(call.toolName)
+  if (hint && !outcome.isError) outcome.output = `${outcome.output}\n\n[${hint}]`
   // A pull request the call opened or named is this session's, whatever
   // branch the attached folder has checked out.
   if (!outcome.isError) {

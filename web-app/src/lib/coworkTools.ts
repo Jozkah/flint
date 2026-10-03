@@ -224,7 +224,7 @@ export function teamDescription(subagentNames: string[]): string {
   ].join('\n')
 }
 
-function teamTool(subagentNames: string[]): Tool {
+export function teamTool(subagentNames: string[]): Tool {
   return {
     description: teamDescription(subagentNames),
     inputSchema: jsonSchema({
@@ -250,6 +250,10 @@ function teamTool(subagentNames: string[]): Tool {
               title: {
                 type: 'string',
                 description: 'A short name for this task, 3-6 words, shown on its row.',
+              },
+              model: {
+                type: 'string',
+                description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
               },
               depends_on: {
                 type: 'array',
@@ -361,6 +365,10 @@ export function taskTool(
         title: {
           type: 'string',
           description: 'A short name for this errand, 3-6 words, shown on its row.',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
         },
         description: { type: 'string', minLength: 1 },
         system_prompt: {

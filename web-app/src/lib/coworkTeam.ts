@@ -44,6 +44,8 @@ export type TeamTask = {
   subagentName?: string
   /** A short name for the row this task gets (3-6 words). */
   title?: string
+  /** A configured model to run this task on. */
+  model?: string
   /** Ids that must be `completed` before this may start. */
   dependsOn: string[]
   /**
@@ -758,6 +760,8 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
         : undefined
     const title =
       typeof one.title === 'string' && one.title.trim() ? one.title.trim() : undefined
+    const model =
+      typeof one.model === 'string' && one.model.trim() ? one.model.trim().slice(0, 200) : undefined
     const renames = Array.isArray(one.renames)
       ? one.renames.flatMap((move) => {
           const m = move as Record<string, unknown> | null
@@ -773,6 +777,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       description,
       ...(subagentName ? { subagentName } : {}),
       ...(title ? { title } : {}),
+      ...(model ? { model } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
       ...(reads.length ? { reads } : {}),
@@ -829,6 +834,7 @@ export function isolatedTaskAsTeam(
         subagent_name: name,
         description: role ? `${role}\n\n${description}` : description,
         ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title.trim() } : {}),
+        ...(typeof raw.model === 'string' && raw.model.trim() ? { model: raw.model.trim() } : {}),
         isolate: true,
       },
     ],

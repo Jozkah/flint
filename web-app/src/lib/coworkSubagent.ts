@@ -137,6 +137,8 @@ export type SubagentRequest = {
   background?: boolean
   /** A short name for this errand (3-6 words), shown on its row. */
   title?: string
+  /** A configured model to run this child on, checked when it starts. */
+  model?: string
 }
 
 export type ResolvedSubagent = {
@@ -188,6 +190,7 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   }
   if (raw.background === true) req.background = true
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
+  if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
   return req
 }
 

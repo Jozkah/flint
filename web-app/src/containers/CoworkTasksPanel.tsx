@@ -812,12 +812,12 @@ function TaskItem({
               )}
               {task.assistant && (
                 <span className="truncate rounded-md border-[0.8px] border-border px-1.5" data-testid="task-assistant-chip">
-                  {task.assistant}
+                  {task.inherited?.includes('assistant') ? t('common:tasks.inherits', { name: task.assistant }) : task.assistant}
                 </span>
               )}
               {task.profile && (
                 <span className="truncate rounded-md border-[0.8px] border-border px-1.5" data-testid="task-profile-chip">
-                  {task.profile}
+                  {task.inherited?.includes('profile') ? t('common:tasks.inherits', { name: task.profile }) : task.profile}
                 </span>
               )}
               {task.jobId && (

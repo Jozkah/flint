@@ -240,12 +240,12 @@ function BackgroundRow({
             )}
             {isAgent && task.assistant && (
               <span className="rounded-md border-[0.8px] border-border px-1.5" data-testid="task-assistant-chip">
-                {task.assistant}
+                {task.inherited?.includes('assistant') ? t('common:tasks.inherits', { name: task.assistant }) : task.assistant}
               </span>
             )}
             {isAgent && task.profile && (
               <span className="rounded-md border-[0.8px] border-border px-1.5" data-testid="task-profile-chip">
-                {task.profile}
+                {task.inherited?.includes('profile') ? t('common:tasks.inherits', { name: task.profile }) : task.profile}
               </span>
             )}
             <span data-testid="background-elapsed">
