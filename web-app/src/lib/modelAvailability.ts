@@ -81,6 +81,14 @@ export function providerIsUnreachable(
   return !!origin && !isLoopback(origin) && origin in unreachableOrigins
 }
 
+/**
+ * Models the "hide unavailable" filter drops: no API key to call them with,
+ * or an endpoint that just failed to answer. A model on disk is never
+ * unavailable here, loaded or not.
+ */
+export const isUnavailable = (a: ModelAvailability): boolean =>
+  a === 'misconfigured' || a === 'offline' || a === 'disabled'
+
 /** Only one state earns the red treatment. */
 export const isOffline = (a: ModelAvailability): boolean => a === 'offline'
 

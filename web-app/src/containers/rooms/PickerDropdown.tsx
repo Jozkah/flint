@@ -41,6 +41,7 @@ export function PickerDropdown({
   onChange,
   inlineInput,
   footer,
+  searchAction,
   disabled,
   invalid,
   describedBy,
@@ -68,6 +69,8 @@ export function PickerDropdown({
   }
   /** Extra actions under the list, each closing the menu when chosen. */
   footer?: { label: string; icon?: ReactNode; onSelect: () => void }[]
+  /** A control beside the search box, such as a filter button. */
+  searchAction?: ReactNode
   disabled?: boolean
   invalid?: boolean
   describedBy?: string
@@ -132,6 +135,7 @@ export function PickerDropdown({
                 }
               }}
             />
+            {searchAction}
           </div>
         )}
         {menuLabel && !searchPlaceholder && <DropdownMenuLabel>{menuLabel}</DropdownMenuLabel>}

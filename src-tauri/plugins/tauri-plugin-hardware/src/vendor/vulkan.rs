@@ -96,11 +96,22 @@ fn get_vulkan_gpus_internal() -> Result<Vec<GpuInfo>, Box<dyn std::error::Error>
         let device_uuid = physical_device.properties().device_uuid.unwrap_or([0; 16]);
         let driver_version = format!("{}", properties.driver_version);
 
+        // Drivers that report no device UUID give every GPU the all-zero one,
+        // which made a second GPU overwrite the first when the lists merge.
+        let uuid = if device_uuid == [0; 16] {
+            format!(
+                "vulkan-{:04x}-{:04x}-{}",
+                properties.vendor_id, properties.device_id, i
+            )
+        } else {
+            parse_uuid(&device_uuid)
+        };
+
         let device_info = GpuInfo {
             name: properties.device_name.clone(),
             total_memory,
             vendor: Vendor::from_vendor_id(properties.vendor_id),
-            uuid: parse_uuid(&device_uuid),
+            uuid,
             driver_version,
             nvidia_info: None,
             vulkan_info: Some(VulkanInfo {

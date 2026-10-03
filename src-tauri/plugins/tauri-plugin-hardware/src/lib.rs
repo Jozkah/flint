@@ -80,12 +80,22 @@ fn compute_system_info() -> SystemInfo {
     };
     let os_name = System::long_os_version().unwrap_or("Unknown".to_string());
 
+    // HashMap order changes between runs; keep the GPU list (and the monitor
+    // cards) in a stable order: CUDA index, then Vulkan index.
+    let mut gpus: Vec<_> = gpu_map.into_values().collect();
+    gpus.sort_by_key(|gpu| {
+        (
+            gpu.nvidia_info.as_ref().map_or(u64::MAX, |n| n.index as u64),
+            gpu.vulkan_info.as_ref().map_or(u64::MAX, |v| v.index),
+        )
+    });
+
     SystemInfo {
         cpu: CpuStaticInfo::new(),
         os_type: os_type.to_string(),
         os_name,
         total_memory: system.total_memory() / 1024 / 1024,
-        gpus: gpu_map.into_values().collect(),
+        gpus,
     }
 }
 

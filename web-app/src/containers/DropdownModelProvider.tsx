@@ -35,6 +35,8 @@ import { localStorageKey } from '@/constants/localStorage'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useFavoriteModel } from '@/hooks/useFavoriteModel'
 import { useProviderReachability } from '@/hooks/useProviderReachability'
+import { useHideUnavailable } from '@/hooks/useProviderUnavailable'
+import { ModelFilterButton } from '@/containers/ModelFilterButton'
 import {
   isOffline,
   modelAvailability,
@@ -229,6 +231,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
   const { favoriteModels } = useFavoriteModel()
   const { sort, setSort, lastUsed, markUsed } = useModelOrder()
   const unreachableOrigins = useProviderReachability((s) => s.unreachable)
+  const hideProvider = useHideUnavailable()
 
   /** Has a real request to this model's endpoint just failed? */
   const modelIsOffline = useCallback(
@@ -485,8 +488,18 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
 
     providers.forEach((provider) => {
       if (!provider.active) return
+      const filteredOut = hideProvider(provider)
 
       provider.models.forEach((modelItem) => {
+        // The filter never hides the model in use, so the list still shows it.
+        if (
+          filteredOut &&
+          !(
+            provider.provider === selectedProvider &&
+            modelItem.id === selectedModel?.id
+          )
+        )
+          return
         // Skip embedding models - they can't be used for chat
         if (modelItem.embedding) return
         // The dictation model transcribes speech; it is not for chatting.
@@ -513,7 +526,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     })
 
     return items
-  }, [providers])
+  }, [providers, hideProvider, selectedProvider, selectedModel?.id])
 
   // Model ids offered by more than one provider (the same model behind two
   // remotes). Their rows must say which remote they belong to, everywhere.
@@ -622,7 +635,10 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
       // When not searching, show all active providers (even without models)
       // Sort: local first, then providers with API keys or custom with models, then others, alphabetically
       const activeProviders = providers
-        .filter((p) => p.active)
+        .filter(
+          (p) =>
+            p.active && (!hideProvider(p) || p.provider === selectedProvider)
+        )
         .sort((a, b) => {
           const aIsLocal = a.provider === 'llamacpp' || a.provider === 'mlx'
           const bIsLocal = b.provider === 'llamacpp' || b.provider === 'mlx'
@@ -676,7 +692,15 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
     }
 
     return groups
-  }, [filteredItems, providers, searchValue, favoriteModels, unreachableOrigins])
+  }, [
+    filteredItems,
+    providers,
+    searchValue,
+    favoriteModels,
+    unreachableOrigins,
+    hideProvider,
+    selectedProvider,
+  ])
 
   const handleSelect = useCallback(
     async (searchableModel: SearchableModel) => {
@@ -983,6 +1007,7 @@ const DropdownModelProvider = memo(function DropdownModelProvider({
                 <X className="size-4" />
               </button>
             )}
+            <ModelFilterButton />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
