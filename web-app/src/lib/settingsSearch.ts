@@ -179,13 +179,6 @@ export const SETTINGS_PAGES = [
     keywords: ['keyboard', 'hotkeys', 'keybindings'],
   },
   {
-    id: 'hardware',
-    route: route.settings.hardware,
-    titleKey: 'common:hardware',
-    group: 'core',
-    keywords: ['gpu', 'cpu', 'ram', 'vram'],
-  },
-  {
     id: 'mcp-servers',
     route: route.settings.mcp_servers,
     titleKey: 'common:mcp-servers',
@@ -497,17 +490,6 @@ export const SETTINGS_ITEMS: SettingsSearchItem[] = [
   }),
   item('shortcuts', 'go-to-settings', 'settings:shortcuts.goToSettings', {
     keywords: ['keybinding', 'hotkey', 'preferences'],
-  }),
-
-  // Hardware — read-only sections, but the headings are what a user looks for.
-  item('hardware', 'os', 'settings:hardware.os', {
-    keywords: ['operating system', 'platform', 'version'],
-  }),
-  item('hardware', 'cpu', 'settings:hardware.cpu', {
-    keywords: ['processor', 'cores', 'architecture'],
-  }),
-  item('hardware', 'memory', 'settings:hardware.memory', {
-    keywords: ['ram', 'gb', 'available memory'],
   }),
 
   // MCP servers

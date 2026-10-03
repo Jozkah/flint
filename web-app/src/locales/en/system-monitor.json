@@ -64,5 +64,8 @@
   "current": "Current",
   "ofCritical": "of {{value}} critical",
   "ofMax": "of {{value}} max",
-  "noCpuSensorsWindows": "No CPU temperature readable. Windows exposes it only to apps running as administrator, or while LibreHardwareMonitor or OpenHardwareMonitor is running."
+  "noCpuSensorsWindows": "No CPU temperature readable. Windows exposes it only to apps running as administrator, or while LibreHardwareMonitor or OpenHardwareMonitor is running.",
+  "cpu": "CPU",
+  "memory": "Memory",
+  "gpu": "GPU"
 }

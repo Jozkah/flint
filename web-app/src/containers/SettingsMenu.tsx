@@ -59,7 +59,6 @@ const GROUPS: {
       'local-api-server',
       'remote-access',
       'https-proxy',
-      'hardware',
       'agent-tools',
     ],
   },
@@ -90,7 +89,6 @@ const PAGE_ICONS: Record<SettingsPageId, IconComponent> = {
   permissions: mark('x-shield'),
   'agent-tools': mark('x-terminal'),
   shortcuts: mark('command'),
-  hardware: mark('x-cpu'),
   'mcp-servers': mark('flow'),
   extensions: mark('x-puzzle'),
   // TypeSafe's mark: Jev is its model.

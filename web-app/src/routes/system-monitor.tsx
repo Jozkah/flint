@@ -4,12 +4,18 @@ import {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from 'react'
+import { ChevronRight, Info } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
+import { Switch } from '@/components/ui/switch'
 import { useHardware, type GPU } from '@/hooks/useHardware'
+import { useLlamacppDevices } from '@/hooks/useLlamacppDevices'
+import { useAppState } from '@/hooks/useAppState'
 import { route } from '@/constants/routes'
 import { cn, formatMegaBytes } from '@/lib/utils'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -17,8 +23,15 @@ import { toNumber } from '@/utils/number'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { SystemPageHeader } from '@/containers/SystemPageHeader'
 import { useHeaderSlot } from '@/components/shell/HeaderSlot'
-import { Frame, FrameBody, FrameHeader } from '@/components/ui/frame'
 import { Chip } from '@/components/ui/chip'
+import {
+  backendLabel,
+  groupDevices,
+  groupForGpu,
+  parseDeviceId,
+  selectedDevice,
+  type GpuGroup,
+} from '@/lib/gpuDevices'
 import {
   computeNetworkRates,
   diskUsedPercent,
@@ -40,7 +53,7 @@ export const Route = createFileRoute(route.systemMonitor as any)({
 /** Poll interval, matching the page's "updates every 5 seconds". */
 const POLL_MS = 5000
 
-/** Samples kept per sparkline: two minutes at the 5 second poll. */
+/** Samples kept per chart: two minutes at the 5 second poll. */
 const HISTORY = 24
 
 const pageHidden = () =>
@@ -54,6 +67,15 @@ function gpuBackendLabel(gpu: GPU): string {
 
 const clampPercent = (percent: number) =>
   Math.min(100, Math.max(0, Number.isFinite(percent) ? percent : 0))
+
+/** The colour each card plots and badges itself with. */
+const ACCENT = {
+  cpu: '#4f8cff',
+  memory: '#a76bff',
+  gpu: '#4f8cff',
+  down: '#ff5d6c',
+  up: '#a76bff',
+}
 
 /**
  * Load bands. The fill stays the neutral gradient until usage is high enough
@@ -71,27 +93,26 @@ const BAND_FILL = {
   err: 'bg-[linear-gradient(90deg,var(--destructive),color-mix(in_oklab,var(--destructive),#000_14%))]',
 }
 
-const BAND_LINE = {
-  ok: 'var(--success)',
-  warn: 'var(--warning)',
-  err: 'var(--destructive)',
-}
-
 /** A labelled usage bar with its measured number beside it. */
 function Meter({
   label,
   percent,
   display,
+  color,
+  className,
 }: {
   label: string
   percent: number
   /** Shown instead of the percent, e.g. a rate or a temperature. */
   display?: string
+  /** A fixed fill colour instead of the load bands. */
+  color?: string
+  className?: string
 }) {
   const clamped = clampPercent(percent)
   return (
-    <div className="mt-3 flex flex-col gap-2">
-      <div className="flex items-baseline justify-between gap-2 text-xs">
+    <div className={cn('mt-3 flex flex-col gap-2', className)}>
+      <div className="flex items-baseline justify-between gap-2 text-[12.5px]">
         <span className="text-muted-foreground">{label}</span>
         <b className="font-medium tabular-nums text-foreground">
           {display ?? `${percent.toFixed(2)}%`}
@@ -108,56 +129,85 @@ function Meter({
         <div
           className={cn(
             'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-600 motion-safe:ease-expo',
-            BAND_FILL[band(clamped)]
+            !color && BAND_FILL[band(clamped)]
           )}
-          style={{ width: `${clamped}%` }}
+          style={{ width: `${clamped}%`, ...(color ? { background: color } : null) }}
         />
       </div>
     </div>
   )
 }
 
-/**
- * Recent samples as a filled line, coloured by the latest value's band. Drawn
- * to the card's width; the stroke keeps its weight however wide that is.
- */
-function Sparkline({ values }: { values: number[] }) {
-  const id = useId()
-  if (values.length < 2) return <div className="mt-2.5 h-[46px]" aria-hidden />
-  const n = values.length
-  const pts = values.map(
-    (v, i) => `${((i / (n - 1)) * 120).toFixed(1)},${(44 - (clampPercent(v) / 100) * 40).toFixed(1)}`
-  )
-  const color = BAND_LINE[band(values[n - 1])]
+/** The "dot, label, value" line above a chart. */
+function UsageLine({
+  label,
+  percent,
+  color,
+}: {
+  label: string
+  percent: number
+  color: string
+}) {
   return (
-    <svg
-      aria-hidden
-      viewBox="0 0 120 46"
-      preserveAspectRatio="none"
-      className="mt-2.5 block h-[46px] w-full"
-    >
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" style={{ stopColor: color, stopOpacity: 0.22 }} />
-          <stop offset="1" style={{ stopColor: color, stopOpacity: 0 }} />
-        </linearGradient>
-      </defs>
-      <path d={`M0,46L${pts.join('L')}L120,46Z`} fill={`url(#${id})`} />
-      <path
-        d={`M${pts.join('L')}`}
-        fill="none"
-        stroke={color}
-        strokeWidth={1}
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    <div className="mt-4 flex items-center justify-between gap-2 text-[13px]">
+      <span className="flex items-center gap-2 text-secondary-foreground">
+        <span className="size-2.5 rounded-full" style={{ background: color }} aria-hidden />
+        {label}
+      </span>
+      <b className="font-semibold tabular-nums text-foreground">{percent.toFixed(2)}%</b>
+    </div>
+  )
+}
+
+/**
+ * Recent samples as a filled line on a 0 / 50 / 100 % grid. Drawn to the
+ * card's width; the stroke keeps its weight however wide that is.
+ */
+function AreaChart({ values, color }: { values: number[]; color: string }) {
+  const id = useId()
+  const n = values.length
+  const pts =
+    n < 2
+      ? []
+      : values.map(
+          (v, i) => `${((i / (n - 1)) * 120).toFixed(1)},${(60 - (clampPercent(v) / 100) * 60).toFixed(1)}`
+        )
+  return (
+    <div className="mt-2 flex items-stretch gap-2" aria-hidden>
+      <div className="relative h-[84px] min-w-0 flex-1 overflow-hidden rounded-sm border border-border/70 bg-[linear-gradient(to_right,var(--border)_1px,transparent_1px)] bg-[length:12.5%_100%] [background-position:-1px_0]">
+        <div className="absolute inset-x-0 top-1/2 border-t border-border/70" />
+        {pts.length > 0 && (
+          <svg viewBox="0 0 120 60" preserveAspectRatio="none" className="absolute inset-0 size-full">
+            <defs>
+              <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style={{ stopColor: color, stopOpacity: 0.5 }} />
+                <stop offset="1" style={{ stopColor: color, stopOpacity: 0.02 }} />
+              </linearGradient>
+            </defs>
+            <path d={`M0,60L${pts.join('L')}L120,60Z`} fill={`url(#${id})`} />
+            <path
+              d={`M${pts.join('L')}`}
+              fill="none"
+              stroke={color}
+              strokeWidth={1.5}
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+        )}
+      </div>
+      <div className="flex w-9 shrink-0 flex-col justify-between py-0.5 text-[11px] text-muted-foreground tabular-nums">
+        <span>100%</span>
+        <span>50%</span>
+        <span>0%</span>
+      </div>
+    </div>
   )
 }
 
 /** Label/value pairs in the design's two-column key table. */
 function Stats({ children }: { children: ReactNode }) {
   return (
-    <dl className="grid grid-cols-[minmax(0,140px)_minmax(0,1fr)] items-baseline gap-x-3.5 gap-y-1.5 text-[12.5px]">
+    <dl className="grid grid-cols-[minmax(0,110px)_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1.5 text-[13px]">
       {children}
     </dl>
   )
@@ -167,8 +217,54 @@ function Stat({ label, children }: { label: string; children: ReactNode }) {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 break-words text-fg-2 tabular-nums">{children}</dd>
+      <dd className="min-w-0 break-words text-foreground tabular-nums">{children}</dd>
     </>
+  )
+}
+
+/** An icon on a soft tinted tile, as the design draws each card's mark. */
+function IconTile({ children, size = 'md' }: { children: ReactNode; size?: 'md' | 'lg' }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'grid shrink-0 place-items-center border-[0.8px] border-blue-400/25 bg-[linear-gradient(145deg,rgb(79_140_255/0.22),rgb(79_140_255/0.06))] text-blue-300',
+        size === 'lg' ? 'size-11 rounded-2xl' : 'size-9 rounded-xl'
+      )}
+    >
+      {children}
+    </span>
+  )
+}
+
+/** The pill in a card's corner: a dot and the current figure. */
+function Badge({
+  color,
+  percent,
+  label,
+  children,
+}: {
+  color: string
+  percent: number
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <span
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(clampPercent(percent))}
+      className="inline-flex h-7 items-center gap-1.5 rounded-lg border-[0.8px] px-2.5 text-xs font-medium tabular-nums text-foreground"
+      style={{
+        borderColor: `${color}66`,
+        background: `${color}1f`,
+      }}
+    >
+      <span className="size-1.5 rounded-full" style={{ background: color }} aria-hidden />
+      {children}
+    </span>
   )
 }
 
@@ -176,23 +272,36 @@ function Panel({
   title,
   icon,
   delay,
+  badge,
+  actions,
   className,
   children,
 }: {
   title: string
   icon: ReactNode
   delay: number
+  badge?: ReactNode
+  actions?: ReactNode
   className?: string
   children: ReactNode
 }) {
   return (
-    <Frame
-      className={cn('motion-safe:animate-rise-in', className)}
-      style={{ animationDelay: `${delay}ms` }}
+    <section
+      className={cn(
+        'flex min-w-0 flex-col rounded-2xl border-[0.8px] border-border bg-card p-4 motion-safe:animate-rise-in',
+        className
+      )}
+      style={{ animationDelay: `${delay}ms` } as CSSProperties}
     >
-      <FrameHeader icon={icon} title={title} />
-      <FrameBody className="p-3.5">{children}</FrameBody>
-    </Frame>
+      <header className="mb-4 flex min-w-0 items-center justify-between gap-3">
+        <h3 className="flex min-w-0 items-center gap-3 text-[17px] font-medium text-foreground">
+          <IconTile>{icon}</IconTile>
+          <span className="truncate">{title}</span>
+        </h3>
+        {badge ?? actions}
+      </header>
+      {children}
+    </section>
   )
 }
 
@@ -228,21 +337,19 @@ function PerCoreUsage({ values }: { values: number[] }) {
   const [open, setOpen] = useState(false)
   const id = useId()
   return (
-    <div className="mt-3 border-t border-dashed border-border pt-3">
+    <div className="mt-4">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={id}
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 text-xs text-muted-foreground hover:text-foreground"
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-xl border-[0.8px] border-border bg-muted/40 px-3.5 text-[13px] text-secondary-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden"
       >
         <span>{t('system-monitor:perCore')}</span>
-        <span
+        <ChevronRight
           aria-hidden
-          className={cn('transition-transform', open && 'rotate-180')}
-        >
-          ▾
-        </span>
+          className={cn('size-4 text-muted-foreground transition-transform duration-200', open && 'rotate-90')}
+        />
       </button>
       {open && (
         <div
@@ -263,9 +370,7 @@ function PerCoreUsage({ values }: { values: number[] }) {
               >
                 <div className="flex items-baseline justify-between text-[11px] tabular-nums">
                   <span className="text-muted-foreground">#{i}</span>
-                  <b className="font-medium text-foreground">
-                    {Math.round(clamped)}%
-                  </b>
+                  <b className="font-medium text-foreground">{Math.round(clamped)}%</b>
                 </div>
                 <div className="h-1 w-full overflow-hidden rounded-full bg-track">
                   <div
@@ -285,31 +390,39 @@ function PerCoreUsage({ values }: { values: number[] }) {
 /** A muted note for data the platform does not expose. */
 function Empty({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg bg-muted px-3 py-3 text-[13px] text-muted-foreground">
+    <div className="rounded-xl bg-muted px-3.5 py-3 text-[13px] text-muted-foreground">
       {children}
     </div>
   )
 }
 
-/** One entry in a list panel, separated by a dashed rule like the GPUs. */
-function Row({ children }: { children: ReactNode }) {
+/** A computer drawn in two tones, standing in for a photo of this machine. */
+function MachineArt() {
   return (
-    <div className="flex min-w-0 flex-col gap-2 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0">
-      {children}
-    </div>
-  )
-}
-
-function RowTitle({ title, children }: { title: string; children?: ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2">
-      <b
-        className="min-w-0 truncate text-[13px] font-medium text-foreground"
-        title={title}
-      >
-        {title}
-      </b>
-      {children}
+    <div
+      aria-hidden
+      className="grid h-[132px] w-[124px] shrink-0 place-items-center rounded-xl border-[0.8px] border-border bg-[radial-gradient(circle_at_50%_40%,rgb(79_140_255/0.18),transparent_70%)]"
+    >
+      <svg viewBox="0 0 96 88" className="h-20 w-24">
+        <rect x="6" y="6" width="62" height="46" rx="4" fill="#0f1b33" stroke="#4f8cff" strokeOpacity="0.7" />
+        <rect x="11" y="11" width="52" height="36" rx="2" fill="#12306a" />
+        {IS_WINDOWS ? (
+          <g fill="#7fb2ff">
+            <rect x="26" y="19" width="10" height="9" />
+            <rect x="38" y="19" width="10" height="9" />
+            <rect x="26" y="30" width="10" height="9" />
+            <rect x="38" y="30" width="10" height="9" />
+          </g>
+        ) : (
+          <circle cx="37" cy="29" r="9" fill="#7fb2ff" />
+        )}
+        <rect x="30" y="52" width="14" height="6" fill="#1b2a4a" />
+        <rect x="22" y="58" width="30" height="4" rx="2" fill="#1b2a4a" />
+        <rect x="68" y="22" width="22" height="48" rx="3" fill="#0f1b33" stroke="#4f8cff" strokeOpacity="0.5" />
+        <circle cx="79" cy="32" r="3" fill="#4f8cff" />
+        <rect x="72" y="42" width="14" height="2" rx="1" fill="#1b2a4a" />
+        <rect x="72" y="48" width="14" height="2" rx="1" fill="#1b2a4a" />
+      </svg>
     </div>
   )
 }
@@ -319,29 +432,31 @@ function SystemPanel({ snapshot }: { snapshot: SystemSnapshot }) {
   return (
     <Panel
       title={t('system-monitor:system')}
-      icon={<Icon name="clock-01" size={16} />}
+      icon={<Info className="size-4" />}
       delay={240}
+      className="xl:col-span-5"
     >
-      <Stats>
-        {snapshot.host_name && (
-          <Stat label={t('system-monitor:hostName')}>
-            <span className="font-mono">{snapshot.host_name}</span>
-          </Stat>
-        )}
-        {snapshot.os_version && (
-          <Stat label={t('system-monitor:osVersion')}>
-            {snapshot.os_version}
-          </Stat>
-        )}
-        {snapshot.kernel_version && (
-          <Stat label={t('system-monitor:kernel')}>
-            <span className="font-mono">{snapshot.kernel_version}</span>
-          </Stat>
-        )}
-        <Stat label={t('system-monitor:uptime')}>
-          {formatUptime(snapshot.uptime_secs)}
-        </Stat>
-      </Stats>
+      <div className="flex min-w-0 items-start gap-4">
+        <MachineArt />
+        <div className="min-w-0 flex-1 pt-1">
+          <Stats>
+            {snapshot.host_name && (
+              <Stat label={t('system-monitor:hostName')}>
+                <span className="font-mono">{snapshot.host_name}</span>
+              </Stat>
+            )}
+            {snapshot.os_version && (
+              <Stat label={t('system-monitor:osVersion')}>{snapshot.os_version}</Stat>
+            )}
+            {snapshot.kernel_version && (
+              <Stat label={t('system-monitor:kernel')}>
+                <span className="font-mono">{snapshot.kernel_version}</span>
+              </Stat>
+            )}
+            <Stat label={t('system-monitor:uptime')}>{formatUptime(snapshot.uptime_secs)}</Stat>
+          </Stats>
+        </div>
+      </div>
     </Panel>
   )
 }
@@ -353,7 +468,7 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
       title={t('system-monitor:drives')}
       icon={<Icon name="x-server" size={16} />}
       delay={300}
-      className="md:col-span-2"
+      className="md:col-span-2 xl:col-span-7"
     >
       {snapshot.disks.length === 0 ? (
         <Empty>{t('system-monitor:noDrives')}</Empty>
@@ -361,42 +476,50 @@ function DrivesPanel({ snapshot }: { snapshot: SystemSnapshot }) {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {snapshot.disks.map((disk) => {
             const used = disk.total - Math.min(disk.available, disk.total)
+            const percent = diskUsedPercent(disk)
             return (
               <div
                 key={disk.mount_point}
                 data-testid="drive-card"
-                className="flex min-w-0 flex-col rounded-lg border border-border px-3 pt-2.5 pb-3"
+                className="flex min-w-0 items-start gap-3.5 rounded-xl border-[0.8px] border-border bg-muted/30 p-3.5"
               >
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <b className="shrink-0 font-mono text-[13px] font-medium text-foreground">
-                    {disk.mount_point}
-                  </b>
-                  {disk.name && (
-                    <span
-                      className="min-w-0 truncate text-xs text-muted-foreground"
-                      title={disk.name}
-                    >
-                      {disk.name}
+                <span
+                  aria-hidden
+                  className="grid size-12 shrink-0 place-items-center rounded-xl border-[0.8px] border-border bg-card text-secondary-foreground"
+                >
+                  <Icon name="x-disk" size={22} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-baseline gap-2">
+                      <b className="shrink-0 font-mono text-[14px] font-semibold text-foreground">
+                        {disk.mount_point}
+                      </b>
+                      {disk.name && (
+                        <span className="min-w-0 truncate text-xs text-muted-foreground" title={disk.name}>
+                          {disk.name}
+                        </span>
+                      )}
                     </span>
-                  )}
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {disk.file_system && <Chip mono>{disk.file_system}</Chip>}
-                  {disk.kind !== 'Unknown' && <Chip mono>{disk.kind}</Chip>}
-                  {disk.removable && (
-                    <Chip tone="info" dot>
-                      {t('system-monitor:removable')}
-                    </Chip>
-                  )}
-                </div>
-                <Meter
-                  label={`${formatBytes(used)} / ${formatBytes(disk.total)}`}
-                  percent={diskUsedPercent(disk)}
-                />
-                <div className="mt-1.5 text-[11.5px] text-muted-foreground tabular-nums">
-                  {t('system-monitor:freeOf', {
-                    free: formatBytes(disk.available),
-                  })}
+                    <span className="flex shrink-0 gap-1.5">
+                      {disk.file_system && <Chip mono>{disk.file_system}</Chip>}
+                      {disk.kind !== 'Unknown' && <Chip mono>{disk.kind}</Chip>}
+                      {disk.removable && (
+                        <Chip tone="info" dot>
+                          {t('system-monitor:removable')}
+                        </Chip>
+                      )}
+                    </span>
+                  </div>
+                  <Meter
+                    label={`${formatBytes(used)} / ${formatBytes(disk.total)}`}
+                    percent={percent}
+                    color="#4f8cff"
+                    className="mt-2"
+                  />
+                  <div className="mt-1.5 text-[12px] text-muted-foreground tabular-nums">
+                    {t('system-monitor:freeOf', { free: formatBytes(disk.available) })}
+                  </div>
                 </div>
               </div>
             )
@@ -423,9 +546,7 @@ function NetworkPanel({
   const isVirtual = (n: SystemSnapshot['networks'][number]) =>
     isVirtualInterface(n.name, n.mac_address)
   const hiddenCount = snapshot.networks.filter(isVirtual).length
-  const shown = showVirtual
-    ? snapshot.networks
-    : snapshot.networks.filter((n) => !isVirtual(n))
+  const shown = showVirtual ? snapshot.networks : snapshot.networks.filter((n) => !isVirtual(n))
   const kindLabel = {
     wifi: t('system-monitor:wifi'),
     ethernet: t('system-monitor:ethernet'),
@@ -436,12 +557,12 @@ function NetworkPanel({
       title={t('system-monitor:network')}
       icon={<Icon name="x-globe" size={16} />}
       delay={360}
-    >
-      <div className="flex flex-col gap-4">
-        {hiddenCount > 0 && (
+      className="md:col-span-2 xl:col-span-7"
+      actions={
+        hiddenCount > 0 ? (
           <label
             htmlFor={toggleId}
-            className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground"
+            className="flex cursor-pointer items-center gap-2 text-[13px] text-secondary-foreground"
           >
             <input
               id={toggleId}
@@ -451,9 +572,13 @@ function NetworkPanel({
             />
             {t('system-monitor:showVirtual', { count: hiddenCount })}
           </label>
-        )}
+        ) : undefined
+      }
+    >
+      <div className="flex flex-col gap-3.5">
         {shown.length > 0 && (
-          <p className="text-[11.5px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+            <Info className="size-3.5 shrink-0" aria-hidden />
             {t('system-monitor:peakScale')}
           </p>
         )}
@@ -464,33 +589,53 @@ function NetworkPanel({
             const rate = rates[n.name]
             const kind = kindLabel[interfaceKind(n.name)]
             return (
-              <Row key={n.name}>
-                <RowTitle title={n.name}>
-                  {isVirtual(n) ? (
-                    <Chip>{t('system-monitor:virtual')}</Chip>
-                  ) : (
-                    kind && <Chip>{kind}</Chip>
-                  )}
-                </RowTitle>
-                <Meter
-                  label={t('system-monitor:download')}
-                  percent={ratePercent(rate?.rx, peaks[n.name]?.rx)}
-                  display={rate ? formatRate(rate.rx) : '—'}
-                />
-                <Meter
-                  label={t('system-monitor:upload')}
-                  percent={ratePercent(rate?.tx, peaks[n.name]?.tx)}
-                  display={rate ? formatRate(rate.tx) : '—'}
-                />
-                <Stats>
-                  <Stat label={t('system-monitor:totalReceived')}>
-                    {formatBytes(n.total_received)}
-                  </Stat>
-                  <Stat label={t('system-monitor:totalSent')}>
-                    {formatBytes(n.total_transmitted)}
-                  </Stat>
-                </Stats>
-              </Row>
+              <div
+                key={n.name}
+                className="flex min-w-0 items-start gap-3.5 rounded-xl border-[0.8px] border-border bg-muted/30 p-3.5"
+              >
+                <span
+                  aria-hidden
+                  className="mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl border-[0.8px] border-border bg-card text-secondary-foreground"
+                >
+                  <Icon name="x-globe" size={18} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <b className="min-w-0 truncate text-[15px] font-medium text-foreground" title={n.name}>
+                      {n.name}
+                    </b>
+                    {isVirtual(n) ? <Chip>{t('system-monitor:virtual')}</Chip> : kind && <Chip>{kind}</Chip>}
+                  </div>
+                  <Meter
+                    label={t('system-monitor:download')}
+                    percent={ratePercent(rate?.rx, peaks[n.name]?.rx)}
+                    display={rate ? formatRate(rate.rx) : '—'}
+                    color={ACCENT.down}
+                    className="mt-0"
+                  />
+                  <Meter
+                    label={t('system-monitor:upload')}
+                    percent={ratePercent(rate?.tx, peaks[n.name]?.tx)}
+                    display={rate ? formatRate(rate.tx) : '—'}
+                    color={ACCENT.up}
+                    className="mt-0"
+                  />
+                  <div className="flex flex-wrap justify-between gap-x-6 gap-y-1 border-t border-border/70 pt-2.5 text-[12.5px] text-muted-foreground">
+                    <span>
+                      {t('system-monitor:totalReceived')}{' '}
+                      <b className="ml-1.5 font-medium text-foreground tabular-nums">
+                        {formatBytes(n.total_received)}
+                      </b>
+                    </span>
+                    <span>
+                      {t('system-monitor:totalSent')}{' '}
+                      <b className="ml-1.5 font-medium text-foreground tabular-nums">
+                        {formatBytes(n.total_transmitted)}
+                      </b>
+                    </span>
+                  </div>
+                </div>
+              </div>
             )
           })
         )}
@@ -513,38 +658,65 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
       title={t('system-monitor:temperatures')}
       icon={<Icon name="zap" size={16} />}
       delay={420}
+      className="md:col-span-2 xl:col-span-5"
     >
       {sensors.length === 0 ? (
         <Empty>
-          {IS_WINDOWS
-            ? t('system-monitor:noSensorsWindows')
-            : t('system-monitor:noSensors')}
+          {IS_WINDOWS ? t('system-monitor:noSensorsWindows') : t('system-monitor:noSensors')}
         </Empty>
       ) : (
         <div className="flex flex-col gap-4">
           {IS_WINDOWS && !sensors.some((s) => s.kind === 'cpu') && (
-            <Empty>{t('system-monitor:noCpuSensorsWindows')}</Empty>
+            <div className="flex items-start gap-3 rounded-xl border-[0.8px] border-border bg-muted/40 p-3.5 text-[13px] leading-snug text-secondary-foreground">
+              <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+              {t('system-monitor:noCpuSensorsWindows')}
+            </div>
           )}
           {sensors.map((sensor, i) => {
             const temp = sensor.temperature ?? 0
             const kind = kindLabel[sensor.kind]
             const scale = temperatureScale(sensor)
+            const percent = clampPercent(scale.percent)
             return (
-              <Row key={`${sensor.label}-${i}`}>
-                <RowTitle title={sensor.label}>
+              <div key={`${sensor.label}-${i}`} className="flex min-w-0 flex-col gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <b className="min-w-0 truncate text-[14px] font-medium text-foreground" title={sensor.label}>
+                    {sensor.label}
+                  </b>
                   {kind && <Chip mono>{kind}</Chip>}
-                </RowTitle>
-                <Meter
-                  label={
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <span className="text-[12.5px] text-muted-foreground">
+                    {scale.limit
+                      ? t(`system-monitor:${scale.of}`, { value: formatTemperature(scale.limit) })
+                      : t('system-monitor:current')}
+                  </span>
+                  <b className="text-[15px] font-semibold tabular-nums text-foreground">
+                    {formatTemperature(temp)}
+                  </b>
+                </div>
+                <div
+                  role="meter"
+                  aria-label={
                     scale.limit
-                      ? t(`system-monitor:${scale.of}`, {
-                          value: formatTemperature(scale.limit),
-                        })
+                      ? t(`system-monitor:${scale.of}`, { value: formatTemperature(scale.limit) })
                       : t('system-monitor:current')
                   }
-                  percent={scale.percent}
-                  display={formatTemperature(temp)}
-                />
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={Math.round(percent)}
+                  className="relative h-1.5 w-full overflow-hidden rounded-full bg-track"
+                >
+                  <div
+                    className={cn('h-full rounded-full', BAND_FILL[band(percent)])}
+                    style={{
+                      width: `${percent}%`,
+                      ...(band(percent) === 'ok'
+                        ? { background: 'linear-gradient(90deg,#2fd08a,#7be0a8)' }
+                        : null),
+                    }}
+                  />
+                </div>
                 <div className="text-[11.5px] text-muted-foreground">
                   {sensor.source}
                   {sensor.max != null && scale.of !== 'ofMax' && (
@@ -554,7 +726,7 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
                     </>
                   )}
                 </div>
-              </Row>
+              </div>
             )
           })}
         </div>
@@ -563,15 +735,133 @@ function TemperaturePanel({ snapshot }: { snapshot: SystemSnapshot }) {
   )
 }
 
+/** One GPU in the card: name, backend, the "use for models" switch, and its figures. */
+function GpuBlock({
+  gpu,
+  total,
+  percent,
+  hasUsage,
+  history,
+  group,
+  onToggle,
+  onSelect,
+}: {
+  gpu: GPU
+  total: number
+  percent: number
+  hasUsage: boolean
+  history: number[]
+  /** The llama.cpp device group for this GPU; absent in the standalone window. */
+  group?: GpuGroup
+  onToggle: () => void
+  onSelect: (deviceId: string) => void
+}) {
+  const { t } = useTranslation()
+  const activated = group?.devices.some((d) => d.activated) ?? false
+  const current = group ? selectedDevice(group) : undefined
+  return (
+    <div className="flex min-w-0 flex-col gap-2.5 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <b className="min-w-0 truncate text-[14px] font-medium text-foreground" title={gpu.name}>
+            {gpu.name}
+          </b>
+          {group && group.devices.length > 1 ? (
+            group.devices.map((device) => {
+              const on = device.id === current?.id
+              return (
+                <button
+                  key={device.id}
+                  type="button"
+                  onClick={() => onSelect(device.id)}
+                  title={t('settings:hardware.backendSelectDesc')}
+                  className={cn(
+                    'inline-flex h-[22px] cursor-pointer items-center rounded-md border-[0.8px] px-2 font-mono text-xs transition-colors focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-hidden pointer-coarse:h-9',
+                    on
+                      ? 'border-blue-400/60 bg-blue-500/10 text-foreground'
+                      : 'border-border text-muted-foreground hover:border-border-strong hover:text-foreground'
+                  )}
+                >
+                  {backendLabel(parseDeviceId(device.id).backend)}
+                </button>
+              )
+            })
+          ) : (
+            <Chip mono>{gpuBackendLabel(gpu)}</Chip>
+          )}
+        </div>
+        {group && (
+          <label className="flex shrink-0 items-center gap-2 text-xs text-secondary-foreground">
+            <span className="hidden sm:inline">
+              {activated ? t('settings:hardware.gpuEnabled') : t('settings:hardware.gpuDisabled')}
+            </span>
+            <Switch
+              checked={activated}
+              onCheckedChange={onToggle}
+              aria-label={t('settings:hardware.gpuEnabled')}
+            />
+          </label>
+        )}
+      </div>
+      <Stats>
+        {gpu.driver_version && (
+          <Stat label={t('system-monitor:driverVersion').replace(/:$/, '')}>
+            <span className="font-mono">{gpu.driver_version}</span>
+          </Stat>
+        )}
+        <Stat label={t('system-monitor:vram')}>{formatMegaBytes(total)}</Stat>
+      </Stats>
+      {hasUsage && (
+        <>
+          <UsageLine label={t('system-monitor:vramUsage')} percent={percent} color={ACCENT.gpu} />
+          <AreaChart values={history} color={ACCENT.gpu} />
+        </>
+      )}
+    </div>
+  )
+}
+
 function SystemMonitorContent() {
   const { t } = useTranslation()
   const { hardwareData, systemUsage, updateSystemUsage } = useHardware()
   const serviceHub = useServiceHub()
   const inShell = useHeaderSlot() !== null
+  const setActiveModels = useAppState((state) => state.setActiveModels)
 
-  // Extensions never load in this secondary window, so GPU data comes from
+  // Extensions never load in the standalone window, so GPU data comes from
   // the hardware plugin (allowed by this window's capabilities), not llamacpp.
   const gpus = hardwareData.gpus ?? []
+
+  // The llama.cpp devices carry the on/off switch; they exist only in the shell.
+  const devicesStore = useLlamacppDevices()
+  const { devices: llamacppDevices, setActivations, fetchDevices } = devicesStore
+  useEffect(() => {
+    if (inShell && !IS_MACOS) fetchDevices()
+  }, [inShell, fetchDevices])
+  const gpuGroups = useMemo(
+    () => (inShell && !IS_MACOS ? groupDevices(llamacppDevices) : []),
+    [inShell, llamacppDevices]
+  )
+  const applyActivations = (updates: Record<string, boolean>) => {
+    setActivations(updates)
+    serviceHub.models().stopAllModels()
+    serviceHub
+      .models()
+      .getActiveModels()
+      .then((models) => setActiveModels(models || []))
+  }
+  const toggleGroup = (group: GpuGroup) => {
+    const activated = group.devices.some((device) => device.activated)
+    const updates: Record<string, boolean> = {}
+    for (const device of group.devices) updates[device.id] = false
+    if (!activated) updates[selectedDevice(group).id] = true
+    applyActivations(updates)
+  }
+  const selectBackend = (group: GpuGroup, deviceId: string) => {
+    const updates: Record<string, boolean> = {}
+    for (const device of group.devices) updates[device.id] = device.id === deviceId
+    applyActivations(updates)
+  }
 
   const [snapshot, setSnapshot] = useState<SystemSnapshot | null>(null)
   const [rates, setRates] = useState<Record<string, NetworkRate>>({})
@@ -640,8 +930,7 @@ function SystemMonitorContent() {
   }, [pollUsage, pollSnapshot])
 
   // Calculate RAM usage percentage
-  const ramUsagePercentage =
-    toNumber(systemUsage.used_memory / hardwareData.total_memory) * 100
+  const ramUsagePercentage = toNumber(systemUsage.used_memory / hardwareData.total_memory) * 100
 
   const gpuPercent = (gpu: GPU) => {
     const usage = systemUsage.gpus?.find((u) => u.uuid === gpu.uuid)
@@ -650,7 +939,7 @@ function SystemMonitorContent() {
     return { usage, total, percent: total > 0 ? toNumber(used / total) * 100 : 0 }
   }
 
-  // Each poll adds one point to every sparkline.
+  // Each poll adds one point to every chart.
   const [history, setHistory] = useState<Record<string, number[]>>({})
   useEffect(() => {
     setHistory((h) => {
@@ -673,6 +962,11 @@ function SystemMonitorContent() {
       {t('system-monitor:live')}
     </Chip>
   )
+  const firstGpu = gpus[0] ? gpuPercent(gpus[0]) : undefined
+  const swapPercent =
+    snapshot && snapshot.memory.swap_total > 0
+      ? (snapshot.memory.swap_used / snapshot.memory.swap_total) * 100
+      : 0
 
   return (
     <div className="flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-card">
@@ -688,43 +982,48 @@ function SystemMonitorContent() {
           inShell ? 'px-1' : 'px-4'
         )}
       >
-        <div className="flex w-full min-w-0 flex-col gap-6">
+        <div className="flex w-full min-w-0 flex-col gap-4">
           {/* In the shell the breadcrumb names the page; the heading here
               matches the other pages. The standalone window's bar already
               carries the title, so it is not repeated. */}
           {inShell && (
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex min-w-0 flex-col gap-3">
-                <h2 className="flex items-center gap-2 text-[22px] leading-none font-medium tracking-[-0.01em] text-foreground">
-                  <Icon name="x-activity" size={16} />
-                  {t('system-monitor:title')}
-                </h2>
-                <p className="text-[13px] text-muted-foreground">
-                  {t('system-monitor:description')}
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-4">
+                <IconTile size="lg">
+                  <Icon name="x-activity" size={22} />
+                </IconTile>
+                <div className="flex min-w-0 flex-col gap-2">
+                  <h2 className="text-[26px] leading-none font-medium tracking-[-0.01em] text-foreground">
+                    {t('system-monitor:title')}
+                  </h2>
+                  <p className="text-[13px] text-muted-foreground">
+                    {t('system-monitor:description')}
+                  </p>
+                </div>
               </div>
               {live}
             </div>
           )}
 
-          <div className="grid w-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid w-full grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-12">
             <Panel
-              title={t('system-monitor:cpuUsage')}
+              title={t('system-monitor:cpu')}
               icon={<Icon name="x-cpu" size={16} />}
               delay={60}
+              className="xl:col-span-4"
+              badge={<Badge color={ACCENT.cpu} percent={systemUsage.cpu} label={t('system-monitor:cpu')}>{systemUsage.cpu.toFixed(2)}%</Badge>}
             >
+              <b
+                className="mb-3 block truncate text-[14px] font-medium text-foreground"
+                title={hardwareData.cpu.name}
+              >
+                {hardwareData.cpu.name}
+              </b>
               <Stats>
-                <Stat label={t('system-monitor:model')}>
-                  <span title={hardwareData.cpu.name}>{hardwareData.cpu.name}</span>
-                </Stat>
                 <Stat label={t('system-monitor:cores')}>
                   {snapshot?.cpu.physical_cores ?? hardwareData.cpu.core_count}
                 </Stat>
-                {snapshot && (
-                  <Stat label={t('system-monitor:threads')}>
-                    {snapshot.cpu.logical_cores}
-                  </Stat>
-                )}
+                {snapshot && <Stat label={t('system-monitor:threads')}>{snapshot.cpu.logical_cores}</Stat>}
                 {snapshot && snapshot.cpu.frequency_mhz > 0 && (
                   <Stat label={t('system-monitor:frequency')}>
                     {formatFrequency(snapshot.cpu.frequency_mhz)}
@@ -734,42 +1033,44 @@ function SystemMonitorContent() {
                   <span className="font-mono">{hardwareData.cpu.arch}</span>
                 </Stat>
               </Stats>
-              <Meter
+              <UsageLine
                 label={t('system-monitor:currentUsage')}
                 percent={systemUsage.cpu}
+                color={ACCENT.cpu}
               />
-              <Sparkline values={history.cpu ?? []} />
+              <AreaChart values={history.cpu ?? []} color={ACCENT.cpu} />
               {snapshot && snapshot.cpu.per_core.length > 1 && (
                 <PerCoreUsage values={snapshot.cpu.per_core} />
               )}
             </Panel>
 
             <Panel
-              title={t('system-monitor:memoryUsage')}
+              title={t('system-monitor:memory')}
               icon={<Icon name="x-disk" size={16} />}
               delay={120}
+              className="xl:col-span-4"
+              badge={<Badge color={ACCENT.memory} percent={ramUsagePercentage} label={t('system-monitor:memory')}>{ramUsagePercentage.toFixed(2)}%</Badge>}
             >
               <Stats>
                 <Stat label={t('system-monitor:totalRam')}>
                   {formatMegaBytes(hardwareData.total_memory)}
                 </Stat>
                 <Stat label={t('system-monitor:availableRam')}>
-                  {formatMegaBytes(
-                    hardwareData.total_memory - systemUsage.used_memory
-                  )}
+                  {formatMegaBytes(hardwareData.total_memory - systemUsage.used_memory)}
                 </Stat>
                 <Stat label={t('system-monitor:usedRam')}>
                   {formatMegaBytes(systemUsage.used_memory)}
                 </Stat>
               </Stats>
-              <Meter
+              <UsageLine
                 label={t('system-monitor:currentUsage')}
                 percent={ramUsagePercentage}
+                color={ACCENT.memory}
               />
-              <Sparkline values={history.ram ?? []} />
+              <AreaChart values={history.ram ?? []} color={ACCENT.memory} />
               {snapshot && snapshot.memory.swap_total > 0 && (
                 <>
-                  <div className="mt-3 border-t border-dashed border-border pt-3">
+                  <div className="mt-4">
                     <Stats>
                       <Stat label={t('system-monitor:swap')}>
                         {formatBytes(snapshot.memory.swap_used)} /{' '}
@@ -779,10 +1080,8 @@ function SystemMonitorContent() {
                   </div>
                   <Meter
                     label={t('system-monitor:swapUsage')}
-                    percent={
-                      (snapshot.memory.swap_used / snapshot.memory.swap_total) *
-                      100
-                    }
+                    percent={swapPercent}
+                    color={ACCENT.memory}
                   />
                 </>
               )}
@@ -790,56 +1089,37 @@ function SystemMonitorContent() {
 
             {!IS_MACOS && (
               <Panel
-                title={t('system-monitor:gpus')}
+                title={t('system-monitor:gpu')}
                 icon={<Icon name="x-monitor" size={16} />}
                 delay={180}
+                className="md:col-span-2 xl:col-span-4"
+                badge={
+                  firstGpu?.usage ? (
+                    <Badge color={ACCENT.gpu} percent={firstGpu.percent} label={t('system-monitor:gpu')}>{firstGpu.percent.toFixed(2)}%</Badge>
+                  ) : undefined
+                }
               >
                 <div className="flex flex-col gap-4">
                   {gpus.length > 0 ? (
                     gpus.map((gpu) => {
                       const { usage, total, percent } = gpuPercent(gpu)
+                      const group = groupForGpu(gpuGroups, gpu, gpus)
                       return (
-                        <div
+                        <GpuBlock
                           key={gpu.uuid}
-                          className="flex min-w-0 flex-col gap-2 border-t border-dashed border-border pt-4 first:border-t-0 first:pt-0"
-                        >
-                          <div className="flex min-w-0 items-center gap-2">
-                            <b
-                              className="min-w-0 truncate text-[13px] font-medium text-foreground"
-                              title={gpu.name}
-                            >
-                              {gpu.name}
-                            </b>
-                            <Chip mono>{gpuBackendLabel(gpu)}</Chip>
-                          </div>
-                          <Stats>
-                            {gpu.driver_version && (
-                              <Stat label={t('system-monitor:driverVersion')}>
-                                <span className="font-mono">
-                                  {gpu.driver_version}
-                                </span>
-                              </Stat>
-                            )}
-                            <Stat label={t('system-monitor:vram')}>
-                              {formatMegaBytes(total)}
-                            </Stat>
-                          </Stats>
-                          {usage && (
-                            <>
-                              <Meter
-                                label={t('system-monitor:vramUsage')}
-                                percent={percent}
-                              />
-                              <Sparkline values={history[gpu.uuid] ?? []} />
-                            </>
-                          )}
-                        </div>
+                          gpu={gpu}
+                          total={total}
+                          percent={percent}
+                          hasUsage={!!usage}
+                          history={history[gpu.uuid] ?? []}
+                          group={group}
+                          onToggle={() => group && toggleGroup(group)}
+                          onSelect={(id) => group && selectBackend(group, id)}
+                        />
                       )
                     })
                   ) : (
-                    <div className="rounded-lg bg-muted px-3 py-3 text-[13px] text-muted-foreground">
-                      {t('system-monitor:noGpus')}
-                    </div>
+                    <Empty>{t('system-monitor:noGpus')}</Empty>
                   )}
                 </div>
               </Panel>
