@@ -202,7 +202,21 @@ export const useTokensCount = (
   const learnedWindow = useContextBreakdown((s) =>
     threadId ? s.windowById[threadId] : undefined
   )
+  const learnedWindowModel = useContextBreakdown((s) =>
+    threadId ? s.windowModelById[threadId] : undefined
+  )
+  const lastKnown = useContextBreakdown((s) =>
+    threadId ? s.lastById[threadId] : undefined
+  )
   const setLearnedWindow = useContextBreakdown((s) => s.setWindow)
+  // The last window this chat showed, while it is still the model's: a model
+  // change recomputes from the new model rather than inheriting the old size
+  // (the used figure is kept: it is what the thread held when last measured).
+  const currentModelId = selectedModel?.id
+  const sameModel = (m?: string) => !m || !currentModelId || m === currentModelId
+  const rememberedWindow =
+    (sameModel(learnedWindowModel) ? learnedWindow : undefined) ??
+    (lastKnown && sameModel(lastKnown.model) ? lastKnown.window : undefined)
   const remoteBaseUrl = isLocalProvider
     ? undefined
     : getProviderByName(selectedProvider)?.base_url
@@ -210,12 +224,18 @@ export const useTokensCount = (
     if (!threadId || !remoteBaseUrl) return
     let current = true
     fetchServerWindow(remoteBaseUrl, selectedModel?.id).then((tokens) => {
-      if (current && tokens) setLearnedWindow(threadId, tokens)
+      if (current && tokens) setLearnedWindow(threadId, tokens, selectedModel?.id)
     })
     return () => {
       current = false
     }
   }, [threadId, remoteBaseUrl, selectedModel?.id, setLearnedWindow])
+
+  // What a loaded local engine says its window is, kept for the day it is not.
+  const loadedWindow = usableContextValue(modelProps?.nCtx)
+  useEffect(() => {
+    if (threadId && modelId && loadedWindow) setLearnedWindow(threadId, loadedWindow, modelId)
+  }, [threadId, modelId, loadedWindow, setLearnedWindow])
 
   const tokenData: TokenCountData = useMemo(() => {
     const sourceOverflow = source?.contextError
@@ -237,13 +257,14 @@ export const useTokensCount = (
         outputTokens: usage.outputTokens,
         usage,
         // What a refused request named, else a window the user set or the
-        // provider listed for this model, else the window this chat's server
-        // was last found to run with. A model with none of those keeps no
+        // provider listed for this model, else the window this chat last showed
+        // or its server was found to run with (kept across restarts and a
+        // server that does not answer). A model with none of those keeps no
         // window rather than a guessed one.
         maxTokens:
           usableContextValue(sourceOverflow?.contextTokens) ??
           readCapabilityField(selectedModel, CONTEXT_FIELDS) ??
-          usableContextValue(learnedWindow) ??
+          usableContextValue(rememberedWindow) ??
           undefined,
         isOverflow: sourceOverflow != null,
         loading: false,
@@ -274,9 +295,13 @@ export const useTokensCount = (
     // A runtime that reports `n_ctx: 0`, or a server whose overflow error
     // carried a zero limit, has told us nothing about the window. Left as `0`
     // it renders as `0 / 0` and reads as a model with no room at all.
+    // An engine that has unloaded the model after sitting idle answers no
+    // props: the window it last ran with, then the one configured, stand in.
     const maxTokens =
       usableContextValue(overflow?.contextTokens) ??
       usableContextValue(modelProps?.nCtx) ??
+      usableContextValue(rememberedWindow) ??
+      configuredCtxLen ??
       undefined
     const percentage = maxTokens ? (tokenCount / maxTokens) * 100 : undefined
     const isNearLimit = overflow != null || (percentage ? percentage > 85 : false)
@@ -325,7 +350,7 @@ export const useTokensCount = (
     getProviderByName,
     selectedModel,
     configuredCtxLen,
-    learnedWindow,
+    rememberedWindow,
   ])
 
   return {
