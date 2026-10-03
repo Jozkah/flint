@@ -19,6 +19,7 @@ import {
 } from '@/lib/coworkTools'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
+import { BROWSER_TOOL_NAME } from '@/lib/browserTool'
 import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
@@ -806,7 +807,7 @@ async function routeCoworkTool(
         // Browser tools ask the user themselves (domain, action, submit).
         // Auto mode has nobody to ask: they then run only on sites a saved
         // rule or the project's allowed domains already cover.
-        ...(isBrowserTool(toolName)
+        ...(isBrowserTool(toolName) || toolName === BROWSER_TOOL_NAME
           ? {
               signal,
               unattended: ctx.mode === 'auto',

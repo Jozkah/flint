@@ -42,7 +42,8 @@ export const PLAN_DENIED_TOOLS = new Set([
  * which has nothing to say about a web page, and the browser tools ask for
  * their own approval (lib/browserAgent.ts).
  */
-export const isReviewDeniedBrowserTool = isBrowserActionTool
+export const isReviewDeniedBrowserTool = (name: string): boolean =>
+  isBrowserActionTool(name) || name === 'browser'
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */

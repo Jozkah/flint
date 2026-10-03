@@ -1316,6 +1316,26 @@ async fn execute_tool_inner(
         // thread workspace and $HOME is unreadable, so the containment the prompt
         // was protecting is already guaranteed. The gate itself is left alone,
         // because the CLI agent *does* want to prompt here.
+        // The interactive browser acts on a page of the user's own app, which
+        // the ephemeral-workspace reasoning below does not cover: the question
+        // is the renderer's to put to the user, and this surface refuses a
+        // call it did not vouch for. `open` and `evaluate` are asked every
+        // time, so only an answer a person gave counts for them; acting needs
+        // the renderer's approval record (a prompt, or a mode that allows it).
+        // A project `ask` rule is the renderer's blind spot, so it still refuses.
+        Decision::Prompt(PromptKind::Ask)
+            if name == "browser"
+                && approval == Some(ApprovalSource::Prompted)
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
+        Decision::Prompt(PromptKind::Write) if name == "browser" && approval.is_none() => {
+            return Err(
+                "tool 'browser' needs user approval before it acts on a page, and none was recorded for this call"
+                    .to_string()
+                    .into(),
+            );
+        }
         Decision::Prompt(PromptKind::Exec) if jail::backend().enforces() => {}
         // Same reasoning for writes, from the other direction. `root` here is
         // always `ensure_thread_workspace`, never a real project: an ephemeral
