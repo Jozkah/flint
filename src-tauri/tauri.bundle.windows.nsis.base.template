@@ -564,7 +564,11 @@ Function PageLeaveReinstall
     ${Else}
       ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
       ReadRegStr $R1 SHCTX "${UNINSTKEY}" "UninstallString"
-      ${IfThen} $UpdateMode = 1 ${|} StrCpy $R1 "$R1 /UPDATE" ${|} ; append /UPDATE
+      ; Always /UPDATE, not only when this installer was itself started in
+      ; update mode: the old version is being replaced, not removed, and
+      ; without it the uninstaller unpins and deletes the taskbar, Start Menu
+      ; and Desktop shortcuts, so every manual upgrade cost the user their pin.
+      StrCpy $R1 "$R1 /UPDATE"
       ${IfThen} $PassiveMode = 1 ${|} StrCpy $R1 "$R1 /P" ${|} ; append /P
       StrCpy $R1 "$R1 _?=$4" ; append uninstall directory
       ExecWait '$R1' $0
@@ -923,6 +927,11 @@ Section Install
   ; `.old` copies the frees left are no longer needed as a way back.
   !insertmacro CleanFreedBinaries
 
+  ; Shortcuts and pins left pointing at an earlier install location. Before
+  ; anything that removes an old install, so the old executable they target is
+  ; still there to be recognised.
+  Call FlintRetargetLegacyShortcuts
+
   ; Create file associations
 
   ; Register deep links
@@ -1192,11 +1201,19 @@ Function CreateOrUpdateStartMenuShortcut
     ${EndIf}
   ${EndIf}
 
+  ; One shortcut, however many times this runs: rewriting an existing one only
+  ; risks the pin that points at it.
   !if "${STARTMENUFOLDER}" != ""
+    ${If} ${FileExists} "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+      Return
+    ${EndIf}
     CreateDirectory "$SMPROGRAMS\$AppStartMenuFolder"
     CreateShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
   !else
+    ${If} ${FileExists} "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+      Return
+    ${EndIf}
     CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
     !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
   !endif
@@ -1221,6 +1238,31 @@ Function CreateOrUpdateDesktopShortcut
     ${EndIf}
   ${EndIf}
 
+  ${If} ${FileExists} "$DESKTOP\${PRODUCTNAME}.lnk"
+    Return
+  ${EndIf}
   CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
   !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
+FunctionEnd
+
+; Earlier builds were installed under "$LOCALAPPDATA\${PRODUCTNAME}", and the
+; shortcuts and the taskbar pin made then still point there, at a copy that no
+; update ever touches. Point them at this install instead of leaving a second,
+; stale one behind them.
+!macro FlintRetargetShortcut LNK
+  ${If} ${FileExists} "${LNK}"
+    !insertmacro IsShortcutTarget "${LNK}" "$LOCALAPPDATA\${PRODUCTNAME}\${MAINBINARYNAME}.exe"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro SetShortcutTarget "${LNK}" "$INSTDIR\${MAINBINARYNAME}.exe"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+Function FlintRetargetLegacyShortcuts
+  !insertmacro FlintRetargetShortcut "$DESKTOP\${PRODUCTNAME}.lnk"
+  !insertmacro FlintRetargetShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  !insertmacro FlintRetargetShortcut "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
+  !insertmacro FlintRetargetShortcut "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk"
+  !insertmacro FlintRetargetShortcut "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\StartMenu\${PRODUCTNAME}.lnk"
 FunctionEnd
