@@ -1792,15 +1792,22 @@ use crate::session_mailbox::{
 };
 
 /// Upsert a Cowork session in the mailbox registry. The project is recomputed
-/// from `folder`, read-only; no folder means the session cannot message.
+/// from `folder`, read-only. `accepts_messages` is the session's opt-out
+/// switch; omitted, a known session keeps its setting.
 #[tauri::command]
 pub async fn mailbox_session_register(
     data_folder: String,
     session_id: String,
     display_name: String,
     folder: Option<String>,
+    accepts_messages: Option<bool>,
 ) -> Result<SessionRecord, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).register(&session_id, &display_name, folder.as_deref())
+    Mailbox::open(Path::new(&data_folder)).register_with(
+        &session_id,
+        &display_name,
+        folder.as_deref(),
+        accepts_messages,
+    )
 }
 
 /// A run started (`running: true`) or ended.
