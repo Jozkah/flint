@@ -1810,6 +1810,18 @@ pub async fn mailbox_session_register(
     )
 }
 
+/// Send a session's final answer back as the reply to a message its run
+/// handled, unless it already replied. `None` when there was nothing to send.
+#[tauri::command]
+pub async fn mailbox_auto_reply(
+    data_folder: String,
+    from_session_id: String,
+    reply_to: String,
+    text: String,
+) -> Result<Option<SendReceipt>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).auto_reply(&from_session_id, &reply_to, &text)
+}
+
 /// A run started (`running: true`) or ended.
 #[tauri::command]
 pub async fn mailbox_session_status(

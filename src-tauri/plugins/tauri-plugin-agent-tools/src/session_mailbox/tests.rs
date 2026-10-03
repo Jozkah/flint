@@ -296,6 +296,47 @@ fn sessions_in_any_project_or_none_can_message_each_other() {
 }
 
 #[test]
+fn a_final_answer_goes_back_once_and_only_when_the_agent_did_not_reply() {
+    let fx = Fixture::new("auto");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    let asked = mb.send("a", "b", "which chart lib?", None, Origin::Agent).unwrap();
+
+    let sent = mb.auto_reply("b", &asked.message_id, "recharts").unwrap().unwrap();
+    let inbox = mb.pending("a").unwrap();
+    assert_eq!(inbox.len(), 1);
+    assert_eq!(inbox[0].id, sent.message_id);
+    assert_eq!(inbox[0].origin, Origin::Auto);
+    assert_eq!(inbox[0].reply_to.as_deref(), Some(asked.message_id.as_str()));
+    assert_eq!(inbox[0].depth, 1);
+
+    // A second run end for the same message sends nothing more.
+    assert_eq!(mb.auto_reply("b", &asked.message_id, "again").unwrap(), None);
+    assert_eq!(mb.pending("a").unwrap().len(), 1);
+
+    // The agent answered with the tool: nothing is added on top.
+    let asked = mb.send("a", "b", "and the tooltip?", None, Origin::Agent).unwrap();
+    mb.send("b", "a", "in HourlyChart", Some(&asked.message_id), Origin::Agent).unwrap();
+    assert_eq!(mb.auto_reply("b", &asked.message_id, "final").unwrap(), None);
+    assert_eq!(mb.pending("a").unwrap().len(), 2);
+
+    // A reply is never auto-answered, so two sessions cannot chain forever.
+    let reply_id = inbox[0].id.clone();
+    assert_eq!(mb.auto_reply("a", &reply_id, "thanks").unwrap(), None);
+
+    // Unknown messages are refused, and an overlong answer is shortened.
+    assert_eq!(
+        code_of(mb.auto_reply("b", "msg-nope", "x")),
+        code::UNKNOWN_REPLY_TARGET
+    );
+    let asked = mb.send("a", "b", "long one", None, Origin::Agent).unwrap();
+    let long = "lorem ipsum ".repeat(MAX_TEXT_CHARS / 12 + 50);
+    mb.auto_reply("b", &asked.message_id, &long).unwrap().unwrap();
+    let last = mb.pending("a").unwrap().pop().unwrap();
+    assert!(last.text.chars().count() <= MAX_TEXT_CHARS);
+}
+
+#[test]
 fn a_session_can_opt_out_and_opt_back_in() {
     let fx = Fixture::new("optout");
     let mb = Mailbox::open(&fx.data);

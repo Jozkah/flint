@@ -231,6 +231,9 @@ pub struct SessionSummary {
 pub enum Origin {
     Agent,
     User,
+    /// A session's final answer sent back for it, because the message it
+    /// answers was handled by a run that ended without replying itself.
+    Auto,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -283,6 +286,10 @@ struct OutboxEntry {
     id: String,
     to: String,
     at: i64,
+    /// The message this one answers, so an automatic reply can tell that the
+    /// agent already answered. Absent in entries written before it existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reply_to: Option<String>,
 }
 
 /// What a sender learns about a message it just sent.
@@ -1028,6 +1035,7 @@ impl Mailbox {
                     id: envelope.id.clone(),
                     to: to_id.to_string(),
                     at: now,
+                    reply_to: reply_to.map(str::to_string),
                 },
             )?;
             append_jsonl(&self.inbox_path(to_id), &envelope)?;
@@ -1067,6 +1075,61 @@ impl Mailbox {
             Some(reply_to),
             Origin::User,
         )
+    }
+
+    /// Answer a message for a session whose run handled it and ended without
+    /// replying: `text` (the run's final answer) goes back to the sender as an
+    /// `auto` reply. Nothing is sent when the session already replied, or when
+    /// the message was itself a reply (so two sessions cannot answer each
+    /// other's answers); `None` says so. Every ordinary limit still applies.
+    pub fn auto_reply(
+        &self,
+        from_id: &str,
+        reply_to: &str,
+        text: &str,
+    ) -> Result<Option<SendReceipt>> {
+        check_session_id(from_id)?;
+        let parent = {
+            let _guard = lock();
+            let answered = valid_id(reply_to)
+                && read_jsonl::<OutboxEntry>(&self.outbox_path(from_id))
+                    .iter()
+                    .any(|e| e.reply_to.as_deref() == Some(reply_to));
+            if answered {
+                return Ok(None);
+            }
+            valid_id(reply_to)
+                .then(|| {
+                    read_jsonl::<MailEnvelope>(&self.inbox_path(from_id))
+                        .into_iter()
+                        .find(|e| e.id == reply_to && e.to.session_id == from_id)
+                })
+                .flatten()
+        };
+        let Some(parent) = parent else {
+            return Err(MailboxError::new(
+                code::UNKNOWN_REPLY_TARGET,
+                "reply_to must name a message this session received",
+            ));
+        };
+        if parent.depth > 0 {
+            return Ok(None);
+        }
+        let text: String = if text.chars().count() > MAX_TEXT_CHARS {
+            let mut cut: String = text.chars().take(MAX_TEXT_CHARS - 40).collect();
+            cut.push_str("\n[reply shortened to fit the limit]");
+            cut
+        } else {
+            text.to_string()
+        };
+        self.send(
+            from_id,
+            &parent.from.session_id,
+            &text,
+            Some(reply_to),
+            Origin::Auto,
+        )
+        .map(Some)
     }
 
     fn inbox_with_state(&self, session_id: &str) -> (Vec<MailEnvelope>, DeliveryState) {
