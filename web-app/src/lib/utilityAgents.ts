@@ -29,6 +29,8 @@ export type UtilityRequest = {
   messages: ModelMessage[]
   maxOutputTokens: number
   abortSignal?: AbortSignal
+  /** Retries the SDK makes on a failure. Defaults to its own (2). */
+  maxRetries?: number
 }
 
 let seq = 0
@@ -78,6 +80,7 @@ export async function runUtilityAgent(req: UtilityRequest): Promise<string> {
       messages: req.messages,
       maxOutputTokens: req.maxOutputTokens,
       abortSignal: req.abortSignal,
+      ...(req.maxRetries !== undefined ? { maxRetries: req.maxRetries } : {}),
       // Explicit, so a default elsewhere can never hand this call a tool.
       tools: undefined,
       toolChoice: 'none',
