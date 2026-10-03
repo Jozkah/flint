@@ -91,7 +91,7 @@ const TAILSCALE_CERT_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 3600);
 
 /// The MagicDNS name of this machine, without the trailing dot.
 fn tailscale_dns_name() -> Option<String> {
-    let out = std::process::Command::new("tailscale")
+    let out = super::config::tailscale_command()
         .args(["status", "--json"])
         .output()
         .ok()?;
@@ -124,7 +124,7 @@ pub fn tailscale_cert(dir: &Path) -> Option<(PathBuf, PathBuf, String)> {
     let same_name = std::fs::read_to_string(&name_path).ok().as_deref() == Some(name.as_str());
     if !(fresh && same_name && key.exists()) {
         std::fs::create_dir_all(dir).ok()?;
-        let status = std::process::Command::new("tailscale")
+        let status = super::config::tailscale_command()
             .arg("cert")
             .arg("--cert-file")
             .arg(&cert)
