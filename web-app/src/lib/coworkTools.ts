@@ -247,6 +247,10 @@ function teamTool(subagentNames: string[]): Tool {
                 description: 'The whole brief; the child sees nothing else.',
               },
               subagent_name: { type: 'string', minLength: 1 },
+              title: {
+                type: 'string',
+                description: 'A short name for this task, 3-6 words, shown on its row.',
+              },
               depends_on: {
                 type: 'array',
                 items: { type: 'string', minLength: 1 },
@@ -354,6 +358,10 @@ export function taskTool(
       type: 'object',
       properties: {
         subagent_name: { type: 'string', minLength: 1 },
+        title: {
+          type: 'string',
+          description: 'A short name for this errand, 3-6 words, shown on its row.',
+        },
         description: { type: 'string', minLength: 1 },
         system_prompt: {
           type: 'string',

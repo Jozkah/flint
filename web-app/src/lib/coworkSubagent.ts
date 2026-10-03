@@ -135,6 +135,8 @@ export type SubagentRequest = {
   allowed_tools?: string[]
   /** The parent did not wait for this child (`task` with `background: true`). */
   background?: boolean
+  /** A short name for this errand (3-6 words), shown on its row. */
+  title?: string
 }
 
 export type ResolvedSubagent = {
@@ -185,6 +187,7 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
     )
   }
   if (raw.background === true) req.background = true
+  if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   return req
 }
 

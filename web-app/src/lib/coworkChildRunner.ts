@@ -138,6 +138,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     recordAgentDispatch(env.run, {
       callId,
       agentName: resolved.name,
+      title: req.title,
       description: req.description,
       model: env.modelId,
       // A team's children hang under the team's own row, so the panel shows one

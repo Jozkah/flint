@@ -557,6 +557,11 @@ export function subagentGuide(
     'A subagent works in its own context, so it',
     'can read and search widely and give you back only the conclusion.',
     DELEGATE_WHEN,
+    // A request that already lists its parts is the clearest case, and the one a
+    // model reads files for instead of delegating.
+    'A request that names several separate areas to survey, or says the answer is spread across many files, is a request to delegate: send one subagent per area at once' +
+      (team ? ' (a `team` for independent parts)' : '') +
+      ' before you read those files yourself.',
     DO_NOT_DELEGATE,
     'Write the brief as if to a colleague who has seen none of this conversation.',
     NOT_SHOWN_TO_USER,

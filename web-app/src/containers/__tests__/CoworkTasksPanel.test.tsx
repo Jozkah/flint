@@ -225,7 +225,7 @@ describe('CoworkTasksPanel', () => {
     expect(within(row).getByText('researcher')).toBeInTheDocument()
     expect(within(row).getByText(/tokens=1.2k/)).toBeInTheDocument()
     expect(within(row).getByText(/toolCalls.*count=3/)).toBeInTheDocument()
-    expect(within(row).getByText(/model=jan-nano-4b/)).toBeInTheDocument()
+    expect(within(row).getByText('jan-nano-4b')).toBeInTheDocument()
   })
 
   it('shows a queued subagent with its place in the queue', async () => {
@@ -294,7 +294,7 @@ describe('CoworkTasksPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
     expect(screen.getByText('map the lexer')).toBeInTheDocument()
     expect(screen.getByText('looking')).toBeInTheDocument()
-    expect(screen.getByText('token')).toBeInTheDocument()
+    expect(screen.getAllByText(/token/).length).toBeGreaterThan(0)
     expect(screen.getByText('found 3 matches')).toBeInTheDocument()
   })
 
@@ -316,11 +316,11 @@ describe('CoworkTasksPanel', () => {
     await openWorkflow()
     await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
     const stats = screen.getByTestId('subagent-stats')
-    expect(stats).toHaveTextContent('statInput tokens=')
-    expect(stats).toHaveTextContent('statTurns count=1')
-    expect(stats).toHaveTextContent('statTools count=2')
-    expect(stats).not.toHaveTextContent('statApprox')
-    expect(screen.getByTestId('transcript-tool-breakdown')).toHaveTextContent('read ×2')
+    expect(stats).toHaveTextContent('statLabelInput')
+    expect(stats.querySelector('[data-stat=steps]')).toHaveTextContent('2')
+    expect(stats.querySelector('[data-stat=steps]')).toHaveAttribute('title', expect.stringContaining('turns=1'))
+    expect(stats.textContent).not.toContain('~')
+    expect(screen.getByTestId('subagent-tools')).toHaveTextContent('toolChip name=read count=2')
   })
 
   it('marks tokens estimated when the provider reported none', async () => {
@@ -333,7 +333,7 @@ describe('CoworkTasksPanel', () => {
     )
     await openWorkflow()
     await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
-    expect(screen.getByTestId('subagent-stats')).toHaveTextContent('statApprox')
+    expect(screen.getByTestId('subagent-stats').textContent).toContain('~')
   })
 
   it('labels a child that ran out of steps distinctly, and a shortened result', async () => {

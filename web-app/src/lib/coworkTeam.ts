@@ -42,6 +42,8 @@ export type TeamTask = {
    * intersection that resolution performs would have two implementations.
    */
   subagentName?: string
+  /** A short name for the row this task gets (3-6 words). */
+  title?: string
   /** Ids that must be `completed` before this may start. */
   dependsOn: string[]
   /**
@@ -754,6 +756,8 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       typeof one.subagent_name === 'string' && one.subagent_name.trim()
         ? one.subagent_name.trim()
         : undefined
+    const title =
+      typeof one.title === 'string' && one.title.trim() ? one.title.trim() : undefined
     const renames = Array.isArray(one.renames)
       ? one.renames.flatMap((move) => {
           const m = move as Record<string, unknown> | null
@@ -768,6 +772,7 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
       id,
       description,
       ...(subagentName ? { subagentName } : {}),
+      ...(title ? { title } : {}),
       dependsOn: stringList(one.depends_on),
       writes: stringList(one.writes),
       ...(reads.length ? { reads } : {}),
@@ -823,6 +828,7 @@ export function isolatedTaskAsTeam(
         id: 'task',
         subagent_name: name,
         description: role ? `${role}\n\n${description}` : description,
+        ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title.trim() } : {}),
         isolate: true,
       },
     ],

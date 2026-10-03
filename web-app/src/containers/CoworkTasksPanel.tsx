@@ -2,14 +2,8 @@
 import type { TeamControl } from '@/lib/coworkTeamControl'
 import { useTeamControls } from '@/hooks/useTeamControls'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Bot,
-  ChevronDown,
-  Copy,
-  Loader2,
-  Square,
-  Terminal,
-} from 'lucide-react'
+import { Bot, ChevronDown, Copy, Loader2, Square } from 'lucide-react'
+import { TOOL_CARD_CLASS, ToolKindTile } from '@/components/ToolKindTile'
 import { cn } from '@/lib/utils'
 import { WorkStatus, type WorkState } from '@/containers/StatusChip'
 import { useTranslation } from '@/i18n/react-i18next-compat'
@@ -31,6 +25,7 @@ import {
 import { CoworkSubagentTranscript } from '@/containers/CoworkSubagentTranscript'
 import { TaskCheckoutLink } from '@/containers/TaskCheckoutLink'
 import { subagentStats } from '@/lib/coworkSubagentStats'
+import { StatStrip } from '@/containers/SubagentStats'
 import { CANCELLED_BY_USER } from '@/lib/coworkCancel'
 import { INTERRUPTED_BY_RESTART } from '@/lib/hydrateStores'
 import type { CoworkTurn } from '@/types/coworkSession'
@@ -721,20 +716,24 @@ function TaskItem({
     <div
       ref={containerRef}
       tabIndex={containerRef ? -1 : undefined}
-      // The open row is the selected one: a neutral fill and the 2px accent
-      // marker, never the accent as a fill.
+      // One rounded card per row, tinted like a chat bubble. Hover and focus
+      // tint the whole card (never a bar on one edge); the open row keeps a
+      // neutral fill; keyboard focus draws a ring around the card.
       className={cn(
-        'relative border-t border-dashed border-border',
-        expanded &&
-          'bg-accent before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-acc'
+        TOOL_CARD_CLASS,
+        'mx-3 my-1 overflow-hidden rounded-[10px] border-[0.8px] bg-card/60 transition-colors',
+        'hover:bg-hover-row focus-within:has-[:focus-visible]:ring-2 focus-within:has-[:focus-visible]:ring-ring/60',
+        expanded && 'bg-muted/50'
       )}
+      data-testid="task-row"
+      data-tool-kind={task.status === 'error' ? 'fail' : task.kind === 'shell' ? 'bash' : 'other'}
     >
-      <div className="flex items-start">
+      <div className="flex items-center">
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={expanded}
-          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2 pl-6 text-left text-[12.5px] outline-none transition-colors hover:bg-hover-row focus-visible:bg-hover-row pointer-coarse:min-h-11"
+          className="flex min-w-0 flex-1 items-center gap-2 py-2 pr-2 pl-3 text-left text-[12.5px] outline-none pointer-coarse:min-h-11"
         >
           {/* Status first, in a fixed column, so a list of rows reads down
               one edge: the design's task row. */}
@@ -742,9 +741,9 @@ function TaskItem({
             <StatusIcon status={task.status} />
           </span>
           {task.kind === 'shell' ? (
-            <Terminal size={14} className="shrink-0 text-muted-foreground" />
+            <ToolKindTile name="bash" />
           ) : (
-            <Bot size={14} className="shrink-0 text-muted-foreground" />
+            <ToolKindTile name="task" icon={<Bot />} />
           )}
           <span className="min-w-0 flex-1">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -771,16 +770,20 @@ function TaskItem({
               {task.kind === 'agent' &&
                 task.agentName &&
                 task.agentName !== task.title && (
-                  <span className="truncate">{task.agentName}</span>
+                  <span className="truncate rounded-md border-[0.8px] border-border px-1.5">
+                    {task.agentName}
+                  </span>
                 )}
               {task.status === 'queued' && task.waiting != null && (
                 <span>
                   {t('common:tasks.queuePosition', { position: task.waiting })}
                 </span>
               )}
-              <span className="tabular-nums">
-                {formatCompactDuration(Math.round(ms / 1000), t)}
-              </span>
+              {task.status !== 'queued' && (
+                <span className="tabular-nums">
+                  {formatCompactDuration(Math.round(ms / 1000), t)}
+                </span>
+              )}
               {tokens > 0 && (
                 <span
                   className="tabular-nums"
@@ -803,8 +806,8 @@ function TaskItem({
                 </span>
               )}
               {task.model && (
-                <span className="truncate">
-                  {t('common:tasks.model', { model: task.model })}
+                <span className="truncate rounded-md border-[0.8px] border-border px-1.5">
+                  {task.model}
                 </span>
               )}
               {task.jobId && (
@@ -851,7 +854,7 @@ function TaskItem({
             variant="ghost"
             size="xs"
             disabled={cancelling}
-            className="mt-2 mr-2 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            className="mr-2 size-8 shrink-0 self-center rounded-md bg-transparent p-0 text-destructive hover:bg-destructive/15 hover:text-destructive focus-visible:ring-2 focus-visible:ring-destructive/50 pointer-coarse:size-11"
             aria-label={t('common:tasks.stopTask', { name: task.title })}
             onClick={onCancel}
           >
@@ -873,7 +876,7 @@ function TaskItem({
         </p>
       )}
       {expanded && (
-        <div className="border-t border-dashed border-border bg-muted/40 px-3 py-2.5 pl-6 motion-safe:animate-tree-in">
+        <div className="border-t border-dashed border-border bg-muted/30 px-3 py-2.5 motion-safe:animate-tree-in">
           <p className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
             <span>{t('common:tasks.startedAt', { time: clockTime(task.startedAt) })}</span>
             {task.endedAt != null && (
@@ -883,38 +886,8 @@ function TaskItem({
               <span>{t('common:tasks.fromTask', { name: parentTitle })}</span>
             )}
           </p>
-          {task.kind === 'agent' && (
-            <p
-              className="mb-2 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground tabular-nums"
-              data-testid="subagent-stats"
-            >
-              {stats.approximate ? (
-                <span>
-                  {t('common:tasks.statApprox', {
-                    tokens: formatTokens(stats.totalTokens),
-                  })}
-                </span>
-              ) : (
-                stats.totalTokens > 0 && (
-                  <>
-                    <span>
-                      {t('common:tasks.statInput', {
-                        tokens: formatTokens(stats.inputTokens),
-                      })}
-                    </span>
-                    <span>
-                      {t('common:tasks.statOutput', {
-                        tokens: formatTokens(stats.outputTokens),
-                      })}
-                    </span>
-                  </>
-                )
-              )}
-              <span>{t('common:tasks.statTurns', { count: stats.turns })}</span>
-              <span>
-                {t('common:tasks.statTools', { count: stats.tools.total })}
-              </span>
-            </p>
+          {task.kind === 'agent' && task.status !== 'queued' && (
+            <StatStrip stats={stats} className="mb-2" />
           )}
           {task.description && task.kind !== 'agent' && (
             <p className="mb-2 text-[11px] text-fg-2">
@@ -988,6 +961,8 @@ function TaskOutput({ task }: { task: ActivityTask }) {
   const [copied, setCopied] = useState(false)
   const output = task.output
   if (!output) {
+    // A subagent's transcript already says what it is waiting on.
+    if (task.kind === 'agent' && (task.status === 'queued' || task.status === 'running')) return null
     return (
       <p className="text-[11px] text-muted-foreground">
         {task.status === 'queued' || task.status === 'running'

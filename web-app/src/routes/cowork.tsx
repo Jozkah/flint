@@ -4064,6 +4064,7 @@ export function CoworkPage() {
                   recordAgentDispatch(run, {
                     callId,
                     agentName: 'team',
+                    title: 'team',
                     description: `${tasks.length} tasks`,
                     model: selectedModel.id,
                     anchorMessageId: anchorMessageId(),
@@ -4180,6 +4181,7 @@ export function CoworkPage() {
                             {
                               subagent_name: one.subagentName ?? 'worker',
                               description: one.description,
+                              ...(one.title ? { title: one.title } : {}),
                               // A task that names no saved agent still has to be
                               // runnable: without a prompt it resolves to nothing
                               // and is refused as unknown, which would make the

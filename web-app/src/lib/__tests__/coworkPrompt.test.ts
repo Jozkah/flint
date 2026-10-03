@@ -107,6 +107,12 @@ describe('buildCoworkSystemPrompt', () => {
       expect(p).toContain('explorer (')
       expect(p).toContain('tester (')
     })
+    it('says that a request listing several areas is a request to delegate', () => {
+      const p = buildCoworkSystemPrompt(opts({ availableTools: WITH }))
+      expect(p).toContain('names several separate areas')
+      expect(p).toContain('one subagent per area')
+      expect(p).toContain('`team` for independent parts')
+    })
     it('is absent when either tool is not advertised', () => {
       for (const tools of [['read'], ['read', 'task'], ['read', 'team']]) {
         expect(

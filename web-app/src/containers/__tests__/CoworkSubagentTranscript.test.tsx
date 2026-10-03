@@ -35,7 +35,7 @@ const task = (over: Partial<ActivityTask> = {}): ActivityTask => ({
 describe('CoworkSubagentTranscript', () => {
   it('says so when the subagent has produced nothing', () => {
     render(<CoworkSubagentTranscript task={task({ status: 'running', endedAt: undefined })} />)
-    expect(screen.getByText('common:tasks.transcriptEmpty')).toBeInTheDocument()
+    expect(screen.getByText('common:tasks.starting')).toBeInTheDocument()
   })
 
   it('shows the brief, what it said, and each tool call collapsed', () => {
@@ -59,9 +59,9 @@ describe('CoworkSubagentTranscript', () => {
     )
     expect(screen.getByTestId('transcript-brief')).toHaveTextContent('find the config loader')
     expect(screen.getByText('searching now')).toBeInTheDocument()
-    const call = screen.getByRole('button', { name: /grep/ })
+    const call = screen.getByRole('button', { name: /step.searched/ })
     expect(call).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.getByText('loadConfig')).toBeInTheDocument()
+    expect(screen.getByText(/loadConfig/)).toBeInTheDocument()
     // The result is not in the page until the call is opened.
     expect(screen.queryByTestId('transcript-tool-result')).toBeNull()
   })
@@ -82,7 +82,7 @@ describe('CoworkSubagentTranscript', () => {
         })}
       />
     )
-    const call = screen.getByRole('button', { name: /read/ })
+    const call = screen.getByRole('button', { name: /step.read/ })
     call.focus()
     await userEvent.keyboard('{Enter}')
     expect(call).toHaveAttribute('aria-expanded', 'true')
@@ -99,7 +99,7 @@ describe('CoworkSubagentTranscript', () => {
         })}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: /bash/ }))
+    await userEvent.click(screen.getByRole('button', { name: /step.ran/ }))
     const result = screen.getByTestId('transcript-tool-result')
     expect(result.textContent!.length).toBe(TRANSCRIPT_BLOCK_CHARS)
     await userEvent.click(screen.getByRole('button', { name: /showMore/ }))
@@ -127,7 +127,7 @@ describe('CoworkSubagentTranscript', () => {
         })}
       />
     )
-    await userEvent.click(screen.getByRole('button', { name: /bash/ }))
+    await userEvent.click(screen.getByRole('button', { name: /step.ran/ }))
     expect(document.body.textContent).not.toContain('sk-abcdefghijklmnopqrstuvwxyz123456')
   })
 
@@ -155,10 +155,11 @@ describe('CoworkSubagentTranscript', () => {
         })}
       />
     )
-    const line = screen.getByTestId('transcript-tool-breakdown')
-    expect(line).toHaveTextContent('read ×2')
-    expect(line).toHaveTextContent('grep ×1')
-    expect(line).toHaveTextContent('toolCallsFailed count=1')
+    const chips = screen.getByTestId('subagent-tools')
+    expect(chips).toHaveTextContent('toolChipFailed name=read count=2 failed=1')
+    expect(chips).toHaveTextContent('toolChip name=grep count=1')
+    expect(screen.getByTestId('subagent-tools-status')).toHaveTextContent('stepsFailed count=1')
+    expect(chips.querySelector('[data-tool=read]')).toHaveAttribute('data-failed', 'true')
   })
 
   it('shows the final result with the truncation note, or the failure', () => {
@@ -209,5 +210,61 @@ describe('keyArgs', () => {
     expect(keyArgs({ command: 'x'.repeat(200) })).toHaveLength(81)
     expect(keyArgs(null)).toBe('')
     expect(keyArgs({ nothing: true })).toBe('')
+  })
+})
+
+describe('CoworkSubagentTranscript as a conversation', () => {
+  it('shows a queued row as waiting, with its position, and no zero stats', () => {
+    render(<CoworkSubagentTranscript task={task({ status: 'queued', endedAt: undefined, waiting: 2 })} />)
+    expect(screen.getByTestId('transcript-empty')).toHaveTextContent('waitingPosition position=2')
+    expect(screen.queryByTestId('transcript-stats')).toBeNull()
+  })
+
+  it('collapses the brief behind Show brief', async () => {
+    render(<CoworkSubagentTranscript task={task({ description: 'look around' })} />)
+    expect(screen.getByTestId('transcript-brief').className).toContain('line-clamp-2')
+    await userEvent.click(screen.getByRole('button', { name: 'common:tasks.showBrief' }))
+    expect(screen.getByTestId('transcript-brief').className).not.toContain('line-clamp-2')
+  })
+
+  it('groups consecutive reads and expands them', async () => {
+    render(
+      <CoworkSubagentTranscript
+        task={task({
+          transcript: [
+            { role: 'tool', name: 'read', content: '', args: { path: 'a/one.ts' }, toolState: 'succeeded' },
+            { role: 'tool', name: 'read', content: '', args: { path: 'a/two.ts' }, toolState: 'succeeded' },
+            { role: 'tool', name: 'read', content: '', args: { path: 'a/three.ts' }, toolState: 'succeeded' },
+          ],
+        })}
+      />
+    )
+    const group = screen.getByTestId('transcript-group')
+    expect(group).toHaveTextContent('groupRead count=3')
+    expect(screen.queryAllByTestId('transcript-step')).toHaveLength(0)
+    await userEvent.click(screen.getByRole('button', { name: /groupRead/ }))
+    expect(screen.getAllByTestId('transcript-step')).toHaveLength(3)
+  })
+
+  it('keeps the filename visible and the whole path in a tooltip', () => {
+    const path = 'internal/radar/some/very/deep/folder/structure/client.go'
+    render(
+      <CoworkSubagentTranscript
+        task={task({ transcript: [{ role: 'tool', name: 'read', content: '', args: { path }, toolState: 'succeeded' }] })}
+      />
+    )
+    const el = screen.getByTestId('middle-ellipsis')
+    expect(el).toHaveAttribute('title', path)
+    expect(el.textContent).toBe(path)
+    expect(el.lastElementChild!.textContent).toMatch(/client\.go$/)
+  })
+
+  it('marks a failed step', () => {
+    render(
+      <CoworkSubagentTranscript
+        task={task({ transcript: [{ role: 'tool', name: 'bash', content: '', args: { command: 'npm test' }, toolState: 'failed' }] })}
+      />
+    )
+    expect(screen.getByTestId('transcript-step')).toHaveAttribute('data-state', 'failed')
   })
 })

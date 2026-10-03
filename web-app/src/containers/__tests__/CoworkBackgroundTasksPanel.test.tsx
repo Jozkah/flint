@@ -88,9 +88,9 @@ describe('CoworkBackgroundTasksPanel', () => {
       />
     )
     const stats = screen.getByTestId('background-stats')
-    expect(stats).toHaveTextContent('Sonnet 5.5')
-    expect(stats).toHaveTextContent('276')
-    expect(stats).toHaveTextContent('toolUses count=2')
+    expect(screen.getByTestId('background-row')).toHaveTextContent('Sonnet 5.5')
+    expect(stats.querySelector('[data-stat=input]')).toHaveTextContent('200.0K')
+    expect(stats.querySelector('[data-stat=steps]')).toHaveTextContent('2')
     expect(screen.getByTestId('background-status-line')).toHaveTextContent(
       'common:tasks.line.command'
     )

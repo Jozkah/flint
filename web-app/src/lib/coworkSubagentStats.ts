@@ -24,6 +24,10 @@ export type ToolCallCounts = {
   failed: number
   /** Count per tool name, in first-seen order. */
   byTool: Record<string, number>
+  /** How many of each tool's calls failed, for tools with at least one. */
+  failedByTool: Record<string, number>
+  /** How many of each tool's calls are still running or waiting. */
+  activeByTool: Record<string, number>
 }
 
 export type SubagentStats = {
@@ -61,13 +65,18 @@ export function tallyToolCalls(
     succeeded: 0,
     failed: 0,
     byTool: {},
+    failedByTool: {},
+    activeByTool: {},
   }
   for (const turn of turns ?? []) {
     if (turn.role !== 'tool') continue
     out.total += 1
-    out[toolOutcome(turn)] += 1
+    const outcome = toolOutcome(turn)
+    out[outcome] += 1
     const name = turn.name || 'tool'
     out.byTool[name] = (out.byTool[name] ?? 0) + 1
+    if (outcome === 'failed') out.failedByTool[name] = (out.failedByTool[name] ?? 0) + 1
+    if (outcome === 'active') out.activeByTool[name] = (out.activeByTool[name] ?? 0) + 1
   }
   return out
 }
@@ -207,12 +216,16 @@ export function statusLine(
 /** Totals over a group of children (a team, or a workflow's agents). */
 export function aggregateStats(stats: readonly SubagentStats[]): SubagentStats {
   const byTool: Record<string, number> = {}
+  const failedByTool: Record<string, number> = {}
+  const activeByTool: Record<string, number> = {}
   const tools: ToolCallCounts = {
     total: 0,
     active: 0,
     succeeded: 0,
     failed: 0,
     byTool,
+    failedByTool,
+    activeByTool,
   }
   let inputTokens = 0
   let outputTokens = 0
@@ -235,6 +248,12 @@ export function aggregateStats(stats: readonly SubagentStats[]): SubagentStats {
     tools.failed += s.tools.failed
     for (const [name, n] of Object.entries(s.tools.byTool)) {
       byTool[name] = (byTool[name] ?? 0) + n
+    }
+    for (const [name, n] of Object.entries(s.tools.failedByTool)) {
+      failedByTool[name] = (failedByTool[name] ?? 0) + n
+    }
+    for (const [name, n] of Object.entries(s.tools.activeByTool)) {
+      activeByTool[name] = (activeByTool[name] ?? 0) + n
     }
   }
   return {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Square, Trash2, X } from 'lucide-react'
+import { Bot, ChevronDown, Square, Trash2, X } from 'lucide-react'
+import { TOOL_CARD_CLASS, ToolKindTile } from '@/components/ToolKindTile'
 import { Button } from '@/components/ui/button'
 import { CoworkSidePanel } from '@/containers/CoworkSidePanel'
 import { CoworkSubagentTranscript } from '@/containers/CoworkSubagentTranscript'
 import { TaskCheckoutLink } from '@/containers/TaskCheckoutLink'
-import { formatTokens } from '@/containers/CoworkTasksPanel'
+import { StatStrip } from '@/containers/SubagentStats'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn } from '@/lib/utils'
 import { formatCompactDuration } from '@/lib/duration'
@@ -200,7 +201,13 @@ function BackgroundRow({
     <div
       data-testid="background-row"
       data-status={task.status}
-      className="rounded-[10px] border-[0.8px] border-border bg-card px-3 py-2.5"
+      data-tool-kind={task.status === 'error' ? 'fail' : isAgent ? 'other' : 'bash'}
+      className={cn(
+        TOOL_CARD_CLASS,
+        'overflow-hidden rounded-[10px] border-[0.8px] bg-card/60 py-2.5 pr-3 pl-4 transition-colors hover:bg-hover-row',
+        'has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/60',
+        expanded && 'bg-muted/50'
+      )}
       onKeyDown={(e) => {
         if (e.key === 'Escape' && expanded) {
           e.stopPropagation()
@@ -208,7 +215,8 @@ function BackgroundRow({
         }
       }}
     >
-      <div className="flex items-start gap-2">
+      <div className="flex items-center gap-2">
+        {isAgent ? <ToolKindTile name="task" icon={<Bot />} /> : <ToolKindTile name="bash" />}
         <div className="min-w-0 flex-1">
           <p
             className={cn(
@@ -220,11 +228,16 @@ function BackgroundRow({
             {task.title}
           </p>
           <p className="mt-0.5 flex flex-wrap gap-x-2 text-[11.5px] text-muted-foreground tabular-nums">
-            <span>
-              {isAgent
-                ? t('common:tasks.kindAgent')
-                : t('common:tasks.kindShell')}
+            <span className="rounded-md border-[0.8px] border-border px-1.5 text-foreground">
+              {isAgent && task.agentName
+                ? task.agentName
+                : isAgent
+                  ? t('common:tasks.kindAgent')
+                  : t('common:tasks.kindShell')}
             </span>
+            {isAgent && task.model && (
+              <span className="rounded-md border-[0.8px] border-border px-1.5">{task.model}</span>
+            )}
             <span data-testid="background-elapsed">
               {formatCompactDuration(Math.round(taskElapsedMs(task, now) / 1000), t)}
             </span>
@@ -235,34 +248,21 @@ function BackgroundRow({
             )}
           </p>
           <TaskCheckoutLink task={task} />
-          {isAgent && (
-            <p
-              className="mt-1 text-[11.5px] text-muted-foreground tabular-nums"
-              data-testid="background-stats"
-            >
-              {task.model && (
-                <span className="font-medium text-foreground">
-                  {task.model}{' '}
-                </span>
-              )}
-              {stats.totalTokens > 0 && (
-                <span>
-                  {stats.approximate ? '~' : ''}
-                  {t('common:tasks.tokens', {
-                    tokens: formatTokens(stats.totalTokens),
-                  })}
-                  {' · '}
-                </span>
-              )}
-              <span>
-                {t('common:tasks.toolUses', { count: stats.tools.total })}
-              </span>
-            </p>
+          {isAgent && task.status !== 'queued' && (
+            <StatStrip stats={stats} testId="background-stats" className="mt-1.5" />
           )}
           <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11.5px] text-muted-foreground">
             <span
               data-testid="background-status-line"
-              className={cn(line === 'failed' && 'text-destructive')}
+              className={cn(
+                'font-medium',
+                line === 'queued' && 'text-amber-600 dark:text-amber-400',
+                line === 'failed' && 'text-destructive',
+                line === 'cancelled' && 'text-orange-600 dark:text-orange-400',
+                line === 'finished' && 'text-success',
+                !['queued', 'failed', 'cancelled', 'finished'].includes(line) &&
+                  'text-acc-text motion-safe:animate-pulse'
+              )}
             >
               {t(`common:tasks.line.${line}`)}
             </span>
@@ -290,7 +290,7 @@ function BackgroundRow({
             disabled={stopping}
             aria-label={t('common:tasks.stopTask', { name: task.title })}
             onClick={onStop}
-            className="shrink-0 text-muted-foreground hover:text-destructive"
+            className="size-8 shrink-0 self-center rounded-md bg-transparent p-0 text-destructive hover:bg-destructive/15 hover:text-destructive focus-visible:ring-2 focus-visible:ring-destructive/50 pointer-coarse:size-11"
           >
             <Square size={12} aria-hidden />
           </Button>
@@ -301,7 +301,7 @@ function BackgroundRow({
             size="xs"
             aria-label={t('common:tasks.backgroundDismiss', { name: task.title })}
             onClick={onDismiss}
-            className="shrink-0 text-muted-foreground"
+            className="size-8 shrink-0 self-center rounded-md p-0 text-muted-foreground hover:bg-hover-btn hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring pointer-coarse:size-11"
           >
             <X size={12} aria-hidden />
           </Button>
