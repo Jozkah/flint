@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import type { LanguageModelUsage } from 'ai'
 import {
   combineTokenUsage,
+  computeCost,
   createUsageCollector,
   describeTokenUsage,
   finalizeTokenUsage,
@@ -388,5 +389,19 @@ describe('usageValueKinds', () => {
 
   it('gives an unavailable value no kind at all', () => {
     expect(usageValueKinds({ inputTokens: 10 })).toEqual({ input: 'reported' })
+  })
+})
+
+describe('computeCost', () => {
+  it('prices input and output per million tokens', () => {
+    expect(computeCost({ input: 3, output: 15 }, 1_000_000, 100_000)).toBeCloseTo(4.5)
+  })
+  it('is free without a price or with unreported input', () => {
+    expect(computeCost(undefined, 5000, 5000)).toBe(0)
+    expect(computeCost({ input: 3, output: 15 }, undefined, 1_000_000)).toBe(15)
+    expect(computeCost({ input: 0, output: 0 }, 5000, 5000)).toBe(0)
+  })
+  it('ignores junk prices', () => {
+    expect(computeCost({ input: NaN, output: -1 }, 1000, 1000)).toBe(0)
   })
 })

@@ -4,6 +4,10 @@ import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
+import { useGeneralSetting } from '@/hooks/useGeneralSetting'
+import { resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
+import { i18n } from '@/i18n/react-i18next-compat'
+import { toast } from 'sonner'
 import { type UIMessage } from '@ai-sdk/react'
 import type { JSONObject } from '@ai-sdk/provider'
 import {
@@ -834,6 +838,15 @@ function prependContinuationToUIStream(
     },
   })
 }
+
+type SendOptions = {
+  chatId: string
+  messages: UIMessage[]
+  abortSignal: AbortSignal | undefined
+} & {
+  trigger: 'submit-message' | 'regenerate-message'
+  messageId: string | undefined
+} & ChatRequestOptions
 
 export class CustomChatTransport implements ChatTransport<UIMessage> {
   /** Record memory uses when a reply finishes. Cowork records its own. */
@@ -1813,15 +1826,90 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     return result?.record ?? null
   }
 
+  /**
+   * Sends on the chosen model; if that fails to answer for a reason another
+   * model could fix (see `shouldFallback`) before any reply content, the same
+   * turn is retried on the next model of the fallback chain.
+   */
   async sendMessages(
-    options: {
-      chatId: string
-      messages: UIMessage[]
-      abortSignal: AbortSignal | undefined
-    } & {
-      trigger: 'submit-message' | 'regenerate-message'
-      messageId: string | undefined
-    } & ChatRequestOptions
+    options: SendOptions
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    const chain = resolveFallbackChain(
+      useGeneralSetting.getState().fallbackModels,
+      {
+        provider: this.getModelSelection().selectedProvider,
+        modelId: this.getModelSelection().selectedModel?.id ?? '',
+      },
+      useModelProvider.getState().providers
+    )
+    if (chain.length === 0) return this.sendOnce(options)
+
+    const original = this.turnModel
+    let next = 0
+    const attempt = async (): Promise<ReadableStream<UIMessageChunk>> => {
+      let failure: unknown
+      try {
+        const stream = await this.sendOnce(options)
+        const reader = stream.getReader()
+        // Hold the stream's opening chunks until the first reply content, so a
+        // request that fails at once can be retried without the chat showing it.
+        const held: UIMessageChunk[] = []
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          if (value.type === 'error') {
+            failure = value.errorText
+            break
+          }
+          held.push(value)
+          if (!/^(start|start-step|message-metadata)$/.test(value.type)) break
+        }
+        if (failure === undefined) {
+          return new ReadableStream<UIMessageChunk>({
+            start(controller) {
+              for (const chunk of held) controller.enqueue(chunk)
+            },
+            async pull(controller) {
+              const { done, value } = await reader.read()
+              if (done) controller.close()
+              else controller.enqueue(value)
+            },
+            cancel: (reason) => reader.cancel(reason),
+          })
+        }
+      } catch (error) {
+        failure = error
+      }
+      const target = chain[next++]
+      if (!target || !shouldFallback(failure, options.abortSignal?.aborted)) {
+        if (typeof failure === 'string') {
+          // Re-surface the error the stream carried, which was consumed above.
+          return new ReadableStream<UIMessageChunk>({
+            start(controller) {
+              controller.enqueue({ type: 'error', errorText: failure as string })
+              controller.close()
+            },
+          })
+        }
+        throw failure
+      }
+      this.turnModel = target
+      toast.info(
+        i18n.t('common:fallbackSwitched', { model: target.selectedModel.id })
+      )
+      return attempt()
+    }
+    try {
+      return await attempt()
+    } finally {
+      // Only this request moved; the next one (a tool follow-up, the next
+      // message) starts from the chosen model again.
+      this.turnModel = original
+    }
+  }
+
+  protected async sendOnce(
+    options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const threadId = this.threadId ?? options.chatId
     const myGeneration = ++this.streamGeneration
@@ -2366,6 +2454,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           useUsageStats.getState().recordGeneration({
             tokens: outputTokens,
             durationMs: tokenSpeed > 0 ? (outputTokens / tokenSpeed) * 1000 : 0,
+            model: modelId,
+            inputTokens: usage.inputTokens,
           })
 
           // AH-083: where each carried memory was used -- now naming the

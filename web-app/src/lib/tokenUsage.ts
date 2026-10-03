@@ -538,3 +538,19 @@ export function describeTokenUsage(usage: TokenUsage | undefined): string {
   if (usage.totalTokens !== undefined) parts.push(`Total ${fmt(usage.totalTokens)}`)
   return parts.join(' · ')
 }
+
+/** Dollars per 1M tokens. Local models are free, so an unpriced model costs 0. */
+export type ModelPricing = { input: number; output: number }
+
+export function computeCost(
+  pricing: ModelPricing | undefined,
+  inputTokens: number | undefined,
+  outputTokens: number | undefined
+): number {
+  if (!pricing) return 0
+  const cost =
+    ((inputTokens ?? 0) * (pricing.input || 0) +
+      (outputTokens ?? 0) * (pricing.output || 0)) /
+    1_000_000
+  return Number.isFinite(cost) && cost > 0 ? cost : 0
+}
