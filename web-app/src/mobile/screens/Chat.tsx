@@ -5,7 +5,9 @@ import { Composer } from '../shell/Composer'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
 import { AssistantMessage, UserBubble, VersionNav } from '../ui/messages'
-import { PendingBubble, QueueBar, StreamingMessage } from '../ui/live'
+import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
+import { ApprovalCard } from '../ui/ApprovalCard'
+import { PromptCard } from '../ui/PromptCard'
 import { client, openSheet, sendMessage, toast } from '../state/app'
 import { forkFrom, stepVersion } from '../state/controls'
 import { effortStops, stopLabel } from '../ui/effort'
@@ -36,6 +38,16 @@ export default function Chat({ id }: { id: string }) {
   const { data, loading, error } = useRpc('thread.messages', { id, kind: 'chat', limit: PAGE })
   const queue = useRpc('thread.queue', { id })
   const details = useRpc('chat.details', { id })
+  // A chat's tool calls ask too (MCP tools, web search): answer them here.
+  const status = useRpc('status', {})
+  const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
+  const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
+  const promptList = useRpc('prompts.list', {}, (status.data?.promptsWaiting ?? 0) > 0)
+  const prompts = (promptList.data?.prompts ?? []).filter((p) => p.threadId === id)
+  const resolvedAll = useLive((s) => s.resolved)
+  const resolved = Object.entries(resolvedAll).filter(
+    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid) && !prompts.some((p) => p.id === rid)
+  )
   const det = details.data
   const stream = useLive((s) => s.streams[id])
   const pendingAll = useLive((s) => s.pending)
@@ -74,7 +86,7 @@ export default function Chat({ id }: { id: string }) {
   }, [id, data, olderStart])
 
   const streamShown = stream && !allMessages.some((m) => m.id === stream.messageId) ? stream : null
-  const ref = useStickToBottom(messages.length + pending.length + (streamShown?.text.length ?? 0))
+  const ref = useStickToBottom(messages.length + pending.length + mine.length + (streamShown?.text.length ?? 0))
   const running = session?.status === 'running' || Boolean(stream && !stream.done)
   const earlier = olderStart ?? data?.start ?? 0
 
@@ -141,7 +153,12 @@ export default function Chat({ id }: { id: string }) {
         {allMessages.map((m) =>
           m.role === 'user' ? (
             <Fragment key={m.id}>
-              <UserBubble text={m.text} />
+              <UserBubble text={m.text} attachments={m.attachments} />
+              <div className="macts user">
+                <button type="button" className="ib" aria-label="Message actions" onClick={() => openSheet('msgmenu', { id, messageId: m.id, text: m.text, role: 'user' })}>
+                  <I n="more" />
+                </button>
+              </div>
               <VersionNav versions={m.versions} onStep={(d) => void stepOf(m.id)(d)} />
             </Fragment>
           ) : m.role === 'assistant' ? (
@@ -182,6 +199,15 @@ export default function Chat({ id }: { id: string }) {
           <PendingBubble key={p.clientId} p={p} />
         ))}
         {streamShown && <StreamingMessage s={streamShown} />}
+        {mine.map((a) => (
+          <ApprovalCard key={a.requestId} a={a} />
+        ))}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} p={p} />
+        ))}
+        {resolved.map(([rid, r]) => (
+          <ResolvedLine key={rid} r={r} />
+        ))}
       </div>
       <QueueBar items={queue.data?.items ?? []} />
       <Composer

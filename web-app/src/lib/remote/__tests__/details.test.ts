@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import { dispatchRemoteRpc } from '../bridge'
 import { createRemoteHandlers, type RemoteSources } from '../handlers'
-import { approvalOf, coworkDetailOf, roomDetailOf, toolOrigin, toolStepsOf } from '../details'
+import { approvalOf, coworkDetailOf, roomDetailOf, toolOrigin, toolStepsOf, messageExtrasOf, MAX_TOOL_TEXT } from '../details'
 import type { CoworkDetail, RoomDetail } from '../protocol'
 import type { Room } from '@/lib/rooms/types'
 import { DEFAULT_ROOM_LIMITS } from '@/lib/rooms/types'
@@ -28,7 +28,8 @@ describe('toolStepsOf', () => {
   } as unknown as UIMessage
 
   it('maps each call to its desktop row: kind, status, argument, origin', () => {
-    const steps = toolStepsOf(message, new Set(['t3']))
+    // What each was called with and returned is covered further down.
+    const steps = toolStepsOf(message, new Set(['t3'])).map(({ input: _i, output: _o, ...row }) => row)
     expect(steps).toEqual([
       { id: 't1', name: 'read', kind: 'read', status: 'done', arg: 'internal/radar/client.go', origin: 'Workspace' },
       { id: 't2', name: 'bash', kind: 'fail', status: 'failed', arg: 'go test ./...', origin: 'Workspace' },
@@ -177,5 +178,79 @@ describe('models.list favorites', () => {
         ],
       },
     })
+  })
+})
+
+describe('what a stored message holds besides its text', () => {
+  const msg = (parts: unknown[]) => ({ id: 'm1', role: 'assistant', parts }) as never
+
+  it('a tool step carries what it was called with and what came back, cut short', () => {
+    const [step] = toolStepsOf(
+      msg([
+        {
+          type: 'tool-read',
+          toolCallId: 't1',
+          state: 'output-available',
+          input: { path: 'src/a.ts' },
+          output: 'x'.repeat(5000),
+        },
+      ])
+    )
+    expect(step.input).toContain('"path": "src/a.ts"')
+    expect(step.output?.length).toBe(MAX_TOOL_TEXT + 1)
+    expect(step.output?.endsWith('…')).toBe(true)
+  })
+
+  it('never sends inline media in a tool result', () => {
+    const [step] = toolStepsOf(
+      msg([
+        {
+          type: 'tool-read',
+          toolCallId: 't1',
+          state: 'output-available',
+          input: {},
+          output: `image: data:image/png;base64,${'A'.repeat(4000)}`,
+        },
+      ])
+    )
+    expect(step.output).toBe('image: [media]')
+  })
+
+  it('reasoning, attachments by name and kind, and the transcript lines', () => {
+    const out = messageExtrasOf(
+      msg([
+        { type: 'reasoning', text: 'First I look.' },
+        { type: 'reasoning', text: 'Then I answer.' },
+        { type: 'file', mediaType: 'image/png', filename: 'radar.png', url: 'data:image/png;base64,AAAA' },
+        { type: 'file', mediaType: 'application/pdf', url: 'data:application/pdf;base64,AAAA' },
+        { type: 'data-compaction', data: { summarizedCount: 12, summary: 'secret summary', at: 1, reason: 'manual' } },
+        { type: 'data-session-stop', data: { fromName: 'Reviewer', reason: 'wrong branch' } },
+        {
+          type: 'data-ask',
+          data: {
+            state: 'answered',
+            request: { questions: [{ id: 'lang', question: 'Which language?' }] },
+            answers: [{ id: 'lang', selected: ['Python'] }],
+          },
+        },
+        { type: 'data-ask', data: { state: 'pending', request: { questions: [{ id: 'x', question: 'Still open?' }] } } },
+      ])
+    )
+    expect(out.reasoning).toBe('First I look.\n\nThen I answer.')
+    expect(out.attachments).toEqual([
+      { name: 'radar.png', kind: 'image' },
+      { name: 'File', kind: 'file' },
+    ])
+    expect(out.notes).toEqual([
+      { kind: 'compaction', text: 'Conversation compacted: 12 earlier messages summarised' },
+      { kind: 'stopped', text: 'Stopped by Reviewer: wrong branch' },
+      { kind: 'answered', text: 'Which language? Python' },
+    ])
+    expect(JSON.stringify(out)).not.toContain('base64')
+    expect(JSON.stringify(out)).not.toContain('secret summary')
+  })
+
+  it('adds nothing to a plain reply', () => {
+    expect(messageExtrasOf(msg([{ type: 'text', text: 'Hello' }]))).toEqual({})
   })
 })
