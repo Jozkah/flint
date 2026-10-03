@@ -62,7 +62,7 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 - **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
 
-**Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have from **Models → llama.cpp → Import**, or add a cloud provider with your own key.
+**Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have with **Import GGUF** on the **Models** page, or add a cloud provider with your own key.
 
 ## Getting started
 
@@ -92,7 +92,15 @@ yarn download:bin
 yarn dev
 ```
 
-Before you run these commands, install the toolchain (Git, Node 20+, Rust, and CMake/LLVM on Windows). The first build needs about 30 GB of disk space. [docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
+Before you run these commands, install the toolchain (Git, Node 20+, Rust, and CMake/LLVM on Windows). The first build needs about 30 GB of disk space.
+
+`yarn dev` runs without the llama.cpp engine, so cloud providers work but local models do not load. To run local models in development, build the engine once (in Git Bash on Windows):
+
+```bash
+make build-engine-dev JAN_ENGINE_VARIANT=cpu
+```
+
+[docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
