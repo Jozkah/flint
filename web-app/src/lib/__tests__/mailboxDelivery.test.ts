@@ -35,7 +35,12 @@ describe('mailbox delivery', () => {
       currentId: 'A',
     })
     useCoworkRun.setState({ runs: {} })
-    useSessionMessaging.setState({ autoWake: {}, pendingWake: {}, lastRunWasWake: {} })
+    useSessionMessaging.setState({
+      autoWake: { A: false, B: false },
+      optOut: {},
+      pendingWake: {},
+      lastRunWasWake: {},
+    })
     fake = fakeMailbox()
     delivery = createMailboxDelivery(fake.mailbox)
     stop = delivery.start()
@@ -129,22 +134,61 @@ describe('mailbox delivery', () => {
     expect(fake.state.m1).toBe('read')
   })
 
-  it('auto-wake off holds; on releases only for the focused session', async () => {
-    useSessionMessaging.getState().setAutoWake('B', true)
-    fake.envelope('B', 'b1')
-    await delivery.onEvent({ sessionId: 'B', messageId: 'b1' })
-    // B is not in view: held even with auto-wake on.
-    expect(q('B')[0].held).toBe(true)
-    useCoworkSessions.getState().selectSession('B')
-    expect(q('B')[0].held).toBe(false)
-    expect(useSessionMessaging.getState().pendingWake.B).toBe(true)
-    await flush()
-    expect(fake.state.b1).toBe('delivered')
-
+  it('auto-wake off holds, even for the session in view', async () => {
     fake.envelope('A', 'a1')
-    useCoworkSessions.getState().selectSession('A')
     await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
     expect(q('A')[0].held).toBe(true)
+    expect(useSessionMessaging.getState().pendingWake.A).toBeUndefined()
+  })
+
+  it('is on by default: a session nobody switched off is woken', async () => {
+    useSessionMessaging.setState({ autoWake: {} })
+    fake.envelope('A', 'a1')
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    expect(q('A')[0].held).toBe(false)
+    expect(useSessionMessaging.getState().pendingWake.A).toBe(true)
+  })
+
+  it('turning wake-ups back on releases what waited', async () => {
+    fake.envelope('A', 'a1')
+    await delivery.onEvent({ sessionId: 'A', messageId: 'a1' })
+    expect(q('A')[0].held).toBe(true)
+    useSessionMessaging.getState().setAutoWake('A', true)
+    expect(q('A')[0].held).toBe(false)
+  })
+
+  it('brings a session that is not in view into a pane to wake it', async () => {
+    const { useSplitConversation } = await import('@/hooks/useSplitConversation')
+    useSplitConversation.setState({ panes: [], sizes: [1] })
+    try {
+      useSessionMessaging.getState().setAutoWake('B', true)
+      fake.envelope('B', 'b1')
+      await delivery.onEvent({ sessionId: 'B', messageId: 'b1' })
+      // B is idle and out of view: a pane opens for it, which wakes it.
+      expect(useSplitConversation.getState().panes).toMatchObject([
+        { kind: 'cowork', refId: 'B' },
+      ])
+      expect(useCoworkSessions.getState().currentId).toBe('A')
+      expect(q('B')[0].held).toBe(false)
+      expect(useSessionMessaging.getState().pendingWake.B).toBe(true)
+      await flush()
+      expect(fake.state.b1).toBe('delivered')
+    } finally {
+      useSplitConversation.setState({ panes: [], sizes: [1] })
+    }
+  })
+
+  it('does not open a pane for a session that opted out of wake-ups', async () => {
+    const { useSplitConversation } = await import('@/hooks/useSplitConversation')
+    useSplitConversation.setState({ panes: [], sizes: [1] })
+    try {
+      fake.envelope('B', 'b1')
+      await delivery.onEvent({ sessionId: 'B', messageId: 'b1' })
+      expect(useSplitConversation.getState().panes).toEqual([])
+      expect(q('B')[0].held).toBe(true)
+    } finally {
+      useSplitConversation.setState({ panes: [], sizes: [1] })
+    }
   })
 
   it('auto-wakes a session open in a split-view pane, not only the current one', async () => {
@@ -153,14 +197,14 @@ describe('mailbox delivery', () => {
     )
     useSplitConversation.setState({ panes: [], sizes: [1] })
     try {
-      useSessionMessaging.getState().setAutoWake('B', true)
       fake.envelope('B', 'b1')
       await delivery.onEvent({ sessionId: 'B', messageId: 'b1' })
       expect(q('B')[0].held).toBe(true)
-      // Opening B in a pane beside A brings it into view.
-      useSplitConversation.getState().addPane({ kind: 'cowork', refId: 'B' })
-      expect(useCoworkSessions.getState().currentId).toBe('A')
+      // Opening B in a pane beside A brings it into view; with wake-ups on it
+      // is released.
+      useSessionMessaging.getState().setAutoWake('B', true)
       expect(q('B')[0].held).toBe(false)
+      expect(useCoworkSessions.getState().currentId).toBe('A')
       await flush()
       expect(fake.state.b1).toBe('delivered')
 
