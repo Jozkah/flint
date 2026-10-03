@@ -155,9 +155,10 @@ import {
   loadLiveMcpTools,
   mcpChangeNote,
   mcpStartingNote,
+  readMcpBaseline,
   snapshotMcpTools,
   syncMcpStore,
-  type McpSnapshot,
+  writeMcpBaseline,
 } from '@/lib/mcpLiveTools'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
@@ -952,8 +953,6 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
   private toolsCacheKey: string | null = null
-  /** The MCP set the previous request advertised; null before the first. */
-  private lastMcpSnapshot: McpSnapshot | null = null
   /** Kept until the set changes again, so the prompt prefix stays stable. */
   private mcpChangeText: string | null = null
   protected mcpStartingText: string | null = null
@@ -1657,15 +1656,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     listed?: MCPTool[]
   ): void {
     const next = snapshotMcpTools(advertised)
-    const prev = this.lastMcpSnapshot
-    this.lastMcpSnapshot = next
+    const key = this.threadId ?? ''
+    const before = readMcpBaseline(key)
+    let note = before?.note ?? null
     if (listed) syncMcpStore(listed)
-    if (prev === null) return
-    const change = diffMcpSnapshots(prev, next)
-    const note = mcpChangeNote(change)
-    if (!note) return
+    if (before) {
+      const change = diffMcpSnapshots(before.snapshot, next)
+      const changed = mcpChangeNote(change)
+      if (changed) {
+        note = changed
+        announceMcpChange(change)
+      }
+    }
+    writeMcpBaseline(key, next, note)
     this.mcpChangeText = note
-    announceMcpChange(change)
   }
 
   protected mcpPromptNotes(): string[] {

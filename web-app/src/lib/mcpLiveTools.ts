@@ -74,6 +74,22 @@ export function snapshotMcpTools(
   return out
 }
 
+/**
+ * What the last request of a conversation advertised, and the note it earned.
+ * Kept here rather than on a transport: Cowork builds a new transport for
+ * every run, and the note must outlive it or the prompt prefix would change
+ * again at the next run.
+ */
+const baselines = new Map<string, { snapshot: McpSnapshot; note: string | null }>()
+
+export const readMcpBaseline = (key: string) => baselines.get(key)
+export const writeMcpBaseline = (
+  key: string,
+  snapshot: McpSnapshot,
+  note: string | null
+) => void baselines.set(key, { snapshot, note })
+export const clearMcpBaselines = () => baselines.clear()
+
 export type McpChange = {
   added: { server: string; tools: number }[]
   removed: string[]

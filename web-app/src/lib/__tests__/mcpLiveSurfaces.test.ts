@@ -53,7 +53,7 @@ import { toast } from 'sonner'
 import { CustomChatTransport } from '../custom-chat-transport'
 import { CoworkChatTransport } from '../coworkTransport'
 import { useMCPServers } from '@/hooks/useMCPServers'
-import { bumpMcpGeneration } from '../mcpLiveTools'
+import { bumpMcpGeneration, clearMcpBaselines } from '../mcpLiveTools'
 
 const ida = {
   name: 'ida_decompile',
@@ -90,6 +90,7 @@ beforeEach(() => {
     settings: { enableSmartToolRouting: false },
   } as never)
   bumpMcpGeneration()
+  clearMcpBaselines()
   vi.mocked(toast.info).mockClear()
 })
 
@@ -192,6 +193,18 @@ describe('Cowork: a server turned on after the session began', () => {
   it('never states "none" for an estimate that has not read the live set', () => {
     const t = new CoworkChatTransport('s1', coworkConfig({ mcpServers: [] }))
     expect(promptOf(t)).not.toContain('MCP servers in this session')
+  })
+
+  it('keeps the changed note across the next run, which builds a new transport', async () => {
+    const first = new CoworkChatTransport('s1', coworkConfig())
+    await first.refreshTools()
+    turnOn('ida-multi-mcp', [ida])
+    await first.refreshTools()
+
+    const nextRun = new CoworkChatTransport('s1', coworkConfig())
+    await nextRun.refreshTools()
+    expect(promptOf(nextRun)).toContain('MCP servers changed: ida-multi-mcp is now available')
+    expect(promptOf(nextRun)).toBe(promptOf(first))
   })
 
   it('keeps MCP tools out of what a subagent is narrowed from', async () => {
