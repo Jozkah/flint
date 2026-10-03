@@ -60,6 +60,23 @@ describe('shouldFallback', () => {
     expect(shouldFallback({ status: 500, message: 'boom' })).toBe(true)
   })
 
+  it('falls back on the desktop transport failure sentences', () => {
+    expect(
+      shouldFallback(
+        new Error(
+          "Couldn't reach the provider — the connection failed. Check the provider's Base URL and your internet connection, then try again. (http://127.0.0.1:1/v1/chat/completions) Details: error sending request for url (http://127.0.0.1:1/v1/chat/completions): client error (SendRequest): connection closed before message completed"
+        )
+      )
+    ).toBe(true)
+    expect(
+      shouldFallback(
+        new Error(
+          'The provider took too long to respond and the request timed out. It may be overloaded or slow to start — try again.'
+        )
+      )
+    ).toBe(true)
+  })
+
   it('does not fall back on a stop', () => {
     const abort = new Error('aborted')
     abort.name = 'AbortError'

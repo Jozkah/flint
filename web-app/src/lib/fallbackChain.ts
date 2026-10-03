@@ -46,6 +46,10 @@ const MODEL_UNAVAILABLE =
 // other model of that provider, but another provider has its own credentials.
 const CREDENTIALS =
   /api[ _-]?key|unauthori[sz]ed|forbidden|authenticat|invalid (token|credentials)|permission|billing|quota|insufficient|credit/i
+// `describeTransportFailure` (model-factory.ts) rewrites a desktop transport
+// failure into a sentence for the user; those sentences are what reach here.
+const TRANSPORT_FAILURE =
+  /couldn't reach the provider|took too long to respond|error sending request|error trying to connect|connection (failed|closed|refused|reset|aborted)/i
 const TRANSIENT =
   /overload|unavailable|temporarily|try again|rate.?limit|too many requests|timed? ?out|timeout|ECONN(REFUSED|RESET)|ETIMEDOUT|fetch failed|failed to fetch|network|socket hang up|bad gateway|gateway time-?out|server error|internal server error/i
 
@@ -54,7 +58,9 @@ function statusOf(error: unknown, message: string): number | null {
   for (const v of [e?.statusCode, e?.status]) {
     if (typeof v === 'number' && v >= 100 && v < 600) return v
   }
-  const m = message.match(/\b(?:status(?: code)?|http)\D{0,3}([1-5]\d\d)\b/i)
+  // Not `\D{0,3}` between the word and the digits: `http://127.0.0.1` in a
+  // URL would read as status 127.
+  const m = message.match(/\b(?:status(?: code)?|http)[ :=]{0,2}([1-5]\d\d)\b/i)
   return m ? Number(m[1]) : null
 }
 
@@ -83,5 +89,5 @@ export function shouldFallback(
   }
   if (MODEL_UNAVAILABLE.test(message)) return true
   if (status !== null) return status === 408 || status === 429 || status >= 500
-  return TRANSIENT.test(message)
+  return TRANSIENT.test(message) || TRANSPORT_FAILURE.test(message)
 }
