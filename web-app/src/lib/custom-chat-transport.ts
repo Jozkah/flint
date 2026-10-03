@@ -894,6 +894,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected compactsAtThreshold = true
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
+  /** The compaction the latest attempt of this request announced. */
+  private sentCompaction: CompactionRecord | null = null
+  /** One a failed attempt made, for the retry's reply to announce. */
+  private carriedCompaction: CompactionRecord | null = null
   public model: LanguageModel | null = null
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
@@ -1914,54 +1918,67 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const original = this.turnModel
     let next = 0
+    let currentProvider = this.getModelSelection().selectedProvider
+    // A compaction the first attempt made is already in the thread's saved
+    // state, so a retry finds nothing left to fold and would never announce it.
+    this.sentCompaction = null
+    this.carriedCompaction = null
     const attempt = async (): Promise<ReadableStream<UIMessageChunk>> => {
       let failure: unknown
+      let thrown = false
+      const held: UIMessageChunk[] = []
+      let reader: ReadableStreamDefaultReader<UIMessageChunk> | undefined
       try {
         const stream = await this.sendOnce(options)
-        const reader = stream.getReader()
+        reader = stream.getReader()
         // Hold the stream's opening chunks until the first reply content, so a
         // request that fails at once can be retried without the chat showing it.
-        const held: UIMessageChunk[] = []
         for (;;) {
           const { done, value } = await reader.read()
           if (done) break
+          held.push(value)
           if (value.type === 'error') {
             failure = value.errorText
             break
           }
-          held.push(value)
           if (!/^(start|start-step|message-metadata)$/.test(value.type)) break
-        }
-        if (failure === undefined) {
-          return new ReadableStream<UIMessageChunk>({
-            start(controller) {
-              for (const chunk of held) controller.enqueue(chunk)
-            },
-            async pull(controller) {
-              const { done, value } = await reader.read()
-              if (done) controller.close()
-              else controller.enqueue(value)
-            },
-            cancel: (reason) => reader.cancel(reason),
-          })
         }
       } catch (error) {
         failure = error
+        thrown = true
       }
-      const target = chain[next++]
-      if (!target || !shouldFallback(failure, options.abortSignal?.aborted)) {
-        if (typeof failure === 'string') {
-          // Re-surface the error the stream carried, which was consumed above.
-          return new ReadableStream<UIMessageChunk>({
-            start(controller) {
-              controller.enqueue({ type: 'error', errorText: failure as string })
-              controller.close()
-            },
-          })
-        }
-        throw failure
+      const target = chain[next]
+      if (
+        failure === undefined ||
+        !target ||
+        !shouldFallback(
+          failure,
+          options.abortSignal?.aborted,
+          target.selectedProvider !== currentProvider
+        )
+      ) {
+        if (thrown) throw failure
+        // Nothing to retry: hand the stream over exactly as it came, with the
+        // chunks held back put in front.
+        const source = reader as ReadableStreamDefaultReader<UIMessageChunk>
+        return new ReadableStream<UIMessageChunk>({
+          start(controller) {
+            for (const chunk of held) controller.enqueue(chunk)
+          },
+          async pull(controller) {
+            const { done, value } = await source.read()
+            if (done) controller.close()
+            else controller.enqueue(value)
+          },
+          cancel: (reason) => source.cancel(reason),
+        })
       }
+      // The failed attempt's stream is abandoned; stop reading it.
+      void reader?.cancel().catch(() => {})
+      next++
+      this.carriedCompaction = this.sentCompaction ?? this.carriedCompaction
       this.turnModel = target
+      currentProvider = target.selectedProvider
       toast.info(
         i18n.t('common:fallbackSwitched', { model: target.selectedModel.id })
       )
@@ -1971,8 +1988,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       return await attempt()
     } finally {
       // Only this request moved; the next one (a tool follow-up, the next
-      // message) starts from the chosen model again.
+      // message) starts from the chosen model again. The stream built above
+      // reads nothing from here, so it stays on the model that answered it.
       this.turnModel = original
+      this.carriedCompaction = null
     }
   }
 
@@ -2202,7 +2221,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       const systemPromptTokens = effectiveSystem
         ? estimateTokens(effectiveSystem) + 4
         : 0
-      this.announcedCompaction = null
+      this.announcedCompaction = this.carriedCompaction
       if (
         autoCompact &&
         compaction.strategy === 'summarize' &&
@@ -2405,6 +2424,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const announced = this.announcedCompaction
     this.announcedCompaction = null
+    this.sentCompaction = announced
     const uiStream = result.toUIMessageStream({
       messageMetadata: ({ part }) => {
         // Start the clock at the first sign of output, whatever shape it

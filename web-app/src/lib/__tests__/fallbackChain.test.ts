@@ -79,3 +79,17 @@ describe('shouldFallback', () => {
     ).toBe(false)
   })
 })
+
+describe('shouldFallback on credential failures', () => {
+  it('only moves to another provider', () => {
+    const bad = new Error('Failed to create model: Invalid API key')
+    expect(shouldFallback(bad)).toBe(false)
+    expect(shouldFallback(bad, false, true)).toBe(true)
+    expect(shouldFallback({ statusCode: 401, message: 'nope' }, false, true)).toBe(true)
+    expect(shouldFallback({ statusCode: 403, message: 'nope' })).toBe(false)
+  })
+
+  it('treats a model that failed to start as unavailable', () => {
+    expect(shouldFallback(new Error('Failed to create model: engine exited'))).toBe(true)
+  })
+})
