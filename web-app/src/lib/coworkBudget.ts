@@ -28,6 +28,7 @@ export const MAX_SESSION_TOKENS = NO_CAP
  * The spend allowance for one request: none. Kept as a function so callers
  * need no change; the context window, not spend, ends a run.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function sessionTokenLimitFor(_input: {
   autoCompact: boolean
   window: number | null | undefined
