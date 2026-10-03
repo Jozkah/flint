@@ -88,17 +88,15 @@ yarn install
 yarn build:tauri:plugin:api
 yarn build:core
 yarn build:extensions
-yarn download:bin
-yarn dev
+make build-engine JAN_ENGINE_VARIANT=cpu
+yarn build
 ```
 
-Before you run these commands, install the toolchain (Git, Node 20+, Rust, and CMake/LLVM on Windows). The first build needs about 30 GB of disk space.
+The installers land in `src-tauri/target/release/bundle/`. On Windows, run the `make` line in Git Bash, not PowerShell.
 
-`yarn dev` runs without the llama.cpp engine, so cloud providers work but local models do not load. To run local models in development, build the engine once (in Git Bash on Windows):
+Before you run these commands, install the toolchain (Git, Node 20+, Rust, CMake, Ninja and make, plus LLVM and the Visual Studio Build Tools on Windows). The first build needs about 30 GB of disk space.
 
-```bash
-make build-engine-dev JAN_ENGINE_VARIANT=cpu
-```
+To run Flint in development instead of building installers, replace the last two lines with `yarn download:bin` and `yarn dev`. That runs without the llama.cpp engine, so local models do not load until you run `make build-engine-dev JAN_ENGINE_VARIANT=cpu` once.
 
 [docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
 
