@@ -89,6 +89,11 @@ pub struct ToolResult {
     /// same call outside the sandbox. Never part of model context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unsandboxed_retry: Option<String>,
+    /// Images a tool returned for the model to see (a `read` of a png/jpg/
+    /// gif/webp file). The renderer's tool loop turns these into image parts
+    /// of the tool-result message when the model has vision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::tools::ImageContentPart>,
 }
 
 /// How the renderer came to allow a call before sending it here: the user
@@ -1463,7 +1468,7 @@ async fn execute_tool_inner(
             }),
         _ => None,
     };
-    let ((content, diff, _images), read_ok) =
+    let ((content, diff, images), read_ok) =
         handlers::with_read_success(handlers::execute_builtin_with_diff(tool, &args, &ctx)).await;
     // Transcript audit #12: a refusal of the arguments shows the call it
     // expected, not only the word that was wrong.
@@ -1519,6 +1524,7 @@ async fn execute_tool_inner(
         error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
         resources,
         unsandboxed_retry,
+        images: images.unwrap_or_default(),
     })
 }
 
@@ -2274,6 +2280,28 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn tool_result_serializes_images_camel_case_and_omits_when_empty() {
+        let mut r = ToolResult {
+            content: "Read image a.png (image/png, 3 bytes)".into(),
+            diff: None,
+            is_error: false,
+            error: None,
+            resources: None,
+            unsandboxed_retry: None,
+            images: vec![crate::tools::ImageContentPart {
+                data_url: "data:image/png;base64,QUJD".into(),
+                name: "a.png".into(),
+            }],
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["images"][0]["dataUrl"], "data:image/png;base64,QUJD");
+        assert_eq!(v["images"][0]["name"], "a.png");
+        r.images.clear();
+        let v = serde_json::to_value(&r).unwrap();
+        assert!(v.get("images").is_none());
+    }
 
     #[test]
     fn note_non_posix_shell_amends_only_the_description() {

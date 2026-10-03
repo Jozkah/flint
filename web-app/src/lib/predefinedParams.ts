@@ -83,7 +83,7 @@ export const paramsSettings: Record<string, ParamDef> = {
       'Total token budget (input + output). Older messages are trimmed/compacted to stay within this. 0 disables trimming.',
     value: 0,
     controllerType: 'input',
-    controllerProps: { min: 0, step: 1 },
+    controllerProps: { min: 0, step: 1024 },
     capability: 'client_only',
   },
   max_output_tokens: {

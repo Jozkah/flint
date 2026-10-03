@@ -34,6 +34,7 @@ import {
   type PromptFolderAccess,
 } from '@/lib/coworkPrompt'
 import { streamCutOff } from '@/lib/streamFinish'
+import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /**
@@ -358,6 +359,11 @@ export type RunSubagentOptions = {
   /** The parent's model instance. Reused so no second load happens. */
   model: LanguageModel
   /**
+   * Whether that model can see images. Decides if an image a child's tool
+   * returned (a `read` of a png) is attached for it or replaced by a note.
+   */
+  supportsVision?: boolean
+  /**
    * The parent's per-request reasoning options (the provider's native
    * thinking/effort settings). The body-level ones -- llama.cpp's budget and
    * `enable_thinking`, `reasoning_effort` -- are already part of `model`.
@@ -422,12 +428,19 @@ function childStep(opts: {
   system: string
   tools: Record<string, Tool>
   messages: UIMessage[]
+  supportsVision?: boolean
   signal: AbortSignal
   /** The closing turn after the loop guard stopped the run: no tool calls. */
   textOnly?: boolean
 }): Promise<ReadableStream<UIMessageChunk>> {
   return (async () => {
-    const modelMessages = await convertToModelMessages(opts.messages, {
+    // An image in a tool result goes to a model that can see as an image part
+    // after the tool turn, and to one that cannot as a note: never as base64
+    // inside the tool message's text.
+    const prepared = prepareToolResultImagesForModel(opts.messages, {
+      supportsVision: opts.supportsVision === true,
+    })
+    const modelMessages = await convertToModelMessages(prepared, {
       ignoreIncompleteToolCalls: true,
     })
     const result = streamText({
@@ -541,6 +554,7 @@ export async function runSubagent(
             system,
             tools,
             messages: msgs,
+            supportsVision: opts.supportsVision,
             signal,
             textOnly: stepOpts?.textOnly,
           }),

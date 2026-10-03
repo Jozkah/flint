@@ -20,6 +20,10 @@
     "usedOf": "{{used}} of {{max}}",
     "used": "{{used}} used",
     "unknown": "Not reported yet",
+    "usedLabel": "Used",
+    "reserveLabel": "Kept free for auto-compact",
+    "freeLabel": "Free",
+    "windowLabel": "Window",
     "meter": "About {{percent}} percent of the context window used"
   },
   "included": "Included",

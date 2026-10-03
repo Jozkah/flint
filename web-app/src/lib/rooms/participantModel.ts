@@ -12,6 +12,7 @@ import {
   stepCountIs,
   InvalidToolInputError,
   type LanguageModel,
+  type ModelMessage,
   type Tool,
 } from 'ai'
 import { recoverToolArgs } from '@/lib/toolCallRepair'
@@ -22,6 +23,7 @@ import { unloadLlamaModel } from '@janhq/tauri-plugin-llamacpp-api'
 import { defaultProviderLookup, type ProviderLookup } from './availability'
 import { buildRoomTools, ROOM_FULL_TOOL_MAX_STEPS, ROOM_TOOL_MAX_STEPS } from './roomTools'
 import { buildParticipantReasoningRequest } from './participantReasoning'
+import { NO_ROOM_NOTICE, estimateToolTokens, guardStepMessages } from './stepContext'
 import {
   RoomCallError,
   cleanErrorMessage,
@@ -151,6 +153,7 @@ export async function streamParticipantReply(
   let streamError: unknown = null
   // What the subagents this turn started used; charged to the room below.
   const childUsage = { input: 0, output: 0 }
+  const contextWindow = input.contextBudget?.window ?? 0
   // Read-only tools for this turn, when the participant may use them. Absent
   // means the historical behaviour: a single text-only reply, no tools.
   const toolActivity: RoomToolActivity[] = []
@@ -181,6 +184,7 @@ export async function streamParticipantReply(
     )
     if (Object.keys(tools).length === 0) tools = undefined
   }
+  const toolTokens = estimateToolTokens(tools)
   try {
     const result = stream({
       model: languageModel,
@@ -198,18 +202,54 @@ export async function streamParticipantReply(
         ? {
             tools,
             stopWhen: stepCountIs(maxSteps),
-            // The last step is for writing. A turn that used every step on tool
-            // calls ended with no reply at all, so the moderator saw nothing and
-            // chose the same speaker again until the consecutive-turn limit.
-            prepareStep: ({ stepNumber }: { stepNumber: number }) =>
-              stepNumber >= maxSteps - 1
-                ? {
-                    toolChoice: 'none' as const,
-                    system: `${input.system}
+            prepareStep: ({
+              stepNumber,
+              messages: stepMessages,
+              steps,
+            }: {
+              stepNumber: number
+              messages?: ModelMessage[]
+              steps?: Array<{ usage?: { inputTokens?: number; outputTokens?: number } }>
+            }) => {
+              const lastStep = steps?.[steps.length - 1]
+              // Every tool result is added to the next request, and the request
+              // is not looked at between steps by anything else: keep it inside
+              // the window here, clearing old output and, failing that, ending
+              // the tool loop with a written reply.
+              const guard =
+                contextWindow > 0 && stepNumber > 0 && Array.isArray(stepMessages)
+                  ? guardStepMessages({
+                      messages: stepMessages,
+                      system: input.system,
+                      toolTokens,
+                      window: contextWindow,
+                      maxOutputTokens: input.maxOutputTokens,
+                      lastRequestTokens:
+                        typeof lastStep?.usage?.inputTokens === 'number'
+                          ? lastStep.usage.inputTokens + (lastStep.usage.outputTokens ?? 0)
+                          : undefined,
+                    })
+                  : null
+              const outOfSteps = stepNumber >= maxSteps - 1
+              const outOfRoom = guard?.finish === true
+              const trimmed = guard && (guard.cleared > 0 || guard.clipped > 0)
+              if (!outOfSteps && !outOfRoom && !trimmed) return undefined
+              return {
+                ...(trimmed ? { messages: guard.messages } : {}),
+                // The last step is for writing. A turn that used every step on
+                // tool calls ended with no reply at all, so the moderator saw
+                // nothing and chose the same speaker again until the
+                // consecutive-turn limit.
+                ...(outOfSteps || outOfRoom
+                  ? {
+                      toolChoice: 'none' as const,
+                      system: `${input.system}
 
-${OUT_OF_STEPS_NOTICE}`,
-                  }
-                : undefined,
+${outOfSteps ? OUT_OF_STEPS_NOTICE : NO_ROOM_NOTICE}`,
+                    }
+                  : {}),
+              }
+            },
             // Salvage a tool call whose arguments the model emitted with trailing
             // junk after valid JSON (e.g. `{"path":"…"}}`), which the SDK's strict
             // parse rejects. Recover the first complete object rather than fail the

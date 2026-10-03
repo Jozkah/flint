@@ -106,19 +106,20 @@ describe('fallback chain in CustomChatTransport.sendMessages', () => {
     t = new Harness('sys', 'thread-1')
   })
 
-  it('with an empty chain returns sendOnce own stream untouched', async () => {
+  it('with an empty chain delivers sendOnce own chunks unchanged', async () => {
     h.fallbackModels = []
-    const stream = streamOf(failure('Overloaded'))
-    t.script = [async () => stream]
-    expect(await t.sendMessages(options())).toBe(stream)
+    t.script = [async () => streamOf(failure('Overloaded'))]
+    expect(await drain(await t.sendMessages(options()))).toEqual(
+      failure('Overloaded')
+    )
     expect(t.seen).toHaveLength(1)
   })
 
   it('also stays out of the way when every entry is the current model', async () => {
     h.fallbackModels = ['llamacpp::main']
-    const stream = streamOf(reply)
-    t.script = [async () => stream]
-    expect(await t.sendMessages(options())).toBe(stream)
+    t.script = [async () => streamOf(reply)]
+    expect(await drain(await t.sendMessages(options()))).toEqual(reply)
+    expect(t.seen).toHaveLength(1)
   })
 
   it('retries on an early error chunk, hides it, and cancels the first stream', async () => {

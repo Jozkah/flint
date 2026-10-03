@@ -230,14 +230,91 @@ describe('context projection', () => {
   })
 
   it('compacts at the threshold of the window, before the window is full', async () => {
-    // About 4,300 tokens of history in a 6,000-token window: it fits the
-    // window (with 256 for the reply) but crosses 80% of it.
-    const messages = Array.from({ length: 30 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(40)}` }))
+    // About 8,400 tokens of history. In a 20,000-token window the default 80%
+    // share (held under the reply reserve) is above that, so it fits; at 30%
+    // the same history is past the trigger and is compacted.
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(40)}` }))
     const summarize = vi.fn(async () => 'S')
-    const atDefault = await buildPrompt({ room, messages, speaker: bob, contextWindow: 6000, maxOutputTokens: 256, summarize })
-    expect(atDefault.trimmed?.kind).toBe('summarized')
-    const lax = await buildPrompt({ room, messages, speaker: bob, contextWindow: 6000, maxOutputTokens: 256, summarize, threshold: 1 })
-    expect(lax.trimmed).toBeNull()
+    const base = { room, messages, speaker: bob, contextWindow: 20_000, maxOutputTokens: 256, summarize }
+    expect((await buildPrompt(base)).trimmed).toBeNull()
+    expect((await buildPrompt({ ...base, threshold: 0.3 })).trimmed?.kind).toBe('summarized')
+  })
+
+  it('compacts before the window minus the reply and margin is crossed, whatever the threshold', async () => {
+    // 8,400 tokens in a 12,000-token window: 100% of the window would hold it,
+    // but the reply reserve and the tokenizer margin would not stay free.
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(40)}` }))
+    const built = await buildPrompt({
+      room, messages, speaker: bob, contextWindow: 12_000, maxOutputTokens: 256, threshold: 1, summarize: async () => 'S',
+    })
+    expect(built.trimmed?.kind).toBe('summarized')
+    const sent = built.promptText.length / 3.5
+    expect(sent).toBeLessThan(12_000 - 1_800 - 1_024)
+  })
+
+  it('leaves room for the growth a tool turn is expected to add', async () => {
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(40)}` }))
+    const base = { room, messages, speaker: bob, contextWindow: 20_000, maxOutputTokens: 256, summarize: async () => 'S' }
+    const plain = await buildPrompt(base)
+    const grown = await buildPrompt({ ...base, headroomTokens: 8_000 })
+    expect(plain.trimmed).toBeNull()
+    expect(grown.trimmed?.kind).toBe('summarized')
+  })
+
+  it('keeps the user\'s folded message word for word beside the summary', async () => {
+    const messages = [
+      m({ author: { kind: 'user' }, kind: 'user', text: 'Never touch the billing module and keep it under two pages.' }),
+      ...Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(20)}` })),
+    ]
+    const built = await buildPrompt({
+      room, messages, speaker: bob, contextWindow: 3000, maxOutputTokens: 256, summarize: async () => 'EARLIER-SUMMARY',
+    })
+    expect(built.trimmed?.kind).toBe('summarized')
+    expect(built.messages[0].content).toContain('Never touch the billing module and keep it under two pages.')
+    expect(built.messages[0].content).toContain('verbatim')
+  })
+
+  it('folds every message that is not kept: nothing falls between the summary and the recent turns', async () => {
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(20)}` }))
+    let folded: string[] = []
+    const built = await buildPrompt({
+      room, messages, speaker: bob, contextWindow: 3000, maxOutputTokens: 256,
+      summarize: async (older) => {
+        folded = older.map((o) => o.text)
+        return 'S'
+      },
+    })
+    const sent = built.messages.map((x) => x.content).join('\n')
+    const keptCount = messages.filter((x) => sent.includes(x.text)).length
+    expect(folded.length + keptCount).toBe(messages.length)
+    expect(built.trimmed).toMatchObject({ kind: 'summarized', count: folded.length })
+  })
+
+  it('hands the summariser an earlier summary of the leading part to build on', async () => {
+    const messages = Array.from({ length: 60 }, (_, i) => m({ text: `message ${i} ${'lorem ipsum '.repeat(20)}` }))
+    const cache = new Map<string, string>([[messages[9].id, 'OLD-SUMMARY']])
+    const seen: Array<{ count: number; older: number } | null> = []
+    await buildPrompt({
+      room, messages, speaker: bob, contextWindow: 3000, maxOutputTokens: 256, summaryCache: cache,
+      summarize: async (older, hint) => {
+        seen.push(hint?.base ? { count: hint.base.count, older: older.length } : null)
+        return 'NEW'
+      },
+    })
+    expect(seen[0]).toEqual({ count: 10, older: expect.any(Number) })
+    expect(seen[0]!.older).toBeGreaterThan(10)
+  })
+
+  it('cuts a newest message that alone outgrows the budget instead of dropping it', async () => {
+    const messages = [
+      m({ text: 'earlier point' }),
+      m({ author: { kind: 'user' }, kind: 'user', text: `HUGE ${'word '.repeat(6000)}` }),
+    ]
+    const built = await buildPrompt({ room, messages, speaker: bob, contextWindow: 3000, maxOutputTokens: 256 })
+    const sent = built.messages.map((x) => x.content).join('\n')
+    expect(sent).toContain('HUGE')
+    expect(sent).toContain('cut to fit')
+    expect(built.promptText.length / 3.5 + 256).toBeLessThan(3000)
   })
 
   it('drops oldest messages when summarisation fails', async () => {

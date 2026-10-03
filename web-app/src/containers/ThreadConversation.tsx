@@ -125,6 +125,8 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { unloadForContextResize } from '@/lib/contextResizeUnload'
+import { resolveAutoCompact } from '@/lib/compaction'
+import { getCompactionPolicy } from '@/lib/compactionPolicy'
 import { Button } from '@/components/ui/button'
 import {
   CircleAlert,
@@ -161,6 +163,12 @@ import {
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
+import {
+  countOutputImages,
+  isImageBlock,
+  toolOutputWithImages,
+  type ToolImage,
+} from '@/lib/toolOutputImages'
 import {
   AGENT_TOOL_NAMES,
   executeAgentTool,
@@ -524,6 +532,11 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  // Compacts and continues a reply that stopped because the window filled;
+  // resolves false when it could not, and the banner is shown instead.
+  const recoverContextLimitRef = useRef<
+    ((message: UIMessage, partial: string) => Promise<boolean>) | null
+  >(null)
   const setContinueFromContentRef = useRef<((content: string) => void) | null>(
     null
   )
@@ -609,11 +622,24 @@ export function ThreadConversation({
             .filter((p) => p.type === 'text')
             .map((p) => (p as { type: 'text'; text: string }).text)
             .join('')
-          if (partialText) {
-            pendingContinuationRef.current = { message, text: partialText }
+          const showBanner = () => {
+            if (partialText) {
+              pendingContinuationRef.current = { message, text: partialText }
+            }
+            stampContextErrorOnThread(threadId)
+            setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
           }
-          stampContextErrorOnThread(threadId)
-          setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
+          // The window filled mid-reply. With automatic compaction on, fold
+          // the older conversation and carry on from the partial reply; the
+          // banner is for when that cannot be done.
+          const recover = recoverContextLimitRef.current
+          if (recover) {
+            void recover(message, partialText).then((recovered) => {
+              if (!recovered) showBanner()
+            })
+          } else {
+            showBanner()
+          }
           return
         }
         // Non-context-limit length truncation: fall through and persist the
@@ -774,6 +800,19 @@ export function ThreadConversation({
           return
         }
         if ('output' in part) {
+          // Redaction reads text; an image's base64 is left alone.
+          if (countOutputImages(part.output) > 0) {
+            const blocks = part.output as unknown[]
+            addToolOutput({
+              ...part,
+              output: await Promise.all(
+                blocks.map((b) =>
+                  isImageBlock(b) ? b : redactDeep(b)
+                )
+              ),
+            })
+            return
+          }
           addToolOutput({ ...part, output: await redactDeep(part.output) })
           return
         }
@@ -1214,7 +1253,16 @@ export function ThreadConversation({
               await persistToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                output: result.content,
+                // A `read` of an image file also hands the model the image
+                // (see `toolOutputImages`); the saved thread keeps the text.
+                output:
+                  typeof result.content === 'string' &&
+                  (result as { images?: ToolImage[] }).images?.length
+                    ? toolOutputWithImages(
+                        result.content,
+                        (result as { images?: ToolImage[] }).images
+                      )
+                    : result.content,
               })
             }
           } catch (error) {
@@ -2396,6 +2444,39 @@ export function ThreadConversation({
   }
   const handleCompactRef = useRef(handleCompact)
   handleCompactRef.current = handleCompact
+  // A reply cut off by the window filling: compact, then continue it from the
+  // partial text. Nothing caps how often this can happen in one run -- each
+  // pass has to fold something, and when nothing is left to fold the banner
+  // takes over -- so the window is the only limit.
+  recoverContextLimitRef.current = async (message, partial) => {
+    try {
+      const policy = await getCompactionPolicy()
+      const params = thread?.assistants?.[0]?.parameters as
+        | Record<string, unknown>
+        | undefined
+      if (
+        !resolveAutoCompact(params, policy.auto) ||
+        policy.strategy !== 'summarize'
+      ) {
+        return false
+      }
+      // Without the partial reply: it is regenerated below, and a summary
+      // boundary on a message that is about to be replaced would be lost.
+      const record = await compactNow(
+        chatMessagesRef.current.filter((m) => m.id !== message.id)
+      )
+      if (!record) return false
+      if (partial) {
+        setContinueFromContentRef.current?.(partial)
+        setPendingContinueMessage(message)
+      }
+      handleRegenerate()
+      return true
+    } catch (e) {
+      console.warn('[chat] compaction after the window filled failed', e)
+      return false
+    }
+  }
   useEffect(
     () =>
       registerChatCompactor(threadId, () => handleCompactRef.current()),

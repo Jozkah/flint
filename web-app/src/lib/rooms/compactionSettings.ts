@@ -12,6 +12,8 @@ export type RoomCompactionSettings = {
   enabled: boolean
   threshold?: number
   window?: number | null
+  /** The most a summary may run to, in tokens (the policy's `summaryMaxTokens`). */
+  summaryMaxTokens?: number
 }
 
 /** A model setting's value, whichever shape it is stored in. */
@@ -33,15 +35,23 @@ function settingValue(settings: unknown, key: string): unknown {
 export function roomCompactionSettingsFor(
   ref: RoomModelRef,
   lookup: ProviderLookup,
-  policy: Pick<CompactionPolicy, 'auto'>
+  policy: Pick<CompactionPolicy, 'auto'> &
+    Partial<Pick<CompactionPolicy, 'strategy' | 'summaryMaxTokens'>>
 ): RoomCompactionSettings {
   const settings = resolveModel(ref, lookup).model?.settings
   const auto = settingValue(settings, 'auto_compact')
   return {
-    enabled: resolveAutoCompact(
-      auto === undefined ? undefined : { auto_compact: auto },
-      policy.auto
-    ),
+    // The `trim` strategy means no summary is written, whatever Auto Compact
+    // says: older history is left out, as Chat does under the same policy.
+    enabled:
+      policy.strategy !== 'trim' &&
+      resolveAutoCompact(
+        auto === undefined ? undefined : { auto_compact: auto },
+        policy.auto
+      ),
+    ...(policy.summaryMaxTokens != null && policy.summaryMaxTokens > 0
+      ? { summaryMaxTokens: policy.summaryMaxTokens }
+      : {}),
     window: usableContextValue(settingValue(settings, 'max_context_tokens')) ?? null,
   }
 }

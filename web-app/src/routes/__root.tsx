@@ -2,6 +2,7 @@ import { createRootRoute, Outlet, useNavigate } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
 
 import { ModelReplaceDialog } from '@/containers/ModelReplaceDialog'
+import { UnknownWindowDialog } from '@/containers/rooms/UnknownWindowDialog'
 import { Fragment } from 'react/jsx-runtime'
 import { MotionConfig } from 'motion/react'
 import { useRef } from 'react'
@@ -170,6 +171,7 @@ function RootLayout() {
           <OutOfContextPromiseModal />
           <AccessRequestDialog />
           <ModelReplaceDialog />
+          <UnknownWindowDialog />
         </TranslationProvider>
       </ServiceHubProvider>
     </MotionConfig>

@@ -11,9 +11,9 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { DynamicControllerSetting } from '@/containers/dynamicControllerSetting'
+import { DecimalInput } from '@/containers/dynamicControllerSetting/DecimalInput'
 import { SamplerDefaults } from '@/containers/SamplerDefaults'
 import { ChatTemplateKwargs } from '@/containers/ChatTemplateKwargs'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -526,7 +526,6 @@ function NumberRow({
   value,
   min,
   max,
-  step,
   onChange,
 }: {
   label: string
@@ -544,15 +543,14 @@ function NumberRow({
         <div className="mb-1 truncate">
           <span className="font-medium">{label}</span>
         </div>
-        <Input
-          type="number"
+        <DecimalInput
           className="w-32"
           placeholder={placeholder}
-          value={value ?? ''}
+          aria-label={label}
+          value={value}
           min={min}
           max={max}
-          step={step}
-          onChange={(e) => onChange(e.target.value)}
+          onValueChange={(n) => onChange(n === null ? '' : String(n))}
         />
       </div>
       <p className="text-muted-foreground leading-normal text-xs">

@@ -72,7 +72,13 @@ function renderControl(
       controllerProps.step !== undefined
     return (
       <InputControl
-        type={controllerProps.type}
+        // Numeric params go through the decimal-aware field so "0." and "0,5"
+        // survive typing; a plain text field re-parsed each keystroke ate them.
+        type={
+          isNumeric && (!controllerProps.type || controllerProps.type === 'text')
+            ? 'number'
+            : controllerProps.type
+        }
         placeholder={controllerProps.placeholder}
         value={
           typeof controllerProps.value === 'number'

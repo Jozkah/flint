@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from 'vitest'
 import type { UIMessage } from 'ai'
 import {
+  clipToolResultsToFit,
   compactHistory,
   compactionOf,
   compactionTriggerTokens,
   DEFAULT_COMPACT_THRESHOLD,
+  estimateHistoryTokens,
   hasUnresolvedToolCall,
   isContextLengthError,
   isSummaryMessage,
   planCompaction,
   resolveAutoCompact,
+  compactionHeadroom,
   shouldCompact,
   summaryMessage,
   thresholdTokens,
@@ -69,6 +72,27 @@ describe('threshold math', () => {
     expect(thresholdTokens(10_000, 0.5)).toBe(5_000)
     expect(thresholdTokens(10_000, 5)).toBe(10_000)
     expect(thresholdTokens(10_000, 0)).toBe(1_000)
+  })
+
+  it('compacts early when the next step is expected to cross the trigger', () => {
+    expect(shouldCompact(7_000, 10_000, undefined, 500)).toBe(false)
+    expect(shouldCompact(7_000, 10_000, undefined, 1_000)).toBe(true)
+    // No headroom by default, so the plain behaviour is unchanged.
+    expect(shouldCompact(7_999, 10_000)).toBe(false)
+  })
+
+  it('never lets the trigger sit inside the reply reserve', () => {
+    // A 95% share of a 10,000 window is 9,500, but 1,500 is kept for the
+    // reply, so the trigger is 8,500.
+    expect(shouldCompact(8_499, 10_000, 0.95)).toBe(false)
+    expect(shouldCompact(8_500, 10_000, 0.95)).toBe(true)
+  })
+
+  it('derives headroom from recent growth, capped at a quarter of the window', () => {
+    expect(compactionHeadroom([], 100_000)).toBe(0)
+    expect(compactionHeadroom([400, 2_000, 100], 100_000)).toBe(2_500)
+    expect(compactionHeadroom([90_000], 100_000)).toBe(25_000)
+    expect(compactionHeadroom([1_000], null)).toBe(0)
   })
 
   it('never compacts against an unknown window', () => {
@@ -305,5 +329,90 @@ describe('compactionTriggerTokens', () => {
       expect(t).toBeLessThanOrEqual(thresholdTokens(w))
       expect(t).toBeGreaterThanOrEqual(Math.floor(w * 0.1))
     }
+  })
+})
+
+const bigResult = (id: string, chars: number): UIMessage =>
+  ({
+    id,
+    role: 'assistant',
+    parts: [
+      {
+        type: 'tool-read',
+        toolCallId: `call-${id}`,
+        input: {},
+        state: 'output-available',
+        output: 'x'.repeat(chars),
+      },
+    ],
+  }) as unknown as UIMessage
+
+describe('planCompaction splitTurn', () => {
+  // An earlier exchange, then one user turn that grows into a long tool loop.
+  const loop = (): UIMessage[] => [
+    text('u0', 'user', 'earlier'),
+    text('a0', 'assistant', 'earlier answer'),
+    text('u1', 'user', 'do the long task'),
+    ...Array.from({ length: 12 }, (_, i) => bigResult(`w${i}`, 100)),
+  ]
+
+  it('by default backs up to the start of the turn, keeping the whole loop', () => {
+    const plan = planCompaction(loop(), { keepRecent: 4 })!
+    expect(plan.summarize.map((m) => m.id)).toEqual(['u0', 'a0'])
+    expect(plan.keep).toHaveLength(13)
+  })
+
+  it('cuts inside the turn when asked, so the loop itself can be folded', () => {
+    const plan = planCompaction(loop(), { keepRecent: 4, splitTurn: true })!
+    expect(plan.keep.map((m) => m.id)).toEqual(['w8', 'w9', 'w10', 'w11'])
+    expect(plan.summarize.map((m) => m.id)).toContain('u1')
+  })
+
+  it('carries the folded request verbatim when the turn is split', async () => {
+    const result = (await compactHistory(loop(), {
+      summarize: async () => 'gist',
+      keepRecent: 4,
+      splitTurn: true,
+      reason: 'threshold',
+    }))!
+    expect(result.latestRequest).toBe('do the long task')
+    expect(JSON.stringify(result.messages[0])).toContain('do the long task')
+    noSplitPairs(result.messages)
+  })
+})
+
+describe('clipToolResultsToFit', () => {
+  it('leaves a history that fits untouched, as the same objects', () => {
+    const messages = [text('u', 'user', 'hi'), bigResult('a', 3000)]
+    const out = clipToolResultsToFit(messages, 100_000)
+    expect(out.clippedCount).toBe(0)
+    expect(out.messages[1]).toBe(messages[1])
+  })
+
+  it('shrinks the largest tool result to fit, keeping its head and tail', () => {
+    const big = bigResult('a', 200_000)
+    const messages = [text('u', 'user', 'hi'), big]
+    const out = clipToolResultsToFit(messages, 5_000)
+    expect(estimateHistoryTokens(out.messages)).toBeLessThanOrEqual(5_000)
+    const part = out.messages[1].parts[0] as { output: string }
+    expect(part.output.startsWith('xxxx')).toBe(true)
+    expect(part.output.endsWith('xxxx')).toBe(true)
+    expect(part.output).toContain('left out to fit the context window')
+    // The input message is not modified.
+    expect((big.parts[0] as { output: string }).output).toHaveLength(200_000)
+  })
+
+  it('clips the biggest first and stops once it fits', () => {
+    const messages = [bigResult('small', 4_000), bigResult('huge', 150_000)]
+    const out = clipToolResultsToFit(messages, 12_000)
+    expect(out.messages[0]).toBe(messages[0])
+    expect(out.clippedCount).toBeGreaterThan(0)
+  })
+
+  it('gives up cleanly when nothing is left to clip', () => {
+    const messages = [text('u', 'user', 'y'.repeat(50_000))]
+    const out = clipToolResultsToFit(messages, 100)
+    expect(out.clippedCount).toBe(0)
+    expect(out.messages).toBe(messages)
   })
 })

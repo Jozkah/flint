@@ -1,4 +1,5 @@
 import { useArchiveEnabled } from '@/hooks/useArchiveEnabled'
+import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
 import { createFileRoute, Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useId, useMemo, useState } from 'react'
 import { route } from '@/constants/routes'
@@ -184,6 +185,13 @@ function RoomsList() {
     } catch (err) {
       setError(normalizeError(err))
     }
+  }
+
+  // A model with no known context window is settled with the user first.
+  const whenWindowsKnown = async (roomId: string, go: () => Promise<void>) => {
+    const room = details[roomId]?.room
+    if (room && !(await ensureKnownWindows(room))) return
+    await go()
   }
 
   const act = (fn: () => Promise<void>) => {
@@ -465,8 +473,8 @@ function RoomsList() {
                         onOpen={() => navigate({ to: route.roomDetail, params: { roomId: s.id } })}
                         onDelete={() => setToDelete(s)}
                         onPause={() => act(() => api.controller.pause(s.id))}
-                        onResume={() => act(() => api.controller.resume(s.id))}
-                        onStart={() => act(() => api.controller.start(s.id))}
+                        onResume={() => act(() => whenWindowsKnown(s.id, () => api.controller.resume(s.id)))}
+                        onStart={() => act(() => whenWindowsKnown(s.id, () => api.controller.start(s.id)))}
                       />
                     ))}
                   </ul>

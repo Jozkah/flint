@@ -296,3 +296,112 @@ describe('Cowork allowance after compaction', () => {
     expect(withIt.sessionTokens).toBe(315)
   })
 })
+
+describe('Cowork allowance with auto-compact on', () => {
+  const usageStep = (
+    chunks: UIMessageChunk[],
+    inputTokens: number,
+    outputTokens: number
+  ): UIMessageChunk[] => [
+    ...chunks,
+    {
+      type: 'finish',
+      messageMetadata: {
+        usage: { inputTokens, outputTokens, totalTokens: inputTokens + outputTokens },
+      },
+    } as UIMessageChunk,
+  ]
+
+  // The first step sets the baseline (150k); the second adds 80k of prompt and
+  // a 5k completion, which is past the default 200k allowance.
+  const steps = () => [
+    usageStep(toolStep('c0'), 150_000, 100),
+    usageStep(toolStep('c1'), 230_000, 5_000),
+    usageStep(textStep('done'), 240_000, 100),
+  ]
+
+  const run = (extra: { sessionTokenLimit?: number }) => {
+    const queue = steps()
+    let i = 0
+    return runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      ...extra,
+      deps: {
+        sendStep: vi.fn(async () => streamOf(queue[i++])),
+        dispatch: vi.fn(async (): Promise<ToolOutcome> => ({ output: 'ok' })),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: (() => {
+          let n = 0
+          return () => `m${n++}`
+        })(),
+      },
+    })
+  }
+
+  it('has no allowance by default: spend alone never stops a run', async () => {
+    expect((await run({})).stoppedBy).toBe('done')
+  })
+
+  it('a finite allowance still stops the run when a caller sets one', async () => {
+    expect((await run({ sessionTokenLimit: 200_000 })).stoppedBy).toBe('tokens')
+  })
+
+  it('a larger allowance lets the run reach its answer', async () => {
+    expect((await run({ sessionTokenLimit: 800_000 })).stoppedBy).toBe('done')
+  })
+})
+
+describe('Cowork compaction headroom', () => {
+  const usageStep = (
+    chunks: UIMessageChunk[],
+    inputTokens: number
+  ): UIMessageChunk[] => [
+    ...chunks,
+    {
+      type: 'finish',
+      messageMetadata: {
+        usage: { inputTokens, outputTokens: 10, totalTokens: inputTokens + 10 },
+      },
+    } as UIMessageChunk,
+  ]
+
+  it('hands compact the recent per-step prompt growth, with a margin', async () => {
+    const queue = [
+      usageStep(toolStep('c0'), 1_000),
+      usageStep(toolStep('c1'), 1_400), // grew 400
+      usageStep(toolStep('c2'), 3_400), // grew 2,000
+      usageStep(textStep('done'), 3_500),
+    ]
+    let i = 0
+    const headrooms: Array<number | undefined> = []
+    const compact = vi.fn(
+      async (
+        _m: UIMessage[],
+        why: string,
+        _s: AbortSignal,
+        _f?: unknown,
+        headroom?: number
+      ) => {
+        if (why === 'threshold') headrooms.push(headroom)
+        return null
+      }
+    )
+    await runTurn({
+      messages: [user('go')],
+      signal: new AbortController().signal,
+      deps: {
+        sendStep: vi.fn(async () => streamOf(queue[i++])),
+        dispatch: vi.fn(async (): Promise<ToolOutcome> => ({ output: 'ok' })),
+        sink: sink(),
+        onStep: vi.fn(),
+        nextMessageId: () => 'm',
+        compact,
+      },
+    })
+    // Asked before each of the four steps. No growth is known until two
+    // prompts have been seen; then 1.25 x the largest recent growth.
+    expect(headrooms).toEqual([undefined, undefined, 500, 2_500])
+  })
+})

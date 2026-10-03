@@ -24,6 +24,8 @@ export type MessagePartLike = {
   filename?: string
   url?: string
   mediaType?: string
+  /** Tool parts, display only: images the call returned (a `read` of a png). */
+  toolImages?: Array<{ dataUrl: string; name: string }>
 }
 
 export type PartEntry = { part: MessagePartLike; index: number }

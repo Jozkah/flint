@@ -7,20 +7,33 @@
  * and without them an agent with real tools has no upper bound at all.
  */
 
-/** Model turns in one user request. Generous: real work runs long. */
-export const MAX_AGENT_STEPS = 100
+/**
+ * "No cap". The only limit on a run is the model's context window, which
+ * compaction manages; steps and token spend are not limited. The constants
+ * stay so a caller can still pass a finite limit (a test, a future setting),
+ * and they are finite so they survive being persisted as JSON.
+ */
+export const NO_CAP = Number.MAX_SAFE_INTEGER
 
-/** Tighter for a nested run, which should be a focused errand. */
-export const MAX_SUBAGENT_STEPS = 30
+/** Model turns in one user request. */
+export const MAX_AGENT_STEPS = NO_CAP
+
+/** Model turns in a nested run. */
+export const MAX_SUBAGENT_STEPS = NO_CAP
+
+/** Token spend for one user request. */
+export const MAX_SESSION_TOKENS = NO_CAP
 
 /**
- * Token spend for one user request, matching what the Rust loop enforced.
- *
- * Per request, not per session, because that is where `SessionBudget` actually
- * lives in Rust: it is constructed inside `run_orchestration_streamed`, so each
- * request gets its own allowance.
+ * The spend allowance for one request: none. Kept as a function so callers
+ * need no change; the context window, not spend, ends a run.
  */
-export const MAX_SESSION_TOKENS = 200_000
+export function sessionTokenLimitFor(_input: {
+  autoCompact: boolean
+  window: number | null | undefined
+}): number {
+  return MAX_SESSION_TOKENS
+}
 
 export type BudgetState = {
   step: number
@@ -39,6 +52,11 @@ export type SpendState = {
   spent: number
   lastTotal: number
   lastPrompt?: number
+  /**
+   * The previous step's completion. The next prompt replays it, so it shows up
+   * again as prompt growth and must not be charged a second time.
+   */
+  lastCompletion?: number
 }
 
 export const newSpend = (spent = 0): SpendState => ({ spent, lastTotal: 0 })
@@ -68,7 +86,8 @@ export function recordSpend(
   let lastTotal = state.lastTotal
   if (total != null) {
     if (prompt != null && state.lastPrompt != null && completion != null) {
-      delta = completion + gap(prompt, state.lastPrompt)
+      delta =
+        completion + gap(gap(prompt, state.lastPrompt), state.lastCompletion ?? 0)
     } else if (prompt != null && state.lastPrompt == null) {
       delta = total
     } else if (state.lastPrompt != null && completion != null) {
@@ -85,6 +104,7 @@ export function recordSpend(
     spent: state.spent + delta,
     lastTotal,
     lastPrompt: prompt ?? state.lastPrompt,
+    lastCompletion: completion ?? state.lastCompletion,
   }
 }
 
@@ -122,10 +142,11 @@ export type BudgetStop = 'steps' | 'tokens' | null
 /** Which cap, if any, this run has reached. */
 export function budgetExceeded(
   state: BudgetState,
-  maxSteps: number = MAX_AGENT_STEPS
+  maxSteps: number = MAX_AGENT_STEPS,
+  tokenLimit: number = MAX_SESSION_TOKENS
 ): BudgetStop {
   if (state.step >= maxSteps) return 'steps'
-  if (state.sessionTokens >= MAX_SESSION_TOKENS) return 'tokens'
+  if (state.sessionTokens >= tokenLimit) return 'tokens'
   return null
 }
 

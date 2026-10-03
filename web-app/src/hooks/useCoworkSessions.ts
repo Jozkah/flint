@@ -3,6 +3,7 @@ import {
   withExtraFolder,
   withoutExtraFolder,
 } from '@/lib/coworkFolders'
+import { stripSessionToolImages } from '@/lib/toolOutputImages'
 import type { UIMessage } from 'ai'
 import { create } from 'zustand'
 import { useUsageStats } from '@/stores/usage-stats-store'
@@ -935,6 +936,12 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // hydrateBackendStores() once the ServiceHub is ready.
       storage: createJSONStorage(() => backendStorage),
       skipHydration: true,
+      // Images a tool returned (a `read` of a png) are in the live history for
+      // the model to see; the saved session keeps only the text of the result.
+      partialize: (state) => ({
+        ...state,
+        sessions: state.sessions.map(stripSessionToolImages),
+      }),
       // Blank sessions left over from earlier launches are dropped as the
       // store loads, except the one that is selected.
       merge: (persisted, current) => {

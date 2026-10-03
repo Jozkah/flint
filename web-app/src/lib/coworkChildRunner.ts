@@ -70,6 +70,8 @@ export type ChildRunnerEnv = {
   signal: AbortSignal
   /** The parent's model instance. A second one would be a second load. */
   model: () => LanguageModel | null | undefined
+  /** Whether the parent's model reads images, so a child's tool results may carry them. */
+  supportsVision?: () => boolean
   providerOptions: () => RunSubagentOptions['providerOptions']
   /** The tools the parent advertised; a child gets these, narrowed. */
   parentTools: () => Record<string, Tool>
@@ -210,6 +212,7 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         // the runner refuses without dispatching.
         activity: setup.activity,
         model,
+        supportsVision: env.supportsVision?.() ?? false,
         providerOptions: env.providerOptions(),
         parentTools: env.parentTools(),
         system: setup.system,
