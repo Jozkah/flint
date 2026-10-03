@@ -177,6 +177,20 @@ pub enum StreamEvent {
     /// A backgrounded subagent run finished (success or error). Pairs with the
     /// `SubagentStart` of the same `run_id`.
     SubagentEnd { run_id: String, name: String },
+    /// How a backgrounded subagent ended and what it cost, sent just before its
+    /// `SubagentEnd`. A separate event so `SubagentEnd` keeps its shape for the
+    /// consumers that match it. `status` is `done`, `error` or `turn_limit`;
+    /// `usage` is the child's own token usage when the provider reported any;
+    /// `detail` is a bounded one-line reason for a non-`done` ending.
+    SubagentFinished {
+        run_id: String,
+        name: String,
+        status: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        usage: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        detail: Option<String>,
+    },
     /// A backgrounded subagent's own internal event, tagged with its run so a
     /// consumer can attribute it to the right child even when several run
     /// concurrently. `event` is a non-terminal child event (Token/Step/ToolCall/
@@ -513,6 +527,16 @@ pub(crate) mod tests {
                 },
             ),
             (
+                "SubagentFinished",
+                StreamEvent::SubagentFinished {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                    status: "done".into(),
+                    usage: Some(serde_json::json!({ "total_tokens": 12 })),
+                    detail: None,
+                },
+            ),
+            (
                 "Subagent",
                 StreamEvent::Subagent {
                     run_id: "r1".into(),
@@ -682,6 +706,7 @@ pub(crate) mod tests {
             | StreamEvent::SubagentStart { .. }
             | StreamEvent::SubagentQueued { .. }
             | StreamEvent::SubagentEnd { .. }
+            | StreamEvent::SubagentFinished { .. }
             | StreamEvent::Subagent { .. }
             | StreamEvent::PromptSnapshot { .. }
             | StreamEvent::RunResources { .. }
@@ -985,6 +1010,40 @@ pub(crate) mod tests {
         assert_eq!(
             end,
             json!({ "type": "subagent_end", "run_id": "sub-1", "name": "rust-reviewer" })
+        );
+    }
+
+    #[test]
+    fn subagent_finished_serializes_with_optional_usage_and_detail() {
+        let ok = serde_json::to_value(StreamEvent::SubagentFinished {
+            run_id: "sub-1".into(),
+            name: "scout".into(),
+            status: "done".into(),
+            usage: Some(json!({ "total_tokens": 9 })),
+            detail: None,
+        })
+        .unwrap();
+        assert_eq!(
+            ok,
+            json!({
+                "type": "subagent_finished", "run_id": "sub-1", "name": "scout",
+                "status": "done", "usage": { "total_tokens": 9 }
+            })
+        );
+        let bare = serde_json::to_value(StreamEvent::SubagentFinished {
+            run_id: "sub-2".into(),
+            name: "scout".into(),
+            status: "turn_limit".into(),
+            usage: None,
+            detail: Some("ran out".into()),
+        })
+        .unwrap();
+        assert_eq!(
+            bare,
+            json!({
+                "type": "subagent_finished", "run_id": "sub-2", "name": "scout",
+                "status": "turn_limit", "detail": "ran out"
+            })
         );
     }
 

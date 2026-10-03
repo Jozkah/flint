@@ -2953,6 +2953,11 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
+                // Reading the rest of an answer that came back shortened: it
+                // was already collected, so there is nothing to wait for.
+                if let Some(offset) = crate::core::agent::subagent::parse_await_offset(args) {
+                    return crate::core::agent::subagent::read_retained_result(&run_id, offset);
+                }
                 let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
                 let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
                 let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {

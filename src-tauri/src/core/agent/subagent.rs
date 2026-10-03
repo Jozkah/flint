@@ -725,11 +725,12 @@ const CHILD_RESULT_TAIL_CHARS: usize = 3_500;
 
 /// A child's final message, capped for the parent. A short answer comes back
 /// untouched. A long one keeps its head and tail with a note saying how much
-/// was dropped and, when `spill` could write it, where the full text is.
-pub(crate) fn compact_child_result(
-    text: &str,
-    spill: impl FnOnce(&str) -> Option<std::path::PathBuf>,
-) -> String {
+/// was dropped and, when `run_id` is given, how to read the rest: the full text
+/// is kept in memory (see [`retain_full_result`]) and `await_subagent` with an
+/// `offset` returns it a window at a time. That works in every run, sandboxed
+/// or not, which a file in the session scratch would not: the filesystem tools
+/// only see the scratch when a sandbox binds it.
+pub(crate) fn compact_child_result(text: &str, run_id: Option<&str>) -> String {
     let total = text.chars().count();
     if total <= MAX_CHILD_RESULT_CHARS {
         return text.to_string();
@@ -743,32 +744,63 @@ pub(crate) fn compact_child_result(
         .nth(total - CHILD_RESULT_TAIL_CHARS)
         .map_or(text.len(), |(i, _)| i);
     let omitted = total - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
-    let saved = match spill(text) {
-        Some(path) => format!(
-            " The full {total}-character answer is saved at {}; read it with `read` if you need the detail.",
-            path.display()
+    let how = match run_id {
+        Some(id) => format!(
+            " The full {total}-character answer is kept: call await_subagent with run_id={id} and offset={CHILD_RESULT_HEAD_CHARS} to read the omitted part."
         ),
         None => String::new(),
     };
     format!(
-        "{}\n\n[... {omitted} characters omitted from the middle of the subagent's answer.{saved} ...]\n\n{}",
+        "{}\n\n[... {omitted} characters omitted from the middle of the subagent's answer.{how} ...]\n\n{}",
         &text[..head_end],
         &text[tail_start..]
     )
 }
 
-/// Write an over-long child answer to the session scratch, returning where.
-fn spill_child_result(session_id: Option<&str>, run_id: &str, text: &str) -> Option<std::path::PathBuf> {
-    let session = session_id.filter(|s| !s.is_empty()).unwrap_or("anon");
-    let dir = tauri_plugin_agent_tools::workspace::scratch_dir(session).join("subagent-results");
-    std::fs::create_dir_all(&dir).ok()?;
-    let safe: String = run_id
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
-        .collect();
-    let path = dir.join(format!("{safe}.md"));
-    std::fs::write(&path, text).ok()?;
-    Some(path)
+/// How many over-long answers are kept for `offset` reads, oldest dropped first.
+const RETAINED_RESULTS: usize = 8;
+/// The most characters kept per answer. Past this even the retained copy is cut.
+const RETAINED_RESULT_CHARS: usize = 400_000;
+
+static RETAINED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Keep an over-long child answer so the rest of it can be read later.
+pub(crate) fn retain_full_result(run_id: &str, text: &str) {
+    if text.chars().count() <= MAX_CHILD_RESULT_CHARS {
+        return;
+    }
+    let kept: String = text.chars().take(RETAINED_RESULT_CHARS).collect();
+    if let Ok(mut all) = RETAINED.lock() {
+        all.retain(|(id, _)| id != run_id);
+        all.push((run_id.to_string(), kept));
+        while all.len() > RETAINED_RESULTS {
+            all.remove(0);
+        }
+    }
+}
+
+/// `await_subagent` with an `offset`: the next window of a retained answer.
+pub(crate) fn read_retained_result(run_id: &str, offset: usize) -> String {
+    let Some(full) = RETAINED
+        .lock()
+        .ok()
+        .and_then(|all| all.iter().find(|(id, _)| id == run_id).map(|(_, t)| t.clone()))
+    else {
+        return format!(
+            "ERROR: no shortened answer is kept for '{run_id}'. Only answers that were cut are kept, and only the most recent {RETAINED_RESULTS}."
+        );
+    };
+    let total = full.chars().count();
+    if offset >= total {
+        return format!("ERROR: offset {offset} is past the end of the answer ({total} characters).");
+    }
+    let window: String = full.chars().skip(offset).take(MAX_CHILD_RESULT_CHARS).collect();
+    let end = offset + window.chars().count();
+    if end < total {
+        format!("{window}\n\n[... characters {offset}-{end} of {total}. Call await_subagent with run_id={run_id} and offset={end} for the next part. ...]")
+    } else {
+        format!("{window}\n\n[... characters {offset}-{end} of {total}: the end of the answer. ...]")
+    }
 }
 
 /// The resolved plan for a dispatch: the winning definition plus the effective
@@ -1401,7 +1433,6 @@ async fn run_subagent(
     use crate::core::agent::r#loop::run_orchestration_streamed;
 
     let name = resolved.definition.name.clone();
-    let session_id = parent_args.session_id.clone();
     // Host tools are the client's to execute, and a client answers only a
     // `tool_request` it can see at the top level. A child's own events reach
     // stdout wrapped in `Subagent { .. }`, a shape no client may answer, so the
@@ -1460,20 +1491,56 @@ async fn run_subagent(
     drop(child_tx);
     let _ = forwarder.await;
 
+    let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
+    let _ = events.send(StreamEvent::SubagentFinished {
+        run_id: run_id.clone(),
+        name: name.clone(),
+        status,
+        usage,
+        detail,
+    });
     let _ = events.send(StreamEvent::SubagentEnd {
         run_id: run_id.clone(),
         name,
     });
 
     match result {
-        Ok(completion) => Ok(compact_child_result(&final_assistant_text(&completion), |full| {
-            spill_child_result(session_id.as_deref(), &run_id, full)
-        })),
+        Ok(completion) => {
+            let full = final_assistant_text(&completion);
+            retain_full_result(&run_id, &full);
+            Ok(compact_child_result(&full, Some(&run_id)))
+        }
         Err(message) => Err(SubagentError::Upstream(child_failure_text(
             message.kind(),
             message.message(),
             effective_child_turns(max_turns),
         ))),
+    }
+}
+
+/// The `SubagentFinished` fields for a child's result: how it ended, its own
+/// token usage when the provider reported some, and a bounded one-line reason
+/// for an ending that was not a clean answer.
+pub(crate) fn finished_summary(
+    result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    turns: u32,
+) -> (String, Option<serde_json::Value>, Option<String>) {
+    match result {
+        Ok(completion) => (
+            "done".to_string(),
+            completion.get("usage").filter(|u| u.is_object()).cloned(),
+            None,
+        ),
+        Err(e) => {
+            let text = child_failure_text(e.kind(), e.message(), turns);
+            let status = if text.starts_with("The subagent stopped after using all") {
+                "turn_limit"
+            } else {
+                "error"
+            };
+            let detail: String = text.chars().take(200).collect();
+            (status.to_string(), None, Some(detail))
+        }
     }
 }
 
@@ -1961,11 +2028,12 @@ pub fn subagent_tool_schemas(
             "type": "function",
             "function": {
                 "name": "await_subagent",
-                "description": "Block until a backgrounded subagent (started by dispatch_subagent) finishes, and return its final answer. Pass the run_id that dispatch_subagent returned. Each run_id can be awaited once.",
+                "description": "Block until a backgrounded subagent (started by dispatch_subagent) finishes, and return its final answer. Pass the run_id that dispatch_subagent returned. Each run_id can be awaited once. If the answer comes back shortened, call again with the same run_id and an offset to read the omitted part.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "run_id": { "type": "string", "description": "The run_id returned by dispatch_subagent." }
+                        "run_id": { "type": "string", "description": "The run_id returned by dispatch_subagent." },
+                        "offset": { "type": "integer", "minimum": 0, "description": "Only for an answer that came back shortened: the character to continue reading from." }
                     },
                     "required": ["run_id"]
                 }
@@ -2222,6 +2290,12 @@ pub fn forked_history(parent: &[serde_json::Value], task: &str) -> Vec<serde_jso
 /// Parse an `await_subagent` tool-call argument object, returning the run_id.
 pub fn parse_await_args(args: &serde_json::Value) -> Result<String, SubagentError> {
     required_str(args, "run_id")
+}
+
+/// The `offset` of an `await_subagent` call that is reading the rest of a
+/// shortened answer, if it gave one.
+pub fn parse_await_offset(args: &serde_json::Value) -> Option<usize> {
+    args.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize)
 }
 
 /// Parse a `create_subagent` tool-call argument object into a definition plus
@@ -4072,62 +4146,116 @@ mod tests {
     #[test]
     fn a_short_child_answer_comes_back_untouched() {
         let text = "x".repeat(MAX_CHILD_RESULT_CHARS);
-        let spilled = std::cell::Cell::new(false);
-        let out = compact_child_result(&text, |_| {
-            spilled.set(true);
-            None
-        });
-        assert_eq!(out, text);
-        assert!(!spilled.get(), "nothing is written for an answer that fits");
+        assert_eq!(compact_child_result(&text, Some("sub-x-1")), text);
+        // Nothing is retained for an answer that fits.
+        retain_full_result("sub-short-1", &text);
+        assert!(read_retained_result("sub-short-1", 0).starts_with("ERROR"));
     }
 
     #[test]
-    fn a_long_child_answer_keeps_head_and_tail_and_says_what_was_cut() {
+    fn a_long_child_answer_keeps_head_and_tail_and_says_how_to_read_the_rest() {
         let text = format!(
             "HEAD-{}-MIDDLE-{}-TAIL",
             "a".repeat(30_000),
             "b".repeat(30_000)
         );
-        let out = compact_child_result(&text, |_| Some(std::path::PathBuf::from("C:/scratch/full.md")));
+        let out = compact_child_result(&text, Some("sub-long-1"));
         assert!(out.starts_with("HEAD-"), "the conclusion at the start survives");
         assert!(out.ends_with("-TAIL"), "the caveats at the end survive");
         assert!(out.contains("characters omitted from the middle"), "{out}");
-        assert!(out.contains("C:/scratch/full.md"), "names where the full text is");
+        assert!(out.contains("await_subagent with run_id=sub-long-1 and offset=9000"), "{out}");
         // Bounded: head + tail + a one-paragraph note.
-        assert!(out.chars().count() < CHILD_RESULT_HEAD_CHARS + CHILD_RESULT_TAIL_CHARS + 400);
+        assert!(out.chars().count() < CHILD_RESULT_HEAD_CHARS + CHILD_RESULT_TAIL_CHARS + 500);
         let omitted = text.chars().count() - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
         assert!(out.contains(&format!("{omitted} characters omitted")), "{out}");
     }
 
     #[test]
-    fn a_failed_spill_still_caps_without_promising_a_file() {
+    fn without_a_run_id_the_cap_still_applies_and_promises_nothing() {
         let text = "z".repeat(MAX_CHILD_RESULT_CHARS + 5_000);
-        let out = compact_child_result(&text, |_| None);
+        let out = compact_child_result(&text, None);
         assert!(out.contains("omitted from the middle"));
-        assert!(!out.contains("is saved at"), "{out}");
+        assert!(!out.contains("await_subagent"), "{out}");
     }
 
     #[test]
     fn the_cap_never_splits_a_multibyte_character() {
         // 4-byte characters, so any byte-offset slicing would panic.
         let text = "𝔘".repeat(MAX_CHILD_RESULT_CHARS + 2_000);
-        let out = compact_child_result(&text, |_| None);
+        let out = compact_child_result(&text, None);
         assert!(out.starts_with('𝔘') && out.ends_with('𝔘'));
+        retain_full_result("sub-mb-1", &text);
+        let part = read_retained_result("sub-mb-1", 3);
+        assert!(part.starts_with('𝔘'));
+    }
+
+    /// The remainder is reachable by the tool call itself, so it needs no file
+    /// and no sandbox: the windows chain from the cut to the end, and together
+    /// with the head they are the whole answer.
+    #[test]
+    fn the_rest_of_a_cut_answer_is_read_back_a_window_at_a_time() {
+        let run = format!("sub-window-{}", std::process::id());
+        let text: String = (0..60_000u32).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        retain_full_result(&run, &text);
+        let first = read_retained_result(&run, CHILD_RESULT_HEAD_CHARS);
+        assert!(first.starts_with(&text[CHILD_RESULT_HEAD_CHARS..CHILD_RESULT_HEAD_CHARS + 50]));
+        assert!(first.contains(&format!("offset={}", CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS)), "{first}");
+        let second = read_retained_result(&run, CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS);
+        assert!(second.starts_with(
+            &text[CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS..CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS + 50]
+        ));
+        let last = read_retained_result(&run, 50_000);
+        assert!(last.contains("the end of the answer"), "{last}");
+        assert!(read_retained_result(&run, 60_000).starts_with("ERROR: offset"));
+        assert!(read_retained_result("sub-never-ran", 0).starts_with("ERROR: no shortened answer"));
     }
 
     #[test]
-    fn the_full_answer_is_spilled_to_the_session_scratch() {
-        let run = format!("sub-spill-{}", std::process::id());
-        let text = "q".repeat(MAX_CHILD_RESULT_CHARS + 100);
-        let path = spill_child_result(Some("spill-session"), &run, &text).expect("written");
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), text);
-        assert!(path.to_string_lossy().contains("subagent-results"));
-        let _ = std::fs::remove_file(&path);
-        // A run id with separators cannot escape the directory.
-        let sneaky = spill_child_result(Some("spill-session"), "../../evil", "x").expect("written");
-        assert!(sneaky.to_string_lossy().contains("subagent-results"));
-        assert!(!sneaky.to_string_lossy().contains("evil/"));
-        let _ = std::fs::remove_file(&sneaky);
+    fn only_the_most_recent_cut_answers_are_kept() {
+        let long = "k".repeat(MAX_CHILD_RESULT_CHARS + 10);
+        let base = format!("sub-evict-{}", std::process::id());
+        for i in 0..(RETAINED_RESULTS + 3) {
+            retain_full_result(&format!("{base}-{i}"), &long);
+        }
+        assert!(read_retained_result(&format!("{base}-0"), 0).starts_with("ERROR: no shortened"));
+        assert!(!read_retained_result(&format!("{base}-{}", RETAINED_RESULTS + 2), 0).starts_with("ERROR"));
+    }
+
+    #[test]
+    fn a_finished_child_reports_how_it_ended_and_what_it_used() {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+        let done = Ok(serde_json::json!({ "usage": { "total_tokens": 321 }, "choices": [] }));
+        let (status, usage, detail) = finished_summary(&done, 60);
+        assert_eq!(status, "done");
+        assert_eq!(usage.unwrap()["total_tokens"], 321);
+        assert!(detail.is_none());
+        // No usage object: none is invented.
+        let (_, usage, _) = finished_summary(&Ok(serde_json::json!({ "usage": null })), 60);
+        assert!(usage.is_none());
+
+        let limit = Err(HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 60-turn limit while the model was still calling tools",
+        ));
+        let (status, _, detail) = finished_summary(&limit, 60);
+        assert_eq!(status, "turn_limit");
+        assert!(detail.unwrap().contains("all 60 of its turns"));
+
+        let failed = Err(HarnessError::new(ErrorKind::InvalidInput, "x".repeat(900)));
+        let (status, _, detail) = finished_summary(&failed, 60);
+        assert_eq!(status, "error");
+        assert_eq!(detail.unwrap().chars().count(), 200, "the reason is bounded");
+    }
+
+    #[test]
+    fn await_reads_an_optional_offset() {
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r", "offset": 42 })), Some(42));
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r" })), None);
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r", "offset": -1 })), None);
+        let schemas = subagent_tool_schemas(&registry_with("reviewer", None), 3);
+        let await_tool = schemas.iter().find(|s| s["function"]["name"] == "await_subagent").unwrap();
+        assert_eq!(await_tool["function"]["parameters"]["properties"]["offset"]["type"], "integer");
+        assert_eq!(await_tool["function"]["parameters"]["required"], serde_json::json!(["run_id"]));
     }
 
     // ── Child turn limit ─────────────────────────────────────────────────
