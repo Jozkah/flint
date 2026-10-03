@@ -162,12 +162,12 @@ describe('resolving the model a chat actually sends', () => {
     ).toBe('xhigh')
   })
 
-  it('leaves a model with no settings object alone', () => {
-    // Nothing to merge into; the model shape itself says it takes no settings.
+  it('gives a model with no settings object the chat’s values', () => {
+    // Remote models are listed without one; see the block at the end.
     const bare = { id: 'x' } as unknown as Model
-    expect(resolveModel(bare, setOverride(undefined, 'anything', 'v'))).toBe(
-      bare
-    )
+    const resolved = resolveModel(bare, setOverride(undefined, 'anything', 'v'))
+    expect(resolved).not.toBe(bare)
+    expect(resolved.settings?.anything?.controller_props?.value).toBe('v')
   })
 
   it('passes a missing model straight through', () => {
@@ -257,5 +257,24 @@ describe('small helpers', () => {
   it('treats an absent key as no opinion, not as a stored undefined', () => {
     expect(isOverridden({ a: undefined }, 'a')).toBe(true)
     expect(isOverridden({ a: undefined }, 'b')).toBe(false)
+  })
+})
+
+describe('a model with no settings at all', () => {
+  // A model a provider listed over the wire carries an id and a name and
+  // nothing else. The chat's own value for a setting still has to reach it, or
+  // the effort bar stores a choice that is never shown and never sent.
+  const bare = { id: 'pxa-qwen3.8-27b', capabilities: ['completion'] } as Model
+
+  it('still takes the chat’s overrides', () => {
+    const resolved = resolveModel(bare, { thinking_budget_tokens: 'high' })
+    expect(
+      resolved.settings?.thinking_budget_tokens?.controller_props?.value
+    ).toBe('high')
+  })
+
+  it('is returned as it is when the chat overrides nothing', () => {
+    expect(resolveModel(bare, undefined)).toBe(bare)
+    expect(resolveModel(bare, {})).toBe(bare)
   })
 })
