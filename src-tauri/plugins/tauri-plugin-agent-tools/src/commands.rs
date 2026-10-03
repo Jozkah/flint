@@ -1509,6 +1509,44 @@ async fn execute_tool_inner(
     })
 }
 
+/// Fire the `post-tool-batch` hooks for a turn whose tool calls the renderer
+/// has run one at a time through [`execute_tool`].
+///
+/// The Rust agent loop fires the event itself; the chat runs its own tool loop
+/// in the renderer, which is the only place that knows a turn's calls are all
+/// answered. It says so here. Observe-only and detached exactly as in the loop
+/// (see `hooks::fire_post_tool_batch`): this returns at once, and a hook that
+/// fails, hangs or is malformed cannot reach the chat or its tool results.
+#[cfg_attr(feature = "tauri", tauri::command)]
+pub async fn fire_post_tool_batch(
+    data_folder: String,
+    thread_id: String,
+    tool_names: Vec<String>,
+    allow_network: Option<bool>,
+    scope: Option<WorkspaceScope>,
+) -> Result<(), AgentToolsError> {
+    if tool_names.is_empty() {
+        return Ok(());
+    }
+    let root = scope
+        .unwrap_or_default()
+        .ensure(Path::new(&data_folder), &thread_id)
+        .await?;
+    let policy = crate::policy::load(None, allow_network);
+    let network = policy.network.allowed && allow_network.unwrap_or(false);
+    // Same confinement the thread's `execute_tool` calls get: sandboxed, with
+    // the Flint data folder masked.
+    let _ = crate::hooks::fire_post_tool_batch(
+        &root,
+        tool_names,
+        network,
+        false,
+        true,
+        Some(Path::new(&data_folder)),
+    );
+    Ok(())
+}
+
 /// What the commands a run started used, taken as the run ends (AH-174).
 /// `None` for a run that started no command. Forgotten once taken.
 #[cfg_attr(feature = "tauri", tauri::command)]

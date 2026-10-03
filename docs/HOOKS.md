@@ -45,8 +45,13 @@ running the subset that happened to parse.
 does not wait for it, its failure or timeout is logged and dropped (never added
 to a tool result), and `block` is refused for it. A `tools` list matches when
 any call in the turn used one of those tools. It fires from the Rust agent loop
-(CLI and desktop agent runs); a renderer that executes tool calls one at a time
-through the `execute` command does not fire it.
+(CLI agent runs), and from the desktop chat: the chat runs its tool calls one at
+a time through the `execute_tool` command, and when every call of an assistant
+turn has its result it reports the batch with the `fire_post_tool_batch`
+command, which does the same detached, observe-only run (no await, errors
+swallowed). In the chat the hooks file is the one in the thread's workspace
+(the root its tools work in). Cowork and Rooms run their own tool loops and do
+not report batches yet.
 
 `session-start` is refused: nothing fires it yet.
 
@@ -84,3 +89,8 @@ workspace, network only if the run allows it, the Flint data folder masked),
 and the project's `.jan` folder is hidden from a confined hook. A hook written
 for a POSIX shell is refused, not rewritten, when no POSIX shell can run
 confined.
+
+A hook always starts in the project root. A confined PowerShell ignores the
+directory it is started in (it opens in `C:\Windows\System32`), so a confined
+hook's command is wrapped to open in the project, the way the `bash` tool's is:
+a relative path in a hook means the same file under `--sandbox` as without it.

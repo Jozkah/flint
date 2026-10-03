@@ -17,20 +17,54 @@ import {
  *
  * Plain queued messages are never taken here: they wait for the run to end.
  */
+/** The tool calls of the last assistant message, once every one has its result. */
+export function finishedToolBatch(
+  messages: UIMessage[]
+): { key: string; names: string[] } | null {
+  const last = messages[messages.length - 1]
+  if (!last || last.role !== 'assistant') return null
+  // One assistant message holds every step of the tool loop; the batch is the
+  // calls of the latest step, the ones after its last `step-start`.
+  const parts = last.parts as Array<Record<string, unknown>>
+  let from = 0
+  parts.forEach((p, i) => {
+    if (p.type === 'step-start') from = i + 1
+  })
+  const calls = parts.slice(from).filter((p) => {
+    const type = String(p.type)
+    return type === 'dynamic-tool' || type.startsWith('tool-')
+  })
+  if (calls.length === 0) return null
+  return {
+    key: `${last.id}:${calls.map((p) => String(p.toolCallId)).join(',')}`,
+    names: calls.map((p) =>
+      p.type === 'dynamic-tool' ? String(p.toolName) : String(p.type).slice(5)
+    ),
+  }
+}
+
 export function chatFollowUp({
   messages,
   aborted,
   takeSteering,
   send,
+  onBatchFinished,
 }: {
   messages: UIMessage[]
   /** The run was stopped: nothing more goes, steering included. */
   aborted: boolean
   takeSteering: () => QueuedMessage[]
   send: (text: string) => void
+  /**
+   * Told once the turn's tool calls all have results, before the next request
+   * (called each time the SDK asks, so the caller dedupes by `key`).
+   */
+  onBatchFinished?: (batch: { key: string; names: string[] }) => void
 }): boolean {
   if (aborted) return false
   if (!lastAssistantMessageIsCompleteWithToolCalls({ messages })) return false
+  const batch = finishedToolBatch(messages)
+  if (batch) onBatchFinished?.(batch)
   const taken = takeSteering()
   if (taken.length === 0) return true
   send(taken.map((m) => m.text).join('\n\n'))

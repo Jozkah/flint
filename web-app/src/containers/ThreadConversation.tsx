@@ -154,7 +154,11 @@ import {
 } from '@/containers/ThreadStatusMark'
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
-import { AGENT_TOOL_NAMES, executeAgentTool } from '@/lib/agentTools'
+import {
+  AGENT_TOOL_NAMES,
+  executeAgentTool,
+  notifyToolBatch,
+} from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
@@ -367,10 +371,17 @@ export function ThreadConversation({
   const sendSteeringRef = useRef<((text: string) => void) | null>(null)
 
   // Check if we should follow up with tool calls (respects abort signal)
+  const lastBatchKey = useRef('')
   const followUpMessage = useCallback(
     ({ messages }: { messages: UIMessage[] }) =>
       chatFollowUp({
         messages,
+        // The SDK asks again for the same state; a turn's hooks fire once.
+        onBatchFinished: ({ key, names }) => {
+          if (lastBatchKey.current === key) return
+          lastBatchKey.current = key
+          notifyToolBatch(threadIdRef.current, names)
+        },
         aborted:
           !toolCallAbortController.current ||
           toolCallAbortController.current.signal.aborted,

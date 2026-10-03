@@ -10,6 +10,7 @@ import {
   executeToolStreaming,
   executeToolUnsandboxedRetry,
   executeToolUnsandboxedWithdraw,
+  firePostToolBatch,
   previewChange,
   sandboxStatus,
   sandboxToolchains,
@@ -518,6 +519,30 @@ export async function executeAgentTool(
   } catch (e) {
     return { error: messageOf(e) }
   }
+}
+
+/**
+ * A chat turn's tool calls all have results: let the project's
+ * `post-tool-batch` hooks run. Observe-only and never awaited by the chat --
+ * nothing here can delay the next request or change a tool result.
+ */
+export function notifyToolBatch(threadId: string, toolNames: string[]): void {
+  if (toolNames.length === 0) return
+  void (async () => {
+    try {
+      const dataFolder = await getServiceHub().app().getJanDataFolder()
+      if (!dataFolder) return
+      await firePostToolBatch(
+        dataFolder,
+        threadId,
+        toolNames,
+        useAgentToolsConfig.getState().bashNetworkEnabled,
+        'thread' as WorkspaceScope
+      )
+    } catch {
+      // A hook problem is the backend's to log; the chat goes on.
+    }
+  })()
 }
 
 /**
