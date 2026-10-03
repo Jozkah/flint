@@ -251,6 +251,43 @@ Var LockedFile
   ${EndIf}
 !macroend
 
+; Until 0.9.0 the publisher was "Menlo Research Pte. Ltd.". The install location
+; is saved under the publisher's registry key, so the first installer with the
+; new publisher did not find it, installed to the default directory and left
+; the old copy behind, still pinned to the taskbar. That copy keeps starting
+; (and, being single-instance, keeps winning) until it is removed.
+!define LEGACYMANUPRODUCTKEY "Software\Menlo Research Pte. Ltd.\${PRODUCTNAME}"
+!define TASKBARPIN "$APPDATA\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\${PRODUCTNAME}.lnk"
+
+!macro RetireLegacyInstall
+  ReadRegStr $4 HKCU "${LEGACYMANUPRODUCTKEY}" ""
+  ${If} $4 != ""
+  ${AndIf} $4 != $INSTDIR
+  ${AndIf} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+    !insertmacro IsShortcutTarget "${TASKBARPIN}" "$4\${MAINBINARYNAME}.exe"
+    Pop $0
+    ${If} $0 = 1
+      !insertmacro SetShortcutTarget "${TASKBARPIN}" "$INSTDIR\${MAINBINARYNAME}.exe"
+    ${EndIf}
+    ; Only what the old installer wrote, then the directory if that emptied
+    ; it: never the whole tree (#293).
+    Delete "$4\${MAINBINARYNAME}.exe"
+    Delete "$4\jan.exe"
+    Delete "$4\LICENSE"
+    Delete "$4\bun.exe"
+    Delete "$4\uv.exe"
+    Delete "$4\*.old"
+    Delete "$4\uninstall.exe"
+    RMDir /r "$4\resources"
+    RMDir "$4"
+  ${EndIf}
+  ; Keep the key while the old binary is still there (locked), to retry on
+  ; the next install.
+  ${IfNot} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+    DeleteRegKey HKCU "${LEGACYMANUPRODUCTKEY}"
+  ${EndIf}
+!macroend
+
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
 OutFile "${OUTFILE}"
@@ -894,6 +931,7 @@ Section Install
 
   ; Save $INSTDIR in registry for future installations
   WriteRegStr SHCTX "${MANUPRODUCTKEY}" "" $INSTDIR
+  !insertmacro RetireLegacyInstall
 
   !if "${INSTALLMODE}" == "both"
     ; Save install mode to be selected by default for the next installation such as updating
