@@ -32,7 +32,6 @@ import { Route as SettingsLocalApiServerRouteImport } from './routes/settings/lo
 import { Route as SettingsJevRouteImport } from './routes/settings/jev'
 import { Route as SettingsInterfaceRouteImport } from './routes/settings/interface'
 import { Route as SettingsHttpsProxyRouteImport } from './routes/settings/https-proxy'
-import { Route as SettingsHardwareRouteImport } from './routes/settings/hardware'
 import { Route as SettingsGeneralRouteImport } from './routes/settings/general'
 import { Route as SettingsExtensionsRouteImport } from './routes/settings/extensions'
 import { Route as SettingsClaudeCodeRouteImport } from './routes/settings/claude-code'
@@ -161,11 +160,6 @@ const SettingsHttpsProxyRoute = SettingsHttpsProxyRouteImport.update({
   path: '/settings/https-proxy',
   getParentRoute: () => rootRouteImport,
 } as any)
-const SettingsHardwareRoute = SettingsHardwareRouteImport.update({
-  id: '/settings/hardware',
-  path: '/settings/hardware',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SettingsGeneralRoute = SettingsGeneralRouteImport.update({
   id: '/settings/general',
   path: '/settings/general',
@@ -248,7 +242,6 @@ export interface FileRoutesByFullPath {
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
@@ -286,7 +279,6 @@ export interface FileRoutesByTo {
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
@@ -325,7 +317,6 @@ export interface FileRoutesById {
   '/settings/claude-code': typeof SettingsClaudeCodeRoute
   '/settings/extensions': typeof SettingsExtensionsRoute
   '/settings/general': typeof SettingsGeneralRoute
-  '/settings/hardware': typeof SettingsHardwareRoute
   '/settings/https-proxy': typeof SettingsHttpsProxyRoute
   '/settings/interface': typeof SettingsInterfaceRoute
   '/settings/jev': typeof SettingsJevRoute
@@ -365,7 +356,6 @@ export interface FileRouteTypes {
     | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
-    | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
     | '/settings/jev'
@@ -403,7 +393,6 @@ export interface FileRouteTypes {
     | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
-    | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
     | '/settings/jev'
@@ -441,7 +430,6 @@ export interface FileRouteTypes {
     | '/settings/claude-code'
     | '/settings/extensions'
     | '/settings/general'
-    | '/settings/hardware'
     | '/settings/https-proxy'
     | '/settings/interface'
     | '/settings/jev'
@@ -480,7 +468,6 @@ export interface RootRouteChildren {
   SettingsClaudeCodeRoute: typeof SettingsClaudeCodeRoute
   SettingsExtensionsRoute: typeof SettingsExtensionsRoute
   SettingsGeneralRoute: typeof SettingsGeneralRoute
-  SettingsHardwareRoute: typeof SettingsHardwareRoute
   SettingsHttpsProxyRoute: typeof SettingsHttpsProxyRoute
   SettingsInterfaceRoute: typeof SettingsInterfaceRoute
   SettingsJevRoute: typeof SettingsJevRoute
@@ -662,13 +649,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsHttpsProxyRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/settings/hardware': {
-      id: '/settings/hardware'
-      path: '/settings/hardware'
-      fullPath: '/settings/hardware'
-      preLoaderRoute: typeof SettingsHardwareRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/settings/general': {
       id: '/settings/general'
       path: '/settings/general'
@@ -776,7 +756,6 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsClaudeCodeRoute: SettingsClaudeCodeRoute,
   SettingsExtensionsRoute: SettingsExtensionsRoute,
   SettingsGeneralRoute: SettingsGeneralRoute,
-  SettingsHardwareRoute: SettingsHardwareRoute,
   SettingsHttpsProxyRoute: SettingsHttpsProxyRoute,
   SettingsInterfaceRoute: SettingsInterfaceRoute,
   SettingsJevRoute: SettingsJevRoute,
