@@ -42,8 +42,8 @@ import {
   browserAlwaysAsks,
   browserCallClass,
   browserInputForPrompt,
-  describeBrowserCall,
   closeBrowserSession,
+  describeBrowserCall,
 } from '@/lib/browserTool'
 import {
   BROWSER_TOOL_NAMES,
@@ -592,7 +592,7 @@ export async function executeAgentTool(
       }
     }
     return {
-      content: result.content,
+      content,
       diff: result.diff ?? undefined,
       resources,
     }
@@ -611,7 +611,8 @@ export async function executeAgentTool(
 export function notifyToolBatch(
   threadId: string,
   toolNames: string[],
-  scope: 'thread' | 'session' = 'thread'
+  scope: 'thread' | 'session' = 'thread',
+  agent: 'main' | 'subagent' = 'main'
 ): void {
   if (toolNames.length === 0) return
   void (async () => {
@@ -623,7 +624,8 @@ export function notifyToolBatch(
         threadId,
         toolNames,
         useAgentToolsConfig.getState().bashNetworkEnabled,
-        scope as WorkspaceScope
+        scope as WorkspaceScope,
+        agent
       )
     } catch {
       // A hook problem is the backend's to log; the chat goes on.
@@ -749,6 +751,8 @@ export async function previewAgentChange(
  * while the user is deleting a thread.
  */
 export async function cleanupThreadWorkspace(threadId: string): Promise<void> {
+  // The thread's agent browser goes with it.
+  void closeBrowserSession(threadId)
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return
@@ -764,8 +768,6 @@ export async function cleanupThreadWorkspace(threadId: string): Promise<void> {
 /**
  * Delete sandboxes left behind by threads that no longer exist, returning how
  * many were removed. Best-effort, same reasoning as above.
-  // The thread's agent browser goes with it.
-  void closeBrowserSession(threadId)
  */
 export async function sweepThreadWorkspaces(
   liveThreadIds: string[]

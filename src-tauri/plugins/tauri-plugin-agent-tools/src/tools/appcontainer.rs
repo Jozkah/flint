@@ -2073,11 +2073,13 @@ mod win {
         "FLINT_HOOK_TOOL",
         "FLINT_HOOK_TOOL_NAMES",
         "FLINT_HOOK_TOOL_COUNT",
+        "FLINT_HOOK_AGENT",
         "FLINT_PROJECT_ROOT",
         "JAN_HOOK_EVENT",
         "JAN_HOOK_TOOL",
         "JAN_HOOK_TOOL_NAMES",
         "JAN_HOOK_TOOL_COUNT",
+        "JAN_HOOK_AGENT",
         "JAN_PROJECT_ROOT",
     ];
 
@@ -2458,6 +2460,8 @@ mod tests {
         }
         assert!(!win::HOOK_ENV.contains(&"JAN_DATA_FOLDER"));
         assert!(!win::HOOK_ENV.contains(&"JAN_API_KEY"));
+        // The agent tag is one of the two the hook runner sets, by exact name.
+        assert!(win::HOOK_ENV.contains(&"FLINT_HOOK_AGENT") && win::HOOK_ENV.contains(&"JAN_HOOK_AGENT"));
     }
 
     fn ws() -> PathBuf {

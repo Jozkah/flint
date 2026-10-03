@@ -513,6 +513,24 @@ pub fn close_run(key: &str) {
     }
 }
 
+/// End the browser of a conversation or session by its id (the desktop's run
+/// end, thread switch, thread delete). Matches a session keyed by `id` or
+/// opened under that session. Returns how many were closed.
+pub fn close_for(id: &str) -> usize {
+    if id.is_empty() {
+        return 0;
+    }
+    let hits: Vec<Arc<Session>> = SESSIONS
+        .lock()
+        .map(|m| m.values().filter(|s| s.caller.key == id || s.caller.session == id).cloned().collect())
+        .unwrap_or_default();
+    for s in &hits {
+        s.ctl.kill_detached("the conversation ended");
+        s.announce_closed("the conversation ended");
+    }
+    hits.len()
+}
+
 /// End every session (app exit).
 pub fn close_all() {
     let all: Vec<Arc<Session>> = SESSIONS.lock().map(|m| m.values().cloned().collect()).unwrap_or_default();
@@ -536,6 +554,21 @@ impl Reply {
         Reply { text: t.into(), image: None, image_mime: "" }
     }
 }
+
+/// What the surface running the tool lets it do beyond the call's own arguments.
+/// None of this comes from the model.
+#[derive(Debug, Default, Clone)]
+pub struct Options<'a> {
+    /// The file an `upload` may attach: an absolute path the caller has already
+    /// confined to the run's folders.
+    pub upload: Option<&'a std::path::Path>,
+    /// Return screenshots as a small JPEG instead of a PNG, for a surface that
+    /// keeps the picture beside the transcript (the desktop).
+    pub compact_image: bool,
+}
+
+/// The largest compact (JPEG) screenshot.
+pub const MAX_COMPACT_IMAGE_BYTES: usize = 400 * 1024;
 
 /// The result of one action before it is worded for the model.
 struct Done {
@@ -570,30 +603,18 @@ fn usage() -> String {
 /// Run one `browser` action for `caller`. `upload` is refused here: it needs a
 /// file the tool layer has checked (`run_with`).
 pub async fn run(caller: &Caller, args: &Value) -> Reply {
+    run_with(caller, args, &Options::default()).await
+}
+
+/// `run`, with what the surface allows: the file an `upload` may attach (never
+/// taken from `args`, which the model writes) and the screenshot format.
+pub async fn run_with(caller: &Caller, args: &Value, opts: &Options<'_>) -> Reply {
     let action = args.get("action").and_then(Value::as_str).unwrap_or("").trim().to_ascii_lowercase();
     match action.as_str() {
         "" => err(usage()),
         "open" => open(caller, args).await,
         "close" => close(caller).await,
-        a if ACTIONS.contains(&a) => with_session(caller, a, args).await,
-/// End the browser of a conversation or session by its id (the desktop's run
-/// end, thread switch, thread delete). Matches a session keyed by `id` or
-/// opened under that session. Returns how many were closed.
-pub fn close_for(id: &str) -> usize {
-    if id.is_empty() {
-        return 0;
-    }
-    let hits: Vec<Arc<Session>> = SESSIONS
-        .lock()
-        .map(|m| m.values().filter(|s| s.caller.key == id || s.caller.session == id).cloned().collect())
-        .unwrap_or_default();
-    for s in &hits {
-        s.ctl.kill_detached("the conversation ended");
-        s.announce_closed("the conversation ended");
-    }
-    hits.len()
-}
-
+        a if ACTIONS.contains(&a) => with_session(caller, a, args, opts).await,
         other => err(format!("unknown browser action \"{other}\". {}", usage())),
     }
 }
@@ -616,21 +637,6 @@ async fn with_session(caller: &Caller, action: &str, args: &Value, opts: &Option
     let result = session.dispatch(&page, action, args, opts).await;
     session.ctl.touch();
     let reply = match result {
-/// What the surface running the tool lets it do beyond the call's own arguments.
-/// None of this comes from the model.
-#[derive(Debug, Default, Clone)]
-pub struct Options<'a> {
-    /// The file an `upload` may attach: an absolute path the caller has already
-    /// confined to the run's folders.
-    pub upload: Option<&'a std::path::Path>,
-    /// Return screenshots as a small JPEG instead of a PNG, for a surface that
-    /// keeps the picture beside the transcript (the desktop).
-    pub compact_image: bool,
-}
-
-/// The largest compact (JPEG) screenshot.
-pub const MAX_COMPACT_IMAGE_BYTES: usize = 400 * 1024;
-
         Ok(done) => session.finish(&page, done, mark).await,
         Err(e) => {
             if session.ctl.is_closed() {
@@ -662,12 +668,6 @@ fn parse_origins(args: &Value) -> Result<(url::Url, OriginPolicy), String> {
         .unwrap_or_default();
     let policy = OriginPolicy::new(origin, &extra).map_err(|e| format!("allow_origins refused: {e}"))?;
     Ok((url, policy))
-    run_with(caller, args, &Options::default()).await
-}
-
-/// `run`, with what the surface allows: the file an `upload` may attach (never
-/// taken from `args`, which the model writes) and the screenshot format.
-pub async fn run_with(caller: &Caller, args: &Value, opts: &Options<'_>) -> Reply {
 }
 
 async fn open(caller: &Caller, args: &Value) -> Reply {
@@ -675,6 +675,7 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
         Ok(v) => v,
         Err(e) => return err(e),
     };
+    let popups = args.get("popups").and_then(Value::as_bool);
     // Reuse the run's session when it already allows everything asked for;
     // otherwise the browser is restarted, because its network confinement is
     // fixed when it starts.
@@ -683,6 +684,9 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
         if !existing.ctl.is_closed() {
             if wanted.allowed().iter().all(|o| existing.policy.allowed().contains(o)) {
                 existing.ctl.touch();
+                if let Some(p) = popups {
+                    existing.mains.set_popups(p);
+                }
                 let page = existing.page.lock().await;
                 let mark = existing.seen.lock().map(|s| s.ring.next).unwrap_or(0);
                 let r = existing.navigate(&page, url.as_str()).await;
@@ -720,6 +724,9 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
         Ok(s) => s,
         Err(e) => return err(e),
     };
+    if let Some(p) = popups {
+        session.mains.set_popups(p);
+    }
     let page = session.page.lock().await;
     let mark = session.seen.lock().map(|s| s.ring.next).unwrap_or(0);
     match session.navigate(&page, url.as_str()).await {
@@ -734,7 +741,6 @@ async fn open(caller: &Caller, args: &Value) -> Reply {
             drop(page);
             session.ctl.kill_and_wait("open failed").await;
             err(e)
-    let popups = args.get("popups").and_then(Value::as_bool);
         }
     }
 }
@@ -785,7 +791,11 @@ async fn start(
         let first = t.add(&target, &session_id);
         t.active = first.id;
     }
+    let sink_seen = seen.clone();
     let sink_cdp = cdp.clone();
+    let sink_tabs = tabs.clone();
+    let sink_mains = mains.clone();
+    let (newtab_tx, mut newtab_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
     // A refused navigation leaves the page where it was (204), so the session carries on.
     events::spawn(cdp.clone(), events, policy.clone(), mains.clone(), events::NavigationBlock::Stay, move |observed| {
         match &observed {
@@ -809,23 +819,12 @@ async fn start(
         let reaction = sink_seen.lock().ok().and_then(|mut s| apply(&mut s, observed));
         if let Some(Reaction::Dialog { session, accept, prompt }) = reaction {
             let mut p = json!({ "accept": accept });
-    let sink_seen = seen.clone();
             if let Some(t) = prompt {
-    let sink_tabs = tabs.clone();
-    let sink_mains = mains.clone();
-    let (newtab_tx, mut newtab_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
                 p["promptText"] = json!(t);
             }
             sink_cdp.fire("Page.handleJavaScriptDialog", p, session.as_deref());
         }
     });
-    let setup = async {
-        launch::enable_tab(&cdp, &session_id).await?;
-        // Refuse downloads, and learn of any window the page opens (closed, or
-        // kept as a confined tab when the run opted into popups).
-        cdp.call("Browser.setDownloadBehavior", json!({ "behavior": "deny", "eventsEnabled": true }), None)
-            .await
-            .map_err(|e| format!("could not refuse downloads: {e}"))?;
     // Confine and register each window the page opens while popups are on.
     {
         let (cdp, tabs, mains, seen) = (cdp.clone(), tabs.clone(), mains.clone(), seen.clone());
@@ -849,6 +848,13 @@ async fn start(
             }
         });
     }
+    let setup = async {
+        launch::enable_tab(&cdp, &session_id).await?;
+        // Refuse downloads, and learn of any window the page opens (closed, or
+        // kept as a confined tab when the run opted into popups).
+        cdp.call("Browser.setDownloadBehavior", json!({ "behavior": "deny", "eventsEnabled": true }), None)
+            .await
+            .map_err(|e| format!("could not refuse downloads: {e}"))?;
         let _ = cdp.call("Target.setDiscoverTargets", json!({ "discover": true }), None).await;
         Ok::<_, String>(())
     };
@@ -862,13 +868,13 @@ async fn start(
         page: tokio::sync::Mutex::new(Page { cdp, tabs, mains: mains.clone(), ctl: ctl.clone(), seen: seen.clone() }),
         seen,
         policy,
+        mains,
         browser_name,
         caller: caller.clone(),
         last_mirror: Mutex::new(None),
         notices: notices_tx,
     });
     spawn_notice_loop(notices_rx);
-        mains,
     // Killing the old one takes this lock too, so it happens after it is released.
     let replaced = SESSIONS.lock().ok().and_then(|mut map| map.insert(caller.key.clone(), session.clone()));
     if let Some(old) = replaced {
@@ -920,13 +926,6 @@ async fn close(caller: &Caller) -> Reply {
 // --- the actions ---------------------------------------------------------------------
 
 impl Page {
-    async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
-        if self.ctl.is_closed() {
-            return Err("the browser session ended".to_string());
-        }
-        let session = self.session();
-        match tokio::time::timeout(CALL_TIMEOUT, self.cdp.call(method, params, Some(&session))).await {
-            Ok(r) => r,
     fn active(&self) -> Result<TabInfo, String> {
         self.tabs.lock().ok().and_then(|t| t.active_tab()).ok_or_else(|| "the browser has no open tab".to_string())
     }
@@ -956,6 +955,13 @@ impl Page {
         }
     }
 
+    async fn call(&self, method: &str, params: Value) -> Result<Value, String> {
+        if self.ctl.is_closed() {
+            return Err("the browser session ended".to_string());
+        }
+        let session = self.session();
+        match tokio::time::timeout(CALL_TIMEOUT, self.cdp.call(method, params, Some(&session))).await {
+            Ok(r) => r,
             Err(_) => Err(format!("{method} did not answer in time")),
         }
     }
@@ -1023,12 +1029,6 @@ fn ref_arg(args: &Value) -> Result<String, String> {
     Ok(r.to_string())
 }
 
-fn stale(v: &Value, r: &str) -> Result<(), String> {
-    if v.get("stale").is_some() {
-        return Err(outline::stale_message(r));
-    }
-    Ok(())
-}
 /// The most tabs one session keeps open.
 pub const MAX_TABS: usize = 8;
 
@@ -1041,18 +1041,24 @@ fn tab_id_arg(args: &Value) -> Result<String, String> {
     Ok(id.to_string())
 }
 
+fn stale(v: &Value, r: &str) -> Result<(), String> {
+    if v.get("stale").is_some() {
+        return Err(outline::stale_message(r));
+    }
+    Ok(())
+}
 
 impl Session {
     async fn dispatch(&self, page: &Page, action: &str, args: &Value, opts: &Options<'_>) -> Result<Done, String> {
         match action {
+            "tab" => self.tab(page, args).await,
+            "upload" => self.upload(page, args, opts.upload).await,
             "snapshot" => self.snapshot(page, args).await,
             "click" => self.click(page, args).await,
             "type" => self.type_text(page, args).await,
             "press" => self.press(page, args).await,
             "select" => self.select(page, args).await,
             "scroll" => self.scroll(page, args).await,
-            "tab" => self.tab(page, args).await,
-            "upload" => self.upload(page, args, opts.upload).await,
             "wait" => self.wait(page, args).await,
             "back" => self.back(page).await,
             "reload" => self.reload(page).await,
@@ -1379,6 +1385,14 @@ impl Session {
         let mut png = base64::engine::general_purpose::STANDARD
             .decode(r["data"].as_str().ok_or("the browser returned no image")?)
             .map_err(|e| format!("the browser returned a bad image: {e}"))?;
+        // A compact picture that is still large is retried at a lower quality.
+        if compact && png.len() > MAX_COMPACT_IMAGE_BYTES {
+            params["quality"] = json!(40);
+            r = page.call("Page.captureScreenshot", params).await?;
+            png = base64::engine::general_purpose::STANDARD
+                .decode(r["data"].as_str().ok_or("the browser returned no image")?)
+                .map_err(|e| format!("the browser returned a bad image: {e}"))?;
+        }
         if png.is_empty() {
             return Err("the browser produced an empty screenshot".to_string());
         }
@@ -1453,20 +1467,6 @@ impl Session {
         Ok(d)
     }
 
-    // --- worded results ----------------------------------------------------------------
-
-    /// The short result plus what the action did to the page.
-    async fn finish(&self, page: &Page, done: Done, mark: u64) -> Reply {
-        let mut text = done.headline.trim().to_string();
-        if let Some(body) = &done.body {
-            if !text.is_empty() {
-                text.push('\n');
-            }
-            text.push_str(body);
-        }
-        let (mut url, mut title) = (String::new(), String::new());
-        if done.status || done.mutated {
-            let m = page.meta().await;
     // --- tabs --------------------------------------------------------------------------
 
     async fn tab(&self, page: &Page, args: &Value) -> Result<Done, String> {
@@ -1613,6 +1613,20 @@ impl Session {
         ))
     }
 
+    // --- worded results ----------------------------------------------------------------
+
+    /// The short result plus what the action did to the page.
+    async fn finish(&self, page: &Page, done: Done, mark: u64) -> Reply {
+        let mut text = done.headline.trim().to_string();
+        if let Some(body) = &done.body {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(body);
+        }
+        let (mut url, mut title) = (String::new(), String::new());
+        if done.status || done.mutated {
+            let m = page.meta().await;
             url = m.0;
             title = m.1;
         }
@@ -1687,14 +1701,6 @@ async fn mirror_shot(cdp: &Cdp, session: &str) -> Option<String> {
     for quality in [60, 35] {
         let call = cdp.call(
             "Page.captureScreenshot",
-        // A compact picture that is still large is retried at a lower quality.
-        if compact && png.len() > MAX_COMPACT_IMAGE_BYTES {
-            params["quality"] = json!(40);
-            r = page.call("Page.captureScreenshot", params).await?;
-            png = base64::engine::general_purpose::STANDARD
-                .decode(r["data"].as_str().ok_or("the browser returned no image")?)
-                .map_err(|e| format!("the browser returned a bad image: {e}"))?;
-        }
             json!({ "format": "jpeg", "quality": quality }),
             Some(session),
         );

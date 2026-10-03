@@ -1585,6 +1585,8 @@ pub async fn fire_post_tool_batch(
     tool_names: Vec<String>,
     allow_network: Option<bool>,
     scope: Option<WorkspaceScope>,
+    // `main` (default) or `subagent`: told to the hook as `FLINT_HOOK_AGENT`.
+    agent: Option<String>,
 ) -> Result<(), AgentToolsError> {
     if tool_names.is_empty() {
         return Ok(());
@@ -1599,9 +1601,10 @@ pub async fn fire_post_tool_batch(
     let network = policy.network.allowed && allow_network.unwrap_or(false);
     // Same confinement the thread's `execute_tool` calls get: sandboxed, with
     // the Flint data folder masked.
-    let _ = crate::hooks::fire_post_tool_batch(
+    let _ = crate::hooks::fire_post_tool_batch_as(
         &root,
         tool_names,
+        agent.as_deref().unwrap_or("main"),
         network,
         false,
         true,

@@ -3426,6 +3426,11 @@ export function CoworkPage() {
         const child = await runSubagent({
           resolved,
           description: req.description,
+          // The child's own tool turns fire the session's `post-tool-batch`
+          // hooks too, tagged `subagent` so a hook can tell them from the
+          // main agent's. Detached and observe-only, like the parent's.
+          onBatchFinished: (names) =>
+            notifyToolBatch(sid, names, 'session', 'subagent'),
           // The same identity the child's dispatched calls carry, for the
           // calls the runner refuses without dispatching.
           activity: () => ({
@@ -4599,13 +4604,13 @@ export function CoworkPage() {
       )
       if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      // The run's agent browser (the `browser` tool) ends with it.
+      void closeBrowserSession(sid)
       // The run is over, so its budget is not outstanding any more. Left
       // behind, it would tell the next run it was resuming this one.
       useCoworkSessions.getState().setRunBudget(sid, null)
       // Nothing can still be running once the turn is over: the streams are
       // closed and the dispatch loop has stopped awaiting them. Settle before
-      // The run's agent browser (the `browser` tool) ends with it.
-      void closeBrowserSession(sid)
       // closing the workflow, so its status is derived from settled children.
       // This run's orphans only — scoped to its own workflow, and leaving a
       // backgrounded shell job alone: the process is still running, and

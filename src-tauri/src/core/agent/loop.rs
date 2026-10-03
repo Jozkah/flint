@@ -3513,9 +3513,16 @@ impl CompositeToolInvoker {
                     .map(str::to_string)
             })
             .collect();
-        let _ = tauri_plugin_agent_tools::hooks::fire_post_tool_batch(
+        // A subagent's turns tell the hook so (`FLINT_HOOK_AGENT`).
+        let agent = if matches!(self.subject, tauri_plugin_agent_tools::subject::Subject::MainAgent) {
+            "main"
+        } else {
+            "subagent"
+        };
+        let _ = tauri_plugin_agent_tools::hooks::fire_post_tool_batch_as(
             &self.project_root,
             names,
+            agent,
             self.allow_network,
             self.allow_home_read,
             self.sandbox,
