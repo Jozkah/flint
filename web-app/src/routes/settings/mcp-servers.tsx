@@ -89,6 +89,8 @@ import { cn } from '@/lib/utils'
 import { Icon } from '@/components/ui/icon'
 
 type ToolsTab = 'servers' | 'routing'
+type ServersView = 'cards' | 'list'
+const SERVERS_VIEW_KEY = 'flint-mcp-servers-view'
 
 /** One bucket a minute over the last 20 minutes, like the design's charts. */
 const CHART_BUCKETS = 20
@@ -217,6 +219,23 @@ function MCPServersDesktop() {
   // Search query to filter the server list by name.
   const [searchQuery, setSearchQuery] = useState('')
   const [tab, setTab] = useState<ToolsTab>('servers')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'on' | 'off'>('all')
+  const [view, setViewState] = useState<ServersView | null>(() => {
+    try {
+      const v = localStorage.getItem(SERVERS_VIEW_KEY)
+      return v === 'cards' || v === 'list' ? v : null
+    } catch {
+      return null
+    }
+  })
+  const setView = (v: ServersView) => {
+    setViewState(v)
+    try {
+      localStorage.setItem(SERVERS_VIEW_KEY, v)
+    } catch {
+      /* the choice just does not persist */
+    }
+  }
   const toolCalls = useEngineActivity((s) => s.toolCalls)
   // Servers the user has expanded; collapsed (compact) is the default so the
   // page stays scannable with many servers installed.
@@ -868,9 +887,16 @@ function MCPServersDesktop() {
     isServerApproved(key, fingerprints[key])
   ).length
   const query = searchQuery.trim().toLowerCase()
-  const filtered = serverEntries.filter(([key]) =>
-    key.toLowerCase().includes(query)
-  )
+  const filtered = serverEntries.filter(([key, config]) => {
+    if (!key.toLowerCase().includes(query)) return false
+    if (statusFilter === 'all') return true
+    const on = snapshotFor(key, config).snapshot.switchOn
+    return statusFilter === 'on' ? on : !on
+  })
+  // With many servers the tall cards bury the page: default to the dense list
+  // until the user has picked a view themselves.
+  const effectiveView: ServersView =
+    view ?? (serverEntries.length > 6 ? 'list' : 'cards')
 
   const settingsRows = (
     <>
@@ -1352,6 +1378,109 @@ function MCPServersDesktop() {
     )
   }
 
+  /** One dense line per server, for when there are too many for cards. */
+  const renderRow = ([key, config]: [string, MCPServerConfig]) => {
+    const { authStatus, snapshot } = snapshotFor(key, config)
+    const toolNames =
+      snapshot.connected || snapshot.enabled ? serverTools[key] : undefined
+    const color = serverColor(serverEntries.findIndex(([k]) => k === key))
+    const idSafe = key.replace(/[^a-zA-Z0-9_-]/g, '_')
+    return (
+      <div
+        key={key}
+        data-testid={`mcp-server-${idSafe}`}
+        className="flex min-w-0 items-center gap-3 border-b border-border px-3 py-2 last:border-b-0"
+        onContextMenu={(e: React.MouseEvent) => {
+          e.preventDefault()
+          setCtxMenu({ key, x: e.clientX, y: e.clientY })
+        }}
+      >
+        <span
+          aria-hidden
+          style={{ ['--c' as string]: color }}
+          className="grid size-[22px] shrink-0 place-items-center rounded-md bg-[color-mix(in_oklab,var(--c)_16%,transparent)] text-[11px] font-bold text-[var(--c)]"
+        >
+          {key.trim().charAt(0).toUpperCase()}
+        </span>
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="min-w-0 truncate text-[13px] text-foreground">
+            {key}
+          </span>
+          <Chip mono className="h-5 shrink-0 uppercase">
+            {config.type || 'stdio'}
+          </Chip>
+          {config.official && <Chip className="h-5 shrink-0">Official</Chip>}
+        </span>
+        <span className="hidden min-w-0 shrink-0 text-xs @min-[40rem]:block">
+          <McpServerStatus
+            compact
+            serverName={key}
+            snapshot={snapshot}
+            toolNames={toolNames}
+            canAuthorize={!!authStatus?.canAuthenticate}
+            onRetry={() => toggleServer(key, true)}
+            onAuthorize={() => void handleAuthorize(key)}
+          />
+        </span>
+        <span className="w-14 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
+          {toolNames
+            ? t('engine:mcp.toolsCount', { count: toolNames.length })
+            : '—'}
+        </span>
+        <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-secondary-foreground">
+          <Switch
+            checked={isServerApproved(key, fingerprints[key])}
+            aria-label={t('mcp-servers:autoApproveServer')}
+            onCheckedChange={(checked) => void handleAutoApprove(key, checked)}
+          />
+          <span className="hidden @min-[48rem]:inline">
+            {t('engine:mcp.autoApprove')}
+          </span>
+        </label>
+        <Switch
+          checked={snapshot.switchOn}
+          loading={!!loadingServers[key] || snapshot.state === 'connecting'}
+          aria-label={t('mcp-servers:connection.toggleLabel', {
+            serverName: key,
+          })}
+          onCheckedChange={(checked) => toggleServer(key, checked)}
+        />
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          className="text-muted-foreground"
+          onClick={() => handleEdit(key)}
+          title={t('mcp-servers:editServer')}
+          aria-label={`${t('mcp-servers:editServer')}: ${key}`}
+        >
+          <Pencil aria-hidden />
+        </Button>
+        <RowMenu
+          label={t('engine:mcp.moreActions', { serverName: key })}
+          items={[
+            {
+              label: t('mcp-servers:serverLog.title', { serverName: key }),
+              icon: <FileText />,
+              onSelect: () => setLogServer(key),
+            },
+            {
+              label: t('mcp-servers:editJson.title', { serverName: key }),
+              icon: <Braces />,
+              onSelect: () => void handleOpenJsonEditor(key),
+            },
+            'separator',
+            {
+              label: t('mcp-servers:deleteServer.title'),
+              icon: <Trash2 />,
+              destructive: true,
+              onSelect: () => handleDeleteClick(key),
+            },
+          ]}
+        />
+      </div>
+    )
+  }
+
   return (
     <Fragment>
       <div className="flex h-full w-full flex-col">
@@ -1458,12 +1587,35 @@ function MCPServersDesktop() {
               </a>
             </span>
             {tab === 'servers' && serverEntries.length > 0 && (
-              <SearchField
-                className="ml-auto w-[220px]"
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder={t('mcp-servers:searchPlaceholder')}
-              />
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                <Segmented<'all' | 'on' | 'off'>
+                  size="sm"
+                  aria-label={t('engine:mcp.filterLabel')}
+                  value={statusFilter}
+                  onValueChange={setStatusFilter}
+                  options={[
+                    { value: 'all', label: t('engine:mcp.filterAll') },
+                    { value: 'on', label: t('engine:mcp.filterOn') },
+                    { value: 'off', label: t('engine:mcp.filterOff') },
+                  ]}
+                />
+                <Segmented<ServersView>
+                  size="sm"
+                  aria-label={t('engine:mcp.viewLabel')}
+                  value={effectiveView}
+                  onValueChange={setView}
+                  options={[
+                    { value: 'cards', label: t('engine:mcp.viewCards') },
+                    { value: 'list', label: t('engine:mcp.viewList') },
+                  ]}
+                />
+                <SearchField
+                  className="w-[220px]"
+                  value={searchQuery}
+                  onChange={setSearchQuery}
+                  placeholder={t('mcp-servers:searchPlaceholder')}
+                />
+              </div>
             )}
           </div>
 
@@ -1499,6 +1651,21 @@ function MCPServersDesktop() {
                 />
               </FrameBody>
             </Frame>
+          ) : effectiveView === 'list' ? (
+            <div className="@container flex flex-col gap-3">
+              <Frame className="motion-safe:animate-rise-in">
+                <FrameBody className="p-0">{filtered.map(renderRow)}</FrameBody>
+              </Frame>
+              <Button
+                variant="outline"
+                size="sm"
+                className="self-start"
+                onClick={() => handleOpenDialog()}
+              >
+                <Plus aria-hidden />
+                {t('mcp-servers:addServer')}
+              </Button>
+            </div>
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-4">
               {filtered.map(renderServer)}

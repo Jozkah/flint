@@ -186,6 +186,7 @@ function stripTurnImages<T extends WithToolImages>(
   if (!turns || !turns.some((t) => t && t.toolImages !== undefined)) return turns
   return turns.map((t) => {
     if (!t || t.toolImages === undefined) return t
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { toolImages: _dropped, ...rest } = t
     return rest as T
   })
