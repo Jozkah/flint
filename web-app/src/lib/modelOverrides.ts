@@ -128,8 +128,11 @@ export function resolveModel<T extends Model>(
 ): T | null | undefined {
   if (!model || !hasOverrides(overrides)) return model
 
-  const settings = model.settings
-  if (!settings) return model
+  // A model a provider listed over the wire has an id, a name and its
+  // capabilities, and no settings block at all. That is not a model that takes
+  // no settings: its reasoning effort, for one, is sent whatever the block
+  // holds. The chat's own values apply to it like to any other.
+  const settings = model.settings ?? {}
 
   let next: typeof settings | null = null
   for (const [key, value] of Object.entries(overrides!)) {
