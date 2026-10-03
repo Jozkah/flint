@@ -85,9 +85,6 @@ git clone https://github.com/Jozkah/flint.git
 cd flint
 corepack enable
 yarn install
-yarn build:tauri:plugin:api
-yarn build:core
-yarn build:extensions
 make build-engine JAN_ENGINE_VARIANT=cpu
 yarn build
 ```
@@ -96,7 +93,7 @@ The installers land in `src-tauri/target/release/bundle/`. On Windows, run the `
 
 Before you run these commands, install the toolchain (Git, Node 20+, Rust, CMake, Ninja and make, plus LLVM and the Visual Studio Build Tools on Windows). The first build needs about 30 GB of disk space.
 
-To run Flint in development instead of building installers, replace the last two lines with `yarn download:bin` and `yarn dev`. That runs without the llama.cpp engine, so local models do not load until you run `make build-engine-dev JAN_ENGINE_VARIANT=cpu` once.
+To run Flint in development instead of building installers, replace the last two lines with `yarn build:extensions`, `yarn download:bin` and `yarn dev`. That runs without the llama.cpp engine, so local models do not load until you run `make build-engine-dev JAN_ENGINE_VARIANT=cpu` once.
 
 [docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
 

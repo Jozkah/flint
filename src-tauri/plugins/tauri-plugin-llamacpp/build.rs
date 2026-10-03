@@ -132,6 +132,17 @@ mod engine {
         let toolchain = if env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default() == "aarch64" {
             "cmake/arm64-windows-llvm.cmake"
         } else {
+            // On MSVC targets clang's `_mm_prefetch` is the builtin, which
+            // takes `const char *`, not the casting macro other targets get.
+            // ggml-cpu's arch/x86/quants.c passes block pointers to it. That
+            // mismatch was a warning up to LLVM 21 and is an error by default
+            // from LLVM 22, so the engine fails to compile with a current
+            // `winget install LLVM.LLVM` while the hosted runner image, still
+            // on LLVM 20, builds it. Passed as a cache entry rather than through CFLAGS so
+            // a build tree left by a failed configure picks it up too; safe
+            // here because the x64 toolchain file sets no C flags of its own
+            // (the arm64 one does, and never compiles that file).
+            cmd.arg("-DCMAKE_C_FLAGS=-Wno-incompatible-pointer-types");
             "cmake/x64-windows-llvm.cmake"
         };
         cmd.arg(format!(
