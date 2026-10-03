@@ -696,6 +696,25 @@ pub struct SubagentRequest {
     /// clear "ran out of turns" status. `None` is [`DEFAULT_CHILD_MAX_TURNS`];
     /// an explicit value is clamped to `1..=MAX_CHILD_MAX_TURNS`.
     pub max_turns: Option<u32>,
+    /// A short name for this errand (3-6 words), shown on its row. Never part
+    /// of the brief the child reads.
+    pub title: Option<String>,
+}
+
+/// Longest a title is kept, in characters.
+pub(crate) const MAX_TITLE_CHARS: usize = 60;
+
+/// A title as the model gave it: one line, trimmed, bounded; `None` when blank.
+pub(crate) fn clean_title(raw: Option<&str>) -> Option<String> {
+    let one = raw?.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.is_empty() {
+        return None;
+    }
+    if one.chars().count() <= MAX_TITLE_CHARS {
+        return Some(one);
+    }
+    let cut: String = one.chars().take(MAX_TITLE_CHARS - 1).collect();
+    Some(format!("{}\u{2026}", cut.trim_end()))
 }
 
 /// Turns a child may take when the dispatch does not say. A runaway child (a
@@ -1355,29 +1374,123 @@ pub(crate) struct ParentRun {
     pub(crate) model: String,
     pub(crate) budget_remaining: Option<u64>,
     pub(crate) send_reasoning: bool,
+    /// The Subagents settings' model choices, read from the data folder the
+    /// desktop app writes them to. `Default` is "inherit".
+    pub(crate) model_settings: ModelSettings,
+}
+
+/// The Subagents settings a headless run can honour: only the model. Assistants
+/// and work profiles exist in the desktop app alone; Rust has neither.
+///
+/// Read from the same `settings.json` the desktop app persists the card to
+/// (key [`SUBAGENT_SETTINGS_KEY`]), so `jan` / `flint` runs on the same machine
+/// follow what the user chose there. The model name is sent to the provider the
+/// run itself uses, so a model that lives on another provider will not resolve
+/// here.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ModelSettings {
+    /// Whether an argument the calling model supplied outranks the settings.
+    /// Rust's `dispatch_subagent` has no model argument, so it is recorded only.
+    pub(crate) let_model_choose: bool,
+    /// The model for every subagent, when set.
+    pub(crate) global: Option<String>,
+    /// The model per role (or saved subagent) name.
+    pub(crate) roles: std::collections::HashMap<String, String>,
+}
+
+impl Default for ModelSettings {
+    fn default() -> Self {
+        Self {
+            let_model_choose: true,
+            global: None,
+            roles: std::collections::HashMap::new(),
+        }
+    }
+}
+
+/// The key the desktop app's Subagents card is persisted under.
+pub(crate) const SUBAGENT_SETTINGS_KEY: &str = "flint-subagent-settings";
+
+/// A model id from the settings blob: a non-empty single line of sane length,
+/// else `None` (inherit).
+fn valid_model_id(value: Option<&serde_json::Value>) -> Option<String> {
+    let id = value?.get("model")?.get("id")?.as_str()?.trim();
+    if id.is_empty() || id.chars().count() > 200 || id.chars().any(char::is_control) {
+        return None;
+    }
+    Some(id.to_string())
+}
+
+/// Parse the persisted blob (`{"state":{...},"version":n}` as a string). Anything
+/// missing or malformed reads as the default, never an error: a bad settings
+/// file must not stop a run.
+pub(crate) fn parse_model_settings(raw: Option<&str>) -> ModelSettings {
+    let Some(raw) = raw else {
+        return ModelSettings::default();
+    };
+    let Ok(blob) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return ModelSettings::default();
+    };
+    let Some(state) = blob.get("state") else {
+        return ModelSettings::default();
+    };
+    let mut out = ModelSettings {
+        let_model_choose: state
+            .get("letModelChoose")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        global: valid_model_id(state.get("global")),
+        roles: std::collections::HashMap::new(),
+    };
+    if let Some(roles) = state.get("roles").and_then(|v| v.as_object()) {
+        for (name, pick) in roles {
+            if name.is_empty() || name.chars().count() > 100 {
+                continue;
+            }
+            if let Some(id) = valid_model_id(Some(pick)) {
+                out.roles.insert(name.clone(), id);
+            }
+        }
+    }
+    out
+}
+
+/// The settings as the desktop app last wrote them.
+pub(crate) fn load_model_settings() -> ModelSettings {
+    parse_model_settings(
+        crate::core::app::settings_store::settings_get(SUBAGENT_SETTINGS_KEY.to_string()).as_deref(),
+    )
 }
 
 /// The model a child runs on. Mirrors `resolveSubagentChoice` in the web app
 /// (`web-app/src/lib/subagentSettings.ts`), so every spawn path orders the same
-/// four sources the same way:
+/// sources the same way:
 ///
 ///   an explicit argument the calling model supplied
-///     > a routing rule written about this subagent by name (the Rust side's
-///       per-role setting, AH-194)
+///     > a routing rule written about this subagent by name (AH-194)
+///     > the role's setting
 ///     > the definition's own model
+///     > the global setting
 ///     > the parent's model.
 ///
-/// Only the model is decided here: a child's tools and permissions come from
+/// Rust has one source the web app lacks, the definition's own model, which sits
+/// between the role and the global setting: it is more specific than "all
+/// subagents" and less than a choice made for this role. Only the model is
+/// decided here: a child's tools and permissions come from
 /// `intersect_allowed_tools` and the parent's own gate, never from this.
 pub(crate) fn choose_child_model(
     requested: Option<&str>,
     rule: Option<&str>,
+    role_setting: Option<&str>,
     definition: Option<&str>,
+    global_setting: Option<&str>,
     parent: &str,
 ) -> String {
     requested
         .or(rule)
+        .or(role_setting)
         .or(definition)
+        .or(global_setting)
         .unwrap_or(parent)
         .to_string()
 }
@@ -1406,7 +1519,14 @@ pub(crate) fn child_body(
             model: &fallback,
         },
     );
-    let model = choose_child_model(None, rule.as_deref(), resolved.definition.model.as_deref(), &parent.model);
+    let model = choose_child_model(
+        None,
+        rule.as_deref(),
+        parent.model_settings.roles.get(&resolved.definition.name).map(String::as_str),
+        resolved.definition.model.as_deref(),
+        parent.model_settings.global.as_deref(),
+        &parent.model,
+    );
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
     // AH-100: a fork starts from a copy of the parent's conversation; the
@@ -1732,6 +1852,15 @@ pub(crate) fn spawn_subagent(
     }));
     let task_phase = phase.clone();
     let entry_description = req.description.clone();
+    // Before the queued/started event, so a consumer has the name by the time
+    // it draws the row.
+    if let Some(title) = req.title.clone() {
+        let _ = events.send(StreamEvent::SubagentTitle {
+            run_id: run_id.clone(),
+            name: name.clone(),
+            title,
+        });
+    }
     if waiting > 0 {
         let _ = events.send(StreamEvent::SubagentQueued {
             run_id: run_id.clone(),
@@ -2032,6 +2161,7 @@ pub fn subagent_tool_schemas(
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "title": { "type": "string", "description": "A short name for this errand, 3-6 words, shown on its row (for example 'Map the lexer')." },
                         "subagent_name": { "type": "string", "description": "Name of a saved subagent to run. For a one-off (no saved definition), pick a short descriptive name here AND pass system_prompt in the same call -- an unrecognized name with no system_prompt fails." },
                         "description": { "type": "string", "description": "The task for the subagent, as its sole user message. Include everything it needs; it does not see this conversation." },
                         "system_prompt": { "type": "string", "description": "Required alongside subagent_name whenever that name isn't already saved -- defines the one-off subagent's role. Omit only when subagent_name matches a saved subagent." },
@@ -2161,6 +2291,7 @@ fn optional_tool_list(args: &serde_json::Value) -> Option<Vec<String>> {
 /// Parse a `dispatch_subagent` tool-call argument object.
 pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, SubagentError> {
     Ok(SubagentRequest {
+        title: clean_title(args.get("title").and_then(|v| v.as_str())),
         subagent_name: required_str(args, "subagent_name")?,
         description: required_str(args, "description")?,
         allowed_tools: optional_tool_list(args),
@@ -2384,13 +2515,104 @@ pub fn subagent_dir_for(
 mod tests {
 
     #[test]
-    fn child_model_precedence_matches_the_web_app() {
-        // argument > rule > definition > parent
-        assert_eq!(choose_child_model(Some("asked"), Some("rule"), Some("def"), "parent"), "asked");
-        assert_eq!(choose_child_model(None, Some("rule"), Some("def"), "parent"), "rule");
-        assert_eq!(choose_child_model(None, None, Some("def"), "parent"), "def");
-        assert_eq!(choose_child_model(None, None, None, "parent"), "parent");
+    fn a_title_is_one_trimmed_bounded_line_and_blank_is_none() {
+        assert_eq!(clean_title(Some("  Map   the\nlexer ")).as_deref(), Some("Map the lexer"));
+        assert_eq!(clean_title(Some("   ")), None);
+        assert_eq!(clean_title(None), None);
+        let long = clean_title(Some(&"x".repeat(200))).unwrap();
+        assert_eq!(long.chars().count(), MAX_TITLE_CHARS);
+        assert!(long.ends_with('\u{2026}'));
     }
+
+    #[test]
+    fn dispatch_args_carry_an_optional_title_and_the_schema_offers_it() {
+        let with = parse_dispatch_args(&serde_json::json!({
+            "subagent_name": "r", "description": "d", "title": "Map the lexer"
+        }))
+        .unwrap();
+        assert_eq!(with.title.as_deref(), Some("Map the lexer"));
+        let without = parse_dispatch_args(&serde_json::json!({ "subagent_name": "r", "description": "d" })).unwrap();
+        assert_eq!(without.title, None);
+        let schemas = subagent_tool_schemas(&SubagentRegistry::default(), 3);
+        let dispatch = schemas
+            .iter()
+            .find(|s| s["function"]["name"] == "dispatch_subagent")
+            .unwrap();
+        assert!(dispatch["function"]["parameters"]["properties"]["title"].is_object());
+        assert!(!dispatch["function"]["parameters"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "title"));
+    }
+
+    #[test]
+    fn child_model_precedence_matches_the_web_app() {
+        // argument > rule > role > definition > global > parent
+        let pick = |req, rule, role, def, global| choose_child_model(req, rule, role, def, global, "parent");
+        assert_eq!(pick(Some("asked"), Some("rule"), Some("role"), Some("def"), Some("global")), "asked");
+        assert_eq!(pick(None, Some("rule"), Some("role"), Some("def"), Some("global")), "rule");
+        assert_eq!(pick(None, None, Some("role"), Some("def"), Some("global")), "role");
+        assert_eq!(pick(None, None, None, Some("def"), Some("global")), "def");
+        assert_eq!(pick(None, None, None, None, Some("global")), "global");
+        assert_eq!(pick(None, None, None, None, None), "parent");
+    }
+
+    #[test]
+    fn settings_parse_the_blob_the_desktop_app_persists_and_default_on_anything_odd() {
+        let blob = serde_json::json!({
+            "state": {
+                "letModelChoose": false,
+                "global": { "model": { "provider": "p", "id": "cheap" }, "workProfile": "review" },
+                "roles": {
+                    "explorer": { "model": { "provider": "p", "id": "fast" } },
+                    "tester": { "workProfile": "debug" },
+                    "bad": { "model": { "id": "  " } }
+                }
+            },
+            "version": 0
+        })
+        .to_string();
+        let s = parse_model_settings(Some(&blob));
+        assert!(!s.let_model_choose);
+        assert_eq!(s.global.as_deref(), Some("cheap"));
+        assert_eq!(s.roles.get("explorer").map(String::as_str), Some("fast"));
+        // A role with no model, or a blank one, inherits.
+        assert!(!s.roles.contains_key("tester"));
+        assert!(!s.roles.contains_key("bad"));
+        for odd in [None, Some(""), Some("not json"), Some("[]"), Some("{\"state\": 3}"), Some("{\"state\":{\"global\":{\"model\":{\"id\":\"a\\nb\"}}}}")] {
+            let s = parse_model_settings(odd);
+            assert_eq!(s.global, None, "{odd:?}");
+            assert!(s.let_model_choose, "{odd:?}");
+        }
+    }
+
+    #[test]
+    fn child_body_follows_the_persisted_model_settings_for_its_role() {
+        let mut parent = ParentRun {
+            routing: Vec::new(),
+            conversation: None,
+            model: "big".to_string(),
+            budget_remaining: None,
+            send_reasoning: true,
+            model_settings: ModelSettings::default(),
+        };
+        parent.model_settings.global = Some("global-model".into());
+        parent.model_settings.roles.insert("reviewer".into(), "role-model".into());
+        let resolved = resolve_dispatch(
+            &registry_with("reviewer", None),
+            &req("reviewer", None),
+            &ToolPermissions::allow_all(),
+        )
+        .unwrap();
+        let body = child_body(&resolved, "d", &parent, None, None);
+        assert_eq!(body["model"], "role-model");
+        // The settings choose a model; they never add a tool.
+        assert!(body.get("allowed_tools").is_none() || body["allowed_tools"] == serde_json::json!(resolved.allowed_tools));
+        parent.model_settings.roles.clear();
+        assert_eq!(child_body(&resolved, "d", &parent, None, None)["model"], "global-model");
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
@@ -3205,6 +3427,7 @@ mod tests {
             system_prompt: None,
             isolate: None,
             max_turns: None,
+            title: None,
         }
     }
 
@@ -3217,6 +3440,7 @@ mod tests {
             model: "m".to_string(),
             budget_remaining: None,
             send_reasoning: true,
+            model_settings: ModelSettings::default(),
         }
     }
 
@@ -3268,6 +3492,7 @@ mod tests {
             fork_context: false,
             durable: false,
             max_turns: None,
+            title: None,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");

@@ -63,6 +63,9 @@ export class RustSubagentFeed {
     return taskIdFor(this.ctx.sessionId, this.ctx.runId, runId)
   }
 
+  /** Titles that arrived before their row existed. */
+  private readonly titles = new Map<string, string>()
+
   private ensure(runId: string, name: string, task?: string) {
     const store = useCoworkActivity.getState()
     if (store.tasks[this.id(runId)]) return
@@ -71,6 +74,7 @@ export class RustSubagentFeed {
       {
         callId: runId,
         agentName: name,
+        title: this.titles.get(runId),
         description: task ? redactSecrets(task) : undefined,
         model: this.ctx.model,
         background: true,
@@ -93,6 +97,13 @@ export class RustSubagentFeed {
     if (this.log.length > MAX_FEED_LOG) this.log.splice(0, this.log.length - MAX_FEED_LOG)
     const store = useCoworkActivity.getState()
     switch (ev.type) {
+      case 'subagent_title': {
+        const title = redactSecrets(ev.title).trim()
+        if (!title) return
+        this.titles.set(ev.run_id, title)
+        if (store.tasks[this.id(ev.run_id)]) store.patchTask(this.id(ev.run_id), { title })
+        return
+      }
       case 'subagent_queued': {
         this.ensure(ev.run_id, ev.name)
         store.patchTask(this.id(ev.run_id), { status: 'queued', waiting: ev.waiting })

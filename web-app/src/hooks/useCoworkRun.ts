@@ -43,6 +43,7 @@ export type StreamEvent =
   | { type: 'ask_request'; request_id: string; request: AskRequestPayload }
   | { type: 'subagent_queued'; run_id: string; name: string; waiting: number }
   | { type: 'subagent_start'; run_id: string; name: string; task?: string }
+  | { type: 'subagent_title'; run_id: string; name: string; title: string }
   | { type: 'subagent_end'; run_id: string; name: string; usage?: Usage | null }
   | {
       type: 'subagent_finished'

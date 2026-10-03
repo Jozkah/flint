@@ -2266,6 +2266,7 @@ impl CompositeToolInvoker {
                     model: ctx.model_id.clone(),
                     budget_remaining: ctx.max_session_tokens,
                     send_reasoning: ctx.send_reasoning,
+                    model_settings: crate::core::agent::subagent::load_model_settings(),
                 };
                 // Every reviewer is dispatched before any is awaited, so they
                 // work at the same time and none waits on another's answer.
@@ -2280,6 +2281,7 @@ impl CompositeToolInvoker {
                         fork_context: false,
                         durable: false,
                         max_turns: None,
+                        title: None,
                     };
                     let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
                     dispatched.push((reviewer.clone(), run));
@@ -2880,6 +2882,7 @@ impl CompositeToolInvoker {
                             model: ctx.model_id.clone(),
                             budget_remaining: ctx.max_session_tokens,
                             send_reasoning: ctx.send_reasoning,
+                            model_settings: crate::core::agent::subagent::load_model_settings(),
                         },
                     ) {
                         Ok(run_id) => {
@@ -2918,6 +2921,7 @@ impl CompositeToolInvoker {
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
                         send_reasoning: ctx.send_reasoning,
+                        model_settings: crate::core::agent::subagent::load_model_settings(),
                     },
                     &self.events,
                 ) {

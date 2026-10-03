@@ -174,6 +174,15 @@ pub enum StreamEvent {
         task: Option<String>,
         waiting: u32,
     },
+    /// The short name the dispatch gave an errand, sent before its
+    /// `SubagentQueued` or `SubagentStart`. Its own event so those keep their
+    /// shape for the consumers that match them; a dispatch with no title sends
+    /// none.
+    SubagentTitle {
+        run_id: String,
+        name: String,
+        title: String,
+    },
     /// A backgrounded subagent run finished (success or error). Pairs with the
     /// `SubagentStart` of the same `run_id`.
     SubagentEnd { run_id: String, name: String },
@@ -520,6 +529,14 @@ pub(crate) mod tests {
                 },
             ),
             (
+                "SubagentTitle",
+                StreamEvent::SubagentTitle {
+                    run_id: "r1".into(),
+                    name: "scout".into(),
+                    title: "Map the lexer".into(),
+                },
+            ),
+            (
                 "SubagentEnd",
                 StreamEvent::SubagentEnd {
                     run_id: "r1".into(),
@@ -705,6 +722,7 @@ pub(crate) mod tests {
             | StreamEvent::ToolResult { .. }
             | StreamEvent::SubagentStart { .. }
             | StreamEvent::SubagentQueued { .. }
+            | StreamEvent::SubagentTitle { .. }
             | StreamEvent::SubagentEnd { .. }
             | StreamEvent::SubagentFinished { .. }
             | StreamEvent::Subagent { .. }

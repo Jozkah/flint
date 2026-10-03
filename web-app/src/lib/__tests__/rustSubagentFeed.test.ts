@@ -36,6 +36,19 @@ beforeEach(() => {
 })
 
 describe('RustSubagentFeed', () => {
+  it('titles the row from a title that arrives before or after it, never from the role', () => {
+    const early = new RustSubagentFeed(ctx)
+    early.apply({ type: 'subagent_title', run_id: 'e', name: 'explorer', title: 'Map the lexer' })
+    early.apply({ type: 'subagent_start', run_id: 'e', name: 'explorer', task: 'Find the loader. Then list tests.' })
+    expect(task('e').title).toBe('Map the lexer')
+    expect(task('e').agentName).toBe('explorer')
+    const late = new RustSubagentFeed(ctx)
+    late.apply({ type: 'subagent_start', run_id: 'l', name: 'explorer', task: 'Find the loader. Then list tests.' })
+    expect(task('l').title).toBe('Find the loader')
+    late.apply({ type: 'subagent_title', run_id: 'l', name: 'explorer', title: 'Loader hunt' })
+    expect(task('l').title).toBe('Loader hunt')
+  })
+
   it('records a dispatched child as a background task with its brief and model', () => {
     const feed = new RustSubagentFeed(ctx)
     feed.apply({ type: 'subagent_start', run_id: 'r', name: 'explorer', task: 'find the loader' })

@@ -2811,6 +2811,7 @@ pub async fn run_durable_subagent(
         fork_context: false,
         durable: true,
         max_turns: spec.max_turns,
+        title: None,
     };
     let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
         .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
@@ -2821,6 +2822,7 @@ pub async fn run_durable_subagent(
         model: spec.model.clone(),
         budget_remaining: spec.max_session_tokens,
         send_reasoning: spec.send_reasoning,
+        model_settings: sub::load_model_settings(),
     };
     let mut body = sub::child_body(&resolved, &spec.description, &parent, None, spec.max_turns);
     if spec.max_turns.is_none() {
@@ -3423,6 +3425,9 @@ async fn print_event(
         }
         StreamEvent::SubagentQueued { name, waiting, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] queued ({waiting} waiting)")))
+        }
+        StreamEvent::SubagentTitle { name, title, .. } => {
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] {title}")))
         }
         StreamEvent::SubagentEnd { name, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))

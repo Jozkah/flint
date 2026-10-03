@@ -2117,6 +2117,8 @@ struct App {
     /// Read when its `SubagentEnd` closes the panel, so the summary row can say
     /// the cost and a turn-limit stop instead of only "finished".
     subagent_finish: std::collections::HashMap<String, String>,
+    /// The short name a dispatch gave each child, by run id (`SubagentTitle`).
+    subagent_titles: std::collections::HashMap<String, String>,
     /// Tool calls whose arguments are still streaming. Rendered live -- a file
     /// body previews as it arrives, anything else gets a throbber -- and
     /// cleared on the matching `ToolCall` (full args) or on the next `Step`,
@@ -2559,6 +2561,7 @@ impl App {
             subagent_blocks: Vec::new(),
             awaiting: Vec::new(),
             subagent_finish: std::collections::HashMap::new(),
+            subagent_titles: std::collections::HashMap::new(),
             starting: Vec::new(),
             spinner_frame: 0,
             last_spinner_advance: Instant::now(),
@@ -5387,7 +5390,15 @@ impl App {
                     waiting,
                 });
             }
+            StreamEvent::SubagentTitle { run_id, title, .. } => {
+                self.subagent_titles.insert(run_id, title);
+            }
             StreamEvent::SubagentEnd { run_id, name } => {
+                // "explorer: Map the lexer" when the dispatch named the errand.
+                let name = match self.subagent_titles.remove(&run_id) {
+                    Some(title) => format!("{name}: {title}"),
+                    None => name,
+                };
                 let calls = self
                     .subagents
                     .iter()
@@ -24026,6 +24037,29 @@ mod tests {
         assert!(text.contains("subagent r-limit finished (0 tool calls, stopped at its turn limit)"), "{text}");
         assert!(text.contains("subagent r-bare finished (0 tool calls)"), "{text}");
         assert!(app.subagent_finish.is_empty(), "notes are consumed, not leaked");
+    }
+
+    /// A dispatch that named its errand puts the name on the summary row.
+    #[test]
+    fn a_titled_subagent_row_names_its_errand() {
+        let mut app = test_app();
+        app.apply(StreamEvent::SubagentTitle {
+            run_id: "r1".into(),
+            name: "explorer".into(),
+            title: "Map the lexer".into(),
+        });
+        app.apply(StreamEvent::SubagentStart {
+            run_id: "r1".into(),
+            name: "explorer".into(),
+            task: None,
+        });
+        app.apply(StreamEvent::SubagentEnd {
+            run_id: "r1".into(),
+            name: "explorer".into(),
+        });
+        let text = transcript_text(&app);
+        assert!(text.contains("subagent explorer: Map the lexer finished"), "{text}");
+        assert!(app.subagent_titles.is_empty(), "titles are consumed, not leaked");
     }
 
     fn wrap(run_id: &str, name: &str, event: StreamEvent) -> StreamEvent {

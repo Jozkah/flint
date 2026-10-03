@@ -407,6 +407,7 @@ mod tests {
             fork_context: fork,
             durable: true,
             max_turns: None,
+            title: None,
         }
     }
 
