@@ -141,3 +141,37 @@ fn uninstall_never_deletes_the_install_directory_recursively() {
         );
     }
 }
+
+/// The publisher rename moved the registry key that remembers the install
+/// location, so upgrades landed in a new directory and left the old copy
+/// (and the taskbar pin to it) behind. Both templates must retire that copy,
+/// and must not take its directory out recursively (#293).
+#[test]
+fn the_install_left_behind_by_the_publisher_rename_is_retired() {
+    for name in [
+        "tauri.bundle.windows.nsis.template",
+        "tauri.bundle.windows.nsis.base.template",
+    ] {
+        let template = repo_file(name);
+        let body = macro_body(&template, "RetireLegacyInstall");
+        assert!(
+            section_body(&template, "Install").contains("!insertmacro RetireLegacyInstall"),
+            "{name}: Section Install never retires the legacy install"
+        );
+        assert!(
+            body.contains("${AndIf} $4 != $INSTDIR"),
+            "{name}: the legacy cleanup must skip the directory being installed to"
+        );
+        assert!(
+            body.contains("SetShortcutTarget \"${TASKBARPIN}\""),
+            "{name}: the taskbar pin to the old copy is not repointed"
+        );
+        for line in body.lines().map(str::trim) {
+            let recursive = line.starts_with("RMDir") && line.split_whitespace().any(|w| w == "/r");
+            assert!(
+                !(recursive && line.ends_with("\"$4\"")),
+                "{name}: the legacy directory is deleted recursively: {line}"
+            );
+        }
+    }
+}

@@ -129,6 +129,19 @@ fn route_source(target: Ipv4Addr) -> Option<Ipv4Addr> {
     }
 }
 
+/// The `tailscale` command line. On Windows it is a console program, so
+/// without this flag every call from the app opens a console window.
+pub(crate) fn tailscale_command() -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut cmd = std::process::Command::new("tailscale");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
 /// This machine's Tailscale IPv4. 100.100.100.100 is Tailscale's own resolver
 /// and only routes through the tailnet interface, so the source address the
 /// OS picks for it is the tailnet address. Falls back to `tailscale ip -4`.
@@ -138,7 +151,7 @@ pub fn detect_tailscale_ip() -> Option<Ipv4Addr> {
     {
         return Some(ip);
     }
-    let out = std::process::Command::new("tailscale")
+    let out = tailscale_command()
         .args(["ip", "-4"])
         .output()
         .ok()?;
