@@ -401,6 +401,10 @@ export type SubagentResult = {
   output: string
   usage: Usage | null
   isError?: boolean
+  /** The answer was shortened by `capSubagentOutput`. */
+  capped?: boolean
+  /** The child used its whole step budget without finishing. */
+  stoppedAtLimit?: boolean
   sessionTokens: number
 }
 
@@ -601,14 +605,20 @@ export async function runSubagent(
         usage: outcome.usage,
         isError: true,
         sessionTokens,
+        // The step budget gets its own label in the Tasks panel; the other
+        // limits are the run's, not the child's.
+        ...(outcome.stoppedBy === 'steps' ? { stoppedAtLimit: true } : {}),
+        ...(finalText && capSubagentOutput(finalText) !== finalText
+          ? { capped: true }
+          : {}),
       }
     }
+    const capped = finalText ? capSubagentOutput(finalText) : ''
     return {
-      output: finalText
-        ? capSubagentOutput(finalText)
-        : '(the subagent returned no answer)',
+      output: finalText ? capped : '(the subagent returned no answer)',
       usage: outcome.usage,
       sessionTokens,
+      ...(finalText && capped !== finalText ? { capped: true } : {}),
     }
   } finally {
     release()

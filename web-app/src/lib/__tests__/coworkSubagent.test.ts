@@ -507,6 +507,28 @@ describe('runSubagent', () => {
       expect(out).not.toMatch(/saved at|\.md/)
     })
 
+    it('flags a shortened answer and a step-budget stop for the Tasks panel', async () => {
+      mockSteps([textStep('y'.repeat(MAX_SUBAGENT_RESULT_CHARS + 10))])
+      const long = await runSubagent(baseOpts())
+      expect(long.capped).toBe(true)
+      expect(long.stoppedAtLimit).toBeUndefined()
+
+      streamText.mockReset()
+      mockSteps([textStep('short')])
+      const short = await runSubagent(baseOpts())
+      expect(short.capped).toBeUndefined()
+
+      streamText.mockReset()
+      mockSteps(
+        Array.from({ length: 4 }, (_, i) =>
+          toolStep(`c${i}`, 'read', { path: `p${i}` })
+        )
+      )
+      const stopped = await runSubagent(baseOpts({ maxSteps: 2 }))
+      expect(stopped.stoppedAtLimit).toBe(true)
+      expect(stopped.isError).toBe(true)
+    })
+
     it('never splits a surrogate pair', () => {
       const text = '😀'.repeat(MAX_SUBAGENT_RESULT_CHARS + 2000)
       const out = capSubagentOutput(text)

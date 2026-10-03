@@ -148,6 +148,10 @@ export type ActivityTask = {
   output?: string
   /** `output` is the end of something longer; the rest was not kept. */
   outputTruncated?: boolean
+  /** The child's answer was shortened (middle cut) before the parent got it. */
+  resultCapped?: boolean
+  /** The child ran out of its step budget instead of finishing. */
+  stoppedAtLimit?: boolean
   /** A shell command's exit code, when its result reported one. */
   exitCode?: number
   /** The command was killed by a signal rather than exiting. */

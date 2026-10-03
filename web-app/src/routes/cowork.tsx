@@ -3406,10 +3406,16 @@ export function CoworkPage() {
        * the status it has, because the guard in `updateTask` refuses
        * to overwrite a finished one.
        */
-      const settleChild = (isError: boolean, output?: string) => {
+      const settleChild = (
+        isError: boolean,
+        output?: string,
+        flags?: { capped?: boolean; stoppedAtLimit?: boolean }
+      ) => {
         const aborted = childAbort.signal.aborted
         useCoworkActivity.getState().patchTask(childTaskId, {
           ...(output != null ? { output } : {}),
+          ...(flags?.capped ? { resultCapped: true } : {}),
+          ...(flags?.stoppedAtLimit ? { stoppedAtLimit: true } : {}),
           status: aborted
             ? ('cancelled' as const)
             : isError
@@ -3620,7 +3626,10 @@ export function CoworkPage() {
           },
         })
         useCoworkRun.getState().attachSubagentOutput(sid, callId, child.output)
-        settleChild(Boolean(child.isError), child.output)
+        settleChild(Boolean(child.isError), child.output, {
+          capped: child.capped,
+          stoppedAtLimit: child.stoppedAtLimit,
+        })
         return { output: child.output, isError: child.isError }
       } finally {
         controller.signal.removeEventListener('abort', stopChild)
