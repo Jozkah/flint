@@ -896,6 +896,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private announcedCompaction: CompactionRecord | null = null
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null
+  /** HTTP status of the failure `onError` last reported, for the fallback decision. */
+  private lastFailureStatus: number | undefined
   /** One a failed attempt made, for the retry's reply to announce. */
   private carriedCompaction: CompactionRecord | null = null
   public model: LanguageModel | null = null
@@ -1926,6 +1928,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const attempt = async (): Promise<ReadableStream<UIMessageChunk>> => {
       let failure: unknown
       let thrown = false
+      this.lastFailureStatus = undefined
       const held: UIMessageChunk[] = []
       let reader: ReadableStreamDefaultReader<UIMessageChunk> | undefined
       try {
@@ -1938,7 +1941,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           if (done) break
           held.push(value)
           if (value.type === 'error') {
-            failure = value.errorText
+            // The chunk carries only the message; `onError` kept the HTTP
+            // status of the same failure, which a reply like "The server had
+            // an error" does not spell out.
+            failure =
+              this.lastFailureStatus === undefined
+                ? value.errorText
+                : Object.assign(new Error(value.errorText), {
+                    statusCode: this.lastFailureStatus,
+                  })
             break
           }
           if (!/^(start|start-step|message-metadata)$/.test(value.type)) break
@@ -2658,6 +2669,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
         }
         const unwrapped = unwrapRetryError(error)
+        const failed = unwrapped as { statusCode?: unknown; status?: unknown } | null
+        const httpStatus = [failed?.statusCode, failed?.status].find(
+          (v): v is number => typeof v === 'number'
+        )
+        // The error can be reported again, bare, by a stream wrapper; keep the
+        // status the first report carried.
+        if (httpStatus !== undefined) this.lastFailureStatus = httpStatus
         const rawMessage = unwrapped == null
           ? 'Unknown error'
           : typeof unwrapped === 'string'

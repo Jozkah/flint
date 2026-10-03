@@ -129,6 +129,18 @@ describe('fallback chain in CustomChatTransport.sendMessages', () => {
     expect(cancelled).toHaveBeenCalledTimes(1)
   })
 
+  it('uses the HTTP status onError kept when the error text does not state it', async () => {
+    t.script = [
+      async () => {
+        ;(t as unknown as { lastFailureStatus: number }).lastFailureStatus = 500
+        return streamOf(failure('The server had an error while processing your request'))
+      },
+      async () => streamOf(reply),
+    ]
+    expect(await drain(await t.sendMessages(options()))).toEqual(reply)
+    expect(t.seen.map((s) => s.model)).toEqual(['main', 'local-b'])
+  })
+
   it('retries when sendOnce throws', async () => {
     t.script = [
       async () => {
