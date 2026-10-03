@@ -115,6 +115,8 @@ const NO_EFFORT: EffortProfile = {
   canDisable: false,
 }
 const THREE_LEVELS: EffortLevel[] = ['low', 'medium', 'high']
+/** vLLM's Flash-Next template takes these and answers `high` with a 400. */
+const LOW_MEDIUM_XHIGH: EffortLevel[] = ['low', 'medium', 'xhigh']
 
 /**
  * OpenAI: `xhigh` arrived with gpt-5.2 and the codex-max models. The models
@@ -139,7 +141,8 @@ function openaiProfile(modelId: string): EffortProfile {
 /**
  * A remote OpenAI-compatible reasoning model. No provider API reports which
  * efforts a model accepts, so this is what each family is known to take:
- * gpt-oss stops at `high`; the rest of the compatible hosts (OpenRouter,
+ * gpt-oss stops at `high`, and a Flash-Next template on vLLM skips `high`; the
+ * rest of the compatible hosts (OpenRouter,
  * vLLM, LiteLLM) normalise `xhigh` themselves. `medium` is the default
  * everywhere. Qwen3 can be told not to think (`enable_thinking: false`, which
  * llama.cpp, vLLM and SGLang all read); the others have no such switch common
@@ -148,7 +151,11 @@ function openaiProfile(modelId: string): EffortProfile {
 function compatibleProfile(modelId: string): EffortProfile {
   const id = modelId.toLowerCase()
   return {
-    levels: /gpt-?oss/.test(id) ? THREE_LEVELS : EFFORT_LEVELS,
+    levels: /gpt-?oss/.test(id)
+      ? THREE_LEVELS
+      : /flash-next/.test(id)
+        ? LOW_MEDIUM_XHIGH
+        : EFFORT_LEVELS,
     recommended: 'medium',
     canDisable: /qwen-?3/.test(id),
   }

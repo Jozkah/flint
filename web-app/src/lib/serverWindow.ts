@@ -2,10 +2,13 @@
  * The window a local OpenAI-compatible server is running a model in.
  *
  * Nothing in a chat records it, and a custom server rarely names it in its
- * model list, so a conversation's context card had no size to divide by. A
- * llama-server says it at `/props` (`default_generation_settings.n_ctx`), which
- * is the number that matters: the window the server launched with, which can
- * be far below what the model was trained for.
+ * model list, so a conversation's context card had no size to divide by. Two
+ * servers answer it, in different places:
+ *
+ * - llama-server, at `/props` (`default_generation_settings.n_ctx`): the window
+ *   it launched with, which can be far below what the model was trained for.
+ * - vLLM, which has no `/props`, in its model list: `GET /v1/models`, each
+ *   entry's `max_model_len`.
  *
  * Only asked of an endpoint on this machine or this network. A hosted provider
  * is not probed, and a request is never made to an address the user did not
@@ -25,6 +28,22 @@ export function propsUrl(baseUrl: string | null | undefined): string | null {
   }
 }
 
+/**
+ * The server's model list, from the base URL as typed: `…/v1` gives
+ * `…/v1/models`, and a bare address gets the `/v1` an OpenAI-compatible server
+ * serves it under.
+ */
+export function modelsUrl(baseUrl: string | null | undefined): string | null {
+  if (!baseUrl) return null
+  try {
+    const url = new URL(baseUrl)
+    const path = url.pathname.replace(/\/+$/, '')
+    return `${url.origin}${path || '/v1'}/models`
+  } catch {
+    return null
+  }
+}
+
 /** The window out of a `/props` body, or null when it names none. */
 export function parseServerWindow(props: unknown): number | null {
   if (!props || typeof props !== 'object') return null
@@ -35,6 +54,35 @@ export function parseServerWindow(props: unknown): number | null {
       ? usableContextValue((defaults as Record<string, unknown>).n_ctx)
       : null
   return fromDefaults ?? usableContextValue(body.n_ctx)
+}
+
+/**
+ * The window of one model out of a model list (`max_model_len`).
+ *
+ * The entry for `modelId`, or the only entry when the list has just one: a
+ * server that serves a single model does not mind what the chat calls it. More
+ * than one entry and no match names nothing, rather than another model's.
+ */
+export function parseModelsWindow(
+  list: unknown,
+  modelId?: string | null
+): number | null {
+  if (!list || typeof list !== 'object') return null
+  const data = (list as Record<string, unknown>).data
+  if (!Array.isArray(data)) return null
+  const entries = data.filter(
+    (entry): entry is Record<string, unknown> =>
+      !!entry && typeof entry === 'object'
+  )
+  const entry =
+    entries.find((e) => modelId && e.id === modelId) ??
+    (entries.length === 1 ? entries[0] : undefined)
+  if (!entry) return null
+  return (
+    usableContextValue(entry.max_model_len) ??
+    usableContextValue(entry.context_length) ??
+    usableContextValue(entry.max_context_length)
+  )
 }
 
 const TTL_MS = 60_000
@@ -48,45 +96,53 @@ export function resetServerWindowCache(): void {
   inFlight.clear()
 }
 
+async function getJson(url: string): Promise<unknown | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const response = await providerFetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+    })
+    return response.ok ? await response.json() : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /**
  * Ask a local server for its window. Null when the endpoint is not local, did
- * not answer, or is not a server that reports one; those are not errors, the
- * card simply has no size to show. Remembered for a minute, so a counter that
- * renders often asks once.
+ * not answer, or reports none; those are not errors, the card simply has no
+ * size to show. Remembered for a minute, so a counter that renders often asks
+ * once.
  */
 export async function fetchServerWindow(
-  baseUrl: string | null | undefined
+  baseUrl: string | null | undefined,
+  modelId?: string | null
 ): Promise<number | null> {
-  const url = propsUrl(baseUrl)
-  if (!url || !isLocalEndpoint(baseUrl)) return null
+  const props = propsUrl(baseUrl)
+  const models = modelsUrl(baseUrl)
+  if (!props || !models || !isLocalEndpoint(baseUrl)) return null
 
-  const hit = cache.get(url)
+  const key = `${models}|${modelId ?? ''}`
+  const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit.tokens
-  const pending = inFlight.get(url)
+  const pending = inFlight.get(key)
   if (pending) return pending
 
   const request = (async () => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-    try {
-      const response = await providerFetch(url, {
-        method: 'GET',
-        signal: controller.signal,
-      })
-      if (!response.ok) return null
-      return parseServerWindow(await response.json())
-    } catch {
-      return null
-    } finally {
-      clearTimeout(timer)
-    }
+    const fromProps = parseServerWindow(await getJson(props))
+    if (fromProps != null) return fromProps
+    return parseModelsWindow(await getJson(models), modelId)
   })()
-  inFlight.set(url, request)
+  inFlight.set(key, request)
   try {
     const tokens = await request
-    cache.set(url, { at: Date.now(), tokens })
+    cache.set(key, { at: Date.now(), tokens })
     return tokens
   } finally {
-    inFlight.delete(url)
+    inFlight.delete(key)
   }
 }
