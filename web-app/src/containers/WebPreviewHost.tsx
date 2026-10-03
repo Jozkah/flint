@@ -22,12 +22,6 @@ import { shouldIntercept } from '@/lib/webPreview'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useNativeWebPreview } from '@/hooks/useNativeWebPreview'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
-import { useThreads } from '@/hooks/useThreads'
-import { useBrowserToolMirror } from '@/hooks/useBrowserToolMirror'
-import {
-  BrowserToolMirror,
-  useBrowserToolMirrorListening,
-} from '@/containers/BrowserToolMirror'
 import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { useCoworkView } from '@/hooks/useCoworkView'
 import { isLocalAppUrl } from '@/lib/browserVerify'
@@ -89,11 +83,6 @@ export function WebPreviewHost() {
       })()
     }
   )
-  const chatThreadId = useThreads((s) => s.currentThreadId)
-  const mirrorView = useBrowserToolMirror((s) =>
-    chatThreadId ? s.byId[chatThreadId] : undefined
-  )
-  useBrowserToolMirrorListening()
   const [viewport, setViewport] = useState<HTMLDivElement | null>(null)
   const currentUrl = useWebPreview.getState().url()
   // A question waiting for the user (a tool approval, a site to allow) needs
@@ -171,24 +160,7 @@ export function WebPreviewHost() {
   }, [interceptLinks])
 
   const url = useWebPreview.getState().url()
-  // The agent's own browser, shown read-only for the conversation in view: a
-  // picture and a few facts, never the page. It gets the panel when the
-  // preview itself is closed, and a card above the page when it is open.
-  if (!url || !open) {
-    return mirrorView && chatThreadId ? (
-      <div
-        data-testid="wp-mirror-panel"
-        className="absolute right-0 bottom-0 top-[52px] z-50 flex"
-      >
-        <CoworkSidePanel
-          title={t('common:browserToolMirror.title')}
-          onClose={() => useBrowserToolMirror.getState().clear(chatThreadId)}
-        >
-          <BrowserToolMirror sessionId={chatThreadId} />
-        </CoworkSidePanel>
-      </div>
-    ) : null
-  }
+  if (!open || !url) return null
 
   const popOut = () =>
     void serviceHub.window().createWebviewWindow({
@@ -320,7 +292,6 @@ export function WebPreviewHost() {
   const body = (
     <div ref={setPaneEl} className="flex h-full min-h-0 flex-col">
       {toolbar}
-      {mirrorView && chatThreadId ? <BrowserToolMirror sessionId={chatThreadId} /> : null}
       {mode === 'iframe' ? (
         <>
           <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-2 py-1 text-xs text-muted-foreground">

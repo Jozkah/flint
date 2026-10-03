@@ -781,6 +781,11 @@ export function ThreadConversation({
       // we await that already-started promise here rather than prompting again.
       toolCallAbortController.current = new AbortController()
       const signal = toolCallAbortController.current.signal
+      // Stopping the chat ends its agent browser at once, not when a tool call
+      // it was waiting on finally returns.
+      signal.addEventListener('abort', () => void closeBrowserSession(threadId), {
+        once: true,
+      })
 
       // The loop guard's history spans the whole reply to the user's
       // message, however many assistant message ids its steps are given.
@@ -1406,14 +1411,16 @@ export function ThreadConversation({
   }, [status, reloadMemoryProposals])
 
   // The agent's browser (the `browser` tool) ends with the run. The chat's tool
-  // loop resubmits through `ready` for an instant between steps, so it is closed
-  // only once the chat has stayed idle (or errored), not on every pass through it.
+  // loop runs in `onFinish`, with the stream already `ready` while a tool waits
+  // for the user's approval or runs: the thread is marked busy for exactly that
+  // time. So the browser is closed only once the chat is idle (or errored) AND
+  // not busy, and has stayed so for a moment between the loop's steps.
   useEffect(() => {
-    if (status !== 'ready' && status !== 'error') return
+    if ((status !== 'ready' && status !== 'error') || threadBusy) return
     const id = threadId
     const timer = setTimeout(() => void closeBrowserSession(id), BROWSER_IDLE_CLOSE_MS)
     return () => clearTimeout(timer)
-  }, [status, threadId])
+  }, [status, threadId, threadBusy])
 
   // Global disabled-tools set; re-run the effect below when it changes.
   const disabledTools = useToolAvailable((state) => state.disabledTools)
