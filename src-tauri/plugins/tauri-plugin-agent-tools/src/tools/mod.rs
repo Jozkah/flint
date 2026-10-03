@@ -6,6 +6,8 @@ use std::path::{Path, PathBuf};
 /// Windows-only confinement backend for [`jail`]. Present on every platform so
 /// the argv it builds stays unit-testable.
 pub mod appcontainer;
+/// The interactive `browser` tool (src/browser holds the session).
+pub mod browser_tool;
 /// The expected shape of a call, for refusals of its arguments.
 pub mod call_shape;
 pub mod cmdscan;
@@ -699,6 +701,15 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // The interactive confined browser (browser/session.rs). `Write` so it is
+    // withheld in plan mode and run one call at a time; the gate classifies
+    // each call (looking runs, acting is gated like a write, open and
+    // evaluate are asked every time), see `browser_tool::class_of`.
+    BuiltinTool {
+        name: "browser",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     // The assistant's use of the desktop's built-in browser pane. They exist
     // here so the Rust loop (the CLI and durable jobs) knows the names and
     // answers a call with a clear "needs the desktop app" result; the desktop
@@ -857,7 +868,20 @@ mod tests {
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
-        assert_eq!(BUILTIN_TOOLS.len(), 39);
+        // + browser, the interactive confined browser.
+        assert_eq!(BUILTIN_TOOLS.len(), 40);
+    }
+
+    #[test]
+    fn the_interactive_browser_is_a_write_class_tool_with_no_path() {
+        let t = lookup("browser").expect("browser is builtin");
+        // Write, so plan mode withholds it and calls run one at a time; the
+        // gate then classifies each call (see `browser_tool::class_of`).
+        assert_eq!(t.capability, Capability::Write);
+        assert!(t.path_args.is_empty());
+        // It is not one of the desktop-pane tools, nor a workspace tool the
+        // gate would allow without asking.
+        assert!(!is_browser_tool("browser") && !is_host_tool("browser") && !is_workspace_tool("browser"));
     }
 
     #[test]

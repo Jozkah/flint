@@ -1767,6 +1767,8 @@ pub fn kill_all() {
         // Shutdown is best effort: there is nobody left to tell.
         let _ = kill_tree(pid);
     }
+    // The agent's browser sessions are processes too.
+    crate::browser::session::close_all();
 }
 
 #[cfg(test)]

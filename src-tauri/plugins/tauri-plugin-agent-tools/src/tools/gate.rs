@@ -554,6 +554,19 @@ pub fn resolve_decision(
             Err(_) => Decision::Allow,
         };
     }
+    // The interactive browser is classified per call (tools/browser_tool.rs):
+    // looking at a page the run already opened runs; acting on it is gated
+    // like a write; opening an address and running script in the page are
+    // asked about every time, because the model chooses which local service
+    // the browser reaches and a script can do what no single click can.
+    if tool.name == "browser" {
+        return match crate::tools::browser_tool::class_of(args) {
+            crate::tools::browser_tool::Class::Read => Decision::Allow,
+            crate::tools::browser_tool::Class::Act => gated(PromptKind::Write, grants),
+            crate::tools::browser_tool::Class::Open
+            | crate::tools::browser_tool::Class::Evaluate => Decision::Prompt(PromptKind::Ask),
+        };
+    }
     // Dedicated skill/memory tools act only on the agent's own workspace by a
     // sanitized name, so they never prompt (deny above still wins).
     if crate::tools::is_workspace_tool(tool.name) {
@@ -798,6 +811,55 @@ mod tests {
         let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["git"]), &[]);
         assert_eq!(
             with(&deny, json!({"args": ["status"]}), &grants),
+            Decision::HardDeny(DenyReason::Policy)
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn browser_calls_are_gated_by_class() {
+        let root = unique_root();
+        let mut grants = SessionGrants::default();
+        let with = |perms: &ToolPermissions, args: serde_json::Value, grants: &SessionGrants| {
+            resolve_decision(
+                lookup("browser").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                perms,
+                grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let decide = |args: serde_json::Value, grants: &SessionGrants| with(&plain, args, grants);
+        // Looking at a page the run already opened runs.
+        for a in ["snapshot", "screenshot", "console", "wait", "scroll", "close"] {
+            assert_eq!(decide(json!({"action": a}), &grants), Decision::Allow, "{a}");
+        }
+        // Acting is gated like a write.
+        for a in ["click", "type", "press", "select", "back", "reload"] {
+            assert_eq!(decide(json!({"action": a, "ref": "e1"}), &grants), Decision::Prompt(PromptKind::Write), "{a}");
+        }
+        // Opening an address and running script are asked every time.
+        let open = json!({"action": "open", "url": "http://localhost:3000/"});
+        let eval = json!({"action": "evaluate", "expression": "1"});
+        assert_eq!(decide(open.clone(), &grants), Decision::Prompt(PromptKind::Ask));
+        assert_eq!(decide(eval.clone(), &grants), Decision::Prompt(PromptKind::Ask));
+        // A write grant covers acting, never open or evaluate.
+        grants.grant(PromptKind::Write);
+        assert_eq!(decide(json!({"action": "click", "ref": "e1"}), &grants), Decision::Allow);
+        assert_eq!(decide(open, &grants), Decision::Prompt(PromptKind::Ask));
+        assert_eq!(decide(eval, &grants), Decision::Prompt(PromptKind::Ask));
+        // A misspelt action is not a way to skip the question.
+        assert_ne!(decide(json!({"action": "snapshots"}), &SessionGrants::default()), Decision::Allow);
+        assert_ne!(decide(json!({}), &SessionGrants::default()), Decision::Allow);
+        // An agent.toml deny still wins, even for looking.
+        let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["browser"]), &[]);
+        assert_eq!(
+            with(&deny, json!({"action": "snapshot"}), &grants),
             Decision::HardDeny(DenyReason::Policy)
         );
         let _ = std::fs::remove_dir_all(&root);

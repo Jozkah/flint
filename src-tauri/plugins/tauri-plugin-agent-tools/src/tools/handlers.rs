@@ -557,6 +557,7 @@ pub async fn execute_builtin(
         match tool.name {
             "read" => read_or_list(args, ctx).await,
             "screenshot" => screenshot(args, project_root, scratch, ctx.read_roots).await,
+            "browser" => crate::tools::browser_tool::run(args, ctx).await,
             _ => (execute_text(tool, args, ctx).await, None),
         }
     };
@@ -650,6 +651,9 @@ pub(crate) async fn execute_text(
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,
         "git" => crate::tools::git_tool::run(args, ctx).await,
+        // The interactive confined browser; its screenshot image travels only
+        // through `execute_builtin`, so this text-only path drops it.
+        "browser" => crate::tools::browser_tool::run(args, ctx).await.0,
         // Cross-session messaging. Refuses unless the dispatcher bound this
         // call to a session and a mailbox (desktop, session scope only).
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" | "stop_session" => {
@@ -914,7 +918,9 @@ pub async fn execute_builtin_with_diff(
             let diff = format_after_edit(args, ctx, before.as_deref(), diff).await;
             (content, diff, images)
         }
-        "read" => {
+        // Tools that can hand the model an image. `screenshot` and `browser`
+        // were missing here, so their pictures were dropped on this path.
+        "read" | "screenshot" | "browser" => {
             let (content, images) = execute_builtin(tool, args, ctx).await;
             (content, None, images)
         }
@@ -3327,7 +3333,10 @@ pub async fn render_html_png(
 
     let Some(chrome) = chrome_binary() else {
         return Err(
-            "no Chrome/Chromium binary found (set CHROME_PATH to point at one)".to_string(),
+            "no Chrome, Edge, Brave or other Chromium-based browser was found. Install one, or set \
+             FLINT_BROWSER_PATH (or CHROME_PATH) to its full executable path; Flint does not \
+             download a browser"
+                .to_string(),
         );
     };
 

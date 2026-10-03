@@ -4014,7 +4014,14 @@ impl CompositeToolInvoker {
                         .and_then(|k| args.get(*k))
                         .and_then(|v| v.as_str())
                         .map(String::from);
-                    let command = if name == "git" {
+                    let command = if name == "browser" {
+                        // What the browser will do, naming the element by what
+                        // the last snapshot called it, never the typed text.
+                        Some(tauri_plugin_agent_tools::tools::browser_tool::display(
+                            &args,
+                            &self.cancel_scope.run,
+                        ))
+                    } else if name == "git" {
                         // The exact command line, so the prompt names what
                         // will run rather than a blob of arguments.
                         tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args)
@@ -5791,6 +5798,9 @@ async fn orchestrate_inner(
         }
         // AH-174: what the commands this run started used, in the record of
         // how it ended and on the stream for a caller that reports it.
+        // The run's browser (the `browser` tool) ends with it: process tree
+        // killed, temporary profile deleted.
+        tauri_plugin_agent_tools::browser::session::close_run(&tools.cancel_scope.run);
         let run_resources = tauri_plugin_agent_tools::resources::finish_run(&tools.cancel_scope.run);
         if let Some(resources) = run_resources.clone() {
             let _ = events.send(StreamEvent::RunResources { resources });

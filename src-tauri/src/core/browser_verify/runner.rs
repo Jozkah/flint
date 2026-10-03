@@ -5,23 +5,22 @@
 //! browser exiting, the app server no longer answering, or a main-frame
 //! navigation off the allowed origin.
 
-use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 use tokio::sync::watch;
 use url::Url;
 
-use super::cdp::{self, Cdp};
+use super::cdp::Cdp;
+use super::events::{self, Observed};
+use super::launch;
 use super::*;
 
 const MAX_CONSOLE: usize = 50;
 const MAX_BLOCKED: usize = 50;
 const MAX_SCREENSHOTS: usize = 5;
-const MAX_TEXT: usize = 500;
 
 /// What the event loop saw, shared with the step driver.
 #[derive(Default)]
@@ -35,197 +34,54 @@ struct Seen {
 }
 
 fn clip(text: &str) -> String {
-    let t: String = text.chars().take(MAX_TEXT).collect();
-    if text.chars().count() > MAX_TEXT {
-        format!("{t}…")
-    } else {
-        t
-    }
+    events::clip(text)
 }
 
-async fn port_open(origin: &Origin) -> bool {
-    let host = origin.socket_host();
-    let addr = match loopback_ip(&host) {
-        Some(ip) => std::net::SocketAddr::new(ip, origin.port),
-        None => return false,
-    };
-    matches!(
-        tokio::time::timeout(Duration::from_millis(800), tokio::net::TcpStream::connect(addr)).await,
-        Ok(Ok(_))
-    )
-}
-
-/// Read the browser's stderr until it names its DevTools endpoint.
-async fn devtools_url(child: &mut Child) -> Result<String, String> {
-    let stderr = child.stderr.take().ok_or("no stderr from the browser")?;
-    let mut lines = BufReader::new(stderr).lines();
-    let found = tokio::time::timeout(Duration::from_secs(20), async {
-        while let Ok(Some(line)) = lines.next_line().await {
-            if let Some(i) = line.find("ws://") {
-                return Some(line[i..].trim().to_string());
+/// Record what the shared event loop reports the way a verify run keeps it:
+/// console errors (not warnings or logs), blocked requests, the document's
+/// status, and a stop reason for an off-origin navigation or a gone page.
+fn record(seen: &Arc<Mutex<Seen>>, observed: Observed) {
+    let Ok(mut s) = seen.lock() else { return };
+    match observed {
+        Observed::Blocked { url, resource_type, navigation } => {
+            if s.blocked.len() < MAX_BLOCKED {
+                s.blocked.push(BlockedRequest { url: url.clone(), resource_type, navigation });
+            }
+            if navigation && s.stop.is_none() {
+                s.stop = Some(format!(
+                    "The page tried to navigate to {url}, outside the allowed origin; the run was stopped."
+                ));
             }
         }
-        None
-    })
-    .await;
-    // Keep draining so a chatty browser never blocks on a full pipe.
-    tokio::spawn(async move { while let Ok(Some(_)) = lines.next_line().await {} });
-    match found {
-        Ok(Some(url)) => Ok(url),
-        Ok(None) => Err("the browser exited before it started".to_string()),
-        Err(_) => Err("the browser did not start within 20 s".to_string()),
-    }
-}
-
-fn console_text(params: &Value) -> String {
-    let args = params.get("args").and_then(Value::as_array).cloned().unwrap_or_default();
-    args.iter()
-        .map(|a| {
-            a.get("value")
-                .map(|v| match v {
-                    Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                })
-                .or_else(|| a.get("description").and_then(Value::as_str).map(str::to_string))
-                .unwrap_or_default()
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Answer every paused request and record what the page reports. Runs until
-/// the browser connection ends.
-fn spawn_event_loop(
-    cdp: Cdp,
-    mut events: tokio::sync::mpsc::UnboundedReceiver<cdp::Event>,
-    policy: OriginPolicy,
-    main_session: String,
-    main_frame: String,
-    seen: Arc<Mutex<Seen>>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        while let Some(ev) = events.recv().await {
-            let session = ev.session_id.as_deref();
-            let p = &ev.params;
-            match ev.method.as_str() {
-                "Fetch.requestPaused" => {
-                    let id = p["requestId"].as_str().unwrap_or_default();
-                    let url = p["request"]["url"].as_str().unwrap_or_default();
-                    if policy.permits(url) {
-                        cdp.fire("Fetch.continueRequest", json!({ "requestId": id }), session);
-                        continue;
-                    }
-                    cdp.fire(
-                        "Fetch.failRequest",
-                        json!({ "requestId": id, "errorReason": "BlockedByClient" }),
-                        session,
-                    );
-                    let resource_type = p["resourceType"].as_str().unwrap_or("Other").to_string();
-                    let navigation = resource_type == "Document"
-                        && session == Some(main_session.as_str())
-                        && p["frameId"].as_str() == Some(main_frame.as_str());
-                    if let Ok(mut s) = seen.lock() {
-                        if s.blocked.len() < MAX_BLOCKED {
-                            s.blocked.push(BlockedRequest {
-                                url: display_url(url),
-                                resource_type,
-                                navigation,
-                            });
-                        }
-                        if navigation && s.stop.is_none() {
-                            s.stop = Some(format!(
-                                "The page tried to navigate to {}, outside the allowed origin; the run was stopped.",
-                                display_url(url)
-                            ));
-                        }
-                    }
-                }
-                // A frame or worker: confine it the same way before it runs.
-                "Target.attachedToTarget" => {
-                    if let Some(child) = p["sessionId"].as_str() {
-                        cdp.fire("Fetch.enable", json!({ "patterns": [{ "urlPattern": "*" }] }), Some(child));
-                        cdp.fire("Runtime.enable", json!({}), Some(child));
-                        cdp.fire(
-                            "Target.setAutoAttach",
-                            json!({ "autoAttach": true, "waitForDebuggerOnStart": true, "flatten": true }),
-                            Some(child),
-                        );
-                        cdp.fire("Runtime.runIfWaitingForDebugger", json!({}), Some(child));
-                    }
-                }
-                "Runtime.consoleAPICalled" => {
-                    let kind = p["type"].as_str().unwrap_or_default();
-                    if kind == "error" || kind == "assert" {
-                        let text = console_text(p);
-                        if let Ok(mut s) = seen.lock() {
-                            if s.console.len() < MAX_CONSOLE {
-                                s.console.push(ConsoleEntry { kind: "error".into(), text: clip(&text) });
-                            }
-                        }
-                    }
-                }
-                "Runtime.exceptionThrown" => {
-                    let d = &p["exceptionDetails"];
-                    let text = d["exception"]["description"]
-                        .as_str()
-                        .or(d["text"].as_str())
-                        .unwrap_or("Uncaught exception");
-                    if let Ok(mut s) = seen.lock() {
-                        if s.console.len() < MAX_CONSOLE {
-                            s.console.push(ConsoleEntry { kind: "exception".into(), text: clip(text) });
-                        }
-                    }
-                }
-                "Log.entryAdded" => {
-                    let e = &p["entry"];
-                    let text = e["text"].as_str().unwrap_or_default();
-                    // A request this run blocked is reported as blocked, not
-                    // as the page's own error.
-                    // Nor is the browser's own favicon request: no page asked for it.
-                    let favicon = e["url"]
-                        .as_str()
-                        .and_then(|u| Url::parse(u).ok())
-                        .is_some_and(|u| u.path() == "/favicon.ico");
-                    if e["level"].as_str() == Some("error")
-                        && !text.contains("ERR_BLOCKED_BY_CLIENT")
-                        && !favicon
-                    {
-                        let where_ = e["url"].as_str().map(display_url).unwrap_or_default();
-                        if let Ok(mut s) = seen.lock() {
-                            if s.console.len() < MAX_CONSOLE {
-                                let line = if where_.is_empty() { text.to_string() } else { format!("{text} ({where_})") };
-                                s.console.push(ConsoleEntry { kind: "log".into(), text: clip(&line) });
-                            }
-                        }
-                    }
-                }
-                "Network.responseReceived" => {
-                    if p["type"].as_str() == Some("Document")
-                        && p["frameId"].as_str() == Some(main_frame.as_str())
-                    {
-                        if let Ok(mut s) = seen.lock() {
-                            s.document_status = p["response"]["status"].as_u64().map(|n| n as u16);
-                            s.final_url = p["response"]["url"].as_str().map(display_url);
-                        }
-                    }
-                }
-                "Inspector.detached" | "Inspector.targetCrashed" if session == Some(main_session.as_str()) => {
-                    if let Ok(mut s) = seen.lock() {
-                        s.stop.get_or_insert_with(|| "The page crashed or was closed.".to_string());
-                    }
-                }
-                "Target.detachedFromTarget" if p["sessionId"].as_str() == Some(main_session.as_str()) => {
-                    if let Ok(mut s) = seen.lock() {
-                        s.stop.get_or_insert_with(|| "The page was closed.".to_string());
-                    }
-                }
-                _ => {}
+        Observed::Console { level, text } => {
+            if (level == "error" || level == "assert") && s.console.len() < MAX_CONSOLE {
+                s.console.push(ConsoleEntry { kind: "error".into(), text });
             }
         }
-        if let Ok(mut s) = seen.lock() {
+        Observed::Exception { text } => {
+            if s.console.len() < MAX_CONSOLE {
+                s.console.push(ConsoleEntry { kind: "exception".into(), text });
+            }
+        }
+        Observed::Log { level, text, url } => {
+            if level == "error" && s.console.len() < MAX_CONSOLE {
+                let line = if url.is_empty() { text } else { format!("{text} ({url})") };
+                s.console.push(ConsoleEntry { kind: "log".into(), text: clip(&line) });
+            }
+        }
+        Observed::Document { status, url } => {
+            s.document_status = Some(status);
+            s.final_url = Some(url);
+        }
+        Observed::PageGone(why) => {
+            s.stop.get_or_insert(why);
+        }
+        Observed::BrowserExited => {
             s.stop.get_or_insert_with(|| "The browser exited.".to_string());
         }
-    })
+        // A verify run neither answers dialogs nor tracks tabs.
+        _ => {}
+    }
 }
 
 /// Why the run must stop, checked between and during steps.
@@ -482,17 +338,6 @@ async fn run_step(
     }
 }
 
-fn remove_profile(path: &Path) -> bool {
-    // On Windows the browser can hold files a moment after it exits.
-    for _ in 0..10 {
-        if std::fs::remove_dir_all(path).is_ok() || !path.exists() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(200));
-    }
-    !path.exists()
-}
-
 /// Run one verification. `progress` sees every step as it changes.
 pub async fn run(
     req: VerifyRequest,
@@ -557,7 +402,7 @@ pub async fn run(
     let Some(browser_path) = browser.path.clone().filter(|_| browser.found) else {
         return fail(report, browser.hint.unwrap_or_else(|| "No browser was found.".into()));
     };
-    if !port_open(&origin).await {
+    if !launch::port_open(&origin).await {
         return fail(
             report,
             format!("Nothing is answering at {}. Start the app, then verify.", origin.serialize()),
@@ -569,21 +414,11 @@ pub async fn run(
     }
 
     // 2. A throwaway profile and a confined browser.
-    let profile = match tempfile::Builder::new().prefix("flint-verify-").tempdir() {
-        Ok(p) => p,
-        Err(e) => return fail(report, format!("could not create a temporary profile: {e}")),
-    };
-    let profile_path = profile.path().to_path_buf();
-    let mut cmd = tokio::process::Command::new(&browser_path);
-    cmd.args(browser_args(&profile_path, running_as_root(), policy.allowed()))
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .kill_on_drop(true);
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return fail(report, format!("could not start {browser_path}: {e}")),
-    };
+    let launch::Spawned { mut child, profile } =
+        match launch::spawn(&browser_path, "flint-verify-", &policy) {
+            Ok(v) => v,
+            Err(e) => return fail(report, e),
+        };
 
     let seen = Arc::new(Mutex::new(Seen::default()));
     let app_down: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
@@ -608,13 +443,9 @@ pub async fn run(
     )
     .await;
 
-    // 3. Always: close the browser, then delete its profile.
-    let _ = child.start_kill();
-    let _ = tokio::time::timeout(Duration::from_secs(5), child.wait()).await;
-    drop(profile.keep());
-    report.profile_removed = tokio::task::spawn_blocking(move || remove_profile(&profile_path))
-        .await
-        .unwrap_or(false);
+    // 3. Always: close the browser (the whole tree), then delete its profile.
+    launch::kill(&mut child).await;
+    report.profile_removed = profile.remove().await;
 
     if let Ok(s) = seen.lock() {
         report.console_errors = s.console.clone();
@@ -658,55 +489,32 @@ async fn drive(
         Halt::Cancelled => (Outcome::Cancelled, "Cancelled.".to_string()),
         Halt::Stopped(why) => (Outcome::Failed, why),
     };
-    let ws = match tokio::select! {
-        r = devtools_url(child) => r,
+    let (cdp, events) = match tokio::select! {
+        r = launch::connect(child) => r,
         _ = wait_cancel(guard.cancel.clone()) => return halt(Halt::Cancelled),
     } {
-        Ok(ws) => ws,
-        Err(e) => return (Outcome::Error, e),
-    };
-    let (cdp, events) = match cdp::connect(&ws).await {
         Ok(v) => v,
         Err(e) => return (Outcome::Error, e),
     };
 
     // A tab of our own, confined before it loads anything.
-    let setup = async {
-        let target = cdp.call("Target.createTarget", json!({ "url": "about:blank" }), None).await?;
-        let target_id = target["targetId"].as_str().ok_or("no target")?.to_string();
-        let attached = cdp
-            .call("Target.attachToTarget", json!({ "targetId": target_id, "flatten": true }), None)
-            .await?;
-        let session = attached["sessionId"].as_str().ok_or("no session")?.to_string();
-        // The launch tab is not confined by this session: close it.
-        if let Ok(list) = cdp.call("Target.getTargets", json!({}), None).await {
-            for t in list["targetInfos"].as_array().cloned().unwrap_or_default() {
-                if t["type"] == "page" && t["targetId"].as_str() != Some(target_id.as_str()) {
-                    cdp.fire("Target.closeTarget", json!({ "targetId": t["targetId"] }), None);
-                }
-            }
-        }
-        Ok::<_, String>((target_id, session))
+    let (main_frame, session) = match launch::open_confined_tab(&cdp).await {
+        Ok(v) => v,
+        Err(e) => return (Outcome::Error, e),
     };
-    let (main_frame, session) = match tokio::time::timeout(Duration::from_secs(15), setup).await {
-        Ok(Ok(v)) => v,
-        Ok(Err(e)) => return (Outcome::Error, format!("could not open a tab: {e}")),
-        Err(_) => return (Outcome::Error, "the browser did not open a tab in time".into()),
-    };
-    let events_task =
-        spawn_event_loop(cdp.clone(), events, policy.clone(), session.clone(), main_frame.clone(), seen);
-    for (method, params) in [
-        ("Fetch.enable", json!({ "patterns": [{ "urlPattern": "*" }] })),
-        ("Target.setAutoAttach", json!({ "autoAttach": true, "waitForDebuggerOnStart": true, "flatten": true })),
-        ("Page.enable", json!({})),
-        ("Runtime.enable", json!({})),
-        ("Log.enable", json!({})),
-        ("Network.enable", json!({})),
-    ] {
-        if let Err(e) = cdp.call(method, params, Some(&session)).await {
-            events_task.abort();
-            return (Outcome::Error, format!("could not set up the tab ({method}): {e}"));
-        }
+    let sink_seen = seen.clone();
+    let events_task = events::spawn(
+        cdp.clone(),
+        events,
+        policy.clone(),
+        session.clone(),
+        main_frame.clone(),
+        events::NavigationBlock::Fail,
+        move |observed| record(&sink_seen, observed),
+    );
+    if let Err(e) = launch::enable_tab(&cdp, &session).await {
+        events_task.abort();
+        return (Outcome::Error, e);
     }
 
     // The app server, watched while the run goes.
@@ -715,7 +523,7 @@ async fn drive(
         let mut misses = 0;
         loop {
             tokio::time::sleep(Duration::from_millis(1000)).await;
-            if port_open(&watch_origin).await {
+            if launch::port_open(&watch_origin).await {
                 misses = 0;
             } else {
                 misses += 1;
