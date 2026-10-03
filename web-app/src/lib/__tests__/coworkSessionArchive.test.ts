@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/lib/archive', () => ({
   archiveEnabled: async () => h.enabled,
   archiveApi: { put: h.put },
+  trackArchiveWork: <T,>(work: Promise<T>) => work,
 }))
 
 import {

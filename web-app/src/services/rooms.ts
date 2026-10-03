@@ -6,6 +6,7 @@
  * shape the underlying invoke rejection had.
  */
 import { invoke } from '@tauri-apps/api/core'
+import { trackArchiveWork } from '@/lib/archive'
 import type {
   Room,
   RoomError,
@@ -112,6 +113,10 @@ export async function clearRoomJournal(roomId: string): Promise<void> {
   await call<null>('room_clear_journal', { roomId })
 }
 
+/**
+ * With the archive on this moves the room into the archive, so it is tracked:
+ * the Archive page waits for it rather than listing a half-moved room.
+ */
 export async function deleteRoom(roomId: string): Promise<void> {
-  await call<null>('room_delete', { roomId })
+  await trackArchiveWork(call<null>('room_delete', { roomId }))
 }

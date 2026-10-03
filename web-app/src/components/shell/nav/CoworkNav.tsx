@@ -36,7 +36,6 @@ import {
   Plus,
   SlidersHorizontal,
   Copy,
-  Download,
   FileClock,
   GitFork,
   Share2,
@@ -264,41 +263,42 @@ const SessionItem = memo(function SessionItem({
             <Copy />
             <span>{t('common:copyConversationId')}</span>
           </DropdownMenuItem>
-          {/* AH-203. The backend drops folder, access and consent and redacts
-              credentials before writing; the path comes from a dialog the
+          {/* One Export menu. The readable copies (Markdown, Obsidian, PDF,
+              image) cannot be imported back and omit tool bodies and machine
+              paths by default. The session bundle (AH-203) can be imported:
+              the backend drops folder, access and consent and redacts
+              credentials before writing, and the path comes from a dialog the
               backend opens, never from here. */}
-          <DropdownMenuItem
-            data-testid="export-session"
-            onSelect={async () => {
-              const toolActivity = await loadToolActivity(session.id)
-              const out = await exportBundle(
-                buildBundle({
-                  session,
-                  toolActivity,
-                  fileActivity: useFileActivity
-                    .getState()
-                    .eventsFor(session.id),
-                })
-              )
-              if (out.ok) {
-                toast.success(
-                  t('common:sessionExported', { count: out.redactions })
-                )
-              } else if (!out.cancelled) {
-                toast.error(
-                  t('common:sessionExportFailed', { reason: out.message })
-                )
-              }
-            }}
-          >
-            <Download />
-            <span>{t('common:exportSession')}</span>
-          </DropdownMenuItem>
-          {/* Readable copies of the conversation: Markdown, Obsidian, PDF and
-              image. Unlike the session export above these cannot be imported
-              back, and they omit tool bodies and machine paths by default. */}
           <ExportSubmenu
             build={() => docFromCowork(session, new Date())}
+            extra={
+              <DropdownMenuItem
+                data-testid="export-session"
+                onSelect={async () => {
+                  const toolActivity = await loadToolActivity(session.id)
+                  const out = await exportBundle(
+                    buildBundle({
+                      session,
+                      toolActivity,
+                      fileActivity: useFileActivity
+                        .getState()
+                        .eventsFor(session.id),
+                    })
+                  )
+                  if (out.ok) {
+                    toast.success(
+                      t('common:sessionExported', { count: out.redactions })
+                    )
+                  } else if (!out.cancelled) {
+                    toast.error(
+                      t('common:sessionExportFailed', { reason: out.message })
+                    )
+                  }
+                }}
+              >
+                <span>{t('common:exportSessionBundle')}</span>
+              </DropdownMenuItem>
+            }
           />
           {/* AH-210. The same export, plus which folder (by name, branch and
               commit) and which model, so another computer can continue it.

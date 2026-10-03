@@ -4,6 +4,7 @@
 //! owns outside its archived copy.
 
 pub mod commands;
+pub mod preview;
 pub mod store;
 
 use std::path::Path;

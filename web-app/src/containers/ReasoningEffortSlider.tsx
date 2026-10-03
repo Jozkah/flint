@@ -79,9 +79,11 @@ export function ReasoningEffortSlider({
   const select = useCallback(
     (at: number) => {
       const next = stops[Math.min(Math.max(at, 0), count - 1)]
-      if (next && next !== shown) onChange(next)
+      // The default shown while nothing is chosen can be chosen too: that pins
+      // it, so it no longer follows the model.
+      if (next && (next !== shown || chosen === null)) onChange(next)
     },
-    [count, stops, onChange, shown]
+    [count, stops, onChange, shown, chosen]
   )
 
   const selectAt = useCallback(

@@ -128,8 +128,11 @@ export function resolveModel<T extends Model>(
 ): T | null | undefined {
   if (!model || !hasOverrides(overrides)) return model
 
-  const settings = model.settings
-  if (!settings) return model
+  // A model a provider listed over the wire has an id, a name and its
+  // capabilities, and no settings block at all. That is not a model that takes
+  // no settings: its reasoning effort, for one, is sent whatever the block
+  // holds. The chat's own values apply to it like to any other.
+  const settings = model.settings ?? {}
 
   let next: typeof settings | null = null
   for (const [key, value] of Object.entries(overrides!)) {
@@ -179,4 +182,41 @@ export function pruneOverrides(
   return Object.keys(kept).length === Object.keys(overrides!).length
     ? overrides!
     : kept
+}
+
+/** One setting to write into a model's own configuration. */
+export type SettingWrite = {
+  key: string
+  title: string
+  controllerType: string
+  value: ModelSettingValue
+}
+
+/**
+ * The model with several settings written at once.
+ *
+ * Every write is applied to the same model, so none can overwrite another: two
+ * writes made one after the other from the same snapshot each start from the
+ * model as it was, and the second would silently undo the first. A setting the
+ * model does not define yet is created, as `resolveModel` does for an override.
+ */
+export function withSettings<T extends Model>(
+  model: T,
+  writes: readonly SettingWrite[]
+): T {
+  const settings = { ...(model.settings ?? {}) }
+  for (const { key, title, controllerType, value } of writes) {
+    const existing = settings[key] ?? {
+      key,
+      title,
+      description: '',
+      controller_type: controllerType,
+      controller_props: { value },
+    }
+    settings[key] = {
+      ...existing,
+      controller_props: { ...(existing.controller_props ?? {}), value },
+    }
+  }
+  return { ...model, settings } as T
 }

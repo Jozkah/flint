@@ -62,7 +62,7 @@ The installers are **not code-signed**, so your OS warns you the first time you 
 - **macOS:** right-click (or Control-click) Flint in Applications and choose **Open**, then **Open** again. Alternatively, try to open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
 - **macOS local models need Apple silicon** (M1 or later). On Intel Macs you can still use cloud providers.
 
-**Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have from **Models → llama.cpp → Import**, or add a cloud provider with your own key.
+**Models are your choice.** Open **Discover** to search Hugging Face and choose the exact GGUF quantization (or MLX repository on Apple silicon) you want Flint to download. Downloads start only when you click **Download**, support pause/resume, and are size/hash verified when Hugging Face exposes that metadata. You can still import a GGUF you already have with **Import GGUF** on the **Models** page, or add a cloud provider with your own key.
 
 ## Getting started
 
@@ -88,11 +88,17 @@ yarn install
 yarn build:tauri:plugin:api
 yarn build:core
 yarn build:extensions
-yarn download:bin
-yarn dev
+make build-engine JAN_ENGINE_VARIANT=cpu
+yarn build
 ```
 
-Before you run these commands, install the toolchain (Git, Node 20+, Rust, and CMake/LLVM on Windows). The first build needs about 30 GB of disk space. [docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
+The installers land in `src-tauri/target/release/bundle/`. On Windows, run the `make` line in Git Bash, not PowerShell.
+
+Before you run these commands, install the toolchain (Git, Node 20+, Rust, CMake, Ninja and make, plus LLVM and the Visual Studio Build Tools on Windows). The first build needs about 30 GB of disk space.
+
+To run Flint in development instead of building installers, replace the last two lines with `yarn download:bin` and `yarn dev`. That runs without the llama.cpp engine, so local models do not load until you run `make build-engine-dev JAN_ENGINE_VARIANT=cpu` once.
+
+[docs/BUILDING.md](docs/BUILDING.md) covers the per-OS setup, building installers, the local llama.cpp engine and troubleshooting.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
