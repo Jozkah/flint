@@ -114,6 +114,8 @@ export interface MigrationResult {
   manifest_path: string
   error: string | null
   rolled_back: boolean
+  /** The data folder changed; Flint must restart to use it. */
+  restart_required?: boolean
 }
 
 export interface MigrationManifest {

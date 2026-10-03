@@ -91,6 +91,10 @@ pub struct MigrationResult {
     pub manifest_path: PathBuf,
     pub error: Option<String>,
     pub rolled_back: bool,
+    /// Set by the command layer when the run changed the data folder the app
+    /// is configured to use, which only takes effect on the next start.
+    #[serde(default)]
+    pub restart_required: bool,
 }
 
 impl MigrationResult {
@@ -106,6 +110,7 @@ impl MigrationResult {
             manifest_path: manifest::manifest_path(&plan.dest_config_dir),
             error: None,
             rolled_back: false,
+            restart_required: false,
         }
     }
 }

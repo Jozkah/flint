@@ -496,6 +496,11 @@ export function MigrationAssistant() {
                     .
                   </div>
                 )}
+                {result.restart_required && (
+                  <div className="text-xs text-muted-foreground">
+                    Restart Flint to start using this data.
+                  </div>
+                )}
                 {result.reuse_path && (
                   <div className="text-xs text-muted-foreground">
                     Flint is now using your JAN data in place at{' '}
@@ -614,8 +619,15 @@ export function MigrationAssistant() {
               )}
             {step === 'result' &&
               (!result || result.status === 'complete') && (
-                <Button size="sm" onClick={closeAssistant}>
-                  Done
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    // The new data folder is only read at startup.
+                    if (result?.restart_required) window.core?.api?.relaunch()
+                    else closeAssistant()
+                  }}
+                >
+                  {result?.restart_required ? 'Restart Flint' : 'Done'}
                 </Button>
               )}
           </div>
