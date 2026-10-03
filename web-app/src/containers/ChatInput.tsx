@@ -86,6 +86,7 @@ import {
   type SettingWrite,
 } from '@/lib/modelOverrides'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useModelToolsEnabled } from '@/hooks/useThreadToolGrants'
 import {
   THINKING_BUDGET_LEVELS,
   DEFAULT_THINKING_BUDGET_LEVEL,
@@ -847,6 +848,7 @@ const ChatInput = memo(function ChatInput({
   const threadModelSelection = useConversationModel()
   const conversationModel = modelSelection ?? threadModelSelection
   const selectedModel = conversationModel.selectedModel
+  const toolsEnabled = useModelToolsEnabled(selectedModel, currentThreadId)
 
   /** The general picker handles images; audio and video have their own entries. */
   const attachmentAccept = acceptAttribute({
@@ -3450,7 +3452,7 @@ const ChatInput = memo(function ChatInput({
                     {/* RAG document attachments - desktop-only via dialog; shown when feature enabled */}
                     <DropdownMenuItem
                         onClick={() => {
-                          if (selectedModel?.capabilities?.includes('tools'))
+                          if (toolsEnabled)
                             void handleAttachDocsIngest()
                           else
                             requestCapabilities(
@@ -3527,7 +3529,7 @@ const ChatInput = memo(function ChatInput({
 
                       {showToolControls &&
                         selectedModel &&
-                        !selectedModel.capabilities?.includes('tools') && (
+                        !toolsEnabled && (
                           <Button
                             variant="ghost"
                             size="icon-xs"
@@ -3543,7 +3545,7 @@ const ChatInput = memo(function ChatInput({
                         )}
 
                       {showToolControls &&
-                        selectedModel?.capabilities?.includes('tools') &&
+                        toolsEnabled &&
                   hasActiveMCPServers &&
                   (MCPToolComponent ? (
                     // Use custom MCP component
@@ -3551,8 +3553,7 @@ const ChatInput = memo(function ChatInput({
                       tools={tools}
                       hasActiveMCPServers={hasActiveMCPServers}
                       selectedModelHasTools={
-                              selectedModel?.capabilities?.includes('tools') ??
-                              false
+                              toolsEnabled
                       }
                       MCPToolComponent={MCPToolComponent}
                     />
@@ -3600,7 +3601,7 @@ const ChatInput = memo(function ChatInput({
                   ))}
 
                       {!effectiveAgentMode &&
-                        selectedModel?.capabilities?.includes('tools') && (
+                        toolsEnabled && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
