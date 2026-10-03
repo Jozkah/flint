@@ -59,7 +59,7 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
     steps:
       - name: Check out the pushed commit
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
 
       # A branch push names no tag, so it takes the one for the app version.
       - name: Resolve the tag
@@ -124,7 +124,7 @@ jobs:
         shell: bash
     steps:
       - name: Check out the tag
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6
         with:
           ref: ${{ env.TAG }}
 
