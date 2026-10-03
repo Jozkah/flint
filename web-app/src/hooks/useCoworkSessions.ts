@@ -303,6 +303,11 @@ type CoworkSessionsState = {
    */
   forkSession: (id: string, throughTurn?: number) => string | null
   /**
+   * Create a session from the turns of a converted chat. Unbound like a fork:
+   * no folder, no access, no grants. Returns the new session's id.
+   */
+  createFromTurns: (title: string, turns: CoworkTurn[]) => string
+  /**
    * Create a session from an export. AH-203.
    *
    * A new id, no folder, no access; questions left pending come back stale.
@@ -526,6 +531,21 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
 
         set((s) => ({ sessions: [fork, ...s.sessions], currentId: forkId }))
         return forkId
+      },
+
+      createFromTurns: (title, turns) => {
+        const id = crypto.randomUUID()
+        const session: CoworkSession = {
+          id,
+          title: title.trim() || DEFAULT_SESSION_TITLE,
+          folder: null,
+          turns,
+          messages: coworkTurnsToUIMessages(turns, id),
+          updated: now(),
+          createdAt: now(),
+        }
+        set((s) => ({ sessions: [session, ...s.sessions], currentId: id }))
+        return id
       },
 
       dismissHandoff: (id) =>

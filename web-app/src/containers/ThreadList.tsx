@@ -5,6 +5,7 @@ import {
   Copy,
   Folder,
   GitFork,
+  Briefcase,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -58,6 +59,8 @@ import { toast } from 'sonner'
 import { useNavigate } from '@tanstack/react-router'
 import { route } from '@/constants/routes'
 import { forkThread } from '@/lib/forkThread'
+import { ConvertToCoworkDialog } from '@/containers/dialogs/ConvertToCoworkDialog'
+import { convertChatToCowork } from '@/lib/convertChatToCowork'
 import { prefetchThreadMessages } from '@/lib/threadPrefetch'
 import { ExportSubmenu } from '@/components/ExportMenu'
 import { docFromThread } from '@/lib/exportDoc'
@@ -97,6 +100,10 @@ const ThreadItem = memo(
     const { t } = useTranslation()
     const navigate = useNavigate()
     const [menuOpen, setMenuOpen] = useState(false)
+    // "Convert to Cowork" is offered only when the menu was opened by
+    // right-click (or the keyboard's context-menu key), not from the "..." button.
+    const [menuViaContext, setMenuViaContext] = useState(false)
+    const [convertOpen, setConvertOpen] = useState(false)
     const [renameOpen, setRenameOpen] = useState(false)
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
 
@@ -184,7 +191,7 @@ const ThreadItem = memo(
     // Closing it is not enough: Radix keeps `previewOpen` true, so the card
     // came back the moment the menu closed (a picked item, the delete dialog).
     const previewBlocked =
-      menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen
+      menuOpen || renameOpen || deleteConfirmOpen || newGroupOpen || convertOpen
     useEffect(() => {
       if (previewBlocked) setPreviewOpen(false)
     }, [previewBlocked])
@@ -243,6 +250,7 @@ const ThreadItem = memo(
     const openRowMenu = (e: React.MouseEvent | React.KeyboardEvent) => {
       e.preventDefault()
       e.stopPropagation()
+      setMenuViaContext(true)
       setMenuOpen(true)
     }
 
@@ -339,7 +347,13 @@ const ThreadItem = memo(
             </HoverCardContent>
           </HoverCard>
         }
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={(open) => {
+            setMenuOpen(open)
+            if (!open) setMenuViaContext(false)
+          }}
+        >
           <DropdownMenuTrigger asChild>
             {/* Hover reveals it with a mouse; a touch screen has no hover, so
                 the row menu stays visible there with a 44px target. */}
@@ -407,6 +421,15 @@ const ThreadItem = memo(
                 return docFromThread(thread, stored, new Date(), { allVersions })
               }}
             />
+            {menuViaContext && (
+              <DropdownMenuItem
+                data-testid="convert-to-cowork"
+                onSelect={() => setConvertOpen(true)}
+              >
+                <Briefcase className="size-4" />
+                <span>{t('chat:convertToCowork.menu')}</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSub open={groupMenuOpen} onOpenChange={setGroupMenuOpen}>
               <DropdownMenuSubTrigger className="gap-2">
                 <Folder className="size-4" />
@@ -510,6 +533,23 @@ const ThreadItem = memo(
           withoutTrigger
         />
         
+        <ConvertToCoworkDialog
+          open={convertOpen}
+          onOpenChange={setConvertOpen}
+          onChoose={async (deleteChat) => {
+            const id = await convertChatToCowork(thread.id, (tid) =>
+              serviceHub.messages().fetchMessages(tid)
+            )
+            if (!id) {
+              toast.error(t('chat:convertToCowork.failed'))
+              return
+            }
+            if (deleteChat) deleteThread(thread.id)
+            toast.success(t('chat:convertToCowork.done'))
+            navigate({ to: route.cowork })
+          }}
+        />
+
         <DeleteThreadDialog
           thread={thread}
           onDelete={deleteThread}
