@@ -450,6 +450,11 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   protected override assertSendable(): void {}
 
+  /** `read` returns images; send them to the model as images, never as base64 text. */
+  protected override hoistsToolImages(): boolean {
+    return true
+  }
+
   override async refreshTools(): Promise<void> {
     // Frozen means frozen: once a run is under way the advertised set is fixed
     // even if the config changed, because rebuilding it would change the tool

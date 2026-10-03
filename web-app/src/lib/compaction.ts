@@ -24,6 +24,7 @@ import {
   extractSummary,
   SUMMARY_FORMAT_INSTRUCTION,
 } from '@/lib/context-manager'
+import { outputTextWithoutImages } from '@/lib/toolOutputImages'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
 
@@ -308,7 +309,8 @@ export function transcriptForSummary(messages: UIMessage[]): string {
             ? `error: ${String(part.errorText)}`
             : typeof part.output === 'string'
               ? part.output
-              : JSON.stringify(part.output ?? '')
+              : // An image in a result is a marker here, never its base64.
+                outputTextWithoutImages(part.output)
         lines.push(`[tool ${name}] ${input}\n-> ${output}`)
       }
     }

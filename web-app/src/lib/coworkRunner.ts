@@ -144,6 +144,12 @@ export type ToolOutcome = {
   isError?: boolean
   /** Display-only unified diff. Never reaches the model. */
   diff?: string
+  /**
+   * Images the call returned for the model to see (`read` of an image file).
+   * Reach the model as image parts, only when it can see; the text `output`
+   * always accompanies them.
+   */
+  images?: ToolImage[]
   /** What the call's command used (AH-174). Never reaches the model. */
   resources?: unknown
   /**
@@ -190,6 +196,7 @@ export type HarnessRefusal = {
 
 import { recoverToolArgs, firstJsonObject } from '@/lib/toolCallRepair'
 import { withToolInputs } from '@/lib/coworkTurns'
+import { toolOutputWithImages, type ToolImage } from '@/lib/toolOutputImages'
 
 // Re-exported so existing callers/tests of the old names keep working; the
 // recovery itself lives in the one shared module.
@@ -786,7 +793,7 @@ export function assistantMessageFor(
     }
     if (outcome) {
       if (outcome.isError) part.errorText = outcome.output
-      else part.output = outcome.output
+      else part.output = toolOutputWithImages(outcome.output, outcome.images)
     }
     parts.push(part)
   }
@@ -821,6 +828,7 @@ export function turnsFor(
       result: outcome?.output ?? '',
       isError: outcome?.isError,
       diff: outcome?.diff,
+      ...(outcome?.images?.length ? { toolImages: outcome.images } : {}),
       status: outcome ? 'done' : 'running',
     })
   }

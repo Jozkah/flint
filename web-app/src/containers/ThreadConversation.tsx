@@ -157,6 +157,12 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import {
+  countOutputImages,
+  isImageBlock,
+  toolOutputWithImages,
+  type ToolImage,
+} from '@/lib/toolOutputImages'
+import {
   AGENT_TOOL_NAMES,
   executeAgentTool,
   notifyToolBatch,
@@ -784,6 +790,19 @@ export function ThreadConversation({
           return
         }
         if ('output' in part) {
+          // Redaction reads text; an image's base64 is left alone.
+          if (countOutputImages(part.output) > 0) {
+            const blocks = part.output as unknown[]
+            addToolOutput({
+              ...part,
+              output: await Promise.all(
+                blocks.map((b) =>
+                  isImageBlock(b) ? b : redactDeep(b)
+                )
+              ),
+            })
+            return
+          }
           addToolOutput({ ...part, output: await redactDeep(part.output) })
           return
         }
@@ -1209,7 +1228,16 @@ export function ThreadConversation({
               await persistToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                output: result.content,
+                // A `read` of an image file also hands the model the image
+                // (see `toolOutputImages`); the saved thread keeps the text.
+                output:
+                  typeof result.content === 'string' &&
+                  (result as { images?: ToolImage[] }).images?.length
+                    ? toolOutputWithImages(
+                        result.content,
+                        (result as { images?: ToolImage[] }).images
+                      )
+                    : result.content,
               })
             }
           } catch (error) {

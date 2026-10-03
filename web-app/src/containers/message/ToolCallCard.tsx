@@ -23,6 +23,11 @@ import {
 } from '@/lib/toolPresentation'
 import { cn } from '@/lib/utils'
 import { isToolPart, type MessagePartLike } from './types'
+import {
+  countOutputImages,
+  imagesOfOutput,
+  outputTextWithoutImages,
+} from '@/lib/toolOutputImages'
 import { RagToolWidget } from './RagToolWidget'
 import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
@@ -187,19 +192,32 @@ export const ToolCallCard = memo(
     // Native tools name what they acted on (a command, a path, a query) in the
     // header; their widget shows the result inside the card.
     const bar = describeNativeToolCall(origin, toolName, part.input)
+    // Images the call returned for the model: on the part itself (Cowork), or
+    // as image blocks in a chat result, whose card then shows only the text.
+    const cardImages = useMemo(
+      () => part.toolImages ?? imagesOfOutput(part.output),
+      [part.toolImages, part.output]
+    )
+    const cardOutput = useMemo(
+      () =>
+        countOutputImages(part.output) > 0
+          ? outputTextWithoutImages(part.output)
+          : part.output,
+      [part.output]
+    )
     const shot = useBrowserShots((s) =>
       part.toolCallId ? s.shots[part.toolCallId] : undefined
     )
     const browserArg = isBrowserTool(toolName)
-      ? browserCardUrl(toolName, part.input, part.output)
+      ? browserCardUrl(toolName, part.input, cardOutput)
       : ''
 
     const bash = useMemo(
       () =>
-        bar?.variant === 'terminal' && part.output
-          ? parseBashOutput(part.output)
+        bar?.variant === 'terminal' && cardOutput
+          ? parseBashOutput(cardOutput)
           : undefined,
-      [bar?.variant, part.output]
+      [bar?.variant, cardOutput]
     )
 
     const { displayPath } = useCodeOpenTools()
@@ -260,7 +278,7 @@ export const ToolCallCard = memo(
       bar?.variant === 'workspace' &&
       (bar.tool === 'grep' || bar.tool === 'find')
     ) {
-      const lines = textOf(part.output)
+      const lines = textOf(cardOutput)
         .split('\n')
         .filter((l) => l.trim()).length
       if (lines > 0) {
@@ -293,7 +311,7 @@ export const ToolCallCard = memo(
           embedded
           bar={bar}
           state={part.state}
-          output={part.output}
+          output={cardOutput}
           errorText={errorText}
           messageId={messageId}
           citationOffset={citationOffset}
@@ -306,7 +324,7 @@ export const ToolCallCard = memo(
             embedded
             bar={bar}
             state={part.state}
-            output={part.output}
+            output={cardOutput}
             errorText={errorText}
             attemptCallId={part.toolCallId}
           />
@@ -334,7 +352,7 @@ export const ToolCallCard = memo(
             embedded
             bar={bar}
             state={part.state}
-            output={part.output}
+            output={cardOutput}
             errorText={errorText}
             toolCallId={part.toolCallId}
           />
@@ -346,7 +364,7 @@ export const ToolCallCard = memo(
           embedded
           bar={bar}
           state={part.state}
-          output={part.output}
+          output={cardOutput}
           errorText={errorText}
         />
       </ResultSection>
@@ -462,6 +480,20 @@ export const ToolCallCard = memo(
               className="max-h-72 w-full rounded-md border border-border bg-muted object-contain"
             />
           )}
+          {cardImages.length ? (
+            // What a `read` of an image file showed the model. Display only.
+            <div className="flex flex-wrap gap-2" data-testid="tool-images">
+              {cardImages.map((img, n) => (
+                <img
+                  key={`${img.name}-${n}`}
+                  alt={img.name}
+                  title={img.name}
+                  src={img.dataUrl}
+                  className="max-h-32 max-w-[12rem] rounded-md border border-border bg-muted object-contain"
+                />
+              ))}
+            </div>
+          ) : null}
           {awaitingApproval
             ? null
             : bar
@@ -474,9 +506,9 @@ export const ToolCallCard = memo(
                     resolver={identityResolver}
                   />
                 )
-              : Boolean(part.output) && (
+              : Boolean(cardOutput) && (
                   <ToolOutput
-                    output={part.output}
+                    output={cardOutput as typeof part.output}
                     errorText={undefined}
                     resolver={identityResolver}
                     citationOffset={citationOffset}

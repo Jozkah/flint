@@ -1,3 +1,4 @@
+import { hasAgentToolImages } from '@/lib/toolOutputImages'
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
@@ -1272,6 +1273,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (typeof raw !== 'string' || raw.trim().length === 0) return language || undefined
     // Last, so a new day does not invalidate the cached prefix before it.
     return `${raw}\n\n${language ? `${language}\n\n` : ''}${todayLine()}`
+  }
+
+  /**
+   * Whether an image in a tool result is attached to the request as an image
+   * part (or replaced by a note) for every provider, not only a local one. Off
+   * for chat, where remote providers are left alone; Cowork turns it on for
+   * the images its `read` tool returns.
+   */
+  protected hoistsToolImages(): boolean {
+    return false
   }
 
   /**
@@ -2706,7 +2717,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             supportsVision: modelSupportsVision,
           })
         )
-      : withInlineAttachments
+      : this.hoistsToolImages() || hasAgentToolImages(withInlineAttachments)
+        ? prepareToolResultImagesForModel(withInlineAttachments, {
+            supportsVision: modelSupportsVision,
+          })
+        : withInlineAttachments
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(

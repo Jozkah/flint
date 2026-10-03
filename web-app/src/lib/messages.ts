@@ -6,6 +6,7 @@ import {
   ChatCompletionRole,
 } from '@janhq/core'
 import type { UIMessage } from '@ai-sdk/react'
+import { outputForStorage } from '@/lib/toolOutputImages'
 // Attachments are now handled upstream in newUserThreadContent
 
 type ThreadContent = NonNullable<ThreadMessage['content']>[number]
@@ -181,7 +182,7 @@ export function convertUIMessageToThreadMessage(
           },
         },
         state: part.state === 'output-available' ? 'completed' : 'pending',
-        response: part.output ?? part.result,
+        response: outputForStorage(part.output ?? part.result),
       }
     })
 
@@ -609,7 +610,9 @@ export function extractContentPartsFromUIMessage(message: UIMessage): ThreadCont
         tool_call_id: toolCallId,
         tool_name: toolName,
         input: input,
-        output: capToolOutput(output),
+        // An image a tool returned is for the model while the chat is open; the
+        // saved thread keeps the text and a note, never the base64.
+        output: capToolOutput(outputForStorage(output)),
       }
       const settled = settledToolError(part)
       if (settled) {

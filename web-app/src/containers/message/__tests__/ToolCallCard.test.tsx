@@ -113,4 +113,34 @@ describe('ToolCallCard', () => {
       failed.container.querySelector('[data-slot="tool-card"]')
     ).toHaveAttribute('data-tool-kind', 'fail')
   })
+
+  // A chat `read` of an image file: the model got the image, and the card shows
+  // it as a thumbnail with the result text, not the base64 as JSON.
+  it('shows a thumbnail for an image a tool returned', () => {
+    origin.mockReturnValue(undefined)
+    render(
+      <ToolCallCard
+        part={{
+          type: 'tool-read',
+          state: 'output-available',
+          toolCallId: 'tc9',
+          input: { path: 'shot.png' },
+          output: [
+            { type: 'text', text: 'Read image shot.png (image/png, 3 bytes)' },
+            {
+              type: 'image',
+              data: 'data:image/png;base64,QUJD',
+              mimeType: 'image/png',
+              name: 'shot.png',
+            },
+          ],
+        }}
+        messageId="m1"
+        expanded
+      />
+    )
+    const img = screen.getByAltText('shot.png') as HTMLImageElement
+    expect(img.src).toContain('data:image/png;base64,QUJD')
+    expect(document.body.textContent).not.toContain('QUJD')
+  })
 })

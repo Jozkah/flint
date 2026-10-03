@@ -54,6 +54,12 @@ export type CoworkTurn = {
    * shows a live preview. Superseded once the parsed `args` land. */
   argsLive?: string
   result?: string
+  /**
+   * Tool rows only, display only: images the call returned (a `read` of an
+   * image file), shown as a thumbnail. Held in memory for the live session and
+   * left out of what is saved; a saved row keeps its text result.
+   */
+  toolImages?: Array<{ dataUrl: string; name: string }>
   isError?: boolean
   diff?: string
   status?: 'running' | 'done'
