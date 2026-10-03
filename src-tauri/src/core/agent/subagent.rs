@@ -1771,30 +1771,49 @@ pub fn format_subagent_list(registry: &SubagentRegistry) -> String {
     lines.join("\n")
 }
 
+/// What `dispatch_subagent` tells the model. Written to steer behaviour, not
+/// just to document arguments: when to delegate, how to brief, that several
+/// calls in one message run together, when not to, and that the user never sees
+/// the child's output. Kept short enough for a small local model (see
+/// `dispatch_description_stays_compact`).
+fn dispatch_description(registry: &SubagentRegistry, max_parallel: u32) -> String {
+    let saved: Vec<&str> = {
+        let mut names: Vec<&str> = registry
+            .list()
+            .iter()
+            .filter(|d| d.scope != SubagentScope::Builtin)
+            .map(|d| d.name.as_str())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    };
+    let mut out = format!(
+        "Hand a self-contained job to a subagent: a nested agent with its own context and tools. \
+It cannot see this chat, so `description` must be a complete brief: the goal, the files or names involved, and what to report back.\n\
+Delegate when: a search or investigation is open-ended and needs many reads or rounds; the work splits into independent parts that can run in parallel; the output would be large and you only need the conclusion; or a role below fits.\n\
+Do not delegate: a lookup you can do in one or two tool calls, a file or symbol you already know, or work another subagent is already doing.\n\
+Runs in the BACKGROUND and returns a run_id at once. Several dispatch_subagent calls in one message run concurrently (up to {max_parallel}; extras queue); then call await_subagent for each run_id. \
+The user does not see the subagent's output: read it and tell them what matters.\n\
+Roles: {}.",
+        crate::core::agent::roles::role_menu()
+    );
+    if !saved.is_empty() {
+        out.push_str(&format!(" Saved: {}.", saved.join(", ")));
+    }
+    out.push_str(" For a one-off, give a descriptive subagent_name and a system_prompt.");
+    out
+}
+
 /// OpenAI tool schemas for the subagent tools. The dispatch tool's description
-/// lists the currently-resolvable subagent names so the model can pick one
-/// without a separate discovery call.
+/// lists the roles and saved subagents so the model can pick one without a
+/// separate discovery call.
 pub fn subagent_tool_schemas(
     registry: &SubagentRegistry,
     max_parallel: u32,
 ) -> Vec<serde_json::Value> {
     use serde_json::json;
-    let available: Vec<&str> = {
-        let mut names: Vec<&str> = registry.list().iter().map(|d| d.name.as_str()).collect();
-        names.sort_unstable();
-        names.dedup();
-        names
-    };
-    let one_off = " For a one-off subagent, pass system_prompt inline (with a descriptive subagent_name); use create_subagent only to save a reusable definition.";
-    let bg = format!(" Runs in the BACKGROUND and returns a run_id immediately; keep working, dispatch more, then call await_subagent(run_id) to collect each result. Up to {max_parallel} run concurrently (max_parallel_subagents in agent.toml); dispatches beyond that are queued FIFO and start as running ones finish.");
-    let dispatch_desc = if available.is_empty() {
-        format!("Start a subagent: a nested, isolated agent with its own system prompt and narrowed tools.{bg}{one_off} No saved subagents yet.")
-    } else {
-        format!(
-            "Start a subagent: a nested, isolated agent with its own system prompt and narrowed tools.{bg}{one_off} Saved subagents: {}.",
-            available.join(", ")
-        )
-    };
+    let dispatch_desc = dispatch_description(registry, max_parallel);
     vec![
         json!({
             "type": "function",
@@ -3891,6 +3910,41 @@ mod tests {
             dispatch.contains("await_subagent"),
             "dispatch should mention await"
         );
+    }
+
+    /// The description is what steers a small model into (or out of)
+    /// delegating, so the behaviours it must teach are pinned here, and its size
+    /// is capped: it is re-sent on every turn.
+    #[test]
+    fn dispatch_description_steers_delegation_and_stays_compact() {
+        let reg = registry_with("my-saved", None);
+        let desc = dispatch_description(&reg, 4);
+        for needle in [
+            "Delegate when",
+            "Do not delegate",
+            "complete brief",
+            "Several dispatch_subagent calls in one message run concurrently",
+            "does not see the subagent's output",
+            "await_subagent",
+            "up to 4",
+            "Saved: my-saved",
+        ] {
+            assert!(desc.contains(needle), "missing {needle:?} in: {desc}");
+        }
+        // Every shipped role is offered with a reason to pick it.
+        for role in crate::core::agent::roles::ROLES {
+            assert!(desc.contains(&format!("{} ({})", role.name, role.when)), "role {}", role.name);
+        }
+        // ~4 chars per token: well under 450 tokens for a small local model.
+        assert!(desc.len() < 1800, "description is {} chars", desc.len());
+    }
+
+    #[test]
+    fn dispatch_description_does_not_repeat_builtin_roles_as_saved() {
+        let root = unique_root("desc-builtin-only");
+        let desc = dispatch_description(&SubagentRegistry::load(&root), 3);
+        assert!(!desc.contains("Saved:"), "{desc}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

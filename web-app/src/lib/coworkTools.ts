@@ -9,6 +9,13 @@
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
+import {
+  BRIEF_RULE,
+  DELEGATE_WHEN,
+  DO_NOT_DELEGATE,
+  NOT_SHOWN_TO_USER,
+  subagentChoices,
+} from '@/lib/coworkSubagentGuide'
 import type {
   ComponentReport,
   ToolSchema,
@@ -193,29 +200,26 @@ const askTool: Tool = {
  * single call carrying the whole plan is what makes those answerable before
  * anything runs — asked one `task` at a time, they cannot be.
  */
+/** What `team` tells the model; exported so its size and wording are tested. */
+export function teamDescription(subagentNames: string[]): string {
+  return [
+    'Run several subagents on one piece of work. Independent tasks run at the same time (a few at once); `depends_on` orders the rest. ' +
+      'Use it when the work splits into independent parts (one task per module, a review beside a test run) or when one part must finish before another starts. ' +
+      'For a single job use `task`; do not use it for a lookup you can do yourself.',
+    'Each child cannot see this chat, so every `description` must be a complete brief: the goal, the files or names involved, and what to report back. ' +
+      "The user does not see the children's output: read the results and tell them what matters.",
+    'Declare in `writes` the files or folders a task will change, and in `deletes` and `renames` what it removes or moves: ' +
+      'when two unordered tasks would change the same paths, the user is shown the overlap before anything runs. ' +
+      'Paths only read go in `reads` and never conflict. Set `isolate` on a task whose changes must not reach the attached folder or its siblings. ' +
+      'Only the tester role has a shell, so do not ask the others to build or run tests. ' +
+      'A reviewer of other tasks’ output must list them in `depends_on`.',
+    subagentChoices(subagentNames),
+  ].join('\n')
+}
+
 function teamTool(subagentNames: string[]): Tool {
-  const known = subagentNames.length
-    ? ` Saved subagents: ${subagentNames.join(', ')}.`
-    : ''
   return {
-    description:
-      'Run several subagents on one piece of work, respecting an order you ' +
-      'declare. Use it when the work splits into parts that can go at once, ' +
-      'or where one part must finish before another starts. Each task is run ' +
-      'by a child that cannot see this conversation, so describe it in full. ' +
-      'Declare in `writes` the files or folders a task will change, and in ' +
-      '`deletes` and `renames` what it removes or moves: when two tasks with ' +
-      'nothing ordering them would change the same paths, the user is shown ' +
-      'the overlap before anything runs and decides whether to order them, ' +
-      'narrow a scope, or run them side by side. Paths only read go in ' +
-      '`reads` and never conflict. Set `isolate` on a task that should work in a checkout ' +
-      'of its own, when its changes must not reach the attached folder or its ' +
-      'siblings. Only the tester role has a shell; implementer, reviewer and ' +
-      'the other read roles do not, so do not ask them to build or run tests: ' +
-      'use tester, or run checks yourself after the team returns. A reviewer of ' +
-      'other tasks’ output must list them in `depends_on`, or be dispatched ' +
-      'in a later team call.' +
-      known,
+    description: teamDescription(subagentNames),
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
@@ -299,14 +303,21 @@ function teamTool(subagentNames: string[]): Tool {
   } as Tool
 }
 
+/** What `task` tells the model; exported so its size and wording are tested. */
+export function taskDescription(subagentNames: string[]): string {
+  return [
+    `Hand a self-contained job to a subagent: a nested agent with its own context and tools. ${BRIEF_RULE}`,
+    DELEGATE_WHEN,
+    DO_NOT_DELEGATE,
+    'Blocks until the subagent answers and returns its final message. Calls in one message run one after another; to run independent parts at the same time, use `team`.',
+    NOT_SHOWN_TO_USER,
+    `${subagentChoices(subagentNames)} For a one-off, give a descriptive subagent_name and a system_prompt.`,
+  ].join('\n')
+}
+
 function taskTool(subagentNames: string[]): Tool {
-  const known = subagentNames.length
-    ? ` Saved subagents: ${subagentNames.join(', ')}.`
-    : ''
   return {
-    description:
-      'Run a subagent: a nested, isolated agent with its own system prompt and narrowed tools. It does not see this conversation, so state everything it needs in `description`. Returns its final answer.' +
-      known,
+    description: taskDescription(subagentNames),
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
