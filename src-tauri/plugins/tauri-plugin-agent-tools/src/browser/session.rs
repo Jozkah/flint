@@ -513,6 +513,24 @@ pub async fn run(caller: &Caller, args: &Value) -> Reply {
         "open" => open(caller, args).await,
         "close" => close(caller).await,
         a if ACTIONS.contains(&a) => with_session(caller, a, args).await,
+/// End the browser of a conversation or session by its id (the desktop's run
+/// end, thread switch, thread delete). Matches a session keyed by `id` or
+/// opened under that session. Returns how many were closed.
+pub fn close_for(id: &str) -> usize {
+    if id.is_empty() {
+        return 0;
+    }
+    let hits: Vec<Arc<Session>> = SESSIONS
+        .lock()
+        .map(|m| m.values().filter(|s| s.caller.key == id || s.caller.session == id).cloned().collect())
+        .unwrap_or_default();
+    for s in &hits {
+        s.ctl.kill_detached("the conversation ended");
+        s.announce_closed("the conversation ended");
+    }
+    hits.len()
+}
+
         other => err(format!("unknown browser action \"{other}\". {}", usage())),
     }
 }

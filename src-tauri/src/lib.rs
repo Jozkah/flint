@@ -205,6 +205,7 @@ macro_rules! invoke_commands_with_extras {
         core::browser_verify::commands::browser_verify_set_browser,
         core::browser_verify::commands::browser_tool_watch,
         core::browser_verify::commands::browser_tool_describe,
+        core::browser_verify::commands::browser_tool_close,
         core::jev::commands::jev_key_set,
         core::jev::commands::jev_key_clear,
         core::jev::commands::jev_status,

@@ -9,6 +9,7 @@ import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
 import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
 import { BrowserToolMirror } from '@/containers/BrowserToolMirror'
+import { closeBrowserSession } from '@/lib/browserTool'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -2855,6 +2856,7 @@ export function CoworkPage() {
       )
       if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      void closeBrowserSession(sid)
       runWorkDone()
       for (const resolve of handle.pendingAsks.values()) resolve(null)
       handle.pendingAsks.clear()
@@ -4602,6 +4604,8 @@ export function CoworkPage() {
       useCoworkSessions.getState().setRunBudget(sid, null)
       // Nothing can still be running once the turn is over: the streams are
       // closed and the dispatch loop has stopped awaiting them. Settle before
+      // The run's agent browser (the `browser` tool) ends with it.
+      void closeBrowserSession(sid)
       // closing the workflow, so its status is derived from settled children.
       // This run's orphans only — scoped to its own workflow, and leaving a
       // backgrounded shell job alone: the process is still running, and

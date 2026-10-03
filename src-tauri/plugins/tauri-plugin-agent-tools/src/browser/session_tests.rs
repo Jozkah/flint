@@ -581,3 +581,191 @@ async fn the_dispatcher_runs_a_sequence_returns_an_image_and_a_cancelled_run_tea
     wait_until("no browser process left", 15, || browser_processes_using("flint-browser-") == 0).await;
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+
+#[tokio::test]
+async fn tabs_open_list_switch_and_close_and_refs_belong_to_their_tab() {
+    if !browser_or_skip("tabs") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let c = caller("tabs");
+    act(&c, json!({ "action": "open", "url": app.url("/") })).await;
+    let snap1 = act(&c, json!({ "action": "snapshot" })).await;
+    let greet1 = ref_of(&snap1, "button \"Greet\"");
+    assert!(!snap1.contains("tab: "), "one tab says nothing about tabs: {snap1}");
+
+    let new = act(&c, json!({ "action": "tab", "op": "new", "url": app.url("/next") })).await;
+    assert!(new.contains("Opened tab t2") && new.contains("title: Next"), "{new}");
+    let snap2 = act(&c, json!({ "action": "snapshot" })).await;
+    assert!(snap2.contains("tab: t2 of 2 open"), "{snap2}");
+    let home = ref_of(&snap2, "link \"Home\"");
+    assert!(home.starts_with("t2e"), "a second tab's refs name it: {home}");
+    // A ref from the first tab is refused here and says why.
+    let wrong = act(&c, json!({ "action": "click", "ref": greet1 })).await;
+    assert!(wrong.contains("belongs to tab t1") && wrong.contains("active tab is t2"), "{wrong}");
+
+    let list = act(&c, json!({ "action": "tab" })).await;
+    assert!(list.contains("2 tab(s)") && list.contains("* t2") && list.contains("- t1") && list.contains("Demo shop"), "{list}");
+
+    let back = act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "t1" })).await;
+    assert!(back.contains("Switched to tab t1") && back.contains("title: Demo shop"), "{back}");
+    let ok = act(&c, json!({ "action": "click", "ref": greet1 })).await;
+    assert!(ok.contains("Clicked button \"Greet\""), "the first tab's ref works in the first tab: {ok}");
+    assert!(act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "t9" })).await.contains("there is no tab t9"));
+    assert!(act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "two" })).await.contains("not a tab id"));
+
+    // A tab off the origin is refused before it is made.
+    let off = act(&c, json!({ "action": "tab", "op": "new", "url": "https://example.com/" })).await;
+    assert!(off.starts_with("ERROR:") && off.contains("outside the origins"), "{off}");
+
+    let closed = act(&c, json!({ "action": "tab", "op": "close", "tab_id": "t2" })).await;
+    assert!(closed.contains("Closed tab t2") && closed.contains("active tab is t1"), "{closed}");
+    let only = act(&c, json!({ "action": "tab", "op": "close" })).await;
+    assert!(only.contains("only tab"), "{only}");
+    act(&c, json!({ "action": "close" })).await;
+}
+
+#[tokio::test]
+async fn windows_the_page_opens_are_closed_unless_the_run_opts_into_popups() {
+    if !browser_or_skip("popups") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let c = caller("popups");
+    act(&c, json!({ "action": "open", "url": app.url("/tabs") })).await;
+    let snap = act(&c, json!({ "action": "snapshot" })).await;
+    let link = ref_of(&snap, "link \"Open elsewhere\"");
+    let r = act(&c, json!({ "action": "click", "ref": link })).await;
+    assert!(r.contains("closed (popups are off)"), "{r}");
+    assert!(act(&c, json!({ "action": "tab" })).await.contains("1 tab(s)"));
+
+    // Opting in keeps the window as a confined tab.
+    act(&c, json!({ "action": "open", "url": app.url("/tabs"), "popups": true })).await;
+    let snap = act(&c, json!({ "action": "snapshot" })).await;
+    let link = ref_of(&snap, "link \"Open elsewhere\"");
+    act(&c, json!({ "action": "click", "ref": link })).await;
+    wait_until("the popup to become a tab", 10, || false || true).await;
+    let mut listing = String::new();
+    for _ in 0..40 {
+        listing = act(&c, json!({ "action": "tab" })).await;
+        if listing.contains("2 tab(s)") {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(150)).await;
+    }
+    assert!(listing.contains("2 tab(s)") && listing.contains("t2"), "{listing}");
+    let consoled = act(&c, json!({ "action": "console", "all": true })).await;
+    assert!(consoled.contains("new tab"), "{consoled}");
+    act(&c, json!({ "action": "tab", "op": "switch", "tab_id": "t2" })).await;
+    let s2 = act(&c, json!({ "action": "snapshot" })).await;
+    assert!(s2.contains("Next page"), "{s2}");
+    // The popup tab is confined like any other: an off-origin fetch is blocked.
+    let leak = act(&c, json!({ "action": "evaluate", "expression": "fetch('http://example.com/').then(() => 'reached', () => 'blocked')" })).await;
+    assert!(leak.contains("blocked") && !leak.contains("reached"), "{leak}");
+    act(&c, json!({ "action": "close" })).await;
+}
+
+#[tokio::test]
+async fn upload_attaches_a_file_from_the_working_folder_and_refuses_everything_else() {
+    if !browser_or_skip("upload") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let base = std::env::temp_dir().join(format!("flint-upload-{}", std::process::id()));
+    let work = base.join("work");
+    let outside = base.join("outside");
+    std::fs::create_dir_all(work.join(".jan")).unwrap();
+    std::fs::create_dir_all(&outside).unwrap();
+    std::fs::write(work.join("resume.txt"), b"hello upload").unwrap();
+    std::fs::write(work.join(".jan").join("secret.txt"), b"state").unwrap();
+    std::fs::write(outside.join("host.txt"), b"host file").unwrap();
+    let store = base.join("store");
+    std::fs::create_dir_all(&store).unwrap();
+    let enabled: Vec<String> = vec![];
+    let tool = crate::tools::lookup("browser").unwrap();
+    let call = |n: u32| crate::lifecycle::Token::new(Scope::new("sess-u", "run-u", format!("c{n}")));
+    let run_call = |n: u32, args: Value| {
+        let (work, store, enabled) = (work.clone(), store.clone(), enabled.clone());
+        async move {
+            let ctx = crate::tools::ToolContext::new(&work, &store, &enabled).with_cancel(call(n));
+            crate::tools::handlers::execute_builtin(tool, &args, &ctx).await.0
+        }
+    };
+
+    run_call(1, json!({ "action": "open", "url": app.url("/upload") })).await;
+    let snap = run_call(2, json!({ "action": "snapshot" })).await;
+    let file = ref_of(&snap, "filebutton \"Resume\"");
+    let button = ref_of(&snap, "button \"Not a file\"");
+
+    let ok = run_call(3, json!({ "action": "upload", "ref": file, "path": "resume.txt" })).await;
+    assert!(ok.contains("Attached resume.txt (12 bytes)"), "{ok}");
+    let after = run_call(4, json!({ "action": "snapshot" })).await;
+    assert!(after.contains("text: picked resume.txt 12"), "the page saw the file: {after}");
+
+    // Everything else is refused, and nothing is attached.
+    let host = outside.join("host.txt").to_string_lossy().into_owned();
+    for (path, why) in [
+        (host.as_str(), "outside your working folder"),
+        ("../outside/host.txt", "outside your working folder"),
+        (".jan/secret.txt", "state directory"),
+        ("missing.txt", "no such file"),
+        (".", "not a regular file"),
+    ] {
+        let r = run_call(5, json!({ "action": "upload", "ref": file, "path": path })).await;
+        assert!(r.starts_with("ERROR") && r.contains(why), "{path}: {r}");
+    }
+    let nofile = run_call(6, json!({ "action": "upload", "ref": button, "path": "resume.txt" })).await;
+    assert!(nofile.contains("not a file input"), "{nofile}");
+    // The model cannot smuggle a path past the check through another argument.
+    let direct = session::run(&caller("u-direct"), &json!({ "action": "upload", "ref": "e1", "path": host })).await;
+    assert!(direct.text.contains("No browser page is open") || direct.text.contains("needs a `path`"), "{}", direct.text);
+    run_call(7, json!({ "action": "close" })).await;
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+#[tokio::test]
+async fn a_compact_screenshot_is_a_bounded_jpeg_and_the_default_stays_a_png() {
+    if !browser_or_skip("compact-image") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    let c = caller("compact");
+    act(&c, json!({ "action": "open", "url": app.url("/") })).await;
+    let opts = session::Options { upload: None, compact_image: true };
+    let small = session::run_with(&c, &json!({ "action": "screenshot" }), &opts).await;
+    let jpeg = small.image.expect("a compact screenshot");
+    assert_eq!(small.image_mime, "image/jpeg");
+    assert_eq!(&jpeg[..3], b"\xff\xd8\xff", "a JPEG");
+    assert!(jpeg.len() <= session::MAX_COMPACT_IMAGE_BYTES, "{}", jpeg.len());
+    let full = session::run_with(&c, &json!({ "action": "screenshot", "fullPage": true }), &opts).await;
+    assert!(full.image.is_some_and(|b| b.len() <= session::MAX_COMPACT_IMAGE_BYTES));
+    let plain = session::run(&c, &json!({ "action": "screenshot" })).await;
+    assert_eq!(plain.image_mime, "image/png");
+    // Looking at a page returns no image at all.
+    let snap = session::run_with(&c, &json!({ "action": "snapshot" }), &opts).await;
+    assert!(snap.image.is_none() && snap.image_mime.is_empty());
+    act(&c, json!({ "action": "close" })).await;
+}
+
+#[tokio::test]
+async fn closing_by_conversation_id_ends_a_desktop_style_session() {
+    if !browser_or_skip("close-for") {
+        return;
+    }
+    let _g = GATE.lock().await;
+    let app = serve();
+    // The desktop keys a browser by its thread: no run id, the thread as session.
+    let c = Caller { key: "thread-9".into(), session: "thread-9".into(), run: String::new() };
+    act(&c, json!({ "action": "open", "url": app.url("/") })).await;
+    assert!(session::is_open("thread-9"));
+    assert_eq!(session::close_for("some-other-thread"), 0);
+    assert!(session::is_open("thread-9"), "another conversation's close does not reach it");
+    assert_eq!(session::close_for("thread-9"), 1);
+    assert!(!session::is_open("thread-9"));
+    wait_until("no browser process left", 15, || browser_processes_using("flint-browser-") == 0).await;
+}

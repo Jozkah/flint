@@ -95,6 +95,24 @@ export async function describeBrowserCall(
   return localBrowserSummary(input)
 }
 
+/**
+ * End the agent browser of a conversation or Cowork session: its run ended,
+ * the user switched away, or the thread was deleted. Best effort and quiet --
+ * there is usually nothing to close, and this must never fail a run's ending.
+ */
+export async function closeBrowserSession(
+  id: string | null | undefined,
+  close: (id: string) => Promise<unknown> = (i) =>
+    invoke('browser_tool_close', { id: i })
+): Promise<void> {
+  if (!id) return
+  try {
+    await close(id)
+  } catch {
+    // Not in the desktop app, or already gone.
+  }
+}
+
 /** The arguments as shown in a prompt: typed text is a count, not the text. */
 export function browserInputForPrompt(input: unknown): unknown {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return input

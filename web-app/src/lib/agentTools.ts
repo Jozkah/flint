@@ -42,6 +42,7 @@ import {
   browserCallClass,
   browserInputForPrompt,
   describeBrowserCall,
+  closeBrowserSession,
 } from '@/lib/browserTool'
 import {
   BROWSER_TOOL_NAMES,
@@ -750,6 +751,8 @@ export async function cleanupThreadWorkspace(threadId: string): Promise<void> {
 /**
  * Delete sandboxes left behind by threads that no longer exist, returning how
  * many were removed. Best-effort, same reasoning as above.
+  // The thread's agent browser goes with it.
+  void closeBrowserSession(threadId)
  */
 export async function sweepThreadWorkspaces(
   liveThreadIds: string[]

@@ -160,6 +160,7 @@ import {
   notifyToolBatch,
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
+import { closeBrowserSession } from '@/lib/browserTool'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
@@ -215,6 +216,9 @@ import {
   paneDraftScope,
   useSplitConversation,
 } from '@/hooks/useSplitConversation'
+
+/** How long the chat stays idle before its agent browser is closed. */
+const BROWSER_IDLE_CLOSE_MS = 3000
 
 const CHAT_STATUS = {
   STREAMING: 'streaming',
@@ -1401,6 +1405,16 @@ export function ThreadConversation({
     void reloadMemoryProposals()
   }, [status, reloadMemoryProposals])
 
+  // The agent's browser (the `browser` tool) ends with the run. The chat's tool
+  // loop resubmits through `ready` for an instant between steps, so it is closed
+  // only once the chat has stayed idle (or errored), not on every pass through it.
+  useEffect(() => {
+    if (status !== 'ready' && status !== 'error') return
+    const id = threadId
+    const timer = setTimeout(() => void closeBrowserSession(id), BROWSER_IDLE_CLOSE_MS)
+    return () => clearTimeout(timer)
+  }, [status, threadId])
+
   // Global disabled-tools set; re-run the effect below when it changes.
   const disabledTools = useToolAvailable((state) => state.disabledTools)
 
@@ -1620,6 +1634,8 @@ export function ThreadConversation({
       toolCallAbortController.current?.abort()
       toolCallAbortController.current = null
       approvalPromises.clear()
+      // Leaving the thread ends its agent browser.
+      void closeBrowserSession(threadId)
       useToolApprovalRequests
         .getState()
         .clearPendingForThread(threadId, { notify: true })

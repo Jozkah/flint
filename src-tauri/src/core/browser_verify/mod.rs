@@ -314,6 +314,13 @@ pub mod commands {
         tauri_plugin_agent_tools::browser::session::set_activity_watched(watching);
     }
 
+    /// End the agent browser of a conversation or Cowork session: its run
+    /// ended, the user switched away, or the thread was deleted. Idempotent.
+    #[tauri::command]
+    pub fn browser_tool_close(id: String) -> usize {
+        tauri_plugin_agent_tools::browser::session::close_for(&id)
+    }
+
     /// One line naming what a `browser` tool call will do, with the element
     /// named as the run's last snapshot called it, for the approval prompt.
     /// The run's browser is keyed by its conversation here.
