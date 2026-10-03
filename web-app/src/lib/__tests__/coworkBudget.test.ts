@@ -96,8 +96,10 @@ describe('recordSpend', () => {
       completion_tokens: 300,
       total_tokens: 10_700,
     })
-    // 300 new output + 400 of prompt growth, not another 10,700.
-    expect(s.spent).toBe(10_900)
+    // 300 new output + 200 of prompt growth beyond the 200 tokens of last
+    // step's output that the prompt replays, not another 10,700 and not the
+    // replayed output a second time.
+    expect(s.spent).toBe(10_700)
   })
 
   it('never charges negative growth when the prompt shrinks after a compaction', () => {

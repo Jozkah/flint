@@ -57,6 +57,11 @@ export type SpendState = {
   spent: number
   lastTotal: number
   lastPrompt?: number
+  /**
+   * The previous step's completion. The next prompt replays it, so it shows up
+   * again as prompt growth and must not be charged a second time.
+   */
+  lastCompletion?: number
 }
 
 export const newSpend = (spent = 0): SpendState => ({ spent, lastTotal: 0 })
@@ -86,7 +91,8 @@ export function recordSpend(
   let lastTotal = state.lastTotal
   if (total != null) {
     if (prompt != null && state.lastPrompt != null && completion != null) {
-      delta = completion + gap(prompt, state.lastPrompt)
+      delta =
+        completion + gap(gap(prompt, state.lastPrompt), state.lastCompletion ?? 0)
     } else if (prompt != null && state.lastPrompt == null) {
       delta = total
     } else if (state.lastPrompt != null && completion != null) {
@@ -103,6 +109,7 @@ export function recordSpend(
     spent: state.spent + delta,
     lastTotal,
     lastPrompt: prompt ?? state.lastPrompt,
+    lastCompletion: completion ?? state.lastCompletion,
   }
 }
 
