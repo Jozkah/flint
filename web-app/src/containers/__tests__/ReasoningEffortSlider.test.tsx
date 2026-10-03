@@ -170,6 +170,28 @@ describe('ReasoningEffortSlider', () => {
   })
 
   describe('the recommended level', () => {
+    it('can be chosen while it is the default, which pins it', async () => {
+      const onChange = vi.fn()
+      render(<Slider value={null} recommended="medium" onChange={onChange} />)
+      slider().focus()
+      // Home then End would move; instead click the stop already shown.
+      const el = screen.getByTestId('effort-track')
+      el.getBoundingClientRect = () =>
+        ({ left: 0, width: 400, right: 400, top: 0, bottom: 24, height: 24 }) as DOMRect
+      fireEvent(el, new MouseEvent('pointerdown', { bubbles: true, clientX: 150 }))
+      expect(onChange).toHaveBeenCalledWith('medium')
+    })
+
+    it('is not re-sent once it has been chosen', () => {
+      const onChange = vi.fn()
+      render(<Slider value="medium" recommended="medium" onChange={onChange} />)
+      const el = screen.getByTestId('effort-track')
+      el.getBoundingClientRect = () =>
+        ({ left: 0, width: 400, right: 400, top: 0, bottom: 24, height: 24 }) as DOMRect
+      fireEvent(el, new MouseEvent('pointerdown', { bubbles: true, clientX: 150 }))
+      expect(onChange).not.toHaveBeenCalled()
+    })
+
     it('is marked under the model’s own default', () => {
       render(<Slider value="high" recommended="medium" />)
       expect(screen.getByTestId('effort-recommended')).toHaveTextContent(

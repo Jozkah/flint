@@ -27,4 +27,28 @@ describe('RowPreview', () => {
     expect(screen.queryByText('Chat title')).toBeNull()
     vi.useRealTimers()
   })
+
+  it('does not open from focus alone, with the pointer elsewhere', () => {
+    vi.useFakeTimers()
+    render(row(false))
+    fireEvent.focus(screen.getByText('row'))
+    act(() => void vi.advanceTimersByTime(800))
+    expect(screen.queryByText('Chat title')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('does not open after the row was pressed, until the pointer returns', () => {
+    vi.useFakeTimers()
+    render(row(false))
+    const button = screen.getByText('row')
+    fireEvent.pointerEnter(button)
+    fireEvent.pointerDown(button)
+    act(() => void vi.advanceTimersByTime(800))
+    expect(screen.queryByText('Chat title')).toBeNull()
+    fireEvent.pointerLeave(button)
+    fireEvent.pointerEnter(button)
+    act(() => void vi.advanceTimersByTime(800))
+    expect(screen.queryByText('Chat title')).toBeTruthy()
+    vi.useRealTimers()
+  })
 })

@@ -186,6 +186,7 @@
     "deviceListError": "Couldn't read GPU devices",
     "noDevicesDesc": "No GPUs are visible to the llama.cpp engine. Models will run on the CPU.",
     "gpuDisabled": "Disabled",
+    "gpuEnabled": "Use for models",
     "backendApiDesc": "How llama.cpp talks to this GPU",
     "backendSelectDesc": "Use this API for this GPU",
     "unifiedMemory": "Unified Memory",

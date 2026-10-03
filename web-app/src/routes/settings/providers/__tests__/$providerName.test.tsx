@@ -606,6 +606,26 @@ describe('ProviderDetail route', () => {
       )
     })
 
+    it('refreshing drops saved models the server no longer lists', async () => {
+      // A base URL pointed at another server: its list replaces the old one.
+      h.providersSvc.fetchModelsFromProvider = vi
+        .fn()
+        .mockResolvedValue(['other-server-model'])
+      renderComponent()
+      const addModel = screen.getByTestId('add-model')
+      const refreshBtn = addModel.parentElement?.querySelector('button') as HTMLButtonElement
+      await act(async () => {
+        fireEvent.click(refreshBtn)
+      })
+      await waitFor(() => {
+        expect(h.updateProvider).toHaveBeenCalled()
+      })
+      const saved = h.updateProvider.mock.calls.at(-1)?.[1].models as {
+        id: string
+      }[]
+      expect(saved.map((m) => m.id)).toEqual(['other-server-model'])
+    })
+
     it('refresh errors out when provider lacks api keys', async () => {
       h.openaiProvider.api_key = ''
       h.openaiProvider.api_key_fallbacks = []

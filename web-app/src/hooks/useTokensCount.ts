@@ -6,6 +6,8 @@ import {
   getLocalPropsExtension,
   type LlamacppModelProps,
 } from '@/lib/llamacppRouterProps'
+import { fetchServerWindow } from '@/lib/serverWindow'
+import { useContextBreakdown } from './useContextBreakdown'
 import { useModelProvider } from './useModelProvider'
 import { useAppState } from './useAppState'
 import {
@@ -189,6 +191,28 @@ export const useTokensCount = (
     configuredCtxLen,
   ])
 
+  // A server of the user's own that is not a bundled engine (a llama-server on
+  // another port, say) reports its window at `/props`. Learned once per chat
+  // and kept with it, so the context card has a size to divide by, and an
+  // old chat shows it before anything is sent.
+  const learnedWindow = useContextBreakdown((s) =>
+    threadId ? s.windowById[threadId] : undefined
+  )
+  const setLearnedWindow = useContextBreakdown((s) => s.setWindow)
+  const remoteBaseUrl = isLocalProvider
+    ? undefined
+    : getProviderByName(selectedProvider)?.base_url
+  useEffect(() => {
+    if (!threadId || !remoteBaseUrl) return
+    let current = true
+    fetchServerWindow(remoteBaseUrl).then((tokens) => {
+      if (current && tokens) setLearnedWindow(threadId, tokens)
+    })
+    return () => {
+      current = false
+    }
+  }, [threadId, remoteBaseUrl, selectedModel?.id, setLearnedWindow])
+
   const tokenData: TokenCountData = useMemo(() => {
     const sourceOverflow = source?.contextError
       ? parseContextOverflow(source.contextError)
@@ -208,7 +232,13 @@ export const useTokensCount = (
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         usage,
-        maxTokens: sourceOverflow?.contextTokens,
+        // What a refused request named, else the window this chat's server was
+        // last found to run with. A hosted provider has neither, and keeps no
+        // window rather than a guessed one.
+        maxTokens:
+          usableContextValue(sourceOverflow?.contextTokens) ??
+          usableContextValue(learnedWindow) ??
+          undefined,
         isOverflow: sourceOverflow != null,
         loading: false,
         isNearLimit: false,
@@ -289,6 +319,7 @@ export const useTokensCount = (
     getProviderByName,
     selectedModel,
     configuredCtxLen,
+    learnedWindow,
   ])
 
   return {

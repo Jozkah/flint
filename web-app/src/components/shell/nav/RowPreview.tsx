@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { usePreviewSummary } from '@/hooks/usePreviewSummary'
 import {
   HoverCard,
@@ -42,6 +42,13 @@ export function RowPreview({
   useEffect(() => {
     if (suppressed) setOpen(false)
   }, [suppressed])
+  // The card is a hover peek, so it opens only while the pointer rests on the
+  // row and the row was not pressed. Radix also opens it on focus, and its open
+  // timer outlives a click: opening a long session (focus put back on the row,
+  // or the timer firing after the load stalled the page) showed the card with
+  // the pointer elsewhere.
+  const hovered = useRef(false)
+  const pressed = useRef(false)
   const written = usePreviewSummary(summaryKey, open && !suppressed, transcript)
   const shown = written.summary ?? summary
   return (
@@ -49,9 +56,26 @@ export function RowPreview({
       openDelay={650}
       closeDelay={80}
       open={open && !suppressed}
-      onOpenChange={setOpen}
+      onOpenChange={(next) =>
+        setOpen(next && hovered.current && !pressed.current)
+      }
     >
-      <HoverCardTrigger asChild>{children}</HoverCardTrigger>
+      <HoverCardTrigger
+        asChild
+        onPointerEnter={() => {
+          hovered.current = true
+        }}
+        onPointerLeave={() => {
+          hovered.current = false
+          pressed.current = false
+        }}
+        onPointerDown={() => {
+          pressed.current = true
+          setOpen(false)
+        }}
+      >
+        {children}
+      </HoverCardTrigger>
       <HoverCardContent
         side="right"
         align="start"

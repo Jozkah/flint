@@ -13,7 +13,7 @@ describe('areaForPath', () => {
     ['/extensions', 'extensions'],
     ['/settings/providers', 'models'],
     ['/settings/providers/llama.cpp', 'models'],
-    ['/settings/hardware', 'settings'],
+    ['/settings/shortcuts', 'settings'],
     ['/settings/mcp-servers', 'tools'],
     ['/settings/agent-tools', 'settings'],
     ['/settings/web-search', 'settings'],

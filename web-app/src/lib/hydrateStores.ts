@@ -28,6 +28,7 @@ import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
+import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
 import { useKeybindings } from '@/hooks/useKeybindings'
 import { useReferenceAliases } from '@/lib/referenceAliases'
@@ -84,6 +85,7 @@ const secondaryStores = [
   useFileActivity,
   useAgentToolsConfig,
   useModelOverrides,
+  useContextBreakdown,
   useCoworkDisplay,
   useKeybindings,
   useReferenceAliases,

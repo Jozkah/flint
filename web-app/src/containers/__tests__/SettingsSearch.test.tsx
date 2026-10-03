@@ -133,10 +133,10 @@ describe('SettingsSearch', () => {
 
   it('navigates to a page-level result', async () => {
     render(<SettingsSearch />)
-    const { user } = await type('Hardware')
+    const { user } = await type('Shortcuts')
     await user.click(screen.getAllByRole('option')[0])
     expect(mockNavigate).toHaveBeenCalledWith(
-      expect.objectContaining({ to: '/settings/hardware' })
+      expect.objectContaining({ to: '/settings/shortcuts' })
     )
   })
 
@@ -523,7 +523,7 @@ describe('useClearSettingsSearchOnExit', () => {
   it('keeps the query while the user is still in Settings', () => {
     pathname = '/settings/interface'
     const { rerender } = render(<Probe />)
-    pathname = '/settings/hardware'
+    pathname = '/settings/shortcuts'
     rerender(<Probe />)
     expect(useSettingsSearch.getState().query).toBe('theme')
   })
