@@ -55,6 +55,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Windows discovery uses real install layouts, including Arc's Windows app-execution alias.
 
 ### Attachments, images and forking
+- An image read by the `read` tool in Cowork and Chat now reaches a model that can see, with a note for one that cannot, and the tool row shows a thumbnail. Saved chats keep a note instead of the image data.
 
 - Added file attachments to Cowork messages. Documents are read inline or through embeddings, as in Chat, and reach the model with the message.
 - Added **Fork chat** to Chat, from the sidebar or from any reply, so a conversation can branch from any point into a new chat.
@@ -73,6 +74,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The Windows installer, Flatpak metadata and credits name Jozkah.
 
 ### Rooms: assistants, tools and folders
+- Starting or resuming a room with a model that has no known context window opens a dialog to enter one or pick the safe 8,192 default, instead of silently budgeting for it.
+- A room compacts ahead of growth, leaving room for the tool output a participant usually adds, clears old tool output or ends a step with a written reply before it crosses the speaker's own window, and retries a refusal for length once against the window the server named.
 
 - Each participant can be given its own **assistant** and **work role**, picked from menus that match the composer's, with an **Other** role that takes free text and a way to add a custom assistant.
 - A participant runs with its assistant's sampling (temperature, top-p, top-k and the like) as well as its instructions, and is told which language to write in.
@@ -103,6 +106,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Sidebar preview cards show a written summary of the conversation instead of its first prompt, and size to fit it.
 
 ### Fixes to original Jan behavior
+- Numeric parameter fields keep what you type: `0.` and `0,` no longer collapse to 0, `0,5` is no longer stored as text, and `.` or `,` works as the decimal separator.
 
 - Opening a chat no longer animates every message in, which made long chats slow to appear. A chat's messages are also read when the pointer reaches its row.
 - A site without a favicon tries its common icon names before falling back to a letter.
@@ -266,6 +270,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The context card also shows for old chats and for custom OpenAI-compatible servers: the last breakdown is kept with the chat, and a local server's window is read from llama-server's `/props`. A bar with an unknown window fades out instead of looking full, and an old breakdown says how old it is.
 - The context card's meter is one fixed-height bar of used tokens, the room auto-compact keeps free and free space, with an arrow that opens the numbers behind it.
 - Compaction is harder to defeat: stale tool results are cleared first, a conversation that refills right after compacting stops the loop, the summary is made once per prefix and before the trimmer acts, and it keeps an analysis/summary split.
+- Chat compacts instead of stopping: a long tool loop can be folded in steps (the recent turns, then half of them with the cut inside the turn, then only the newest message), a conversation that refills right after compacting starts at a harder cut instead of failing, and a single tool result that alone fills the window keeps its head and tail and loses the middle. Manual `/compact` uses the same fallback.
+- Max Context Tokens has a compact numeric field with a **Detect from model** button that asks a server refusal, the loaded runtime, the model's settings, provider metadata and the bundled family table in turn, and says unknown rather than inventing a number.
 
 - Added a **context circle** to the composer in Chat and Cowork. Hovering shows a card with a bar coloured by kind, the tokens left before auto-compact, **Compact session**, and an expandable breakdown down to each MCP server and tool.
 - Providers that report no window size get an empty ring with the same card.
