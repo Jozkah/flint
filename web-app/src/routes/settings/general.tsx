@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input'
 import { useHardware } from '@/hooks/useHardware'
 import LanguageSwitcher from '@/containers/LanguageSwitcher'
 import ReplyLanguageSwitcher from '@/containers/ReplyLanguageSwitcher'
+import FallbackModelsPicker from '@/containers/FallbackModelsPicker'
 import { isRootDir } from '@/utils/path'
 const TOKEN_VALIDATION_TIMEOUT_MS = 10_000
 
@@ -234,6 +235,11 @@ function General() {
             title={t('settings:general.replyLanguage')}
             description={t('settings:general.replyLanguageDesc')}
             actions={<ReplyLanguageSwitcher />}
+          />
+          <CardItem
+            title={t('settings:general.fallbackModels')}
+            description={t('settings:general.fallbackModelsDesc')}
+            actions={<FallbackModelsPicker />}
           />
           <CardItem
             title={t('onboarding:reopenGuide')}

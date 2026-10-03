@@ -687,6 +687,17 @@ function Overview() {
                 cmpLabel={cmpLabel}
                 delay={80}
               />
+              {(current.cost > 0 || previous.cost > 0) && (
+                <Kpi
+                  title={t('overview:cost')}
+                  icon="analytics"
+                  value={`$${current.cost.toFixed(2)}`}
+                  delta={change(current.cost, previous.cost)}
+                  series={current.series.map((d) => d.stats.cost ?? 0)}
+                  cmpLabel={cmpLabel}
+                  delay={110}
+                />
+              )}
               <Kpi
                 title={t('overview:speed')}
                 icon="zap"

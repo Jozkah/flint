@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
+import { computeCost, type ModelPricing } from '@/lib/tokenUsage'
 
 /**
  * Local usage figures for the Overview dashboard: what the models generated,
@@ -19,6 +20,8 @@ export type DayStats = {
   replies: number
   toolOk: number
   toolFail: number
+  /** Dollars spent, priced when each reply finished. Absent on older days. */
+  cost?: number
 }
 
 export type ActivityKind =
@@ -43,7 +46,16 @@ export type ActivityItem = {
 type UsageStatsState = {
   days: Record<string, DayStats>
   activity: ActivityItem[]
-  recordGeneration: (g: { tokens: number; durationMs: number; at?: number }) => void
+  /** Optional $ per 1M tokens by model id; a model without an entry costs 0. */
+  pricing: Record<string, ModelPricing>
+  setPricing: (model: string, pricing: ModelPricing | null) => void
+  recordGeneration: (g: {
+    tokens: number
+    durationMs: number
+    at?: number
+    model?: string
+    inputTokens?: number
+  }) => void
   recordToolCall: (ok: boolean, at?: number) => void
   pushActivity: (item: Omit<ActivityItem, 'id' | 'at'> & { at?: number }) => void
   reset: () => void
@@ -90,12 +102,22 @@ export const useUsageStats = create<UsageStatsState>()(
     (set) => ({
       days: {},
       activity: [],
-      recordGeneration: ({ tokens, durationMs, at = Date.now() }) => {
+      pricing: {},
+      setPricing: (model, pricing) =>
+        set((s) => {
+          const rest = { ...s.pricing }
+          delete rest[model]
+          return { pricing: pricing ? { ...rest, [model]: pricing } : rest }
+        }),
+      recordGeneration: ({ tokens, durationMs, at = Date.now(), model, inputTokens }) => {
         if (!(tokens > 0)) return
         set((s) => ({
           days: bump(s.days, at, (d) => ({
             ...d,
             tokens: d.tokens + tokens,
+            cost:
+              (d.cost ?? 0) +
+              computeCost(model ? s.pricing[model] : undefined, inputTokens, tokens),
             replies: d.replies + 1,
             ...(durationMs > 0
               ? { genMs: d.genMs + durationMs, timedTokens: d.timedTokens + tokens }
@@ -122,13 +144,15 @@ export const useUsageStats = create<UsageStatsState>()(
       name: 'flint-usage-stats',
       version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (s) => ({ days: s.days, activity: s.activity }),
+      partialize: (s) => ({ days: s.days, activity: s.activity, pricing: s.pricing }),
     }
   )
 )
 
 export type RangeSummary = {
   tokens: number
+  /** Dollars spent over the range. */
+  cost: number
   /** Output tokens per second over the timed requests, or null with none. */
   speed: number | null
   /** Tool calls that succeeded, 0..1, or null with none. */
@@ -161,11 +185,13 @@ export function summarize(
     acc.replies += stats.replies
     acc.toolOk += stats.toolOk
     acc.toolFail += stats.toolFail
+    acc.cost = (acc.cost ?? 0) + (stats.cost ?? 0)
     return acc
   }, emptyDay())
   const toolCalls = total.toolOk + total.toolFail
   return {
     tokens: total.tokens,
+    cost: total.cost ?? 0,
     speed: total.genMs > 0 ? total.timedTokens / (total.genMs / 1000) : null,
     toolSuccess: toolCalls > 0 ? total.toolOk / toolCalls : null,
     toolCalls,

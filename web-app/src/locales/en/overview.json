@@ -12,6 +12,7 @@
   "options": "Dashboard options",
   "resetStats": "Reset statistics",
   "tokens": "Tokens Generated",
+  "cost": "Estimated Cost",
   "speed": "Avg. Generation Speed",
   "toolSuccess": "Tool Call Success",
   "throughput": "Token Throughput",

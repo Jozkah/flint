@@ -60,6 +60,8 @@ type GeneralSettingState = {
   currentLanguage: Language
   /** Language replies are pinned to, as the model is told it; '' follows the conversation. */
   replyLanguage: string
+  /** `provider::modelId` entries tried in order when the chosen model fails to answer. */
+  fallbackModels: string[]
   spellCheckChatInput: boolean
   tokenCounterCompact: boolean
   stripReasoningFromContext: boolean
@@ -70,6 +72,7 @@ type GeneralSettingState = {
   setStripReasoningFromContext: (value: boolean) => void
   setCurrentLanguage: (value: Language) => void
   setReplyLanguage: (value: string) => void
+  setFallbackModels: (value: string[]) => void
 }
 
 export const useGeneralSetting = create<GeneralSettingState>()(
@@ -77,6 +80,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
     (set) => ({
       currentLanguage: 'en',
       replyLanguage: '',
+      fallbackModels: [],
       spellCheckChatInput: true,
       tokenCounterCompact: true,
       stripReasoningFromContext: false,
@@ -87,6 +91,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
         set({ stripReasoningFromContext: value }),
       setCurrentLanguage: (value) => set({ currentLanguage: value }),
       setReplyLanguage: (value) => set({ replyLanguage: value }),
+      setFallbackModels: (value) => set({ fallbackModels: value }),
       setHuggingfaceToken: (token) => {
         set({ huggingfaceToken: token })
         // Canonical secret store is the OS keyring, not settings storage.
@@ -119,6 +124,7 @@ export const useGeneralSetting = create<GeneralSettingState>()(
       partialize: (state) => ({
         currentLanguage: state.currentLanguage,
         replyLanguage: state.replyLanguage,
+        fallbackModels: state.fallbackModels,
         spellCheckChatInput: state.spellCheckChatInput,
         tokenCounterCompact: state.tokenCounterCompact,
         stripReasoningFromContext: state.stripReasoningFromContext,

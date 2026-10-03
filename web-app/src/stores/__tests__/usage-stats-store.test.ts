@@ -51,3 +51,27 @@ describe('usage stats', () => {
     expect(list[0].title).toBe('m129')
   })
 })
+
+describe('usage stats cost', () => {
+  beforeEach(() => {
+    useUsageStats.getState().reset()
+    useUsageStats.setState({ pricing: {} })
+  })
+
+  it('prices replies by model and sums the range', () => {
+    const s = useUsageStats.getState()
+    s.setPricing('cloud-x', { input: 3, output: 15 })
+    s.recordGeneration({ tokens: 1000, durationMs: 0, at: noon, model: 'cloud-x', inputTokens: 2000 })
+    s.recordGeneration({ tokens: 500, durationMs: 0, at: noon, model: 'local-y', inputTokens: 9000 })
+    const sum = summarize(useUsageStats.getState().days, 7, noon)
+    expect(sum.cost).toBeCloseTo(0.021)
+  })
+
+  it('stops pricing a model once its entry is cleared', () => {
+    const s = useUsageStats.getState()
+    s.setPricing('cloud-x', { input: 1, output: 1 })
+    s.setPricing('cloud-x', null)
+    s.recordGeneration({ tokens: 1000, durationMs: 0, at: noon, model: 'cloud-x' })
+    expect(summarize(useUsageStats.getState().days, 1, noon).cost).toBe(0)
+  })
+})
