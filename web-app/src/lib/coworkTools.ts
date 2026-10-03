@@ -311,7 +311,7 @@ export function taskDescription(subagentNames: string[]): string {
     DO_NOT_DELEGATE,
     'Blocks until the subagent answers and returns its final message. Calls in one message run one after another; to run independent parts at the same time, use `team`.',
     NOT_SHOWN_TO_USER,
-    `${subagentChoices(subagentNames)} For a one-off, give a descriptive subagent_name and a system_prompt.`,
+    `${subagentChoices(subagentNames)} For a one-off, give a descriptive subagent_name and a system_prompt. Set isolate:true for a job that changes files you want reviewed first.`,
   ].join('\n')
 }
 
@@ -331,6 +331,11 @@ function taskTool(subagentNames: string[]): Tool {
         allowed_tools: {
           type: 'array',
           items: { type: 'string', minLength: 1 },
+        },
+        isolate: {
+          type: 'boolean',
+          description:
+            'Give this subagent a checkout of its own, so its file changes do not reach the attached folder until the user reviews them. Not combinable with allowed_tools.',
         },
       },
       required: ['subagent_name', 'description'],

@@ -647,6 +647,76 @@ describe('what holds a session in place while it works', () => {
     expect(child.held()).toBe(0)
   })
 
+  describe('task with isolate', () => {
+    it('runs as a one-task team so the team path provides the checkout', async () => {
+      const onTeam = vi.fn(async () => ({ output: 'team report' }))
+      const onTask = vi.fn(async () => ({ output: 'task ok' }))
+      const out = await dispatchCoworkTool(
+        call('task', {
+          subagent_name: 'implementer',
+          description: 'rename the helper',
+          isolate: true,
+        }),
+        ctx({ onTeam, onTask })
+      )
+      expect(out.output).toBe('team report')
+      expect(onTask).not.toHaveBeenCalled()
+      expect(onTeam).toHaveBeenCalledWith('c1', {
+        tasks: [
+          {
+            id: 'task',
+            subagent_name: 'implementer',
+            description: 'rename the helper',
+            isolate: true,
+          },
+        ],
+      })
+    })
+
+    it('holds the subagent slot for as long as the isolated child runs', async () => {
+      const child = tracker()
+      const gate = deferred<{ output: string }>()
+      const pending = dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd', isolate: true }),
+        ctx({ trackSubagent: child.hook, onTeam: () => gate.promise })
+      )
+      expect(child.held()).toBe(1)
+      gate.resolve({ output: 'done' })
+      await pending
+      expect(child.held()).toBe(0)
+    })
+
+    it('stays an ordinary task without isolate, or with isolate false', async () => {
+      const onTeam = vi.fn(async () => ({ output: 'team report' }))
+      for (const isolate of [undefined, false]) {
+        const out = await dispatchCoworkTool(
+          call('task', { subagent_name: 'r', description: 'd', isolate }),
+          ctx({ onTeam })
+        )
+        expect(out.output).toBe('task ok')
+      }
+      expect(onTeam).not.toHaveBeenCalled()
+    })
+
+    it('refuses isolate with allowed_tools instead of dropping either', async () => {
+      const onTeam = vi.fn(async () => ({ output: 'team report' }))
+      const onTask = vi.fn(async () => ({ output: 'task ok' }))
+      const out = await dispatchCoworkTool(
+        call('task', {
+          subagent_name: 'r',
+          description: 'd',
+          isolate: true,
+          allowed_tools: ['read'],
+        }),
+        ctx({ onTeam, onTask })
+      )
+      expect(out.isError).toBe(true)
+      expect(out.output).toContain('allowed_tools')
+      expect(onTeam).not.toHaveBeenCalled()
+      expect(onTask).not.toHaveBeenCalled()
+    })
+  })
+
   it('tracks nothing when the caller has no active-work model', async () => {
     const c = ctx()
     expect(

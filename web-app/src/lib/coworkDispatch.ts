@@ -17,6 +17,7 @@ import {
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
 import { attribute, sealed } from '@/lib/coworkPrompt'
@@ -696,6 +697,22 @@ async function routeCoworkTool(
       return await ctx.onAsk(call.toolCallId, call.input)
     }
     if (toolName === TASK_TOOL_NAME) {
+      // `isolate: true` is a team of one. The team path already provisions a
+      // checkout for a task, records it for review, refuses when the project
+      // cannot be isolated, and settles it afterwards; a second implementation
+      // for a lone `task` would be a copy that drifts.
+      const asTeam = ctx.onTeam ? isolatedTaskAsTeam(call.input) : null
+      if (asTeam && 'error' in asTeam) {
+        return { output: `ERROR: ${asTeam.error}`, isError: true }
+      }
+      if (asTeam && ctx.onTeam) {
+        const teamDone = ctx.trackSubagent?.()
+        try {
+          return await ctx.onTeam(call.toolCallId, asTeam)
+        } finally {
+          teamDone?.()
+        }
+      }
       const childDone = ctx.trackSubagent?.()
       try {
         return await ctx.onTask(call.toolCallId, call.input)

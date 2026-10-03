@@ -782,6 +782,53 @@ export function parseTeamRequest(raw: unknown): TeamTask[] | string {
   return tasks
 }
 
+/**
+ * A `task` call that asked for its own checkout, as the one-task team that
+ * provides it, or `null` when the call did not ask (or is not well-formed, in
+ * which case the ordinary `task` path reports what is wrong with it).
+ *
+ * Isolation lives in the team path: it provisions the checkout, records the
+ * child for review, refuses a project that cannot be isolated and settles the
+ * checkout afterwards. A lone `task` reuses all of that rather than growing a
+ * second copy. A one-off's inline `system_prompt` has no field on a team task,
+ * so it travels at the head of the brief, which is all the child reads.
+ */
+export function isolatedTaskAsTeam(
+  input: unknown
+): { tasks: unknown[] } | { error: string } | null {
+  if (!input || typeof input !== 'object') return null
+  const raw = input as Record<string, unknown>
+  if (raw.isolate !== true) return null
+  const description =
+    typeof raw.description === 'string' ? raw.description.trim() : ''
+  const name =
+    typeof raw.subagent_name === 'string' ? raw.subagent_name.trim() : ''
+  if (!description || !name) return null
+  // A team task has no tool list of its own. Running without the narrowing the
+  // caller asked for would widen the child's authority, and running without the
+  // checkout would put its changes where the caller said they must not go, so
+  // the combination is refused rather than half-honoured.
+  if (Array.isArray(raw.allowed_tools) && raw.allowed_tools.length > 0) {
+    return {
+      error:
+        '`isolate` cannot be combined with `allowed_tools` on `task`. Use a ' +
+        'saved subagent or role with the tools you want, or drop `allowed_tools`.',
+    }
+  }
+  const role =
+    typeof raw.system_prompt === 'string' ? raw.system_prompt.trim() : ''
+  return {
+    tasks: [
+      {
+        id: 'task',
+        subagent_name: name,
+        description: role ? `${role}\n\n${description}` : description,
+        isolate: true,
+      },
+    ],
+  }
+}
+
 const stringList = (value: unknown): string[] =>
   Array.isArray(value)
     ? value.filter(
