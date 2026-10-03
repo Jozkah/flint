@@ -33,6 +33,8 @@ describe('delegation tool descriptions', () => {
   it('task is honest that calls run one after another and points at team', () => {
     const d = taskDescription(names)
     expect(d).toContain('one after another')
+    expect(d).toContain('background:true')
+    expect(d).toContain('await_task')
     expect(d).toContain('`team`')
     expect(d).not.toContain('run concurrently')
   })

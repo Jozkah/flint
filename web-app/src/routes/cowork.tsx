@@ -466,6 +466,7 @@ import {
   beginRun,
   endRun,
   hasSubagent,
+  abortSubagent,
   registerSubagent,
   unregisterSubagent,
   isAbortLike,
@@ -488,8 +489,10 @@ import {
   subagentActorId,
   parentToolNames,
   runSubagent,
+  SUBAGENT_RESULT_HEAD_CHARS,
   type SubagentRequest,
 } from '@/lib/coworkSubagent'
+import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
@@ -3630,7 +3633,11 @@ export function CoworkPage() {
           capped: child.capped,
           stoppedAtLimit: child.stoppedAtLimit,
         })
-        return { output: child.output, isError: child.isError }
+        return {
+          output: child.output,
+          isError: child.isError,
+          ...(child.full ? { full: child.full } : {}),
+        }
       } finally {
         controller.signal.removeEventListener('abort', stopChild)
         unregisterSubagent(sid, childTaskId)
@@ -3810,6 +3817,8 @@ export function CoworkPage() {
      * here: it runs in a new request under the session's stored mode.
      */
     let continueWith: string | null = null
+    // Subagents this run started with `task background:true`.
+    const backgroundTasks = new BackgroundTasks(SUBAGENT_RESULT_HEAD_CHARS)
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -3921,6 +3930,9 @@ export function CoworkPage() {
                     authority: runAuthority,
                   }),
                 scopedInstructions: scopedInstructionsFor,
+                tasks: backgroundTasks,
+                cancelChild: (callId) =>
+                  abortSubagent(sid, taskIdFor(sid, runId, callId)),
                 onTodo: async (input) => {
                   const result = applyTodoOp(
                     useCoworkSessions
@@ -4582,6 +4594,10 @@ export function CoworkPage() {
           },
         },
       })
+      // Children the model started in the background and never collected:
+      // wait for them rather than discard their work, as the Rust loop does.
+      // Stop reaches them through their abort handles, so this cannot hang.
+      await backgroundTasks.settleAll()
     } catch (e) {
       // The runner turns a failed step into an outcome, so this is the last
       // resort — a fault in the loop itself. Either way it is not a tool call,

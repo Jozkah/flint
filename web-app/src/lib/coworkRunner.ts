@@ -150,6 +150,11 @@ export type ToolOutcome = {
    * the model is simply not called again. Never reaches the model.
    */
   endsTurn?: boolean
+  /**
+   * A subagent's whole answer when `output` is a shortened copy of it. Taken
+   * by the dispatcher, which keeps it for `await_task` reads; never sent on.
+   */
+  full?: string
 }
 
 /**

@@ -13,6 +13,7 @@ vi.mock('@/lib/webSearchTool', () => ({
 }))
 
 import { dispatchCoworkTool } from '../coworkDispatch'
+import { BackgroundTasks } from '../coworkBackgroundTasks'
 import type { PendingToolCall } from '../coworkRunner'
 import type { CoworkMode } from '../coworkMode'
 
@@ -645,6 +646,95 @@ describe('what holds a session in place while it works', () => {
     childGate.resolve({ output: 'done' })
     await childCall
     expect(child.held()).toBe(0)
+  })
+
+  describe('background tasks', () => {
+    it('returns a handle at once and runs the child on', async () => {
+      const gate = deferred<{ output: string }>()
+      const tasks = new BackgroundTasks()
+      const onTask = vi.fn(() => gate.promise)
+      const out = await dispatchCoworkTool(
+        call('task', { subagent_name: 'explorer', description: 'd', background: true }),
+        ctx({ tasks, onTask })
+      )
+      expect(out.output).toContain('task_id=c1')
+      expect(out.isError).toBeUndefined()
+      expect(onTask).toHaveBeenCalledWith('c1', expect.objectContaining({ background: true }))
+      expect(tasks.status('c1')?.state).toBe('running')
+
+      const waiting = dispatchCoworkTool(call('await_task', { task_id: 'c1' }), ctx({ tasks }))
+      gate.resolve({ output: 'the answer' })
+      expect((await waiting).output).toBe('the answer')
+      expect(tasks.status('c1')?.state).toBe('done')
+    })
+
+    it('holds the subagent slot until the child is done, not until the call returns', async () => {
+      const child = tracker()
+      const gate = deferred<{ output: string }>()
+      const tasks = new BackgroundTasks()
+      await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd', background: true }),
+        ctx({ tasks, trackSubagent: child.hook, onTask: () => gate.promise })
+      )
+      expect(child.held()).toBe(1)
+      gate.resolve({ output: 'done' })
+      await tasks.settleAll()
+      expect(child.held()).toBe(0)
+    })
+
+    it('cancels through the run’s own child handle', async () => {
+      const gate = deferred<{ output: string; isError?: boolean }>()
+      const tasks = new BackgroundTasks()
+      const cancelChild = vi.fn(() => {
+        gate.resolve({ output: '(cancelled)', isError: true })
+        return true
+      })
+      const c = ctx({ tasks, cancelChild, onTask: () => gate.promise })
+      await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd', background: true }),
+        c
+      )
+      const out = await dispatchCoworkTool(call('cancel_task', { task_id: 'c1' }), c)
+      expect(out.output).toContain('Cancelled c1')
+      expect(cancelChild).toHaveBeenCalledWith('c1')
+      await tasks.settleAll()
+      expect(tasks.status('c1')?.state).toBe('cancelled')
+    })
+
+    it('runs in the foreground without the flag, and keeps a cut answer retrievable', async () => {
+      const tasks = new BackgroundTasks(9_000)
+      const full = 'z'.repeat(30_000)
+      const onTask = vi.fn(async () => ({ output: 'head…tail', full }))
+      const out = await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd' }),
+        ctx({ tasks, onTask })
+      )
+      expect(out.output).toContain('await_task with task_id=c1 and offset=9000')
+      expect((out as { full?: string }).full).toBeUndefined()
+      expect(tasks.readRetained('c1', 9_000).startsWith('zzzz')).toBe(true)
+    })
+
+    it('never lets the whole answer travel on when there is nowhere to keep it', async () => {
+      const out = await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd' }),
+        ctx({ onTask: async () => ({ output: 'cut', full: 'y'.repeat(20_000) }) })
+      )
+      expect(out).toEqual({ output: 'cut' })
+    })
+
+    it('refuses background with isolate, and is refused to a dispatcher with no registry', async () => {
+      const tasks = new BackgroundTasks()
+      const both = await dispatchCoworkTool(
+        call('task', { subagent_name: 'r', description: 'd', background: true, isolate: true }),
+        ctx({ tasks })
+      )
+      expect(both.isError).toBe(true)
+      expect(both.output).toContain('isolate')
+      // A child's dispatcher has no registry: the flag is ignored there, and
+      // the management tools are refused by name.
+      const await_ = await dispatchCoworkTool(call('await_task', { task_id: 'c1' }), ctx())
+      expect(await_.isError).toBe(true)
+    })
   })
 
   describe('task with isolate', () => {

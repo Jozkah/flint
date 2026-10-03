@@ -18,6 +18,12 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import {
+  BACKGROUND_TASK_TOOLS,
+  omitFull,
+  runBackgroundTool,
+  type BackgroundTasks,
+} from '@/lib/coworkBackgroundTasks'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
 import { attribute, sealed } from '@/lib/coworkPrompt'
@@ -159,6 +165,13 @@ export type DispatchContext = {
   writeGrant?: string | null
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * This run's background tasks (`task` with `background: true`). Absent for a
+   * subagent's own dispatcher: a child starts, awaits and stops nothing.
+   */
+  tasks?: BackgroundTasks
+  /** Stop one child by its call id; false when there was nothing to stop. */
+  cancelChild?: (callId: string) => boolean
   /**
    * Runs a declared task graph as several children.
    *
@@ -696,7 +709,54 @@ async function routeCoworkTool(
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
     }
+    // Collecting, checking on and stopping this run's background tasks.
+    if (BACKGROUND_TASK_TOOLS.has(toolName)) {
+      if (!ctx.tasks) {
+        return {
+          output: 'You cannot manage background tasks. Do this work yourself.',
+          isError: true,
+        }
+      }
+      return await runBackgroundTool(toolName, call.input, ctx.tasks, { signal })
+    }
     if (toolName === TASK_TOOL_NAME) {
+      const taskInput = (
+        call.input && typeof call.input === 'object' ? call.input : {}
+      ) as Record<string, unknown>
+      if (taskInput.background === true && ctx.tasks) {
+        if (taskInput.isolate === true) {
+          return {
+            output:
+              'ERROR: `background` cannot be combined with `isolate`. Run the isolated task in the foreground, or put it in a `team`.',
+            isError: true,
+          }
+        }
+        // Held for as long as the child lives, not just for this call: the
+        // child inherits this run's authority until it is done.
+        const childDone = ctx.trackSubagent?.()
+        const id = call.toolCallId
+        const name =
+          typeof taskInput.subagent_name === 'string'
+            ? taskInput.subagent_name
+            : 'subagent'
+        ctx.tasks.start(
+          id,
+          name,
+          async () => {
+            try {
+              return await ctx.onTask(id, call.input)
+            } finally {
+              childDone?.()
+            }
+          },
+          () => ctx.cancelChild?.(id) ?? false
+        )
+        return {
+          output:
+            `Task started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its answer, ` +
+            'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
+        }
+      }
       // `isolate: true` is a team of one. The team path already provisions a
       // checkout for a task, records it for review, refuses when the project
       // cannot be isolated, and settles it afterwards; a second implementation
@@ -715,7 +775,12 @@ async function routeCoworkTool(
       }
       const childDone = ctx.trackSubagent?.()
       try {
-        return await ctx.onTask(call.toolCallId, call.input)
+        const done = await ctx.onTask(call.toolCallId, call.input)
+        // A cut answer is kept for `await_task` reads; the whole text never
+        // travels with the outcome.
+        return ctx.tasks
+          ? ctx.tasks.collect(call.toolCallId, done)
+          : omitFull(done)
       } finally {
         childDone?.()
       }

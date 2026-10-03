@@ -18,6 +18,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { createUsageCollector } from '@/lib/tokenUsage'
 import {
@@ -73,11 +74,10 @@ export const SUBAGENT_RESULT_TAIL_CHARS = 3_500
  * A child's final message, capped for its parent.
  *
  * A short answer comes back untouched. A long one keeps its head and tail with a
- * note saying how much was dropped. Unlike the Rust path the full text is not
- * spilled to a file: a Cowork child's workspace is a sandbox that the parent
- * reaches only through approved tool calls, so writing there unasked would
- * raise a permission prompt for housekeeping. The note says so instead of
- * naming a path that does not exist.
+ * note saying how much was dropped. The dispatcher keeps the full text (`full`
+ * on the outcome) and adds the line that says how to read the rest with
+ * `await_task`, so the whole answer stays reachable without a file or a
+ * permission prompt.
  */
 export function capSubagentOutput(text: string): string {
   // Code points, not UTF-16 units, so a surrogate pair is never split.
@@ -88,7 +88,7 @@ export function capSubagentOutput(text: string): string {
   return (
     chars.slice(0, SUBAGENT_RESULT_HEAD_CHARS).join('') +
     `\n\n[... ${omitted} characters omitted from the middle of the subagent's answer. ` +
-    'The rest was not kept; ask it again with a narrower question if you need the detail. ...]\n\n' +
+    '...]\n\n' +
     chars.slice(chars.length - SUBAGENT_RESULT_TAIL_CHARS).join('')
   )
 }
@@ -120,6 +120,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TEAM_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
+  // Managing the parent's background tasks is the parent's business.
+  ...BACKGROUND_TASK_TOOLS,
   // Cross-session messaging speaks for the session, not for an errand: a child
   // must not discover, message or wait on other sessions.
   ...SESSION_MESSAGING_TOOL_NAMES,
@@ -403,6 +405,8 @@ export type SubagentResult = {
   isError?: boolean
   /** The answer was shortened by `capSubagentOutput`. */
   capped?: boolean
+  /** The whole answer, when `output` is a shortened copy of it. */
+  full?: string
   /** The child used its whole step budget without finishing. */
   stoppedAtLimit?: boolean
   sessionTokens: number
@@ -609,7 +613,7 @@ export async function runSubagent(
         // limits are the run's, not the child's.
         ...(outcome.stoppedBy === 'steps' ? { stoppedAtLimit: true } : {}),
         ...(finalText && capSubagentOutput(finalText) !== finalText
-          ? { capped: true }
+          ? { capped: true, full: finalText }
           : {}),
       }
     }
@@ -618,7 +622,7 @@ export async function runSubagent(
       output: finalText ? capped : '(the subagent returned no answer)',
       usage: outcome.usage,
       sessionTokens,
-      ...(finalText && capped !== finalText ? { capped: true } : {}),
+      ...(finalText && capped !== finalText ? { capped: true, full: finalText } : {}),
     }
   } finally {
     release()

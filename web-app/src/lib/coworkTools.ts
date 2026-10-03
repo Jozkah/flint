@@ -10,6 +10,12 @@ import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import {
+  AWAIT_TASK_TOOL_NAME,
+  BACKGROUND_TASK_TOOLS,
+  CANCEL_TASK_TOOL_NAME,
+  TASK_STATUS_TOOL_NAME,
+} from '@/lib/coworkBackgroundTasks'
+import {
   BRIEF_RULE,
   DELEGATE_WHEN,
   DO_NOT_DELEGATE,
@@ -65,6 +71,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
+  ...BACKGROUND_TASK_TOOLS,
 ])
 
 const todoTool: Tool = {
@@ -309,7 +316,7 @@ export function taskDescription(subagentNames: string[]): string {
     `Hand a self-contained job to a subagent: a nested agent with its own context and tools. ${BRIEF_RULE}`,
     DELEGATE_WHEN,
     DO_NOT_DELEGATE,
-    'Blocks until the subagent answers and returns its final message. Calls in one message run one after another; to run independent parts at the same time, use `team`.',
+    'By default this blocks until the subagent answers, and calls in one message run one after another. To run several at once, set background:true on each: it returns a task_id immediately and the subagent keeps working while you do other things; collect each with await_task (task_status checks on them, cancel_task stops one). `team` runs a declared set with an order.',
     NOT_SHOWN_TO_USER,
     `${subagentChoices(subagentNames)} For a one-off, give a descriptive subagent_name and a system_prompt. Set isolate:true for a job that changes files you want reviewed first.`,
   ].join('\n')
@@ -335,7 +342,12 @@ function taskTool(subagentNames: string[]): Tool {
         isolate: {
           type: 'boolean',
           description:
-            'Give this subagent a checkout of its own, so its file changes do not reach the attached folder until the user reviews them. Not combinable with allowed_tools.',
+            'Give this subagent a checkout of its own, so its file changes do not reach the attached folder until the user reviews them. Not combinable with allowed_tools or background.',
+        },
+        background: {
+          type: 'boolean',
+          description:
+            'Start it and return a task_id at once instead of waiting. Collect the answer with await_task.',
         },
       },
       required: ['subagent_name', 'description'],
@@ -343,6 +355,52 @@ function taskTool(subagentNames: string[]): Tool {
     }),
   } as Tool
 }
+
+const taskIdProperty = {
+  type: 'string' as const,
+  minLength: 1,
+  description: 'The task_id that `task` with background:true returned.',
+}
+
+const awaitTaskTool: Tool = {
+  description:
+    'Wait for a background task to finish and return its final answer. If the answer comes back shortened, call again with the same task_id and an offset to read the omitted part. Can be called again for a task that already finished.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      task_id: taskIdProperty,
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        description:
+          'Only for an answer that came back shortened: the character to continue reading from.',
+      },
+    },
+    required: ['task_id'],
+    additionalProperties: false,
+  }),
+} as Tool
+
+const taskStatusTool: Tool = {
+  description:
+    'Say whether background tasks are running, done, failed or cancelled, and for how long. Without task_id it lists every background task of this run. Does not wait.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: { task_id: taskIdProperty },
+    additionalProperties: false,
+  }),
+} as Tool
+
+const cancelTaskTool: Tool = {
+  description:
+    'Stop one background task. Its partial work is discarded. A task that already finished is left alone.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: { task_id: taskIdProperty },
+    required: ['task_id'],
+    additionalProperties: false,
+  }),
+} as Tool
 
 export type CoworkToolOptions = {
   planMode: boolean
@@ -415,7 +473,12 @@ export function allowedToolNames(
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) return false
     if (opts.planMode && isReviewDeniedBrowserTool(name)) return false
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) return false
-    if (name === TASK_TOOL_NAME && !opts.allowSubagents) return false
+    if (
+      (name === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(name)) &&
+      !opts.allowSubagents
+    ) {
+      return false
+    }
     return true
   })
 }
@@ -531,6 +594,9 @@ export function coworkToolsFromSchemas(
   if (opts.allowSubagents && !opts.planMode) {
     tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames)
     tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
+    tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
+    tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
+    tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
   }
   return tools
 }
