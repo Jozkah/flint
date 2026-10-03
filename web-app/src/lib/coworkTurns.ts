@@ -267,6 +267,10 @@ export function coworkTurnsToUIMessages(
       }
     }
 
+    // What a `read` of an image returned, for the card's thumbnail. In memory
+    // only: a saved turn has none, and the model never sees this field.
+    if (turn.toolImages?.length) part.toolImages = turn.toolImages
+
     ensureAssistant(i).parts.push(part)
   })
 

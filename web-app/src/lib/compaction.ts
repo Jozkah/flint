@@ -24,6 +24,7 @@ import {
   extractSummary,
   SUMMARY_FORMAT_INSTRUCTION,
 } from '@/lib/context-manager'
+import { outputTextWithoutImages } from '@/lib/toolOutputImages'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { isContextOverflow, replyReserveFor } from '@/lib/coworkBudget'
 
@@ -250,7 +251,17 @@ export type CompactionPlan = {
  */
 export function planCompaction(
   messages: UIMessage[],
-  opts: { keepRecent?: number } = {}
+  opts: {
+    keepRecent?: number
+    /**
+     * Cut inside a user turn instead of backing up to its start. A long tool
+     * loop is one user turn: backing up keeps the whole loop verbatim, which
+     * is exactly what cannot be afforded once the loop itself fills the
+     * window. The user's request then travels with the summary
+     * (`compactHistory`'s `latestRequest`).
+     */
+    splitTurn?: boolean
+  } = {}
 ): CompactionPlan | null {
   const keepRecent = Math.max(1, opts.keepRecent ?? DEFAULT_KEEP_RECENT)
   const pinned: UIMessage[] = []
@@ -265,7 +276,7 @@ export function planCompaction(
   if (unresolved >= 0) cut = Math.min(cut, unresolved)
   // Back to the start of the user turn the cut falls in, when there is one
   // that still leaves something to fold.
-  for (let i = cut; i > 0; i--) {
+  for (let i = cut; i > 0 && !opts.splitTurn; i--) {
     if (rest[i].role === 'user' && !isSummaryMessage(rest[i])) {
       cut = i
       break
@@ -298,7 +309,8 @@ export function transcriptForSummary(messages: UIMessage[]): string {
             ? `error: ${String(part.errorText)}`
             : typeof part.output === 'string'
               ? part.output
-              : JSON.stringify(part.output ?? '')
+              : // An image in a result is a marker here, never its base64.
+                outputTextWithoutImages(part.output)
         lines.push(`[tool ${name}] ${input}\n-> ${output}`)
       }
     }
@@ -381,6 +393,7 @@ export async function compactHistory(
   opts: {
     summarize: Summarize
     keepRecent?: number
+    splitTurn?: boolean
     reason: CompactionRecord['reason']
     signal?: AbortSignal
     now?: () => number
@@ -395,7 +408,10 @@ export async function compactHistory(
     ) => { count: number; summary: Promise<string | null> } | null
   }
 ): Promise<CompactResult | null> {
-  let plan = planCompaction(messages, { keepRecent: opts.keepRecent })
+  let plan = planCompaction(messages, {
+    keepRecent: opts.keepRecent,
+    splitTurn: opts.splitTurn,
+  })
   if (!plan) return null
   const prefix = opts.reusePrefix?.(plan.summarize) ?? null
   if (prefix && prefix.count > 0 && prefix.count < plan.summarize.length) {
@@ -462,4 +478,87 @@ export async function compactHistory(
 /** Estimated tokens of a history, with the same heuristic every surface uses. */
 export function estimateHistoryTokens(messages: UIMessage[]): number {
   return messages.reduce((sum, m) => sum + estimateMessageTokens(m), 0)
+}
+
+type ClippablePart = {
+  type: string
+  state?: string
+  output?: unknown
+}
+
+function toolOutputText(output: unknown): string {
+  return typeof output === 'string' ? output : JSON.stringify(output ?? '')
+}
+
+/** Head and tail of a text, with a note saying how much was left out. */
+function clipMiddle(text: string, keepChars: number): string {
+  if (text.length <= keepChars) return text
+  const head = Math.ceil(keepChars * 0.6)
+  const tail = Math.max(0, keepChars - head)
+  const omitted = text.length - head - tail
+  return (
+    `${text.slice(0, head)}
+[... ${omitted.toLocaleString()} chars of this tool result ` +
+    `left out to fit the context window ...]
+${tail > 0 ? text.slice(-tail) : ''}`
+  )
+}
+
+/** The room a clipped result keeps at least, so it still says something. */
+const MIN_CLIPPED_CHARS = 2000
+
+/**
+ * Shrink the largest tool results of `messages` until they estimate at no more
+ * than `maxTokens`. For the one case summarizing cannot help: a single tool
+ * result so large that it alone fills the window, which no compaction can fold
+ * because it is the newest thing in the conversation. Its head and tail stay.
+ * Pure; unchanged messages are returned as the same objects.
+ */
+export function clipToolResultsToFit(
+  messages: UIMessage[],
+  maxTokens: number
+): { messages: UIMessage[]; clippedCount: number } {
+  let out = messages
+  let clipped = 0
+  for (let guard = 0; guard < 64; guard++) {
+    if (estimateHistoryTokens(out) <= maxTokens) break
+    let best: { mi: number; pi: number; chars: number } | null = null
+    out.forEach((message, mi) => {
+      message.parts.forEach((part, pi) => {
+        const p = part as ClippablePart
+        if (!isToolPart(p) || p.state !== 'output-available') return
+        const chars = toolOutputText(p.output).length
+        if (chars > MIN_CLIPPED_CHARS && (!best || chars > best.chars)) {
+          best = { mi, pi, chars }
+        }
+      })
+    })
+    if (!best) break
+    const target = best as { mi: number; pi: number; chars: number }
+    // Over by this many tokens: give back at least that, and at least half of
+    // the result, so the loop ends in a handful of passes.
+    const overChars = Math.ceil((estimateHistoryTokens(out) - maxTokens) * 3.5)
+    const keep = Math.max(
+      MIN_CLIPPED_CHARS,
+      Math.min(Math.floor(target.chars / 2), target.chars - overChars)
+    )
+    const next = out.map((message, mi) => {
+      if (mi !== target.mi) return message
+      const parts = message.parts.map((part, pi) =>
+        pi === target.pi
+          ? ({
+              ...part,
+              output: clipMiddle(
+                toolOutputText((part as ClippablePart).output),
+                keep
+              ),
+            } as typeof part)
+          : part
+      )
+      return { ...message, parts }
+    })
+    out = next
+    clipped++
+  }
+  return { messages: out, clippedCount: clipped }
 }

@@ -5,7 +5,7 @@
  * Kept apart from `participantModel.ts` so the engine does not load the model
  * factory or the AI SDK just to classify an error.
  */
-import { isContextOverflow } from '@/lib/coworkBudget'
+import { isContextLengthError } from '@/lib/compaction'
 import { isAbortLike } from '@/lib/coworkRunner'
 import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
 import { classifyFailure, type FailureClass, type FailureFacts } from '@/lib/runRetry'
@@ -49,6 +49,12 @@ export type StreamReplyInput = {
   system: string
   messages: PromptMessage[]
   maxOutputTokens: number
+  /**
+   * The speaker's own context window. A turn that runs tools measures each
+   * step's request against it and clears old tool output, or ends the tool
+   * loop, before the window is crossed. Absent: no per-step guard.
+   */
+  contextBudget?: { window: number }
   signal: AbortSignal
   /** Text deltas only; reasoning is never passed here. */
   onText: (delta: string) => void
@@ -81,17 +87,27 @@ export class RoomCallError extends Error {
   readonly kind: RoomCallErrorKind
   readonly code: string
   readonly facts: FailureFacts
-  constructor(kind: RoomCallErrorKind, code: string, message: string, facts: FailureFacts = {}) {
+  /**
+   * The window a refusal for length named, when the server said one. The
+   * engine plans against it from then on, so the retry is sized to the real
+   * limit instead of a guess.
+   */
+  readonly contextLimit: number | null
+  constructor(
+    kind: RoomCallErrorKind,
+    code: string,
+    message: string,
+    facts: FailureFacts = {},
+    contextLimit: number | null = null
+  ) {
     super(message)
+    this.contextLimit = contextLimit
     this.name = kind === 'aborted' ? 'AbortError' : 'RoomCallError'
     this.kind = kind
     this.code = code
     this.facts = facts
   }
 }
-
-const OVERFLOW_TEXT =
-  /(context (length|window)|maximum context|too many tokens|prompt is too long|exceeds? the (model'?s )?(context|maximum))/i
 
 function statusOf(e: unknown): number | null {
   const o = e as { statusCode?: unknown; status?: unknown } | null
@@ -134,8 +150,16 @@ export function toRoomCallError(e: unknown, signal?: AbortSignal): RoomCallError
   } catch {
     serverLimit = null
   }
-  if (isContextOverflow(e) || OVERFLOW_TEXT.test(message) || serverLimit != null) {
-    return new RoomCallError('overflow', 'context-overflow', message, facts)
+  // The shared test: "too many tokens per minute" is throttling, which
+  // compaction cannot help and the backoff can, so it is not an overflow.
+  if (serverLimit != null || isContextLengthError(e)) {
+    return new RoomCallError(
+      'overflow',
+      'context-overflow',
+      message,
+      facts,
+      serverLimit?.contextTokens ?? null
+    )
   }
   const failure: FailureClass = classifyFailure(facts)
   const code = facts.status != null ? `${failure}:${facts.status}` : failure

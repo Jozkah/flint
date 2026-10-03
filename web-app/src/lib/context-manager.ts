@@ -1,6 +1,11 @@
 import type { UIMessage } from '@ai-sdk/react'
 import { type LanguageModel } from 'ai'
 import { runUtilityAgent } from './utilityAgents'
+import {
+  countOutputImages,
+  outputEstimateChars,
+  outputForEstimate,
+} from './toolOutputImages'
 
 /**
  * Approximate token count using a character-based heuristic.
@@ -88,7 +93,13 @@ function messageToText(message: UIMessage): string {
     if (part.type === 'text') {
       parts.push(part.text)
     } else if (part.type === 'dynamic-tool' || part.type.startsWith('tool-')) {
-      parts.push(JSON.stringify(part))
+      // An image in a tool result is a fixed cost, not its base64 length.
+      const record = part as unknown as { output?: unknown }
+      parts.push(
+        countOutputImages(record.output) > 0
+          ? JSON.stringify({ ...part, output: outputForEstimate(record.output) })
+          : JSON.stringify(part)
+      )
     }
   }
 
@@ -262,8 +273,7 @@ function isToolPart(part: { type: string }): part is ToolPart {
 }
 
 function outputChars(output: unknown): number {
-  if (typeof output === 'string') return output.length
-  return JSON.stringify(output ?? '').length
+  return outputEstimateChars(output)
 }
 
 function formatSize(chars: number): string {

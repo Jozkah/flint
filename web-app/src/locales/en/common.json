@@ -2133,6 +2133,22 @@
     "deleteRemove": "Remove its worktree and branch ({{name}}) too"
   },
   "modelUnavailable": "{{model}} (unavailable)",
+  "detectContext": {
+    "button": "Detect from model",
+    "detecting": "Detecting the context window",
+    "noModel": "Select a model to detect its context window",
+    "found": "Set to {{tokens}} tokens ({{source}}).",
+    "unknown": "Couldn't detect this model's window — enter it manually.",
+    "sources": {
+      "server-response": "reported by the server when it refused a request",
+      "local-runtime": "the loaded model's runtime",
+      "model-settings": "this model's context size setting",
+      "provider-metadata": "the provider's model info",
+      "provider-list": "the provider's model list",
+      "local-server": "the local server",
+      "bundled": "typical for this model family, not checked against your server"
+    }
+  },
   "paramSearch": {
     "addParameter": "Add parameter",
     "placeholder": "Search parameters",

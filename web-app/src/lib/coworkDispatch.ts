@@ -901,6 +901,7 @@ async function routeCoworkTool(
           : JSON.stringify(result.content ?? ''),
       diff: result.diff,
       resources: result.resources,
+      ...(result.images?.length ? { images: result.images } : {}),
     }
   } catch (e) {
     return {

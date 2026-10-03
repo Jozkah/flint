@@ -3439,6 +3439,8 @@ export function CoworkPage() {
           // The parent's instance: a second one would mean a second
           // llama-server load for the same model.
           model: transport.model,
+          supportsVision:
+            selectedModel?.capabilities?.includes('vision') ?? false,
           providerOptions: transport.reasoningProviderOptions(),
           parentTools: transport.advertisedTools,
           system: {

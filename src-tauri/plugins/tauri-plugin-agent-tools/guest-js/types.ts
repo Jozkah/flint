@@ -30,8 +30,17 @@ export interface RunResources {
 }
 
 /** Outcome of a built-in tool execution. */
+export interface ToolImage {
+  /** `data:image/png;base64,...` URL. */
+  dataUrl: string
+  /** Basename shown in the transcript. */
+  name: string
+}
+
 export interface ToolResult {
   content: string
+  /** Images the tool returned for a vision model to see (`read` of an image). */
+  images?: ToolImage[]
   /** Display-only diff for write/edit; never part of model context. */
   diff: string | null
   isError: boolean

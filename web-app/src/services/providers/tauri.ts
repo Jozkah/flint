@@ -25,6 +25,7 @@ import {
   parseModelList,
 } from '@/lib/endpointDiagnostics'
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
+import { findModelEntry } from '@/lib/detectContextWindow'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
@@ -151,6 +152,35 @@ export class TauriProvidersService extends DefaultProvidersService {
     } catch (error) {
       console.error(`Failed to delete keyring keys for ${providerName}:`, error)
     }
+  }
+
+  async fetchModelEntry(
+    provider: ModelProvider,
+    modelId: string
+  ): Promise<Record<string, unknown> | null> {
+    if (!provider.base_url) return null
+    const keyChain = providerRemoteApiKeyChain(provider)
+    const keyAttempts: (string | undefined)[] =
+      keyChain.length > 0 ? keyChain : [undefined]
+    for (const key of keyAttempts) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (key) {
+        headers['x-api-key'] = key
+        headers['Authorization'] = `Bearer ${key}`
+      }
+      applyCustomHeaders(headers, provider)
+      ensureAnthropicHeaders(provider, headers)
+      for (const url of modelsUrlCandidates(provider.base_url)) {
+        const response = await fetchTauri(url, { method: 'GET', headers })
+        if (response.status === 404) continue
+        if ([401, 403, 429].includes(response.status)) break
+        if (!response.ok) return null
+        return findModelEntry(await response.json(), modelId)
+      }
+    }
+    return null
   }
 
   async fetchModelsFromProvider(provider: ModelProvider): Promise<string[]> {

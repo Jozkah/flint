@@ -20,6 +20,7 @@
  * back into the thing it replaced.
  */
 
+import { outputForEstimate } from '@/lib/toolOutputImages'
 import type { UIMessage } from 'ai'
 import {
   estimated,
@@ -76,7 +77,7 @@ export function conversationText(messages: readonly UIMessage[]): string {
       const record = part as Record<string, unknown>
       if (typeof record.text === 'string') out.push(record.text)
       if (record.input != null) out.push(safeJson(record.input))
-      if (record.output != null) out.push(safeJson(record.output))
+      if (record.output != null) out.push(outputForEstimate(record.output))
       if (typeof record.errorText === 'string') out.push(record.errorText)
     }
   }
