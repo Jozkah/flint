@@ -94,6 +94,40 @@ describe('buildCoworkSystemPrompt', () => {
     ).not.toContain('# Subagents')
     expect(buildCoworkSystemPrompt(opts())).not.toContain('# Subagents')
   })
+
+  // The guide follows the tools actually advertised, so it no longer waits for
+  // a saved subagent: the shipped roles are always there to delegate to.
+  describe('Subagents guide follows the delegation tools', () => {
+    const WITH = ['read', 'task', 'team']
+    it('appears with the tools, even when no saved subagent exists', () => {
+      const p = buildCoworkSystemPrompt(opts({ availableTools: WITH }))
+      expect(p).toContain('# Subagents')
+      expect(p).toContain('Delegate when')
+      expect(p).toContain('Do not delegate')
+      expect(p).toContain('explorer (')
+      expect(p).toContain('tester (')
+    })
+    it('is absent when either tool is not advertised', () => {
+      for (const tools of [['read'], ['read', 'task'], ['read', 'team']]) {
+        expect(
+          buildCoworkSystemPrompt(opts({ availableTools: tools }))
+        ).not.toContain('# Subagents')
+      }
+    })
+    it('is absent in plan mode even if the tools were listed', () => {
+      expect(
+        buildCoworkSystemPrompt(
+          opts({ availableTools: WITH, planMode: true })
+        )
+      ).not.toContain('# Subagents')
+    })
+    it('lists saved names beside the roles', () => {
+      const p = buildCoworkSystemPrompt(
+        opts({ availableTools: WITH, subagentNames: ['explorer', 'my-agent'] })
+      )
+      expect(p).toContain('Saved: my-agent')
+    })
+  })
 })
 
 describe('buildSubagentSystemPrompt', () => {

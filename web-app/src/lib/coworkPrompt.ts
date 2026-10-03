@@ -8,6 +8,12 @@
  */
 
 import { INSPECT_AND_PROPOSE_ADDENDUM } from '@/lib/coworkContinuity'
+import {
+  DELEGATE_WHEN,
+  DO_NOT_DELEGATE,
+  NOT_SHOWN_TO_USER,
+  subagentChoices,
+} from '@/lib/coworkSubagentGuide'
 import { replyLanguageLine } from '@/lib/replyLanguage'
 import {
   DESTRUCTIVE_ACTION_RULE,
@@ -517,6 +523,36 @@ function workspaceBlock(opts: CoworkPromptOptions): string {
   return lines.join('\n')
 }
 
+/**
+ * Whether this request offers the delegation tools, which is the only time the
+ * Subagents guide is worth its tokens. Decided by the tools actually advertised
+ * (the roles always exist, so it no longer waits for a saved subagent). A
+ * caller that does not say which tools it advertises (previews, tests) is
+ * judged by whether it names any subagents, as before.
+ */
+export function subagentsOffered(opts: CoworkPromptOptions): boolean {
+  if (opts.planMode) return false
+  if (!hasTool(opts, 'task') || !hasTool(opts, 'team')) return false
+  return opts.availableTools ? true : opts.subagentNames.length > 0
+}
+
+/** The system-prompt block that teaches when to delegate. */
+export function subagentGuide(subagentNames: readonly string[]): string {
+  return [
+    '# Subagents',
+    '',
+    'Your own context window is limited. `task` hands one job to a subagent and',
+    'waits for its answer; `team` runs several at once, with `depends_on` for',
+    'order. A subagent works in its own context, so it can read and search widely',
+    'and give you back only the conclusion.',
+    DELEGATE_WHEN,
+    DO_NOT_DELEGATE,
+    'Write the brief as if to a colleague who has seen none of this conversation.',
+    NOT_SHOWN_TO_USER,
+    subagentChoices(subagentNames),
+  ].join('\n')
+}
+
 export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
   const unavailable = ['todo', 'ask', 'request_access'].filter((name) => !hasTool(opts, name))
   const guidelines = GUIDELINES.split('\n').filter((line) =>
@@ -532,19 +568,7 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     blocks.push(opts.projectTooling.trim())
   }
   if (opts.webSearch && hasTool(opts, 'web_search') && hasTool(opts, 'web_fetch')) blocks.push(WEB_BLOCK)
-  if (opts.subagentNames.length > 0 && !opts.planMode && hasTool(opts, 'task') && hasTool(opts, 'team')) {
-    blocks.push(
-      [
-        '# Subagents',
-        '',
-        'The `task` tool runs a nested agent that does not see this conversation.',
-        'State everything it needs in `description`. Use one for work that is',
-        'self-contained and would otherwise flood your own context. `team` runs',
-        'several at once, in an order you declare, when the work splits into parts.',
-        `Available: ${opts.subagentNames.join(', ')}.`,
-      ].join('\n')
-    )
-  }
+  if (subagentsOffered(opts)) blocks.push(subagentGuide(opts.subagentNames))
   if (hasTool(opts, 'list_sessions')) blocks.push(SESSIONS_BLOCK)
   // Skills are only worth naming when the run can read them.
   if (opts.skillsBlock?.trim() && hasTool(opts, 'skill_read')) {
