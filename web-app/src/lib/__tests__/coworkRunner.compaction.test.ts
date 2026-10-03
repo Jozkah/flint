@@ -340,8 +340,12 @@ describe('Cowork allowance with auto-compact on', () => {
     })
   }
 
-  it('stops at the default allowance when none is given', async () => {
-    expect((await run({})).stoppedBy).toBe('tokens')
+  it('has no allowance by default: spend alone never stops a run', async () => {
+    expect((await run({})).stoppedBy).toBe('done')
+  })
+
+  it('a finite allowance still stops the run when a caller sets one', async () => {
+    expect((await run({ sessionTokenLimit: 200_000 })).stoppedBy).toBe('tokens')
   })
 
   it('a larger allowance lets the run reach its answer', async () => {

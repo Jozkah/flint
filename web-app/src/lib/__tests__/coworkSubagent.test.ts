@@ -438,16 +438,17 @@ describe('runSubagent', () => {
     expect(out.output).toContain('2-step budget')
   })
 
-  it('defaults to the subagent step cap, not the parent one', async () => {
-    // Distinct paths: identical calls would trip the loop guard first, which
-    // is a different stop for a different reason.
-    mockSteps(
-      Array.from({ length: MAX_SUBAGENT_STEPS + 1 }, (_, i) =>
+  it('has no step cap of its own by default', async () => {
+    // Only the context window limits a run, so a long errand is not cut off
+    // at a fixed number of steps.
+    mockSteps([
+      ...Array.from({ length: 40 }, (_, i) =>
         toolStep(`c${i}`, 'read', { path: `a${i}` })
-      )
-    )
+      ),
+      textStep('done'),
+    ])
     const out = await runSubagent(baseOpts())
-    expect(out.output).toContain(`${MAX_SUBAGENT_STEPS}-step budget`)
+    expect(out.output).not.toContain('step budget')
   })
 
   it('returns cleanly when already aborted', async () => {

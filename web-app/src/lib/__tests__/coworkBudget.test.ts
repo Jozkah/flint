@@ -53,28 +53,24 @@ describe('budgetExceeded', () => {
 
   it('honours a caller-supplied token allowance', () => {
     expect(
-      budgetExceeded({ step: 0, sessionTokens: MAX_SESSION_TOKENS }, MAX_AGENT_STEPS, 800_000)
+      budgetExceeded({ step: 0, sessionTokens: 500_000 }, MAX_AGENT_STEPS, 800_000)
     ).toBeNull()
     expect(
       budgetExceeded({ step: 0, sessionTokens: 800_000 }, MAX_AGENT_STEPS, 800_000)
     ).toBe('tokens')
   })
 
-  it('scales the allowance with the window when the run compacts', () => {
+  // The context window is the only limit on a run: no step, spend or time cap.
+  it('has no spend allowance by default, with or without compaction', () => {
     expect(sessionTokenLimitFor({ autoCompact: false, window: 200_000 })).toBe(
       MAX_SESSION_TOKENS
     )
-    expect(sessionTokenLimitFor({ autoCompact: true, window: null })).toBe(
+    expect(sessionTokenLimitFor({ autoCompact: true, window: 200_000 })).toBe(
       MAX_SESSION_TOKENS
     )
-    expect(sessionTokenLimitFor({ autoCompact: true, window: 200_000 })).toBe(800_000)
-    expect(sessionTokenLimitFor({ autoCompact: true, window: 8_000 })).toBe(
-      MAX_SESSION_TOKENS
-    )
-  })
-
-  it('keeps a subagent on a tighter leash than the parent', () => {
-    expect(MAX_SUBAGENT_STEPS).toBeLessThan(MAX_AGENT_STEPS)
+    expect(
+      budgetExceeded({ step: 100_000, sessionTokens: 50_000_000 })
+    ).toBeNull()
   })
 })
 

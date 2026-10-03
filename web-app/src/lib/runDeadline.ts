@@ -14,8 +14,11 @@
  * measure of Flint's activity rather than of the user's time.
  */
 
-/** A whole run. Generous: real work runs long. */
-export const DEFAULT_RUN_DEADLINE_MS = 30 * 60_000
+/**
+ * A whole run: a year, which is to say none. Only the context window limits
+ * a run; the per-operation timeout below still catches a stalled stream.
+ */
+export const DEFAULT_RUN_DEADLINE_MS = 365 * 24 * 60 * 60_000
 
 /** One model stream, tool call or MCP request. */
 export const DEFAULT_OPERATION_TIMEOUT_MS = 10 * 60_000

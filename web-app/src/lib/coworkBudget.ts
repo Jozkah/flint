@@ -7,37 +7,32 @@
  * and without them an agent with real tools has no upper bound at all.
  */
 
-/** Model turns in one user request. Generous: real work runs long. */
-export const MAX_AGENT_STEPS = 100
+/**
+ * "No cap". The only limit on a run is the model's context window, which
+ * compaction manages; steps and token spend are not limited. The constants
+ * stay so a caller can still pass a finite limit (a test, a future setting),
+ * and they are finite so they survive being persisted as JSON.
+ */
+export const NO_CAP = Number.MAX_SAFE_INTEGER
 
-/** Tighter for a nested run, which should be a focused errand. */
-export const MAX_SUBAGENT_STEPS = 30
+/** Model turns in one user request. */
+export const MAX_AGENT_STEPS = NO_CAP
+
+/** Model turns in a nested run. */
+export const MAX_SUBAGENT_STEPS = NO_CAP
+
+/** Token spend for one user request. */
+export const MAX_SESSION_TOKENS = NO_CAP
 
 /**
- * Token spend for one user request, matching what the Rust loop enforced.
- *
- * Per request, not per session, because that is where `SessionBudget` actually
- * lives in Rust: it is constructed inside `run_orchestration_streamed`, so each
- * request gets its own allowance.
+ * The spend allowance for one request: none. Kept as a function so callers
+ * need no change; the context window, not spend, ends a run.
  */
-export const MAX_SESSION_TOKENS = 200_000
-
-/**
- * The spend allowance for one request. It is a spend cap, not a context limit,
- * and it counts completions and prompt growth that compaction later folds
- * away. With auto-compact on, a healthy run (compacting as it goes) must not be
- * stopped by it, so it scales with the window: never below the default, and
- * room for several windows' worth of work otherwise.
- */
-export const COMPACTING_ALLOWANCE_WINDOWS = 4
-
-export function sessionTokenLimitFor(input: {
+export function sessionTokenLimitFor(_input: {
   autoCompact: boolean
   window: number | null | undefined
 }): number {
-  const { autoCompact, window } = input
-  if (!autoCompact || window == null || !(window > 0)) return MAX_SESSION_TOKENS
-  return Math.max(MAX_SESSION_TOKENS, COMPACTING_ALLOWANCE_WINDOWS * window)
+  return MAX_SESSION_TOKENS
 }
 
 export type BudgetState = {
