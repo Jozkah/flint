@@ -542,18 +542,66 @@ fn config_defaults_and_validation() {
 #[test]
 fn self_signed_certificate_is_reused_for_the_same_address() {
     let dir = tempfile::tempdir().unwrap();
-    let a = super::tls::self_signed(dir.path(), "192.168.1.20").unwrap();
-    let b = super::tls::self_signed(dir.path(), "192.168.1.20").unwrap();
+    let a = super::tls::self_signed(dir.path(), "192.168.1.20", None).unwrap();
+    let b = super::tls::self_signed(dir.path(), "192.168.1.20", None).unwrap();
     assert_eq!(a.fingerprint, b.fingerprint);
     assert_eq!(a.fingerprint.split(':').count(), 32);
-    let c = super::tls::self_signed(dir.path(), "192.168.1.21").unwrap();
+    let c = super::tls::self_signed(dir.path(), "192.168.1.21", None).unwrap();
     assert_ne!(a.fingerprint, c.fingerprint);
+    // A custom host name is part of what the certificate is for.
+    let d = super::tls::self_signed(dir.path(), "192.168.1.21", Some("flint.home")).unwrap();
+    assert_ne!(c.fingerprint, d.fingerprint);
+    let e = super::tls::self_signed(dir.path(), "192.168.1.21", Some("flint.home")).unwrap();
+    assert_eq!(d.fingerprint, e.fingerprint);
+}
+
+#[test]
+fn custom_host_name_is_normalized_and_validated() {
+    let with = |h: &str| RemoteConfig {
+        custom_host: Some(h.into()),
+        ..RemoteConfig::default()
+    };
+    assert_eq!(RemoteConfig::default().custom_host(), None);
+    assert_eq!(with("   ").custom_host(), None);
+    assert!(with("   ").validate().is_ok());
+    assert_eq!(
+        with(" Flint.Example.com ").custom_host().as_deref(),
+        Some("flint.example.com")
+    );
+    for ok in ["flint.example.com", "desk", "my-pc.tailnet.ts.net", "192.168.1.20"] {
+        assert!(with(ok).validate().is_ok(), "{ok}");
+    }
+    for bad in [
+        "http://flint.example.com",
+        "flint.example.com:1340",
+        "flint.example.com/m",
+        "flint example.com",
+        "-flint.example.com",
+        "flint..example.com",
+        "user@flint.example.com",
+    ] {
+        assert!(with(bad).validate().is_err(), "{bad}");
+    }
+}
+
+#[test]
+fn listener_accepts_the_custom_host_name_and_nothing_else() {
+    let l = server::Listener::new(
+        true,
+        "100.64.0.2:1340".parse().unwrap(),
+        &["desk.tailnet.ts.net".to_string(), "Flint.Example.com".to_string()],
+    );
+    for host in ["100.64.0.2:1340", "desk.tailnet.ts.net:1340", "flint.example.com:1340"] {
+        assert!(l.hosts.contains(host), "{host}");
+    }
+    assert!(!l.hosts.contains("evil.example.com:1340"));
+    assert!(!l.hosts.contains("flint.example.com"));
 }
 
 // -- HTTP server --------------------------------------------------------------
 
 async fn serve(hub: Arc<RemoteHub>) -> (server::RunningServer, SocketAddr) {
-    let s = server::start(hub, "127.0.0.1:0".parse().unwrap(), None, None)
+    let s = server::start(hub, "127.0.0.1:0".parse().unwrap(), None, Vec::new())
         .await
         .unwrap();
     let addr = s.addr;
