@@ -2113,6 +2113,10 @@ struct App {
     /// Cleared on the matching `ToolResult` or `SubagentEnd`, whichever comes
     /// first (the two can race).
     awaiting: Vec<(String, String, String)>,
+    /// How each child ended and what it used, by run id, from `SubagentFinished`.
+    /// Read when its `SubagentEnd` closes the panel, so the summary row can say
+    /// the cost and a turn-limit stop instead of only "finished".
+    subagent_finish: std::collections::HashMap<String, String>,
     /// Tool calls whose arguments are still streaming. Rendered live -- a file
     /// body previews as it arrives, anything else gets a throbber -- and
     /// cleared on the matching `ToolCall` (full args) or on the next `Step`,
@@ -2554,6 +2558,7 @@ impl App {
             subagents: Vec::new(),
             subagent_blocks: Vec::new(),
             awaiting: Vec::new(),
+            subagent_finish: std::collections::HashMap::new(),
             starting: Vec::new(),
             spinner_frame: 0,
             last_spinner_advance: Instant::now(),
@@ -3103,6 +3108,18 @@ impl App {
     /// the row can expand back to it (like a tool group). `finished` separates a
     /// clean `SubagentEnd` from a child the run ended out from under.
     fn push_subagent_summary(&mut self, name: &str, calls: Vec<String>, finished: bool) {
+        self.push_subagent_summary_with(name, calls, finished, None);
+    }
+
+    /// [`Self::push_subagent_summary`] with the child's cost or stop reason
+    /// appended to its label, when the loop reported one.
+    fn push_subagent_summary_with(
+        &mut self,
+        name: &str,
+        calls: Vec<String>,
+        finished: bool,
+        extra: Option<String>,
+    ) {
         self.display_log.push(DisplayEntry::Subagent {
             name: name.to_string(),
             calls: calls.clone(),
@@ -3120,7 +3137,10 @@ impl App {
         self.push_row(RowKind::Tool {
             tag: "↲".to_string(),
             tag_style: style,
-            label: format!("subagent {name} {verb} ({total} tool {noun})"),
+            label: match &extra {
+                Some(extra) => format!("subagent {name} {verb} ({total} tool {noun}, {extra})"),
+                None => format!("subagent {name} {verb} ({total} tool {noun})"),
+            },
             label_style: if finished { style } else { Style::new().dim() },
             reserve: TOOL_ROW_RESERVE,
         });
@@ -5376,7 +5396,29 @@ impl App {
                     .unwrap_or_default();
                 self.subagents.retain(|p| p.run_id != run_id);
                 self.awaiting.retain(|(_, r, _)| r != &run_id);
-                self.push_subagent_summary(&name, calls, true);
+                let extra = self.subagent_finish.remove(&run_id);
+                self.push_subagent_summary_with(&name, calls, true, extra);
+            }
+            StreamEvent::SubagentFinished {
+                run_id,
+                status,
+                usage,
+                ..
+            } => {
+                let tokens = usage
+                    .as_ref()
+                    .and_then(|u| u.get("total_tokens"))
+                    .and_then(|t| t.as_u64())
+                    .filter(|t| *t > 0)
+                    .map(|t| format!("{} tokens", format_tokens(t)));
+                let note = match (status.as_str(), tokens) {
+                    ("turn_limit", _) => Some("stopped at its turn limit".to_string()),
+                    ("error", _) => Some("failed".to_string()),
+                    (_, tokens) => tokens,
+                };
+                if let Some(note) = note {
+                    self.subagent_finish.insert(run_id, note);
+                }
             }
             StreamEvent::Subagent {
                 run_id,
@@ -23949,6 +23991,41 @@ mod tests {
             "the finished subagent's throbber must clear even without its ToolResult"
         );
         assert_eq!(app.awaiting[0].2, "explorer");
+    }
+
+    /// The summary row says what a child cost, or that it ran out of turns,
+    /// when the loop reported it; a child that reported nothing keeps the
+    /// plain row.
+    #[test]
+    fn a_finished_subagent_row_carries_its_cost_or_turn_limit_stop() {
+        let mut app = test_app();
+        for (run, status, usage) in [
+            ("r-ok", "done", Some(json!({ "total_tokens": 12_300 }))),
+            ("r-limit", "turn_limit", None),
+            ("r-bare", "done", None),
+        ] {
+            app.apply(StreamEvent::SubagentStart {
+                run_id: run.into(),
+                name: run.into(),
+                task: None,
+            });
+            app.apply(StreamEvent::SubagentFinished {
+                run_id: run.into(),
+                name: run.into(),
+                status: status.into(),
+                usage,
+                detail: None,
+            });
+            app.apply(StreamEvent::SubagentEnd {
+                run_id: run.into(),
+                name: run.into(),
+            });
+        }
+        let text = transcript_text(&app);
+        assert!(text.contains("subagent r-ok finished (0 tool calls, 12K tokens)"), "{text}");
+        assert!(text.contains("subagent r-limit finished (0 tool calls, stopped at its turn limit)"), "{text}");
+        assert!(text.contains("subagent r-bare finished (0 tool calls)"), "{text}");
+        assert!(app.subagent_finish.is_empty(), "notes are consumed, not leaked");
     }
 
     fn wrap(run_id: &str, name: &str, event: StreamEvent) -> StreamEvent {

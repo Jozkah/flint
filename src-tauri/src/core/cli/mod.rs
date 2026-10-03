@@ -3427,6 +3427,22 @@ async fn print_event(
         StreamEvent::SubagentEnd { name, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
         }
+        StreamEvent::SubagentFinished { name, status, usage, .. } => {
+            let tokens = usage
+                .as_ref()
+                .and_then(|u| u.get("total_tokens"))
+                .and_then(|t| t.as_u64())
+                .filter(|t| *t > 0);
+            let note = match (status.as_str(), tokens) {
+                ("turn_limit", _) => " stopped at its turn limit".to_string(),
+                ("error", _) => " failed".to_string(),
+                (_, Some(t)) => format!(" used {t} tokens"),
+                _ => String::new(),
+            };
+            if !note.is_empty() {
+                eprintln!("{}", color::paint("2", format_args!("[subagent:{name}]{note}")));
+            }
+        }
         StreamEvent::Subagent { name, event, .. } => {
             if let StreamEvent::ToolCall {
                 name: tool, args, ..

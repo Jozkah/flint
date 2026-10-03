@@ -42,8 +42,16 @@ export type StreamEvent =
   | { type: 'todo_update'; list: TodoList }
   | { type: 'ask_request'; request_id: string; request: AskRequestPayload }
   | { type: 'subagent_queued'; run_id: string; name: string; waiting: number }
-  | { type: 'subagent_start'; run_id: string; name: string }
-  | { type: 'subagent_end'; run_id: string; name: string; usage: Usage | null }
+  | { type: 'subagent_start'; run_id: string; name: string; task?: string }
+  | { type: 'subagent_end'; run_id: string; name: string; usage?: Usage | null }
+  | {
+      type: 'subagent_finished'
+      run_id: string
+      name: string
+      status: 'done' | 'error' | 'turn_limit'
+      usage?: Usage | null
+      detail?: string
+    }
   | { type: 'turn_usage'; usage: Usage }
   | { type: 'subagent'; run_id: string; name: string; event: StreamEvent }
 
