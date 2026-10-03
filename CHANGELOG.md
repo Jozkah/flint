@@ -1,25 +1,8 @@
 # Flint 0.9.0
 
-Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into an agentic desktop workspace for local and user-chosen models. This first Flint release combines the rebrand and migration path with Cowork, tool-using Discussion Rooms, an auditable agent runtime, Memory, MCP and Skills, remote access, a redesigned interface, and a fully branded Windows installer.
+Flint is a local-first fork of [Jan](https://github.com/janhq/jan), rebuilt into an agentic desktop workspace for local and user-chosen models. This first release adds Cowork, tool-using Discussion Rooms, an auditable agent runtime, Memory, MCP and Skills, remote access, a redesigned interface and a branded Windows installer.
 
-This changelog is release-oriented: it lists shipped features, additions and meaningful changes versus the Jan base. It intentionally does **not** list follow-up bug fixes whose only purpose was repairing a Flint feature introduced during 0.9.0 development. Bug-fix entries are kept where they apply to inherited/original Jan behavior or an upstream Jan issue.
-
-## Highlights
-
-- **Local-first and private.** Telemetry and automatic update checks stay disabled, while model discovery is intentionally user-initiated through Hugging Face **Discover** instead of hidden background catalogue traffic. Models, providers and data remain under the user's control, and external access only happens through features the user enables or invokes.
-- **Hugging Face Discover.** Search Hugging Face, inspect model details and README, and download the exact GGUF quantization (or MLX repository on Apple silicon) you choose, with hardware-aware recommendations, gated-model token support, resumable/cancellable downloads and size/SHA-256 verification. Nothing is contacted until you open Discover, search, or click Download.
-- **Jan → Flint migration.** Existing Jan data is detected on first launch with Copy, Reuse, Move and Start fresh modes, per-category selection, conflict handling, backup/rollback and resumable migration.
-- **Cowork.** A full agentic coding workspace with managed worktrees, proposals, hunk review, Code/Preview/Changes/Activity panels, checkpoints, subagents, multiple attached folders, PR state/checks and browser verification.
-- **Discussion Rooms.** Multi-model rooms with per-participant models, tools, folder access, MCP, web research, reasoning controls, limits, pausing/resuming and automatic context compaction.
-- **Auditable agent runtime.** Versioned event logs, replayable execution records, deadlines/cancellation, budgets, retry policy, background jobs, subagents, readiness checks, loop protection and run timelines.
-- **Repository intelligence.** Stored repository indexes, caller/callee traversal, semantic search, LSP integration, impact/test analysis, project-tool detection, formatter discovery and diagnostics.
-- **Git and GitHub workflows.** First-class git tooling, branching/commits, split commits, rebase/cherry-pick flows, PR creation/review, conflict status, CI check hand-off and approval boundaries for remote operations.
-- **Memory, MCP and Skills.** Cross-chat scoped Memory, fingerprint-pinned MCP trust, OAuth secret handling, per-server health/logs/budgets, native Skills, plugin-scoped Skills and reviewed permission policies.
-- **Redesigned Flint UI.** New shell/sidebar/header, Overview dashboard, Slate/Violet appearance system, Inter, duotone iconography, redesigned settings/components, split view, groups, phone layouts, notifications and System Monitor.
-- **Remote access preview.** Pair a phone over Tailscale, LAN or loopback and use Chat, Cowork and Rooms while models, keys and files remain on the desktop.
-- **SDK and CLI.** JavaScript/Python Agent SDKs, protocol v1, host tools, Flint tools over MCP, JSON-lines CLI, diagnostics and benchmark tooling.
-- **Archive, export, scheduled tasks and an agent browser.** Deleting moves things to a restorable Archive, chats export as Markdown, Obsidian notes, PDF or PNG, saved prompts run on a schedule with strict unattended limits, and the assistant can drive the built-in browser pane with per-site consent and a visible pointer.
-- **Fully custom Windows installer.** The NSIS installer is now a real Flint-styled setup flow rather than a stock/passive Tauri wizard, with the actual Flint app icon, Inter, app colors, custom controls, install options, progress, completion and matching uninstall screens.
+This changelog lists additions and meaningful changes versus the Jan base. Bug fixes are listed only where they apply to original Jan behavior or an upstream Jan issue.
 
 ## Final 0.9.0 additions
 
@@ -45,6 +28,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - In Cowork the same choice is made once per message, so a tool loop keeps one model, and only models that can use tools, with no smaller known context window than the session's model, are offered.
 
 ### Remote access and mobile parity
+- Added a **custom host name** for remote access, so a phone can pair through a name you choose instead of an address.
 
 - The mobile app now has real paginated chat history while preserving scroll position and rendering system/tool messages.
 - Phone-created Cowork sessions can select an existing recent desktop folder without widening write authority.
@@ -139,7 +123,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 ### Run summary and opening pages
 
 - A finished run's folded steps now say what the run did, such as **Ran 20 commands, created 8 files, used 6 tools +645 −0**, instead of a bare step count.
-- Each step inside a folded run is one closed line saying what it did, such as **Read AUDIT.md** or **Failed to run Diffed original vs patched files**, and opens on click. The run's line counts failures, as in **Ran 54 commands, read 4 files (2 failed)**. The bash tool takes an optional `description` for that line.
+- Each step inside a folded run is one closed line saying what it did, such as **Read AUDIT.md** or **Failed to run Diffed original vs patched files**, and opens on click. The run's line counts failures, as in **Ran 54 commands, read 4 files (2 failed)**.
 - Added an **`open_in_browser`** tool. The model can put a page in front of the user, shown as an **Opened in Browser** card with an **Open** button and a link menu. A page on this computer opens at once; any other site waits for the user to press **Open**.
 
 ### Git approvals
@@ -157,6 +141,8 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - A remote provider with no API key now says **No API key** in the provider list instead of **Connected**.
 
 ### Search, MCP and interface additions
+- Studio is a three-column workspace (model, settings and prompt, activity and generations) with a chat-style engine picker and equal-height columns.
+- System Monitor was redesigned with a GPU switch and fills its empty cards, and the Hardware settings page is gone.
 
 - Added a DuckDuckGo MCP preset using `uvx duckduckgo-mcp-server`.
 - Added **DuckDuckGo** as a native web-search provider that needs no API key, account or instance URL. Results are read in page order with ads and repeated links dropped, and a bot check is reported as an error that names the way out instead of an empty result list.
@@ -174,6 +160,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - The ten new hosted providers have their own logos, the skills and memories lists scroll instead of growing the page, the Hardware bars use the full width, and Jev's settings are split into **Setup**, **Automatic** and **Work profiles** tabs, with search results opening the right one.
 
 ### Cowork and agent reliability
+- Cowork runs have no step, spend or wall-clock cap any more; the context window is the only limit. With auto-compact on, the token allowance scales with the window, compaction leaves headroom for the largest recent step, and a step's reply is charged once instead of twice.
+- Added a **post-tool-batch hook** that Chat, Cowork and Rooms fire when a batch of tool calls finishes. It is observe-only and detached, and a confined hook starts in the project with the hook environment.
+- A refused write outside the workspace, or to a folder attached read-only, now tells the model to ask for write access with `request_access` instead of reporting the folder as read-only.
 
 - A reply cut off by the output limit, a dropped stream or an empty reply is continued once automatically, and a run that ends without an answer shows **Continue**.
 - A failed request stops retrying after three minutes, so a run no longer stalls for almost an hour.
@@ -197,16 +186,19 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Active release workflows, package metadata, project links and web-search identification now target `Jozkah/flint` rather than the upstream repository where appropriate.
 
 ### Local models and engine settings
+- Added a **fallback model chain** under **Settings > General**: pick and reorder models, and a reply that fails with a server or connection error is retried on the next one. A working fallback is kept for the rest of the turn.
+- Models take optional **input and output prices** (USD per million tokens) in the model dialog. Replies are priced from those, a short table of well-known hosted models, or free for local engines, and the Overview shows the estimated spend.
+- Model pickers in the chat bar, Rooms, the MCP router and the CLI helper-model setting have a filter button that hides models with no API key or an unresponsive provider. The selected model always stays listed.
 
-- Added **Find models already on this computer** to the model import dialog. It lists GGUF models kept by LM Studio, Ollama, the Hugging Face cache, llama.cpp and GPT4All, honouring `HF_HUB_CACHE`, `HF_HOME`, `LLAMA_CACHE` and `OLLAMA_MODELS`. It runs only when asked, skips projector files and later shards, and a chosen model is used where it lives instead of being copied.
+- Added **Find models already on this computer** to the model import dialog. It lists GGUF models kept by LM Studio, Ollama, the Hugging Face cache, llama.cpp and GPT4All. It runs only when asked, and a chosen model is used where it lives instead of being copied.
 - Sending a message with no model selected now picks one and sends, instead of stopping at "select a model": your default, the last used model, a connected remote provider, then the only local model or the lightest by the size in its name. Embedding models are never chosen.
-- Added an **Additional arguments** setting for llama-server (for example `--rope-scaling yarn --no-warmup`). The options apply to every model and win over the individual settings. Options that would move the server or change the files it opens, such as the host, port, API key and model paths, are ignored.
-- A tool call a local model writes as text is now run. Hermes and Qwen 2.5, Qwen3-Coder, GLM, Mistral and Llama 3.1 call formats are recognised when the server could not parse them, for llama.cpp, MLX and OpenAI-compatible models. Only calls naming a tool the request offered are run, and a call the server already parsed is never run twice.
+- Added an **Additional arguments** setting for llama-server (for example `--rope-scaling yarn --no-warmup`). The options apply to every model, and ones that would move the server or change the files it opens, such as host, port and model paths, are ignored.
+- A tool call a local model writes as text is now run. Hermes, Qwen, GLM, Mistral and Llama 3.1 call formats are recognised when the server could not parse them. Only calls naming a tool the request offered are run, and a call the server already parsed is never run twice.
 - The model-fit check uses the KV cache type a model is configured with instead of assuming f16, and no longer counts an integrated GPU's memory twice.
 - A quantized V cache is held at f16 when flash attention is off, which llama.cpp cannot load, and a DFlash draft defaults to greedy sampling.
 - The Anthropic `/messages` endpoint merges scattered system and developer messages into one leading system message, which strict chat templates such as Qwen3's require.
-- An image returned by an MCP tool (a screenshot tool, for one) no longer floods a local model's context as base64 text. For llama.cpp and MLX it is replaced by a note in what the model reads and, for a model that can see, attached again as an image. Remote providers and the stored conversation are unchanged.
-- The Local API Server answers "no model is running" and "the engine is not answering" with a JSON error that has a `code` and a `Retry-After`, keeps 502 for an unreachable remote provider, finds an MLX model when a client writes `.` as `_`, and explains a port the system refuses (Windows reserved ranges) instead of showing a bare error.
+- An image returned by an MCP tool (a screenshot tool, for one) no longer floods a local model's context as base64 text. For llama.cpp and MLX it is replaced by a note and, for a model that can see, attached again as an image.
+- The Local API Server answers "no model is running" and "the engine is not answering" with a JSON error that has a `code` and a `Retry-After`, keeps 502 for an unreachable remote provider, and explains a port the system refuses instead of showing a bare error.
 - The Local API Server's timeout now limits silence rather than the whole request, so a long generation from a large local model is no longer cut off mid-stream.
 - The hardware probes behind the memory and GPU readouts run off the main thread, which could freeze the window on Windows. Every closed `<think>` block, not only the first, is removed before a reply is sent back to the model.
 - Loading a model whose file was moved, deleted or only partly downloaded now fails with that reason, naming the file, instead of the loader's own error.
@@ -215,26 +207,28 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Adding a self-hosted OpenAI-compatible server by its bare address, such as `http://host:8000`, now finds its models: the model list is also tried under `/v1` when the first address answers 404, and pasted spaces and trailing slashes are ignored.
 - Editing a message you sent with images keeps the images instead of dropping them.
 - The copy buttons for API keys and secrets show "copied" only once the clipboard write has succeeded.
-- Added **voice input**: a microphone beside Send dictates into the message box, with the words spliced in at the caret phrase by phrase while you talk. Speech is turned into text on this computer by Voxtral Mini 3B, a one-time download of about 3 GB that runs next to your chat model and unloads a few minutes after you stop. Press the microphone again to keep the text, or Escape to throw the dictation away.
-- Added **Studio**, a new page for making images and video on this computer with stable-diffusion.cpp. The engine (30 MB for the Vulkan build, about 900 MB for NVIDIA CUDA) is downloaded once on request, checked against its published checksum and tested before use; the models are downloaded on request through the same resumable Hugging Face downloader. **Z-Image Turbo** (about 7.8 GB) makes images and **Wan 2.2 TI2V 5B** (about 8.5 GB) makes clips of 1 to 5 seconds, both Apache-2.0. Results are kept in a gallery with the prompt, size, steps and seed beside each one, and a clip shows a memory warning on a machine with under 32 GB. Windows only for now.
-- Studio has a stage-first layout: settings on the left (model, shape, number or length, seed, things to avoid), a large live preview with the prompt docked under it and example prompts while it is empty, an Activity list of this session's jobs on the right, and the gallery below. Hovering a picture shows its prompt, seed and time with **Remix** (same prompt, new seed) and delete; clicking opens the same image viewer the chat uses, with zoom, arrow keys and save.
-- Fixed a model download that could come out corrupt after a pause and resume in quick succession: the old transfer could still have the partial file open when the new one started, and its late open wiped what the new one had written, so a file of the right size failed its checksum hours later. Only one transfer now writes a given partial file at a time, and a pause while waiting for it is honoured.
+- Added **voice input**: a microphone beside Send dictates into the message box, with the words inserted at the caret as you talk. Speech is turned into text on this computer by Voxtral Mini 3B, a one-time download of about 3 GB that unloads a few minutes after you stop. Press the microphone again to keep the text, or Escape to discard it.
+- Added **Studio**, a new page for making images and video on this computer with stable-diffusion.cpp. The engine is downloaded once on request and checked against its published checksum; the models use the same resumable Hugging Face downloader. **Z-Image Turbo** makes images and **Wan 2.2 TI2V 5B** makes clips of 1 to 5 seconds, both Apache-2.0. Results are kept in a gallery with the prompt, size, steps and seed beside each one. Windows only for now.
+- Studio has a stage-first layout: settings on the left, a large live preview with the prompt under it, an Activity list on the right and the gallery below. Hovering a picture shows its prompt, seed and time with **Remix** (same prompt, new seed) and delete; clicking opens the chat's image viewer.
+- Fixed a model download that could come out corrupt after a pause and resume in quick succession: the old transfer could wipe what the new one had written, so a file of the right size failed its checksum. Only one transfer now writes a partial file at a time.
 - Studio retries a run that ran out of graphics memory with part of the model kept in system memory (then more of it), instead of failing a run that would fit; the setting that worked is kept for the next run.
 - Studio shows a desktop notification when an image or video is ready or a model finishes downloading, but only while Flint is not the window in front. Permission is asked for when you start the job.
 - Studio shows about how long a clip will take before it starts, scaled from the last clip made on this computer (pixels, frames and steps), and says nothing until there is one to scale from.
-- Studio's shape choices are now the standard proportions (1:1, 4:3, 3:4, 3:2, 2:3, 16:9, 9:16 and 21:9) at about the same picture area each, with the exact size on hover. The model name no longer gets cut off in the settings column, and an empty stage is a compact box instead of a tall empty square.
-- Updated the built-in model lists for the cloud providers to what each one's documentation now lists: Claude Sonnet 5.5, Opus 5.5, Fable 5.1 and Haiku 4.5 (no more Claude 3.x), GPT-6.1 Sol, GPT-6 Astra and GPT-6 Luna, Gemini 3.x, Mistral Medium 3.5, Small 4 and Large 3, Grok 4.x, Command A Plus, MiniMax M3 and newer Bedrock, Groq, Perplexity and NVIDIA entries. A new chat on Anthropic or OpenAI starts on the balanced model (Sonnet 5.5, GPT-6.1 Sol) rather than the most expensive one.
+- Studio's shape choices are now the standard proportions (1:1, 4:3, 3:4, 3:2, 2:3, 16:9, 9:16 and 21:9) at about the same picture area each, with the exact size on hover.
+- Updated the built-in model lists for the cloud providers to what each one's documentation now lists, including Claude Sonnet 5.5, Opus 5.5, Fable 5.1 and Haiku 4.5, GPT-6.1 Sol, Gemini 3.x and Grok 4.x. A new chat on Anthropic or OpenAI starts on the balanced model (Sonnet 5.5, GPT-6.1 Sol) rather than the most expensive one.
 - Studio lets you type your own resolution: **Custom** beside the shapes opens width and height boxes (with a swap button) that snap to multiples of 16 inside what the model accepts, and Remix on a picture made at a non-standard size keeps its exact size.
-- Added ten hosted model providers to the provider list: DeepSeek, Moonshot AI (Kimi), Cohere, Perplexity, Together AI, Fireworks AI, Cerebras, SambaNova, Z.ai (GLM) and Alibaba Qwen. Each needs only its API key; Alibaba Qwen also lets you edit the endpoint, because its keys only work in the region they were created in.
+- Added ten hosted model providers to the provider list: DeepSeek, Moonshot AI (Kimi), Cohere, Perplexity, Together AI, Fireworks AI, Cerebras, SambaNova, Z.ai (GLM) and Alibaba Qwen. Each needs only its API key; Alibaba Qwen also lets you edit the endpoint.
 - Fixed Studio's model download showing "Unknown size of 7.3 GB" in the first moments; it now says "Starting…" until bytes arrive.
-- Studio can make pictures with hosted models as well as the one on this computer: **Where to make it** lists GPT Image 2.5 (OpenAI), Gemini 2.5 Flash Image and Gemini 3 Pro Image, Grok Imagine Image (xAI) and FLUX on Together AI for each provider that has an API key in Providers. The prompt goes to that provider and the pictures are saved in the same gallery, with the model named in the hover card. Hosted runs leave the chat models loaded and can be stopped.
-- Discover has an **Images** switch that searches Hugging Face for picture models Studio can run (GGUF repositories tagged text-to-image). Pick a weights file and what kind of model it is (Z-Image, Qwen-Image, Qwen-Image 2.1 or FLUX.1) and **Add to Studio**: the text encoder and VAE that family needs are downloaded with it, every file is checked against the size and checksum Hugging Face publishes, and the model appears among Studio's models, where it can be removed again (its files stay on disk). A licence that is not plainly open is shown as a warning chip.
+- Studio can make pictures with hosted models as well as the one on this computer: **Where to make it** lists GPT Image 2.5, Gemini image models, Grok Imagine Image and FLUX on Together AI for each provider with an API key. The prompt goes to that provider and the pictures are saved in the same gallery. Hosted runs can be stopped.
+- Discover has an **Images** switch that searches Hugging Face for picture models Studio can run. Pick a weights file and its family (Z-Image, Qwen-Image or FLUX.1) and **Add to Studio**: the text encoder and VAE it needs are downloaded with it and every file is checked against Hugging Face's published checksum. A licence that is not plainly open is shown as a warning chip.
 - Studio shares the graphics card with chat: loading the image model stops the chat models, and starting a chat model stops the image model, which also unloads after ten idle minutes. Cancelling a run stops the engine, and the next run starts it again.
-- The Local API Server gained `POST /v1/images/generations` (base64 only, sizes in steps of 16, 1 to 4 images, a model that is already loaded) and the OpenAI Videos routes `POST /v1/videos`, `GET /v1/videos/{id}` and `GET /v1/videos/{id}/content`, with the same error shape as the rest of the API. Image models stay out of `/v1/models`.
-- A chat started from the phone with no model chosen now picks one on the computer, as the desktop does, and says so plainly when nothing can answer. The phone's copy buttons say "Copy failed" instead of staying silent when the connection has no clipboard, and a phone's chat history no longer shows a model's reasoning.
+- The Local API Server gained `POST /v1/images/generations` (base64 only, 1 to 4 images, a model that is already loaded) and the OpenAI Videos routes `POST /v1/videos`, `GET /v1/videos/{id}` and `GET /v1/videos/{id}/content`. Image models stay out of `/v1/models`.
+- A chat started from the phone with no model chosen now picks one on the computer, as the desktop does, and says so plainly when nothing can answer. The phone's copy buttons say "Copy failed" when the connection has no clipboard.
 - A reply's token details show **Draft accepted**, for example `75% (30/40)`, when speculative decoding (MTP, DFlash or EAGLE-3) ran, so you can see whether a draft is paying off.
 
 ### Release infrastructure
+- `node scripts/build-installer.mjs` checks the toolchain, builds the engine and the app and prints the installer paths, with no `make`, Git Bash or `corepack enable` needed on Windows. A push to `main` moves the version tag and rebuilds the release.
+- The Windows engine builds with LLVM 22 and newer.
 
 - Tag pushes matching `v*` start the Flint release build, which attaches the Windows, macOS and Linux bundles to the existing release for that tag.
 - Moving an existing release tag rebuilds it and replaces the bundles already attached to that release.
@@ -259,6 +253,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - On Windows 11 the title bar takes its colours from the app's theme and follows theme changes.
 
 ### Skills that apply themselves
+- Importing from Claude Code keeps a **live link**: global skills and plugins are copied again when their source in `~/.claude` changes, and a deleted source keeps the last copy. An opt-in runs your Claude Code SessionStart and UserPromptSubmit hooks.
 
 - Added **bundled-file reading**: `skill_read` takes a `file` argument for the templates, themes and scripts a skill ships, and lists them at the end of the skill, so a skill's own relative paths work in chat and Cowork instead of being refused as outside the workspace.
 - Installed skill and plugin folders are readable by the file tools, read-only; credential files and the project's deny rules still apply.
@@ -268,8 +263,11 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Work profiles now apply to normal chat as well as Cowork, with the same picker, and run alongside skill activation and assistant routing instead of one after another.
 
 ### Context and speed in chat
+- The context card also shows for old chats and for custom OpenAI-compatible servers: the last breakdown is kept with the chat, and a local server's window is read from llama-server's `/props`. A bar with an unknown window fades out instead of looking full, and an old breakdown says how old it is.
+- The context card's meter is one fixed-height bar of used tokens, the room auto-compact keeps free and free space, with an arrow that opens the numbers behind it.
+- Compaction is harder to defeat: stale tool results are cleared first, a conversation that refills right after compacting stops the loop, the summary is made once per prefix and before the trimmer acts, and it keeps an analysis/summary split.
 
-- Added a **context circle** to the composer in Chat and Cowork. Hovering shows a card with a bar coloured by kind (messages, system tools, MCP tools, skills, memory, system prompt), the tokens left before auto-compact, **Compact session**, and an expandable breakdown that opens onto each MCP server and tool.
+- Added a **context circle** to the composer in Chat and Cowork. Hovering shows a card with a bar coloured by kind, the tokens left before auto-compact, **Compact session**, and an expandable breakdown down to each MCP server and tool.
 - Providers that report no window size get an empty ring with the same card.
 - The hover card shows the latest reply's generation speed and the conversation's average.
 - Added a **reasoning effort bar** beside the model selector in Chat and Cowork, with one stop per level the model supports, a Recommended mark on the model's own default and an Off stop where the model can switch reasoning off.
@@ -294,7 +292,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 - Deleting a chat, room, project, Cowork session, assistant or Studio result now moves it to an **Archive** page instead of destroying it. The link sits in the sidebar's Support group, above Settings, and the phone app has its own Archive screen.
 - **Restore** puts an item back where it was. **Delete permanently** is only in the right-click menu on the Archive page and asks for confirmation. Delete dialogs just say the item moves to the Archive.
-- Each row has a preview that shows what the item holds without restoring it: the first messages of a chat or room, a Cowork session's folder and last turns, a project's chats, an assistant's instructions, or a Studio result's recipe and thumbnail. The right-click menu opens at the pointer and stays inside the window.
+- Each row has a preview that shows what the item holds without restoring it: the first messages of a chat or room, a Cowork session's last turns, a project's chats, an assistant's instructions, or a Studio result's recipe.
 - The Archive is on by default. Archived items are deleted after 30 days (0 keeps them), threads untouched for a set number of days can be archived automatically (off by default), and **Empty archive** clears it.
 - A Cowork session whose managed worktree holds unmerged work cannot be purged until that work is dealt with.
 - A restored Cowork session registers with the session mailbox again, and sessions archived by an earlier build recover when restored.
@@ -332,7 +330,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 
 ### Agent browser
 
-- Added an off-by-default **agent browser**: the assistant can open pages in the built-in browser pane, read text, take an accessibility snapshot, click, type, press keys, select options and scroll, and on Windows take a screenshot. A glowing pointer glides to each element before the assistant acts, shows a click pulse and scrolls smoothly. It can be turned off, follows the system's reduce-motion setting and hides while you take over.
+- Added an off-by-default **agent browser**: the assistant can open pages in the built-in browser pane, read text, click, type, scroll and, on Windows, take a screenshot. A glowing pointer glides to each element before it acts, follows the system's reduce-motion setting and hides while you take over.
 - The first visit to a site asks, showing the full address: this visit, until Flint closes, or always, with an option for subdomains. Saved rules and the sites approved for now are listed in **Settings > Agent tools** and can be revoked.
 - Loopback, private, link-local and cloud-metadata addresses are refused in every spelling. A redirect to a site that has not been approved is stopped and asked about, and page content comes back inside a block marked as untrusted.
 - Clicks and typing ask for approval in Chat and Cowork, a control that looks like submit or delete asks every time, and a run has an action limit. Unattended runs only reach sites with a saved always-allow rule.
@@ -433,6 +431,11 @@ These are kept because they fix behavior inherited from the Jan base rather than
 - Keep provider/model selection consistent when providers are added, removed or temporarily unreachable.
 - Keep the model selector's search popup inside the window while typing instead of letting it slide off-screen.
 - Keep the composer's assistant, sampling, tools and web-search controls usable while a reply streams; they apply to the next message.
+- A vLLM server's context window is read from its model list (`max_model_len`), since vLLM has no `/props`, and a Flash-Next build is never sent a reasoning effort it rejects.
+- A chat's own settings, such as reasoning effort, now reach models a provider lists without a settings block, which covers custom and hosted OpenAI-compatible servers.
+- Every GPU stays in the system monitor: drivers that report no device UUID no longer give each GPU the same id, so a second GPU stops overwriting the first.
+- A click outside the access prompt no longer counts as Deny, and a folder grant on Windows also reaches subfolders with a protected permission list.
+- The tailscale calls behind remote access no longer open a console window on Windows.
 - Harden archive extraction, secret storage, proxy forwarding and Local API Server request handling inherited from the base application.
 
 ---
