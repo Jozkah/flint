@@ -93,6 +93,32 @@ export function thresholdTokens(
   return Math.floor(window * share)
 }
 
+/**
+ * Share of the trimmer's limit that compaction stays under. The trimmer drops
+ * the oldest messages once a request passes `window - reserve - margin`; for a
+ * small window that limit is below the fixed share of the window, so without
+ * this the history would be cut before any summary could be written. At 128k
+ * the limit is above the fixed share and nothing changes.
+ */
+export const TRIM_HEADROOM_SHARE = 0.95
+
+/**
+ * Tokens at which a request is compacted: the fixed share of the window, or --
+ * when the trimmer would act first -- just under where it acts.
+ * `trimReserveTokens` is what the trimmer keeps free of the window (output
+ * headroom plus its safety margin); 0 leaves only the fixed share.
+ */
+export function compactionTriggerTokens(
+  window: number,
+  trimReserveTokens = 0,
+  threshold: number = DEFAULT_COMPACT_THRESHOLD
+): number {
+  const base = thresholdTokens(window, threshold)
+  if (!(window > 0) || !(trimReserveTokens > 0)) return base
+  const trimLimit = Math.floor((window - trimReserveTokens) * TRIM_HEADROOM_SHARE)
+  return Math.max(Math.floor(window * 0.1), Math.min(base, trimLimit))
+}
+
 /** Whether a request of `projected` tokens should be compacted first. */
 export function shouldCompact(
   projected: number,
@@ -333,14 +359,29 @@ export async function compactHistory(
     now?: () => number
     /** A summary already being written for exactly these messages, if any. */
     reuse?: (summarize: UIMessage[]) => Promise<string | null> | null
+    /**
+     * A summary already written for the leading `count` of these messages. The
+     * rest stay verbatim, so the compaction folds only what the summary covers.
+     */
+    reusePrefix?: (
+      summarize: UIMessage[]
+    ) => { count: number; summary: Promise<string | null> } | null
   }
 ): Promise<CompactResult | null> {
-  const plan = planCompaction(messages, { keepRecent: opts.keepRecent })
+  let plan = planCompaction(messages, { keepRecent: opts.keepRecent })
   if (!plan) return null
+  const prefix = opts.reusePrefix?.(plan.summarize) ?? null
+  if (prefix && prefix.count > 0 && prefix.count < plan.summarize.length) {
+    plan = {
+      ...plan,
+      summarize: plan.summarize.slice(0, prefix.count),
+      keep: [...plan.summarize.slice(prefix.count), ...plan.keep],
+    }
+  }
   const transcript = transcriptForSummary(plan.summarize)
   let summary = ''
   try {
-    const ready = await opts.reuse?.(plan.summarize)
+    const ready = prefix ? await prefix.summary : await opts.reuse?.(plan.summarize)
     summary = extractSummary(
       ready ?? (await opts.summarize(transcript, opts.signal))
     )

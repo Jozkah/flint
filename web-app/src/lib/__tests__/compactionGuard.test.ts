@@ -8,8 +8,10 @@ import {
   isCompactionLooping,
   recordCompaction,
   resetCompactionBreaker,
+  MAX_STALE_PREFIX_MESSAGES,
   startPrecompute,
   takePrecomputed,
+  takePrecomputedPrefix,
 } from '../compactionGuard'
 
 const msg = (id: string, role: 'user' | 'assistant', text: string): UIMessage => ({
@@ -124,5 +126,72 @@ describe('compactHistory with a precomputed summary', () => {
     })
     expect(summarize).toHaveBeenCalledTimes(1)
     expect(result?.record.summary).toBe('fresh')
+  })
+})
+
+describe('one background summary per thread and covered prefix', () => {
+  beforeEach(() => cancelPrecompute('p'))
+
+  it('summarizes once while the conversation grows through the band, and compaction uses it', async () => {
+    const summarize = vi.fn(async () => '<summary>S</summary>')
+    // Five turns in the 80-100% band: each covers a few more messages.
+    for (let turn = 0; turn < 5; turn++) {
+      startPrecompute('p', convo(10 + turn), summarize)
+    }
+    expect(summarize).toHaveBeenCalledTimes(1)
+
+    // The compaction that follows covers two more messages than the summary.
+    const covered = convo(12)
+    const taken = takePrecomputedPrefix('p', covered)
+    expect(taken?.count).toBe(10)
+    expect(await taken?.summary).toBe('<summary>S</summary>')
+    // Consumed: nothing is left to take twice.
+    expect(takePrecomputedPrefix('p', covered)).toBeNull()
+  })
+
+  it('starts a new one once the conversation has run on past what is worth reusing', () => {
+    const summarize = vi.fn(async () => 's')
+    startPrecompute('p', convo(10), summarize)
+    startPrecompute('p', convo(10 + MAX_STALE_PREFIX_MESSAGES), summarize)
+    expect(summarize).toHaveBeenCalledTimes(1)
+    startPrecompute('p', convo(10 + MAX_STALE_PREFIX_MESSAGES + 1), summarize)
+    expect(summarize).toHaveBeenCalledTimes(2)
+    // And the old one is no longer offered for a conversation far beyond it.
+    expect(takePrecomputedPrefix('p', convo(10 + MAX_STALE_PREFIX_MESSAGES + 1))?.count).toBe(
+      10 + MAX_STALE_PREFIX_MESSAGES + 1
+    )
+  })
+
+  it('replaces a summary of messages that were edited, and aborts it if still running', () => {
+    let signal: AbortSignal | undefined
+    const summarize = vi.fn((_t: string, s?: AbortSignal) => {
+      signal = s
+      return new Promise<string>(() => {})
+    })
+    startPrecompute('p', convo(10), summarize)
+    const edited = convo(10)
+    edited[2] = msg('m2', 'user', 'edited into something else entirely')
+    startPrecompute('p', edited, summarize)
+    expect(summarize).toHaveBeenCalledTimes(2)
+    expect(signal?.aborted).toBe(false)
+    expect(takePrecomputedPrefix('p', convo(10))).toBeNull()
+  })
+
+  it('compactHistory folds only what a precomputed prefix covers and keeps the rest', async () => {
+    const history = convo(30)
+    const reusePrefix = vi.fn(() => ({ count: 18, summary: Promise.resolve('<summary>P</summary>') }))
+    const summarize = vi.fn(async () => 'never')
+    const result = await compactHistory(history, {
+      summarize,
+      keepRecent: 8,
+      reason: 'threshold',
+      reusePrefix,
+    })
+    expect(summarize).not.toHaveBeenCalled()
+    expect(result?.record.summary).toBe('P')
+    expect(result?.record.summarizedCount).toBe(18)
+    // Everything after the summarized prefix is still there, in order.
+    const kept = result!.messages.slice(1).map((m) => m.id)
+    expect(kept).toEqual(history.slice(18).map((m) => m.id))
   })
 })

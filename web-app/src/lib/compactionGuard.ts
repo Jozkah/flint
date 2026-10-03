@@ -77,8 +77,17 @@ export function prefixKey(messages: UIMessage[]): string {
   return `${messages.map((m) => m.id).join(',')}#${transcriptForSummary(messages).length}`
 }
 
+/**
+ * Messages a precomputed summary may trail the covered prefix by and still be
+ * used: the summary then folds what it covers and the few newer messages stay
+ * verbatim. Further behind than this, it is worth less than a fresh one.
+ */
+export const MAX_STALE_PREFIX_MESSAGES = 6
+
 type Precomputed = {
   key: string
+  /** How many messages the summary covers. */
+  count: number
   summary: Promise<string | null>
   controller: AbortController
   settled: boolean
@@ -86,22 +95,40 @@ type Precomputed = {
 
 const precomputed = new Map<string, Precomputed>()
 
+function coversPrefixOf(entry: Precomputed, covered: UIMessage[]): boolean {
+  return (
+    covered.length >= entry.count &&
+    prefixKey(covered.slice(0, entry.count)) === entry.key
+  )
+}
+
 /**
- * Start summarizing `covered` in the background, once: nothing happens while a
- * precompute for the thread is still running or already holds this prefix.
+ * Start summarizing `covered` in the background, at most once per thread and
+ * covered prefix. While the conversation only grows past what a precompute
+ * already covers (and not by more than [`MAX_STALE_PREFIX_MESSAGES`]), nothing
+ * is started: the earlier summary is still the one the compaction will use. A
+ * conversation that was edited, or has run on far past it, replaces it.
  */
 export function startPrecompute(
   threadId: string,
   covered: UIMessage[],
   summarize: Summarize
 ): void {
-  const key = prefixKey(covered)
   const existing = precomputed.get(threadId)
-  if (existing && (existing.key === key || !existing.settled)) return
+  if (existing) {
+    if (
+      coversPrefixOf(existing, covered) &&
+      covered.length - existing.count <= MAX_STALE_PREFIX_MESSAGES
+    ) {
+      return
+    }
+    if (!existing.settled) existing.controller.abort()
+  }
 
   const controller = new AbortController()
   const entry: Precomputed = {
-    key,
+    key: prefixKey(covered),
+    count: covered.length,
     controller,
     settled: false,
     summary: summarize(transcriptForSummary(covered), controller.signal)
@@ -114,17 +141,35 @@ export function startPrecompute(
 }
 
 /**
- * The precomputed summary for exactly this prefix, consumed; null when there
- * is none or it covers something else (the caller then summarizes itself).
+ * The precomputed summary, consumed, when it covers a leading part of
+ * `covered` that is no more than [`MAX_STALE_PREFIX_MESSAGES`] short of it;
+ * `count` is how many leading messages it covers. Null when there is none or
+ * it covers something else (the caller then summarizes itself).
  */
+export function takePrecomputedPrefix(
+  threadId: string,
+  covered: UIMessage[]
+): { count: number; summary: Promise<string | null> } | null {
+  const entry = precomputed.get(threadId)
+  if (
+    !entry ||
+    !coversPrefixOf(entry, covered) ||
+    covered.length - entry.count > MAX_STALE_PREFIX_MESSAGES
+  ) {
+    return null
+  }
+  precomputed.delete(threadId)
+  return { count: entry.count, summary: entry.summary }
+}
+
+/** The precomputed summary for exactly this prefix, consumed. */
 export function takePrecomputed(
   threadId: string,
   covered: UIMessage[]
 ): Promise<string | null> | null {
   const entry = precomputed.get(threadId)
-  if (!entry || entry.key !== prefixKey(covered)) return null
-  precomputed.delete(threadId)
-  return entry.summary
+  if (!entry || entry.count !== covered.length) return null
+  return takePrecomputedPrefix(threadId, covered)?.summary ?? null
 }
 
 /** Abandon a thread's precompute, aborting its model call if still running. */

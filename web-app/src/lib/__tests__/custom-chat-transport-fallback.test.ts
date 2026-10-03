@@ -1,6 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import type { UIMessageChunk } from 'ai'
-import { CustomChatTransport } from '../custom-chat-transport'
+import {
+  CustomChatTransport,
+  PRIMARY_DOWN_MS,
+  resetPrimaryDown,
+} from '../custom-chat-transport'
 
 const h = vi.hoisted(() => ({
   fallbackModels: [] as string[],
@@ -337,5 +341,107 @@ describe('fallback chain in CustomChatTransport.sendMessages', () => {
       ]
       expect(await drain(await t.sendMessages(options()))).toEqual(reply)
     })
+  })
+})
+
+describe('remembering that the chosen model is down', () => {
+  let t: Harness
+  const userTurn = (abortSignal?: AbortSignal) =>
+    ({
+      chatId: 'c',
+      messages: [{ id: 'u', role: 'user', parts: [] }],
+      trigger: 'submit-message',
+      abortSignal,
+    }) as never
+  const followUp = () =>
+    ({
+      chatId: 'c',
+      messages: [
+        { id: 'u', role: 'user', parts: [] },
+        { id: 'a', role: 'assistant', parts: [] },
+      ],
+      trigger: 'submit-message',
+    }) as never
+
+  beforeEach(() => {
+    resetPrimaryDown()
+    h.fallbackModels = ['llamacpp::local-b']
+    h.selectedProvider = 'llamacpp'
+    h.selectedModel = { id: 'main' }
+    t = new Harness('sys', 'thread-1')
+  })
+
+  it('sends a tool follow-up straight to the model that answered, then probes the chosen one on the next message', async () => {
+    t.script = [
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+    ]
+    await drain(await t.sendMessages(userTurn()))
+    await drain(await t.sendMessages(followUp()))
+    await drain(await t.sendMessages(followUp()))
+    // main failed once; both follow-ups started on local-b without trying main.
+    expect(t.seen.map((s) => s.turnModel)).toEqual([
+      undefined,
+      'local-b',
+      'local-b',
+      'local-b',
+    ])
+    // The next user message tries the chosen model again, and it is up ...
+    await drain(await t.sendMessages(userTurn()))
+    expect(t.seen[4].turnModel).toBeUndefined()
+    // ... so a follow-up now stays on it.
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen[5].turnModel).toBeUndefined()
+  })
+
+  it('forgets after the time is up and when another model is selected', async () => {
+    const now = vi.spyOn(Date, 'now')
+    now.mockReturnValue(1_000)
+    t.script = [
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+    ]
+    await drain(await t.sendMessages(userTurn()))
+    now.mockReturnValue(1_000 + PRIMARY_DOWN_MS + 1)
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen[2].turnModel).toBeUndefined()
+
+    // Fail again, then change the picker: the follow-up uses the new choice.
+    t.script = [
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(reply),
+      async () => streamOf(reply),
+    ]
+    now.mockReturnValue(5_000_000)
+    await drain(await t.sendMessages(userTurn()))
+    h.selectedModel = { id: 'local-b' }
+    h.fallbackModels = ['openai::gpt']
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen[t.seen.length - 1].model).toBe('local-b')
+    expect(t.seen[t.seen.length - 1].turnModel).toBeUndefined()
+    now.mockRestore()
+  })
+
+  it('moves on along the chain from where it stood, and starts over when all fail', async () => {
+    h.fallbackModels = ['llamacpp::local-b', 'openai::gpt']
+    t.script = [
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(failure('Overloaded')),
+      async () => streamOf(reply),
+      // follow-up: starts on gpt, which now fails, nothing left in the chain
+      async () => streamOf(failure('Overloaded')),
+      // the next follow-up has no memory left: the chosen model first
+      async () => streamOf(reply),
+    ]
+    await drain(await t.sendMessages(userTurn()))
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen.map((s) => s.turnModel)).toEqual([undefined, 'local-b', 'gpt', 'gpt'])
+    await drain(await t.sendMessages(followUp()))
+    expect(t.seen[4].turnModel).toBeUndefined()
   })
 })

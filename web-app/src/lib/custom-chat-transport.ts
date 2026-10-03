@@ -5,7 +5,11 @@ import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescripti
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
-import { resolveFallbackChain, shouldFallback } from '@/lib/fallbackChain'
+import {
+  fallbackRef,
+  resolveFallbackChain,
+  shouldFallback,
+} from '@/lib/fallbackChain'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { toast } from 'sonner'
 import { type UIMessage } from '@ai-sdk/react'
@@ -94,6 +98,7 @@ import {
 import {
   trimMessages,
   estimateTokens,
+  contextSafetyMargin,
   clearStaleToolResults,
   type ContextManagerConfig,
 } from './context-manager'
@@ -102,8 +107,7 @@ import {
   estimateHistoryTokens,
   planCompaction,
   resolveAutoCompact,
-  shouldCompact,
-  thresholdTokens,
+  compactionTriggerTokens,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
 } from '@/lib/compaction'
@@ -115,7 +119,7 @@ import {
   recordCompaction,
   resetCompactionBreaker,
   startPrecompute,
-  takePrecomputed,
+  takePrecomputedPrefix,
 } from '@/lib/compactionGuard'
 import {
   acceptsSystemRole,
@@ -850,6 +854,22 @@ function prependContinuationToUIStream(
       reader.cancel()
     },
   })
+}
+
+/**
+ * How long a thread stays on the model its fallback chain moved it to. The
+ * chosen model failed to answer, so the tool follow-ups of the same turn chain
+ * start from the model that did instead of retrying the dead one (each retry
+ * costs its own backoff) -- and the user's next message probes it again.
+ */
+export const PRIMARY_DOWN_MS = 60_000
+const primaryDown = new Map<
+  string,
+  { selection: string; until: number; index: number }
+>()
+/** Forget every thread's moved-off model. For tests. */
+export function resetPrimaryDown(): void {
+  primaryDown.clear()
 }
 
 type SendOptions = {
@@ -1732,6 +1752,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     messages: UIMessage[],
     opts: {
       window: number
+      /** What the trimmer keeps free of the window; compaction starts before it acts. */
+      trimReserveTokens?: number
       systemPromptTokens: number
       keepRecent: number
       summaryMaxTokens: number
@@ -1752,10 +1774,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       cancelPrecompute(threadId)
     }
 
+    const trigger = compactionTriggerTokens(opts.window, opts.trimReserveTokens)
     let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    if (!shouldCompact(projected, opts.window)) {
-      if (projected >= thresholdTokens(opts.window) * PRECOMPUTE_FRACTION) {
-        this.precomputeSummary(threadId, history, opts)
+    if (projected < trigger) {
+      if (projected >= trigger * PRECOMPUTE_FRACTION) {
+        // When clearing old tool output alone will keep the request well under
+        // the trigger, the summary would never be used: don't write it.
+        const afterClearing =
+          opts.systemPromptTokens +
+          estimateHistoryTokens(clearStaleToolResults(history).messages)
+        if (afterClearing >= trigger * PRECOMPUTE_FRACTION) {
+          this.precomputeSummary(threadId, history, opts)
+        }
       }
       return history
     }
@@ -1766,7 +1796,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (cleared.clearedCount > 0) {
       history = cleared.messages
       projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-      if (!shouldCompact(projected, opts.window)) return history
+      if (projected < trigger) return history
     }
 
     if (isCompactionLooping(threadId, history.length)) {
@@ -1838,7 +1868,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       keepRecent: opts.keepRecent,
       reason: opts.reason,
       signal: opts.signal,
-      reuse: (covered) => takePrecomputed(threadId, covered),
+      reusePrefix: (covered) => takePrecomputedPrefix(threadId, covered),
     })
     cancelPrecompute(threadId)
     if (!result) return null
@@ -1921,6 +1951,35 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const original = this.turnModel
     let next = 0
     let currentProvider = this.getModelSelection().selectedProvider
+
+    // The chosen model failed on an earlier request of this turn chain and a
+    // fallback answered: keep going from that one for a tool follow-up. A new
+    // user message, a regenerate, another selected model, or the time running
+    // out all forget it, so the chosen model is tried again.
+    const threadKey = this.threadId ?? options.chatId
+    const selectionKey = fallbackRef(
+      currentProvider,
+      this.getModelSelection().selectedModel?.id ?? ''
+    )
+    const isFollowUp =
+      options.trigger === 'submit-message' &&
+      options.messages[options.messages.length - 1]?.role === 'assistant'
+    const moved = primaryDown.get(threadKey)
+    if (moved) {
+      if (
+        moved.selection === selectionKey &&
+        moved.until > Date.now() &&
+        isFollowUp &&
+        moved.index >= 1 &&
+        moved.index <= chain.length
+      ) {
+        next = moved.index
+        this.turnModel = chain[next - 1]
+        currentProvider = chain[next - 1].selectedProvider
+      } else {
+        primaryDown.delete(threadKey)
+      }
+    }
     // A compaction the first attempt made is already in the thread's saved
     // state, so a retry finds nothing left to fold and would never announce it.
     this.sentCompaction = null
@@ -1959,6 +2018,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         thrown = true
       }
       const target = chain[next]
+      if (failure === undefined) {
+        // The chosen model answered: it is up. A fallback answered: stay on it
+        // for the rest of this turn chain.
+        if (next === 0) primaryDown.delete(threadKey)
+        else
+          primaryDown.set(threadKey, {
+            selection: selectionKey,
+            until: Date.now() + PRIMARY_DOWN_MS,
+            index: next,
+          })
+      } else if (!target && next > 0) {
+        // Every model of the chain failed: start from the chosen one again.
+        primaryDown.delete(threadKey)
+      }
       if (
         failure === undefined ||
         !target ||
@@ -1990,6 +2063,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       this.carriedCompaction = this.sentCompaction ?? this.carriedCompaction
       this.turnModel = target
       currentProvider = target.selectedProvider
+      primaryDown.set(threadKey, {
+        selection: selectionKey,
+        until: Date.now() + PRIMARY_DOWN_MS,
+        index: next,
+      })
       toast.info(
         i18n.t('common:fallbackSwitched', { model: target.selectedModel.id })
       )
@@ -2244,6 +2322,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           messagesToConvert,
           {
             window: maxContextTokens,
+            trimReserveTokens:
+              contextConfig.maxOutputTokens +
+              contextSafetyMargin(maxContextTokens),
             systemPromptTokens,
             keepRecent: compaction.keepRecent || DEFAULT_KEEP_RECENT,
             summaryMaxTokens: compaction.summaryMaxTokens,
