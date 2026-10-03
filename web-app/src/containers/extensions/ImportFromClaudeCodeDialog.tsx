@@ -41,7 +41,8 @@ function groupByOrigin(items: CcItem[]): Map<string, CcItem[]> {
 const itemKey = (item: CcItem) => `${item.kind}:${item.name}:${item.sourcePath}`
 
 /**
- * Dialog to import Claude Code skills/plugins found on disk into Jan.
+ * Dialog to import Claude Code skills/plugins found on disk into Flint. An
+ * import is a live link: Flint keeps reading the source in `~/.claude`.
  *
  * Scanning is read-only and always goes through `ccScan`; the items it
  * returns are the only source of `sourcePath` ever sent to `ccImport` -- the
@@ -62,6 +63,7 @@ export default function ImportFromClaudeCodeDialog({
   const [items, setItems] = useState<CcItem[]>([])
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [overwrite, setOverwrite] = useState(false)
+  const [linkHooks, setLinkHooks] = useState(true)
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [result, setResult] = useState<CcImportResult | null>(null)
@@ -100,7 +102,7 @@ export default function ImportFromClaudeCodeDialog({
     setImportError(null)
     setResult(null)
     try {
-      const res = await ccImport(chosen, overwrite)
+      const res = await ccImport(chosen, overwrite, linkHooks)
       setResult(res)
       invalidateSkills()
       toast.success(
@@ -179,10 +181,16 @@ export default function ImportFromClaudeCodeDialog({
                           <Label htmlFor={id} className="flex-1 min-w-0 truncate font-normal">
                             {item.name}
                           </Label>
-                          {item.alreadyExists && (
+                          {item.linked ? (
                             <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                              {t('common:extensionsManager.import.installed')}
+                              {t('common:extensionsManager.import.linked')}
                             </span>
+                          ) : (
+                            item.alreadyExists && (
+                              <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                                {t('common:extensionsManager.import.installed')}
+                              </span>
+                            )
                           )}
                         </li>
                       )
@@ -208,6 +216,19 @@ export default function ImportFromClaudeCodeDialog({
               />
               <Label htmlFor="cc-import-overwrite" className="text-xs font-normal">
                 {t('common:extensionsManager.import.overwrite')}
+              </Label>
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="flex items-start gap-2">
+              <Switch
+                id="cc-import-hooks"
+                checked={linkHooks}
+                onCheckedChange={setLinkHooks}
+              />
+              <Label htmlFor="cc-import-hooks" className="text-xs font-normal">
+                {t('common:extensionsManager.import.linkHooks')}
               </Label>
             </div>
           )}

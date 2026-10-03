@@ -79,6 +79,8 @@ export interface CcItem {
   sourcePath: string
   origin: string
   alreadyExists: boolean
+  /** Imported as a live link: edits in Claude Code reach Flint on their own. */
+  linked: boolean
 }
 
 export interface CcScan {
@@ -102,6 +104,15 @@ export interface CcImportResult {
 export const ccScan = (root?: string) =>
   call<CcScan>('agent_cc_scan', root ? { root } : {})
 
-/** Import the selected scan items, optionally overwriting existing ones. */
-export const ccImport = (items: CcImportSelection[], overwrite: boolean) =>
-  call<CcImportResult>('agent_cc_import', { items, overwrite })
+/**
+ * Import the selected scan items, optionally overwriting existing ones. An
+ * import is a live link: the backend keeps the imported copy in step with its
+ * source. `linkHooks` also opts in to running the user's Claude Code
+ * `SessionStart` / `UserPromptSubmit` hooks; `undefined` leaves the current
+ * choice alone.
+ */
+export const ccImport = (
+  items: CcImportSelection[],
+  overwrite: boolean,
+  linkHooks?: boolean
+) => call<CcImportResult>('agent_cc_import', { items, overwrite, linkHooks })

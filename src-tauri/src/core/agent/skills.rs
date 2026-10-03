@@ -43,6 +43,18 @@ pub(crate) fn user_skills_dir() -> Option<PathBuf> {
 /// `skills/` themselves.
 #[cfg(not(test))]
 pub(crate) fn user_skill_store() -> Option<PathBuf> {
+    // Every reader of the global skills/plugins stores comes through here, so
+    // this is where a link to Claude Code is refreshed (throttled, and a no-op
+    // when nothing is linked): the stores are never staler than the throttle.
+    #[cfg(not(feature = "cli"))]
+    crate::core::agent::cc_import::sync_if_due();
+    user_skill_store_raw()
+}
+
+/// The store root without the Claude Code link refresh. For the link refresh
+/// itself, which would otherwise re-enter it.
+#[cfg(not(test))]
+pub(crate) fn user_skill_store_raw() -> Option<PathBuf> {
     let data = crate::core::app::commands::resolve_jan_data_folder();
     (!data.as_os_str().is_empty())
         .then(|| tauri_plugin_agent_tools::workspace::permanent_store(&data))
@@ -58,6 +70,11 @@ thread_local! {
 #[cfg(test)]
 pub(crate) fn user_skill_store() -> Option<PathBuf> {
     TEST_USER_SKILLS.with(|d| d.borrow().clone())
+}
+
+#[cfg(test)]
+pub(crate) fn user_skill_store_raw() -> Option<PathBuf> {
+    user_skill_store()
 }
 
 #[cfg(test)]

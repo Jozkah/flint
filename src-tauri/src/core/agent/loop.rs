@@ -4911,6 +4911,30 @@ fn stop_reason_of(completion: &serde_json::Value) -> String {
 }
 
 
+/// The text of the user message this run is about to answer: the trailing
+/// message when it is the user's own and not a reminder. `None` when the run
+/// continues from an assistant or tool turn, where there is no new prompt.
+fn trailing_user_text(messages: &[serde_json::Value]) -> Option<String> {
+    let last = messages.last()?;
+    if last.get("role").and_then(|r| r.as_str()) != Some("user") {
+        return None;
+    }
+    let text = match last.get("content")? {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(parts) => parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+            .collect::<Vec<_>>()
+            .join("
+"),
+        _ => return None,
+    };
+    if text.trim().is_empty() || crate::core::agent::reminder::is_reminder_text(&text) {
+        return None;
+    }
+    Some(text)
+}
+
 /// Assembles the run's system prompt: `override_prompt` (a subagent's
 /// definition prompt) replaces the assistant identity when set, but the
 /// project-context and tool-use guidance from `build_system_prompt` is still
@@ -5317,6 +5341,37 @@ async fn orchestrate_inner(
             }
         }
     };
+    // Claude Code hooks the user opted in to by importing from Claude Code
+    // (`SessionStart`, `UserPromptSubmit`). Never for a child run: a subagent
+    // has its own prompt, and the hooks describe the user's session.
+    let cc_hooks = if system_prompt_override.is_none() {
+        crate::core::agent::cc_hooks::active()
+    } else {
+        Vec::new()
+    };
+    let cc_cwd = project_root
+        .clone()
+        .or_else(dirs::home_dir)
+        .unwrap_or_default();
+    let system_prompt = if cc_hooks.is_empty() {
+        system_prompt
+    } else {
+        let blocks = crate::core::agent::cc_hooks::session_start_context(
+            &cc_hooks,
+            session_id.as_deref(),
+            &cc_cwd,
+        )
+        .await;
+        if blocks.is_empty() {
+            system_prompt
+        } else {
+            format!("{system_prompt}
+
+{}", blocks.join("
+
+"))
+        }
+    };
     let system_prompt = Some(system_prompt);
     // Child (subagent) runs are excluded from the forced goal plan via
     // `system_prompt_override`, which only a child run sets.
@@ -5350,6 +5405,23 @@ async fn orchestrate_inner(
     };
     if let Some(sys) = system_prompt {
         set_system_prompt(&mut conversation_messages, &sys);
+    }
+    // `UserPromptSubmit` hooks see the prompt this run is answering. Their
+    // output travels through the append-only reminder channel, like the todo
+    // guidance below, so the system prompt stays byte-stable.
+    if !cc_hooks.is_empty() {
+        if let Some(prompt) = trailing_user_text(&conversation_messages) {
+            for block in crate::core::agent::cc_hooks::prompt_submit_context(
+                &cc_hooks,
+                session_id.as_deref(),
+                &cc_cwd,
+                &prompt,
+            )
+            .await
+            {
+                crate::core::agent::reminder::attach(&mut conversation_messages, &block);
+            }
+        }
     }
     // Upkeep guidance depends on whether a list exists, which changes between
     // turns. It travels through the append-only reminder channel so the system

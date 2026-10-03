@@ -35,6 +35,7 @@ const manifest = {
       sourcePath: '/home/user/.claude/skills/brainstorming',
       origin: 'Claude Code (skills)',
       alreadyExists: false,
+      linked: false,
     },
     {
       kind: 'skill' as const,
@@ -42,6 +43,7 @@ const manifest = {
       sourcePath: '/home/user/.claude/skills/existing-skill',
       origin: 'Claude Code (skills)',
       alreadyExists: true,
+      linked: false,
     },
     {
       kind: 'plugin' as const,
@@ -49,6 +51,7 @@ const manifest = {
       sourcePath: '/home/user/.claude/plugins/superpowers',
       origin: 'Claude Code (plugins)',
       alreadyExists: false,
+      linked: false,
     },
   ],
 }
@@ -112,6 +115,7 @@ describe('ImportFromClaudeCodeDialog', () => {
           sourcePath: '/home/user/.claude/plugins/superpowers',
         },
       ],
+      true,
       true
     )
 
@@ -119,5 +123,26 @@ describe('ImportFromClaudeCodeDialog', () => {
     expect(
       screen.getByText(/common:extensionsManager.import.done/)
     ).toBeInTheDocument()
+  })
+
+  it('passes the hooks choice through, and tags live-linked items', async () => {
+    ccScan.mockResolvedValue({
+      items: [{ ...manifest.items[0], alreadyExists: true, linked: true }],
+    })
+    ccImport.mockResolvedValue({ imported: [], skipped: [], errors: [] })
+    render(<ImportFromClaudeCodeDialog open onOpenChange={() => {}} />)
+
+    fireEvent.click(screen.getByText('common:extensionsManager.import.scan'))
+    await waitFor(() => expect(ccScan).toHaveBeenCalled())
+
+    expect(screen.getByText('common:extensionsManager.import.linked')).toBeInTheDocument()
+    expect(screen.queryByText('common:extensionsManager.import.installed')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('brainstorming'))
+    fireEvent.click(screen.getByLabelText('common:extensionsManager.import.linkHooks'))
+    fireEvent.click(screen.getByText('common:extensionsManager.import.importSelected'))
+
+    await waitFor(() => expect(ccImport).toHaveBeenCalled())
+    expect(ccImport.mock.calls[0][2]).toBe(false)
   })
 })
