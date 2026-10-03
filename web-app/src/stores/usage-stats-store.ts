@@ -19,6 +19,8 @@ export type DayStats = {
   replies: number
   toolOk: number
   toolFail: number
+  /** Estimated spend in USD (optional: days stored before pricing existed). */
+  cost?: number
 }
 
 export type ActivityKind =
@@ -43,7 +45,12 @@ export type ActivityItem = {
 type UsageStatsState = {
   days: Record<string, DayStats>
   activity: ActivityItem[]
-  recordGeneration: (g: { tokens: number; durationMs: number; at?: number }) => void
+  recordGeneration: (g: {
+    tokens: number
+    durationMs: number
+    cost?: number
+    at?: number
+  }) => void
   recordToolCall: (ok: boolean, at?: number) => void
   pushActivity: (item: Omit<ActivityItem, 'id' | 'at'> & { at?: number }) => void
   reset: () => void
@@ -90,11 +97,12 @@ export const useUsageStats = create<UsageStatsState>()(
     (set) => ({
       days: {},
       activity: [],
-      recordGeneration: ({ tokens, durationMs, at = Date.now() }) => {
-        if (!(tokens > 0)) return
+      recordGeneration: ({ tokens, durationMs, cost = 0, at = Date.now() }) => {
+        if (!(tokens > 0) && !(cost > 0)) return
         set((s) => ({
           days: bump(s.days, at, (d) => ({
             ...d,
+            cost: (d.cost ?? 0) + cost,
             tokens: d.tokens + tokens,
             replies: d.replies + 1,
             ...(durationMs > 0
@@ -129,6 +137,8 @@ export const useUsageStats = create<UsageStatsState>()(
 
 export type RangeSummary = {
   tokens: number
+  /** Estimated spend in USD over the range. */
+  cost: number
   /** Output tokens per second over the timed requests, or null with none. */
   speed: number | null
   /** Tool calls that succeeded, 0..1, or null with none. */
@@ -156,6 +166,7 @@ export function summarize(
   }
   const total = series.reduce((acc, { stats }) => {
     acc.tokens += stats.tokens
+    acc.cost = (acc.cost ?? 0) + (stats.cost ?? 0)
     acc.genMs += stats.genMs
     acc.timedTokens += stats.timedTokens
     acc.replies += stats.replies
@@ -166,6 +177,7 @@ export function summarize(
   const toolCalls = total.toolOk + total.toolFail
   return {
     tokens: total.tokens,
+    cost: total.cost ?? 0,
     speed: total.genMs > 0 ? total.timedTokens / (total.genMs / 1000) : null,
     toolSuccess: toolCalls > 0 ? total.toolOk / toolCalls : null,
     toolCalls,
