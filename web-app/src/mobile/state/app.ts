@@ -6,6 +6,8 @@ import type {
   ChatSendParams,
   CoworkSendParams,
   RemoteApproval,
+  RemoteAsk,
+  RemoteAskAnswer,
   RemoteEvent,
   RemoteMethod,
   RemoteMethods,
@@ -378,6 +380,21 @@ export async function respondApproval(
   return r
 }
 
+/** Answers a Cowork run's question from this phone (`null`: skip it). */
+export async function respondAsk(a: Pick<RemoteAsk, 'requestId' | 'threadId'>, answers: RemoteAskAnswer[] | null) {
+  const r = await act('asks.respond', { requestId: a.requestId, threadId: a.threadId, answers })
+  if (!r) return undefined
+  if (r.status === 'gone') {
+    markResolved(a.requestId, { by: 'computer', label: 'Answered from the computer', threadId: a.threadId })
+    toast('Already answered from the computer')
+  } else {
+    const words = answers ? 'Answered' : 'Skipped'
+    markResolved(a.requestId, { by: 'phone', label: `${words} · from this phone`, threadId: a.threadId })
+  }
+  invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+  return r
+}
+
 /** Asks for the reply being written in a conversation (opening it, or after
  * a gap or a reconnect). */
 export async function syncStream(kind: SessionKind, id: string) {
@@ -438,6 +455,10 @@ const threadKey = (id: string) => `thread.messages ${JSON.stringify({ id }).slic
 
 const KIND_WORD: Record<SessionKind, string> = { chat: 'Chat', cowork: 'Cowork', room: 'Room' }
 
+/** The kind of a conversation this phone has listed; Cowork when unknown. */
+const kindOf = (id: string): SessionKind =>
+  peekRpc('sessions.list', {})?.sessions.find((x) => x.id === id)?.kind ?? 'cowork'
+
 export function handleEvent(e: RemoteEvent) {
   switch (e.type) {
     case 'approval.requested':
@@ -446,10 +467,28 @@ export function handleEvent(e: RemoteEvent) {
         kind: 'approval',
         title: 'Approval waiting',
         body: `Flint wants to use ${e.toolName}`,
-        route: { name: 'cowork', id: e.threadId },
+        route: { name: e.kind ?? kindOf(e.threadId), id: e.threadId },
         requestId: e.requestId,
       })
       break
+    case 'ask.requested':
+      invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+      addNotice({
+        kind: 'approval',
+        title: 'Flint has a question',
+        body: e.question || 'Your Cowork session is waiting for your answer',
+        route: { name: 'cowork', id: e.threadId },
+      })
+      break
+    case 'ask.resolved': {
+      // Answered on the computer (or another phone) while this phone showed it.
+      const shown = peekRpc('asks.list', {})?.asks.find((a) => a.requestId === e.requestId)
+      if (shown && !live.get().resolved[e.requestId]) {
+        markResolved(e.requestId, { by: 'computer', label: 'Answered from the computer', threadId: shown.threadId })
+      }
+      invalidate(['approvals.list', 'asks.list', 'status', 'sessions.list', 'cowork.get'])
+      break
+    }
     case 'approval.resolved': {
       // Answered on the computer (or another phone) while this phone showed it.
       const shown = peekRpc('approvals.list', {})?.approvals.find((a) => a.requestId === e.requestId)

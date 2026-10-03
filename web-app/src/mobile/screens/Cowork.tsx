@@ -6,6 +6,7 @@ import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
 import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
+import { AskCard } from '../ui/AskCard'
 import { ChangeBars, WhatChanged } from '../ui/changes'
 import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
 import { client, openDrawer, openSheet, sendMessage, toast, useApp } from '../state/app'
@@ -31,6 +32,7 @@ export default function Cowork({ id }: { id: string }) {
   const compacting = useApp((s) => Boolean(s.compacting[id]))
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
+  const asks = useRpc('asks.list', {}, (status.data?.questionsWaiting ?? 0) > 0)
   const changes = useRpc('cowork.changes', { id })
   const queue = useRpc('thread.queue', { id })
   const d = detail.data
@@ -46,6 +48,7 @@ export default function Cowork({ id }: { id: string }) {
     }
   }
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
+  const questions = (asks.data?.asks ?? []).filter((a) => a.threadId === id)
   const stream = useLive((s) => s.streams[id])
   const pending = pendingFor(
     useLive((s) => s.pending),
@@ -54,13 +57,14 @@ export default function Cowork({ id }: { id: string }) {
   )
   const resolvedAll = useLive((s) => s.resolved)
   const resolved = Object.entries(resolvedAll).filter(
-    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid)
+    ([rid, r]) =>
+      r.threadId === id && !mine.some((a) => a.requestId === rid) && !questions.some((a) => a.requestId === rid)
   )
   useFollow('cowork', id)
   useEffect(() => {
     if (msgs.data) prunePending(id, msgs.data.messages)
   }, [id, msgs.data])
-  const ref = useStickToBottom(messages.length + mine.length + pending.length + (stream?.text.length ?? 0) + (stream?.tools.length ?? 0))
+  const ref = useStickToBottom(messages.length + mine.length + questions.length + pending.length + (stream?.text.length ?? 0) + (stream?.tools.length ?? 0))
   const running = d?.status === 'running' || d?.status === 'waiting' || Boolean(stream && !stream.done)
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')?.id
   const todos = d?.todos ?? []
@@ -107,7 +111,9 @@ export default function Cowork({ id }: { id: string }) {
       <div className="scroll" ref={ref} data-testid="cowork-scroll">
         {(detail.loading || msgs.loading) && !msgs.data && <Loading />}
         {detail.error && !d && <Empty>{detail.error.message}</Empty>}
-        {msgs.data && messages.length === 0 && <Empty>Nothing in this session yet.</Empty>}
+        {msgs.data && messages.length === 0 && pending.length === 0 && !stream && questions.length === 0 && (
+          <Empty>Nothing in this session yet.</Empty>
+        )}
         {earlier > 0 && (
           <button type="button" className="btn ghost" style={{ alignSelf: 'center', margin: '4px 0 12px' }} onClick={() => void showEarlier()}>
             Show {earlier} earlier {earlier === 1 ? 'message' : 'messages'}
@@ -135,6 +141,10 @@ export default function Cowork({ id }: { id: string }) {
           <PendingBubble key={p.clientId} p={p} />
         ))}
         {stream && <StreamingMessage s={stream} model={d?.model?.id} />}
+        {/* After the reply in flight: the question is what the run stopped on. */}
+        {questions.map((a) => (
+          <AskCard key={a.requestId} a={a} />
+        ))}
         {resolved.map(([rid, r]) => (
           <ResolvedLine key={rid} r={r} />
         ))}

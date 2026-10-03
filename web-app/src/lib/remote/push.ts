@@ -16,6 +16,7 @@ import { useRoomsStore } from '@/lib/rooms/store'
 import { usePrStatusStore } from '@/stores/pr-status-store'
 import type { PushNotice, RemoteEvent, SessionKind } from './protocol'
 import { watchIds } from './events'
+import { asksIn } from './appAsks'
 
 export type PushEmit = (event: RemoteEvent) => void
 
@@ -32,6 +33,19 @@ export function approvalNotice(a: { requestId: string; toolName: string; threadI
     url: pushUrl(where.kind, a.threadId),
     tag: `approval-${a.requestId}`,
     requestId: a.requestId,
+  }
+}
+
+/** A question is waiting. Sent as an approval: both mean "the run is stopped
+ * until you answer", and share the phone's switch. No answer buttons on the
+ * notification itself -- a question is answered in the app. */
+export function askNotice(threadId: string, title: string | undefined): PushNotice {
+  return {
+    category: 'approval',
+    title: 'Flint has a question',
+    body: title ? clip(title) : 'Your Cowork session is waiting for your answer',
+    url: pushUrl('cowork', threadId),
+    tag: `ask-${threadId}`,
   }
 }
 
@@ -97,6 +111,16 @@ export function startPushForwarding(emit: PushEmit): () => void {
         for (const id of added) {
           const a = byId.get(id)
           if (a) send(approvalNotice(a, sessionWhere(a.threadId)))
+        }
+      }
+    ),
+    watchIds(
+      useCoworkRun,
+      (s) => new Set(asksIn(s.liveTurns).map((a) => `${a.threadId} ${a.requestId}`)),
+      ({ added }) => {
+        for (const key of added) {
+          const threadId = key.split(' ')[0]
+          send(askNotice(threadId, sessionWhere(threadId).title))
         }
       }
     ),

@@ -52,6 +52,7 @@ export const PLANNED_METHODS = [
   'room.delete',
   'settings.set',
   'approvals.respond',
+  'asks.respond',
 ] as const satisfies readonly RemoteMethod[]
 
 export const plannedHandlers = Object.fromEntries(

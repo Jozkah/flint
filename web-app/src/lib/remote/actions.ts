@@ -8,8 +8,12 @@ import type { SubmittedFile } from '@/lib/coworkAttachments'
 import type { PlannedAttachments } from './attachments'
 import { RemoteRpcError, type RemoteHandlers } from './bridge'
 import { createIdempotencyCache, type IdempotencyCache } from './idempotency'
+import { checkAskAnswers } from './asks'
+import type { AskAnswer } from '@/types/coworkSession'
 import type {
   ApprovalRespondParams,
+  AskRespondParams,
+  RemoteAsk,
   ChatSendParams,
   CoworkAccessId,
   CoworkModeId,
@@ -90,6 +94,13 @@ export type RemoteActions = {
   ): void
   /** Settings › Remote access, as the window reads it. */
   permissions(): Promise<{ approvals: boolean; alwaysAllow: boolean } | null>
+
+  // -- Questions -------------------------------------------------------------
+  /** A question a Cowork run is waiting on. */
+  findAsk?(threadId: string, requestId: string): RemoteAsk | null
+  /** Hands the run its answer (`null`: skipped), as the desktop's card does.
+   * False when nothing waits under that id any more. */
+  answerAsk?(threadId: string, requestId: string, answers: AskAnswer[] | null): boolean
 
   // -- Rooms -----------------------------------------------------------------
   roomExists(id: string): Promise<boolean>
@@ -175,6 +186,7 @@ type ActionMethods =
   | 'room.control'
   | 'settings.set'
   | 'approvals.respond'
+  | 'asks.respond'
 
 export function createActionHandlers(
   a: RemoteActions,
@@ -330,6 +342,25 @@ export function createActionHandlers(
         p.decision === 'deny' ? 'deny' : WIRE_DECISION[scope]
       )
       return { status: 'answered' }
+    },
+
+    'asks.respond': (params) => {
+      const p = (isRecord(params) ? params : {}) as Partial<AskRespondParams>
+      const requestId = str(p.requestId)
+      const threadId = str(p.threadId)
+      if (!requestId || !threadId) throw new RemoteRpcError('bad_params', 'requestId and threadId are required')
+      if (!a.findAsk || !a.answerAsk) {
+        throw new RemoteRpcError('not_implemented', 'Answering questions is not available from phones yet')
+      }
+      const ask = a.findAsk(threadId, requestId)
+      if (!ask) return { status: 'gone' }
+      let answers: AskAnswer[] | null = null
+      if (p.answers !== null && p.answers !== undefined) {
+        const checked = checkAskAnswers(ask, p.answers)
+        if (typeof checked === 'string') throw new RemoteRpcError('bad_params', checked)
+        answers = checked
+      }
+      return { status: a.answerAsk(threadId, requestId, answers) ? 'answered' : 'gone' }
     },
 
     'room.send': async (params, ctx) => {

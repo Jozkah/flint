@@ -15,6 +15,12 @@ import { useCoworkSessions } from '@/hooks/useCoworkSessions'
 import { coworkLiveReply, type LiveReply } from './live'
 import { reportLiveReply, setStreamSink } from './streams'
 import { threadTopic, type RemoteEvent, type SessionKind } from './protocol'
+import { asksIn } from './appAsks'
+import type { CoworkTurn } from '@/types/coworkSession'
+
+/** The questions waiting in the live lanes, by request id. */
+const liveAsks = (liveTurns: Record<string, CoworkTurn[] | undefined>) =>
+  new Map(asksIn(liveTurns).map((a) => [a.requestId, a]))
 
 /** Sends one event; `topic` limits it to phones following that topic. */
 export type RemoteEmit = (event: RemoteEvent, topic?: string) => void
@@ -176,10 +182,31 @@ export function startRemoteEventForwarding(emit: RemoteEmit): () => void {
               requestId: id,
               toolName: a.toolName,
               threadId: a.threadId,
+              kind: queueKind(a.threadId),
             })
           }
         }
         removed.forEach((id) => emit({ type: 'approval.resolved', requestId: id }))
+      }
+    ),
+    // A Cowork run asked something, or its question was answered.
+    watchIds(
+      useCoworkRun,
+      (s) => new Set(liveAsks(s.liveTurns).keys()),
+      ({ added, removed }, s) => {
+        const byId = liveAsks(s.liveTurns)
+        for (const id of added) {
+          const a = byId.get(id)
+          if (a) {
+            emit({
+              type: 'ask.requested',
+              requestId: id,
+              threadId: a.threadId,
+              question: a.questions[0]?.question ?? '',
+            })
+          }
+        }
+        removed.forEach((id) => emit({ type: 'ask.resolved', requestId: id }))
       }
     ),
     runWatcher(

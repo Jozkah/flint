@@ -16,7 +16,8 @@ import {
 } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { holdQueueThenStop } from '@/lib/chatSteering'
-import { abortAll, abortRun } from '@/lib/coworkRunner'
+import { abortAll, abortRun, answerAsk } from '@/lib/coworkRunner'
+import { appAsks } from './appAsks'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
 import { useRoomsStore } from '@/lib/rooms/store'
@@ -318,6 +319,14 @@ export function appActions(navigate: Navigate): RemoteActions {
 
     resolveApproval: (toolCallId, requestId, decision) =>
       useToolApprovalRequests.getState().resolveApproval(toolCallId, decision, requestId),
+
+    findAsk: (threadId, requestId) =>
+      appAsks().find((a) => a.threadId === threadId && a.requestId === requestId) ?? null,
+
+    // Through the run that asked, exactly as the desktop's card answers: the
+    // run's own resolver settles the card and applies what the answer means
+    // (leaving plan mode, continuing an accepted proposal).
+    answerAsk: (threadId, requestId, answers) => answerAsk(threadId, requestId, answers),
 
     permissions: async () => {
       const status = await remoteApi.getStatus().catch(() => null)

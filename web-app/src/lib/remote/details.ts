@@ -184,6 +184,8 @@ export function approvalOf(
     alwaysAsk?: boolean
     conversationProgram?: string
     requestedAt?: number
+    origin?: string
+    preview?: string
   },
   t: Translate
 ): RemoteApproval {
@@ -211,5 +213,14 @@ export function approvalOf(
     ),
     argumentsJson: req.technicalDetails.argumentsJson,
     ...(pending.requestedAt ? { requestedAt: pending.requestedAt } : {}),
+    ...(pending.origin ? { origin: pending.origin } : {}),
+    ...(pending.preview ? { preview: clipPreview(pending.preview) } : {}),
   }
+}
+
+/** A diff longer than this is cut: the phone shows the start and says so. */
+export const MAX_PREVIEW = 12_000
+
+function clipPreview(diff: string): string {
+  return diff.length > MAX_PREVIEW ? `${diff.slice(0, MAX_PREVIEW)}\n… (cut; see the full change on the computer)` : diff
 }

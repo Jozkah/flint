@@ -33,6 +33,7 @@ import { buildBootAppearance } from '@/lib/bootAppearance'
 import { i18n } from '@/i18n/react-i18next-compat'
 import { uiMessageText, type RemoteSources } from './handlers'
 import { approvalOf, coworkDetailOf, roomDetailOf, toolStepsOf } from './details'
+import { appAsks } from './appAsks'
 import { remoteApi } from './api'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { sessionPrStatuses, usePrStatusStore } from '@/stores/pr-status-store'
@@ -284,9 +285,11 @@ export const appSources: RemoteSources = {
   },
 
   approvalDetails: () =>
-    allApprovalRequests(useToolApprovalRequests.getState())
-      .filter((a) => !a.origin)
-      .map((a) => approvalOf(a, (key, values) => i18n.t(key, values))),
+    allApprovalRequests(useToolApprovalRequests.getState()).map((a) =>
+      approvalOf(a, (key, values) => i18n.t(key, values))
+    ),
+
+  asks: () => appAsks(),
 
   systemInfo: async () => {
     const { hardwareData: hw, systemUsage: use } = useHardware.getState()

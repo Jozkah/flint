@@ -22,6 +22,7 @@ export default function Notifications() {
   const { data } = useRpc('approvals.list', {})
   const { sessions } = useSessions()
   const approvals = data?.approvals ?? []
+  const asks = useRpc('asks.list', {}).data?.asks ?? []
   const shown = notices.filter((n) => n.kind !== 'approval' && (filter === 'all' || n.kind === filter))
   return (
     <>
@@ -45,6 +46,35 @@ export default function Notifications() {
           value={filter}
           onChange={setFilter}
         />
+        {(filter === 'all' || filter === 'approval') &&
+          asks.map((a) => (
+            <button
+              key={a.requestId}
+              type="button"
+              className="frame"
+              data-testid="notice-question"
+              style={{ padding: '10px 12px', marginBottom: 6, display: 'flex', gap: 10, width: '100%', textAlign: 'left' }}
+              onClick={() => go({ name: 'cowork', id: a.threadId })}
+            >
+              <span style={{ marginTop: 2 }}>
+                <I n="hand" style={{ color: 'var(--warning)' }} />
+              </span>
+              <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <b style={{ fontWeight: 600, fontSize: 13, display: 'flex', justifyContent: 'space-between' }}>
+                  Flint has a question
+                  {a.requestedAt && (
+                    <small className="subtle" style={{ fontWeight: 400, fontSize: 11 }}>
+                      {ago(a.requestedAt)}
+                    </small>
+                  )}
+                </b>
+                <span className="muted" style={{ fontSize: 12.5 }}>
+                  {sessions.find((x) => x.id === a.threadId)?.title ? `${sessions.find((x) => x.id === a.threadId)?.title}: ` : ''}
+                  {a.questions[0]?.question}
+                </span>
+              </span>
+            </button>
+          ))}
         {(filter === 'all' || filter === 'approval') &&
           approvals.map((a) => {
             const s = sessions.find((x) => x.id === a.threadId)

@@ -158,6 +158,8 @@ export type StatusResult = {
   modelsLoaded: number
   runs: { kind: SessionKind; id: string }[]
   approvalsWaiting: number
+  /** Questions a Cowork run is waiting on. Absent from an older computer. */
+  questionsWaiting?: number
   /** What the computer lets phones do (Settings › Remote access). Absent when
    * the window could not read its own settings. */
   permissions?: { approvals: boolean; alwaysAllow: boolean }
@@ -241,6 +243,11 @@ export type RemoteApproval = {
   scopes: { scope: 'once' | 'thread' | 'always' | 'temporary'; label: string; explanation: string; broader: boolean }[]
   argumentsJson: string
   requestedAt?: number
+  /** Who is asking, when it is not the conversation's own agent (a subagent
+   * or a team child). */
+  origin?: string
+  /** The diff a file-changing call would make, cut to a phone-sized length. */
+  preview?: string
 }
 export type ApprovalsListResult = { approvals: RemoteApproval[] }
 
@@ -415,6 +422,38 @@ export type ApprovalRespondParams = {
 /** `gone`: nothing waits under that id any more -- it was answered on the
  * computer (or another phone), or its run ended. */
 export type ApprovalRespondResult = { status: 'answered' | 'gone' }
+
+export type RemoteAskQuestion = {
+  id: string
+  question: string
+  options: { label: string; description?: string }[]
+  /** Several options may be chosen. */
+  multi?: boolean
+  /** Index of the option the model recommends. */
+  recommended?: number
+}
+/** A question a Cowork run is waiting on (its `ask` tool): one or more
+ * multiple-choice questions, answered together. Plan review and the opening
+ * "continue?" proposal are questions too. */
+export type RemoteAsk = {
+  requestId: string
+  /** The Cowork session that asked. */
+  threadId: string
+  questions: RemoteAskQuestion[]
+  /** The staged plan, under a plan-review question. */
+  plan?: { name: string; tasks: { content: string; done: boolean }[] }[]
+  requestedAt?: number
+}
+export type AsksListResult = { asks: RemoteAsk[] }
+/** One answer per question: option labels, or the user's own words. */
+export type RemoteAskAnswer = { id: string; selected: string[]; custom_input?: string }
+export type AskRespondParams = {
+  requestId: string
+  threadId: string
+  /** `null` skips the question: the run is told nothing was chosen. */
+  answers: RemoteAskAnswer[] | null
+}
+export type AskRespondResult = { status: 'answered' | 'gone' }
 
 export type NotificationPrefs = {
   approvals: boolean
@@ -819,6 +858,8 @@ export type RemoteMethods = {
   'settings.set': { params: SettingsSetParams; result: { ok: true } }
   /** `scope: 'always'` needs "Allow 'Always allow' from phones" (checked by the server too). */
   'approvals.respond': { params: ApprovalRespondParams; result: ApprovalRespondResult }
+  'asks.list': { params: Record<string, never>; result: AsksListResult }
+  'asks.respond': { params: AskRespondParams; result: AskRespondResult }
   'chat.details': { params: IdParams; result: ChatDetails }
   'chat.effort': { params: ChatEffortParams; result: { ok: true } }
   'chat.assistant': { params: ChatAssistantParams; result: { ok: true } }
@@ -867,8 +908,10 @@ export type RemoteRpcRequest = {
 // ---------------------------------------------------------------------------
 
 export type RemoteEvent =
-  | { type: 'approval.requested'; requestId: string; toolName: string; threadId: string }
+  | { type: 'approval.requested'; requestId: string; toolName: string; threadId: string; kind?: SessionKind }
   | { type: 'approval.resolved'; requestId: string }
+  | { type: 'ask.requested'; requestId: string; threadId: string; question: string }
+  | { type: 'ask.resolved'; requestId: string }
   | { type: 'run.started'; kind: SessionKind; id: string }
   | { type: 'run.finished'; kind: SessionKind; id: string }
   | { type: 'notification'; title: string; body: string }

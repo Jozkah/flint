@@ -20,6 +20,7 @@ import type {
   StreamSnapshot,
   McpServerInfo,
   RemoteApproval,
+  RemoteAsk,
   RoomDetail,
   SettingsSnapshot,
   SystemInfo,
@@ -75,6 +76,8 @@ export type RemoteSources = {
   roomDetail: (id: string) => Promise<RoomDetail | null>
   coworkDetail: (id: string) => CoworkDetail | null
   approvalDetails: () => RemoteApproval[]
+  /** Questions a Cowork run is waiting on. */
+  asks?: () => RemoteAsk[]
   systemInfo: () => Promise<SystemInfo>
   mcpServers: () => McpServerInfo[]
   settings: () => Promise<SettingsSnapshot>
@@ -215,7 +218,10 @@ export function createRemoteHandlers(
       const kind = KINDS.includes(p.kind as SessionKind) ? (p.kind as SessionKind) : undefined
       const limit = clampLimit(p.limit)
       const running = src.running()
-      const waiting = new Set(src.approvals().map((a) => a.threadId))
+      const waiting = new Set([
+        ...src.approvals().map((a) => a.threadId),
+        ...(src.asks?.() ?? []).map((a) => a.threadId),
+      ])
       const status = (k: SessionKind, id: string): SessionStatus =>
         waiting.has(id) ? 'waiting' : running[k].has(id) ? 'running' : 'idle'
 
@@ -305,12 +311,15 @@ export function createRemoteHandlers(
       const id = requireId(params)
       const detail = src.coworkDetail(id)
       if (!detail) throw new RemoteRpcError('not_found', 'No such session')
-      const waiting = src.approvals().some((a) => a.threadId === id)
+      const waiting =
+        src.approvals().some((a) => a.threadId === id) ||
+        (src.asks?.() ?? []).some((a) => a.threadId === id)
       const running = src.running().cowork.has(id)
       return { ...detail, status: waiting ? 'waiting' : running ? 'running' : detail.status }
     },
 
     'approvals.list': () => ({ approvals: src.approvalDetails() }),
+    'asks.list': () => ({ asks: src.asks?.() ?? [] }),
     'system.info': () => src.systemInfo(),
     'tools.list': () => ({ servers: src.mcpServers() }),
 
@@ -330,6 +339,7 @@ export function createRemoteHandlers(
         modelsLoaded: (await src.loadedModels()).length,
         runs,
         approvalsWaiting: src.approvals().length,
+        questionsWaiting: (src.asks?.() ?? []).length,
         ...(permissions ? { permissions } : {}),
       }
     },
