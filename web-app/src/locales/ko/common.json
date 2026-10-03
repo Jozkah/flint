@@ -767,6 +767,12 @@
   "decisionScopeShowFull": "전체 보기",
   "decisionScopeHide": "숨기기",
   "decisionScopeCopy": "복사",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "다른 브라우저 선택…"
   }

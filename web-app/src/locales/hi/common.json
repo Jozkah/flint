@@ -768,6 +768,12 @@
   "decisionScopeShowFull": "पूरा दिखाएँ",
   "decisionScopeHide": "छिपाएँ",
   "decisionScopeCopy": "कॉपी करें",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "कोई दूसरा ब्राउज़र चुनें…"
   }

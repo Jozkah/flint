@@ -789,6 +789,12 @@
   "decisionScopeShowFull": "Mostra tutto",
   "decisionScopeHide": "Nascondi",
   "decisionScopeCopy": "Copia",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "Scegli un altro browser…"
   }

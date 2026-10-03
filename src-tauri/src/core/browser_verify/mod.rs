@@ -291,6 +291,37 @@ pub mod commands {
         report
     }
 
+    /// The event the agent's `browser` tool announces what it is doing on, for
+    /// the preview panel to mirror (read-only: the panel only ever shows what
+    /// is reported, it never loads the page or reaches the agent's browser).
+    pub const EVENT_BROWSER_TOOL_ACTIVITY: &str = "browser-tool-activity";
+
+    /// Route the browser tool's activity notices to the webview as a Tauri
+    /// event. Notices are only produced while the panel says it is watching
+    /// (`browser_tool_watch`), and emitting never fails a tool call.
+    pub fn install_activity_mirror(app: &tauri::AppHandle) {
+        use tauri_plugin_agent_tools::browser::session;
+        let app = app.clone();
+        session::set_activity_sink(Some(std::sync::Arc::new(move |activity| {
+            let _ = app.emit(EVENT_BROWSER_TOOL_ACTIVITY, activity);
+        })));
+    }
+
+    /// The preview panel is open and wants the agent's browser activity (or no
+    /// longer does). With nobody watching the tool takes no mirror screenshots.
+    #[tauri::command]
+    pub fn browser_tool_watch(watching: bool) {
+        tauri_plugin_agent_tools::browser::session::set_activity_watched(watching);
+    }
+
+    /// One line naming what a `browser` tool call will do, with the element
+    /// named as the run's last snapshot called it, for the approval prompt.
+    /// The run's browser is keyed by its conversation here.
+    #[tauri::command]
+    pub fn browser_tool_describe(thread_id: String, input: serde_json::Value) -> String {
+        tauri_plugin_agent_tools::tools::browser_tool::display(&input, &thread_id)
+    }
+
     #[derive(Clone, Serialize)]
     struct Progress<'a> {
         id: &'a str,

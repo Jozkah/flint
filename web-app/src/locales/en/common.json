@@ -1961,6 +1961,12 @@
       "timeout": "Response time"
     }
   },
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "title": "Verify in browser",
     "explain": "Opens your local app in a separate, temporary browser profile (not Flint's preview, no cookies), limited to the app's own origin. Requests elsewhere are blocked and listed.",

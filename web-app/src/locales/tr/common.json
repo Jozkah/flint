@@ -979,6 +979,12 @@
   "decisionScopeShowFull": "Tamamını göster",
   "decisionScopeHide": "Gizle",
   "decisionScopeCopy": "Kopyala",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "Başka bir tarayıcı seç…"
   }

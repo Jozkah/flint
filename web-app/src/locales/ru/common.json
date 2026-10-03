@@ -710,6 +710,12 @@
   "decisionScopeShowFull": "Показать полностью",
   "decisionScopeHide": "Скрыть",
   "decisionScopeCopy": "Копировать",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "Выбрать другой браузер…"
   }

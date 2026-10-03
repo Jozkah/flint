@@ -8,6 +8,7 @@ import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
 import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
+import { BrowserToolMirror } from '@/containers/BrowserToolMirror'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -6209,7 +6210,14 @@ export function CoworkPage() {
             root={workspacePath}
             path={rail.path}
             onClose={closeRail}
-            verify={session?.id ? <BrowserVerifyPanel sessionId={session.id} /> : undefined}
+            verify={
+              session?.id ? (
+                <>
+                  <BrowserToolMirror sessionId={session.id} />
+                  <BrowserVerifyPanel sessionId={session.id} />
+                </>
+              ) : undefined
+            }
           />
         )}
         {rail?.kind === 'diff' && (

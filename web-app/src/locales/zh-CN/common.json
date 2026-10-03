@@ -981,6 +981,12 @@
   "decisionScopeShowFull": "显示全部",
   "decisionScopeHide": "收起",
   "decisionScopeCopy": "复制",
+  "browserToolMirror": {
+    "title": "Agent browser",
+    "note": "A read-only view of the agent's own temporary browser. Flint's preview is not used.",
+    "lastAction": "Last action: {{action}}",
+    "screenshotAlt": "The page in the agent's browser"
+  },
   "browserVerify": {
     "chooseDifferentBrowser": "选择其他浏览器…"
   }
