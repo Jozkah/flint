@@ -115,10 +115,15 @@ describe('RustSubagentFeed', () => {
     for (const ev of events.slice(3)) late.apply(ev)
     expect(task('sub-explorer-1').status).toBe('done')
 
-    const snapshot = JSON.stringify(task('sub-explorer-1').transcript)
+    // Timestamps are the clock's, not the events': compare everything else.
+    const shape = () =>
+      JSON.stringify(task('sub-explorer-1').transcript, (key, value) =>
+        key === 'startedAt' || key === 'endedAt' ? undefined : value
+      )
+    const snapshot = shape()
     const again = new RustSubagentFeed(ctx)
     again.replay(events)
-    expect(JSON.stringify(task('sub-explorer-1').transcript)).toBe(snapshot)
+    expect(shape()).toBe(snapshot)
     expect(Object.keys(useCoworkActivity.getState().tasks)).toHaveLength(1)
   })
 
