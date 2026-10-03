@@ -299,7 +299,9 @@ function AgentToolsContent() {
       <SettingsPageBody
         title={t('common:agent_tools')}
         description={t('settings:pageDesc.agentTools')}
-        layout={[0, 1, 0]}
+        // Behaviour: tools | shell, then compaction | browser. Skills and
+        // memories are a lone group each and span the page.
+        layout={[0, 1, 0, 1]}
         actions={
           <Segmented<'behaviour' | 'skills' | 'memories'>
             // Remounted when the counts arrive: the gliding pill is measured
@@ -435,6 +437,14 @@ function AgentToolsContent() {
               />
             }
           />
+        </Card>
+        )}
+
+        {tab === 'behaviour' && (
+        <Card
+          title={t('settings:agentTools.shellTitle')}
+          description={t('settings:agentTools.shellDescription')}
+        >
           <CardItem
             title={t('settings:agentTools.shell')}
             align="start"

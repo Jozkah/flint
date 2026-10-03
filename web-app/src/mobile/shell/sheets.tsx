@@ -197,7 +197,7 @@ function ThreadMenu({ props }: { props: Props }) {
 function SessionMenu({ props }: { props: Props }) {
   const id = str(props.id)
   return <><Title>{str(props.title) ?? 'Cowork session'}</Title>
-    <Group><Action icon="file" label="File activity" run={() => openDrawer('right', 'activity')} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('cowork', id) }} /><DesktopOnly title="Open in split view" /></Group>
+    <Group><Action icon="file" label="File activity" run={() => openDrawer('right', 'activity')} /><Action icon="edit" label="Rename" run={() => { if (!id) return; const title = window.prompt('Session name', str(props.title) ?? ''); if (title?.trim()) void mobileMutation({ mobileOp: 'cowork.rename', id, title: title.trim() }, 'Renamed.') }} /><Action icon="refresh" label="Regenerate title" run={() => { if (id) void regenerateTitleOf('cowork', id) }} /><DesktopOnly title="Open in split view" /></Group>
     <Group><DesktopOnly title="Move to group" /><Action icon="fork" label="Fork" run={() => { if (id) void mobileMutation({ mobileOp: 'cowork.fork', id }, 'Forked.').then((r) => { const next = r && typeof r.id === 'string' ? r.id : null; if (next) go({ name: 'cowork', id: next }) }) }} /></Group>
     <Group><Action icon="copy" label="Copy ID" run={() => copyId(props)} /><DesktopOnly title="Export" /><DesktopOnly title="Hand off" /></Group>
     <Group><Action icon="trash" label="Delete" danger run={() => { if (id && window.confirm('Delete this Cowork session?')) void mobileMutation({ mobileOp: 'cowork.delete', id }, 'Session deleted.').then(() => go({ name: 'home' })) }} /></Group></>
@@ -376,7 +376,9 @@ function MsgMenu({ props }: { props: Props }) {
   return <><Title>Message actions</Title>
     <Action icon="copy" label="Copy" run={() => void navigator.clipboard?.writeText(text).then(() => toast('Copied'), () => toast('Copy failed'))} />
     <Action icon="fork" label="Fork chat from here" run={() => { if (id) void forkFrom(id, messageId) }} />
-    <DesktopOnly title="Edit, regenerate or delete" sub="These change the conversation on the computer." /></>
+    {id && messageId && <Action icon="refresh" label="Regenerate" run={() => void act('chat.regenerate', { id, messageId }, 'Regenerating.')} />}
+    {id && messageId && <Action icon="edit" label="Edit" run={() => { const next = window.prompt('Edit message', text); if (next?.trim() && next.trim() !== text) void act('chat.edit', { id, messageId, text: next.trim() }, 'Edited.') }} />}
+    <DesktopOnly title="Delete" sub="Messages are deleted on the computer." /></>
 }
 
 function ModelGoneSheet({ props }: { props: Props }) {

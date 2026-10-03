@@ -886,16 +886,43 @@ describe('ChatInput', () => {
       expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
     })
 
-    it('does not render when no model is selected', () => {
+    // The ring is always there: it was missing from new chats, project chats
+    // and Cowork (all `initialMessage`), from a composer with an empty box,
+    // and from a run with the stop button showing.
+    it('renders with no model selected (the ring is then dashed)', () => {
       selectedModelOverride = null
       promptState = 'hello'
       renderInput()
-      expect(screen.queryByTestId('stub-token-counter')).not.toBeInTheDocument()
+      expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
     })
 
-    it('does not render with no messages and an empty prompt', () => {
+    it('renders with no messages and an empty prompt', () => {
       promptState = ''
       renderInput()
+      expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
+    })
+
+    it('renders on the new-chat, project and Cowork composers (initialMessage)', () => {
+      promptState = ''
+      renderInput({ initialMessage: true })
+      expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
+    })
+
+    it('renders while a reply streams and the stop button is showing', () => {
+      promptState = ''
+      renderInput({ chatStatus: 'streaming' })
+      expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
+    })
+
+    it('renders when the surface hands in its own usage source (Cowork), counted or not', () => {
+      promptState = ''
+      renderInput({ tokenSource: { threadId: 's', usage: { totalTokens: 0 } } })
+      expect(screen.getByTestId('stub-token-counter')).toBeInTheDocument()
+    })
+
+    it('stays away only when a surface asks for it to', () => {
+      promptState = 'hello'
+      renderInput({ hideTokenCounter: true })
       expect(screen.queryByTestId('stub-token-counter')).not.toBeInTheDocument()
     })
   })

@@ -3,14 +3,19 @@ import { D } from '../ui/bits'
 import { I } from '../ui/icons'
 import { back, go, openDrawer, openSheet, useApp } from '../state/app'
 import { useRpc } from '../state/rpc'
+import { routeFor } from '../state/sessions'
 
 /** Runs in flight and approvals waiting, from the computer's status. */
 export function LiveChips() {
   const { data } = useRpc('status', {})
   const runs = data?.runs.length ?? 0
   const approvals = data?.approvalsWaiting ?? 0
+  const questions = data?.questionsWaiting ?? 0
   const list = useRpc('approvals.list', {}, approvals > 0)
+  const asks = useRpc('asks.list', {}, questions > 0)
+  const sessions = useRpc('sessions.list', {}, approvals > 0).data?.sessions ?? []
   const first = list.data?.approvals[0]
+  const firstAsk = asks.data?.asks[0]
   return (
     <>
       {runs > 0 && (
@@ -29,12 +34,24 @@ export function LiveChips() {
         <button
           type="button"
           className="apill"
-          onClick={() => (first ? go({ name: 'cowork', id: first.threadId }) : go({ name: 'notifications' }))}
+          onClick={() => (first ? go(routeFor(first.threadId, sessions)) : go({ name: 'notifications' }))}
           aria-label={`${approvals} approvals waiting`}
           data-testid="approvals-pill"
         >
           <I n="shield" />
           <span>{approvals}</span>
+        </button>
+      )}
+      {questions > 0 && (
+        <button
+          type="button"
+          className="apill"
+          onClick={() => (firstAsk ? go({ name: 'cowork', id: firstAsk.threadId }) : go({ name: 'notifications' }))}
+          aria-label={`${questions} ${questions === 1 ? 'question' : 'questions'} waiting`}
+          data-testid="questions-pill"
+        >
+          <I n="hand" />
+          <span>{questions}</span>
         </button>
       )}
     </>

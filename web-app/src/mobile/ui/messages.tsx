@@ -2,7 +2,7 @@
 // in the desktop's style (coloured dot on the rail, "Used read" in the kind's
 // colour, a tinted origin chip, the argument in mono).
 import { Fragment, useState, type ReactNode } from 'react'
-import type { RemoteMessage, RemoteToolStep } from '@/lib/remote/protocol'
+import type { RemoteAttachment, RemoteMessage, RemoteNote, RemoteToolStep } from '@/lib/remote/protocol'
 import { FlintMark } from './bits'
 import { clock, toolLabel } from './format'
 import { I } from './icons'
@@ -82,8 +82,58 @@ export function Prose({ text, tail }: { text: string; tail?: ReactNode }) {
   return <div className="prose">{blocks}</div>
 }
 
-export function UserBubble({ text }: { text: string }) {
-  return <div className="ub msg">{text}</div>
+export function UserBubble({ text, attachments }: { text: string; attachments?: RemoteAttachment[] }) {
+  return (
+    <div className="ub msg">
+      {text}
+      <AttachmentChips items={attachments} />
+    </div>
+  )
+}
+
+const ATTACH_ICON = { image: 'image', audio: 'mic', video: 'play', file: 'file' } as const
+
+/** The files sent with a message: what they were, not their contents. */
+export function AttachmentChips({ items }: { items?: RemoteAttachment[] }) {
+  if (!items?.length) return null
+  return (
+    <span className="atts" data-testid="attachments">
+      {items.map((a, i) => (
+        <span key={i} className="att">
+          <I n={ATTACH_ICON[a.kind]} size={12} />
+          {a.name}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/** The model's reasoning, folded away under "Thought" as on the desktop. */
+export function Reasoning({ text }: { text?: string }) {
+  if (!text) return null
+  return (
+    <details className="thought" data-testid="reasoning">
+      <summary>Thought</summary>
+      <div>{text}</div>
+    </details>
+  )
+}
+
+const NOTE_ICON = { compaction: 'group', stopped: 'sq', answered: 'check', error: 'alert' } as const
+
+/** Lines the desktop draws in the transcript that are not messages. */
+export function Notes({ items }: { items?: RemoteNote[] }) {
+  if (!items?.length) return null
+  return (
+    <>
+      {items.map((n, i) => (
+        <div key={i} className={`tnote ${n.kind}`} data-testid="transcript-note" data-note={n.kind}>
+          <I n={NOTE_ICON[n.kind]} size={13} />
+          <span>{n.text}</span>
+        </div>
+      ))}
+    </>
+  )
 }
 
 /** `‹ 2/3 ›` on a message that has other versions; absent on a plain one. */
@@ -152,7 +202,14 @@ export function ToolStep({ step }: { step: RemoteToolStep }) {
                 </>
               )}
             </dl>
+            {step.input && <pre className="tio" data-testid="tool-input">{step.input}</pre>}
           </div>
+          {step.output && (
+            <div className="tsec">
+              <div className="h">{step.status === 'failed' ? 'Error' : 'Result'}</div>
+              <pre className="tio" data-testid="tool-output">{step.output}</pre>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -224,8 +281,10 @@ export function AssistantMessage({
   return (
     <div className="msg">
       <AssistantHeader name={m.meta?.assistant ?? 'Flint'} model={model ?? m.meta?.model} at={m.createdAt} />
+      <Reasoning text={m.reasoning} />
       {timeline && m.tools && m.tools.length > 0 && <ToolTimeline steps={m.tools} />}
       {m.text && <Prose text={m.text} />}
+      <Notes items={m.notes} />
       {actions}
       <ReplyRow meta={m.meta} />
     </div>

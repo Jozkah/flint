@@ -16,7 +16,9 @@ import {
 } from '@/hooks/useToolApprovalRequests'
 import { useMessageQueue } from '@/stores/message-queue-store'
 import { holdQueueThenStop } from '@/lib/chatSteering'
-import { abortAll, abortRun } from '@/lib/coworkRunner'
+import { abortAll, abortRun, answerAsk } from '@/lib/coworkRunner'
+import { appAsks } from './appAsks'
+import { appPrompts, respondAppPrompt } from './appPrompts'
 import { roomController } from '@/lib/rooms/controller'
 import { getRoomPersistence } from '@/lib/rooms/persistence'
 import { useRoomsStore } from '@/lib/rooms/store'
@@ -26,7 +28,7 @@ import { SESSION_STORAGE_PREFIX } from '@/constants/chat'
 import { route } from '@/constants/routes'
 import { remoteApi } from './api'
 import { RemoteRpcError } from './bridge'
-import { composerFor, waitForComposer } from './composer'
+import { composerFor, waitForChatActions, waitForComposer } from './composer'
 import type { ApprovalScopeWire, RemoteActions } from './actions'
 import type { ModelRef, NotificationPrefs } from './protocol'
 import { resolveReplyModel } from '@/lib/resolveReplyModel'
@@ -318,6 +320,31 @@ export function appActions(navigate: Navigate): RemoteActions {
 
     resolveApproval: (toolCallId, requestId, decision) =>
       useToolApprovalRequests.getState().resolveApproval(toolCallId, decision, requestId),
+
+    findAsk: (threadId, requestId) =>
+      appAsks().find((a) => a.threadId === threadId && a.requestId === requestId) ?? null,
+
+    // Through the run that asked, exactly as the desktop's card answers: the
+    // run's own resolver settles the card and applies what the answer means
+    // (leaving plan mode, continuing an accepted proposal).
+    answerAsk: (threadId, requestId, answers) => answerAsk(threadId, requestId, answers),
+
+    chatAct: async (id, action) => {
+      const entry = await waitForChatActions(id)
+      if (!entry) return false
+      if (action.type === 'regenerate') entry.regenerate(action.messageId)
+      else entry.edit(action.messageId, action.text)
+      return true
+    },
+
+    findPrompt: (id) => appPrompts().find((p) => p.id === id) ?? null,
+    respondPrompt: (id, action) => respondAppPrompt(id, action),
+
+    // The completed steps are kept and the unfinished reply with them, as the
+    // desktop's "Continue" on an interrupted turn does.
+    recoverInterrupted: (id) => {
+      useCoworkSessions.getState().recoverInFlight(id, 'continue')
+    },
 
     permissions: async () => {
       const status = await remoteApi.getStatus().catch(() => null)
