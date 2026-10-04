@@ -1411,6 +1411,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const toolsRecord: Record<string, Tool> = {}
     const toolServers = new Map<string, string>()
+    // A failed MCP listing is not kept: the next send asks again.
+    let mcpLoadFailed = false
 
     // Tool availability is global (shared across all chats).
     const disabledToolKeys = useToolAvailable.getState().getDisabledTools()
@@ -1605,6 +1607,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         )
       } catch (error) {
         console.warn('Failed to load MCP tools:', error)
+        mcpLoadFailed = true
       }
 
       // Native web tools, provided by the websearch plugin (not an MCP server).
@@ -1694,7 +1697,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       )
     )
     this.toolServers = toolServers
-    this.toolsCacheKey = cacheKey
+    this.toolsCacheKey = mcpLoadFailed ? null : cacheKey
   }
 
   /**
