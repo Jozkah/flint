@@ -1843,6 +1843,21 @@ pub async fn mailbox_session_heartbeat(
     Mailbox::open(Path::new(&data_folder)).heartbeat(&session_id, &run_id)
 }
 
+/// A running session stopped on, or resumed from, a tool-approval prompt.
+#[tauri::command]
+pub async fn mailbox_session_waiting(
+    data_folder: String,
+    session_id: String,
+    run_id: Option<String>,
+    waiting: bool,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).set_waiting_approval(
+        &session_id,
+        run_id.as_deref(),
+        waiting,
+    )
+}
+
 /// Mark a session deleted; mail to it is refused from then on.
 #[tauri::command]
 pub async fn mailbox_session_remove(
