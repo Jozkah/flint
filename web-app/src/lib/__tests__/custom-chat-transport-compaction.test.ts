@@ -6,7 +6,7 @@ const h = vi.hoisted(() => ({
   summarizer: vi.fn(),
 }))
 
-vi.mock('sonner', () => ({ toast: { info: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { info: vi.fn(), warning: vi.fn() } }))
 vi.mock('@/hooks/useGeneralSetting', () => ({
   useGeneralSetting: { getState: () => ({ fallbackModels: [] }) },
 }))
@@ -33,6 +33,7 @@ vi.mock('@/lib/compactionSummarizer', () => ({
   },
 }))
 
+import { toast } from 'sonner'
 import { CustomChatTransport } from '../custom-chat-transport'
 import {
   CompactionLoopError,
@@ -314,5 +315,23 @@ describe('compact once and resend when the provider refuses for length', () => {
       messageMetadata: { compaction: { at: 1 } },
     })
     expect(out.some((c) => c.type === 'error')).toBe(false)
+  })
+})
+
+describe('auto-compact with no window to plan against', () => {
+  it('says so once per chat and model, not on every request', () => {
+    const warning = vi.mocked(toast.warning)
+    warning.mockClear()
+    const t = new Harness('sys', 'thread-notice')
+    const notice = (
+      t as unknown as {
+        noticeUnknownWindow: (thread: string, model: string) => void
+      }
+    ).noticeUnknownWindow.bind(t)
+    notice('thread-notice', 'custom-model')
+    notice('thread-notice', 'custom-model')
+    expect(warning).toHaveBeenCalledTimes(1)
+    notice('thread-notice', 'another-model')
+    expect(warning).toHaveBeenCalledTimes(2)
   })
 })
