@@ -64,7 +64,7 @@ export const BRIEF_RULE =
   'It cannot see this chat, so `description` must be a complete brief: the goal, the files or names involved, and what to report back.'
 
 export const DELEGATE_WHEN =
-  'Delegate when: a search or investigation is open-ended and needs many reads or rounds; the output would be large and you only need the conclusion; or a role below fits.'
+  'Delegate when: a search or investigation is open-ended and needs many reads or rounds; the request covers two or more separate areas, modules or packages, or says all, every or the whole repo, or is an inventory or sweep over many files such as coverage gaps, usages or risks (send one subagent per area, in one message, before reading anything yourself); the output would be large and you only need the conclusion; or a role below fits.'
 
 export const DO_NOT_DELEGATE =
   'Do not delegate: a lookup you can do in one or two tool calls, a file or symbol you already know, or work another subagent is already doing.'
