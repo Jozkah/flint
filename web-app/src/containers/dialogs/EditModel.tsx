@@ -105,10 +105,20 @@ export const DialogEditModel = ({
   const costText = (n?: number) => (typeof n === 'number' ? String(n) : '')
   const [inputCost, setInputCost] = useState('')
   const [outputCost, setOutputCost] = useState('')
+  const [cachedCost, setCachedCost] = useState('')
+  const [writeCost, setWriteCost] = useState('')
   useEffect(() => {
     setInputCost(costText(selectedModel?.inputCostPerMillion))
     setOutputCost(costText(selectedModel?.outputCostPerMillion))
-  }, [selectedModel?.id, selectedModel?.inputCostPerMillion, selectedModel?.outputCostPerMillion])
+    setCachedCost(costText(selectedModel?.cachedInputCostPerMillion))
+    setWriteCost(costText(selectedModel?.cacheWriteCostPerMillion))
+  }, [
+    selectedModel?.id,
+    selectedModel?.inputCostPerMillion,
+    selectedModel?.outputCostPerMillion,
+    selectedModel?.cachedInputCostPerMillion,
+    selectedModel?.cacheWriteCostPerMillion,
+  ])
   // Blank = unset; a non-number or negative is invalid.
   const parseCost = (s: string): number | undefined | 'bad' => {
     if (s.trim() === '') return undefined
@@ -117,11 +127,19 @@ export const DialogEditModel = ({
   }
   const inputParsed = parseCost(inputCost)
   const outputParsed = parseCost(outputCost)
-  const costsValid = inputParsed !== 'bad' && outputParsed !== 'bad'
+  const cachedParsed = parseCost(cachedCost)
+  const writeParsed = parseCost(writeCost)
+  const costsValid =
+    inputParsed !== 'bad' &&
+    outputParsed !== 'bad' &&
+    cachedParsed !== 'bad' &&
+    writeParsed !== 'bad'
   const costsChanged =
     costsValid &&
     (inputParsed !== selectedModel?.inputCostPerMillion ||
-      outputParsed !== selectedModel?.outputCostPerMillion)
+      outputParsed !== selectedModel?.outputCostPerMillion ||
+      cachedParsed !== selectedModel?.cachedInputCostPerMillion ||
+      writeParsed !== selectedModel?.cacheWriteCostPerMillion)
 
   // Update model capabilities - only update local state
   const handleCapabilityChange = (capability: string, enabled: boolean) => {
@@ -172,6 +190,8 @@ export const DialogEditModel = ({
       if (costsChanged) {
         modelUpdate.inputCostPerMillion = inputParsed as number | undefined
         modelUpdate.outputCostPerMillion = outputParsed as number | undefined
+        modelUpdate.cachedInputCostPerMillion = cachedParsed as number | undefined
+        modelUpdate.cacheWriteCostPerMillion = writeParsed as number | undefined
       }
 
       // Update the model in the provider models array
@@ -212,6 +232,8 @@ export const DialogEditModel = ({
       setCapabilities(originalCapabilities)
       setInputCost(costText(selectedModel?.inputCostPerMillion))
       setOutputCost(costText(selectedModel?.outputCostPerMillion))
+      setCachedCost(costText(selectedModel?.cachedInputCostPerMillion))
+      setWriteCost(costText(selectedModel?.cacheWriteCostPerMillion))
     }
     setIsOpen(open)
   }
@@ -317,6 +339,38 @@ export const DialogEditModel = ({
                 onChange={(e) => setOutputCost(e.target.value)}
                 disabled={isLoading}
                 aria-invalid={outputParsed === 'bad'}
+              />
+            </div>
+            <div>
+              <label htmlFor="cached-input-cost" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.cachedInputCost')}
+              </label>
+              <Input
+                id="cached-input-cost"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={cachedCost}
+                onChange={(e) => setCachedCost(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={cachedParsed === 'bad'}
+              />
+            </div>
+            <div>
+              <label htmlFor="cache-write-cost" className="mb-1.5 block text-xs font-medium text-fg-2">
+                {t('providers:editModel.cacheWriteCost')}
+              </label>
+              <Input
+                id="cache-write-cost"
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={writeCost}
+                onChange={(e) => setWriteCost(e.target.value)}
+                disabled={isLoading}
+                aria-invalid={writeParsed === 'bad'}
               />
             </div>
           </div>

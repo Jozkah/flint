@@ -58,6 +58,10 @@ type Model = {
   inputCostPerMillion?: number
   /** USD per million output tokens, set by the user. */
   outputCostPerMillion?: number
+  /** USD per million cached (cache-read) input tokens. Unset = the input price. */
+  cachedInputCostPerMillion?: number
+  /** USD per million cache-write input tokens. Unset = the input price. */
+  cacheWriteCostPerMillion?: number
 }
 
 /**

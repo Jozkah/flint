@@ -13,6 +13,7 @@ import {
   type TokenUsage,
 } from '@/lib/tokenUsage'
 import type { SpeedSource } from '@/lib/tokenSpeed'
+import { costBreakdown, formatUsd, isFree, type Pricing } from '@/lib/modelPricing'
 
 export type UsageSpeed = {
   last?: number
@@ -120,6 +121,99 @@ function Line({
   )
 }
 
+function SplitItem({
+  testId,
+  swatch,
+  label,
+  tokens,
+  percent,
+}: {
+  testId: string
+  swatch: string
+  label: string
+  tokens: number
+  percent: number
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5" data-testid={testId} data-value={tokens}>
+      <span className={`size-1.5 rounded-full ${swatch}`} aria-hidden />
+      {label}
+      <span className="font-mono tabular-nums text-foreground">{exact(tokens)}</span>
+      <span className="tabular-nums">{`(${formatPercent(percent)})`}</span>
+    </span>
+  )
+}
+
+/**
+ * What a group of requests cost, by kind, and what the prompt cache saved.
+ * Only drawn for a model with a price; a free (local) model has no cost to show.
+ */
+function CostBlock({ usage, pricing, prefix }: { usage: TokenUsage; pricing: Pricing; prefix: string }) {
+  if (usage.inputTokens === undefined && usage.outputTokens === undefined) return null
+  const cost = costBreakdown(pricing, usage)
+  const hasCached = (usage.cachedInputTokens ?? 0) > 0
+  const hasWrite = (usage.cacheWriteTokens ?? 0) > 0
+  const fullRate = hasCached && !cost.cachedPriced
+  const writeFullRate = hasWrite && !cost.writePriced
+  const rows: { id: string; label: string; value: number; show: boolean }[] = [
+    { id: 'cached', label: 'Cached input', value: cost.cachedInput, show: usage.cachedInputTokens !== undefined },
+    { id: 'new', label: 'New input', value: cost.newInput, show: true },
+    { id: 'write', label: 'Cache write', value: cost.cacheWrite, show: hasWrite },
+    { id: 'output', label: 'Output', value: cost.output, show: true },
+  ]
+  const note = [
+    fullRate ? 'Cached input priced at the full input rate (no cached price set).' : '',
+    writeFullRate ? 'Cache writes priced at the full input rate (no cache write price set).' : '',
+    'Estimated from the model price and the tokens the provider reported.',
+  ]
+    .filter(Boolean)
+    .join(' ')
+  return (
+    <div className="space-y-1.5" data-testid={`${prefix}-cost`} data-cached-full-rate={fullRate ? 'true' : undefined}>
+      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        Cost
+        <InfoTip note={note} testId={`${prefix}-cost-note`} />
+      </div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-1.5">
+        {rows
+          .filter((r) => r.show)
+          .map((r) => (
+            <div key={r.id} data-testid={`${prefix}-cost-${r.id}`} data-value={r.value}>
+              <div className="text-[11px] text-muted-foreground">{r.label}</div>
+              <div className="font-mono text-xs tabular-nums text-foreground">{formatUsd(r.value)}</div>
+            </div>
+          ))}
+      </div>
+      <div
+        className="flex items-center justify-between gap-4 border-t border-border pt-1.5 text-xs font-medium"
+        data-testid={`${prefix}-cost-total`}
+        data-value={cost.total}
+      >
+        <span className="text-foreground">Total</span>
+        <span className="font-mono tabular-nums text-foreground">{formatUsd(cost.total)}</span>
+      </div>
+      {(fullRate || writeFullRate) && (
+        <div className="text-[11px] leading-snug text-muted-foreground" data-testid={`${prefix}-cost-fullrate`}>
+          {fullRate
+            ? 'Cached input priced at the full input rate (no cached price set).'
+            : 'Cache writes priced at the full input rate (no write price set).'}
+        </div>
+      )}
+      {cost.savings > 0 && (
+        <div className="text-[11px] text-muted-foreground" data-testid={`${prefix}-cost-saved`} data-value={cost.savings}>
+          {`Saved ${formatUsd(cost.savings)} (${formatPercent(cost.savingsPercent)}) by caching`}
+          <span className="ml-1 inline-flex align-middle">
+            <InfoTip
+              note="What the cached tokens would have cost at the full input price, minus what they cost. The percentage is of what the whole reply would have cost without caching."
+              testId={`${prefix}-cost-saved-note`}
+            />
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** The cache line under the figures: a thin bar, and how much of the input it was. */
 function CacheLine({
   usage,
@@ -173,6 +267,9 @@ function CacheLine({
         ? `The share cannot be worked out from what was saved.${several}${partial}`.trim()
         : `${split}${written}${several}${partial}${clamped}${via}`.trim()
   const whole = (cached ?? 0) + (uncached ?? 0)
+  const write = Math.min(usage.cacheWriteTokens ?? 0, uncached ?? 0)
+  const fresh = Math.max((uncached ?? 0) - write, 0)
+  const share = (n: number) => (whole > 0 ? (n / whole) * 100 : 0)
   // A share, or a dash: never the bare word.
   const showDash = status === 'not-reported' ? aggregate : pct === undefined
 
@@ -191,8 +288,21 @@ function CacheLine({
           aria-hidden="true"
           data-testid={`${prefix}-cache-bar`}
         >
-          <div className="h-full bg-chart-1" style={{ width: `${(cached / whole) * 100}%` }} />
-          <div className="h-full bg-chart-3" style={{ width: `${(1 - cached / whole) * 100}%` }} />
+          <div className="h-full bg-chart-1" style={{ width: `${share(cached)}%` }} />
+          {write > 0 && <div className="h-full bg-chart-2" style={{ width: `${share(write)}%` }} />}
+          <div className="h-full bg-chart-3" style={{ width: `${share(fresh)}%` }} />
+        </div>
+      )}
+      {cached !== undefined && whole > 0 && (
+        <div
+          className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground"
+          data-testid={`${prefix}-cache-split`}
+        >
+          <SplitItem testId={`${prefix}-cache-split-cached`} swatch="bg-chart-1" label="Cached" tokens={cached} percent={share(cached)} />
+          <SplitItem testId={`${prefix}-cache-split-new`} swatch="bg-chart-3" label="New" tokens={fresh} percent={share(fresh)} />
+          {write > 0 && (
+            <SplitItem testId={`${prefix}-cache-split-write`} swatch="bg-chart-2" label="Written" tokens={write} percent={share(write)} />
+          )}
         </div>
       )}
       <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground">
@@ -243,6 +353,7 @@ function Group({
   speedValue,
   prefix,
   aggregate,
+  pricing,
 }: {
   usage: TokenUsage
   speed?: UsageSpeed
@@ -250,6 +361,8 @@ function Group({
   prefix: string
   /** The conversation's group: sums over requests, and an average speed. */
   aggregate?: boolean
+  /** A price to show the cost at; absent or free draws no cost. */
+  pricing?: Pricing | null
 }) {
   const kinds = usageValueKinds(usage)
   const estimated = !aggregate && speed?.source === 'estimated'
@@ -305,6 +418,7 @@ function Group({
         )}
       </div>
       <CacheLine usage={usage} prefix={prefix} aggregate={aggregate} />
+      {pricing && !isFree(pricing) && <CostBlock usage={usage} pricing={pricing} prefix={prefix} />}
       {speedValue !== undefined && (
         <Line
           testId={`${prefix}-speed`}
@@ -332,11 +446,21 @@ export function TokenUsageSummary({
   session,
   speed,
   scope,
+  pricing,
+  onSetPrice,
 }: {
   usage: TokenUsage
   session?: TokenUsage
   speed?: UsageSpeed
   scope?: string
+  /**
+   * The model's price, to show what the replies cost. `undefined` leaves cost
+   * out; `null` says the model has no price and offers to set one; a free
+   * (local) model shows neither.
+   */
+  pricing?: Pricing | null
+  /** Opens the provider settings where a model's price is set. */
+  onSetPrice?: () => void
 }) {
   const requests = session?.requests ?? 0
   if (
@@ -358,7 +482,7 @@ export function TokenUsageSummary({
     <div className="divide-y divide-border" data-testid="token-usage-breakdown" data-usage-scope={scope}>
       <section className="space-y-3 px-4 py-4" aria-label="Last reply">
         <div className="text-xs font-medium text-foreground">Last reply</div>
-        <Group usage={usage} speed={speed} speedValue={speed?.last} prefix="token-usage" />
+        <Group usage={usage} speed={speed} speedValue={speed?.last} prefix="token-usage" pricing={pricing} />
       </section>
       {session && requests > 1 && (
         <section
@@ -381,7 +505,30 @@ export function TokenUsageSummary({
             speedValue={speed?.average}
             prefix="session-token-usage"
             aggregate
+            pricing={pricing}
           />
+        </section>
+      )}
+      {pricing === null && (
+        <section className="px-4 py-3" data-testid="cost-no-price">
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            {onSetPrice ? (
+              <button
+                type="button"
+                onClick={onSetPrice}
+                className="underline underline-offset-2 hover:text-foreground focus-visible:text-foreground"
+                data-testid="cost-set-price"
+              >
+                Set a price to see cost
+              </button>
+            ) : (
+              <span>Set a price to see cost</span>
+            )}
+            <InfoTip
+              note="This model has no price. Add one on the model in provider settings (input and output, plus cached input and cache write if the provider charges differently)."
+              testId="cost-no-price-note"
+            />
+          </div>
         </section>
       )}
     </div>

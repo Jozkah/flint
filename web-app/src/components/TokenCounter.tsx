@@ -17,6 +17,7 @@ import {
 } from '@/lib/tokenUsage'
 import { TokenUsageSummary, type UsageSpeed } from '@/components/TokenUsageSummary'
 import { speedStats, type SpeedSample } from '@/lib/tokenSpeed'
+import { resolvePricing, type Pricing } from '@/lib/modelPricing'
 import { ContextWindowCard } from '@/components/ContextWindowCard'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useModelProvider } from '@/hooks/useModelProvider'
@@ -41,6 +42,8 @@ interface TokenCounterProps {
   speed?: UsageSpeed
   /** Compacts the conversation; offered from the context card when given. */
   onCompact?: () => void
+  /** Opens the provider settings where the model's price is set. */
+  onSetPrice?: (providerId: string) => void
 }
 
 const formatExact = (num: number) => num.toLocaleString()
@@ -52,6 +55,7 @@ export const TokenCounter = memo(function TokenCounter({
   source,
   speed: speedProp,
   onCompact,
+  onSetPrice,
 }: TokenCounterProps) {
   const { t } = useTranslation()
   const { calculateTokens, ...tokenData } = useTokensCount(messages, source)
@@ -147,6 +151,26 @@ export const TokenCounter = memo(function TokenCounter({
   const last = useContextBreakdown((s) => (scope ? s.lastById[scope] : undefined))
   const setLast = useContextBreakdown((s) => s.setLast)
   const modelId = useModelProvider((s) => s.selectedModel?.id)
+  // What the selected model costs: the user's own price on the model (looked up
+  // in the provider, so an edit shows at once), else a known one. `undefined`
+  // with no model selected; `null` for one with no price.
+  const selectedProviderId = useModelProvider((s) => s.selectedProvider)
+  const pricedModel = useModelProvider((s) => {
+    const sel = s.selectedModel
+    if (!sel) return undefined
+    return (
+      s.providers?.find((p) => p.provider === s.selectedProvider)?.models.find((m) => m.id === sel.id) ??
+      sel
+    )
+  })
+  const pricing = useMemo(
+    () => (pricedModel ? resolvePricing(selectedProviderId, pricedModel) : undefined),
+    [selectedProviderId, pricedModel]
+  )
+  const setPrice = useMemo(
+    () => (onSetPrice ? () => onSetPrice(selectedProviderId) : undefined),
+    [onSetPrice, selectedProviderId]
+  )
   const measuredTokens = tokenData.tokenCount + additionalTokens
   const totalTokens = measuredTokens > 0 ? measuredTokens : (last?.used ?? 0)
 
@@ -208,6 +232,8 @@ export const TokenCounter = memo(function TokenCounter({
         scope={scope}
         modelDisplayName={tokenData.modelDisplayName}
         speed={speed}
+        pricing={pricing}
+        onSetPrice={setPrice}
         ringUsage={usage}
         card={
           reconciled ? (
@@ -412,6 +438,8 @@ export const TokenCounter = memo(function TokenCounter({
             session={sessionUsage}
             speed={speed}
             scope={scope}
+            pricing={pricing}
+            onSetPrice={setPrice}
           />
 
           {/* Footer: fit + slots + modalities */}
@@ -466,6 +494,8 @@ function TokenCountOnly({
   scope,
   modelDisplayName,
   speed,
+  pricing,
+  onSetPrice,
   card,
   ringUsage,
   className,
@@ -476,6 +506,8 @@ function TokenCountOnly({
   scope?: string
   modelDisplayName?: string
   speed?: UsageSpeed
+  pricing?: Pricing | null
+  onSetPrice?: () => void
   card?: React.ReactNode
   ringUsage: ContextUsage
   className?: string
@@ -526,6 +558,8 @@ function TokenCountOnly({
             session={sessionUsage}
             speed={speed}
             scope={scope}
+            pricing={pricing}
+            onSetPrice={onSetPrice}
           />
         </TooltipContent>
       </Tooltip>
