@@ -181,6 +181,14 @@ import {
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
+  imageLimitFor,
+  imageLimitKey,
+  limitImageParts,
+  parseImageLimit,
+  rememberImageLimit,
+} from '@/lib/imageLimit'
+import { withEarlyRetry } from '@/lib/earlyRetryStream'
+import {
   attachToolScreenshots,
   SCREENSHOT_TOKEN_ESTIMATE,
   screenshotsToAttach,
@@ -604,6 +612,10 @@ export function stripRetryErrorWrapper(message: string): string {
   if (m) return m[1]
   return message.replace(RETRY_PREFIX_RE, '')
 }
+
+/** Only the newest `limit` images, when the server told us how many it takes. */
+const limitIfNeeded = (messages: UIMessage[], limit: number | undefined) =>
+  limit != null && limit > 0 ? limitImageParts(messages, limit) : messages
 
 /** Providers that run a model on this machine, with a small context. */
 const LOCAL_ENGINE_PROVIDERS = new Set(['llamacpp', 'mlx'])
@@ -2247,6 +2259,38 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   async sendMessages(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
+    // A server that refuses images ("At most 0 image(s) may be provided")
+    // although the model can see: learned from the refusal, then the same
+    // request goes again without them. Once per newly learned limit.
+    const selection = this.getModelSelection()
+    const imageKey = imageLimitKey(
+      selection.selectedProvider,
+      selection.selectedModel?.id ?? ''
+    )
+    const learnImageLimit = (failure: unknown): boolean => {
+      if (options.abortSignal?.aborted) return false
+      const limit = parseImageLimit(failure)
+      if (limit == null) return false
+      const known = imageLimitFor(imageKey)
+      if (known != null && known <= limit) return false
+      rememberImageLimit(imageKey, limit)
+      return true
+    }
+    let first: ReadableStream<UIMessageChunk>
+    try {
+      first = await this.sendMessagesCore(options)
+    } catch (error) {
+      if (!learnImageLimit(error)) throw error
+      return this.sendMessagesCore(options)
+    }
+    return withEarlyRetry(first, learnImageLimit, () =>
+      this.sendMessagesCore(options)
+    )
+  }
+
+  private async sendMessagesCore(
+    options: SendOptions
+  ): Promise<ReadableStream<UIMessageChunk>> {
     // Cowork compacts and retries in its own run loop.
     if (!this.compactsAtThreshold) return this.sendWithFallback(options)
 
@@ -2860,8 +2904,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     effectiveMessages = truncateStaleWidgetCode(effectiveMessages)
     effectiveMessages = withPromptContext(effectiveMessages, ccContext.promptSubmit)
 
+    // The server may have refused images for this model (a limit of 0): then
+    // it is treated as unable to see, and a describer model takes over.
+    const imageLimit = imageLimitFor(imageLimitKey(providerId, modelId))
     const modelSupportsVision =
-      selectedModel?.capabilities?.includes('vision') ?? false
+      (selectedModel?.capabilities?.includes('vision') ?? false) &&
+      imageLimit !== 0
     let withInlineAttachments = attachToolScreenshots(
       this.mapUserInlineAttachments(effectiveMessages),
       { supportsVision: modelSupportsVision }
@@ -2900,7 +2948,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         resolveOrphanToolCalls(
           this.encodeVideoAttachments(
             this.encodeAudioAttachments(
-              stripUnsupportedImageParts(attachmentsReady, modelSupportsVision)
+              limitIfNeeded(
+                stripUnsupportedImageParts(attachmentsReady, modelSupportsVision),
+                imageLimit
+              )
             )
           )
         )
