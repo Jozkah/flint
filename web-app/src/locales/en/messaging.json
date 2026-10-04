@@ -25,6 +25,8 @@
   },
   "asked": {
     "title": "Asked {{name}}",
+    "sent": "Sent. Its reply, if any, arrives as a message here.",
+    "unknownName": "another session",
     "waiting": "Waiting for the answer",
     "answered": "Answered",
     "noAnswer": "No answer yet",

@@ -351,6 +351,61 @@ pub async fn prompt_submit_context(
     run(hooks, Event::UserPromptSubmit, &payload, cwd).await
 }
 
+/// What the Claude Code context hooks add to one turn, for the surfaces that do
+/// not run the Rust agent loop (the desktop chat transport, the Cowork runner).
+/// The wording and placement are the loop's: `session_start` blocks follow the
+/// system prompt, `prompt_submit` blocks are wrapped as reminders on the user's
+/// message.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CcContextHooks {
+    /// The user opted in and at least one hook applies.
+    pub enabled: bool,
+    pub session_start: Vec<String>,
+    pub prompt_submit: Vec<String>,
+}
+
+/// `hooks` run for one turn. Same trust, timeouts and output caps as the loop:
+/// nothing here is new, it is the loop's calls behind a different door.
+pub async fn context_for_turn(
+    hooks: &[Hook],
+    session_id: Option<&str>,
+    cwd: &Path,
+    prompt: Option<&str>,
+) -> CcContextHooks {
+    if hooks.is_empty() {
+        return CcContextHooks::default();
+    }
+    let session_start = session_start_context(hooks, session_id, cwd).await;
+    let prompt_submit = match prompt.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(prompt) => prompt_submit_context(hooks, session_id, cwd, prompt).await,
+        None => Vec::new(),
+    };
+    CcContextHooks {
+        enabled: true,
+        session_start,
+        prompt_submit,
+    }
+}
+
+/// Tauri command: run the Claude Code context hooks for a turn. Never an
+/// error: a missing opt-in, a broken hook or an unreadable `~/.claude` all come
+/// back as nothing to add, because these hooks only ever add to a prompt.
+#[tauri::command]
+pub async fn run_cc_context_hooks(
+    session_id: Option<String>,
+    project_dir: Option<String>,
+    prompt: Option<String>,
+) -> CcContextHooks {
+    let hooks = active();
+    let cwd = project_dir
+        .filter(|d| !d.trim().is_empty())
+        .map(PathBuf::from)
+        .or_else(crate::core::app::commands::jan_home_dir)
+        .unwrap_or_default();
+    context_for_turn(&hooks, session_id.as_deref(), &cwd, prompt.as_deref()).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,6 +525,66 @@ mod tests {
         let got = context_from_output(&big).unwrap();
         assert!(got.ends_with("[hook output truncated]"));
         assert!(got.len() < big.len());
+    }
+
+    #[tokio::test]
+    async fn no_hooks_means_a_disabled_empty_answer() {
+        let cwd = tempfile::tempdir().unwrap();
+        let got = context_for_turn(&[], Some("s"), cwd.path(), Some("hi")).await;
+        assert_eq!(got, CcContextHooks::default());
+        assert!(!got.enabled);
+    }
+
+    #[tokio::test]
+    async fn a_hook_that_cannot_run_adds_nothing_but_the_turn_goes_on() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hooks = vec![Hook {
+            event: Event::UserPromptSubmit,
+            command: "definitely-not-a-real-command-qagap".into(),
+            timeout_secs: 5,
+            plugin_root: None,
+        }];
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("hi")).await;
+        assert!(got.enabled);
+        assert!(got.prompt_submit.is_empty());
+        assert!(got.session_start.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_blank_prompt_skips_the_prompt_hooks() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hooks = vec![Hook {
+            event: Event::UserPromptSubmit,
+            command: "echo ran".into(),
+            timeout_secs: 5,
+            plugin_root: None,
+        }];
+        let got = context_for_turn(&hooks, Some("s"), cwd.path(), Some("   ")).await;
+        assert!(got.enabled);
+        assert!(got.prompt_submit.is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_turn_gets_session_and_prompt_context_together() {
+        let cwd = tempfile::tempdir().unwrap();
+        let hooks = vec![
+            Hook {
+                event: Event::SessionStart,
+                command: "echo style-on".into(),
+                timeout_secs: 5,
+                plugin_root: None,
+            },
+            Hook {
+                event: Event::UserPromptSubmit,
+                command: "echo per-prompt".into(),
+                timeout_secs: 5,
+                plugin_root: None,
+            },
+        ];
+        let got = context_for_turn(&hooks, Some("turn-s1"), cwd.path(), Some("hello")).await;
+        assert_eq!(got.session_start, vec!["style-on".to_string()]);
+        assert_eq!(got.prompt_submit, vec!["per-prompt".to_string()]);
     }
 
     #[cfg(unix)]

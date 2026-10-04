@@ -110,6 +110,15 @@ describe('loadLiveMcpTools', () => {
     await loadLiveMcpTools({ getTools }, { waitMs: 1 })
     expect(getTools.mock.calls.filter(([o]) => o?.start)).toHaveLength(2)
   })
+
+  it('rejects when the listing itself fails, and asks again next time', async () => {
+    const getTools = vi.fn(async () => [tool('t1', 'a')])
+    getTools.mockRejectedValueOnce(new Error('backend down') as never)
+    await expect(loadLiveMcpTools({ getTools })).rejects.toThrow('backend down')
+    const live = await loadLiveMcpTools({ getTools })
+    expect(live.tools.map((t) => t.name)).toEqual(['t1'])
+    expect(getTools).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('the changed note and the environment line', () => {
