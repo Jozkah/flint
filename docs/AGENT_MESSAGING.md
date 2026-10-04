@@ -76,3 +76,19 @@ Chat threads and subagents do not get these tools.
 - Running target: delivered at the next step boundary of the run.
 - A run that handled a message and ended without replying has its final answer
   sent back as the reply.
+
+## Subagents
+
+A finished subagent can be continued instead of replaced. Its `task` result ends
+with an `agent_id` line; calling `task` again with `resume_agent_id` and the
+follow-up as `description` runs the same agent on its retained conversation
+(same definition, same id). Rules:
+
+- Kept in memory per session (24 most recent), so it ends with the app or when
+  the session is deleted. An unknown id is refused with an explanation.
+- Not kept for a run stopped by the user, a failed run, or a member of a `team`.
+- A subagent still never gets the session-messaging tools or `ask`.
+
+Not covered yet: a subagent asking its parent a question mid-run, and a
+completion notice pushed to the parent at a step boundary (a background
+subagent is collected with `await_task`).
