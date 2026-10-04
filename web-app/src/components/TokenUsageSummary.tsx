@@ -1,9 +1,4 @@
 import { Info } from 'lucide-react'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { formatPercent } from '@/components/CacheReuseBadge'
 import {
   cacheReusePercent,
@@ -43,25 +38,15 @@ const SPEED_NOTE: Record<SpeedSource, string> = {
 
 export function InfoTip({ note, testId }: { note: string; testId?: string }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:text-foreground"
-          aria-label={note}
-          data-testid={testId}
-        >
-          <Info className="size-3" aria-hidden />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent
-        side="right"
-        className="max-w-56 bg-background text-foreground border"
-        showArrow={false}
-      >
-        {note}
-      </TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      className="inline-flex shrink-0 text-muted-foreground hover:text-foreground focus-visible:text-foreground"
+      aria-label={note}
+      title={note}
+      data-testid={testId}
+    >
+      <Info className="size-3" aria-hidden />
+    </button>
   )
 }
 

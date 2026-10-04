@@ -263,7 +263,7 @@ describe('TokenCounter', () => {
       const block = screen.getByTestId('session-usage')
       expect(block.dataset.requests).toBe('2')
       expect(block.dataset.cacheHitRequests).toBe('2')
-      expect(block.textContent).toContain('2 requests')
+      expect(block.textContent).toContain('All requests (2)')
       expect(screen.getByTestId('session-token-usage-cache-status').dataset.cacheStatus).toBe('reused')
       unmount()
     }
@@ -324,13 +324,12 @@ describe('TokenCounter', () => {
       },
     })
     render(<TokenCounter />)
-    const text = Array.from(screen.getAllByTestId('tooltip-content'))
-      .map((el) => el.textContent)
+    const text = Array.from(screen.getByTestId('token-usage-breakdown').querySelectorAll('[title]'))
+      .map((el) => el.getAttribute('title'))
       .join(' ')
-    // Tooltips are inline in this test, so look at what is NOT inside one.
-    const visible = screen.getByTestId('token-usage-breakdown').cloneNode(true) as HTMLElement
-    visible.querySelectorAll('[data-testid="tooltip-content"]').forEach((n) => n.remove())
+    const visible = screen.getByTestId('token-usage-breakdown')
     expect(visible.textContent).not.toMatch(/derived|prompt_tokens_details|cached_tokens|Uncached/)
+    expect(visible.querySelectorAll('[data-testid="tooltip-content"]')).toHaveLength(0)
     expect(text).toMatch(/Input plus output/)
     expect(text).toMatch(/usage report/)
   })
