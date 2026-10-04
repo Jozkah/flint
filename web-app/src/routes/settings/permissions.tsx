@@ -34,6 +34,7 @@ import {
   SettingsPageHeader,
 } from '@/containers/SettingsPageHeader'
 import { StatusChip, type StatusTone } from '@/containers/StatusChip'
+import { similarToolCallLabel } from '@/lib/similarToolCall'
 
 // `as any` matches every other settings route: the typed route tree is
 // generated during the build, after this file is typechecked.
@@ -429,7 +430,7 @@ function PermissionsSettings() {
                     {tools.map((tool) => (
                       <li key={tool} className={ROW}>
                         <span className="min-w-0 break-all text-[13px] font-medium text-foreground">
-                          {t('permissions:settings.toolLabel', { tool })}
+                          {similarToolCallLabel(tool) ?? t('permissions:settings.toolLabel', { tool })}
                         </span>
                         <Button
                           variant="destructive"

@@ -1,9 +1,22 @@
-/** Only recognized, single-process termination calls may share a grant. */
+/** Only recognized actions with a stable, narrow meaning may share a grant. */
 export type SimilarToolCall = { key: string; label: string }
+
+export function similarToolCallLabel(key: string): string | null {
+  if (key === 'clipboard:read') return 'Read clipboard content'
+  if (key === 'host_action:kill_process') return 'End one process by ID'
+  if (key === 'host_powershell:stop-process-id') return 'PowerShell: Stop-Process -Id'
+  if (key === 'host_powershell:stop-process-id-force') return 'PowerShell: Stop-Process -Id -Force'
+  return null
+}
 
 export function similarToolCall(toolName: string, input: unknown): SimilarToolCall | null {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return null
   const args = input as Record<string, unknown>
+  if (toolName === 'clipboard') {
+    return args.action === 'read' && Object.keys(args).every((key) => key === 'action')
+      ? { key: 'clipboard:read', label: 'Read clipboard content' }
+      : null
+  }
   if (toolName === 'host_action') {
     if (
       args.action === 'kill_process' &&

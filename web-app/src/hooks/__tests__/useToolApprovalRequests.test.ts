@@ -142,6 +142,43 @@ describe('useToolApprovalRequests', () => {
     expect(useToolApprovalRequests.getState().pending['stop-service']).toBeDefined()
   })
 
+  it('scopes clipboard reads to the chosen conversation and keeps writes gated', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'clip-read-1', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('clip-read-1', 'allow-thread')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'clip-read-2', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    void useToolApprovalRequests.getState().requestApproval(
+      'clip-other-thread', 'clipboard', 'another-thread', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    void useToolApprovalRequests.getState().requestApproval(
+      'clip-write', 'clipboard', 'thread-clipboard', undefined,
+      { input: { action: 'write', text: 'hello' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['clip-other-thread']).toBeDefined()
+    expect(useToolApprovalRequests.getState().pending['clip-write']).toBeDefined()
+  })
+
+  it('honors an explicit global clipboard-read grant across conversations', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'clip-global-1', 'clipboard', 'thread-a', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('clip-global-1', 'allow-always')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'clip-global-2', 'clipboard', 'thread-b', undefined,
+      { input: { action: 'read' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    expect(useToolApproval.getState().approvedSimilarCalls[0].key).toBe('clipboard:read')
+  })
+
   it('stores a pending approval keyed by toolCallId', () => {
     const { result } = renderHook(() => useToolApprovalRequests())
 

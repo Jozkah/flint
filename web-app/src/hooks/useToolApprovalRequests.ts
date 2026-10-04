@@ -391,7 +391,10 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
         }
 
         const similar = !serverName ? similarToolCall(toolName, context?.input) : null
-        if (similar && settings.isSimilarCallApproved(similar.key)) {
+        if (similar && (
+          settings.isSimilarCallApproved(similar.key) ||
+          settings.isToolApproved(threadId, similar.key)
+        )) {
           const limit = useAutoApproveLimit.getState().limit
           if (!noteAutoApproved(context?.autoApproveStreak ?? threadId, limit)) {
             approve()
@@ -559,8 +562,12 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
 
       if (temporaryGit) {
         // Intentionally transient; persisted grants are not changed.
-      } else if (decision === 'allow-always' && !serverName &&
-        similarToolCall(entry.toolName, entry.input)
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-thread' && !entry.threadIsEphemeral
+      ) {
+        approval.approveToolForThread(entry.threadId, similarToolCall(entry.toolName, entry.input)!.key)
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-always'
       ) {
         approval.approveSimilarCall(similarToolCall(entry.toolName, entry.input)!)
       } else if (

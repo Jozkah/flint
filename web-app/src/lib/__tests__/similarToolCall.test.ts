@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { similarToolCall } from '../similarToolCall'
 
 describe('similarToolCall', () => {
+  it('recognizes clipboard reads but never clipboard writes', () => {
+    expect(similarToolCall('clipboard', { action: 'read' })?.key).toBe('clipboard:read')
+    expect(similarToolCall('clipboard', { action: 'write', text: 'x' })).toBeNull()
+  })
   it('groups single-process kills across different IDs', () => {
     expect(similarToolCall('host_powershell', { script: 'Stop-Process -Id 42' })?.key)
       .toBe(similarToolCall('host_powershell', { script: 'stop-process -id 99' })?.key)

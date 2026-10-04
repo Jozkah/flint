@@ -234,7 +234,8 @@ export function migrateToolApproval(
       ? source.approvedSimilarCalls.filter(
           (value): value is SimilarCallGrant =>
             isObject(value) && isString(value.key) && isString(value.label) &&
-            (value.key === 'host_action:kill_process' ||
+            (value.key === 'clipboard:read' ||
+              value.key === 'host_action:kill_process' ||
               value.key === 'host_powershell:stop-process-id' ||
               value.key === 'host_powershell:stop-process-id-force')
         )
