@@ -5361,7 +5361,7 @@ async fn orchestrate_inner(
     };
     let cc_cwd = project_root
         .clone()
-        .or_else(dirs::home_dir)
+        .or_else(crate::core::app::commands::jan_home_dir)
         .unwrap_or_default();
     let system_prompt = if cc_hooks.is_empty() {
         system_prompt

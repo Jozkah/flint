@@ -29,10 +29,7 @@ import type {
 import { isBrowserActionTool } from '@/lib/browserAgent'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
-import {
-  SESSION_MESSAGING_TOOLS,
-  STOP_SESSION_TOOL_NAME,
-} from '@/lib/sessionMessagingTools'
+import { STOP_SESSION_TOOL_NAME } from '@/lib/sessionMessagingTools'
 import {
   WEB_FETCH_DESCRIPTION,
   WEB_FETCH_INPUT_SCHEMA,
@@ -560,9 +557,9 @@ export async function buildCoworkTools(
   opts: CoworkToolOptions
 ): Promise<Record<string, Tool>> {
   // `session` scope: Cowork is the surface the backend offers the
-  // session-messaging tools to. Those tools require a project identity, so a
-  // folderless Cowork run must not advertise calls that are guaranteed to end
-  // in `no_project`.
+  // session-messaging tools to. Sessions message each other whatever their
+  // project, so only `stop_session`, which stays inside one project, needs a
+  // folder: without one it would be a call guaranteed to end in `no_project`.
   const schemas = await getAgentToolSchemas(
     opts.projectRoot,
     opts.reported,
@@ -570,9 +567,7 @@ export async function buildCoworkTools(
   )
   const runnableSchemas = opts.projectRoot
     ? schemas
-    : schemas.filter(
-        (schema) => !SESSION_MESSAGING_TOOLS.has(schema.function.name)
-      )
+    : schemas.filter((schema) => schema.function.name !== STOP_SESSION_TOOL_NAME)
   return coworkToolsFromSchemas(runnableSchemas, opts)
 }
 
