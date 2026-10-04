@@ -11,6 +11,7 @@
 
 pub mod access;
 pub mod atomic_file;
+pub mod breadcrumb;
 pub mod browser;
 pub mod browser_discovery;
 pub mod activity;

@@ -575,6 +575,7 @@ pub async fn memory_delete(
 /// the schemas are never re-typed in TypeScript.
 #[tauri::command]
 pub fn tool_schemas() -> Vec<serde_json::Value> {
+    crate::breadcrumb::note("tool_schemas");
     schema::builtin_tool_schemas()
 }
 
@@ -768,6 +769,7 @@ pub async fn advertised_tool_schemas(
     // `thread`, which never sees them.
     scope: Option<WorkspaceScope>,
 ) -> Result<AdvertisedTools, AgentToolsError> {
+    crate::breadcrumb::note("advertised_tool_schemas");
     let report = environment_readiness(project_root, reported).await?;
     let session_scope = matches!(scope.unwrap_or_default(), WorkspaceScope::Session);
     // A shell that runs but is not POSIX (Windows PowerShell/cmd) grants
@@ -905,6 +907,7 @@ pub async fn execute_tool(
     // or grant allowed it. Only recorded; it never widens what the gate allows.
     approval: Option<ApprovalSource>,
 ) -> Result<ToolResult, AgentToolsError> {
+    crate::breadcrumb::note(&format!("execute_tool {name}"));
     execute_tool_inner(
         data_folder,
         thread_id,
@@ -957,6 +960,7 @@ pub async fn execute_tool_streaming(
     approval: Option<ApprovalSource>,
     on_output: tauri::ipc::Channel<ToolOutputChunk>,
 ) -> Result<ToolResult, AgentToolsError> {
+    crate::breadcrumb::note(&format!("execute_tool_streaming {name}"));
     let sink = output_sink(on_output, call_id.clone());
     execute_tool_inner(
         data_folder,
