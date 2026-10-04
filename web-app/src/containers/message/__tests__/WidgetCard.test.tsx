@@ -172,6 +172,16 @@ describe('WidgetCard', () => {
     expect(screen.getByRole('alert').textContent).toContain('200000')
   })
 
+  it('drops a frame that navigates itself after it announced the shell', () => {
+    render(<WidgetCard part={part()} messageId="m" />)
+    fireEvent.load(screen.getByTestId('widget-frame'))
+    expect(screen.queryByTestId('widget-stalled')).toBeNull()
+    fromFrame({ flint: 1, op: 'ready' })
+    fireEvent.load(screen.getByTestId('widget-frame'))
+    expect(screen.getByTestId('widget-stalled')).toBeInTheDocument()
+    expect(screen.queryByTestId('widget-frame')).toBeNull()
+  })
+
   it('replaces a frame that stops sending its heartbeat, and re-runs on request', () => {
     vi.useFakeTimers()
     try {

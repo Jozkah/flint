@@ -73,17 +73,24 @@ the model read. Treat it as hostile code that the user did not review.
   is complete.
 - **Freeze watchdog.** The shell sends a heartbeat. A frame silent for 10 seconds
   (a script stuck in a loop) is replaced by a "Widget stopped responding"
-  placeholder with Re-run.
+  placeholder with Re-run. A frame that navigates itself away is replaced the same way.
 - **Document-level tags.** `<html>`, `<head>`, `<body>`, `<meta>`, `<base>` and
   `<link>` are stripped from the fragment (a meta refresh would navigate the frame).
 
 ### Known limits
 
-- A widget can still navigate its own frame (`location = ...`): CSP has no
-  reliable navigation directive and a sandboxed frame may navigate itself. It
-  could leak to an attacker URL only what the widget itself holds (what the model
-  wrote or the user typed into it). Blocking it needs a frame-navigation hook in
-  the Rust shell (not done).
+- A widget can still navigate its own frame (`location = ...`): the sandbox
+  gives no top navigation, but a sandboxed frame may navigate itself, and CSP has
+  no reliable navigation directive (`navigate-to` is not implemented by the
+  engines). The app CSP `frame-src` also allows https, which other features need.
+  Tauri's `on_navigation` hook only sees top-level navigations (WebView2's
+  frame-navigation event is not exposed), and the `flintpreview:` handler only
+  sees requests to its own scheme, so neither Rust hook can stop the request.
+  Mitigation: the card watches the frame's `load` event. The shell loads once and
+  then announces itself; any later load means the frame left its document, and the
+  card replaces it at once with the stopped placeholder (Re-run). The single
+  request to the new address can still leave, carrying only what the widget
+  itself holds (what the model wrote or the user typed into it).
 - The widget cannot be proven to be benign: it can show misleading UI. It cannot
   act for the user except through a user-gesture `sendPrompt`, which lands as a
   visible message the user can see and stop.
