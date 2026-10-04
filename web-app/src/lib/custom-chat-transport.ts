@@ -9,6 +9,12 @@ import {
   resolveCompactionWindow,
 } from '@/lib/compactionWindowSource'
 import { listedWindow } from '@/lib/listedWindows'
+import {
+  appendSessionContext,
+  runCcContextHooks,
+  userMessageText,
+  withPromptContext,
+} from '@/lib/ccContextHooks'
 import { fetchServerWindow } from '@/lib/serverWindow'
 import { knownContextWindow } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
@@ -2668,7 +2674,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const selectedModel = this.getModelSelection().selectedModel
 
     await this.refreshMemory()
-    const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
+    // The user's Claude Code hooks, when they linked them: SessionStart text
+    // follows the system prompt, UserPromptSubmit text rides on this message.
+    // Only a turn that is answering the user's message asks for the latter.
+    const ccContext = await runCcContextHooks({
+      sessionId: this.threadId ?? options.chatId,
+      projectDir: this.projectRoot,
+      prompt: userMessageText(messagesToConvert[messagesToConvert.length - 1]),
+    })
+    const effectiveSystem = appendSessionContext(
+      this.buildSystemPrompt(messagesToConvert),
+      ccContext.sessionStart
+    )
     this.publishContextBreakdown(effectiveSystem, messagesToConvert)
 
     const maxOutputTokens: number | undefined = (() => {
@@ -2830,6 +2847,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     }
     // Old widgets replay as a one-line note; the stored message keeps the code.
     effectiveMessages = truncateStaleWidgetCode(effectiveMessages)
+    effectiveMessages = withPromptContext(effectiveMessages, ccContext.promptSubmit)
 
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false
