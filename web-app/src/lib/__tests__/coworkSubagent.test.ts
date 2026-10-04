@@ -18,7 +18,11 @@ import {
   resolveSubagent,
   runSubagent,
   subagentTools,
+  capSubagentOutput,
   MAX_PARALLEL_SUBAGENTS,
+  MAX_SUBAGENT_RESULT_CHARS,
+  SUBAGENT_RESULT_HEAD_CHARS,
+  SUBAGENT_RESULT_TAIL_CHARS,
   __testing,
 } from '../coworkSubagent'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
@@ -413,6 +417,22 @@ describe('runSubagent', () => {
     expect(system).toContain('cannot dispatch')
   })
 
+  it('appends the chosen assistant and profile to the system prompt without touching its tools', async () => {
+    mockSteps([textStep('done')])
+    await runSubagent(
+      baseOpts({
+        extraSystem: ['Assistant profile for this task (behaviour only):\nBe terse.\nThis shapes how you work only.'],
+        // Text that tries to grant a tool must change nothing.
+        resolved: { name: 'researcher', systemPrompt: 'You research.', allowedTools: ['read'], model: null },
+      })
+    )
+    const call = streamText.mock.calls[0][0]
+    expect(call.system).toContain('You research.')
+    expect(call.system).toContain('Be terse.')
+    expect(call.system.indexOf('You research.')).toBeLessThan(call.system.indexOf('Be terse.'))
+    expect(Object.keys(call.tools as Record<string, Tool>)).toEqual(['read'])
+  })
+
   it('reports the child transcript as inner stream events', async () => {
     mockSteps([toolStep('c1', 'read', { path: 'a' }), textStep('found it')])
     const opts = baseOpts()
@@ -450,16 +470,31 @@ describe('runSubagent', () => {
     expect(out.output).toContain('2-step budget')
   })
 
-  it('defaults to the subagent step cap, not the parent one', async () => {
-    // Distinct paths: identical calls would trip the loop guard first, which
-    // is a different stop for a different reason.
-    mockSteps(
-      Array.from({ length: MAX_SUBAGENT_STEPS + 1 }, (_, i) =>
+  it('has no step cap of its own by default', async () => {
+    // Only the context window limits a run, so a long errand is not cut off
+    // at a fixed number of steps.
+    mockSteps([
+      ...Array.from({ length: 40 }, (_, i) =>
         toolStep(`c${i}`, 'read', { path: `a${i}` })
-      )
-    )
+      ),
+      textStep('done'),
+    ])
     const out = await runSubagent(baseOpts())
-    expect(out.output).toContain(`${MAX_SUBAGENT_STEPS}-step budget`)
+    expect(out.output).not.toContain('step budget')
+  })
+
+  it('stops a child that spends past the token limit it was given', async () => {
+    // Each request reports a larger total, as a growing context does.
+    mockSteps(
+      Array.from({ length: 6 }, (_, i) => [
+        { type: 'tool-input-start', toolCallId: `c${i}`, toolName: 'read' },
+        { type: 'tool-input-available', toolCallId: `c${i}`, toolName: 'read', input: { path: `p${i}` } },
+        { type: 'finish', messageMetadata: { usage: { totalTokens: (i + 1) * 5 } } },
+      ])
+    )
+    const out = await runSubagent(baseOpts({ tokenLimit: 8 }))
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain('token budget')
   })
 
   it('returns cleanly when already aborted', async () => {
@@ -482,6 +517,82 @@ describe('runSubagent', () => {
     }))
     const out = await runSubagent(baseOpts())
     expect(out).toMatchObject({ output: 'context overflow', isError: true })
+  })
+
+  describe('result cap', () => {
+    it('hands a short answer back untouched', async () => {
+      const text = 'x'.repeat(MAX_SUBAGENT_RESULT_CHARS)
+      mockSteps([textStep(text)])
+      const out = await runSubagent(baseOpts())
+      expect(out.output).toBe(text)
+    })
+
+    it('cuts the middle of a long answer, keeping head and tail', async () => {
+      const text = `HEAD-${'a'.repeat(30_000)}-MIDDLE-${'b'.repeat(30_000)}-TAIL`
+      mockSteps([textStep(text)])
+      const out = await runSubagent(baseOpts())
+      expect(out.isError).toBeFalsy()
+      expect(out.output.startsWith('HEAD-')).toBe(true)
+      expect(out.output.endsWith('-TAIL')).toBe(true)
+      expect(out.output).toContain('characters omitted from the middle')
+      expect(out.output.length).toBeLessThan(
+        SUBAGENT_RESULT_HEAD_CHARS + SUBAGENT_RESULT_TAIL_CHARS + 400
+      )
+      expect(out.output).not.toContain('-MIDDLE-')
+    })
+
+    it('says how much was dropped and does not promise a file', () => {
+      const text = 'y'.repeat(MAX_SUBAGENT_RESULT_CHARS + 1000)
+      const dropped =
+        text.length - SUBAGENT_RESULT_HEAD_CHARS - SUBAGENT_RESULT_TAIL_CHARS
+      const out = capSubagentOutput(text)
+      expect(out).toContain(`${dropped} characters omitted`)
+      expect(out).not.toMatch(/saved at|\.md/)
+    })
+
+    it('flags a shortened answer and a step-budget stop for the Tasks panel', async () => {
+      mockSteps([textStep('y'.repeat(MAX_SUBAGENT_RESULT_CHARS + 10))])
+      const long = await runSubagent(baseOpts())
+      expect(long.capped).toBe(true)
+      expect(long.stoppedAtLimit).toBeUndefined()
+
+      streamText.mockReset()
+      mockSteps([textStep('short')])
+      const short = await runSubagent(baseOpts())
+      expect(short.capped).toBeUndefined()
+
+      streamText.mockReset()
+      mockSteps(
+        Array.from({ length: 4 }, (_, i) =>
+          toolStep(`c${i}`, 'read', { path: `p${i}` })
+        )
+      )
+      const stopped = await runSubagent(baseOpts({ maxSteps: 2 }))
+      expect(stopped.stoppedAtLimit).toBe(true)
+      expect(stopped.isError).toBe(true)
+    })
+
+    it('never splits a surrogate pair', () => {
+      const text = '😀'.repeat(MAX_SUBAGENT_RESULT_CHARS + 2000)
+      const out = capSubagentOutput(text)
+      // A lone surrogate would decode to U+FFFD when encoded.
+      expect(new TextDecoder().decode(new TextEncoder().encode(out))).toBe(out)
+    })
+
+    it("also caps the last output quoted when a child hits its step budget", async () => {
+      const long = 'z'.repeat(40_000)
+      mockSteps([
+        [
+          { type: 'text-delta', delta: long },
+          ...toolStep('c1', 'read', { path: 'a' }),
+        ],
+        toolStep('c2', 'read', { path: 'b' }),
+      ])
+      const out = await runSubagent(baseOpts({ maxSteps: 1 }))
+      expect(out.isError).toBe(true)
+      expect(out.output).toContain('characters omitted')
+      expect(out.output.length).toBeLessThan(20_000)
+    })
   })
 
   it('says so when the child produced no answer', async () => {

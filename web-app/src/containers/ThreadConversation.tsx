@@ -2,7 +2,7 @@ import { chatRunOf, recordChatDispatch } from '@/lib/chatRun'
 import { switchedFromOf } from '@/lib/assistantSwitch'
 import { loadThreadMessages } from '@/lib/threadPrefetch'
 import { markConversationOpened } from '@/lib/messageEntry'
-import { useRemoteComposer } from '@/lib/remote/composer'
+import { useRemoteChatActions, useRemoteComposer } from '@/lib/remote/composer'
 import { chatLiveReply } from '@/lib/remote/live'
 import { reportLiveReply } from '@/lib/remote/streams'
 import { addSnapshotSink } from '@/lib/providerFetch'
@@ -26,6 +26,13 @@ import { ExportItems, ExportSubmenu } from '@/components/ExportMenu'
 import { docFromThread } from '@/lib/exportDoc'
 import { useThreads } from '@/hooks/useThreads'
 import ChatInput from '@/containers/ChatInput'
+import { ChatTasks } from '@/containers/ChatTasks'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
+import {
+  CHAT_DELEGATION_TOOL_NAMES,
+  runChatDelegation,
+  stopChatDelegation,
+} from '@/lib/chatDelegation'
 import { ChatWorkProfilePicker } from '@/containers/ChatWorkProfilePicker'
 import { forkThread } from '@/lib/forkThread'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
@@ -118,6 +125,8 @@ import {
   rememberServerLimit,
 } from '@/lib/contextLimitRecovery'
 import { unloadForContextResize } from '@/lib/contextResizeUnload'
+import { resolveAutoCompact } from '@/lib/compaction'
+import { getCompactionPolicy } from '@/lib/compactionPolicy'
 import { Button } from '@/components/ui/button'
 import {
   CircleAlert,
@@ -155,12 +164,24 @@ import {
 import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { executeWebTool, isNativeWebTool } from '@/lib/webSearchTool'
 import {
+  countOutputImages,
+  isImageBlock,
+  toolOutputWithImages,
+  type ToolImage,
+} from '@/lib/toolOutputImages'
+import {
   AGENT_TOOL_NAMES,
   executeAgentTool,
   notifyToolBatch,
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
 import { closeBrowserSession } from '@/lib/browserTool'
+import {
+  VISUALIZE_TOOL_NAMES,
+  isVisualizeTool,
+} from '@/lib/visualize/constants'
+import { executeVisualizeTool } from '@/lib/visualize/tools'
+import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
@@ -239,7 +260,11 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
-    AGENT_TOOL_NAMES.has(toolName)
+    isVisualizeTool(toolName) ||
+    AGENT_TOOL_NAMES.has(toolName) ||
+    // Handing a job to a subagent asks for nothing itself; what the child then
+    // does is gated call by call, in Ask mode.
+    CHAT_DELEGATION_TOOL_NAMES.has(toolName)
   )
 }
 
@@ -518,6 +543,11 @@ export function ThreadConversation({
   const backendError = isLlamacppActive ? backendErrorRaw : undefined
 
   const handleContextSizeIncreaseRef = useRef<(() => void) | null>(null)
+  // Compacts and continues a reply that stopped because the window filled;
+  // resolves false when it could not, and the banner is shown instead.
+  const recoverContextLimitRef = useRef<
+    ((message: UIMessage, partial: string) => Promise<boolean>) | null
+  >(null)
   const setContinueFromContentRef = useRef<((content: string) => void) | null>(
     null
   )
@@ -603,11 +633,24 @@ export function ThreadConversation({
             .filter((p) => p.type === 'text')
             .map((p) => (p as { type: 'text'; text: string }).text)
             .join('')
-          if (partialText) {
-            pendingContinuationRef.current = { message, text: partialText }
+          const showBanner = () => {
+            if (partialText) {
+              pendingContinuationRef.current = { message, text: partialText }
+            }
+            stampContextErrorOnThread(threadId)
+            setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
           }
-          stampContextErrorOnThread(threadId)
-          setContextLimitError(new Error(OUT_OF_CONTEXT_SIZE))
+          // The window filled mid-reply. With automatic compaction on, fold
+          // the older conversation and carry on from the partial reply; the
+          // banner is for when that cannot be done.
+          const recover = recoverContextLimitRef.current
+          if (recover) {
+            void recover(message, partialText).then((recovered) => {
+              if (!recovered) showBanner()
+            })
+          } else {
+            showBanner()
+          }
           return
         }
         // Non-context-limit length truncation: fall through and persist the
@@ -768,6 +811,19 @@ export function ThreadConversation({
           return
         }
         if ('output' in part) {
+          // Redaction reads text; an image's base64 is left alone.
+          if (countOutputImages(part.output) > 0) {
+            const blocks = part.output as unknown[]
+            addToolOutput({
+              ...part,
+              output: await Promise.all(
+                blocks.map((b) =>
+                  isImageBlock(b) ? b : redactDeep(b)
+                )
+              ),
+            })
+            return
+          }
           addToolOutput({ ...part, output: await redactDeep(part.output) })
           return
         }
@@ -1009,6 +1065,8 @@ export function ThreadConversation({
 
             if (isNativeWebTool(toolName)) {
               result = await executeWebTool(toolName, toolCall.input)
+            } else if (isVisualizeTool(toolName)) {
+              result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,
@@ -1085,6 +1143,21 @@ export function ThreadConversation({
                   ? { error: settled.output, resources: settled.resources }
                   : { content: settled.output, resources: settled.resources }
               }
+            } else if (CHAT_DELEGATION_TOOL_NAMES.has(toolName)) {
+              // The Cowork `task` family on the chat's own footing.
+              const delegated = await runChatDelegation(
+                threadId,
+                getModelSelection().selectedModel?.id ?? '',
+                {
+                  toolCallId: toolCall.toolCallId,
+                  toolName,
+                  input: toolCall.input,
+                },
+                signal
+              )
+              result = delegated.isError
+                ? { error: delegated.output.replace(/^ERROR:\s*/, '') }
+                : { content: delegated.output }
             } else if (ragToolNames.has(toolName)) {
               result = await serviceHub.rag().callTool({
                 toolName,
@@ -1152,6 +1225,7 @@ export function ThreadConversation({
                   ...mcpToolNames,
                   ...ragToolNames,
                   ...AGENT_TOOL_NAMES,
+                  ...VISUALIZE_TOOL_NAMES,
                 ]),
               }
             }
@@ -1198,7 +1272,16 @@ export function ThreadConversation({
               await persistToolOutput({
                 tool: toolCall.toolName,
                 toolCallId: toolCall.toolCallId,
-                output: result.content,
+                // A `read` of an image file also hands the model the image
+                // (see `toolOutputImages`); the saved thread keeps the text.
+                output:
+                  typeof result.content === 'string' &&
+                  (result as { images?: ToolImage[] }).images?.length
+                    ? toolOutputWithImages(
+                        result.content,
+                        (result as { images?: ToolImage[] }).images
+                      )
+                    : result.content,
               })
             }
           } catch (error) {
@@ -1643,6 +1726,9 @@ export function ThreadConversation({
       approvalPromises.clear()
       // Leaving the thread ends its agent browser.
       void closeBrowserSession(threadId)
+      // Children this conversation started stop with it: nothing is left
+      // running for a chat the person has left.
+      stopChatDelegation(threadId)
       useToolApprovalRequests
         .getState()
         .clearPendingForThread(threadId, { notify: true })
@@ -1921,6 +2007,22 @@ export function ThreadConversation({
       })
     },
     [sendMessage, threadId, addMessage]
+  )
+
+  // A widget's button sends its prompt as the user's next message, once the
+  // current reply is done. Read through a ref so the host value stays stable.
+  const widgetBusyRef = useRef(false)
+  widgetBusyRef.current =
+    status === CHAT_STATUS.STREAMING || status === CHAT_STATUS.SUBMITTED
+  const widgetHost = useMemo<WidgetHost>(
+    () => ({
+      sendPrompt: (text) => {
+        if (widgetBusyRef.current) return false
+        void sendQueuedMessage(text)
+        return true
+      },
+    }),
+    [sendQueuedMessage]
   )
 
   sendSteeringRef.current = (text) => {
@@ -2220,6 +2322,9 @@ export function ThreadConversation({
   )
 
   // Handle delete message
+  // A paired phone regenerates and edits through these same handlers.
+  useRemoteChatActions(threadId, { regenerate: handleRegenerate, edit: handleEditMessage })
+
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
       // Re-link what hangs below the message before it goes. Deleting only the
@@ -2391,6 +2496,39 @@ export function ThreadConversation({
   }
   const handleCompactRef = useRef(handleCompact)
   handleCompactRef.current = handleCompact
+  // A reply cut off by the window filling: compact, then continue it from the
+  // partial text. Nothing caps how often this can happen in one run -- each
+  // pass has to fold something, and when nothing is left to fold the banner
+  // takes over -- so the window is the only limit.
+  recoverContextLimitRef.current = async (message, partial) => {
+    try {
+      const policy = await getCompactionPolicy()
+      const params = thread?.assistants?.[0]?.parameters as
+        | Record<string, unknown>
+        | undefined
+      if (
+        !resolveAutoCompact(params, policy.auto) ||
+        policy.strategy !== 'summarize'
+      ) {
+        return false
+      }
+      // Without the partial reply: it is regenerated below, and a summary
+      // boundary on a message that is about to be replaced would be lost.
+      const record = await compactNow(
+        chatMessagesRef.current.filter((m) => m.id !== message.id)
+      )
+      if (!record) return false
+      if (partial) {
+        setContinueFromContentRef.current?.(partial)
+        setPendingContinueMessage(message)
+      }
+      handleRegenerate()
+      return true
+    } catch (e) {
+      console.warn('[chat] compaction after the window filled failed', e)
+      return false
+    }
+  }
   useEffect(
     () =>
       registerChatCompactor(threadId, () => handleCompactRef.current()),
@@ -2759,6 +2897,7 @@ export function ThreadConversation({
 
   return (
     <PathRootsContext.Provider value={chatPathRoots}>
+    <WidgetHostContext.Provider value={widgetHost}>
     <div
       className={cn(
         'flex h-full min-h-0 flex-col',
@@ -3101,6 +3240,9 @@ export function ThreadConversation({
             isSplit ? 'px-3' : 'px-4'
           )}
         >
+          {/* Approvals a subagent raises have no tool card to sit under. */}
+          <CoworkChildApprovals sessionId={threadId} />
+          <ChatTasks threadId={threadId} />
           <ChatInput
             model={threadModel}
             // Under the composer, as in Cowork. A phone keeps it in the header.
@@ -3111,7 +3253,11 @@ export function ThreadConversation({
             }
             groupOptions
             onSubmit={handleSubmit}
-            onStop={stop}
+            onStop={() => {
+              // Stop is for the whole turn, subagents it started included.
+              stopChatDelegation(threadId)
+              stop()
+            }}
             chatStatus={effectiveStatus}
             // Named, not inferred from the current thread: in a split the
             // current thread is the other pane half the time.
@@ -3142,6 +3288,7 @@ export function ThreadConversation({
         </div>
       </div>
     </div>
+    </WidgetHostContext.Provider>
     </PathRootsContext.Provider>
   )
 }

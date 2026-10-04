@@ -20,7 +20,10 @@ const provider = (models: string[]) => ({
   provider: 'openai',
   active: true,
   api_key: 'k',
-  models: models.map((id) => ({ id })),
+  models: models.map((id) => ({
+    id,
+    settings: { max_context_tokens: { controller_props: { value: 32000 } } },
+  })),
 })
 beforeEach(() => {
   prompt.mockReset()

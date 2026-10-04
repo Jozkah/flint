@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Copy, Eye, EyeOff, CopyCheck, Minus, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { DecimalInput } from '@/containers/dynamicControllerSetting/DecimalInput'
 
 type InputControl = {
   type?: string
@@ -62,11 +63,12 @@ export function InputControl({
   if (type === 'number') {
     return (
       <ButtonGroup className={cn('max-w-full', className)}>
-        <Input
-          value={stringValue}
+        <DecimalInput
+          value={value}
+          min={min}
+          max={max}
           placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-          inputMode="decimal"
+          onValueChange={(n) => onChange(n === null ? '' : String(n))}
           className="h-8 w-24 shrink-0 font-mono text-center text-sm tabular-nums"
         />
         <Button

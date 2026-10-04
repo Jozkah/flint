@@ -119,6 +119,30 @@
       "tools_other": "used {{count}} tools"
     }
   },
+  "widget": {
+    "label": "Widget",
+    "drawing": "Drawing widget",
+    "source": "View source",
+    "copy": "Copy HTML",
+    "copied": "HTML copied.",
+    "copyFailed": "Could not copy the HTML.",
+    "save": "Save as .html file",
+    "expand": "Open full size",
+    "rerun": "Re-run",
+    "stalled": "Widget stopped responding.",
+    "parked": "Widget paused while off-screen.",
+    "error": "Widget error:",
+    "viewSource": "View source",
+    "askFix": "Ask Flint to fix",
+    "fixPrompt": "The widget \"{{title}}\" shows an error: {{error}}\nPlease fix it and show the widget again.",
+    "refused": "Widget not shown: {{reason}}",
+    "refusedUnknown": "the call failed",
+    "tooLarge": "This widget is larger than {{max}} characters and is not drawn.",
+    "openLink": "Open {{url}} in your browser?",
+    "cancel": "Cancel",
+    "busy": "Wait for the current reply to finish, then try again.",
+    "noHost": "This view cannot send messages."
+  },
   "browserCard": {
     "opened": "Opened in Browser",
     "ready": "Ready to open",

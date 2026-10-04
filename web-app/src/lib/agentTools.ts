@@ -1,3 +1,4 @@
+import type { ToolImage } from '@/lib/toolOutputImages'
 import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
 import {
   approvalSourceFor,
@@ -304,6 +305,8 @@ type AgentToolResult = {
    * user approves, to run the same call outside the sandbox.
    */
   unsandboxedRetry?: string
+  /** Images the tool returned for a vision model to see (a `read` of one). */
+  images?: ToolImage[]
 }
 
 /** Shared so a rejected Tauri command never renders as `[object Object]`. */
@@ -595,6 +598,7 @@ export async function executeAgentTool(
       content,
       diff: result.diff ?? undefined,
       resources,
+      ...(result.images?.length ? { images: result.images } : {}),
     }
   } catch (e) {
     return { error: messageOf(e) }

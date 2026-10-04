@@ -25,6 +25,8 @@ import {
   parseModelList,
 } from '@/lib/endpointDiagnostics'
 import { modelsUrlCandidates } from '@/lib/modelsUrl'
+import { recordListedWindows } from '@/lib/listedWindows'
+import { findModelEntry } from '@/lib/detectContextWindow'
 
 export class TauriProvidersService extends DefaultProvidersService {
   fetch(): typeof fetch {
@@ -153,6 +155,35 @@ export class TauriProvidersService extends DefaultProvidersService {
     }
   }
 
+  async fetchModelEntry(
+    provider: ModelProvider,
+    modelId: string
+  ): Promise<Record<string, unknown> | null> {
+    if (!provider.base_url) return null
+    const keyChain = providerRemoteApiKeyChain(provider)
+    const keyAttempts: (string | undefined)[] =
+      keyChain.length > 0 ? keyChain : [undefined]
+    for (const key of keyAttempts) {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      }
+      if (key) {
+        headers['x-api-key'] = key
+        headers['Authorization'] = `Bearer ${key}`
+      }
+      applyCustomHeaders(headers, provider)
+      ensureAnthropicHeaders(provider, headers)
+      for (const url of modelsUrlCandidates(provider.base_url)) {
+        const response = await fetchTauri(url, { method: 'GET', headers })
+        if (response.status === 404) continue
+        if ([401, 403, 429].includes(response.status)) break
+        if (!response.ok) return null
+        return findModelEntry(await response.json(), modelId)
+      }
+    }
+    return null
+  }
+
   async fetchModelsFromProvider(provider: ModelProvider): Promise<string[]> {
     if (!provider.base_url) {
       throw new Error('Provider must have base_url configured')
@@ -236,6 +267,9 @@ export class TauriProvidersService extends DefaultProvidersService {
         // `models` array whose entries carry `name`/`model` but no `id`, which
         // the previous branch turned into a list of `undefined`.
         const ids = parseModelList(Array.isArray(data) ? { data } : data)
+        // The list carries each model's window (vLLM `max_model_len`); the ids
+        // alone would throw it away.
+        recordListedWindows(provider.base_url, data)
         if (ids.length === 0) {
           console.warn('Provider listed no models at /models:', data)
         }

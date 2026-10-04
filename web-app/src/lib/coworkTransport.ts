@@ -1,7 +1,21 @@
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import type { ParentPersona } from '@/lib/subagentChoice'
 import { useAssistant } from '@/hooks/useAssistant'
-import type { Tool, UIMessage } from 'ai'
-import { CustomChatTransport } from '@/lib/custom-chat-transport'
+import { jsonSchema, type Tool, type UIMessage } from 'ai'
+import {
+  CustomChatTransport,
+  isValidToolName,
+  normalizeToolInputSchema,
+} from '@/lib/custom-chat-transport'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { useToolAvailable } from '@/hooks/useToolAvailable'
+import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+import {
+  loadLiveMcpTools,
+  mcpServerLabels,
+  mcpStartingNote,
+  snapshotMcpTools,
+} from '@/lib/mcpLiveTools'
 import { routeModelForTurn } from '@/lib/jevModelTurn'
 import { COWORK_SLOT_ID } from '@/constants/models'
 import { sandboxEnforces } from '@/lib/agentTools'
@@ -129,6 +143,17 @@ export class CoworkChatTransport extends CustomChatTransport {
    * mode change therefore applies at the next message, not mid-run.
    */
   private frozenTools: Record<string, Tool> | null = null
+  /**
+   * MCP tools of the servers that are on right now, re-read at every request.
+   * Kept apart from `frozenTools`: the built-in set stays frozen for the run,
+   * and this changes only when a server connects, disconnects or is switched.
+   */
+  private mcpOverlay: Record<string, Tool> = {}
+  private mcpToolServers = new Map<string, string>()
+  private mcpStarting: string[] = []
+  /** False until a request has read the live set: an estimate states no line. */
+  private mcpRead = false
+  private advertised: Record<string, Tool> | null = null
   /** Skills that apply to the latest user message, and which message that was. */
   private activeSkills: ActivatedSkill[] = []
   private activatedFor: string | null = null
@@ -142,6 +167,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   private lastModelRoutedFor: string | null = null
   /** Persona selected for this turn. Flint keeps Cowork's existing baseline. */
   private routedAssistantInstructions: string | undefined
+  private routedAssistantId: string | undefined
   /** Behavioural suggestion only; never used by the permission gate. */
   private routedMode: JevSuggestedMode | null = null
   /** The assistant the session started with (per session, not per app). */
@@ -210,7 +236,17 @@ export class CoworkChatTransport extends CustomChatTransport {
    * list, so plan mode and a withheld `bash` propagate to children for free.
    */
   get advertisedTools(): Record<string, Tool> {
+    return this.advertised ?? this.frozenTools ?? this.tools
+  }
+
+  /** The set without MCP tools: what a subagent may be narrowed from. */
+  get builtinTools(): Record<string, Tool> {
     return this.frozenTools ?? this.tools
+  }
+
+  /** The MCP server an advertised tool belongs to; undefined for any other tool. */
+  mcpServerFor(toolName: string): string | undefined {
+    return this.mcpToolServers.get(toolName)
   }
 
   /** Cowork gets its own llama.cpp slot: sharing chat's would evict the viewed
@@ -303,6 +339,7 @@ export class CoworkChatTransport extends CustomChatTransport {
     // edit. Any non-Flint assistant that is selected intentionally -- including
     // a custom/project assistant that Jev is not allowed to route away from --
     // contributes its persona beneath Cowork's policy.
+    this.routedAssistantId = selected && selected.id !== 'jan' ? selected.id : undefined
     this.routedAssistantInstructions =
       selected && selected.id !== 'jan' ? selected.instructions : undefined
     this.answeringAssistant = selected?.name
@@ -318,6 +355,17 @@ export class CoworkChatTransport extends CustomChatTransport {
     // The global assistant store is deliberately not touched: routing is per
     // session, and mirroring it there would leak into other conversations and
     // be saved as the user's "last used" assistant.
+  }
+
+  /** The assistant and work profile this run is using, for subagents that inherit them. */
+  persona(): ParentPersona {
+    const profiles = useWorkProfiles.getState()
+    return {
+      assistantId: this.routedAssistantId,
+      assistantName: this.answeringAssistant?.name,
+      assistantInstructions: this.routedAssistantInstructions,
+      workProfile: profiles.enabled && this.threadId ? profiles.sessions[this.threadId]?.id : undefined,
+    }
   }
 
   /** The assistant answering this session's turns, for naming its replies. */
@@ -390,6 +438,16 @@ export class CoworkChatTransport extends CustomChatTransport {
       folderAccess: this.config.folderAccess,
       worktreeBranch: this.config.worktreeBranch,
       ...environmentOptions(this.config),
+      mcpServers: !this.mcpRead
+        ? undefined
+        : this.config.planMode
+        ? ['none offered (review mode withholds MCP tools)']
+        : mcpServerLabels(
+            snapshotMcpTools(
+              [...this.mcpToolServers].map(([name, server]) => ({ name, server }))
+            ),
+            this.mcpStarting
+          ),
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
       compatInstructions: this.config.compatInstructions,
@@ -412,6 +470,7 @@ export class CoworkChatTransport extends CustomChatTransport {
     // never sent any of it.
     return [
       base,
+      ...this.mcpPromptNotes(),
       this.memorySelection?.block ? this.memorySelection.precedence : undefined,
       this.memorySelection?.block,
       this.buildFilesSystemInstruction(messages),
@@ -450,7 +509,74 @@ export class CoworkChatTransport extends CustomChatTransport {
    */
   protected override assertSendable(): void {}
 
+  /** `read` returns images; send them to the model as images, never as base64 text. */
+  protected override hoistsToolImages(): boolean {
+    return true
+  }
+
   override async refreshTools(): Promise<void> {
+    await this.refreshBuiltins()
+    await this.refreshMcp()
+  }
+
+  /**
+   * The MCP tools to offer on this request, read live.
+   *
+   * Review mode withholds them: nothing says an MCP tool only reads. A call
+   * still goes through the approval prompt (see `dispatchCoworkTool`).
+   */
+  private async refreshMcp(): Promise<void> {
+    const base = this.frozenTools ?? this.tools
+    let overlay: Record<string, Tool> = {}
+    const servers = new Map<string, string>()
+    this.mcpStarting = []
+    this.mcpStartingText = null
+    this.mcpRead = true
+    if (!this.config.planMode) {
+      try {
+        const mcp = getServiceHub().mcp()
+        const live = await loadLiveMcpTools(mcp)
+        this.mcpStarting = live.starting
+        this.mcpStartingText = mcpStartingNote(live.starting)
+        const isDisabled = useToolAvailable.getState().isToolDisabled
+        for (const tool of live.tools) {
+          const server = tool.server || 'unknown'
+          if (!isValidToolName(tool.name)) continue
+          if (isDisabled(server, tool.name)) continue
+          if (isSelfApprovalTool(tool.name)) continue
+          // A built-in, or the first server to offer a name, wins.
+          if (base[tool.name] || servers.has(tool.name)) continue
+          servers.set(tool.name, server)
+          overlay[tool.name] = {
+            description: tool.description,
+            inputSchema: jsonSchema(
+              normalizeToolInputSchema(tool.inputSchema as Record<string, unknown>)
+            ),
+          } as Tool
+        }
+        this.recordMcpSet(
+          [...servers].map(([name, server]) => ({ name, server })),
+          live.tools
+        )
+      } catch (error) {
+        console.warn('Failed to load MCP tools:', error)
+        overlay = {}
+        servers.clear()
+      }
+    }
+    // Sorted, and after the built-ins: an unchanged set sends identical JSON.
+    this.mcpOverlay = Object.fromEntries(
+      Object.entries(overlay).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    )
+    this.mcpToolServers = servers
+    this.advertised =
+      Object.keys(this.mcpOverlay).length > 0
+        ? { ...base, ...this.mcpOverlay }
+        : null
+    this.tools = this.advertised ?? base
+  }
+
+  private async refreshBuiltins(): Promise<void> {
     // Frozen means frozen: once a run is under way the advertised set is fixed
     // even if the config changed, because rebuilding it would change the tool
     // JSON and discard the prompt prefix on the next of this turn's many

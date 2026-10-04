@@ -227,6 +227,15 @@
     "tokensOut": "{{approx}}{{count}} tokens",
     "speedTitle": "Tokens written in this reply, and how fast"
   },
+  "unknownWindow": {
+    "title": "Context window unknown",
+    "description": "{{subject}} uses models whose context window Flint can't determine. Set Max Context Tokens for each, or use the safe default of {{window}} tokens, which keeps long discussions compacting early.",
+    "usedBy": "Used by: {{names}}",
+    "placeholder": "Max Context Tokens",
+    "useDefault": "Use {{window}} (safe default)",
+    "continue": "Continue",
+    "cancel": "Cancel"
+  },
   "controls": {
     "label": "Room controls",
     "start": "Start",

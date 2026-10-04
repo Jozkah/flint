@@ -8,7 +8,7 @@ import {
   type MemoryScope,
   type MemoryView,
 } from '@janhq/tauri-plugin-agent-tools-api'
-import { PanelRight, RefreshCw, X } from 'lucide-react'
+import { ChevronDown, PanelRight, RefreshCw, X } from 'lucide-react'
 import { Icon } from '@/components/ui/icon'
 import {
   AutoCompactRow,
@@ -34,6 +34,7 @@ import { useChatSessions } from '@/stores/chat-session-store'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { ExtensionManager } from '@/lib/extension'
 import { extractFilesFromPrompt, type FileMetadata } from '@/lib/fileMetadata'
+import { contextUsage } from '@/lib/contextUsage'
 import { classifyModelLocation } from '@/lib/modelLocation'
 import { cn, isLocalProvider } from '@/lib/utils'
 import {
@@ -55,6 +56,12 @@ import {
   requestAttributions,
   type RequestAttribution,
 } from '@/lib/requestAttribution'
+import {
+  DEFAULT_COMPACTION_POLICY,
+  effectiveReserve,
+  getCompactionPolicy,
+  type CompactionPolicy,
+} from '@/lib/compactionPolicy'
 import { PromptSnapshotView } from '@/containers/PromptSnapshotView'
 import { StatusChip, WorkStatus } from '@/containers/StatusChip'
 
@@ -161,47 +168,96 @@ function StateChip({ state, label }: { state: string; label: string }) {
 function ContextWindowMeter({ threadId }: { threadId: string }) {
   const { t } = useTranslation()
   const threadMessages = useActiveMessages(threadId)
-  const { tokenCount, maxTokens, percentage } = useTokensCount(
+  const { tokenCount, maxTokens } = useTokensCount(
     threadMessages ?? [],
     { threadId }
   )
+  const [open, setOpen] = useState(false)
+  const detailsId = useId()
+  const [policy, setPolicy] = useState<CompactionPolicy>(
+    DEFAULT_COMPACTION_POLICY
+  )
+  useEffect(() => {
+    let alive = true
+    getCompactionPolicy()
+      .then((p) => alive && setPolicy(p))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const compact = (n: number) =>
     new Intl.NumberFormat(undefined, {
       notation: 'compact',
       maximumFractionDigits: 1,
     }).format(n)
-  const percent =
-    typeof percentage === 'number'
-      ? Math.max(0, Math.min(100, Math.round(percentage)))
-      : undefined
+  const exact = (n: number) => n.toLocaleString()
 
-  // Used of the window on the left, how full it is on the right, the meter,
-  // then when it compacts.
+  const known = !!maxTokens && maxTokens > 0
+  // The room auto-compact keeps free for the next request: the orange part.
+  const reserve =
+    known && policy.auto ? effectiveReserve(maxTokens!, policy) : 0
+  const usage = contextUsage(tokenCount, maxTokens, reserve)
+  const percent = known ? Math.round(usage.pct) : undefined
+  const usedPct = usage.pct
+  const reservePct = known ? Math.min(100 - usedPct, usage.share(reserve) * 100) : 0
+  const free = known ? Math.max(0, maxTokens! - tokenCount - reserve) : 0
+
+  const summary =
+    tokenCount > 0 && maxTokens
+      ? t('context:contextWindow.usedOf', {
+          used: compact(tokenCount),
+          max: compact(maxTokens),
+        })
+      : tokenCount > 0
+        ? t('context:contextWindow.used', { used: compact(tokenCount) })
+        : t('context:contextWindow.unknown')
+
+  const row = (swatch: string, label: string, value: string) => (
+    <div className="flex items-center justify-between gap-3">
+      <span className="flex items-center gap-1.5 text-muted-foreground">
+        <span
+          aria-hidden
+          className={cn('inline-block size-2 shrink-0 rounded-full', swatch)}
+        />
+        {label}
+      </span>
+      <span className="font-mono text-foreground tabular-nums">{value}</span>
+    </div>
+  )
+
+  // Used of the window and how full it is, with an arrow to open the split;
+  // then one meter of used, auto-compact room and free space, all one height.
   return (
     <section
       className="flex flex-col gap-2.5 px-4 py-3.5"
       data-testid="context-window"
       aria-label={t('context:contextWindow.title')}
     >
-      <div className="flex items-baseline justify-between gap-2 text-xs text-muted-foreground">
-        <span className="tabular-nums">
-          {tokenCount > 0 && maxTokens
-            ? t('context:contextWindow.usedOf', {
-                used: compact(tokenCount),
-                max: compact(maxTokens),
-              })
-            : tokenCount > 0
-              ? t('context:contextWindow.used', { used: compact(tokenCount) })
-              : t('context:contextWindow.unknown')}
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={detailsId}
+        onClick={() => setOpen((v) => !v)}
+        className="group flex w-full items-center justify-between gap-2 rounded-sm text-left text-xs text-muted-foreground outline-none focus-visible:ring-[3px] focus-visible:ring-ring/40 pointer-coarse:min-h-11"
+      >
+        <span className="tabular-nums">{summary}</span>
+        <span className="flex items-center gap-1.5">
+          {percent !== undefined && tokenCount > 0 && (
+            <b className="font-medium text-foreground tabular-nums">
+              {`${usage.pct.toFixed(1)}%`}
+            </b>
+          )}
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              'size-3.5 shrink-0 motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-expo',
+              open && 'rotate-180'
+            )}
+          />
         </span>
-        {percent !== undefined && tokenCount > 0 && (
-          <b className="font-medium text-foreground tabular-nums">
-            {typeof percentage === 'number'
-              ? `${Math.max(0, Math.min(100, percentage)).toFixed(1)}%`
-              : ''}
-          </b>
-        )}
-      </div>
+      </button>
       <div
         role="img"
         aria-label={
@@ -209,18 +265,49 @@ function ContextWindowMeter({ threadId }: { threadId: string }) {
             ? t('context:contextWindow.meter', { percent })
             : t('context:contextWindow.unknown')
         }
-        className="h-1.5 overflow-hidden rounded-full bg-track"
+        className="flex h-1.5 w-full shrink-0 overflow-hidden rounded-full bg-track"
       >
-        {percent !== undefined && tokenCount > 0 && (
-          <div
-            className={cn(
-              'h-full rounded-full motion-safe:animate-draw-x motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo',
-              percent > 85 ? 'bg-warning' : 'bg-grad'
+        {known && tokenCount > 0 && (
+          <>
+            <div
+              className="h-full bg-grad motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo"
+              style={{ width: `${usedPct}%` }}
+            />
+            {reservePct > 0 && (
+              <div
+                className="h-full bg-warning/80 motion-safe:transition-[width] motion-safe:duration-700 motion-safe:ease-expo"
+                style={{ width: `${reservePct}%` }}
+              />
             )}
-            style={{ width: `${percent}%` }}
-          />
+          </>
         )}
       </div>
+      {open && (
+        <div
+          id={detailsId}
+          className="flex flex-col gap-1.5 text-xs"
+          data-testid="context-window-details"
+        >
+          {row('bg-chart-1', t('context:contextWindow.usedLabel'), exact(tokenCount))}
+          {known && reserve > 0 &&
+            row(
+              'bg-warning/80',
+              t('context:contextWindow.reserveLabel'),
+              exact(reserve)
+            )}
+          {known && row('bg-track', t('context:contextWindow.freeLabel'), exact(free))}
+          {known && (
+            <div className="flex items-center justify-between gap-3 border-t border-dashed border-border pt-1.5">
+              <span className="text-muted-foreground">
+                {t('context:contextWindow.windowLabel')}
+              </span>
+              <span className="font-mono text-foreground tabular-nums">
+                {exact(maxTokens!)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
       <AutoCompactRow maxTokens={maxTokens || undefined} />
     </section>
   )

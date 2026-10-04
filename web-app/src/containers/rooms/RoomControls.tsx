@@ -1,6 +1,7 @@
 import { useId, useState, type ReactNode } from 'react'
 import { replaceMissingRoomModels, roomModelRefs } from '@/lib/rooms/ensureModels'
 import { unavailableModels } from '@/lib/modelReplace'
+import { ensureKnownWindows } from '@/lib/rooms/unknownWindows'
 import {
   ChevronRight,
   CircleCheck,
@@ -197,17 +198,25 @@ export function RoomControls({ room }: { room: Room }) {
   // A model that has gone away is replaced before the room runs, with the
   // user's say, rather than the room starting and suspending that participant.
   const startAfterModelCheck = async (go: () => Promise<void>) => {
-    // Nothing missing: go at once, as before.
     const lookup = (name: string) => providers.find((p) => p.provider === name)
-    if (unavailableModels(roomModelRefs(room), lookup as never).length === 0) return go()
-    const patch = await replaceMissingRoomModels(room, lookup as never)
-    if (patch === null) return
-    if (patch.participants || patch.moderator) {
-      await api.updateRoomSettings(room, {
-        ...(patch.participants ? { participants: patch.participants } : {}),
-        ...(patch.moderator ? { moderator: patch.moderator } : {}),
-      })
+    let current = room
+    if (unavailableModels(roomModelRefs(room), lookup as never).length > 0) {
+      const patch = await replaceMissingRoomModels(room, lookup as never)
+      if (patch === null) return
+      if (patch.participants || patch.moderator) {
+        await api.updateRoomSettings(room, {
+          ...(patch.participants ? { participants: patch.participants } : {}),
+          ...(patch.moderator ? { moderator: patch.moderator } : {}),
+        })
+        current = {
+          ...room,
+          ...(patch.participants ? { participants: patch.participants } : {}),
+          ...(patch.moderator ? { moderator: patch.moderator } : {}),
+        }
+      }
     }
+    // A model with no known window is settled with the user, not guessed at.
+    if (!(await ensureKnownWindows(current))) return
     await go()
   }
 

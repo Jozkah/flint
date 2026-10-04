@@ -1,8 +1,22 @@
+import { hasAgentToolImages } from '@/lib/toolOutputImages'
 import { pluginInventoryLine, refreshPluginInventory } from '@/lib/pluginInventory'
 import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import {
+  rememberedWindowFor,
+  resolveCompactionWindow,
+} from '@/lib/compactionWindowSource'
+import { listedWindow } from '@/lib/listedWindows'
+import {
+  appendSessionContext,
+  runCcContextHooks,
+  userMessageText,
+  withPromptContext,
+} from '@/lib/ccContextHooks'
+import { fetchServerWindow } from '@/lib/serverWindow'
+import { knownContextWindow } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import {
@@ -49,6 +63,11 @@ import {
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
+import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
+import { subagentGuide } from '@/lib/coworkPrompt'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { visualizeSchemas } from '@/lib/visualize/tools'
+import { truncateStaleWidgetCode } from '@/lib/visualize/history'
 import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
 import {
@@ -109,9 +128,16 @@ import {
   planCompaction,
   resolveAutoCompact,
   compactionTriggerTokens,
+  clipToolResultsToFit,
+  isContextLengthError,
+  ASSUMED_WINDOW_TOKENS,
+  TRIM_HEADROOM_SHARE,
   DEFAULT_KEEP_RECENT,
   type CompactionRecord,
+  type CompactResult,
 } from '@/lib/compaction'
+import { parseServerContextLimit } from '@/lib/contextLimitRecovery'
+import { isContextOverflowMessage } from '@/utils/error'
 import {
   CompactionLoopError,
   PRECOMPUTE_FRACTION,
@@ -139,6 +165,19 @@ import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, end
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
+import {
+  announceMcpChange,
+  diffMcpSnapshots,
+  enabledMcpServers,
+  getMcpGeneration,
+  loadLiveMcpTools,
+  mcpChangeNote,
+  mcpStartingNote,
+  readMcpBaseline,
+  snapshotMcpTools,
+  syncMcpStore,
+  writeMcpBaseline,
+} from '@/lib/mcpLiveTools'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import {
@@ -159,6 +198,7 @@ import {
   readTokenUsage,
   type TokenUsage,
 } from '@/lib/tokenUsage'
+import { createDecodeClock, generationSpeed } from '@/lib/tokenSpeed'
 
 export type TokenUsageCallback = (
   usage: TokenUsage,
@@ -920,6 +960,22 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   protected compactsAtThreshold = true
   /** A compaction this request made, announced on its reply's metadata. */
   private announcedCompaction: CompactionRecord | null = null
+  /**
+   * Set for the one resend after the provider refused a request for its
+   * length: the request is compacted even though the local estimate said it
+   * fitted, and plans against the window the refusal named when it named one.
+   */
+  private overflowRetry: { learnedWindow: number | null } | null = null
+  /** Threads and models already told that auto-compact has no window to use. */
+  private unknownWindowNoticed = new Set<string>()
+
+  /** Tell the user, once per chat and model, that auto-compact needs a context size. */
+  private noticeUnknownWindow(threadId: string, modelId: string): void {
+    const key = `${threadId}|${modelId}`
+    if (this.unknownWindowNoticed.has(key)) return
+    this.unknownWindowNoticed.add(key)
+    toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }))
+  }
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null
   /** HTTP status of the failure `onError` last reported, for the fallback decision. */
@@ -930,7 +986,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
+  /** Saved subagent names the chat's `task` tool offers, for its prompt. */
+  protected delegationNames: string[] = []
   private toolsCacheKey: string | null = null
+  /** Kept until the set changes again, so the prompt prefix stays stable. */
+  private mcpChangeText: string | null = null
+  protected mcpStartingText: string | null = null
   // Smart tool routing selects tools from the latest user message, which would
   // change the tool set (and thus the cached prompt prefix) every turn. Freeze
   // the routed set for the thread's lifetime so the prefix stays stable;
@@ -1233,6 +1294,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
     const agentTools = this.buildAgentToolsSystemInstruction()
+    // Taught only when the tool is really offered, as Cowork does.
+    const delegation =
+      this.tools && 'task' in this.tools ? subagentGuide(this.delegationNames, { team: false }) : undefined
     // Any tool, MCP included, returns outside content, and an MCP tool can act
     // on the world as readily as the agent tools can.
     const hasTools = Object.keys(this.tools ?? {}).length > 0
@@ -1246,10 +1310,12 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         files,
         web,
         agentTools,
+        delegation,
         'Use only structured tool calls supplied by this request. Never print <tool_call> or <function=...> markup as an answer. If no suitable tool is available, say that you cannot run it.',
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),
+        ...this.mcpPromptNotes(),
         // The precedence chain (AH-084), stated by the backend so every surface
         // says the same thing, then the remembered facts it ranks. Remembered
         // facts are data the model may use, not instructions it must follow;
@@ -1264,6 +1330,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     if (typeof raw !== 'string' || raw.trim().length === 0) return language || undefined
     // Last, so a new day does not invalidate the cached prefix before it.
     return `${raw}\n\n${language ? `${language}\n\n` : ''}${todayLine()}`
+  }
+
+  /**
+   * Whether an image in a tool result is attached to the request as an image
+   * part (or replaced by a note) for every provider, not only a local one. Off
+   * for chat, where remote providers are left alone; Cowork turns it on for
+   * the images its `read` tool returns.
+   */
+  protected hoistsToolImages(): boolean {
+    return false
   }
 
   /**
@@ -1346,6 +1422,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const toolsRecord: Record<string, Tool> = {}
     const toolServers = new Map<string, string>()
+    // A failed MCP listing is not kept: the next send asks again.
+    let mcpLoadFailed = false
 
     // Tool availability is global (shared across all chats).
     const disabledToolKeys = useToolAvailable.getState().getDisabledTools()
@@ -1400,6 +1478,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         : []
     const cacheKey = JSON.stringify({
       mcpFingerprint,
+      // A server switched on after the chat began has no tools until it is
+      // started, so the fingerprint alone cannot see it.
+      mcpGeneration: getMcpGeneration(),
+      mcpEnabled: enabledMcpServers(),
       model: selectedModel?.id ?? '',
       modelSupportsTools,
       hasDocuments,
@@ -1408,6 +1490,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       deadTools: deadTools(this.threadId),
       webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+      chatDelegation: chatDelegationEnabled(),
+      visualizeEnabled: useVisualizeConfig.getState().enabled,
     })
     if (useCache && this.toolsCacheKey === cacheKey) return
 
@@ -1444,6 +1528,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       try {
         const mcpService = this.serviceHub.mcp()
         let mcpTools: MCPTool[]
+        let mcpStarting: string[] = []
+        // Smart routing lists a subset; only a full listing may refresh the
+        // store the tool picker and the call dispatcher read.
+        let fullListing = false
         const mcpSettings = useMCPServers.getState().settings
         const routingEnabled = mcpSettings.enableSmartToolRouting
 
@@ -1489,9 +1577,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             this.frozenRoutedSig = routedSig
           }
         } else {
-          // A send that uses tools starts enabled servers on demand.
-          mcpTools = await mcpService.getTools({ start: true })
+          // A send that uses tools starts enabled servers on demand, waiting
+          // a bounded time for ones still starting.
+          const live = await loadLiveMcpTools(mcpService)
+          mcpTools = live.tools
+          mcpStarting = live.starting
+          fullListing = true
         }
+        this.mcpStartingText = mcpStartingNote(mcpStarting)
 
         if (Array.isArray(mcpTools) && mcpTools.length > 0) {
           const seenBy = new Map<string, string>()
@@ -1519,8 +1612,13 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             } as Tool
           })
         }
+        this.recordMcpSet(
+          [...toolServers].map(([name, server]) => ({ name, server })),
+          fullListing ? mcpTools : undefined
+        )
       } catch (error) {
         console.warn('Failed to load MCP tools:', error)
+        mcpLoadFailed = true
       }
 
       // Native web tools, provided by the websearch plugin (not an MCP server).
@@ -1534,6 +1632,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           description: WEB_FETCH_DESCRIPTION,
           inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
         } as Tool
+      }
+
+      // Inline widgets are the renderer's own and need no workspace, so they
+      // are offered whether or not the agent tools are on.
+      if (useVisualizeConfig.getState().enabled) {
+        for (const schema of visualizeSchemas()) {
+          toolsRecord[schema.function.name] = {
+            description: schema.function.description,
+            inputSchema: jsonSchema(schema.function.parameters),
+          } as Tool
+        }
       }
 
       // Built-in agent tools (filesystem reads plus skills/memory), provided by
@@ -1575,6 +1684,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         } catch (error) {
           console.warn('Failed to load agent tools:', error)
         }
+        // A job handed to a subagent: the Cowork `task` family on the chat's
+        // own footing, behind its own setting.
+        try {
+          const offered = await chatDelegationTools()
+          Object.assign(toolsRecord, offered.tools)
+          this.delegationNames = offered.names
+        } catch (error) {
+          console.warn('Failed to load delegation tools:', error)
+        }
       }
     }
 
@@ -1590,7 +1708,39 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       )
     )
     this.toolServers = toolServers
-    this.toolsCacheKey = cacheKey
+    this.toolsCacheKey = mcpLoadFailed ? null : cacheKey
+  }
+
+  /**
+   * Compare this request's MCP tools with the last request's. A difference
+   * becomes a note for the model, a toast for the person when a server
+   * appeared, and a refresh of the lists the UI and the call dispatcher read.
+   */
+  protected recordMcpSet(
+    advertised: { name: string; server?: string }[],
+    listed?: MCPTool[]
+  ): void {
+    const next = snapshotMcpTools(advertised)
+    const key = this.threadId ?? ''
+    const before = readMcpBaseline(key)
+    let note = before?.note ?? null
+    if (listed) syncMcpStore(listed)
+    if (before) {
+      const change = diffMcpSnapshots(before.snapshot, next)
+      const changed = mcpChangeNote(change)
+      if (changed) {
+        note = changed
+        announceMcpChange(change)
+      }
+    }
+    writeMcpBaseline(key, next, note)
+    this.mcpChangeText = note
+  }
+
+  protected mcpPromptNotes(): string[] {
+    return [this.mcpChangeText, this.mcpStartingText].filter(
+      (s): s is string => typeof s === 'string' && s.length > 0
+    )
   }
 
   private async resolveRouterModel(settings: {
@@ -1767,6 +1917,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       modelId: string
       session: string
       signal?: AbortSignal
+      /** The provider refused the request for its length: compact regardless. */
+      force?: boolean
     }
   ): Promise<UIMessage[]> {
     const inForce = readChatCompaction(threadId)
@@ -1780,9 +1932,32 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       cancelPrecompute(threadId)
     }
 
-    const trigger = compactionTriggerTokens(opts.window, opts.trimReserveTokens)
+    const fullTrigger = compactionTriggerTokens(
+      opts.window,
+      opts.trimReserveTokens
+    )
+    // The next request grows by about what the last assistant turns did (tool
+    // output rides in them), so compact before that growth crosses the window
+    // rather than after. At most a tenth of the window, so a compaction that
+    // keeps a large recent turn cannot leave the request still over the trigger.
+    const recentAssistant = history
+      .filter((m) => m.role === 'assistant')
+      .slice(-4)
+      .map((m) => estimateHistoryTokens([m]))
+    const headroom = Math.min(
+      Math.floor(opts.window * 0.1),
+      Math.ceil(Math.max(0, ...recentAssistant) * 1.25)
+    )
+    let trigger = Math.max(
+      Math.floor(opts.window * 0.1),
+      fullTrigger - headroom
+    )
     let projected = opts.systemPromptTokens + estimateHistoryTokens(history)
-    if (projected < trigger) {
+    // The provider just refused this request: whatever the estimate says, it
+    // did not fit, so aim well under what it measured.
+    const forced = opts.force === true
+    if (forced) trigger = Math.min(trigger, Math.floor(projected * 0.6))
+    if (!forced && projected < trigger) {
       if (projected >= trigger * PRECOMPUTE_FRACTION) {
         // When clearing old tool output alone will keep the request well under
         // the trigger, the summary would never be used: don't write it.
@@ -1805,17 +1980,130 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       if (projected < trigger) return history
     }
 
-    if (isCompactionLooping(threadId, history.length)) {
+    // A conversation that refills right after a compaction is not helped by
+    // the same compaction again, so it starts at a harder cut instead of
+    // stopping: more of the recent turns, then the middle of the current one,
+    // are folded.
+    const looping = !forced && isCompactionLooping(threadId, history.length)
+    const result = await this.compactToFit(threadId, history, {
+      ...opts,
+      trigger,
+      reason: forced ? 'context-error' : 'threshold',
+      startLevel: looping ? 1 : 0,
+    })
+    let out = result?.messages ?? history
+    // What no summary can shrink is the newest thing in the conversation: a
+    // single tool result that alone fills the window. It keeps its head and
+    // tail and loses the middle, rather than the request being refused.
+    const ceiling = Math.floor(
+      (opts.window - (opts.trimReserveTokens ?? 0)) * TRIM_HEADROOM_SHARE
+    )
+    const room = Math.max(
+      1000,
+      (forced ? Math.min(ceiling, trigger) : ceiling) - opts.systemPromptTokens
+    )
+    let clippedCount = 0
+    if (estimateHistoryTokens(out) > room) {
+      const clipped = clipToolResultsToFit(out, room)
+      out = clipped.messages
+      clippedCount = clipped.clippedCount
+    }
+    if (!result && clippedCount === 0) {
+      // Nothing could be folded or shrunk and the breaker had already seen
+      // this loop: say so rather than send a request that will be refused.
+      if (looping) throw new CompactionLoopError()
+      return history
+    }
+    // Still over the window itself after every cut: the refill loop is real.
+    if (
+      looping &&
+      opts.systemPromptTokens + estimateHistoryTokens(out) >= opts.window
+    ) {
       throw new CompactionLoopError()
     }
-    const result = await this.runCompaction(threadId, history, {
-      ...opts,
-      reason: 'threshold',
-    })
-    if (!result) return history
-    recordCompaction(threadId, history.length, result.messages.length)
-    this.announcedCompaction = result.record
-    return result.messages
+    if (result) {
+      recordCompaction(threadId, history.length, result.messages.length)
+      this.announcedCompaction = result.record
+    }
+    return out
+  }
+
+  /**
+   * Compact until the request is under `trigger`, cutting harder each time it
+   * is not: the configured share of recent turns, then half of it with the cut
+   * allowed inside the current user turn (a long tool loop is one turn), then
+   * only the newest message. A cut whose kept part alone is over is skipped
+   * without a model call. Null when nothing could be folded.
+   */
+  private async compactToFit(
+    threadId: string,
+    history: UIMessage[],
+    opts: {
+      window: number
+      systemPromptTokens: number
+      keepRecent: number
+      summaryMaxTokens: number
+      provider: string
+      modelId: string
+      session: string
+      signal?: AbortSignal
+      trigger: number
+      reason: CompactionRecord['reason']
+      startLevel: number
+    }
+  ): Promise<CompactResult | null> {
+    const levels = [
+      { keepRecent: opts.keepRecent, splitTurn: false },
+      {
+        keepRecent: Math.max(2, Math.floor(opts.keepRecent / 2)),
+        splitTurn: true,
+      },
+      { keepRecent: 1, splitTurn: true },
+    ]
+    // What the summary itself will add to the request.
+    const summaryAllowance = opts.summaryMaxTokens + 200
+    let current = history
+    let last: CompactResult | null = null
+    for (
+      let i = Math.min(opts.startLevel, levels.length - 1);
+      i < levels.length;
+      i++
+    ) {
+      const level = levels[i]
+      const isLast = i === levels.length - 1
+      const plan = planCompaction(current, level)
+      if (!plan) continue
+      // Summarizing everything older cannot make this cut fit when what it
+      // keeps is already over: cut deeper instead of paying for a summary
+      // that would not help. The deepest cut always runs; what it keeps is
+      // then shrunk by the caller.
+      const kept =
+        opts.systemPromptTokens +
+        estimateHistoryTokens([...plan.pinned, ...plan.keep]) +
+        summaryAllowance
+      if (kept >= opts.trigger && !isLast) continue
+      const result = await this.runCompaction(threadId, current, {
+        window: opts.window,
+        keepRecent: level.keepRecent,
+        splitTurn: level.splitTurn,
+        summaryMaxTokens: opts.summaryMaxTokens,
+        provider: opts.provider,
+        modelId: opts.modelId,
+        session: opts.session,
+        reason: opts.reason,
+        signal: opts.signal,
+      })
+      if (!result) continue
+      last = result
+      current = result.messages
+      if (
+        opts.systemPromptTokens + estimateHistoryTokens(current) <
+        opts.trigger
+      ) {
+        break
+      }
+    }
+    return last
   }
 
   /** Start the summary a coming compaction will need, without waiting for it. */
@@ -1854,6 +2142,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     opts: {
       window: number | null
       keepRecent: number
+      splitTurn?: boolean
       summaryMaxTokens: number
       provider: string
       modelId: string
@@ -1872,6 +2161,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         model: () => this.model,
       }),
       keepRecent: opts.keepRecent,
+      splitTurn: opts.splitTurn,
       reason: opts.reason,
       signal: opts.signal,
       reusePrefix: (covered) => takePrecomputedPrefix(threadId, covered),
@@ -1923,16 +2213,29 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
     if (stale) writeChatCompaction(threadId, null)
     resetCompactionBreaker(threadId)
-    const result = await this.runCompaction(threadId, history, {
+    const base = {
       window: usableContextValue(params.max_context_tokens) ?? null,
-      keepRecent: policy.keepRecent || DEFAULT_KEEP_RECENT,
       summaryMaxTokens: policy.summaryMaxTokens,
       provider: selection.selectedProvider,
       modelId,
       session: threadId,
-      reason: 'manual',
+      reason: 'manual' as const,
       signal,
+    }
+    const keepRecent = policy.keepRecent || DEFAULT_KEEP_RECENT
+    let result = await this.runCompaction(threadId, history, {
+      ...base,
+      keepRecent,
     })
+    // A long tool loop is one user turn, which the usual cut keeps whole:
+    // fold inside it rather than report that there was nothing to compact.
+    if (!result) {
+      result = await this.runCompaction(threadId, history, {
+        ...base,
+        keepRecent: Math.max(2, Math.floor(keepRecent / 2)),
+        splitTurn: true,
+      })
+    }
     return result?.record ?? null
   }
 
@@ -1942,6 +2245,126 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * turn is retried on the next model of the fallback chain.
    */
   async sendMessages(
+    options: SendOptions
+  ): Promise<ReadableStream<UIMessageChunk>> {
+    // Cowork compacts and retries in its own run loop.
+    if (!this.compactsAtThreshold) return this.sendWithFallback(options)
+
+    // The provider refusing a request for its length is not the end of a run
+    // the window could still hold: compact, harder than the estimate asked
+    // for, and send it once more. Only before any reply content, so nothing
+    // the chat already showed is taken back.
+    const refusedForLength = async (failure: unknown): Promise<boolean> => {
+      const message =
+        failure instanceof Error ? failure.message : String(failure ?? '')
+      return (
+        !options.abortSignal?.aborted &&
+        (isContextLengthError(failure) || isContextOverflowMessage(message)) &&
+        (await this.canRecoverFromOverflow())
+      )
+    }
+    const resend = async (
+      failure: unknown
+    ): Promise<ReadableStream<UIMessageChunk>> => {
+      const message =
+        failure instanceof Error ? failure.message : String(failure ?? '')
+      const learned = parseServerContextLimit(
+        (failure as { data?: unknown } | null)?.data ?? null,
+        message
+      )
+      this.overflowRetry = { learnedWindow: learned?.contextTokens ?? null }
+      try {
+        return await this.sendWithFallback(options)
+      } finally {
+        this.overflowRetry = null
+      }
+    }
+
+    let first: ReadableStream<UIMessageChunk>
+    try {
+      first = await this.sendWithFallback(options)
+    } catch (error) {
+      if (!(await refusedForLength(error))) throw error
+      first = await resend(error)
+      return first
+    }
+
+    let source = first.getReader()
+    let retried = false
+    // Chunks pass straight through. An error before any reply content that is
+    // a length refusal is swallowed instead, and the resent request's stream
+    // continues in its place (its opening chunks were already delivered).
+    let sawContent = false
+    let sentStart = false
+    let sentStep = false
+    return new ReadableStream<UIMessageChunk>({
+      async pull(controller) {
+        for (;;) {
+          const { done, value } = await source.read()
+          if (done) {
+            controller.close()
+            return
+          }
+          if (
+            !sawContent &&
+            !retried &&
+            value.type === 'error' &&
+            (await refusedForLength(value.errorText))
+          ) {
+            retried = true
+            void source.cancel().catch(() => {})
+            try {
+              source = (await resend(value.errorText)).getReader()
+            } catch (error) {
+              controller.error(error)
+              return
+            }
+            continue
+          }
+          if (retried && value.type === 'start' && sentStart) {
+            // Already delivered; its metadata (a compaction the resend made)
+            // still has to reach the message.
+            const metadata = (value as { messageMetadata?: unknown })
+              .messageMetadata
+            if (metadata === undefined) continue
+            controller.enqueue({
+              type: 'message-metadata',
+              messageMetadata: metadata,
+            } as UIMessageChunk)
+            return
+          }
+          if (retried && value.type === 'start-step' && sentStep) continue
+          if (value.type === 'start') sentStart = true
+          if (value.type === 'start-step') sentStep = true
+          if (!/^(start|start-step|message-metadata)$/.test(value.type)) {
+            sawContent = true
+          }
+          controller.enqueue(value)
+          return
+        }
+      },
+      cancel: (reason) => source.cancel(reason),
+    })
+  }
+
+  /**
+   * Whether a request the provider refused for its length can be compacted
+   * and sent again: automatic compaction is on, by summary, and the model does
+   * not shift its own context.
+   */
+  private async canRecoverFromOverflow(): Promise<boolean> {
+    try {
+      const params = this.getActiveInferenceParams()
+      const policy = await getCompactionPolicy()
+      return (
+        resolveAutoCompact(params, policy.auto) && policy.strategy === 'summarize'
+      )
+    } catch {
+      return false
+    }
+  }
+
+  private async sendWithFallback(
     options: SendOptions
   ): Promise<ReadableStream<UIMessageChunk>> {
     const chain = resolveFallbackChain(
@@ -2256,7 +2679,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const selectedModel = this.getModelSelection().selectedModel
 
     await this.refreshMemory()
-    const effectiveSystem = this.buildSystemPrompt(messagesToConvert)
+    // The user's Claude Code hooks, when they linked them: SessionStart text
+    // follows the system prompt, UserPromptSubmit text rides on this message.
+    // Only a turn that is answering the user's message asks for the latter.
+    const ccContext = await runCcContextHooks({
+      sessionId: this.threadId ?? options.chatId,
+      projectDir: this.projectRoot,
+      prompt: userMessageText(messagesToConvert[messagesToConvert.length - 1]),
+    })
+    const effectiveSystem = appendSessionContext(
+      this.buildSystemPrompt(messagesToConvert),
+      ccContext.sessionStart
+    )
     this.publishContextBreakdown(effectiveSystem, messagesToConvert)
 
     const maxOutputTokens: number | undefined = (() => {
@@ -2289,11 +2723,36 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // The router has not loaded the model yet. Preserve the configured limit.
       }
     }
-    const maxContextTokens = effectiveContextWindow(
-      configuredContextTokens,
-      liveContextTokens,
-      contextShiftEnabled
-    )
+    // A model with no window of its own (a custom OpenAI-compatible one) still
+    // has a best available one: what the provider describes, what its model
+    // list named, the last one this chat showed, or what the server says now.
+    const resolvedWindow = await resolveCompactionWindow({
+      known: effectiveContextWindow(
+        configuredContextTokens,
+        liveContextTokens,
+        contextShiftEnabled
+      ),
+      provider: knownContextWindow(selectedModel, provider),
+      listed: listedWindow(provider?.base_url, modelId),
+      remembered: rememberedWindowFor(
+        useContextBreakdown.getState(),
+        threadId,
+        modelId
+      ),
+      fetchServer: () => fetchServerWindow(provider?.base_url, modelId),
+    })
+    const knownContextTokens = resolvedWindow.tokens
+    // The resend after a length refusal plans against what the refusal named
+    // when that is smaller, and against an assumed window when nothing is
+    // known: a request that was refused has to shrink, not be sent again.
+    const retryWindow = this.overflowRetry?.learnedWindow ?? null
+    const maxContextTokens = this.overflowRetry
+      ? knownContextTokens > 0
+        ? retryWindow != null && retryWindow < knownContextTokens
+          ? retryWindow
+          : knownContextTokens
+        : (retryWindow ?? ASSUMED_WINDOW_TOKENS)
+      : knownContextTokens
     // AH-076: the shared compaction policy -- the same file the desktop agent
     // loop and the CLI read. A policy file the backend refuses fails the
     // request rather than silently compacting at a default point.
@@ -2304,6 +2763,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The model's Auto Compact parameter, when set, decides; otherwise the
     // shared policy does (`lib/compaction.ts`).
     const autoCompact = resolveAutoCompact(inferenceParams, compaction.auto)
+    // Auto-compact has nothing to measure against: say so rather than letting
+    // it look like it is working. A refused request still compacts and retries.
+    if (autoCompact && resolvedWindow.source === 'none') {
+      this.noticeUnknownWindow(threadId, modelId)
+    }
 
     let effectiveMessages = messagesToConvert
     if (maxContextTokens > 0) {
@@ -2348,6 +2812,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             modelId: selectedModel?.id ?? modelId,
             session: options.chatId ?? threadId,
             signal: options.abortSignal,
+            force: this.overflowRetry != null,
           }
         )
       }
@@ -2391,6 +2856,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       requestSystem = folded.system
       effectiveMessages = folded.messages
     }
+    // Old widgets replay as a one-line note; the stored message keeps the code.
+    effectiveMessages = truncateStaleWidgetCode(effectiveMessages)
+    effectiveMessages = withPromptContext(effectiveMessages, ccContext.promptSubmit)
 
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false
@@ -2422,7 +2890,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             supportsVision: modelSupportsVision,
           })
         )
-      : withInlineAttachments
+      : this.hoistsToolImages() || hasAgentToolImages(withInlineAttachments)
+        ? prepareToolResultImagesForModel(withInlineAttachments, {
+            supportsVision: modelSupportsVision,
+          })
+        : withInlineAttachments
     const baseMessages = await convertToModelMessages(
       coalesceMessagesForAlternation(
         resolveOrphanToolCalls(
@@ -2497,6 +2969,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     this.lastRequestId = requestId
 
     let streamStartTime: number | undefined
+    // Generation time, for the speed: output only, per step. See createDecodeClock.
+    const decodeClock = createDecodeClock()
     useAppState.getState().updatePromptProgress(undefined)
     useAppState.getState().updateThreadPromptProgress(threadId, undefined)
     useAppState.getState().updateLiveTokenStats(undefined)
@@ -2562,6 +3036,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         ) {
           streamStartTime = Date.now()
         }
+        if (
+          part.type === 'text-delta' ||
+          part.type === 'reasoning-delta' ||
+          part.type === 'tool-input-delta'
+        ) {
+          const piece =
+            part.type === 'tool-input-delta'
+              ? (part as { inputTextDelta?: string }).inputTextDelta
+              : (part as { delta?: string }).delta
+          decodeClock.tick(piece?.length ?? 0)
+        }
+        if (part.type === 'finish-step') decodeClock.endStep()
 
         usageCollector.observe(part)
 
@@ -2630,20 +3116,20 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
           const usage = usageCollector.total(finishPart.totalUsage)
           const durationMs = streamStartTime ? Date.now() - streamStartTime : 0
-          const durationSec = durationMs / 1000
 
           // Only for the speed figure; the stored usage keeps an unreported
           // count unreported rather than zero.
           const outputTokens = usage.outputTokens ?? 0
 
-          // Use llama.cpp's tokens per second if available, otherwise calculate from duration
-          let tokenSpeed: number
-          if (durationSec > 0 && outputTokens > 0) {
-            tokenSpeed =
-              tokensPerSecond > 0 ? tokensPerSecond : outputTokens / durationSec
-          } else {
-            tokenSpeed = 0
-          }
+          // The server's own tokens per second when it sends one (llama.cpp);
+          // otherwise the provider's output tokens over the time output was
+          // arriving, not over the whole request.
+          const generation = generationSpeed({
+            serverTokensPerSecond: tokensPerSecond,
+            outputTokens: usage.outputTokens,
+            ...decodeClock.result(),
+          })
+          const tokenSpeed = generation?.tokenSpeed ?? 0
           // The Models page charts speed from replies this machine measured.
           if (tokenSpeed > 0 && modelId) {
             recordGeneration({ model: modelId, provider: providerId, tps: tokenSpeed })
@@ -2752,8 +3238,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               promptSpeed: promptPerSecond
                 ? Math.round(promptPerSecond * 100) / 100
                 : undefined,
-              tokenCount: outputTokens,
-              durationMs,
+              tokenCount: generation?.tokenCount ?? outputTokens,
+              durationMs: generation?.durationMs ?? durationMs,
+              ...(generation ? { source: generation.source } : {}),
               ...(draftTokens > 0
                 ? { draftTokens, draftAccepted: Math.min(draftAccepted, draftTokens) }
                 : {}),

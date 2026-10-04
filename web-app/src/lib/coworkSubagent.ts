@@ -18,6 +18,7 @@ import {
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
 import { MAX_SUBAGENT_STEPS } from '@/lib/coworkBudget'
+import { BACKGROUND_TASK_TOOLS } from '@/lib/coworkBackgroundTasks'
 import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { createUsageCollector } from '@/lib/tokenUsage'
 import {
@@ -33,6 +34,7 @@ import {
   type PromptFolderAccess,
 } from '@/lib/coworkPrompt'
 import { streamCutOff } from '@/lib/streamFinish'
+import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /**
@@ -57,6 +59,40 @@ import type { StreamEvent } from '@/hooks/useCoworkRun'
 
 /** Concurrent children, mirroring `DEFAULT_MAX_PARALLEL_SUBAGENTS`. */
 export const MAX_PARALLEL_SUBAGENTS = 3
+
+/**
+ * Longest child answer handed to the parent whole. Past this the middle is cut:
+ * a child that pastes a whole listing into its final message would otherwise
+ * spend the parent's context window on exactly what delegating was meant to
+ * keep out of it. Mirrors `MAX_CHILD_RESULT_CHARS` in `core/agent/subagent.rs`.
+ */
+export const MAX_SUBAGENT_RESULT_CHARS = 14_000
+/** What survives the cut: the conclusion at the start, the caveats at the end. */
+export const SUBAGENT_RESULT_HEAD_CHARS = 9_000
+export const SUBAGENT_RESULT_TAIL_CHARS = 3_500
+
+/**
+ * A child's final message, capped for its parent.
+ *
+ * A short answer comes back untouched. A long one keeps its head and tail with a
+ * note saying how much was dropped. The dispatcher keeps the full text (`full`
+ * on the outcome) and adds the line that says how to read the rest with
+ * `await_task`, so the whole answer stays reachable without a file or a
+ * permission prompt.
+ */
+export function capSubagentOutput(text: string): string {
+  // Code points, not UTF-16 units, so a surrogate pair is never split.
+  const chars = Array.from(text)
+  if (chars.length <= MAX_SUBAGENT_RESULT_CHARS) return text
+  const omitted =
+    chars.length - SUBAGENT_RESULT_HEAD_CHARS - SUBAGENT_RESULT_TAIL_CHARS
+  return (
+    chars.slice(0, SUBAGENT_RESULT_HEAD_CHARS).join('') +
+    `\n\n[... ${omitted} characters omitted from the middle of the subagent's answer. ` +
+    '...]\n\n' +
+    chars.slice(chars.length - SUBAGENT_RESULT_TAIL_CHARS).join('')
+  )
+}
 
 /**
  * Always granted to a child, whatever the allowlist says.
@@ -85,6 +121,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   TEAM_TOOL_NAME,
   ASK_TOOL_NAME,
   TODO_TOOL_NAME,
+  // Managing the parent's background tasks is the parent's business.
+  ...BACKGROUND_TASK_TOOLS,
   // Cross-session messaging speaks for the session, not for an errand: a child
   // must not discover, message or wait on other sessions.
   ...SESSION_MESSAGING_TOOL_NAMES,
@@ -95,6 +133,12 @@ export type SubagentRequest = {
   description: string
   system_prompt?: string
   allowed_tools?: string[]
+  /** The parent did not wait for this child (`task` with `background: true`). */
+  background?: boolean
+  /** A short name for this errand (3-6 words), shown on its row. */
+  title?: string
+  /** A configured model to run this child on, checked when it starts. */
+  model?: string
 }
 
 export type ResolvedSubagent = {
@@ -144,6 +188,9 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
       (t): t is string => typeof t === 'string'
     )
   }
+  if (raw.background === true) req.background = true
+  if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
+  if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
   return req
 }
 
@@ -318,6 +365,11 @@ export type RunSubagentOptions = {
   /** The parent's model instance. Reused so no second load happens. */
   model: LanguageModel
   /**
+   * Whether that model can see images. Decides if an image a child's tool
+   * returned (a `read` of a png) is attached for it or replaced by a note.
+   */
+  supportsVision?: boolean
+  /**
    * The parent's per-request reasoning options (the provider's native
    * thinking/effort settings). The body-level ones -- llama.cpp's budget and
    * `enable_thinking`, `reasoning_effort` -- are already part of `model`.
@@ -350,6 +402,12 @@ export type RunSubagentOptions = {
     /** The managed worktree's own branch, handed down like the access. */
     worktreeBranch?: string | null
   } & CoworkEnvironmentOptions
+  /**
+   * Blocks appended to the child's system prompt after everything else: the
+   * assistant or work profile the Subagents settings chose. Prompt text only;
+   * the child's tools and approvals are not read from here.
+   */
+  extraSystem?: string[]
   /** Runs one of the child's tool calls. Same sandbox as the parent. */
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /** Who the child's calls are recorded as (see `RunDeps.activity`). */
@@ -365,6 +423,11 @@ export type RunSubagentOptions = {
   /** Session tokens already spent, so a child cannot outrun the session cap. */
   sessionTokens?: number
   maxSteps?: number
+  /**
+   * The most tokens this child may spend, for a surface with a budget of its
+   * own (a Room). Absent is the run's own allowance, which is none.
+   */
+  tokenLimit?: number
 }
 
 export type SubagentResult = {
@@ -372,6 +435,12 @@ export type SubagentResult = {
   output: string
   usage: Usage | null
   isError?: boolean
+  /** The answer was shortened by `capSubagentOutput`. */
+  capped?: boolean
+  /** The whole answer, when `output` is a shortened copy of it. */
+  full?: string
+  /** The child used its whole step budget without finishing. */
+  stoppedAtLimit?: boolean
   sessionTokens: number
 }
 
@@ -382,12 +451,19 @@ function childStep(opts: {
   system: string
   tools: Record<string, Tool>
   messages: UIMessage[]
+  supportsVision?: boolean
   signal: AbortSignal
   /** The closing turn after the loop guard stopped the run: no tool calls. */
   textOnly?: boolean
 }): Promise<ReadableStream<UIMessageChunk>> {
   return (async () => {
-    const modelMessages = await convertToModelMessages(opts.messages, {
+    // An image in a tool result goes to a model that can see as an image part
+    // after the tool turn, and to one that cannot as a note: never as base64
+    // inside the tool message's text.
+    const prepared = prepareToolResultImagesForModel(opts.messages, {
+      supportsVision: opts.supportsVision === true,
+    })
+    const modelMessages = await convertToModelMessages(prepared, {
       ignoreIncompleteToolCalls: true,
     })
     const result = streamText({
@@ -445,7 +521,7 @@ export async function runSubagent(
     events.onStart()
 
     const tools = subagentTools(opts.parentTools, resolved.allowedTools)
-    const system = buildSubagentSystemPrompt(resolved.systemPrompt, {
+    const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
       readOnlyFolder: opts.system.readOnlyFolder,
@@ -460,6 +536,8 @@ export async function runSubagent(
       // Derived, not passed: the intersection above may have dropped them.
       webSearch: 'web_search' in tools,
     })
+
+    const system = [baseSystem, ...(opts.extraSystem ?? [])].join('\n\n')
 
     // A fresh history: the child does not see the parent's conversation, so the
     // description is the whole brief.
@@ -493,6 +571,7 @@ export async function runSubagent(
       signal: opts.signal,
       maxSteps: opts.maxSteps ?? MAX_SUBAGENT_STEPS,
       sessionTokens,
+      ...(opts.tokenLimit !== undefined ? { sessionTokenLimit: opts.tokenLimit } : {}),
       deps: {
         sendStep: (msgs, signal, stepOpts) =>
           childStep({
@@ -501,6 +580,7 @@ export async function runSubagent(
             system,
             tools,
             messages: msgs,
+            supportsVision: opts.supportsVision,
             signal,
             textOnly: stepOpts?.textOnly,
           }),
@@ -567,16 +647,26 @@ export async function runSubagent(
       return {
         output:
           `The subagent '${resolved.name}' stopped at ${cap} without finishing.` +
-          (finalText ? `\n\nIts last output was:\n${finalText}` : ''),
+          (finalText
+            ? `\n\nIts last output was:\n${capSubagentOutput(finalText)}`
+            : ''),
         usage: outcome.usage,
         isError: true,
         sessionTokens,
+        // The step budget gets its own label in the Tasks panel; the other
+        // limits are the run's, not the child's.
+        ...(outcome.stoppedBy === 'steps' ? { stoppedAtLimit: true } : {}),
+        ...(finalText && capSubagentOutput(finalText) !== finalText
+          ? { capped: true, full: finalText }
+          : {}),
       }
     }
+    const capped = finalText ? capSubagentOutput(finalText) : ''
     return {
-      output: finalText || '(the subagent returned no answer)',
+      output: finalText ? capped : '(the subagent returned no answer)',
       usage: outcome.usage,
       sessionTokens,
+      ...(finalText && capped !== finalText ? { capped: true, full: finalText } : {}),
     }
   } finally {
     release()

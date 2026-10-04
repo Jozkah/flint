@@ -6,6 +6,13 @@ import { backendStorage } from '@/lib/backendStorage'
 type AgentToolsConfigState = {
   agentToolsEnabled: boolean
   setAgentToolsEnabled: (value: boolean) => void
+  /**
+   * Let a chat hand jobs to subagents (`task`, `await_task`, ...). On by
+   * default, and only meaningful while the agent tools are on: a child works
+   * with those same tools, gated the same way.
+   */
+  chatDelegationEnabled: boolean
+  setChatDelegationEnabled: (value: boolean) => void
   /** Open the sandboxed shell's network namespace. */
   bashNetworkEnabled: boolean
   setBashNetworkEnabled: (value: boolean) => void
@@ -42,6 +49,9 @@ export const useAgentToolsConfig = create<AgentToolsConfigState>()(
     (set) => ({
       agentToolsEnabled: false,
       setAgentToolsEnabled: (agentToolsEnabled) => set({ agentToolsEnabled }),
+      chatDelegationEnabled: true,
+      setChatDelegationEnabled: (chatDelegationEnabled) =>
+        set({ chatDelegationEnabled }),
       bashNetworkEnabled: true,
       setBashNetworkEnabled: (bashNetworkEnabled) => set({ bashNetworkEnabled }),
       browserAgentEnabled: false,

@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware'
 import { localStorageKey } from '@/constants/localStorage'
 import { backendStorage } from '@/lib/backendStorage'
 import {
+  dismissBackground,
   dismissFinished,
   emptyActivityState,
   endWorkflow,
@@ -61,6 +62,8 @@ type CoworkActivityState = ActivityState & {
   settleSession: (sessionId: string, reason: string) => void
   /** Hide every finished workflow of a session, keeping the records. */
   clearFinished: (sessionId: string) => void
+  /** Hide a session's finished background rows (all), or one by id. */
+  clearBackground: (match: { id: string } | { sessionId: string }) => void
   /** Forget everything belonging to a session that no longer exists. */
   dropSession: (sessionId: string) => void
   /** Settle work the previous app run left in flight. */
@@ -100,6 +103,8 @@ export const useCoworkActivity = create<CoworkActivityState>()(
 
       clearFinished: (sessionId) =>
         set((s) => dismissFinished(s, sessionId, now())),
+
+      clearBackground: (match) => set((s) => dismissBackground(s, match)),
 
       dropSession: (sessionId) => set((s) => forgetSession(s, sessionId)),
 

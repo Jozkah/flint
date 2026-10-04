@@ -7,6 +7,7 @@ import {
   MAX_AGENT_STEPS,
   MAX_SUBAGENT_STEPS,
   MAX_SESSION_TOKENS,
+  sessionTokenLimitFor,
 } from '../coworkBudget'
 
 describe('budgetExceeded', () => {
@@ -50,8 +51,26 @@ describe('budgetExceeded', () => {
     ).toBeNull()
   })
 
-  it('keeps a subagent on a tighter leash than the parent', () => {
-    expect(MAX_SUBAGENT_STEPS).toBeLessThan(MAX_AGENT_STEPS)
+  it('honours a caller-supplied token allowance', () => {
+    expect(
+      budgetExceeded({ step: 0, sessionTokens: 500_000 }, MAX_AGENT_STEPS, 800_000)
+    ).toBeNull()
+    expect(
+      budgetExceeded({ step: 0, sessionTokens: 800_000 }, MAX_AGENT_STEPS, 800_000)
+    ).toBe('tokens')
+  })
+
+  // The context window is the only limit on a run: no step, spend or time cap.
+  it('has no spend allowance by default, with or without compaction', () => {
+    expect(sessionTokenLimitFor({ autoCompact: false, window: 200_000 })).toBe(
+      MAX_SESSION_TOKENS
+    )
+    expect(sessionTokenLimitFor({ autoCompact: true, window: 200_000 })).toBe(
+      MAX_SESSION_TOKENS
+    )
+    expect(
+      budgetExceeded({ step: 100_000, sessionTokens: 50_000_000 })
+    ).toBeNull()
   })
 })
 
@@ -73,8 +92,10 @@ describe('recordSpend', () => {
       completion_tokens: 300,
       total_tokens: 10_700,
     })
-    // 300 new output + 400 of prompt growth, not another 10,700.
-    expect(s.spent).toBe(10_900)
+    // 300 new output + 200 of prompt growth beyond the 200 tokens of last
+    // step's output that the prompt replays, not another 10,700 and not the
+    // replayed output a second time.
+    expect(s.spent).toBe(10_700)
   })
 
   it('never charges negative growth when the prompt shrinks after a compaction', () => {

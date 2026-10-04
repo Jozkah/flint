@@ -179,6 +179,7 @@ macro_rules! invoke_commands_with_extras {
         core::agent::commands::agent_skill_enabled_get,
         core::agent::commands::agent_skill_enabled_set,
         core::agent::cc_import::agent_cc_scan,
+        core::agent::cc_hooks::run_cc_context_hooks,
         core::agent::cc_import::agent_cc_import,
         core::agent::commands::agent_plugin_list,
         core::agent::commands::agent_plugin_details,
@@ -624,10 +625,16 @@ pub fn build_app() -> tauri::App {
     // Flint would make the test binary the second instance and it would forward
     // its argv and exit before the embedded WebDriver server ever bound.
     #[cfg(all(desktop, not(feature = "cowork-smoke"), not(feature = "e2e")))]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
-        println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
-        // when defining deep link schemes at runtime, you must also check `argv` here
-    }));
+    // Debug builds only: `FLINT_ALLOW_MULTI_INSTANCE` lets a QA build run beside the
+    // user's own Flint (and beside other QA builds) instead of forwarding its argv.
+    let builder = if cfg!(debug_assertions) && std::env::var_os("FLINT_ALLOW_MULTI_INSTANCE").is_some() {
+        builder
+    } else {
+        builder.plugin(tauri_plugin_single_instance::init(|_app, argv, _cwd| {
+            println!("a new app instance was opened with {argv:?} and the deep link event was already triggered");
+            // when defining deep link schemes at runtime, you must also check `argv` here
+        }))
+    };
 
     // #135: HTML previews are served from their own scheme so they carry
     // their own CSP instead of inheriting the app's through `about:srcdoc`.

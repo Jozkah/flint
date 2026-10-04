@@ -6,6 +6,7 @@ import {
   danglingDependencies,
   findCycle,
   initialState,
+  isolatedTaskAsTeam,
   parseTeamRequest,
   readyTasks,
   renderTeamReport,
@@ -518,5 +519,72 @@ describe('reading a team request', () => {
     // The one that worked in the run's own destination says nothing extra, so
     // the distinction is visible rather than uniform.
     expect(rendered).toContain('b — completed\n')
+  })
+})
+
+describe('an isolated task as a team of one', () => {
+  it('maps a task that asked for isolation to a one-task team', () => {
+    const team = isolatedTaskAsTeam({
+      subagent_name: 'implementer',
+      description: ' rename it ',
+      isolate: true,
+    })
+    expect(team).toEqual({
+      tasks: [
+        {
+          id: 'task',
+          subagent_name: 'implementer',
+          description: 'rename it',
+          isolate: true,
+        },
+      ],
+    })
+    // What the team path will parse is exactly one isolated task.
+    const parsed = parseTeamRequest(team)
+    expect(parsed).toHaveLength(1)
+    expect(typeof parsed === 'string' ? null : parsed[0].isolate).toBe(true)
+  })
+
+  it('carries a one-off role at the head of the brief', () => {
+    const team = isolatedTaskAsTeam({
+      subagent_name: 'one-off',
+      description: 'do it',
+      system_prompt: 'You are careful.',
+      isolate: true,
+    }) as { tasks: Array<{ description: string }> }
+    expect(team.tasks[0].description).toBe('You are careful.\n\ndo it')
+  })
+
+  it('does not apply to a task that did not ask, or is malformed', () => {
+    for (const input of [
+      null,
+      'x',
+      { subagent_name: 'a', description: 'd' },
+      { subagent_name: 'a', description: 'd', isolate: false },
+      { subagent_name: 'a', description: 'd', isolate: 'yes' },
+      { subagent_name: 'a', description: '  ', isolate: true },
+      { description: 'd', isolate: true },
+    ]) {
+      expect(isolatedTaskAsTeam(input)).toBeNull()
+    }
+  })
+
+  it('refuses a tool list rather than dropping it', () => {
+    const out = isolatedTaskAsTeam({
+      subagent_name: 'a',
+      description: 'd',
+      isolate: true,
+      allowed_tools: ['read'],
+    })
+    expect(out).toHaveProperty('error')
+    // An empty list narrows nothing, so it is not a conflict.
+    expect(
+      isolatedTaskAsTeam({
+        subagent_name: 'a',
+        description: 'd',
+        isolate: true,
+        allowed_tools: [],
+      })
+    ).toHaveProperty('tasks')
   })
 })

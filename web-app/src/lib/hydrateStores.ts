@@ -28,6 +28,7 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
@@ -40,6 +41,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { useModelRouting } from '@/hooks/useModelRouting'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { useSubagentSettings } from '@/hooks/useSubagentSettings'
 import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { useImageDescription } from '@/hooks/useImageDescription'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
@@ -86,6 +88,7 @@ const secondaryStores = [
   useCoworkCheckpoints,
   useFileActivity,
   useAgentToolsConfig,
+  useVisualizeConfig,
   useModelOverrides,
   useContextBreakdown,
   useCoworkDisplay,
@@ -98,6 +101,7 @@ const secondaryStores = [
   useAutomationSettings,
   useModelRouting,
   useWorkProfiles,
+  useSubagentSettings,
   useSkillActivation,
   useImageDescription,
   useOnboardingGuide,

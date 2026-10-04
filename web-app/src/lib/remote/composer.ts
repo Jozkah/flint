@@ -94,3 +94,51 @@ export function useRemoteComposer(
     })
   }, [kind, id])
 }
+
+// ---------------------------------------------------------------------------
+// A chat's own message actions (regenerate, edit), for a phone
+// ---------------------------------------------------------------------------
+
+/** What the desktop's message row can do, as the mounted chat does it. */
+export type ChatMessageActions = {
+  /** Regenerate the reply `messageId` (the last one when absent). */
+  regenerate: (messageId?: string) => void
+  /** Edit a message: a new version beside the old one, and for a question a
+   * new reply to it. */
+  edit: (messageId: string, text: string) => void
+}
+
+const chatActions = new Map<string, ChatMessageActions>()
+
+export function chatActionsFor(id: string): ChatMessageActions | null {
+  return chatActions.get(id) ?? null
+}
+
+/** The chat's actions once it is mounted, or null after `timeoutMs`. */
+export async function waitForChatActions(id: string, timeoutMs = 8000): Promise<ChatMessageActions | null> {
+  const until = Date.now() + timeoutMs
+  for (;;) {
+    const now = chatActionsFor(id)
+    if (now) return now
+    if (Date.now() >= until) return null
+    await new Promise((r) => setTimeout(r, 100))
+  }
+}
+
+/** Registers the mounted chat's message actions; the latest render's
+ * functions are the ones called. */
+export function useRemoteChatActions(id: string | null | undefined, actions: ChatMessageActions) {
+  const ref = useRef(actions)
+  ref.current = actions
+  useEffect(() => {
+    if (!id) return
+    const entry: ChatMessageActions = {
+      regenerate: (messageId) => ref.current.regenerate(messageId),
+      edit: (messageId, text) => ref.current.edit(messageId, text),
+    }
+    chatActions.set(id, entry)
+    return () => {
+      if (chatActions.get(id) === entry) chatActions.delete(id)
+    }
+  }, [id])
+}

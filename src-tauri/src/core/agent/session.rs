@@ -59,6 +59,9 @@ pub(crate) struct SessionBudget {
     spent_tokens: u64,
     last_total: u64,
     last_prompt: Option<u64>,
+    /// The previous completion. The next prompt replays it, so it reappears as
+    /// prompt growth and is not charged a second time.
+    last_completion: u64,
     /// Whether any usage has been recorded yet. `last_prompt` being `None`
     /// is not the same thing: earlier requests may have reported only a total.
     recorded: bool,
@@ -74,6 +77,7 @@ impl SessionBudget {
             spent_tokens: 0,
             last_total: 0,
             last_prompt: None,
+            last_completion: 0,
             recorded: false,
             ceiling: None,
             spent_usd: 0.0,
@@ -105,7 +109,11 @@ impl SessionBudget {
                     usage.completion_tokens,
                 ) {
                     (Some(prompt), Some(last_prompt), Some(completion)) => {
-                        completion.saturating_add(prompt.saturating_sub(last_prompt))
+                        completion.saturating_add(
+                            prompt
+                                .saturating_sub(last_prompt)
+                                .saturating_sub(self.last_completion),
+                        )
                     }
                     // Only the very first request is its own baseline. A
                     // prompt count that first appears after total-only
@@ -124,6 +132,7 @@ impl SessionBudget {
         };
 
         self.last_prompt = usage.prompt_tokens.or(self.last_prompt);
+        self.last_completion = usage.completion_tokens.unwrap_or(self.last_completion);
         self.recorded = true;
         self.spent_tokens = self.spent_tokens.saturating_add(delta);
         // Money is charged on the request as billed -- the whole prompt, every
@@ -290,6 +299,16 @@ mod tests {
         assert!(b.exhausted());
     }
 
+    /// A step's completion is part of the next step's prompt, so it must be
+    /// charged once as completion and not again as prompt growth.
+    #[test]
+    fn a_replayed_completion_is_not_charged_twice() {
+        let mut b = SessionBudget::new(None);
+        assert_eq!(b.record(&usage_with_parts(10_000, 200, 10_200)), 10_200);
+        // The prompt grew 400: 200 is last step's reply, 200 is new tool output.
+        assert_eq!(b.record(&usage_with_parts(10_400, 300, 10_700)), 10_700);
+    }
+
     #[test]
     fn no_ceiling_is_never_exhausted() {
         let mut b = SessionBudget::new(None);
@@ -336,8 +355,9 @@ mod tests {
         let mut budget = SessionBudget::new(None);
         assert_eq!(budget.record(&usage(Some(1000))), 1000);
         assert_eq!(budget.record(&usage_with_parts(1050, 60, 1110)), 1110);
-        // And the next request is charged by its prompt growth as usual.
-        assert_eq!(budget.record(&usage_with_parts(1150, 40, 1190)), 1110 + 40 + 100);
+        // And the next request is charged by its prompt growth as usual, less
+        // the 60 completion tokens the grown prompt replays (already charged).
+        assert_eq!(budget.record(&usage_with_parts(1150, 40, 1190)), 1110 + 40 + 40);
     }
 
     /// A verifier's cost counts toward the ceiling and leaves the worker's
@@ -348,8 +368,9 @@ mod tests {
         budget.record(&usage_with_parts(1000, 50, 1050));
         assert_eq!(budget.charge(200), 1250);
         assert!(budget.exhausted());
-        // The next worker turn is charged by its own growth, as before.
-        assert_eq!(budget.record(&usage_with_parts(1100, 20, 1120)), 1250 + 20 + 100);
+        // The next worker turn is charged by its own growth, as before, less
+        // the 50 completion tokens the grown prompt replays.
+        assert_eq!(budget.record(&usage_with_parts(1100, 20, 1120)), 1250 + 20 + 50);
     }
 
     #[test]

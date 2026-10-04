@@ -10,6 +10,7 @@ export type CoworkRail =
   | { kind: 'timeline' }
   /** The agent's own browser, shown read-only (see AgentBrowserWindow). */
   | { kind: 'browser' }
+  | { kind: 'background' }
   | null
 
 /**

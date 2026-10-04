@@ -89,20 +89,11 @@ pub struct ToolResult {
     /// same call outside the sandbox. Never part of model context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unsandboxed_retry: Option<String>,
-    /// A picture the tool produced for the model (the `browser` tool's
-    /// screenshot), as a bounded data URL. The renderer keeps it beside the
-    /// transcript and sends it only to a model that can see. Empty for every
-    /// other tool.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub images: Vec<ToolImage>,
-}
-
-/// One picture in a [`ToolResult`].
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ToolImage {
-    pub data_url: String,
-    pub name: String,
+    /// Images a tool returned for the model to see (a `read` of a png/jpg/
+    /// gif/webp file). The renderer's tool loop turns these into image parts
+    /// of the tool-result message when the model has vision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::tools::ImageContentPart>,
 }
 
 /// How the renderer came to allow a call before sending it here: the user
@@ -1556,17 +1547,7 @@ async fn execute_tool_inner(
         error: failure.as_ref().map(crate::harness_error::HarnessError::to_wire),
         resources,
         unsandboxed_retry,
-        // Only the browser tool's picture reaches the renderer; the other tools
-        // that return one (`read`, `screenshot`) are unchanged.
-        images: if name == "browser" && !is_error {
-            images
-                .unwrap_or_default()
-                .into_iter()
-                .map(|i| ToolImage { data_url: i.data_url, name: i.name })
-                .collect()
-        } else {
-            Vec::new()
-        },
+        images: images.unwrap_or_default(),
     })
 }
 
@@ -1837,15 +1818,34 @@ use crate::session_mailbox::{
 };
 
 /// Upsert a Cowork session in the mailbox registry. The project is recomputed
-/// from `folder`, read-only; no folder means the session cannot message.
+/// from `folder`, read-only. `accepts_messages` is the session's opt-out
+/// switch; omitted, a known session keeps its setting.
 #[tauri::command]
 pub async fn mailbox_session_register(
     data_folder: String,
     session_id: String,
     display_name: String,
     folder: Option<String>,
+    accepts_messages: Option<bool>,
 ) -> Result<SessionRecord, MailboxError> {
-    Mailbox::open(Path::new(&data_folder)).register(&session_id, &display_name, folder.as_deref())
+    Mailbox::open(Path::new(&data_folder)).register_with(
+        &session_id,
+        &display_name,
+        folder.as_deref(),
+        accepts_messages,
+    )
+}
+
+/// Send a session's final answer back as the reply to a message its run
+/// handled, unless it already replied. `None` when there was nothing to send.
+#[tauri::command]
+pub async fn mailbox_auto_reply(
+    data_folder: String,
+    from_session_id: String,
+    reply_to: String,
+    text: String,
+) -> Result<Option<SendReceipt>, MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).auto_reply(&from_session_id, &reply_to, &text)
 }
 
 /// A run started (`running: true`) or ended.
@@ -1867,6 +1867,21 @@ pub async fn mailbox_session_heartbeat(
     run_id: String,
 ) -> Result<(), MailboxError> {
     Mailbox::open(Path::new(&data_folder)).heartbeat(&session_id, &run_id)
+}
+
+/// A running session stopped on, or resumed from, a tool-approval prompt.
+#[tauri::command]
+pub async fn mailbox_session_waiting(
+    data_folder: String,
+    session_id: String,
+    run_id: Option<String>,
+    waiting: bool,
+) -> Result<(), MailboxError> {
+    Mailbox::open(Path::new(&data_folder)).set_waiting_approval(
+        &session_id,
+        run_id.as_deref(),
+        waiting,
+    )
 }
 
 /// Mark a session deleted; mail to it is refused from then on.
@@ -2325,6 +2340,28 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn tool_result_serializes_images_camel_case_and_omits_when_empty() {
+        let mut r = ToolResult {
+            content: "Read image a.png (image/png, 3 bytes)".into(),
+            diff: None,
+            is_error: false,
+            error: None,
+            resources: None,
+            unsandboxed_retry: None,
+            images: vec![crate::tools::ImageContentPart {
+                data_url: "data:image/png;base64,QUJD".into(),
+                name: "a.png".into(),
+            }],
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["images"][0]["dataUrl"], "data:image/png;base64,QUJD");
+        assert_eq!(v["images"][0]["name"], "a.png");
+        r.images.clear();
+        let v = serde_json::to_value(&r).unwrap();
+        assert!(v.get("images").is_none());
+    }
 
     #[test]
     fn note_non_posix_shell_amends_only_the_description() {
