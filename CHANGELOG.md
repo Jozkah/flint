@@ -123,6 +123,11 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Requests to local models and the local API server on this computer no longer go through a system or VPN proxy.
 - Save dialogs, such as a memory export or saving a code block, suggest the file name instead of showing "Untitled".
 - The duplicate model picker in the Details panel is gone.
+- Fixed Flint closing on the first tool call in the Windows release build. The program ended with `thread 'main' has overflowed its stack`: Windows gives the main thread 1 MB unless the program asks for more, and the optimised release build needed more. It now reserves 8 MB, and the release build fails if the program it produced does not.
+- Fixed every widget showing "Widget stopped responding". The widget announces itself while its own page is still loading, so the frame's `load` event could arrive just after, and Flint took it for the widget navigating away.
+- Fixed the Windows `setup.exe` shipping without the phone app's files. The installer script is generated from `tauri.bundle.windows.nsis.base.template` at every build, so the earlier fix to the generated file was overwritten; the folder is now listed in the base.
+- A crash now leaves a lead in the log: every panic is written with its place and a backtrace, and the next start says when the previous run did not shut down cleanly. A picture or video model that cannot load in the chat engine is no longer retried at every launch.
+
 
 ### Run summary and opening pages
 
