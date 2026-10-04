@@ -143,7 +143,6 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Cowork's work-mode menu includes **Bypass permissions** for the current session. It resets to **Ask before changes** when Flint restarts; folder boundaries remain enforced.
 - **Settings > Permissions** offers Ask for permission, automatic approval of safe calls with prompts for dangerous calls, and Bypass permissions until Flint closes.
 - Recognized single-process termination calls can be allowed once, for the current conversation or for future similar calls. A saved rule covers other process IDs but keeps `Stop-Process -Id` separate from `Stop-Process -Id -Force`.
-- A clipboard read can be allowed once, for the current conversation or across conversations. Broader approval includes future clipboard contents; clipboard writes still ask each time.
 
 ### Privacy and security
 
