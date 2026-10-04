@@ -5,6 +5,7 @@
  */
 import { taskTool } from '@/lib/coworkTools'
 import { subagentGuide } from '@/lib/coworkPrompt'
+import { sweepHint } from '@/lib/delegationNudge'
 
 const args = process.argv.slice(2)
 const arg = (n: string, d: string) => {
@@ -78,7 +79,10 @@ async function firstCallNames(prompt: string): Promise<string[]> {
     body: JSON.stringify({
       model,
       messages: [
-        { role: 'system', content: system },
+        {
+          role: 'system',
+          content: [system, sweepHint(prompt)].filter(Boolean).join('\n\n'),
+        },
         { role: 'user', content: prompt },
       ],
       tools,

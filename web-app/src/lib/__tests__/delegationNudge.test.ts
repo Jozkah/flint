@@ -7,7 +7,7 @@ vi.mock('@/lib/agentTools', () => ({
 }))
 vi.mock('@/lib/webSearchTool', () => ({ WEB_TOOL_NAMES: new Set(), executeWebTool: vi.fn() }))
 
-import { DelegationNudge, NUDGE_AFTER, NUDGE_TEXT } from '../delegationNudge'
+import { DelegationNudge, NUDGE_AFTER, NUDGE_TEXT, SWEEP_HINT, sweepHint } from '../delegationNudge'
 import { dispatchCoworkTool } from '../coworkDispatch'
 import type { CoworkMode } from '../coworkMode'
 
@@ -68,5 +68,25 @@ describe('dispatchCoworkTool with a nudge', () => {
     const outs = []
     for (let i = 0; i < 8; i += 1) outs.push((await dispatchCoworkTool(read(`c${i}`), ctx())).output)
     expect(outs.every((o) => o === 'file body')).toBe(true)
+  })
+})
+
+describe('sweepHint', () => {
+  it('fires for survey-shaped requests', () => {
+    for (const q of [
+      'Survey the whole repo: for each of the packages find how errors are logged.',
+      'Go through all the test files and tell me which areas have no tests at all.',
+      'Audit the auth, billing and notifications modules separately.',
+    ]) expect(sweepHint(q)).toBe(SWEEP_HINT)
+  })
+
+  it('stays quiet for lookups and chatter', () => {
+    for (const q of [
+      'What is the version in package.json?',
+      'Read src/main.tsx and tell me what it renders.',
+      'Rename the variable foo to bar in utils.ts.',
+      'Say hello.',
+      undefined,
+    ]) expect(sweepHint(q)).toBeUndefined()
   })
 })
