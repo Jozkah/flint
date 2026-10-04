@@ -901,7 +901,7 @@ fn strip_verbatim(p: PathBuf) -> PathBuf {
     p
 }
 
-fn canon(p: &Path) -> Option<PathBuf> {
+pub(crate) fn canon(p: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(p).ok().map(strip_verbatim)
 }
 
@@ -930,14 +930,14 @@ fn canon_new(p: &Path) -> Option<PathBuf> {
     }
 }
 
-fn inside(p: &Path, roots: &[PathBuf]) -> bool {
+pub(crate) fn inside(p: &Path, roots: &[PathBuf]) -> bool {
     roots
         .iter()
         .filter_map(|r| canon(r))
         .any(|r| p.starts_with(&r))
 }
 
-fn in_jan_dir(p: &Path) -> bool {
+pub(crate) fn in_jan_dir(p: &Path) -> bool {
     p.components()
         .any(|c| matches!(c, Component::Normal(n) if n == crate::tools::sandbox::JAN_DIR))
 }
@@ -967,7 +967,7 @@ impl Roots {
         }
     }
 
-    fn write(&self) -> Vec<PathBuf> {
+    pub(crate) fn write(&self) -> Vec<PathBuf> {
         self.granted
             .iter()
             .chain(self.workspace.iter())
@@ -977,7 +977,7 @@ impl Roots {
 
     /// Where a call with no `cwd` runs: the granted folder or worktree if
     /// there is one, else the attached folder, else the session workspace.
-    fn default_base(&self) -> Option<&PathBuf> {
+    pub(crate) fn default_base(&self) -> Option<&PathBuf> {
         self.granted
             .first()
             .or(self.read.first())
