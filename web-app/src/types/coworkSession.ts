@@ -225,6 +225,8 @@ export type Usage = {
   requests?: number
   cache_reported_requests?: number
   cache_hit_requests?: number
+  /** Input of the requests that reported a cache count (the cached share's base). */
+  cache_reported_input_tokens?: number
 }
 
 /**

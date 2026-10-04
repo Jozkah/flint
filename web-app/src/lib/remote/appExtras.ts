@@ -32,7 +32,7 @@ import { reconcileBreakdown } from '@/lib/contextBreakdown'
 import { DEFAULT_COMPACTION_POLICY, effectiveReserve, getCompactionPolicy } from '@/lib/compactionPolicy'
 import { usableContextValue } from '@/lib/modelCapabilities'
 import { readTokenUsage } from '@/lib/tokenUsage'
-import { speedStats } from '@/lib/tokenSpeed'
+import { speedStats, type SpeedSource } from '@/lib/tokenSpeed'
 import { summarizeChatContext } from '@/lib/contextSummary'
 import { extractFilesFromPrompt } from '@/lib/fileMetadata'
 import { attributionOf, requestAttributions } from '@/lib/requestAttribution'
@@ -169,10 +169,10 @@ export const appExtras: RemoteExtras = {
 
     const speed = speedStats(
       messages.map((m) => {
-        const meta = m.metadata as { tokenSpeed?: { tokenSpeed: number; durationMs?: number; tokenCount?: number }; usage?: unknown } | undefined
+        const meta = m.metadata as { tokenSpeed?: { tokenSpeed: number; durationMs?: number; tokenCount?: number; source?: SpeedSource }; usage?: unknown } | undefined
         const ts = meta?.tokenSpeed
         return ts
-          ? { tokenSpeed: ts.tokenSpeed, durationMs: ts.durationMs, tokenCount: readTokenUsage(meta?.usage)?.outputTokens ?? ts.tokenCount }
+          ? { tokenSpeed: ts.tokenSpeed, durationMs: ts.durationMs, source: ts.source, tokenCount: readTokenUsage(meta?.usage)?.outputTokens ?? ts.tokenCount }
           : undefined
       })
     )

@@ -27,6 +27,7 @@ import {
 import { route } from '@/constants/routes'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { cn, getProviderTitle } from '@/lib/utils'
+import { speedStats } from '@/lib/tokenSpeed'
 import {
   change,
   summarize,
@@ -394,21 +395,21 @@ type RunRow = {
 }
 
 /**
- * Average generation speed across a session's replies, weighted by the tokens
- * each produced so a one-line reply does not count as much as a long one.
- * `null` when no reply reported a speed.
+ * Average generation speed across a session's replies: every token over every
+ * second spent generating (the same figure the token popup shows), not a mean
+ * of speeds. `null` when no reply reported a measurable speed.
  */
 function averageTokenSpeed(turns: CoworkSession['turns']): number | null {
-  let weighted = 0
-  let weight = 0
-  for (const tu of turns) {
-    const speed = tu.tokenSpeed?.tokenSpeed
-    if (!speed || !Number.isFinite(speed) || speed <= 0) continue
-    const w = tu.tokenSpeed?.tokenCount ?? tu.usage?.completion_tokens ?? 1
-    weighted += speed * w
-    weight += w
-  }
-  return weight > 0 ? weighted / weight : null
+  return (
+    speedStats(
+      turns.map((tu) => ({
+        tokenSpeed: tu.tokenSpeed?.tokenSpeed,
+        durationMs: tu.tokenSpeed?.durationMs,
+        source: tu.tokenSpeed?.source,
+        tokenCount: tu.tokenSpeed?.tokenCount ?? tu.usage?.completion_tokens,
+      }))
+    ).average ?? null
+  )
 }
 
 /**

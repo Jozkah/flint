@@ -131,24 +131,38 @@ export function speedStats(samples: readonly (SpeedSample | undefined | null)[])
   last?: number
   average?: number
   source?: SpeedSource
+  /** How many replies the average is over. */
+  samples?: number
 } {
   let last: number | undefined
   let source: SpeedSource | undefined
   let tokensTotal = 0
   let secondsTotal = 0
+  let counted = 0
   for (const s of samples) {
     const speed = s?.tokenSpeed
     if (!speed || !Number.isFinite(speed) || speed <= 0) continue
     const tokens = s?.tokenCount ?? 0
-    if (!isMeaningfulSpeed(tokens, s?.durationMs)) continue
+    if (!Number.isFinite(tokens) || !isMeaningfulSpeed(tokens, s?.durationMs)) continue
     last = speed
     source = s?.source
+    // A figure saved before the origin was recorded came from the old clock
+    // (reasoning and tool-argument tokens divided by the visible text's span,
+    // or a span that included tool runs). It can be several times too high
+    // and cannot be told from a good one, so it is not averaged in.
+    if (!s?.source) continue
     tokensTotal += tokens
     secondsTotal += tokens / speed
+    counted += 1
   }
-  return tokensTotal > 0
-    ? { last, average: tokensTotal / secondsTotal, ...(source ? { source } : {}) }
-    : {}
+  if (last === undefined) return {}
+  return {
+    last,
+    ...(tokensTotal > 0 && secondsTotal > 0
+      ? { average: tokensTotal / secondsTotal, samples: counted }
+      : {}),
+    ...(source ? { source } : {}),
+  }
 }
 
 /**

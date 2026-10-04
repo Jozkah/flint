@@ -14,7 +14,13 @@ import {
 } from '@/lib/tokenUsage'
 import type { SpeedSource } from '@/lib/tokenSpeed'
 
-export type UsageSpeed = { last?: number; average?: number; source?: SpeedSource }
+export type UsageSpeed = {
+  last?: number
+  average?: number
+  source?: SpeedSource
+  /** How many replies the average is over. */
+  samples?: number
+}
 
 const exact = (n: number) => n.toLocaleString()
 
@@ -34,7 +40,7 @@ const SPEED_NOTE: Record<SpeedSource, string> = {
     'Estimated: the provider did not count output tokens, so they are taken from the text (about 4 characters per token).',
 }
 
-function InfoTip({ note, testId }: { note: string; testId?: string }) {
+export function InfoTip({ note, testId }: { note: string; testId?: string }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -115,7 +121,16 @@ function Line({
 }
 
 /** The cache line under the figures: a thin bar, and how much of the input it was. */
-function CacheLine({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
+function CacheLine({
+  usage,
+  prefix,
+  aggregate,
+}: {
+  usage: TokenUsage
+  prefix: string
+  /** Several requests added up, so the share is over the ones that reported. */
+  aggregate?: boolean
+}) {
   const input = usage.inputTokens
   if (input === undefined) return null
   const cached = usage.cachedInputTokens
@@ -141,11 +156,25 @@ function CacheLine({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
       ? ` ${exact(usage.cacheWriteTokens)} written to the cache (part of the new input).`
       : ''
   const via = usage.cacheSource ? ` Reported by ${SOURCE_NAME[usage.cacheSource]}.` : ''
+  const reportedOf =
+    aggregate && requests !== undefined && requests > 1 && usage.cacheReportedRequests !== undefined
+      ? usage.cacheReportedRequests
+      : undefined
+  const partial =
+    reportedOf !== undefined && reportedOf > 0 && requests !== undefined && reportedOf < requests
+      ? ` Only ${reportedOf} of ${requests} requests reported cache info; the share is of their input.`
+      : ''
   const cacheNote =
     status === 'not-reported'
-      ? 'The provider did not report prompt-cache use for this request.'
-      : `${split}${written}${several}${clamped}${via}`.trim()
+      ? aggregate
+        ? 'No request reported prompt-cache use.'
+        : 'The provider did not report prompt-cache use for this request.'
+      : pct === undefined
+        ? `The share cannot be worked out from what was saved.${several}${partial}`.trim()
+        : `${split}${written}${several}${partial}${clamped}${via}`.trim()
   const whole = (cached ?? 0) + (uncached ?? 0)
+  // A share, or a dash: never the bare word.
+  const showDash = status === 'not-reported' ? aggregate : pct === undefined
 
   return (
     <div
@@ -171,14 +200,23 @@ function CacheLine({ usage, prefix }: { usage: TokenUsage; prefix: string }) {
           Prompt cache
           <InfoTip note={cacheNote} testId={`${prefix}-cache-note`} />
         </span>
-        {status !== 'not-reported' ? (
+        {showDash ? (
+          <span
+            className="font-mono tabular-nums text-foreground"
+            data-testid={`${prefix}-cache-status`}
+            data-cache-status={status}
+            aria-label="Cache share unavailable"
+          >
+            -
+          </span>
+        ) : status !== 'not-reported' ? (
           <span
             className="font-mono tabular-nums text-foreground"
             data-testid={`${prefix}-cache-status`}
             data-cache-status={status}
             data-cache-percent={pct !== undefined ? pct.toFixed(2) : undefined}
           >
-            {pct !== undefined ? `${formatPercent(pct)} cached` : 'cached'}
+            {`${formatPercent(pct ?? 0)} cached`}
           </span>
         ) : (
           <span
@@ -204,14 +242,34 @@ function Group({
   speed,
   speedValue,
   prefix,
+  aggregate,
 }: {
   usage: TokenUsage
   speed?: UsageSpeed
   speedValue?: number
   prefix: string
+  /** The conversation's group: sums over requests, and an average speed. */
+  aggregate?: boolean
 }) {
   const kinds = usageValueKinds(usage)
-  const estimated = speed?.source === 'estimated'
+  const estimated = !aggregate && speed?.source === 'estimated'
+  // Always the sum of its two parts, whatever a provider called its total.
+  const total =
+    usage.inputTokens !== undefined && usage.outputTokens !== undefined
+      ? usage.inputTokens + usage.outputTokens
+      : usage.totalTokens
+  const requests = usage.requests
+  const speedNote = aggregate
+    ? `All output tokens over all generation time, across ${
+        speed?.samples === undefined
+          ? 'the replies'
+          : `${speed.samples} ${speed.samples === 1 ? 'reply' : 'replies'}${
+              requests !== undefined && requests > speed.samples ? ` of ${requests} requests` : ''
+            }`
+      } with both a token count and a decode time.`
+    : speed?.source
+      ? SPEED_NOTE[speed.source]
+      : undefined
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
@@ -230,24 +288,34 @@ function Group({
             data={{ 'data-value': usage.outputTokens }}
           />
         )}
-        {usage.totalTokens !== undefined && (
+        {total !== undefined && (
           <Tile
             testId={`${prefix}-total`}
             label="Total"
-            value={exact(usage.totalTokens)}
-            note={kinds.total === 'derived' ? 'Input plus output.' : undefined}
-            data={{ 'data-value': usage.totalTokens }}
+            value={exact(total)}
+            note={
+              aggregate
+                ? 'Input plus output, added up over all requests. Cached input counts as input each time it is sent.'
+                : kinds.total === 'derived'
+                  ? 'Input plus output.'
+                  : undefined
+            }
+            data={{ 'data-value': total }}
           />
         )}
       </div>
-      <CacheLine usage={usage} prefix={prefix} />
+      <CacheLine usage={usage} prefix={prefix} aggregate={aggregate} />
       {speedValue !== undefined && (
         <Line
           testId={`${prefix}-speed`}
           label="Speed"
           value={`${estimated ? '~' : ''}${speedValue >= 100 ? Math.round(speedValue) : speedValue.toFixed(1)} tok/s`}
-          note={speed?.source ? SPEED_NOTE[speed.source] : undefined}
-          data={{ 'data-value': speedValue, 'data-source': speed?.source }}
+          note={speedNote}
+          data={{
+            'data-value': speedValue,
+            'data-source': speed?.source,
+            'data-samples': aggregate ? speed?.samples : undefined,
+          }}
         />
       )}
     </div>
@@ -304,7 +372,7 @@ export function TokenUsageSummary({
           <div className="text-xs font-medium text-foreground">
             This conversation
             <span className="font-normal text-muted-foreground">
-              {` · ${requests} ${requests === 1 ? 'request' : 'requests'}`}
+              {` · All requests (${requests})`}
             </span>
           </div>
           <Group
@@ -312,6 +380,7 @@ export function TokenUsageSummary({
             speed={speed}
             speedValue={speed?.average}
             prefix="session-token-usage"
+            aggregate
           />
         </section>
       )}
