@@ -2266,6 +2266,7 @@ impl CompositeToolInvoker {
                     model: ctx.model_id.clone(),
                     budget_remaining: ctx.max_session_tokens,
                     send_reasoning: ctx.send_reasoning,
+                    model_settings: crate::core::agent::subagent::load_model_settings(),
                 };
                 // Every reviewer is dispatched before any is awaited, so they
                 // work at the same time and none waits on another's answer.
@@ -2279,6 +2280,8 @@ impl CompositeToolInvoker {
                         isolate: None,
                         fork_context: false,
                         durable: false,
+                        max_turns: None,
+                        title: None,
                     };
                     let run = spawn_subagent(&ctx.bg, &ctx.parent_args, request, &parent, &self.events).map_err(|e| e.to_string());
                     dispatched.push((reviewer.clone(), run));
@@ -2879,6 +2882,7 @@ impl CompositeToolInvoker {
                             model: ctx.model_id.clone(),
                             budget_remaining: ctx.max_session_tokens,
                             send_reasoning: ctx.send_reasoning,
+                            model_settings: crate::core::agent::subagent::load_model_settings(),
                         },
                     ) {
                         Ok(run_id) => {
@@ -2917,6 +2921,7 @@ impl CompositeToolInvoker {
                         model: ctx.model_id.clone(),
                         budget_remaining: ctx.max_session_tokens,
                         send_reasoning: ctx.send_reasoning,
+                        model_settings: crate::core::agent::subagent::load_model_settings(),
                     },
                     &self.events,
                 ) {
@@ -2952,6 +2957,11 @@ impl CompositeToolInvoker {
                     Ok(r) => r,
                     Err(e) => return format!("ERROR: {e}"),
                 };
+                // Reading the rest of an answer that came back shortened: it
+                // was already collected, so there is nothing to wait for.
+                if let Some(offset) = crate::core::agent::subagent::parse_await_offset(args) {
+                    return crate::core::agent::subagent::read_retained_result(&run_id, offset);
+                }
                 let data = std::path::Path::new(&ctx.parent_args.jan_data_folder);
                 let owner = ctx.parent_args.session_id.as_deref().unwrap_or_default();
                 let awaited = if crate::core::agent::durable_subagent::is_durable(data, owner, &run_id) {
@@ -10399,6 +10409,52 @@ mod tests {
         .unwrap();
 
         assert_eq!(result["choices"][0]["message"]["content"], "done");
+    }
+
+    /// A subagent child runs with a finite `max_turns` (see
+    /// `subagent::child_body`). One that keeps calling tools has to stop with
+    /// the turn-limit failure the parent turns into a clear status, rather than
+    /// run on.
+    #[tokio::test]
+    async fn turn_cycle_with_a_cap_stops_a_child_that_never_finishes() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        // Different arguments each turn, so the repeated-call guard stays out
+        // of it and the turn cap is what ends the run.
+        let call = |n: u32| {
+            let mut c = tool_call_completion();
+            c["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] =
+                json!(format!("{{\"q\":\"query {n}\"}}"));
+            c
+        };
+        let model = MockModel::new(vec![call(1), call(2), call(3), call(4)]);
+        let tool = MockTool::default();
+        let mut budget = SessionBudget::new(None);
+        let convo = vec![json!({ "role": "user", "content": "hi" })];
+
+        let err = run_turn_cycle(
+            &tx,
+            &json!({}),
+            "m",
+            &[],
+            convo,
+            3,
+            &mut budget,
+            &model,
+            &tool,
+            crate::core::agent::plan::RunMode::Normal,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect_err("a child that never answers must be stopped");
+
+        assert_eq!(err.kind(), ErrorKind::BudgetExhausted, "{}", err.message());
+        assert!(err.message().contains("3-turn limit"), "{}", err.message());
+        let shown = crate::core::agent::subagent::child_failure_text(err.kind(), err.message(), 3);
+        assert!(shown.contains("all 3 of its turns"), "{shown}");
+        assert_eq!(tool.calls.lock().unwrap().len(), 3, "it ran exactly its turns, no more");
     }
 
     #[test]

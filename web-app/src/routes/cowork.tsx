@@ -97,12 +97,12 @@ import {
 import {
   collectedJobId,
   commandOf,
-  countToolCalls,
   finishedJobPatch,
 } from '@/lib/coworkTasks'
 import {
   INTERRUPTED_BY_RUN_END,
   findTaskByJob,
+  backgroundTasksOf,
   sessionTotals,
   sessionWorkflows,
   taskIdFor,
@@ -111,7 +111,6 @@ import {
   type WorkflowView,
 } from '@/lib/coworkActivity'
 import {
-  CANCELLED_BY_USER,
   cancelMessage,
   cancelTask as cancelTaskRequest,
   cancelWorkflow as cancelWorkflowRequest,
@@ -162,7 +161,6 @@ import {
 import {
   loadToolActivity,
   recordLifecycle,
-  recordToolActivity,
   type ToolActivityItem,
 } from '@/lib/toolActivity'
 import { createFrameBatch } from '@/lib/frameBatch'
@@ -278,6 +276,8 @@ import {
 } from '@/hooks/useCoworkUserEdits'
 import { withUserEditNotice } from '@/lib/coworkCodeEdit'
 import { CoworkTasksPanel } from '@/containers/CoworkTasksPanel'
+import { CoworkBackgroundTasksPanel } from '@/containers/CoworkBackgroundTasksPanel'
+import { ReviewChangesContext } from '@/containers/TaskCheckoutLink'
 import { CoworkTimelinePanel } from '@/containers/CoworkTimelinePanel'
 import type { LiveJob } from '@/lib/coworkTasks'
 import {
@@ -453,7 +453,6 @@ import {
 import {
   describeDestinations,
   planDestinations,
-  type Destination,
 } from '@/lib/coworkTeamDestinations'
 import { dispatchCoworkTool } from '@/lib/coworkDispatch'
 import { applyTodoOp, renderTodoResult } from '@/lib/coworkTodo'
@@ -477,8 +476,7 @@ import {
   beginRun,
   endRun,
   hasSubagent,
-  registerSubagent,
-  unregisterSubagent,
+  abortSubagent,
   isAbortLike,
   answerAsk,
   runTurn,
@@ -495,12 +493,12 @@ import {
 } from '@/lib/coworkSubagentRegistry'
 import {
   parseSubagentRequest,
-  resolveSubagent,
   subagentActorId,
-  parentToolNames,
-  runSubagent,
-  type SubagentRequest,
+  SUBAGENT_RESULT_HEAD_CHARS,
 } from '@/lib/coworkSubagent'
+import { BackgroundTasks } from '@/lib/coworkBackgroundTasks'
+import { createChildRunner } from '@/lib/coworkChildRunner'
+import { DelegationNudge } from '@/lib/delegationNudge'
 import { errorText } from '@/lib/errorText'
 import { loadProjectTooling, type LoadedTooling } from '@/lib/projectTooling'
 import { CoworkStopMenu } from '@/containers/CoworkStopMenu'
@@ -2392,6 +2390,22 @@ export function CoworkPage() {
     () => sessionTotals(activity, session?.id),
     [activity, session?.id]
   )
+  // The Background tasks tab reads the same record; it exists only while it
+  // has rows.
+  const backgroundTasks = useMemo(
+    () =>
+      session?.id
+        ? backgroundTasksOf(activity, session.id)
+        : { running: [], finished: [] },
+    [activity, session?.id]
+  )
+  // Clearing the last row removes the tab, so its panel does not stay open on
+  // nothing.
+  const backgroundCount =
+    backgroundTasks.running.length + backgroundTasks.finished.length
+  useEffect(() => {
+    if (rail?.kind === 'background' && backgroundCount === 0) setRail(null)
+  }, [rail?.kind, backgroundCount, setRail])
 
   // The backend is the authority on whether a backgrounded shell is still
   // running: the agent may not collect a job for many turns, and until it does
@@ -2431,6 +2445,16 @@ export function CoworkPage() {
       setRail({ kind: 'tasks' })
       setFocusWorkflowId(task.workflowId)
       setFocusTaskId(task.id)
+    },
+    [setRail]
+  )
+  // A child in a checkout of its own: its row leads to the Changes panel, where
+  // the review list shows that child's work.
+  const [reviewFocusTaskId, setReviewFocusTaskId] = useState<string | null>(null)
+  const reviewChildChanges = useCallback(
+    (task: ActivityTask) => {
+      setReviewFocusTaskId(task.checkout?.taskId ?? null)
+      setRail({ kind: 'diff' })
     },
     [setRail]
   )
@@ -3355,138 +3379,73 @@ export function CoworkPage() {
      * Shared by `task` and `team` rather than written twice: a team's children
      * are this run's children, and they must inherit exactly the same frozen
      * authority, the same dispatcher, the same cancellation and the same
-     * activity records. A second copy of this would be a second set of rules,
-     * and the one that drifted would be the one nobody was watching.
+     * activity records. The recording, Stop and settling live in
+     * `coworkChildRunner`, which plain chat and Rooms use too; what is below is
+     * only what is particular to this run: where a child works, what it holds,
+     * and how its calls are gated.
      */
-    const dispatchChild = async (
-      callId: string,
-      req: SubagentRequest,
-      teamSignal?: AbortSignal,
-      parentTaskId?: string,
-      /**
-       * A checkout of this child's own, when a team asked for one.
-       *
-       * Everything that names where work goes moves together: the root the
-       * child is told about, the root the gate resolves, and the owner id the
-       * grant was issued to. Passing only some of them is how a child ends up
-       * writing one place while being told about another.
-       */
-      destination?: Destination
-    ): Promise<ToolOutcome> => {
-      const childFolder = destination?.path ?? runReadRoot
-      const childGrant = destination ? destination.grantId : runGrant
-      // A child in the run's own tree shares its extra folders; one given an
-      // isolated checkout holds a grant for that checkout alone.
-      const childExtras = destination ? [] : runExtraFolders
-      const childOwner = destination?.ownerId ?? sid
-      const resolved = resolveSubagent(
-        req,
-        runAgents,
-        parentToolNames(transport.builtinTools)
-      )
-      if ('error' in resolved) {
-        return { output: `ERROR: ${resolved.error}`, isError: true }
-      }
-      if (!transport.model) {
-        return {
-          output:
-            'ERROR: no model is loaded for this run, so no subagent can start',
-          isError: true,
+    // One hint per run, for a survey the model reads itself.
+    const delegationNudge = new DelegationNudge(() => true)
+    const dispatchChild = createChildRunner({
+      sessionId: sid,
+      runId,
+      run,
+      modelId: selectedModel.id,
+      providerId: selectedProvider,
+      parent: () => transport.persona(),
+      definitions: runAgents,
+      signal: controller.signal,
+      // The parent's instance: a second one would mean a second llama-server
+      // load for the same model.
+      model: () => transport.model,
+      supportsVision: () =>
+        selectedModel?.capabilities?.includes('vision') ?? false,
+      providerOptions: () => transport.reasoningProviderOptions(),
+      parentTools: () => transport.builtinTools,
+      anchorMessageId,
+      lane: {
+        queue: (callId, name, waiting) =>
+          useCoworkRun.getState().queueSubagent(sid, callId, name, waiting),
+        start: (callId, name) =>
+          useCoworkRun.getState().startSubagent(sid, callId, name),
+        inner: (callId, event) =>
+          useCoworkRun.getState().routeIntoSubagent(sid, callId, event),
+        turns: (callId) =>
+          (useCoworkRun.getState().subagents[sid] ?? []).find(
+            (one) => one.runId === callId
+          )?.turns,
+        end: (callId, usage) =>
+          useCoworkRun.getState().endSubagent(sid, callId, usage),
+        attach: (callId, output) =>
+          useCoworkRun.getState().attachSubagentOutput(sid, callId, output),
+      },
+      setup: (resolved, destination) => {
+        const childFolder = destination?.path ?? runReadRoot
+        const childGrant = destination ? destination.grantId : runGrant
+        // A child in the run's own tree shares its extra folders; one given an
+        // isolated checkout holds a grant for that checkout alone.
+        const childExtras = destination ? [] : runExtraFolders
+        const childOwner = destination?.ownerId ?? sid
+        const identity = {
+          session: sid,
+          run: runId,
+          agent: resolved.name,
+          // AH-110: what a change it makes is attributed to. A role Flint
+          // ships is a role; anything else is an agent by that name.
+          agentId: subagentActorId(resolved),
+          parentAgent: 'agent',
+          project: workspacePath ?? '',
         }
-      }
-      // Recorded before the child starts: the dispatch is the only
-      // moment the agent name, description and model are known
-      // together, and the record has to exist for the queue position
-      // that arrives next to land on something.
-      recordEvents([
-        {
-          id: `agent:${run.runId}:${callId}:dispatched`,
-          session: run.sessionId,
-          run: run.runId,
-          kind: 'agent.dispatched',
-          payload: { agent: resolved.name, model: selectedModel.id, description: req.description },
-        },
-      ])
-      recordAgentDispatch(run, {
-        callId,
-        agentName: resolved.name,
-        description: req.description,
-        model: selectedModel.id,
-        // A team's children hang under the team's own row, so the panel shows
-        // one piece of work with parts rather than several unrelated errands.
-        parentTaskId,
-        anchorMessageId: anchorMessageId(),
-      })
-      // Its own controller, chained to the run's, so this one child
-      // can be stopped without stopping the turn.
-      const childTaskId = taskIdFor(sid, runId, callId)
-      const childAbort = registerSubagent(sid, childTaskId)
-      const stopChild = () => childAbort.abort('cancelled')
-      controller.signal.addEventListener('abort', stopChild, {
-        once: true,
-      })
-      // A team cancels its children through their own signals, so one task can be
-      // stopped without stopping the turn. Chained rather than replacing the
-      // run's: both must be able to end this child.
-      if (teamSignal) {
-        if (teamSignal.aborted) childAbort.abort('cancelled')
-        else teamSignal.addEventListener('abort', stopChild, { once: true })
-      }
-      const activity = useCoworkActivity.getState()
-      /**
-       * Record how this child actually ended.
-       *
-       * A child stopped by the run's own Stop is cancelled, not
-       * failed: the abort is why it ended. Anything already settled
-       * — the panel's per-task Stop writes `cancelled` first — keeps
-       * the status it has, because the guard in `updateTask` refuses
-       * to overwrite a finished one.
-       */
-      const settleChild = (isError: boolean, output?: string) => {
-        const aborted = childAbort.signal.aborted
-        useCoworkActivity.getState().patchTask(childTaskId, {
-          ...(output != null ? { output } : {}),
-          status: aborted
-            ? ('cancelled' as const)
-            : isError
-              ? ('error' as const)
-              : ('done' as const),
-          endedAt: Date.now(),
-          ...(aborted ? { detail: CANCELLED_BY_USER } : {}),
-        })
-      }
-      try {
-        const child = await runSubagent({
-          resolved,
-          description: req.description,
-          // The same identity the child's dispatched calls carry, for the
-          // calls the runner refuses without dispatching.
-          activity: () => ({
-            session: sid,
-            run: runId,
-            agent: resolved.name,
-            // AH-110: what a change it makes is attributed to. A role Flint
-            // ships is a role; anything else is an agent by that name.
-            agentId: subagentActorId(resolved),
-            parentAgent: 'agent',
-            project: workspacePath ?? '',
-          }),
-          // The parent's instance: a second one would mean a second
-          // llama-server load for the same model.
-          model: transport.model,
-          supportsVision:
-            selectedModel?.capabilities?.includes('vision') ?? false,
-          providerOptions: transport.reasoningProviderOptions(),
-          parentTools: transport.builtinTools,
+        return {
+          activity: () => identity,
           system: {
             workspacePath,
             readOnlyFolder: childFolder,
             extraFolders: childExtras,
             extraFoldersWritable: !destination && runExtraFoldersWritable,
             bashAvailable: sandboxEnforces(),
-            // The parent's frozen answers, handed down unchanged: a
-            // child never resolves its own access or its own
-            // instructions.
+            // The parent's frozen answers, handed down unchanged: a child never
+            // resolves its own access or its own instructions.
             folderAccess: promptFolderAccess(origins),
             worktreeBranch: worktree?.branch ?? null,
             projectInstructions,
@@ -3498,176 +3457,108 @@ export function CoworkPage() {
             networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
             mcpServers: [],
           },
-          signal: childAbort.signal,
-          sessionTokens: 0,
-          // A child never gets `todo`/`ask`/`task`, so these refuse
-          // rather than execute: a model can still emit a call to a
-          // tool that was never advertised.
+          // A child never gets `todo`/`ask`/`task`, so these refuse rather than
+          // execute: a model can still emit a call to a tool that was never
+          // advertised.
           dispatch: (call, toolSignal) =>
-            dispatchCoworkTool(call, {
-              // Recorded under the parent's run and this child's own name, so
-              // the timeline shows which agent did a thing without splitting
-              // the run it belongs to.
-              activity: {
-                session: sid,
-                run: runId,
-                agent: resolved.name,
-                agentId: subagentActorId(resolved),
-                parentAgent: 'agent',
-                project: workspacePath ?? '',
-              },
-              // The owner the grant was issued to, not the run's session: an
-              // isolated child's authority is its own, and the backend refuses a
-              // grant presented under any other id.
-              sessionId: childOwner,
-              // The parent's model: a child runs on the same instance.
-              modelId: selectedModel?.id,
-              readOnlyFolder: childFolder,
-              extraFolders: childExtras,
-              mode: runMode,
-              readFailures: runReadFailures,
-              writeGrant: childGrant,
-              // A child in its own checkout is a managed-worktree run of its
-              // own, consented to under its own owner id. Inheriting the
-              // parent's answers here would have the gate check a tree the
-              // child is not in.
-              access: destination ? 'managed-worktree' : effective.access,
-              accessCapability: runCapability,
-              editConsent: destination
-                ? { sessionId: destination.ownerId, folder: destination.path }
-                : runConsent,
-              worktreePath: destination ? destination.path : runWorktreePath,
-              // Snapshotted with the run: a skill the user asked for and did
-              // not get stops changes. Inspection still proceeds.
-              unresolvedSkills: unresolvedSkills(runSkills),
-              // The root this run is bound to, re-checked before every
-              // filesystem call: detaching or switching folders mid-run must
-              // not leave the run reading the folder that was taken away.
-              bindingIntact: () =>
-                (useCoworkSessions
-                  .getState()
-                  .sessions.find((one) => one.id === sid)?.folder ?? null) ===
-                (current?.folder ?? null),
-              webSearch,
-              // A subagent's mutations are the session's mutations, so
-              // they go through the same prompt rather than around it --
-              // shown on its own, because the child's calls are not parts of
-              // any message on screen.
-              onApprove: (callId, toolName, input, preview, signal, forced) =>
-                useToolApprovalRequests
-                  .getState()
-                  .requestApproval(callId, toolName, sid, undefined, {
-                    input,
-                    ...(forced
-                      ? {
-                          alwaysAsk: true,
-                          taskContext: forced.reason,
-                          conversationProgram: forced.conversationProgram,
-                          onDecision: forced.onDecision,
-                        }
-                      : {}),
-                    workspaceLabel:
-                      (destination ? destination.path : current?.folder) ??
-                      undefined,
-                    preview,
-                    origin: destination
-                      ? `${resolved.name} (its own checkout)`
-                      : resolved.name,
-                    signal,
-                  }),
-              trackShell: () =>
-                useCoworkActiveWork.getState().acquire({
-                  sessionId: sid,
-                  kind: 'shell',
-                  authority: runAuthority,
-                }),
-              // The same resolver and the same tracker the parent
-              // uses: one repository, one manifest, one set of rules.
-              scopedInstructions: scopedInstructionsFor,
-              onTodo: async () => ({
-                output:
-                  'The todo list belongs to the agent that dispatched you.',
-                isError: true,
-              }),
-              onAsk: async () => ({
-                output:
-                  'You cannot ask the user questions. Decide, and say what you assumed.',
-                isError: true,
-              }),
-              onTask: async () => ({
-                output: 'A subagent cannot dispatch subagents.',
-                isError: true,
-              }),
-            }, toolSignal),
-          events: {
-            onQueued: (waiting) => {
-              // The dispatching call's item says it is waiting for a slot,
-              // in sequence with everything else the run did.
-              void recordToolActivity({
-                call: callId,
-                tool: 'task',
-                session: sid,
-                run: runId,
-                agent: 'main',
-                source: 'cowork',
-                phase: 'queued',
-                detail: `waiting for a slot (position ${waiting})`,
-              })
-              useCoworkRun
+          dispatchCoworkTool(call, {
+            // Recorded under the parent's run and this child's own name, so
+            // the timeline shows which agent did a thing without splitting
+            // the run it belongs to.
+            activity: {
+              session: sid,
+              run: runId,
+              agent: resolved.name,
+              agentId: subagentActorId(resolved),
+              parentAgent: 'agent',
+              project: workspacePath ?? '',
+            },
+            // The owner the grant was issued to, not the run's session: an
+            // isolated child's authority is its own, and the backend refuses a
+            // grant presented under any other id.
+            sessionId: childOwner,
+            // The parent's model: a child runs on the same instance.
+            modelId: selectedModel?.id,
+            readOnlyFolder: childFolder,
+            extraFolders: childExtras,
+            mode: runMode,
+            readFailures: runReadFailures,
+            writeGrant: childGrant,
+            // A child in its own checkout is a managed-worktree run of its
+            // own, consented to under its own owner id. Inheriting the
+            // parent's answers here would have the gate check a tree the
+            // child is not in.
+            access: destination ? 'managed-worktree' : effective.access,
+            accessCapability: runCapability,
+            editConsent: destination
+              ? { sessionId: destination.ownerId, folder: destination.path }
+              : runConsent,
+            worktreePath: destination ? destination.path : runWorktreePath,
+            // Snapshotted with the run: a skill the user asked for and did
+            // not get stops changes. Inspection still proceeds.
+            unresolvedSkills: unresolvedSkills(runSkills),
+            // The root this run is bound to, re-checked before every
+            // filesystem call: detaching or switching folders mid-run must
+            // not leave the run reading the folder that was taken away.
+            bindingIntact: () =>
+              (useCoworkSessions
                 .getState()
-                .queueSubagent(sid, callId, resolved.name, waiting)
-              activity.patchTask(childTaskId, {
-                status: 'queued',
-                waiting,
-              })
-            },
-            onStart: () => {
-              useCoworkRun.getState().startSubagent(sid, callId, resolved.name)
-              activity.patchTask(childTaskId, {
-                status: 'running',
-                waiting: undefined,
-                startedAt: Date.now(),
-              })
-            },
-            onInner: (event) => {
-              useCoworkRun.getState().routeIntoSubagent(sid, callId, event)
-              // Mirrored onto the record so the panel can show the
-              // child's own trace without reaching into the run store.
-              const turns = (useCoworkRun.getState().subagents[sid] ?? []).find(
-                (one) => one.runId === callId
-              )?.turns
-              if (turns) {
-                activity.patchTask(childTaskId, {
-                  transcript: turns,
-                  toolCount: countToolCalls(turns),
-                })
-              }
-            },
-            onEnd: (usage) => {
-              useCoworkRun.getState().endSubagent(sid, callId, usage)
-              // Usage only. `onEnd` fires for *every* ending — an
-              // abort before the child even starts, a failed model
-              // step, an exhausted step budget — so writing a terminal
-              // status here would record every one of them as success,
-              // and the finished-status guard would then refuse the
-              // real outcome that arrives a moment later.
-              activity.patchTask(childTaskId, {
-                usage: usage ?? undefined,
-              })
-            },
-          },
-        })
-        useCoworkRun.getState().attachSubagentOutput(sid, callId, child.output)
-        settleChild(Boolean(child.isError), child.output)
-        return { output: child.output, isError: child.isError }
-      } finally {
-        controller.signal.removeEventListener('abort', stopChild)
-        unregisterSubagent(sid, childTaskId)
-        // A throw from the dispatch would otherwise leave the record
-        // running with nothing left to finish it.
-        settleChild(true)
-      }
-    }
+                .sessions.find((one) => one.id === sid)?.folder ?? null) ===
+              (current?.folder ?? null),
+            webSearch,
+            // A subagent's mutations are the session's mutations, so
+            // they go through the same prompt rather than around it --
+            // shown on its own, because the child's calls are not parts of
+            // any message on screen.
+            onApprove: (callId, toolName, input, preview, signal, forced) =>
+              useToolApprovalRequests
+                .getState()
+                .requestApproval(callId, toolName, sid, undefined, {
+                  input,
+                  ...(forced
+                    ? {
+                        alwaysAsk: true,
+                        taskContext: forced.reason,
+                        conversationProgram: forced.conversationProgram,
+                        onDecision: forced.onDecision,
+                      }
+                    : {}),
+                  workspaceLabel:
+                    (destination ? destination.path : current?.folder) ??
+                    undefined,
+                  preview,
+                  origin: destination
+                    ? `${resolved.name} (its own checkout)`
+                    : resolved.name,
+                  signal,
+                }),
+            trackShell: () =>
+              useCoworkActiveWork.getState().acquire({
+                sessionId: sid,
+                kind: 'shell',
+                authority: runAuthority,
+              }),
+            // The same resolver and the same tracker the parent
+            // uses: one repository, one manifest, one set of rules.
+            scopedInstructions: scopedInstructionsFor,
+            onTodo: async () => ({
+              output:
+                'The todo list belongs to the agent that dispatched you.',
+              isError: true,
+            }),
+            onAsk: async () => ({
+              output:
+                'You cannot ask the user questions. Decide, and say what you assumed.',
+              isError: true,
+            }),
+            onTask: async () => ({
+              output: 'A subagent cannot dispatch subagents.',
+              isError: true,
+            }),
+          }, toolSignal),
+        }
+      },
+    })
 
     const messages = text
       ? [
@@ -3855,6 +3746,8 @@ export function CoworkPage() {
      * here: it runs in a new request under the session's stored mode.
      */
     let continueWith: string | null = null
+    // Subagents this run started with `task background:true`.
+    const backgroundTasks = new BackgroundTasks(SUBAGENT_RESULT_HEAD_CHARS)
     let outcome: RunOutcome | null = null
     let thrown: Pick<RunOutcome, 'stoppedBy' | 'errorText'> | null = null
     try {
@@ -3985,6 +3878,9 @@ export function CoworkPage() {
                     authority: runAuthority,
                   }),
                 scopedInstructions: scopedInstructionsFor,
+                tasks: backgroundTasks,
+                cancelChild: (callId) =>
+                  abortSubagent(sid, taskIdFor(sid, runId, callId)),
                 onTodo: async (input) => {
                   const result = applyTodoOp(
                     useCoworkSessions
@@ -4101,6 +3997,7 @@ export function CoworkPage() {
                       )
                     })
                   }),
+                nudge: delegationNudge,
                 onTask: async (callId, input) => {
                   const req = parseSubagentRequest(input)
                   if (typeof req === 'string') {
@@ -4221,6 +4118,7 @@ export function CoworkPage() {
                   recordAgentDispatch(run, {
                     callId,
                     agentName: 'team',
+                    title: 'team',
                     description: `${tasks.length} tasks`,
                     model: selectedModel.id,
                     anchorMessageId: anchorMessageId(),
@@ -4337,6 +4235,8 @@ export function CoworkPage() {
                             {
                               subagent_name: one.subagentName ?? 'worker',
                               description: one.description,
+                              ...(one.title ? { title: one.title } : {}),
+                              ...(one.model ? { model: one.model } : {}),
                               // A task that names no saved agent still has to be
                               // runnable: without a prompt it resolves to nothing
                               // and is refused as unknown, which would make the
@@ -4347,7 +4247,8 @@ export function CoworkPage() {
                             },
                             signal,
                             teamTaskId,
-                            destination
+                            destination,
+                            one.id
                           )
                           status = endedAs(result.isError === true)
                           detail = result.output.slice(0, 500)
@@ -4639,6 +4540,10 @@ export function CoworkPage() {
           },
         },
       })
+      // Children the model started in the background and never collected:
+      // wait for them rather than discard their work, as the Rust loop does.
+      // Stop reaches them through their abort handles, so this cannot hang.
+      await backgroundTasks.settleAll()
     } catch (e) {
       // The runner turns a failed step into an outcome, so this is the last
       // resort — a fault in the loop itself. Either way it is not a tool call,
@@ -5202,6 +5107,7 @@ export function CoworkPage() {
     (rail.kind === 'preview' ||
       rail.kind === 'diff' ||
       rail.kind === 'tasks' ||
+      rail.kind === 'background' ||
       Boolean(session?.id))
   const inspectorLayout: InspectorLayout = phone
     ? 'full'
@@ -5247,6 +5153,10 @@ export function CoworkPage() {
       deletions={changeCounts.deletions}
       changeSummary={formatChangeSummary(changeCounts)}
       activity={taskCounts}
+      background={{
+        running: backgroundTasks.running.length,
+        total: backgroundTasks.running.length + backgroundTasks.finished.length,
+      }}
     />
   )
 
@@ -6331,6 +6241,7 @@ export function CoworkPage() {
                 <CoworkTeamReviews
                   project={folder}
                   session={session.id}
+                  focusTaskId={reviewFocusTaskId}
                   onApplied={() => git.refresh()}
                 />
               ) : null}
@@ -6451,6 +6362,7 @@ export function CoworkPage() {
           />
         )}
         {rail?.kind === 'tasks' && (
+          <ReviewChangesContext.Provider value={reviewChildChanges}>
           <CoworkTasksPanel
             workflows={workflowViews}
             totals={taskCounts}
@@ -6470,6 +6382,27 @@ export function CoworkPage() {
             }}
             onClose={closeRail}
           />
+          </ReviewChangesContext.Provider>
+        )}
+        {rail?.kind === 'background' && session?.id && (
+          <ReviewChangesContext.Provider value={reviewChildChanges}>
+          <CoworkBackgroundTasksPanel
+            sessionId={session.id}
+            running={backgroundTasks.running}
+            finished={backgroundTasks.finished}
+            agentReachable={agentReachable}
+            onCancelTask={cancelTask}
+            onDismiss={(task) =>
+              useCoworkActivity.getState().clearBackground({ id: task.id })
+            }
+            onClearFinished={() =>
+              useCoworkActivity
+                .getState()
+                .clearBackground({ sessionId: session.id })
+            }
+            onClose={closeRail}
+          />
+          </ReviewChangesContext.Provider>
         )}
         {rail?.kind === 'timeline' && session?.id && (
           <CoworkTimelinePanel

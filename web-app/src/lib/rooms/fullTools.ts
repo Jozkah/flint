@@ -1,11 +1,34 @@
-import { jsonSchema, type Tool } from 'ai'
+import { jsonSchema, type LanguageModel, type Tool } from 'ai'
 import { directEditAuthorize } from '@janhq/tauri-plugin-agent-tools-api'
 import { getAgentToolSchemas } from '@/lib/agentTools'
 import { dispatchCoworkTool, type DispatchContext } from '@/lib/coworkDispatch'
 import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 import { useWebSearchConfig } from '@/hooks/useWebSearchConfig'
 import { getServiceHub } from '@/hooks/useServiceHub'
+import { chatDelegationEnabled } from '@/lib/chatDelegation'
+import { createSurfaceDelegation } from '@/lib/surfaceDelegation'
 import type { RoomToolActivity, RoomToolContext } from './callError'
+
+/** Steps a subagent a participant starts may take. Rooms are bounded, and a
+ * turn that delegates is one participant's single reply. */
+export const ROOM_CHILD_MAX_STEPS = 10
+
+/**
+ * What a Room participant needs to hand a job to a subagent: the model it is
+ * speaking with, and a way to charge the room for what the child used.
+ */
+export type RoomDelegation = {
+  model: () => LanguageModel | null | undefined
+  modelId: string
+  providerOptions: () => Record<string, never> | undefined
+  /** The turn this child belongs to, so its records are grouped with it. */
+  turnId: string
+  onUsage: (usage: {
+    total_tokens?: number
+    prompt_tokens?: number
+    completion_tokens?: number
+  } | null) => void
+}
 
 /** Output kept for the transcript's advanced view, as for the other tools. */
 const OUTPUT_CAP = 4000
@@ -46,7 +69,8 @@ const refused = (what: string) => async () => ({
  */
 export async function buildFullFolderTools(
   ctx: RoomToolContext,
-  onActivity?: (a: RoomToolActivity) => void
+  onActivity?: (a: RoomToolActivity) => void,
+  delegation?: RoomDelegation
 ): Promise<Record<string, Tool>> {
   const folder = ctx.folder
   if (!folder) return {}
@@ -127,6 +151,58 @@ export async function buildFullFolderTools(
         return output
       },
     } as Tool
+  }
+
+  // A participant with full access may hand a job to a subagent. Offered only
+  // when the room can still pay for it, and only the foreground `task`: a Room
+  // turn is one bounded reply, so there is nothing to run on beside it. The
+  // child works in the room's folder under the same Ask-mode gate, is held to
+  // the tokens the room has left, and its use is charged to the room.
+  if (delegation && chatDelegationEnabled() && (ctx.tokenBudget ?? Infinity) > 0) {
+    const remaining = ctx.tokenBudget
+    const room = await createSurfaceDelegation({
+      id: ctx.roomId,
+      runId: () => `room:${ctx.roomId}:${delegation.turnId}`,
+      title: ctx.participantName ?? 'Room',
+      folders: [folder, ...extras],
+      model: delegation.model,
+      modelId: delegation.modelId,
+      providerOptions: delegation.providerOptions as never,
+      signal: ctx.signal ?? new AbortController().signal,
+      asker: who,
+      background: false,
+      scope: 'session',
+      maxSteps: ROOM_CHILD_MAX_STEPS,
+      tokenLimit: remaining === undefined ? undefined : () => remaining,
+      onUsage: delegation.onUsage,
+    })
+    const task = room.tools.task
+    if (task) {
+      tools.task = {
+        ...task,
+        execute: async (
+          input: unknown,
+          options?: { toolCallId?: string; abortSignal?: AbortSignal }
+        ) => {
+          const outcome = await room.run(
+            {
+              toolCallId: options?.toolCallId ?? `${ctx.roomId}:task:${Date.now()}`,
+              toolName: 'task',
+              input,
+            },
+            options?.abortSignal ?? ctx.signal
+          )
+          const output = outcome.isError ? `ERROR: ${outcome.output}` : outcome.output
+          onActivity?.({
+            name: 'task',
+            ok: !outcome.isError,
+            args: input,
+            output: output.length > OUTPUT_CAP ? `${output.slice(0, OUTPUT_CAP)}\n… (truncated)` : output,
+          })
+          return output
+        },
+      } as Tool
+    }
   }
   return tools
 }

@@ -151,18 +151,37 @@ export async function streamParticipantReply(
 
   let text = ''
   let streamError: unknown = null
+  // What the subagents this turn started used; charged to the room below.
+  const childUsage = { input: 0, output: 0 }
   const contextWindow = input.contextBudget?.window ?? 0
   // Read-only tools for this turn, when the participant may use them. Absent
   // means the historical behaviour: a single text-only reply, no tools.
   const toolActivity: RoomToolActivity[] = []
   let tools: Record<string, Tool> | undefined
   if (input.toolContext) {
-    tools = await buildRoomTools({ ...input.toolContext, signal: input.signal }, (a) => {
-      // A call that has only started is reported for the live view, and is
-      // kept only once it returns.
-      if (!a.running) toolActivity.push(a)
-      input.onToolActivity?.(a)
-    })
+    tools = await buildRoomTools(
+      { ...input.toolContext, signal: input.signal },
+      (a) => {
+        // A call that has only started is reported for the live view, and is
+        // kept only once it returns.
+        if (!a.running) toolActivity.push(a)
+        input.onToolActivity?.(a)
+      },
+      {
+        model: () => languageModel,
+        modelId: input.model.id,
+        providerOptions: () => reasoning.providerOptions as never,
+        turnId: `${Date.now()}`,
+        onUsage: (u) => {
+          childUsage.input += u?.prompt_tokens ?? 0
+          childUsage.output += u?.completion_tokens ?? 0
+          // A provider that reports only a total still charges the room.
+          if (u && u.prompt_tokens === undefined && u.completion_tokens === undefined) {
+            childUsage.output += u.total_tokens ?? 0
+          }
+        },
+      }
+    )
     if (Object.keys(tools).length === 0) tools = undefined
   }
   const toolTokens = estimateToolTokens(tools)
@@ -307,6 +326,13 @@ ${outOfSteps ? OUT_OF_STEPS_NOTICE : NO_ROOM_NOTICE}`,
       }
     } catch {
       usage = undefined
+    }
+    // The room pays for its participants' subagents as well as their own calls.
+    if (childUsage.input + childUsage.output > 0) {
+      usage = {
+        inputTokens: (usage?.inputTokens ?? 0) + childUsage.input,
+        outputTokens: (usage?.outputTokens ?? 0) + childUsage.output,
+      }
     }
     let finishReason = 'stop'
     try {

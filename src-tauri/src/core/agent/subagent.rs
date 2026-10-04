@@ -692,6 +692,134 @@ pub struct SubagentRequest {
     /// Run the child as a job of its own that outlives this process (AH-101),
     /// rather than as a background task inside it.
     pub durable: bool,
+    /// How many model turns the child may take before it is stopped with a
+    /// clear "ran out of turns" status. `None` is [`DEFAULT_CHILD_MAX_TURNS`];
+    /// an explicit value is clamped to `1..=MAX_CHILD_MAX_TURNS`.
+    pub max_turns: Option<u32>,
+    /// A short name for this errand (3-6 words), shown on its row. Never part
+    /// of the brief the child reads.
+    pub title: Option<String>,
+}
+
+/// Longest a title is kept, in characters.
+pub(crate) const MAX_TITLE_CHARS: usize = 60;
+
+/// A title as the model gave it: one line, trimmed, bounded; `None` when blank.
+pub(crate) fn clean_title(raw: Option<&str>) -> Option<String> {
+    let one = raw?.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one.is_empty() {
+        return None;
+    }
+    if one.chars().count() <= MAX_TITLE_CHARS {
+        return Some(one);
+    }
+    let cut: String = one.chars().take(MAX_TITLE_CHARS - 1).collect();
+    Some(format!("{}\u{2026}", cut.trim_end()))
+}
+
+/// Turns a child may take when the dispatch does not say. A runaway child (a
+/// model going in circles on a tool) ends with a status the parent can act on
+/// instead of burning the whole session budget; sixty is far more than a
+/// focused errand needs.
+pub(crate) const DEFAULT_CHILD_MAX_TURNS: u32 = 60;
+/// The most a dispatch may ask for.
+pub(crate) const MAX_CHILD_MAX_TURNS: u32 = 400;
+
+/// The turn limit a request resolves to.
+pub(crate) fn effective_child_turns(requested: Option<u32>) -> u32 {
+    requested
+        .unwrap_or(DEFAULT_CHILD_MAX_TURNS)
+        .clamp(1, MAX_CHILD_MAX_TURNS)
+}
+
+/// Longest child answer handed back to the parent whole. Past this the middle
+/// is cut: a child that dumps a whole file listing into its final message would
+/// otherwise spend the parent's context window on exactly what delegating was
+/// meant to keep out of it.
+pub(crate) const MAX_CHILD_RESULT_CHARS: usize = 14_000;
+/// How much of the start and end survive the cut. The start carries the
+/// conclusion, the end carries the caveats.
+const CHILD_RESULT_HEAD_CHARS: usize = 9_000;
+const CHILD_RESULT_TAIL_CHARS: usize = 3_500;
+
+/// A child's final message, capped for the parent. A short answer comes back
+/// untouched. A long one keeps its head and tail with a note saying how much
+/// was dropped and, when `run_id` is given, how to read the rest: the full text
+/// is kept in memory (see [`retain_full_result`]) and `await_subagent` with an
+/// `offset` returns it a window at a time. That works in every run, sandboxed
+/// or not, which a file in the session scratch would not: the filesystem tools
+/// only see the scratch when a sandbox binds it.
+pub(crate) fn compact_child_result(text: &str, run_id: Option<&str>) -> String {
+    let total = text.chars().count();
+    if total <= MAX_CHILD_RESULT_CHARS {
+        return text.to_string();
+    }
+    let head_end = text
+        .char_indices()
+        .nth(CHILD_RESULT_HEAD_CHARS)
+        .map_or(text.len(), |(i, _)| i);
+    let tail_start = text
+        .char_indices()
+        .nth(total - CHILD_RESULT_TAIL_CHARS)
+        .map_or(text.len(), |(i, _)| i);
+    let omitted = total - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
+    let how = match run_id {
+        Some(id) => format!(
+            " The full {total}-character answer is kept: call await_subagent with run_id={id} and offset={CHILD_RESULT_HEAD_CHARS} to read the omitted part."
+        ),
+        None => String::new(),
+    };
+    format!(
+        "{}\n\n[... {omitted} characters omitted from the middle of the subagent's answer.{how} ...]\n\n{}",
+        &text[..head_end],
+        &text[tail_start..]
+    )
+}
+
+/// How many over-long answers are kept for `offset` reads, oldest dropped first.
+const RETAINED_RESULTS: usize = 8;
+/// The most characters kept per answer. Past this even the retained copy is cut.
+const RETAINED_RESULT_CHARS: usize = 400_000;
+
+static RETAINED: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Keep an over-long child answer so the rest of it can be read later.
+pub(crate) fn retain_full_result(run_id: &str, text: &str) {
+    if text.chars().count() <= MAX_CHILD_RESULT_CHARS {
+        return;
+    }
+    let kept: String = text.chars().take(RETAINED_RESULT_CHARS).collect();
+    if let Ok(mut all) = RETAINED.lock() {
+        all.retain(|(id, _)| id != run_id);
+        all.push((run_id.to_string(), kept));
+        while all.len() > RETAINED_RESULTS {
+            all.remove(0);
+        }
+    }
+}
+
+/// `await_subagent` with an `offset`: the next window of a retained answer.
+pub(crate) fn read_retained_result(run_id: &str, offset: usize) -> String {
+    let Some(full) = RETAINED
+        .lock()
+        .ok()
+        .and_then(|all| all.iter().find(|(id, _)| id == run_id).map(|(_, t)| t.clone()))
+    else {
+        return format!(
+            "ERROR: no shortened answer is kept for '{run_id}'. Only answers that were cut are kept, and only the most recent {RETAINED_RESULTS}."
+        );
+    };
+    let total = full.chars().count();
+    if offset >= total {
+        return format!("ERROR: offset {offset} is past the end of the answer ({total} characters).");
+    }
+    let window: String = full.chars().skip(offset).take(MAX_CHILD_RESULT_CHARS).collect();
+    let end = offset + window.chars().count();
+    if end < total {
+        format!("{window}\n\n[... characters {offset}-{end} of {total}. Call await_subagent with run_id={run_id} and offset={end} for the next part. ...]")
+    } else {
+        format!("{window}\n\n[... characters {offset}-{end} of {total}: the end of the answer. ...]")
+    }
 }
 
 /// The resolved plan for a dispatch: the winning definition plus the effective
@@ -1246,6 +1374,125 @@ pub(crate) struct ParentRun {
     pub(crate) model: String,
     pub(crate) budget_remaining: Option<u64>,
     pub(crate) send_reasoning: bool,
+    /// The Subagents settings' model choices, read from the data folder the
+    /// desktop app writes them to. `Default` is "inherit".
+    pub(crate) model_settings: ModelSettings,
+}
+
+/// The Subagents settings a headless run can honour: only the model. Assistants
+/// and work profiles exist in the desktop app alone; Rust has neither.
+///
+/// Read from the same `settings.json` the desktop app persists the card to
+/// (key [`SUBAGENT_SETTINGS_KEY`]), so `jan` / `flint` runs on the same machine
+/// follow what the user chose there. The model name is sent to the provider the
+/// run itself uses, so a model that lives on another provider will not resolve
+/// here.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ModelSettings {
+    /// Whether an argument the calling model supplied outranks the settings.
+    /// Rust's `dispatch_subagent` has no model argument, so it is recorded only.
+    pub(crate) let_model_choose: bool,
+    /// The model for every subagent, when set.
+    pub(crate) global: Option<String>,
+    /// The model per role (or saved subagent) name.
+    pub(crate) roles: std::collections::HashMap<String, String>,
+}
+
+impl Default for ModelSettings {
+    fn default() -> Self {
+        Self {
+            let_model_choose: true,
+            global: None,
+            roles: std::collections::HashMap::new(),
+        }
+    }
+}
+
+/// The key the desktop app's Subagents card is persisted under.
+pub(crate) const SUBAGENT_SETTINGS_KEY: &str = "flint-subagent-settings";
+
+/// A model id from the settings blob: a non-empty single line of sane length,
+/// else `None` (inherit).
+fn valid_model_id(value: Option<&serde_json::Value>) -> Option<String> {
+    let id = value?.get("model")?.get("id")?.as_str()?.trim();
+    if id.is_empty() || id.chars().count() > 200 || id.chars().any(char::is_control) {
+        return None;
+    }
+    Some(id.to_string())
+}
+
+/// Parse the persisted blob (`{"state":{...},"version":n}` as a string). Anything
+/// missing or malformed reads as the default, never an error: a bad settings
+/// file must not stop a run.
+pub(crate) fn parse_model_settings(raw: Option<&str>) -> ModelSettings {
+    let Some(raw) = raw else {
+        return ModelSettings::default();
+    };
+    let Ok(blob) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return ModelSettings::default();
+    };
+    let Some(state) = blob.get("state") else {
+        return ModelSettings::default();
+    };
+    let mut out = ModelSettings {
+        let_model_choose: state
+            .get("letModelChoose")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true),
+        global: valid_model_id(state.get("global")),
+        roles: std::collections::HashMap::new(),
+    };
+    if let Some(roles) = state.get("roles").and_then(|v| v.as_object()) {
+        for (name, pick) in roles {
+            if name.is_empty() || name.chars().count() > 100 {
+                continue;
+            }
+            if let Some(id) = valid_model_id(Some(pick)) {
+                out.roles.insert(name.clone(), id);
+            }
+        }
+    }
+    out
+}
+
+/// The settings as the desktop app last wrote them.
+pub(crate) fn load_model_settings() -> ModelSettings {
+    parse_model_settings(
+        crate::core::app::settings_store::settings_get(SUBAGENT_SETTINGS_KEY.to_string()).as_deref(),
+    )
+}
+
+/// The model a child runs on. Mirrors `resolveSubagentChoice` in the web app
+/// (`web-app/src/lib/subagentSettings.ts`), so every spawn path orders the same
+/// sources the same way:
+///
+///   an explicit argument the calling model supplied
+///     > a routing rule written about this subagent by name (AH-194)
+///     > the role's setting
+///     > the definition's own model
+///     > the global setting
+///     > the parent's model.
+///
+/// Rust has one source the web app lacks, the definition's own model, which sits
+/// between the role and the global setting: it is more specific than "all
+/// subagents" and less than a choice made for this role. Only the model is
+/// decided here: a child's tools and permissions come from
+/// `intersect_allowed_tools` and the parent's own gate, never from this.
+pub(crate) fn choose_child_model(
+    requested: Option<&str>,
+    rule: Option<&str>,
+    role_setting: Option<&str>,
+    definition: Option<&str>,
+    global_setting: Option<&str>,
+    parent: &str,
+) -> String {
+    requested
+        .or(rule)
+        .or(role_setting)
+        .or(definition)
+        .or(global_setting)
+        .unwrap_or(parent)
+        .to_string()
 }
 
 /// Build the child request body shared by every subagent run.
@@ -1254,24 +1501,32 @@ pub(crate) fn child_body(
     description: &str,
     parent: &ParentRun,
     forked: Option<&[serde_json::Value]>,
+    max_turns: Option<u32>,
 ) -> serde_json::Value {
-    let model = resolved
+    // AH-194: a rule written about this subagent by name outranks both the
+    // definition's model and the parent's -- that rule is the more specific
+    // statement, and it is the one somebody wrote down on purpose.
+    let fallback = resolved
         .definition
         .model
         .clone()
         .unwrap_or_else(|| parent.model.clone());
-    // AH-194: a rule written about this subagent by name outranks both the
-    // definition's model and the parent's -- that rule is the more specific
-    // statement, and it is the one somebody wrote down on purpose.
-    let model = crate::core::agent::routing::route(
+    let rule = crate::core::agent::routing::route(
         &parent.routing,
         &crate::core::agent::routing::Request {
             role: "task",
             agent: Some(&resolved.definition.name),
-            model: &model,
+            model: &fallback,
         },
-    )
-    .unwrap_or(model);
+    );
+    let model = choose_child_model(
+        None,
+        rule.as_deref(),
+        parent.model_settings.roles.get(&resolved.definition.name).map(String::as_str),
+        resolved.definition.model.as_deref(),
+        parent.model_settings.global.as_deref(),
+        &parent.model,
+    );
     let mut body = serde_json::Map::new();
     body.insert("model".to_string(), serde_json::json!(model));
     // AH-100: a fork starts from a copy of the parent's conversation; the
@@ -1281,8 +1536,13 @@ pub(crate) fn child_body(
         None => vec![serde_json::json!({ "role": "user", "content": description })],
     };
     body.insert("messages".to_string(), serde_json::json!(messages));
-    // Unbounded turns: guarded by the inherited budget and parent teardown.
-    body.insert("max_turns".to_string(), serde_json::json!(0));
+    // Bounded turns: a child that keeps calling tools without finishing stops
+    // with a clear status (see `run_subagent`) instead of spending the
+    // inherited budget. The budget and parent teardown still apply as well.
+    body.insert(
+        "max_turns".to_string(),
+        serde_json::json!(effective_child_turns(max_turns)),
+    );
     body.insert("stream".to_string(), serde_json::json!(true));
     if let Some(tools) = &resolved.allowed_tools {
         body.insert("allowed_tools".to_string(), serde_json::json!(tools));
@@ -1312,6 +1572,7 @@ async fn run_subagent(
     parent: ParentRun,
     events: tokio::sync::mpsc::UnboundedSender<crate::core::agent::events::StreamEvent>,
     run_id: String,
+    max_turns: Option<u32>,
 ) -> Result<String, SubagentError> {
     use crate::core::agent::events::StreamEvent;
     use crate::core::agent::r#loop::run_orchestration_streamed;
@@ -1346,6 +1607,7 @@ async fn run_subagent(
         &description,
         &parent,
         parent.conversation.as_deref(),
+        max_turns,
     );
 
     let _ = events.send(StreamEvent::SubagentStart {
@@ -1374,12 +1636,77 @@ async fn run_subagent(
     drop(child_tx);
     let _ = forwarder.await;
 
-    let _ = events.send(StreamEvent::SubagentEnd { run_id, name });
+    let (status, usage, detail) = finished_summary(&result, effective_child_turns(max_turns));
+    let _ = events.send(StreamEvent::SubagentFinished {
+        run_id: run_id.clone(),
+        name: name.clone(),
+        status,
+        usage,
+        detail,
+    });
+    let _ = events.send(StreamEvent::SubagentEnd {
+        run_id: run_id.clone(),
+        name,
+    });
 
     match result {
-        Ok(completion) => Ok(final_assistant_text(&completion)),
-        Err(message) => Err(SubagentError::Upstream(message.message().to_string())),
+        Ok(completion) => {
+            let full = final_assistant_text(&completion);
+            retain_full_result(&run_id, &full);
+            Ok(compact_child_result(&full, Some(&run_id)))
+        }
+        Err(message) => Err(SubagentError::Upstream(child_failure_text(
+            message.kind(),
+            message.message(),
+            effective_child_turns(max_turns),
+        ))),
     }
+}
+
+/// The `SubagentFinished` fields for a child's result: how it ended, its own
+/// token usage when the provider reported some, and a bounded one-line reason
+/// for an ending that was not a clean answer.
+pub(crate) fn finished_summary(
+    result: &Result<serde_json::Value, tauri_plugin_agent_tools::harness_error::HarnessError>,
+    turns: u32,
+) -> (String, Option<serde_json::Value>, Option<String>) {
+    match result {
+        Ok(completion) => (
+            "done".to_string(),
+            completion.get("usage").filter(|u| u.is_object()).cloned(),
+            None,
+        ),
+        Err(e) => {
+            let text = child_failure_text(e.kind(), e.message(), turns);
+            let status = if text.starts_with("The subagent stopped after using all") {
+                "turn_limit"
+            } else {
+                "error"
+            };
+            let detail: String = text.chars().take(200).collect();
+            (status.to_string(), None, Some(detail))
+        }
+    }
+}
+
+/// What the parent reads when a child's run failed. Running out of turns gets
+/// its own wording: it is the one failure the parent can fix by re-asking
+/// differently, and "reached the 60-turn limit" alone reads like an upstream
+/// outage.
+pub(crate) fn child_failure_text(
+    kind: tauri_plugin_agent_tools::harness_error::ErrorKind,
+    message: &str,
+    turns: u32,
+) -> String {
+    use tauri_plugin_agent_tools::harness_error::ErrorKind;
+    if kind == ErrorKind::BudgetExhausted && message.contains("-turn limit") {
+        return format!(
+            "The subagent stopped after using all {turns} of its turns without finishing, so it \
+             returned no answer. Any files it already changed stay as they are. Re-dispatch with a \
+             narrower task, or pass a larger max_turns if the work is genuinely long."
+        );
+    }
+    message.to_string()
 }
 
 /// A child's own run configuration, from its parent's: the definition's
@@ -1525,6 +1852,15 @@ pub(crate) fn spawn_subagent(
     }));
     let task_phase = phase.clone();
     let entry_description = req.description.clone();
+    // Before the queued/started event, so a consumer has the name by the time
+    // it draws the row.
+    if let Some(title) = req.title.clone() {
+        let _ = events.send(StreamEvent::SubagentTitle {
+            run_id: run_id.clone(),
+            name: name.clone(),
+            title,
+        });
+    }
     if waiting > 0 {
         let _ = events.send(StreamEvent::SubagentQueued {
             run_id: run_id.clone(),
@@ -1544,6 +1880,7 @@ pub(crate) fn spawn_subagent(
     let entry_events = events.clone();
     let inherited = parent.clone();
     let description = req.description.clone();
+    let max_turns = req.max_turns;
     let run_id_task = run_id.clone();
     let queued_counter = bg.clone();
     // AH-023. A spawned task does not inherit task-locals, so the parent's
@@ -1601,6 +1938,7 @@ pub(crate) fn spawn_subagent(
             inherited,
             task_events,
             run_id_task,
+            max_turns,
         );
         // The parent's stop reaches the child: the body races the token, and
         // whatever the child had produced is discarded rather than reported,
@@ -1771,30 +2109,49 @@ pub fn format_subagent_list(registry: &SubagentRegistry) -> String {
     lines.join("\n")
 }
 
+/// What `dispatch_subagent` tells the model. Written to steer behaviour, not
+/// just to document arguments: when to delegate, how to brief, that several
+/// calls in one message run together, when not to, and that the user never sees
+/// the child's output. Kept short enough for a small local model (see
+/// `dispatch_description_stays_compact`).
+fn dispatch_description(registry: &SubagentRegistry, max_parallel: u32) -> String {
+    let saved: Vec<&str> = {
+        let mut names: Vec<&str> = registry
+            .list()
+            .iter()
+            .filter(|d| d.scope != SubagentScope::Builtin)
+            .map(|d| d.name.as_str())
+            .collect();
+        names.sort_unstable();
+        names.dedup();
+        names
+    };
+    let mut out = format!(
+        "Hand a self-contained job to a subagent: a nested agent with its own context and tools. \
+It cannot see this chat, so `description` must be a complete brief: the goal, the files or names involved, and what to report back.\n\
+Delegate when: a search or investigation is open-ended and needs many reads or rounds; the work splits into independent parts that can run in parallel; the output would be large and you only need the conclusion; or a role below fits.\n\
+Do not delegate: a lookup you can do in one or two tool calls, a file or symbol you already know, or work another subagent is already doing.\n\
+Runs in the BACKGROUND and returns a run_id at once. Several dispatch_subagent calls in one message run concurrently (up to {max_parallel}; extras queue); then call await_subagent for each run_id. \
+The user does not see the subagent's output: read it and tell them what matters.\n\
+Roles: {}.",
+        crate::core::agent::roles::role_menu()
+    );
+    if !saved.is_empty() {
+        out.push_str(&format!(" Saved: {}.", saved.join(", ")));
+    }
+    out.push_str(" For a one-off, give a descriptive subagent_name and a system_prompt.");
+    out
+}
+
 /// OpenAI tool schemas for the subagent tools. The dispatch tool's description
-/// lists the currently-resolvable subagent names so the model can pick one
-/// without a separate discovery call.
+/// lists the roles and saved subagents so the model can pick one without a
+/// separate discovery call.
 pub fn subagent_tool_schemas(
     registry: &SubagentRegistry,
     max_parallel: u32,
 ) -> Vec<serde_json::Value> {
     use serde_json::json;
-    let available: Vec<&str> = {
-        let mut names: Vec<&str> = registry.list().iter().map(|d| d.name.as_str()).collect();
-        names.sort_unstable();
-        names.dedup();
-        names
-    };
-    let one_off = " For a one-off subagent, pass system_prompt inline (with a descriptive subagent_name); use create_subagent only to save a reusable definition.";
-    let bg = format!(" Runs in the BACKGROUND and returns a run_id immediately; keep working, dispatch more, then call await_subagent(run_id) to collect each result. Up to {max_parallel} run concurrently (max_parallel_subagents in agent.toml); dispatches beyond that are queued FIFO and start as running ones finish.");
-    let dispatch_desc = if available.is_empty() {
-        format!("Start a subagent: a nested, isolated agent with its own system prompt and narrowed tools.{bg}{one_off} No saved subagents yet.")
-    } else {
-        format!(
-            "Start a subagent: a nested, isolated agent with its own system prompt and narrowed tools.{bg}{one_off} Saved subagents: {}.",
-            available.join(", ")
-        )
-    };
+    let dispatch_desc = dispatch_description(registry, max_parallel);
     vec![
         json!({
             "type": "function",
@@ -1804,6 +2161,7 @@ pub fn subagent_tool_schemas(
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "title": { "type": "string", "description": "A short name for this errand, 3-6 words, shown on its row (for example 'Map the lexer')." },
                         "subagent_name": { "type": "string", "description": "Name of a saved subagent to run. For a one-off (no saved definition), pick a short descriptive name here AND pass system_prompt in the same call -- an unrecognized name with no system_prompt fails." },
                         "description": { "type": "string", "description": "The task for the subagent, as its sole user message. Include everything it needs; it does not see this conversation." },
                         "system_prompt": { "type": "string", "description": "Required alongside subagent_name whenever that name isn't already saved -- defines the one-off subagent's role. Omit only when subagent_name matches a saved subagent." },
@@ -1814,7 +2172,8 @@ pub fn subagent_tool_schemas(
                         },
                         "isolate": { "type": "boolean", "description": "Whether the subagent works in a checkout of its own. Default: yes when the project is a git repository and the subagent can change files, so concurrent subagents never edit the same tree. Its changes then wait for the user's review instead of landing in the project. Pass false only for work that must change the project directly." },
                         "durable": { "type": "boolean", "description": "Whether the subagent runs as a job of its own that keeps running if this app or process exits, and can be awaited, listed or cancelled later by its run_id -- including after a restart. Default: false, a background task inside this run. Pass true for long work that should survive an interruption. It cannot fork this conversation." },
-                        "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." }
+                        "fork_context": { "type": "boolean", "description": "Whether the subagent starts from a copy of this conversation instead of from the task alone. Default: false, a clean brief, which is cheaper and usually clearer. Pass true only when the task cannot be understood without what was already discussed here; the subagent then receives a copy of the recent messages, and nothing it says comes back into this conversation." },
+                        "max_turns": { "type": "integer", "minimum": 1, "description": "Most model turns the subagent may take before it is stopped without an answer. Default 60; raise it only for genuinely long work." }
                     },
                     "required": ["subagent_name", "description"]
                 }
@@ -1824,11 +2183,12 @@ pub fn subagent_tool_schemas(
             "type": "function",
             "function": {
                 "name": "await_subagent",
-                "description": "Block until a backgrounded subagent (started by dispatch_subagent) finishes, and return its final answer. Pass the run_id that dispatch_subagent returned. Each run_id can be awaited once.",
+                "description": "Block until a backgrounded subagent (started by dispatch_subagent) finishes, and return its final answer. Pass the run_id that dispatch_subagent returned. Each run_id can be awaited once. If the answer comes back shortened, call again with the same run_id and an offset to read the omitted part.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "run_id": { "type": "string", "description": "The run_id returned by dispatch_subagent." }
+                        "run_id": { "type": "string", "description": "The run_id returned by dispatch_subagent." },
+                        "offset": { "type": "integer", "minimum": 0, "description": "Only for an answer that came back shortened: the character to continue reading from." }
                     },
                     "required": ["run_id"]
                 }
@@ -1931,6 +2291,7 @@ fn optional_tool_list(args: &serde_json::Value) -> Option<Vec<String>> {
 /// Parse a `dispatch_subagent` tool-call argument object.
 pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, SubagentError> {
     Ok(SubagentRequest {
+        title: clean_title(args.get("title").and_then(|v| v.as_str())),
         subagent_name: required_str(args, "subagent_name")?,
         description: required_str(args, "description")?,
         allowed_tools: optional_tool_list(args),
@@ -1949,6 +2310,13 @@ pub fn parse_dispatch_args(args: &serde_json::Value) -> Result<SubagentRequest, 
             .get("durable")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        // A positive whole number is a choice; anything else (absent, zero,
+        // negative, a string) takes the default rather than failing the call.
+        max_turns: args
+            .get("max_turns")
+            .and_then(|v| v.as_u64())
+            .filter(|n| *n > 0)
+            .map(|n| n.min(u64::from(u32::MAX)) as u32),
     })
 }
 
@@ -2080,6 +2448,12 @@ pub fn parse_await_args(args: &serde_json::Value) -> Result<String, SubagentErro
     required_str(args, "run_id")
 }
 
+/// The `offset` of an `await_subagent` call that is reading the rest of a
+/// shortened answer, if it gave one.
+pub fn parse_await_offset(args: &serde_json::Value) -> Option<usize> {
+    args.get("offset").and_then(|v| v.as_u64()).map(|n| n as usize)
+}
+
 /// Parse a `create_subagent` tool-call argument object into a definition plus
 /// its target scope and the overwrite flag.
 pub fn parse_create_args(
@@ -2139,6 +2513,106 @@ pub fn subagent_dir_for(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_title_is_one_trimmed_bounded_line_and_blank_is_none() {
+        assert_eq!(clean_title(Some("  Map   the\nlexer ")).as_deref(), Some("Map the lexer"));
+        assert_eq!(clean_title(Some("   ")), None);
+        assert_eq!(clean_title(None), None);
+        let long = clean_title(Some(&"x".repeat(200))).unwrap();
+        assert_eq!(long.chars().count(), MAX_TITLE_CHARS);
+        assert!(long.ends_with('\u{2026}'));
+    }
+
+    #[test]
+    fn dispatch_args_carry_an_optional_title_and_the_schema_offers_it() {
+        let with = parse_dispatch_args(&serde_json::json!({
+            "subagent_name": "r", "description": "d", "title": "Map the lexer"
+        }))
+        .unwrap();
+        assert_eq!(with.title.as_deref(), Some("Map the lexer"));
+        let without = parse_dispatch_args(&serde_json::json!({ "subagent_name": "r", "description": "d" })).unwrap();
+        assert_eq!(without.title, None);
+        let schemas = subagent_tool_schemas(&SubagentRegistry::default(), 3);
+        let dispatch = schemas
+            .iter()
+            .find(|s| s["function"]["name"] == "dispatch_subagent")
+            .unwrap();
+        assert!(dispatch["function"]["parameters"]["properties"]["title"].is_object());
+        assert!(!dispatch["function"]["parameters"]["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r == "title"));
+    }
+
+    #[test]
+    fn child_model_precedence_matches_the_web_app() {
+        // argument > rule > role > definition > global > parent
+        let pick = |req, rule, role, def, global| choose_child_model(req, rule, role, def, global, "parent");
+        assert_eq!(pick(Some("asked"), Some("rule"), Some("role"), Some("def"), Some("global")), "asked");
+        assert_eq!(pick(None, Some("rule"), Some("role"), Some("def"), Some("global")), "rule");
+        assert_eq!(pick(None, None, Some("role"), Some("def"), Some("global")), "role");
+        assert_eq!(pick(None, None, None, Some("def"), Some("global")), "def");
+        assert_eq!(pick(None, None, None, None, Some("global")), "global");
+        assert_eq!(pick(None, None, None, None, None), "parent");
+    }
+
+    #[test]
+    fn settings_parse_the_blob_the_desktop_app_persists_and_default_on_anything_odd() {
+        let blob = serde_json::json!({
+            "state": {
+                "letModelChoose": false,
+                "global": { "model": { "provider": "p", "id": "cheap" }, "workProfile": "review" },
+                "roles": {
+                    "explorer": { "model": { "provider": "p", "id": "fast" } },
+                    "tester": { "workProfile": "debug" },
+                    "bad": { "model": { "id": "  " } }
+                }
+            },
+            "version": 0
+        })
+        .to_string();
+        let s = parse_model_settings(Some(&blob));
+        assert!(!s.let_model_choose);
+        assert_eq!(s.global.as_deref(), Some("cheap"));
+        assert_eq!(s.roles.get("explorer").map(String::as_str), Some("fast"));
+        // A role with no model, or a blank one, inherits.
+        assert!(!s.roles.contains_key("tester"));
+        assert!(!s.roles.contains_key("bad"));
+        for odd in [None, Some(""), Some("not json"), Some("[]"), Some("{\"state\": 3}"), Some("{\"state\":{\"global\":{\"model\":{\"id\":\"a\\nb\"}}}}")] {
+            let s = parse_model_settings(odd);
+            assert_eq!(s.global, None, "{odd:?}");
+            assert!(s.let_model_choose, "{odd:?}");
+        }
+    }
+
+    #[test]
+    fn child_body_follows_the_persisted_model_settings_for_its_role() {
+        let mut parent = ParentRun {
+            routing: Vec::new(),
+            conversation: None,
+            model: "big".to_string(),
+            budget_remaining: None,
+            send_reasoning: true,
+            model_settings: ModelSettings::default(),
+        };
+        parent.model_settings.global = Some("global-model".into());
+        parent.model_settings.roles.insert("reviewer".into(), "role-model".into());
+        let resolved = resolve_dispatch(
+            &registry_with("reviewer", None),
+            &req("reviewer", None),
+            &ToolPermissions::allow_all(),
+        )
+        .unwrap();
+        let body = child_body(&resolved, "d", &parent, None, None);
+        assert_eq!(body["model"], "role-model");
+        // The settings choose a model; they never add a tool.
+        assert!(body.get("allowed_tools").is_none() || body["allowed_tools"] == serde_json::json!(resolved.allowed_tools));
+        parent.model_settings.roles.clear();
+        assert_eq!(child_body(&resolved, "d", &parent, None, None)["model"], "global-model");
+    }
+
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
     use tauri_plugin_agent_tools::permissions::{PermissionDefault, ToolPermissions};
@@ -2345,13 +2819,13 @@ mod tests {
         let resolved =
             resolve_dispatch(&reg, &req("reviewer", None), &permissions).expect("resolves");
         let parent = parent_run();
-        let plain = child_body(&resolved, "the task", &parent, None);
+        let plain = child_body(&resolved, "the task", &parent, None, None);
         let messages = plain["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["content"], "the task");
 
         let history = plain_turns(3);
-        let forked = child_body(&resolved, "the task", &parent, Some(&history));
+        let forked = child_body(&resolved, "the task", &parent, Some(&history), None);
         let messages = forked["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 4, "{messages:#?}");
         assert_eq!(messages[0]["content"], "message 0");
@@ -2952,6 +3426,8 @@ mod tests {
             allowed_tools: allowed,
             system_prompt: None,
             isolate: None,
+            max_turns: None,
+            title: None,
         }
     }
 
@@ -2964,6 +3440,7 @@ mod tests {
             model: "m".to_string(),
             budget_remaining: None,
             send_reasoning: true,
+            model_settings: ModelSettings::default(),
         }
     }
 
@@ -2976,7 +3453,7 @@ mod tests {
         let reg = registry_with("reviewer", None);
         let p = ToolPermissions::allow_all();
         let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
-        let on = child_body(&resolved, "task", &parent_run(), None);
+        let on = child_body(&resolved, "task", &parent_run(), None, None);
         assert!(
             on.get("send_reasoning").is_none(),
             "the default is inherited implicitly: {on}"
@@ -2988,6 +3465,7 @@ mod tests {
                 send_reasoning: false,
                 ..parent_run()
             },
+            None,
             None,
         );
         assert_eq!(off["send_reasoning"], serde_json::json!(false));
@@ -3013,6 +3491,8 @@ mod tests {
             isolate: None,
             fork_context: false,
             durable: false,
+            max_turns: None,
+            title: None,
         };
         let resolved = resolve_dispatch(&reg, &request, &p).unwrap();
         assert_eq!(resolved.definition.system_prompt, "You are a one-off.");
@@ -3891,6 +4371,227 @@ mod tests {
             dispatch.contains("await_subagent"),
             "dispatch should mention await"
         );
+    }
+
+    /// The description is what steers a small model into (or out of)
+    /// delegating, so the behaviours it must teach are pinned here, and its size
+    /// is capped: it is re-sent on every turn.
+    #[test]
+    fn dispatch_description_steers_delegation_and_stays_compact() {
+        let reg = registry_with("my-saved", None);
+        let desc = dispatch_description(&reg, 4);
+        for needle in [
+            "Delegate when",
+            "Do not delegate",
+            "complete brief",
+            "Several dispatch_subagent calls in one message run concurrently",
+            "does not see the subagent's output",
+            "await_subagent",
+            "up to 4",
+            "Saved: my-saved",
+        ] {
+            assert!(desc.contains(needle), "missing {needle:?} in: {desc}");
+        }
+        // Every shipped role is offered with a reason to pick it.
+        for role in crate::core::agent::roles::ROLES {
+            assert!(desc.contains(&format!("{} ({})", role.name, role.when)), "role {}", role.name);
+        }
+        // ~4 chars per token: well under 450 tokens for a small local model.
+        assert!(desc.len() < 1800, "description is {} chars", desc.len());
+    }
+
+    // ── Child result cap ─────────────────────────────────────────────────
+
+    #[test]
+    fn a_short_child_answer_comes_back_untouched() {
+        let text = "x".repeat(MAX_CHILD_RESULT_CHARS);
+        assert_eq!(compact_child_result(&text, Some("sub-x-1")), text);
+        // Nothing is retained for an answer that fits.
+        retain_full_result("sub-short-1", &text);
+        assert!(read_retained_result("sub-short-1", 0).starts_with("ERROR"));
+    }
+
+    #[test]
+    fn a_long_child_answer_keeps_head_and_tail_and_says_how_to_read_the_rest() {
+        let text = format!(
+            "HEAD-{}-MIDDLE-{}-TAIL",
+            "a".repeat(30_000),
+            "b".repeat(30_000)
+        );
+        let out = compact_child_result(&text, Some("sub-long-1"));
+        assert!(out.starts_with("HEAD-"), "the conclusion at the start survives");
+        assert!(out.ends_with("-TAIL"), "the caveats at the end survive");
+        assert!(out.contains("characters omitted from the middle"), "{out}");
+        assert!(out.contains("await_subagent with run_id=sub-long-1 and offset=9000"), "{out}");
+        // Bounded: head + tail + a one-paragraph note.
+        assert!(out.chars().count() < CHILD_RESULT_HEAD_CHARS + CHILD_RESULT_TAIL_CHARS + 500);
+        let omitted = text.chars().count() - CHILD_RESULT_HEAD_CHARS - CHILD_RESULT_TAIL_CHARS;
+        assert!(out.contains(&format!("{omitted} characters omitted")), "{out}");
+    }
+
+    #[test]
+    fn without_a_run_id_the_cap_still_applies_and_promises_nothing() {
+        let text = "z".repeat(MAX_CHILD_RESULT_CHARS + 5_000);
+        let out = compact_child_result(&text, None);
+        assert!(out.contains("omitted from the middle"));
+        assert!(!out.contains("await_subagent"), "{out}");
+    }
+
+    #[test]
+    fn the_cap_never_splits_a_multibyte_character() {
+        // 4-byte characters, so any byte-offset slicing would panic.
+        let text = "𝔘".repeat(MAX_CHILD_RESULT_CHARS + 2_000);
+        let out = compact_child_result(&text, None);
+        assert!(out.starts_with('𝔘') && out.ends_with('𝔘'));
+        retain_full_result("sub-mb-1", &text);
+        let part = read_retained_result("sub-mb-1", 3);
+        assert!(part.starts_with('𝔘'));
+    }
+
+    /// The remainder is reachable by the tool call itself, so it needs no file
+    /// and no sandbox: the windows chain from the cut to the end, and together
+    /// with the head they are the whole answer.
+    #[test]
+    fn the_rest_of_a_cut_answer_is_read_back_a_window_at_a_time() {
+        let run = format!("sub-window-{}", std::process::id());
+        let text: String = (0..60_000u32).map(|i| char::from(b'a' + (i % 26) as u8)).collect();
+        retain_full_result(&run, &text);
+        let first = read_retained_result(&run, CHILD_RESULT_HEAD_CHARS);
+        assert!(first.starts_with(&text[CHILD_RESULT_HEAD_CHARS..CHILD_RESULT_HEAD_CHARS + 50]));
+        assert!(first.contains(&format!("offset={}", CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS)), "{first}");
+        let second = read_retained_result(&run, CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS);
+        assert!(second.starts_with(
+            &text[CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS..CHILD_RESULT_HEAD_CHARS + MAX_CHILD_RESULT_CHARS + 50]
+        ));
+        let last = read_retained_result(&run, 50_000);
+        assert!(last.contains("the end of the answer"), "{last}");
+        assert!(read_retained_result(&run, 60_000).starts_with("ERROR: offset"));
+        assert!(read_retained_result("sub-never-ran", 0).starts_with("ERROR: no shortened answer"));
+    }
+
+    #[test]
+    fn only_the_most_recent_cut_answers_are_kept() {
+        let long = "k".repeat(MAX_CHILD_RESULT_CHARS + 10);
+        let base = format!("sub-evict-{}", std::process::id());
+        for i in 0..(RETAINED_RESULTS + 3) {
+            retain_full_result(&format!("{base}-{i}"), &long);
+        }
+        assert!(read_retained_result(&format!("{base}-0"), 0).starts_with("ERROR: no shortened"));
+        assert!(!read_retained_result(&format!("{base}-{}", RETAINED_RESULTS + 2), 0).starts_with("ERROR"));
+    }
+
+    #[test]
+    fn a_finished_child_reports_how_it_ended_and_what_it_used() {
+        use tauri_plugin_agent_tools::harness_error::{ErrorKind, HarnessError};
+        let done = Ok(serde_json::json!({ "usage": { "total_tokens": 321 }, "choices": [] }));
+        let (status, usage, detail) = finished_summary(&done, 60);
+        assert_eq!(status, "done");
+        assert_eq!(usage.unwrap()["total_tokens"], 321);
+        assert!(detail.is_none());
+        // No usage object: none is invented.
+        let (_, usage, _) = finished_summary(&Ok(serde_json::json!({ "usage": null })), 60);
+        assert!(usage.is_none());
+
+        let limit = Err(HarnessError::new(
+            ErrorKind::BudgetExhausted,
+            "reached the 60-turn limit while the model was still calling tools",
+        ));
+        let (status, _, detail) = finished_summary(&limit, 60);
+        assert_eq!(status, "turn_limit");
+        assert!(detail.unwrap().contains("all 60 of its turns"));
+
+        let failed = Err(HarnessError::new(ErrorKind::InvalidInput, "x".repeat(900)));
+        let (status, _, detail) = finished_summary(&failed, 60);
+        assert_eq!(status, "error");
+        assert_eq!(detail.unwrap().chars().count(), 200, "the reason is bounded");
+    }
+
+    #[test]
+    fn await_reads_an_optional_offset() {
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r", "offset": 42 })), Some(42));
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r" })), None);
+        assert_eq!(parse_await_offset(&serde_json::json!({ "run_id": "r", "offset": -1 })), None);
+        let schemas = subagent_tool_schemas(&registry_with("reviewer", None), 3);
+        let await_tool = schemas.iter().find(|s| s["function"]["name"] == "await_subagent").unwrap();
+        assert_eq!(await_tool["function"]["parameters"]["properties"]["offset"]["type"], "integer");
+        assert_eq!(await_tool["function"]["parameters"]["required"], serde_json::json!(["run_id"]));
+    }
+
+    // ── Child turn limit ─────────────────────────────────────────────────
+
+    #[test]
+    fn the_child_turn_limit_defaults_and_clamps() {
+        assert_eq!(effective_child_turns(None), DEFAULT_CHILD_MAX_TURNS);
+        assert_eq!(effective_child_turns(Some(7)), 7);
+        assert_eq!(effective_child_turns(Some(0)), 1);
+        assert_eq!(effective_child_turns(Some(u32::MAX)), MAX_CHILD_MAX_TURNS);
+    }
+
+    #[test]
+    fn the_child_body_is_bounded_by_default_and_by_the_dispatch() {
+        let reg = registry_with("reviewer", None);
+        let p = ToolPermissions::allow_all();
+        let resolved = resolve_dispatch(&reg, &req("reviewer", None), &p).expect("resolves");
+        let default = child_body(&resolved, "t", &parent_run(), None, None);
+        assert_eq!(default["max_turns"], serde_json::json!(DEFAULT_CHILD_MAX_TURNS));
+        let asked = child_body(&resolved, "t", &parent_run(), None, Some(12));
+        assert_eq!(asked["max_turns"], serde_json::json!(12));
+    }
+
+    #[test]
+    fn dispatch_reads_max_turns_and_ignores_nonsense() {
+        let parse = |v: serde_json::Value| {
+            let mut args = serde_json::json!({ "subagent_name": "r", "description": "d" });
+            args["max_turns"] = v;
+            parse_dispatch_args(&args).unwrap().max_turns
+        };
+        assert_eq!(parse(serde_json::json!(25)), Some(25));
+        assert_eq!(parse(serde_json::json!(0)), None);
+        assert_eq!(parse(serde_json::json!(-3)), None);
+        assert_eq!(parse(serde_json::json!("many")), None);
+        assert_eq!(
+            parse_dispatch_args(&serde_json::json!({ "subagent_name": "r", "description": "d" }))
+                .unwrap()
+                .max_turns,
+            None
+        );
+    }
+
+    #[test]
+    fn the_schema_offers_max_turns_with_the_real_default() {
+        let schemas = subagent_tool_schemas(&registry_with("reviewer", None), 3);
+        let prop = &schemas[0]["function"]["parameters"]["properties"]["max_turns"];
+        assert_eq!(prop["type"], "integer");
+        assert!(
+            prop["description"].as_str().unwrap().contains(&DEFAULT_CHILD_MAX_TURNS.to_string()),
+            "the description quotes the real default"
+        );
+        // Optional: the required list is unchanged, so old callers still work.
+        let required = schemas[0]["function"]["parameters"]["required"].as_array().unwrap();
+        assert_eq!(required.len(), 2);
+    }
+
+    #[test]
+    fn running_out_of_turns_reads_as_a_clear_status_not_an_outage() {
+        use tauri_plugin_agent_tools::harness_error::ErrorKind;
+        let turned_out = child_failure_text(
+            ErrorKind::BudgetExhausted,
+            "reached the 60-turn limit while the model was still calling tools",
+            60,
+        );
+        assert!(turned_out.contains("all 60 of its turns"), "{turned_out}");
+        assert!(turned_out.contains("max_turns"), "{turned_out}");
+        // Any other failure, and a token-budget stop, pass through unchanged.
+        assert_eq!(child_failure_text(ErrorKind::BudgetExhausted, "token budget spent", 60), "token budget spent");
+        assert_eq!(child_failure_text(ErrorKind::InvalidInput, "bad", 60), "bad");
+    }
+
+    #[test]
+    fn dispatch_description_does_not_repeat_builtin_roles_as_saved() {
+        let root = unique_root("desc-builtin-only");
+        let desc = dispatch_description(&SubagentRegistry::load(&root), 3);
+        assert!(!desc.contains("Saved:"), "{desc}");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

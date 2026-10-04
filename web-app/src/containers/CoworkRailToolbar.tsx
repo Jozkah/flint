@@ -1,5 +1,13 @@
 import { useEffect, useRef } from 'react'
-import { Activity, Code, Diff, Eye, ListTree, Loader2 } from 'lucide-react'
+import {
+  Activity,
+  Code,
+  Diff,
+  Eye,
+  Layers,
+  ListTree,
+  Loader2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -11,7 +19,13 @@ import { useTranslation } from '@/i18n/react-i18next-compat'
 import type { ActivityProgress } from '@/lib/coworkActivity'
 
 /** The mutually-exclusive Cowork rail panels. */
-export type RailMode = 'code' | 'preview' | 'changes' | 'activity' | 'timeline'
+export type RailMode =
+  | 'code'
+  | 'preview'
+  | 'changes'
+  | 'activity'
+  | 'timeline'
+  | 'background'
 
 /** The tab a keyboard user just pressed, to be focused again after a move. */
 let refocusMode: RailMode | null = null
@@ -39,8 +53,12 @@ export function CoworkRailToolbar({
   deletions,
   activity,
   changeSummary,
+  background,
   presentation = 'toolbar',
 }: {
+  /** The session's background tasks: how many are running and how many are
+   * listed. The tab is absent when none are listed. */
+  background?: { running: number; total: number }
   /** `toolbar` in the composer row; `tabs` in the output panel header. The
    * buttons, their names and `aria-pressed` are the same in both. */
   presentation?: 'toolbar' | 'tabs'
@@ -184,6 +202,31 @@ export function CoworkRailToolbar({
         undefined,
         t('common:rail.timeline')
       )}
+      {/* Only once something has been started in the background, and only while
+          the list has rows: there is nothing to open before that. */}
+      {background && background.total > 0
+        ? item(
+            'background',
+            t('common:rail.background'),
+            background.running > 0 ? (
+              <Loader2
+                className="size-3.5 shrink-0 motion-safe:animate-spin"
+                aria-hidden
+              />
+            ) : (
+              <Layers className="size-3.5 shrink-0" aria-hidden />
+            ),
+            background.running > 0 ? (
+              <span
+                data-testid="background-tab-count"
+                className="grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10.5px] tabular-nums text-muted-foreground"
+              >
+                {background.running}
+              </span>
+            ) : undefined,
+            t('common:rail.background')
+          )
+        : null}
     </div>
   )
 }

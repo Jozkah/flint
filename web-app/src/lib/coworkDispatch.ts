@@ -21,6 +21,13 @@ import {
   TEAM_TOOL_NAME,
   TODO_TOOL_NAME,
 } from '@/lib/coworkTools'
+import { isolatedTaskAsTeam } from '@/lib/coworkTeam'
+import {
+  BACKGROUND_TASK_TOOLS,
+  omitFull,
+  runBackgroundTool,
+  type BackgroundTasks,
+} from '@/lib/coworkBackgroundTasks'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
 import { isVisualizeTool } from '@/lib/visualize/constants'
@@ -64,6 +71,7 @@ import {
   type GitPlan,
 } from '@/lib/gitTool'
 import { usePrStatusStore } from '@/stores/pr-status-store'
+import type { DelegationNudge } from '@/lib/delegationNudge'
 import { recordSessionPr } from '@/lib/prClaimBackfill'
 import { attributeGitInput } from '@/lib/gitAttribution'
 
@@ -163,6 +171,12 @@ export type DispatchContext = {
     state: string
     trigger?: string
   }[]
+  /**
+   * Which workspace namespace the tools run in. Cowork's `session` is the
+   * default; plain chat passes `thread`, so a delegated child works in the
+   * same workspace as the conversation that asked for it.
+   */
+  scope?: 'thread' | 'session'
   /** Where this session may write. Absent is Review only. */
   access?: AccessMode
   /** The user's confirmation to edit the attached folder, when given. */
@@ -179,8 +193,21 @@ export type DispatchContext = {
    * an activity row, or anything a user or model can read.
    */
   writeGrant?: string | null
+  /**
+   * Gives a model that keeps reading a survey itself a one-line pointer to
+   * the delegation tool (see `DelegationNudge`). Only the run's own dispatcher
+   * has one; a child's has none.
+   */
+  nudge?: DelegationNudge
   /** Runs a nested subagent to completion. */
   onTask: (toolCallId: string, input: unknown) => Promise<ToolOutcome>
+  /**
+   * This run's background tasks (`task` with `background: true`). Absent for a
+   * subagent's own dispatcher: a child starts, awaits and stops nothing.
+   */
+  tasks?: BackgroundTasks
+  /** Stop one child by its call id; false when there was nothing to stop. */
+  cancelChild?: (callId: string) => boolean
   /**
    * Runs a declared task graph as several children.
    *
@@ -478,6 +505,9 @@ export async function dispatchCoworkTool(
     signal,
     () => routeCoworkTool(call, ctx, signal)
   )
+  // A hint rides on the result the model is about to read, so it is read.
+  const hint = ctx.nudge?.observe(call.toolName)
+  if (hint && !outcome.isError) outcome.output = `${outcome.output}\n\n[${hint}]`
   // A pull request the call opened or named is this session's, whatever
   // branch the attached folder has checked out.
   if (!outcome.isError) {
@@ -546,6 +576,103 @@ export function refreshPrStatusAfterGit(
     void usePrStatusStore.getState().refresh(folder, true, ctx.sessionId)
   }
   return folders
+}
+
+/**
+ * `task` and the tools that manage its background children, for any surface
+ * that offers delegation: Cowork's dispatcher, plain chat and Rooms all route
+ * these calls here so a child is started, awaited, stopped and capped the same
+ * way wherever it was asked for.
+ */
+export async function routeDelegationTool(
+  call: PendingToolCall,
+  ctx: Pick<
+    DispatchContext,
+    'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
+  >,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  // Collecting, checking on and stopping this run's background tasks.
+  if (BACKGROUND_TASK_TOOLS.has(toolName)) {
+    if (!ctx.tasks) {
+      return {
+        output: 'You cannot manage background tasks. Do this work yourself.',
+        isError: true,
+      }
+    }
+    return await runBackgroundTool(toolName, call.input, ctx.tasks, { signal })
+  }
+  if (toolName === TASK_TOOL_NAME) {
+    const taskInput = (
+      call.input && typeof call.input === 'object' ? call.input : {}
+    ) as Record<string, unknown>
+    if (taskInput.background === true && ctx.tasks) {
+      if (taskInput.isolate === true) {
+        return {
+          output:
+            'ERROR: `background` cannot be combined with `isolate`. Run the isolated task in the foreground, or put it in a `team`.',
+          isError: true,
+        }
+      }
+      // Held for as long as the child lives, not just for this call: the
+      // child inherits this run's authority until it is done.
+      const childDone = ctx.trackSubagent?.()
+      const id = call.toolCallId
+      const name =
+        typeof taskInput.subagent_name === 'string'
+          ? taskInput.subagent_name
+          : 'subagent'
+      ctx.tasks.start(
+        id,
+        name,
+        async () => {
+          try {
+            return await ctx.onTask(id, call.input)
+          } finally {
+            childDone?.()
+          }
+        },
+        () => ctx.cancelChild?.(id) ?? false
+      )
+      return {
+        output:
+          `Task started in the background. task_id=${id}. Keep working; call await_task with this task_id to collect its answer, ` +
+          'task_status to check on it, or cancel_task to stop it. The run waits for it before it ends.',
+      }
+    }
+    // `isolate: true` is a team of one. The team path already provisions a
+    // checkout for a task, records it for review, refuses when the project
+    // cannot be isolated, and settles it afterwards; a second implementation
+    // for a lone `task` would be a copy that drifts.
+    const asTeam = ctx.onTeam ? isolatedTaskAsTeam(call.input) : null
+    if (asTeam && 'error' in asTeam) {
+      return { output: `ERROR: ${asTeam.error}`, isError: true }
+    }
+    if (asTeam && ctx.onTeam) {
+      const teamDone = ctx.trackSubagent?.()
+      try {
+        return await ctx.onTeam(call.toolCallId, asTeam)
+      } finally {
+        teamDone?.()
+      }
+    }
+    const childDone = ctx.trackSubagent?.()
+    try {
+      const done = await ctx.onTask(call.toolCallId, call.input)
+      // A cut answer is kept for `await_task` reads; the whole text never
+      // travels with the outcome.
+      return ctx.tasks
+        ? ctx.tasks.collect(call.toolCallId, done)
+        : omitFull(done)
+    } finally {
+      childDone?.()
+    }
+  }
+  return {
+    output: `ERROR: \`${toolName}\` is not a delegation tool.`,
+    isError: true,
+  }
 }
 
 /**
@@ -687,7 +814,7 @@ async function routeCoworkTool(
               {
                 readOnlyProject: ctx.readOnlyFolder,
                 extraProjects: ctx.extraFolders,
-                scope: 'session',
+                scope: ctx.scope ?? 'session',
                 writeGrant: ctx.writeGrant,
                 // Its own call id, derived from the call it describes, so
                 // the audit tells this lookup apart from the push itself.
@@ -751,7 +878,7 @@ async function routeCoworkTool(
         const preview =
           toolName === 'write' || toolName === 'edit'
             ? await previewAgentChange(toolName, call.input, ctx.sessionId, {
-                scope: 'session',
+                scope: ctx.scope ?? 'session',
                 writeGrant: ctx.writeGrant,
               })
             : undefined
@@ -817,13 +944,9 @@ async function routeCoworkTool(
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
     }
-    if (toolName === TASK_TOOL_NAME) {
-      const childDone = ctx.trackSubagent?.()
-      try {
-        return await ctx.onTask(call.toolCallId, call.input)
-      } finally {
-        childDone?.()
-      }
+    // `task` and the tools that manage its background children.
+    if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {
+      return await routeDelegationTool(call, ctx, signal)
     }
     if (toolName === TEAM_TOOL_NAME) {
       // A subagent's dispatcher has no team, so the call is refused by name
@@ -921,7 +1044,7 @@ async function routeCoworkTool(
       result = await executeAgentTool(toolName, call.input, ctx.sessionId, {
         readOnlyProject: ctx.readOnlyFolder,
         extraProjects: ctx.extraFolders,
-        scope: 'session',
+        scope: ctx.scope ?? 'session',
         writeGrant: ctx.writeGrant,
         // The run the change belongs to, so it can be undone from it (AH-202).
         undoRun: ctx.activity?.run,
