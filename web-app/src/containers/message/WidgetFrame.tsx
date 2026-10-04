@@ -81,6 +81,8 @@ export const WidgetFrame = memo(function WidgetFrame({
   const handlers = useRef({ onPainted, onStalled, onError, onPrompt, onLink })
   handlers.current = { onPainted, onStalled, onError, onPrompt, onLink }
   const lastBeat = useRef(Date.now())
+  const isReady = useRef(false)
+  isReady.current = ready
 
   // A new document (the desktop scheme's id arriving, or a policy change) has
   // not announced itself yet.
@@ -197,6 +199,12 @@ export const WidgetFrame = memo(function WidgetFrame({
       title={title}
       data-testid="widget-frame"
       sandbox={WIDGET_SANDBOX}
+      // The shell loads once and then announces itself. A load after that
+      // means the widget navigated its own frame (location = ...): the sandbox
+      // cannot forbid that, so the frame is dropped at once.
+      onLoad={() => {
+        if (isReady.current) handlers.current.onStalled?.()
+      }}
       referrerPolicy="no-referrer"
       className={className}
       style={{
