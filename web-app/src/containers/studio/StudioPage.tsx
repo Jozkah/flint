@@ -66,6 +66,7 @@ import { cn } from '@/lib/utils'
 import { providerHasRemoteApiKeys } from '@/lib/provider-api-keys'
 import {
   cloudTargets,
+  customCloudTargets,
   generateCloudImages,
   type CloudTarget,
 } from '@/lib/studio/cloud'
@@ -149,7 +150,7 @@ const EMPTY_FORM: Form = {
   accepted: false,
 }
 
-/** The hosted image models that can be used now: the providers with an API key set. */
+/** The hosted image models that can be used now: the providers with an API key set, and picture models on the user's own servers. */
 function useCloudTargets(kind: StudioKind): CloudTarget[] {
   const providers = useModelProvider((s) => s.providers)
   return useMemo(() => {
@@ -159,7 +160,7 @@ function useCloudTargets(kind: StudioKind): CloudTarget[] {
         .filter((p) => p.active && providerHasRemoteApiKeys(p))
         .map((p) => p.provider)
     )
-    return cloudTargets(configured)
+    return [...cloudTargets(configured), ...customCloudTargets(providers)]
   }, [providers, kind])
 }
 

@@ -529,6 +529,25 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "generate_image",
+                "description": "Generate an image from a text prompt with the image model loaded in Flint's Studio, and show it in the conversation. Use it when the user asks you to draw, make or illustrate a picture. It does not load a model: if none is loaded the result says so, and the user loads one in Studio. Generation can take a minute or more. The picture is kept in the Studio gallery. Describe the subject, style and composition in the prompt.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": { "type": "string", "description": "What the image should show." },
+                        "negative_prompt": { "type": "string", "description": "Optional. What to keep out of the image." },
+                        "width": { "type": "integer", "description": "Optional width in pixels. Omit for the model's own size." },
+                        "height": { "type": "integer", "description": "Optional height in pixels. Omit for the model's own size." },
+                        "count": { "type": "integer", "description": "Optional number of images, 1 to 4. Default 1." },
+                        "seed": { "type": "integer", "description": "Optional seed, to repeat a result." }
+                    },
+                    "required": ["prompt"]
+                }
+            }
+        }),
     ]
     .into_iter()
     .chain(browser_tool_schemas())
@@ -578,7 +597,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 40);
+        assert_eq!(schemas.len(), 41);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

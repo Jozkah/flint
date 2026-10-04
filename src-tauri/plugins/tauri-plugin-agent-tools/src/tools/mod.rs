@@ -712,6 +712,14 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Makes a picture with the image model resident in the desktop's Studio.
+    // Like `open_in_browser` the desktop answers it; no other surface has the
+    // engine. It reads and writes no project file (results go to the gallery).
+    BuiltinTool {
+        name: "generate_image",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // The interactive confined browser (browser/session.rs). `Write` so it is
     // withheld in plan mode and run one call at a time; the gate classifies
     // each call (looking runs, acting is gated like a write, open and
@@ -807,7 +815,10 @@ pub const BROWSER_NEEDS_DESKTOP: &str = "Browser tools need the Flint desktop ap
 /// Tools the desktop answers itself (a prompt, or a store only the app can
 /// read). Auto-allowed by the gate like the workspace tools.
 pub fn is_host_tool(name: &str) -> bool {
-    matches!(name, "request_access" | "list_plugins" | "open_in_browser") || is_browser_tool(name)
+    matches!(
+        name,
+        "request_access" | "list_plugins" | "open_in_browser" | "generate_image"
+    ) || is_browser_tool(name)
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -876,12 +887,12 @@ mod tests {
         // The seventh memory tool is `memory_propose`: the typed path by which
         // a model says a fact is worth remembering, so that Jan decides rather
         // than the app parsing an intention out of prose.
-        // + request_access, list_plugins and open_in_browser, which the desktop answers itself.
+        // + request_access, list_plugins, open_in_browser and generate_image, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 40);
+        assert_eq!(BUILTIN_TOOLS.len(), 41);
     }
 
     #[test]
