@@ -88,6 +88,12 @@ describe('parseShowWidgetInput', () => {
 })
 
 describe('executeVisualizeTool', () => {
+  it('teaches the chart module to draw gridlines first and keep a label margin', () => {
+    const guide = executeVisualizeTool(READ_ME_TOOL, { modules: ['chart'] }, 'c1')
+    expect(guide.content).toContain('gridlines first')
+    expect(guide.content).toContain('left margin')
+  })
+
   it('returns the guide for read_me and a short result for show_widget', () => {
     const guide = executeVisualizeTool(READ_ME_TOOL, { modules: ['chart'] }, 'c1')
     expect(guide.content).toContain('## chart')

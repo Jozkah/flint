@@ -8,6 +8,7 @@ import {
 } from '../mailboxPresence'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
+import { useSessionMessaging } from '@/hooks/useSessionMessaging'
 
 const session = (id: string, title = id, folder: string | null = null): CoworkSession =>
   ({ id, title, folder, turns: [], messages: [], updated: 0 }) as CoworkSession
@@ -29,6 +30,7 @@ describe('mailbox presence', () => {
     __presenceTesting.reset()
     useCoworkSessions.setState({ sessions: [session('A', 'Alpha', '/p')], currentId: 'A' })
     useCoworkRun.setState({ runs: {} })
+    useSessionMessaging.setState({ optOut: {} })
     mailbox = fake()
     stop = createPresenceSync(mailbox, { debounceMs: 100, heartbeatMs: 30_000 }).start()
   })
@@ -44,6 +46,7 @@ describe('mailbox presence', () => {
       sessionId: 'A',
       displayName: 'Alpha',
       folder: '/p',
+      acceptsMessages: true,
     })
   })
 
@@ -53,7 +56,12 @@ describe('mailbox presence', () => {
     useCoworkSessions.setState((s) => ({ sessions: [session('B'), ...s.sessions] }))
     vi.advanceTimersByTime(100)
     expect(mailbox.register).toHaveBeenCalledTimes(1)
-    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'B', displayName: 'B', folder: null })
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'B',
+      displayName: 'B',
+      folder: null,
+      acceptsMessages: true,
+    })
 
     // Typing a title: many updates, one registration with the final value.
     for (const t of ['R', 'Re', 'Renamed']) {
@@ -62,11 +70,21 @@ describe('mailbox presence', () => {
     }
     vi.advanceTimersByTime(100)
     expect(mailbox.register).toHaveBeenCalledTimes(2)
-    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'A', displayName: 'Renamed', folder: '/p' })
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Renamed',
+      folder: '/p',
+      acceptsMessages: true,
+    })
 
     useCoworkSessions.getState().setFolder('A', '/other')
     vi.advanceTimersByTime(100)
-    expect(mailbox.register).toHaveBeenLastCalledWith({ sessionId: 'A', displayName: 'Renamed', folder: '/other' })
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Renamed',
+      folder: '/other',
+      acceptsMessages: true,
+    })
 
     // An unrelated change registers nothing.
     useCoworkSessions.getState().setTodos('A', { phases: [] })
@@ -98,6 +116,7 @@ describe('mailbox presence', () => {
       sessionId: 'A',
       displayName: 'Alpha',
       folder: '/p',
+      acceptsMessages: true,
     })
     // A real delete afterwards still tombstones.
     useCoworkSessions.getState().deleteSession('A')
@@ -114,6 +133,7 @@ describe('mailbox presence', () => {
       sessionId: 'A',
       displayName: 'Alpha',
       folder: '/p',
+      acceptsMessages: true,
     })
     // A rename registers again; still refused, but no second revive.
     useCoworkSessions.getState().setTitle('A', 'Alpha 2')
@@ -134,7 +154,9 @@ describe('mailbox presence', () => {
     expect(mailbox.revive).not.toHaveBeenCalled()
   })
 
-  it('reports running with heartbeats, then idle', () => {
+  it('reports running with heartbeats, then idle', async () => {
+    vi.advanceTimersByTime(100)
+    await vi.advanceTimersByTimeAsync(0)
     useCoworkRun.getState().startRun('A', 'r1')
     expect(mailbox.setStatus).toHaveBeenCalledWith({ sessionId: 'A', running: true, runId: 'r1' })
     vi.advanceTimersByTime(30_000)
@@ -147,7 +169,9 @@ describe('mailbox presence', () => {
     expect(mailbox.heartbeat).toHaveBeenCalledTimes(2)
   })
 
-  it('ends a replaced run by its own id before reporting the new one', () => {
+  it('ends a replaced run by its own id before reporting the new one', async () => {
+    vi.advanceTimersByTime(100)
+    await vi.advanceTimersByTimeAsync(0)
     useCoworkRun.getState().startRun('A', 'r1')
     useCoworkRun.getState().startRun('A', 'r2')
     expect(mailbox.setStatus.mock.calls.map((c) => (c as unknown[])[0])).toEqual([
@@ -155,6 +179,54 @@ describe('mailbox presence', () => {
       { sessionId: 'A', running: false, runId: 'r1' },
       { sessionId: 'A', running: true, runId: 'r2' },
     ])
+  })
+
+  it('registers a session before its first status when the run starts inside the debounce', async () => {
+    const calls: string[] = []
+    mailbox.register.mockImplementation(async () => {
+      await Promise.resolve()
+      calls.push('register')
+    })
+    mailbox.setStatus.mockImplementation(async () => {
+      calls.push('status')
+    })
+    // The session was created and its run began before the 100 ms debounce.
+    useCoworkRun.getState().startRun('A', 'r1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(calls).toEqual(['register', 'status'])
+    // The debounce firing later registers nothing twice.
+    await vi.advanceTimersByTimeAsync(200)
+    expect(mailbox.register).toHaveBeenCalledTimes(1)
+  })
+
+  it('still reports the run when its registration fails', async () => {
+    mailbox.register.mockRejectedValue(new Error('nope'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    useCoworkRun.getState().startRun('A', 'r1')
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.setStatus).toHaveBeenCalledWith({ sessionId: 'A', running: true, runId: 'r1' })
+    warn.mockRestore()
+  })
+
+  it('registers the opt-out at once, and keeps it across a rename', async () => {
+    await vi.advanceTimersByTimeAsync(100)
+    mailbox.register.mockClear()
+    useSessionMessaging.getState().setAcceptsMessages('A', false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha',
+      folder: '/p',
+      acceptsMessages: false,
+    })
+    useCoworkSessions.getState().setTitle('A', 'Alpha 2')
+    await vi.advanceTimersByTimeAsync(100)
+    expect(mailbox.register).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      displayName: 'Alpha 2',
+      folder: '/p',
+      acceptsMessages: false,
+    })
   })
 
   it('never throws into the UI when the backend fails', async () => {

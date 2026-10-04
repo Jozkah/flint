@@ -131,16 +131,24 @@ describe('CoworkHeldInput with mail', () => {
 })
 
 describe('SessionMessagingToggle', () => {
-  it('is a labelled switch, off by default, persisted per session', () => {
-    useSessionMessaging.setState({ autoWake: {} })
+  it('has labelled switches, both on by default, persisted per session', () => {
+    useSessionMessaging.setState({ autoWake: {}, optOut: {} })
     render(<SessionMessagingToggle sessionId="A" />)
-    const sw = screen.getByRole('switch', { name: 'messaging:autoWake.label' })
-    expect(sw).toHaveAttribute('aria-checked', 'false')
-    expect(sw).toHaveAccessibleDescription('messaging:autoWake.description')
-    fireEvent.click(sw)
-    expect(useSessionMessaging.getState().autoWake).toEqual({ A: true })
-    fireEvent.click(sw)
+    const wake = screen.getByRole('switch', { name: 'messaging:autoWake.label' })
+    expect(wake).toHaveAttribute('aria-checked', 'true')
+    expect(wake).toHaveAccessibleDescription('messaging:autoWake.description')
+    fireEvent.click(wake)
+    expect(useSessionMessaging.getState().autoWake).toEqual({ A: false })
+    fireEvent.click(wake)
     expect(useSessionMessaging.getState().autoWake).toEqual({})
+
+    const accept = screen.getByRole('switch', { name: 'messaging:accept.label' })
+    expect(accept).toHaveAttribute('aria-checked', 'true')
+    expect(accept).toHaveAccessibleDescription('messaging:accept.description')
+    fireEvent.click(accept)
+    expect(useSessionMessaging.getState().optOut).toEqual({ A: true })
+    fireEvent.click(accept)
+    expect(useSessionMessaging.getState().optOut).toEqual({})
   })
 })
 
