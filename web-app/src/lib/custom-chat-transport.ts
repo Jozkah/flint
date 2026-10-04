@@ -4,6 +4,13 @@ import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import {
+  rememberedWindowFor,
+  resolveCompactionWindow,
+} from '@/lib/compactionWindowSource'
+import { listedWindow } from '@/lib/listedWindows'
+import { fetchServerWindow } from '@/lib/serverWindow'
+import { knownContextWindow } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import {
@@ -150,6 +157,19 @@ import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, end
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
+import {
+  announceMcpChange,
+  diffMcpSnapshots,
+  enabledMcpServers,
+  getMcpGeneration,
+  loadLiveMcpTools,
+  mcpChangeNote,
+  mcpStartingNote,
+  readMcpBaseline,
+  snapshotMcpTools,
+  syncMcpStore,
+  writeMcpBaseline,
+} from '@/lib/mcpLiveTools'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import { transcodeWebpImages } from '@/lib/imageTranscode'
@@ -933,6 +953,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * fitted, and plans against the window the refusal named when it named one.
    */
   private overflowRetry: { learnedWindow: number | null } | null = null
+  /** Threads and models already told that auto-compact has no window to use. */
+  private unknownWindowNoticed = new Set<string>()
+
+  /** Tell the user, once per chat and model, that auto-compact needs a context size. */
+  private noticeUnknownWindow(threadId: string, modelId: string): void {
+    const key = `${threadId}|${modelId}`
+    if (this.unknownWindowNoticed.has(key)) return
+    this.unknownWindowNoticed.add(key)
+    toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }))
+  }
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null
   /** HTTP status of the failure `onError` last reported, for the fallback decision. */
@@ -944,6 +974,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
   private toolsCacheKey: string | null = null
+  /** Kept until the set changes again, so the prompt prefix stays stable. */
+  private mcpChangeText: string | null = null
+  protected mcpStartingText: string | null = null
   // Smart tool routing selects tools from the latest user message, which would
   // change the tool set (and thus the cached prompt prefix) every turn. Freeze
   // the routed set for the thread's lifetime so the prefix stays stable;
@@ -1263,6 +1296,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),
+        ...this.mcpPromptNotes(),
         // The precedence chain (AH-084), stated by the backend so every surface
         // says the same thing, then the remembered facts it ranks. Remembered
         // facts are data the model may use, not instructions it must follow;
@@ -1423,6 +1457,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         : []
     const cacheKey = JSON.stringify({
       mcpFingerprint,
+      // A server switched on after the chat began has no tools until it is
+      // started, so the fingerprint alone cannot see it.
+      mcpGeneration: getMcpGeneration(),
+      mcpEnabled: enabledMcpServers(),
       model: selectedModel?.id ?? '',
       modelSupportsTools,
       hasDocuments,
@@ -1468,6 +1506,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       try {
         const mcpService = this.serviceHub.mcp()
         let mcpTools: MCPTool[]
+        let mcpStarting: string[] = []
+        // Smart routing lists a subset; only a full listing may refresh the
+        // store the tool picker and the call dispatcher read.
+        let fullListing = false
         const mcpSettings = useMCPServers.getState().settings
         const routingEnabled = mcpSettings.enableSmartToolRouting
 
@@ -1513,9 +1555,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             this.frozenRoutedSig = routedSig
           }
         } else {
-          // A send that uses tools starts enabled servers on demand.
-          mcpTools = await mcpService.getTools({ start: true })
+          // A send that uses tools starts enabled servers on demand, waiting
+          // a bounded time for ones still starting.
+          const live = await loadLiveMcpTools(mcpService)
+          mcpTools = live.tools
+          mcpStarting = live.starting
+          fullListing = true
         }
+        this.mcpStartingText = mcpStartingNote(mcpStarting)
 
         if (Array.isArray(mcpTools) && mcpTools.length > 0) {
           const seenBy = new Map<string, string>()
@@ -1543,6 +1590,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             } as Tool
           })
         }
+        this.recordMcpSet(
+          [...toolServers].map(([name, server]) => ({ name, server })),
+          fullListing ? mcpTools : undefined
+        )
       } catch (error) {
         console.warn('Failed to load MCP tools:', error)
       }
@@ -1626,6 +1677,38 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
     this.toolServers = toolServers
     this.toolsCacheKey = cacheKey
+  }
+
+  /**
+   * Compare this request's MCP tools with the last request's. A difference
+   * becomes a note for the model, a toast for the person when a server
+   * appeared, and a refresh of the lists the UI and the call dispatcher read.
+   */
+  protected recordMcpSet(
+    advertised: { name: string; server?: string }[],
+    listed?: MCPTool[]
+  ): void {
+    const next = snapshotMcpTools(advertised)
+    const key = this.threadId ?? ''
+    const before = readMcpBaseline(key)
+    let note = before?.note ?? null
+    if (listed) syncMcpStore(listed)
+    if (before) {
+      const change = diffMcpSnapshots(before.snapshot, next)
+      const changed = mcpChangeNote(change)
+      if (changed) {
+        note = changed
+        announceMcpChange(change)
+      }
+    }
+    writeMcpBaseline(key, next, note)
+    this.mcpChangeText = note
+  }
+
+  protected mcpPromptNotes(): string[] {
+    return [this.mcpChangeText, this.mcpStartingText].filter(
+      (s): s is string => typeof s === 'string' && s.length > 0
+    )
   }
 
   private async resolveRouterModel(settings: {
@@ -2597,11 +2680,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // The router has not loaded the model yet. Preserve the configured limit.
       }
     }
-    const knownContextTokens = effectiveContextWindow(
-      configuredContextTokens,
-      liveContextTokens,
-      contextShiftEnabled
-    )
+    // A model with no window of its own (a custom OpenAI-compatible one) still
+    // has a best available one: what the provider describes, what its model
+    // list named, the last one this chat showed, or what the server says now.
+    const resolvedWindow = await resolveCompactionWindow({
+      known: effectiveContextWindow(
+        configuredContextTokens,
+        liveContextTokens,
+        contextShiftEnabled
+      ),
+      provider: knownContextWindow(selectedModel, provider),
+      listed: listedWindow(provider?.base_url, modelId),
+      remembered: rememberedWindowFor(
+        useContextBreakdown.getState(),
+        threadId,
+        modelId
+      ),
+      fetchServer: () => fetchServerWindow(provider?.base_url, modelId),
+    })
+    const knownContextTokens = resolvedWindow.tokens
     // The resend after a length refusal plans against what the refusal named
     // when that is smaller, and against an assumed window when nothing is
     // known: a request that was refused has to shrink, not be sent again.
@@ -2623,6 +2720,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The model's Auto Compact parameter, when set, decides; otherwise the
     // shared policy does (`lib/compaction.ts`).
     const autoCompact = resolveAutoCompact(inferenceParams, compaction.auto)
+    // Auto-compact has nothing to measure against: say so rather than letting
+    // it look like it is working. A refused request still compacts and retries.
+    if (autoCompact && resolvedWindow.source === 'none') {
+      this.noticeUnknownWindow(threadId, modelId)
+    }
 
     let effectiveMessages = messagesToConvert
     if (maxContextTokens > 0) {

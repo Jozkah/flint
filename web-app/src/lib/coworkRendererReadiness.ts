@@ -24,7 +24,7 @@ export type RendererReadinessFacts = {
   } | null
   /** The resolved context window, or null when no source gave one. */
   contextTokens: number | null
-  /** Active MCP servers in Settings. Cowork runs are given none of them. */
+  /** Active MCP servers in Settings; Cowork runs are offered the connected ones. */
   settingsMcpServers: number
 }
 
@@ -120,17 +120,23 @@ export function rendererReadinessReports(
   )
 
   reports.push(
-    at(now, {
-      component: 'mcp',
-      state: 'blocked',
-      reason: 'mcp-none-configured',
-      message:
-        facts.settingsMcpServers > 0
-          ? 'MCP servers from Settings are not offered to Cowork runs.'
-          : 'No MCP servers are configured.',
-      retryable: false,
-      capabilities: [],
-    })
+    facts.settingsMcpServers > 0
+      ? at(now, {
+          component: 'mcp',
+          state: 'ready',
+          reason: 'ok',
+          message: `${facts.settingsMcpServers} MCP server${facts.settingsMcpServers === 1 ? '' : 's'} from Settings ${facts.settingsMcpServers === 1 ? 'is' : 'are'} offered to Cowork runs and connect when a message is sent.`,
+          retryable: false,
+          capabilities: ['mcp.offered'],
+        })
+      : at(now, {
+          component: 'mcp',
+          state: 'blocked',
+          reason: 'mcp-none-configured',
+          message: 'No MCP servers are configured.',
+          retryable: false,
+          capabilities: [],
+        })
   )
 
   const local = model != null && LOCAL_PROVIDERS.has(model.provider)
