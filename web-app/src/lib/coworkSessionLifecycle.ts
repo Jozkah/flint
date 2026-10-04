@@ -1,3 +1,5 @@
+import { clearNotices } from '@/lib/coworkRunNotices'
+import { useSubagentQuestions } from '@/lib/coworkSubagentQuestions'
 import { forgetSessionSubagents } from '@/lib/coworkSubagentHistory'
 import { abortRun } from '@/lib/coworkRunner'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
@@ -57,6 +59,8 @@ export function deleteCoworkSession(
   useCoworkOrigins.getState().forget(id)
   // Its finished subagents can no longer be resumed.
   forgetSessionSubagents(id)
+  clearNotices(id)
+  useSubagentQuestions.getState().forgetSession(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.
   if (!opts?.keepRecords) notifySessionRemoved(id)
   useSessionMessaging.getState().forget(id)

@@ -17,6 +17,7 @@ import { emptyActivityState, taskIdFor } from '../coworkActivity'
 import { abortSubagent, beginRun, endRun } from '../coworkRunner'
 import type { SubagentEvents } from '../coworkSubagent'
 import { useSubagentSettings } from '@/hooks/useSubagentSettings'
+import { answerSubagent, useSubagentQuestions } from '../coworkSubagentQuestions'
 import {
   __historyTesting,
   forgetSessionSubagents,
@@ -327,5 +328,39 @@ describe('resuming a finished subagent', () => {
     expect(recallSubagent('s9', `a${MAX_REMEMBERED_SUBAGENTS + 2}`)).toBeDefined()
     forgetSessionSubagents('s9')
     expect(rememberedSubagentIds('s9')).toEqual([])
+  })
+})
+
+describe('a background child asking its parent', () => {
+  it('gets ask_parent, and the answer comes back as the tool result', async () => {
+    let result: { output: string } | undefined
+    runSubagent.mockImplementation(async (opts: any) => {
+      expect(Object.keys(opts.extraTools)).toEqual(['ask_parent'])
+      const pending = opts.dispatch(
+        { toolCallId: 'x1', toolName: 'ask_parent', input: { question: 'a or b?' } },
+        new AbortController().signal
+      )
+      const [q] = useSubagentQuestions.getState().questions
+      answerSubagent(SID, { question_id: q.id, answer: 'b' })
+      result = await pending
+      return { output: 'done', usage: null, sessionTokens: 0 }
+    })
+    await createChildRunner(env())('bgq', {
+      subagent_name: 'explorer',
+      description: 'd',
+      background: true,
+    })
+    expect(result?.output).toContain('The parent agent answered')
+    expect(result?.output).toContain('answered')
+  })
+
+  it('does not offer ask_parent to a foreground child or a team member', async () => {
+    runSubagent.mockImplementation(async (opts: any) => {
+      expect(opts.extraTools).toBeUndefined()
+      return { output: 'done', usage: null, sessionTokens: 0 }
+    })
+    await createChildRunner(env())('fg', { subagent_name: 'explorer', description: 'd' })
+    await createChildRunner(env())('tm', { subagent_name: 'explorer', description: 'd', background: true }, undefined, 'team-row')
+    expect(runSubagent).toHaveBeenCalledTimes(2)
   })
 })

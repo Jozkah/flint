@@ -329,6 +329,8 @@ import {
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
+import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
+import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
@@ -4503,7 +4505,19 @@ export function CoworkPage() {
               // queued input waits and goes as its own turn after the run.
               useMessageQueue.getState().takeSteering(sid)
             )
-            if (taken.length === 0) return []
+            // App notices (a background subagent finished or asked) ride along
+            // at the same boundary, as one fenced block.
+            const notices = takeNotices(sid)
+            const noticeMessages = notices.length
+              ? [
+                  {
+                    id: `${sid}-notice-${Date.now().toString(36)}`,
+                    role: 'user',
+                    parts: [{ type: 'text', text: renderNotices(notices) }],
+                  } as any,
+                ]
+              : []
+            if (taken.length === 0) return noticeMessages
             for (const m of taken) mailLedger.note(m.from)
             // Into this run's execution record, in sequence with its calls:
             // steering changes what the model works from. The words stay in
@@ -4529,14 +4543,17 @@ export function CoworkPage() {
                 ...(m.from ? { from: agentAttribution(m.from) } : {}),
               }))
             )
-            return taken.map(
-              (m) =>
-                ({
-                  id: `${sid}-steer-${m.id}`,
-                  role: 'user',
-                  parts: [{ type: 'text', text: m.text }],
-                }) as any
-            )
+            return [
+              ...noticeMessages,
+              ...taken.map(
+                (m) =>
+                  ({
+                    id: `${sid}-steer-${m.id}`,
+                    role: 'user',
+                    parts: [{ type: 'text', text: m.text }],
+                  }) as any
+              ),
+            ]
           },
         },
       })
@@ -5821,6 +5838,7 @@ export function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
+                  <CoworkSubagentQuestions sessionId={session?.id} />
                   {/* Once the run has ended: while it goes, the header says
                       Running and Changes shows its files, and a card growing
                       under the transcript said it a third time. */}

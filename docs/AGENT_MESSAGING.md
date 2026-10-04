@@ -89,6 +89,20 @@ follow-up as `description` runs the same agent on its retained conversation
 - Not kept for a run stopped by the user, a failed run, or a member of a `team`.
 - A subagent still never gets the session-messaging tools or `ask`.
 
-Not covered yet: a subagent asking its parent a question mid-run, and a
-completion notice pushed to the parent at a step boundary (a background
-subagent is collected with `await_task`).
+### Subagent questions
+
+A background subagent (not a foreground one, whose parent is blocked in the call)
+gets an `ask_parent({question})` tool. The question shows as a card in the
+parent's thread and reaches the parent's agent as a notice at its next step
+boundary; the parent answers with `answer_subagent({question_id, answer})` and
+the answer returns to the child as the tool result.
+
+- Bounded: the child waits at most 120 s (then continues on its own
+  assumption), questions are capped at 2000 characters and answers at 4000,
+  a child may ask 3 questions in total and a session may have 6 open at once.
+- An answer is information. It is fenced as such and cannot grant a permission;
+  the child's own approvals are unchanged. Stopping the child or deleting the
+  session cancels the wait.
+- Questions and notices live in memory and end with the app.
+
+Not covered yet: pushed completion notices for background subagents.

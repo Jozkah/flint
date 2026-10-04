@@ -1,3 +1,7 @@
+import {
+  ANSWER_SUBAGENT_TOOL_NAME,
+  answerSubagent,
+} from '@/lib/coworkSubagentQuestions'
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
@@ -943,6 +947,13 @@ async function routeCoworkTool(
     if (toolName === TODO_TOOL_NAME) return await ctx.onTodo(call.input)
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
+    }
+    if (toolName === ANSWER_SUBAGENT_TOOL_NAME) {
+      // The parent's side only: a child's dispatcher has no team.
+      if (!ctx.onTeam) {
+        return { output: 'You cannot answer subagent questions.', isError: true }
+      }
+      return answerSubagent(ctx.sessionId, call.input)
     }
     // `task` and the tools that manage its background children.
     if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {

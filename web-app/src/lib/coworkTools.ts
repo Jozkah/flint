@@ -6,6 +6,10 @@
  * transcribed from their Rust counterparts (`todo.rs`, `interaction.rs`,
  * `subagent.rs`) so the CLI and the desktop advertise the same contract.
  */
+import {
+  ANSWER_SUBAGENT_TOOL_NAME,
+  answerSubagentTool,
+} from '@/lib/coworkSubagentQuestions'
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
@@ -681,6 +685,7 @@ export function coworkToolsFromSchemas(
     tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
+    tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
   }
   return tools
 }
