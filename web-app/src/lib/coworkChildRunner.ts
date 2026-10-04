@@ -34,6 +34,17 @@ import {
 } from '@/lib/coworkSubagent'
 import type { SubagentDefinition } from '@/lib/coworkSubagentRegistry'
 import { countToolCalls } from '@/lib/coworkTasks'
+import {
+  ASK_PARENT_TOOL_NAME,
+  askParent,
+  askParentTool,
+  renderAnswerForChild,
+} from '@/lib/coworkSubagentQuestions'
+import {
+  recallSubagent,
+  rememberSubagent,
+  resumeHint,
+} from '@/lib/coworkSubagentHistory'
 import { recordToolActivity, type ToolActivityContext } from '@/lib/toolActivity'
 import type { Destination } from '@/lib/coworkTeamDestinations'
 import { prepareChildChoice, profileLabel, type ParentPersona } from '@/lib/subagentChoice'
@@ -109,6 +120,20 @@ export type ChildRunner = (
 
 export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
   return async (callId, req, teamSignal, parentTaskId, destination, checkoutTaskId) => {
+    // A follow-up runs as the agent that finished, on what it already knows.
+    const resumeId = req.resume_agent_id
+    const remembered = resumeId
+      ? recallSubagent(env.sessionId, resumeId)
+      : undefined
+    if (resumeId && !remembered) {
+      return {
+        output:
+          `ERROR: no finished subagent has the id '${resumeId}' in this session. ` +
+          'Only a subagent that finished in this session can be resumed, and only until the app restarts; start a new one with a full brief instead.',
+        isError: true,
+      }
+    }
+    if (remembered) req = { ...req, subagent_name: remembered.name }
     const resolved = resolveSubagent(
       req,
       env.definitions,
@@ -232,11 +257,13 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
     }
     // The child's own trace, for a surface with no transcript lane of its own.
     let localTurns: CoworkTurn[] = []
+    const askable = req.background === true && parentTaskId === undefined
     try {
       const setup = env.setup(resolved, destination)
       const child = await runSubagent({
         resolved,
         description: req.description,
+        ...(remembered ? { history: remembered.messages } : {}),
         // The same identity the child's dispatched calls carry, for the calls
         // the runner refuses without dispatching.
         activity: setup.activity,
@@ -250,7 +277,26 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         sessionTokens: 0,
         ...(env.tokenLimit?.() !== undefined ? { tokenLimit: env.tokenLimit() } : {}),
         ...(env.maxSteps ? { maxSteps: env.maxSteps } : {}),
-        dispatch: setup.dispatch,
+        // A background child may ask its parent; a foreground one cannot, the
+        // parent being blocked in the call that started it.
+        ...(askable ? { extraTools: { [ASK_PARENT_TOOL_NAME]: askParentTool } } : {}),
+        dispatch: askable
+          ? async (call, toolSignal) => {
+              if (call.toolName !== ASK_PARENT_TOOL_NAME) {
+                return setup.dispatch(call, toolSignal)
+              }
+              const asked = await askParent({
+                sessionId: env.sessionId,
+                taskId: callId,
+                agentName: resolved.name,
+                question: (call.input as { question?: unknown } | null)?.question,
+                signal: toolSignal ?? childAbort.signal,
+              })
+              return asked.status === 'answered'
+                ? { output: renderAnswerForChild(asked.answer) }
+                : { output: asked.message, isError: asked.status === 'refused' }
+            }
+          : setup.dispatch,
         events: {
           onQueued: (waiting) => {
             // The dispatching call's item says it is waiting for a slot, in
@@ -311,8 +357,20 @@ export function createChildRunner(env: ChildRunnerEnv): ChildRunner {
         capped: child.capped,
         stoppedAtLimit: child.stoppedAtLimit,
       })
+      // Remembered unless it was cut short by Stop, so the parent can send a
+      // follow-up under the same id. A child inside a team has no caller to
+      // tell, so it is not kept.
+      const agentId = resumeId ?? callId
+      const keep =
+        !parentTaskId && !childAbort.signal.aborted && child.messages !== undefined
+      if (keep && child.messages) {
+        rememberSubagent(env.sessionId, agentId, {
+          name: resolved.name,
+          messages: child.messages,
+        })
+      }
       return {
-        output: child.output,
+        output: keep ? child.output + resumeHint(agentId) : child.output,
         isError: child.isError,
         ...(child.full ? { full: child.full } : {}),
       }

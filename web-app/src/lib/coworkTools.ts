@@ -6,6 +6,10 @@
  * transcribed from their Rust counterparts (`todo.rs`, `interaction.rs`,
  * `subagent.rs`) so the CLI and the desktop advertise the same contract.
  */
+import {
+  ANSWER_SUBAGENT_TOOL_NAME,
+  answerSubagentTool,
+} from '@/lib/coworkSubagentQuestions'
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
@@ -54,7 +58,8 @@ export const PLAN_DENIED_TOOLS = new Set([
  * which has nothing to say about a web page, and the browser tools ask for
  * their own approval (lib/browserAgent.ts).
  */
-export const isReviewDeniedBrowserTool = isBrowserActionTool
+export const isReviewDeniedBrowserTool = (name: string): boolean =>
+  isBrowserActionTool(name) || name === 'browser'
 
 /** Named `todo` to match the Rust tool: the plan-mode addendum instructs the
  * model to call `todo` by name, so renaming it here breaks that prompt. */
@@ -370,6 +375,12 @@ export function taskTool(
           description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
         },
         description: { type: 'string', minLength: 1 },
+        resume_agent_id: {
+          type: 'string',
+          minLength: 1,
+          description:
+            'Continue a subagent that already finished, using the agent_id its result gave. `description` is then the follow-up message to it; it keeps everything it learned, so do not repeat the original brief. Pass its same subagent_name.',
+        },
         system_prompt: {
           type: 'string',
           minLength: 1,
@@ -675,6 +686,7 @@ export function coworkToolsFromSchemas(
     tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
     tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
     tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
+    tools[ANSWER_SUBAGENT_TOOL_NAME] = answerSubagentTool
   }
   return tools
 }

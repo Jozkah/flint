@@ -428,6 +428,10 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
         // Runs the host's git/gh directly (no shell, no sandbox); each call is
         // confined and classified by the tool itself and the gate.
         "git" => vec![capability::FS_READ],
+        // Runs an installed browser against a local app with a temporary
+        // profile: no project file is read or written, and whether a browser
+        // is installed is answered by the tool itself, with how to fix it.
+        "browser" => vec![capability::FS_READ],
         // The mailbox is files under the data folder; nothing beyond a usable
         // local disk is needed. Scope (session only) is decided separately.
         "list_sessions" | "send_message" | "read_messages" | "wait_for_reply" => {

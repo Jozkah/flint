@@ -8,6 +8,12 @@ import { PrBar } from '@/containers/PrBar'
 import { useRemoteComposer } from '@/lib/remote/composer'
 import { ModelDoctor } from '@/containers/ModelDoctor'
 import { JevSkillSuggestion } from '@/containers/JevSkillSuggestion'
+import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
+import {
+  useBrowserToolMirror,
+  useBrowserToolMirrorListening,
+} from '@/hooks/useBrowserToolMirror'
+import { closeBrowserSession } from '@/lib/browserTool'
 import { BrowserVerifyPanel } from '@/containers/BrowserVerifyPanel'
 import { useBrowserVerify } from '@/hooks/useBrowserVerify'
 import type { VerifyReport } from '@/lib/browserVerify'
@@ -329,6 +335,8 @@ import {
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
 import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
+import { CoworkSubagentQuestions } from '@/containers/CoworkSubagentQuestions'
+import { renderNotices, takeNotices } from '@/lib/coworkRunNotices'
 import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
@@ -2753,6 +2761,13 @@ export function CoworkPage() {
     // run also clears this session's last outcome, usage and subagent lanes.
     const runId = crypto.randomUUID()
     const controller = new AbortController()
+    // Stopping the run ends its agent browser at once, not when a tool call it
+    // was waiting on (a long `wait`, say) finally returns.
+    controller.signal.addEventListener(
+      'abort',
+      () => void closeBrowserSession(sid),
+      { once: true }
+    )
     const handle = beginRun(sid, runId, controller)
     useCoworkRun.getState().startRun(sid, runId)
     // AH-005: the run's first canonical event, recorded where the run is
@@ -2909,6 +2924,7 @@ export function CoworkPage() {
       )
       if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      void closeBrowserSession(sid)
       runWorkDone()
       for (const resolve of handle.pendingAsks.values()) resolve(null)
       handle.pendingAsks.clear()
@@ -4503,7 +4519,19 @@ export function CoworkPage() {
               // queued input waits and goes as its own turn after the run.
               useMessageQueue.getState().takeSteering(sid)
             )
-            if (taken.length === 0) return []
+            // App notices (a background subagent finished or asked) ride along
+            // at the same boundary, as one fenced block.
+            const notices = takeNotices(sid)
+            const noticeMessages = notices.length
+              ? [
+                  {
+                    id: `${sid}-notice-${Date.now().toString(36)}`,
+                    role: 'user',
+                    parts: [{ type: 'text', text: renderNotices(notices) }],
+                  } as any,
+                ]
+              : []
+            if (taken.length === 0) return noticeMessages
             for (const m of taken) mailLedger.note(m.from)
             // Into this run's execution record, in sequence with its calls:
             // steering changes what the model works from. The words stay in
@@ -4529,14 +4557,17 @@ export function CoworkPage() {
                 ...(m.from ? { from: agentAttribution(m.from) } : {}),
               }))
             )
-            return taken.map(
-              (m) =>
-                ({
-                  id: `${sid}-steer-${m.id}`,
-                  role: 'user',
-                  parts: [{ type: 'text', text: m.text }],
-                }) as any
-            )
+            return [
+              ...noticeMessages,
+              ...taken.map(
+                (m) =>
+                  ({
+                    id: `${sid}-steer-${m.id}`,
+                    role: 'user',
+                    parts: [{ type: 'text', text: m.text }],
+                  }) as any
+              ),
+            ]
           },
         },
       })
@@ -4567,6 +4598,8 @@ export function CoworkPage() {
       )
       if (!othersRunning) useAppState.getState().updateLoadingModel(false)
       endRun(sid, runId)
+      // The run's agent browser (the `browser` tool) ends with it.
+      void closeBrowserSession(sid)
       // The run is over, so its budget is not outstanding any more. Left
       // behind, it would tell the next run it was resuming this one.
       useCoworkSessions.getState().setRunBudget(sid, null)
@@ -5094,6 +5127,24 @@ export function CoworkPage() {
     setRail(null)
     if (phone) showView('content')
   }, [setRail, phone, showView])
+  // The agent's browser (the `browser` tool) gets its own tab in the output
+  // panel: it opens when the agent opens a page and goes when its browser closes.
+  useBrowserToolMirrorListening()
+  const agentBrowserOpen = useBrowserToolMirror((s) =>
+    session?.id ? Boolean(s.byId[session.id]) : false
+  )
+  const sawAgentBrowser = useRef(false)
+  useEffect(() => {
+    if (agentBrowserOpen && !sawAgentBrowser.current) {
+      sawAgentBrowser.current = true
+      setRail({ kind: 'browser' })
+    } else if (!agentBrowserOpen && sawAgentBrowser.current) {
+      sawAgentBrowser.current = false
+      if (rail?.kind === 'browser') setRail(null)
+    }
+    // Only the browser appearing or going away moves the panel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentBrowserOpen])
   const selectRailInView = useCallback(
     (next: RailMode) => {
       selectRail(next)
@@ -5148,6 +5199,7 @@ export function CoworkPage() {
       presentation={presentation}
       active={activeRail}
       onSelect={selectRailInView}
+      agentBrowser={agentBrowserOpen}
       changeCount={changeCounts.fileCount}
       additions={changeCounts.additions}
       deletions={changeCounts.deletions}
@@ -5821,6 +5873,7 @@ export function CoworkPage() {
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />
+                  <CoworkSubagentQuestions sessionId={session?.id} />
                   {/* Once the run has ended: while it goes, the header says
                       Running and Changes shows its files, and a card growing
                       under the transcript said it a third time. */}
@@ -6403,6 +6456,23 @@ export function CoworkPage() {
             onClose={closeRail}
           />
           </ReviewChangesContext.Provider>
+        )}
+        {rail?.kind === 'browser' && session?.id && (
+          // The agent's own browser, as a tab of the output panel: a window like
+          // the in-app preview, read-only, opened by the agent's first page and
+          // gone when its browser closes.
+          <CoworkSidePanel
+            title={t('common:browserToolMirror.title')}
+            data-testid="cowork-agent-browser-panel"
+            onClose={closeRail}
+          >
+            <div className="flex h-full min-h-0 flex-col p-3">
+              <AgentBrowserWindow
+                sessionId={session.id}
+                className="min-h-[320px] flex-1"
+              />
+            </div>
+          </CoworkSidePanel>
         )}
         {rail?.kind === 'timeline' && session?.id && (
           <CoworkTimelinePanel

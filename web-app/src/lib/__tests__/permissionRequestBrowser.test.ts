@@ -92,3 +92,17 @@ describe('browser actions in the approval prompt', () => {
     expect(all).not.toContain('supersecretvalue123')
   })
 })
+
+describe('the interactive browser tool in the approval prompt', () => {
+  it('is described as acting on a live page, not as an unknown tool', () => {
+    expect(categorizeTool('browser')).toBe('browser')
+    const d = describePermissionRequest({
+      toolName: 'browser',
+      input: { action: 'open', url: 'https://shop.test/cart' },
+    })
+    expect(text(d.action)).toBe('Flint wants to use its browser: open https://shop.test/cart')
+    const consequence = d.consequences.map(text).join(' ')
+    expect(consequence).not.toMatch(/cannot tell what this tool does/)
+    expect(consequence).toMatch(/live web page/)
+  })
+})

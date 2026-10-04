@@ -76,3 +76,46 @@ Chat threads and subagents do not get these tools.
 - Running target: delivered at the next step boundary of the run.
 - A run that handled a message and ended without replying has its final answer
   sent back as the reply.
+
+## Subagents
+
+A finished subagent can be continued instead of replaced. Its `task` result ends
+with an `agent_id` line; calling `task` again with `resume_agent_id` and the
+follow-up as `description` runs the same agent on its retained conversation
+(same definition, same id). Rules:
+
+- Kept in memory per session (24 most recent), so it ends with the app or when
+  the session is deleted. An unknown id is refused with an explanation.
+- Not kept for a run stopped by the user, a failed run, or a member of a `team`.
+- A subagent still never gets the session-messaging tools or `ask`.
+
+### Subagent questions
+
+A background subagent (not a foreground one, whose parent is blocked in the call)
+gets an `ask_parent({question})` tool. The question shows as a card in the
+parent's thread and reaches the parent's agent as a notice at its next step
+boundary; the parent answers with `answer_subagent({question_id, answer})` and
+the answer returns to the child as the tool result.
+
+- Bounded: the child waits at most 120 s (then continues on its own
+  assumption), questions are capped at 2000 characters and answers at 4000,
+  a child may ask 3 questions in total and a session may have 6 open at once.
+- An answer is information. It is fenced as such and cannot grant a permission;
+  the child's own approvals are unchanged. Stopping the child or deleting the
+  session cancels the wait.
+- Questions and notices live in memory and end with the app.
+
+### Completion notices
+
+Nothing needs polling:
+
+- A background subagent that finishes or fails leaves a one-line notice
+  (name, task_id, short preview) that reaches the parent agent at its next step
+  boundary, as a fenced "Flint notice" message that is information only. The
+  full answer is still read with `await_task`. A stop the user asked for is not
+  announced. Notices for a deleted session are dropped.
+- A session that answers an earlier fire-and-forget `send_message` (or asks
+  something back) arrives as a mailbox message: at the next step boundary when
+  the sender is running, or by waking it when it is idle, with the usual
+  "from <title>" card. A run that handled a message and ended without replying
+  has its final answer sent back automatically.

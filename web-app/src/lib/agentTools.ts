@@ -1,6 +1,9 @@
 import type { ToolImage } from '@/lib/toolOutputImages'
 import type { ApprovalSource } from '@janhq/tauri-plugin-agent-tools-api'
-import { approvalSourceFor } from '@/hooks/useToolApprovalRequests'
+import {
+  approvalSourceFor,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
 import type {
   ChangeActorInput,
   ToolResources,
@@ -34,6 +37,15 @@ import { SESSION_MESSAGING_TOOL_NAMES } from '@/lib/sessionMessagingTools'
 import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
+import { putToolScreenshot, SCREENSHOT_RESULT_NOTE } from '@/lib/toolScreenshots'
+import {
+  BROWSER_TOOL_NAME,
+  browserAlwaysAsks,
+  browserCallClass,
+  browserInputForPrompt,
+  closeBrowserSession,
+  describeBrowserCall,
+} from '@/lib/browserTool'
 import {
   BROWSER_TOOL_NAMES,
   browserAgentSchemas,
@@ -81,6 +93,10 @@ export const AGENT_TOOL_NAMES = new Set([
   // Read and drive the built-in browser pane. Answered by the desktop, and
   // gated there (domain prompt, action approval): see lib/browserAgent.ts.
   ...BROWSER_TOOL_NAMES,
+  // The agent's interactive, confined browser (browser/session.rs). Looking
+  // runs; acting is asked like a write; `open` and `evaluate` are asked every
+  // time. See `approveBrowserTool`.
+  'browser',
   // The host's git and gh, outside the sandbox (tools/git_tool.rs). Reads run
   // without asking; everything else is put to the user by the dispatcher
   // (see `gitApproval`), and a push or pull request every time.
@@ -332,6 +348,49 @@ export function agentToolInputError(
 }
 
 /**
+ * Ask the user about a `browser` call that needs it, before the backend runs
+ * it. `null` when it may proceed, otherwise what to tell the model.
+ *
+ * Looking at a page the run already opened never asks. Acting asks like a
+ * write (a grant or an approving mode covers it). `open` and `evaluate` ask
+ * every time: the model chooses which service on this machine the browser
+ * reaches, and a script can do what no single click can. Nobody to ask (an
+ * unattended run) means those two are refused and acting is allowed, as
+ * writes are in that mode.
+ */
+export async function approveBrowserTool(
+  input: unknown,
+  threadId: string,
+  options: AgentToolOptions
+): Promise<string | null> {
+  const cls = browserCallClass(input)
+  if (cls === 'read') return null
+  const alwaysAsk = browserAlwaysAsks(cls)
+  if (options.unattended) {
+    return alwaysAsk
+      ? `browser ${cls} was not run: it must be approved by the user every time, and nobody is available to ask. Ask the user to open the page, or to run this in a mode that asks.`
+      : null
+  }
+  const what = await describeBrowserCall(input, threadId)
+  const context = `Agent browser (a separate, temporary browser limited to pages on this machine): ${what}`
+  const shown = browserInputForPrompt(input)
+  const ok = options.approve
+    ? await options.approve({ context, alwaysAsk, input: shown })
+    : await useToolApprovalRequests
+        .getState()
+        .requestApproval(options.callId ?? '', BROWSER_TOOL_NAME, threadId, undefined, {
+          input: shown,
+          alwaysAsk,
+          taskContext: context,
+          signal: options.signal,
+          origin: options.origin,
+          destructiveChecked: true,
+          autoApproveStreak: alwaysAsk ? undefined : threadId,
+        })
+  return ok ? null : 'The user declined this browser action.'
+}
+
+/**
  * Execute one built-in agent tool.
  *
  * The filesystem tools are confined to this thread's own sandbox, so scratch
@@ -432,6 +491,15 @@ export async function executeAgentTool(
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
 
+    if (toolName === BROWSER_TOOL_NAME) {
+      // The id the question is asked under is the id the backend is told, so
+      // its audit and its guard can see the answer.
+      const callId = options.callId ?? `${BROWSER_TOOL_NAME}-${Date.now()}`
+      options = { ...options, callId }
+      const declined = await approveBrowserTool(input, threadId, options)
+      if (declined) return { error: declined }
+    }
+
     if (isBrowserTool(toolName)) {
       // The built-in browser pane: prompts, policy and the page itself.
       const r = await runBrowserAgentTool(toolName, input, threadId, {
@@ -505,6 +573,18 @@ export async function executeAgentTool(
             approvalOf(options)
           )
     const resources = result.resources ?? undefined
+    // A browser screenshot is kept beside the transcript and the result says
+    // so; the stored result stays text (see lib/toolScreenshots.ts).
+    let content = result.content
+    if (
+      !result.isError &&
+      toolName === BROWSER_TOOL_NAME &&
+      options.callId &&
+      result.images?.[0] &&
+      putToolScreenshot(options.callId, result.images[0].dataUrl)
+    ) {
+      content = `${content}\n${SCREENSHOT_RESULT_NOTE}`
+    }
     if (result.isError) {
       return {
         error: result.content,
@@ -515,7 +595,7 @@ export async function executeAgentTool(
       }
     }
     return {
-      content: result.content,
+      content,
       diff: result.diff ?? undefined,
       resources,
       ...(result.images?.length ? { images: result.images } : {}),
@@ -535,7 +615,8 @@ export async function executeAgentTool(
 export function notifyToolBatch(
   threadId: string,
   toolNames: string[],
-  scope: 'thread' | 'session' = 'thread'
+  scope: 'thread' | 'session' = 'thread',
+  agent: 'main' | 'subagent' = 'main'
 ): void {
   if (toolNames.length === 0) return
   void (async () => {
@@ -547,7 +628,8 @@ export function notifyToolBatch(
         threadId,
         toolNames,
         useAgentToolsConfig.getState().bashNetworkEnabled,
-        scope as WorkspaceScope
+        scope as WorkspaceScope,
+        agent
       )
     } catch {
       // A hook problem is the backend's to log; the chat goes on.
@@ -673,6 +755,8 @@ export async function previewAgentChange(
  * while the user is deleting a thread.
  */
 export async function cleanupThreadWorkspace(threadId: string): Promise<void> {
+  // The thread's agent browser goes with it.
+  void closeBrowserSession(threadId)
   try {
     const dataFolder = await getServiceHub().app().getJanDataFolder()
     if (!dataFolder) return

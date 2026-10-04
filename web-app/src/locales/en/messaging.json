@@ -23,6 +23,13 @@
     "label": "Accept messages from other sessions",
     "description": "When off, other sessions are told this one does not take messages, and nothing they send reaches it."
   },
+  "subagentQuestion": {
+    "title": "{{name}} asks the agent",
+    "open": "Waiting for an answer",
+    "answered": "Answered",
+    "expired": "No answer in time",
+    "cancelled": "Cancelled"
+  },
   "asked": {
     "title": "Asked {{name}}",
     "sent": "Sent. Its reply, if any, arrives as a message here.",

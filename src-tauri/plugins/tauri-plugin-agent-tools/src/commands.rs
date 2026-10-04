@@ -1321,6 +1321,26 @@ async fn execute_tool_inner(
         // thread workspace and $HOME is unreadable, so the containment the prompt
         // was protecting is already guaranteed. The gate itself is left alone,
         // because the CLI agent *does* want to prompt here.
+        // The interactive browser acts on a page of the user's own app, which
+        // the ephemeral-workspace reasoning below does not cover: the question
+        // is the renderer's to put to the user, and this surface refuses a
+        // call it did not vouch for. `open` and `evaluate` are asked every
+        // time, so only an answer a person gave counts for them; acting needs
+        // the renderer's approval record (a prompt, or a mode that allows it).
+        // A project `ask` rule is the renderer's blind spot, so it still refuses.
+        Decision::Prompt(PromptKind::Ask)
+            if name == "browser"
+                && approval == Some(ApprovalSource::Prompted)
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
+        Decision::Prompt(PromptKind::Write) if name == "browser" && approval.is_none() => {
+            return Err(
+                "tool 'browser' needs user approval before it acts on a page, and none was recorded for this call"
+                    .to_string()
+                    .into(),
+            );
+        }
         Decision::Prompt(PromptKind::Exec) if jail::backend().enforces() => {}
         // Same reasoning for writes, from the other direction. `root` here is
         // always `ensure_thread_workspace`, never a real project: an ephemeral
@@ -1398,6 +1418,9 @@ async fn execute_tool_inner(
         _ => read_roots.first().map(|r| workspace::project_store(r)),
     };
     let mut ctx = ToolContext::new(&root, &store, &enabled)
+        // The desktop shows a browser screenshot beside the transcript and
+        // sends the model a small one.
+        .with_compact_images()
         // The toggle, clamped by the project's `agent.toml` and the machine's
         // policy: either one can turn the shell's network off.
         .with_network(policy.network.allowed && allow_network.unwrap_or(false))
@@ -1543,6 +1566,8 @@ pub async fn fire_post_tool_batch(
     tool_names: Vec<String>,
     allow_network: Option<bool>,
     scope: Option<WorkspaceScope>,
+    // `main` (default) or `subagent`: told to the hook as `FLINT_HOOK_AGENT`.
+    agent: Option<String>,
 ) -> Result<(), AgentToolsError> {
     if tool_names.is_empty() {
         return Ok(());
@@ -1557,9 +1582,10 @@ pub async fn fire_post_tool_batch(
     let network = policy.network.allowed && allow_network.unwrap_or(false);
     // Same confinement the thread's `execute_tool` calls get: sandboxed, with
     // the Flint data folder masked.
-    let _ = crate::hooks::fire_post_tool_batch(
+    let _ = crate::hooks::fire_post_tool_batch_as(
         &root,
         tool_names,
+        agent.as_deref().unwrap_or("main"),
         network,
         false,
         true,
