@@ -370,6 +370,12 @@ export function taskTool(
           description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
         },
         description: { type: 'string', minLength: 1 },
+        resume_agent_id: {
+          type: 'string',
+          minLength: 1,
+          description:
+            'Continue a subagent that already finished, using the agent_id its result gave. `description` is then the follow-up message to it; it keeps everything it learned, so do not repeat the original brief. Pass its same subagent_name.',
+        },
         system_prompt: {
           type: 'string',
           minLength: 1,
