@@ -33,6 +33,7 @@ pub mod schema;
 pub mod shell_diag;
 pub mod toolchain_grants;
 pub mod web;
+pub mod win_events;
 /// Windows sandbox environment construction. Compiled on every host so its
 /// rules stay unit-testable off Windows; only the AppContainer backend calls it.
 pub mod win_env;
@@ -638,6 +639,13 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Reads the Windows Event Log with the host's wevtutil, which the bash
+    // sandbox is not admitted to. Read-only, typed filters, no path.
+    BuiltinTool {
+        name: "windows_events",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // Write: clones a GitHub repository into the workspace with host Git (git
     // cannot run in the bash sandbox). Gated and approved like `write`; the
     // destination is checked against the write roots here and in the handler.
@@ -889,10 +897,11 @@ mod tests {
         // than the app parsing an intention out of prose.
         // + request_access, list_plugins, open_in_browser and generate_image, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
+        // + windows_events, the host's Event Log reader the sandbox is refused.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 41);
+        assert_eq!(BUILTIN_TOOLS.len(), 42);
     }
 
     #[test]

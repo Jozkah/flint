@@ -393,6 +393,25 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "windows_events",
+                "description": "Read the Windows Event Log (newest first) with the host's own access. Use it to find out why an app crashed, a service failed or the machine restarted. The sandboxed `bash` cannot read the Event Log, so use this instead of `wevtutil` or `Get-WinEvent` there. Read-only. Filter by level, time, event id and provider so the answer stays short; the Security log needs an administrator and is refused otherwise. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "log": { "type": "string", "description": "Channel to read. Default Application. Others: System, Setup, or a path such as Microsoft-Windows-PowerShell/Operational." },
+                        "level": { "type": "string", "description": "Lowest severity to include: critical, error, warning or information (default: all)." },
+                        "since_minutes": { "type": "integer", "description": "Only events from the last N minutes (up to 90 days)." },
+                        "event_ids": { "type": "array", "items": { "type": "integer" }, "description": "Only these event ids (1 to 20)." },
+                        "provider": { "type": "string", "description": "Only events from this source, e.g. Application Error or Service Control Manager." },
+                        "max_events": { "type": "integer", "description": "How many events to return, 1 to 200. Default 30." }
+                    },
+                    "required": []
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "git_clone",
                 "description": "Clone a GitHub repository into the workspace with native Git. Git and Git Bash cannot run inside the `bash` sandbox, so use this tool instead of `bash git clone ...`. Only `https://github.com/<owner>/<repo>` URLs are accepted. The destination (`dest`, default: the repository name inside the project) must be inside a folder you may write to and must be new or empty. Needs network access and the user's approval. A clone that has not finished after 120 seconds is stopped. If the URL names only a user or organization (no repository), nothing is cloned: ask the user which repository they want, then call again.",
                 "parameters": {
@@ -597,7 +616,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 41);
+        assert_eq!(schemas.len(), 42);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

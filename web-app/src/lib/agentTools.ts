@@ -106,6 +106,8 @@ export const AGENT_TOOL_NAMES = new Set([
   'git',
   // Read-only facts about an attached clone.
   'git_inspect',
+  // The Windows Event Log, read by the host because the sandbox is refused.
+  'windows_events',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
