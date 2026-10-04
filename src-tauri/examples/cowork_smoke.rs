@@ -8155,7 +8155,7 @@ fn messaging_between_sessions(ctx: &Ctx, stop: bool) -> ScenarioResult {
         println!("A tool results: {results:?}");
         let listed = results.iter().find(|(n, _)| n == "list_sessions").map(|(_, t)| t.clone()).unwrap_or_default();
         ensure!(listed.contains(&b), "list_sessions did not return B: {listed}");
-        ensure!(!listed.contains(&c), "list_sessions returned C from another project: {listed}");
+        ensure!(listed.contains(&c), "list_sessions did not return C (sessions in any project are listed): {listed}");
         let sent = results.iter().find(|(n, _)| n == "send_message").map(|(_, t)| t.clone()).unwrap_or_default();
         ensure!(
             sent.contains("\"delivered_to_status\":\"running\""),
