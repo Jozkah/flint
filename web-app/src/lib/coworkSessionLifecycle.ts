@@ -1,3 +1,6 @@
+import { clearNotices } from '@/lib/coworkRunNotices'
+import { useSubagentQuestions } from '@/lib/coworkSubagentQuestions'
+import { forgetSessionSubagents } from '@/lib/coworkSubagentHistory'
 import { abortRun } from '@/lib/coworkRunner'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
@@ -54,6 +57,10 @@ export function deleteCoworkSession(
   useCoworkActiveWork.getState().clearSession(id)
   // The origin ledger describes a run whose transcript is about to be gone.
   useCoworkOrigins.getState().forget(id)
+  // Its finished subagents can no longer be resumed.
+  forgetSessionSubagents(id)
+  clearNotices(id)
+  useSubagentQuestions.getState().forgetSession(id)
   // Other sessions can no longer reach it; mail to it becomes undeliverable.
   if (!opts?.keepRecords) notifySessionRemoved(id)
   useSessionMessaging.getState().forget(id)

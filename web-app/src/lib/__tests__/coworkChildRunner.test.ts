@@ -17,6 +17,15 @@ import { emptyActivityState, taskIdFor } from '../coworkActivity'
 import { abortSubagent, beginRun, endRun } from '../coworkRunner'
 import type { SubagentEvents } from '../coworkSubagent'
 import { useSubagentSettings } from '@/hooks/useSubagentSettings'
+import { answerSubagent, useSubagentQuestions } from '../coworkSubagentQuestions'
+import {
+  __historyTesting,
+  forgetSessionSubagents,
+  MAX_REMEMBERED_SUBAGENTS,
+  recallSubagent,
+  rememberedSubagentIds,
+  rememberSubagent,
+} from '../coworkSubagentHistory'
 
 const defs = [
   {
@@ -256,5 +265,102 @@ describe('createChildRunner', () => {
     // `bash` is outside the parent's tools, so it is intersected away: the
     // settings add a prompt block and nothing else.
     expect(runSubagent.mock.calls[0][0].resolved.allowedTools).toEqual(['read'])
+  })
+})
+
+describe('resuming a finished subagent', () => {
+  const history = [
+    { id: 'sub-user-0', role: 'user', parts: [{ type: 'text', text: 'first brief' }] },
+    { id: 'sub-asst-1', role: 'assistant', parts: [{ type: 'text', text: 'first answer' }] },
+  ]
+
+  beforeEach(() => __historyTesting.reset())
+
+  it('tells the parent the agent id, and a follow-up continues that conversation', async () => {
+    answers('first answer', { messages: history })
+    const first = await createChildRunner(env())('c1', {
+      subagent_name: 'explorer',
+      description: 'first brief',
+    })
+    expect(first.output).toContain('first answer')
+    expect(first.output).toContain('resume_agent_id: "c1"')
+
+    answers('second answer', { messages: [...history, { id: 'x', role: 'user', parts: [] }] })
+    const second = await createChildRunner(env())('c2', {
+      subagent_name: 'ignored',
+      description: 'and what about b?',
+      resume_agent_id: 'c1',
+    })
+    const call = runSubagent.mock.calls.at(-1)?.[0]
+    expect(call.history).toEqual(history)
+    expect(call.description).toBe('and what about b?')
+    expect(call.resolved.name).toBe('explorer')
+    // The id stays the one the parent already has.
+    expect(second.output).toContain('resume_agent_id: "c1"')
+  })
+
+  it('refuses an id it does not know, without starting anything', async () => {
+    const out = await createChildRunner(env())('c3', {
+      subagent_name: 'explorer',
+      description: 'follow up',
+      resume_agent_id: 'nope',
+    })
+    expect(out.isError).toBe(true)
+    expect(out.output).toContain("no finished subagent has the id 'nope'")
+    expect(runSubagent).not.toHaveBeenCalled()
+  })
+
+  it('does not offer a resume for a failed run or a team member', async () => {
+    answers('x')
+    const none = await createChildRunner(env())('c4', { subagent_name: 'explorer', description: 'd' })
+    expect(none.output).toBe('x')
+    answers('y', { messages: history })
+    const member = await createChildRunner(env())('c5', { subagent_name: 'explorer', description: 'd' }, undefined, 'team-row')
+    expect(member.output).toBe('y')
+  })
+
+  it('remembers at most a bounded number per session and forgets a deleted session', () => {
+    for (let i = 0; i < MAX_REMEMBERED_SUBAGENTS + 3; i++) {
+      rememberSubagent('s9', `a${i}`, { name: 'explorer', messages: [] })
+    }
+    expect(rememberedSubagentIds('s9')).toHaveLength(MAX_REMEMBERED_SUBAGENTS)
+    expect(recallSubagent('s9', 'a0')).toBeUndefined()
+    expect(recallSubagent('s9', `a${MAX_REMEMBERED_SUBAGENTS + 2}`)).toBeDefined()
+    forgetSessionSubagents('s9')
+    expect(rememberedSubagentIds('s9')).toEqual([])
+  })
+})
+
+describe('a background child asking its parent', () => {
+  it('gets ask_parent, and the answer comes back as the tool result', async () => {
+    let result: { output: string } | undefined
+    runSubagent.mockImplementation(async (opts: any) => {
+      expect(Object.keys(opts.extraTools)).toEqual(['ask_parent'])
+      const pending = opts.dispatch(
+        { toolCallId: 'x1', toolName: 'ask_parent', input: { question: 'a or b?' } },
+        new AbortController().signal
+      )
+      const [q] = useSubagentQuestions.getState().questions
+      answerSubagent(SID, { question_id: q.id, answer: 'b' })
+      result = await pending
+      return { output: 'done', usage: null, sessionTokens: 0 }
+    })
+    await createChildRunner(env())('bgq', {
+      subagent_name: 'explorer',
+      description: 'd',
+      background: true,
+    })
+    expect(result?.output).toContain('The parent agent answered')
+    expect(result?.output).toContain('answered')
+  })
+
+  it('does not offer ask_parent to a foreground child or a team member', async () => {
+    runSubagent.mockImplementation(async (opts: any) => {
+      expect(opts.extraTools).toBeUndefined()
+      return { output: 'done', usage: null, sessionTokens: 0 }
+    })
+    await createChildRunner(env())('fg', { subagent_name: 'explorer', description: 'd' })
+    await createChildRunner(env())('tm', { subagent_name: 'explorer', description: 'd', background: true }, undefined, 'team-row')
+    expect(runSubagent).toHaveBeenCalledTimes(2)
   })
 })

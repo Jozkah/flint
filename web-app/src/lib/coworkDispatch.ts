@@ -1,3 +1,8 @@
+import { pushNotice } from '@/lib/coworkRunNotices'
+import {
+  ANSWER_SUBAGENT_TOOL_NAME,
+  answerSubagent,
+} from '@/lib/coworkSubagentQuestions'
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
 import { getServiceHub } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
@@ -590,7 +595,7 @@ export async function routeDelegationTool(
   ctx: Pick<
     DispatchContext,
     'tasks' | 'onTask' | 'onTeam' | 'trackSubagent' | 'cancelChild'
-  >,
+  > & { sessionId?: string },
   signal?: AbortSignal
 ): Promise<ToolOutcome> {
   const { toolName } = call
@@ -629,7 +634,26 @@ export async function routeDelegationTool(
         name,
         async () => {
           try {
-            return await ctx.onTask(id, call.input)
+            const done = await ctx.onTask(id, call.input)
+            // Pushed to the parent at its next step boundary, so it need not
+            // poll `task_status`. A stop the user asked for is not news.
+            if (ctx.sessionId && !(done.isError && /cancelled/i.test(done.output))) {
+              const preview = done.output.replace(/\s+/g, ' ').slice(0, 160)
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) ${done.isError ? 'failed' : 'finished'}: "${preview}". ` +
+                  'Read the full answer with await_task.'
+              )
+            }
+            return done
+          } catch (e) {
+            if (ctx.sessionId) {
+              pushNotice(
+                ctx.sessionId,
+                `Background subagent '${name}' (task_id=${id}) failed to run.`
+              )
+            }
+            throw e
           } finally {
             childDone?.()
           }
@@ -944,6 +968,13 @@ async function routeCoworkTool(
     if (toolName === TODO_TOOL_NAME) return await ctx.onTodo(call.input)
     if (toolName === ASK_TOOL_NAME) {
       return await ctx.onAsk(call.toolCallId, call.input)
+    }
+    if (toolName === ANSWER_SUBAGENT_TOOL_NAME) {
+      // The parent's side only: a child's dispatcher has no team.
+      if (!ctx.onTeam) {
+        return { output: 'You cannot answer subagent questions.', isError: true }
+      }
+      return answerSubagent(ctx.sessionId, call.input)
     }
     // `task` and the tools that manage its background children.
     if (toolName === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(toolName)) {

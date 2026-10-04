@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { ANSWER_SUBAGENT_TOOL_NAME } from '@/lib/coworkSubagentQuestions'
 import {
   convertToModelMessages,
   streamText,
@@ -126,6 +127,8 @@ const WITHHELD_FROM_SUBAGENTS = new Set<string>([
   // Cross-session messaging speaks for the session, not for an errand: a child
   // must not discover, message or wait on other sessions.
   ...SESSION_MESSAGING_TOOL_NAMES,
+  // Answering is the parent's side of `ask_parent`.
+  ANSWER_SUBAGENT_TOOL_NAME,
 ])
 
 export type SubagentRequest = {
@@ -139,6 +142,11 @@ export type SubagentRequest = {
   title?: string
   /** A configured model to run this child on, checked when it starts. */
   model?: string
+  /**
+   * Continue a subagent that already finished, by the agent id its result gave:
+   * `description` is then the follow-up, sent to the same conversation.
+   */
+  resume_agent_id?: string
 }
 
 export type ResolvedSubagent = {
@@ -191,6 +199,9 @@ export function parseSubagentRequest(input: unknown): SubagentRequest | string {
   if (raw.background === true) req.background = true
   if (typeof raw.title === 'string' && raw.title.trim()) req.title = raw.title.trim()
   if (typeof raw.model === 'string' && raw.model.trim()) req.model = raw.model.trim().slice(0, 200)
+  if (typeof raw.resume_agent_id === 'string' && raw.resume_agent_id.trim()) {
+    req.resume_agent_id = raw.resume_agent_id.trim().slice(0, 200)
+  }
   return req
 }
 
@@ -362,6 +373,13 @@ export type SubagentEvents = {
 export type RunSubagentOptions = {
   resolved: ResolvedSubagent
   description: string
+  /**
+   * The conversation of a subagent that finished earlier. `description` is then
+   * appended to it as the next user message instead of starting a fresh brief.
+   */
+  history?: UIMessage[]
+  /** Tools only this child gets, beyond the parent's (`ask_parent`). */
+  extraTools?: Record<string, Tool>
   /** The parent's model instance. Reused so no second load happens. */
   model: LanguageModel
   /**
@@ -435,6 +453,8 @@ export type SubagentResult = {
   output: string
   usage: Usage | null
   isError?: boolean
+  /** The child's whole conversation, for a later follow-up. Absent on a failure. */
+  messages?: UIMessage[]
   /** The answer was shortened by `capSubagentOutput`. */
   capped?: boolean
   /** The whole answer, when `output` is a shortened copy of it. */
@@ -520,7 +540,10 @@ export async function runSubagent(
     }
     events.onStart()
 
-    const tools = subagentTools(opts.parentTools, resolved.allowedTools)
+    const tools = {
+      ...subagentTools(opts.parentTools, resolved.allowedTools),
+      ...(opts.extraTools ?? {}),
+    }
     const baseSystem = buildSubagentSystemPrompt(resolved.systemPrompt, {
       availableTools: Object.keys(tools),
       workspacePath: opts.system.workspacePath,
@@ -541,9 +564,11 @@ export async function runSubagent(
 
     // A fresh history: the child does not see the parent's conversation, so the
     // description is the whole brief.
+    const prior = opts.history ?? []
     const messages: UIMessage[] = [
+      ...prior,
       {
-        id: 'sub-user-0',
+        id: `sub-user-${prior.length}`,
         role: 'user',
         parts: [{ type: 'text', text: opts.description }],
       } as UIMessage,
@@ -565,7 +590,8 @@ export async function runSubagent(
         }),
     }
 
-    let n = 0
+    // Past the ids already in a resumed history, so none repeats.
+    let n = prior.length + 1
     const outcome = await runTurn({
       messages,
       signal: opts.signal,
@@ -653,6 +679,7 @@ export async function runSubagent(
         usage: outcome.usage,
         isError: true,
         sessionTokens,
+        messages: outcome.messages,
         // The step budget gets its own label in the Tasks panel; the other
         // limits are the run's, not the child's.
         ...(outcome.stoppedBy === 'steps' ? { stoppedAtLimit: true } : {}),
@@ -666,6 +693,7 @@ export async function runSubagent(
       output: finalText ? capped : '(the subagent returned no answer)',
       usage: outcome.usage,
       sessionTokens,
+      messages: outcome.messages,
       ...(finalText && capped !== finalText ? { capped: true, full: finalText } : {}),
     }
   } finally {
