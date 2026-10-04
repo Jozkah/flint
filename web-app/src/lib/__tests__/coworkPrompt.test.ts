@@ -99,6 +99,14 @@ describe('buildCoworkSystemPrompt', () => {
   // a saved subagent: the shipped roles are always there to delegate to.
   describe('Subagents guide follows the delegation tools', () => {
     const WITH = ['read', 'task', 'team']
+    const SURVEY = 'Survey the whole repo: for each of the packages find how errors are logged.'
+    it('tells a survey request to delegate first, only when delegation is offered', () => {
+      const hint = 'Your first call must be `task`'
+      expect(buildCoworkSystemPrompt(opts({ availableTools: WITH, userRequest: SURVEY }))).toContain(hint)
+      expect(buildCoworkSystemPrompt(opts({ availableTools: WITH, userRequest: 'Say hello.' }))).not.toContain(hint)
+      expect(buildCoworkSystemPrompt(opts({ availableTools: WITH, userRequest: SURVEY, planMode: true }))).not.toContain(hint)
+      expect(buildCoworkSystemPrompt(opts({ availableTools: ['read'], userRequest: SURVEY }))).not.toContain(hint)
+    })
     it('appears with the tools, even when no saved subagent exists', () => {
       const p = buildCoworkSystemPrompt(opts({ availableTools: WITH }))
       expect(p).toContain('# Subagents')

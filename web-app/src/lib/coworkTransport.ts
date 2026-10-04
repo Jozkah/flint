@@ -112,6 +112,15 @@ function latestUserMessage(messages: UIMessage[]): { id: string; text: string } 
  * and the usage metadata. Only four things differ, and each is a seam on the
  * parent.
  */
+/** The text of the latest user message, or undefined when there is none. */
+function lastUserText(messages: UIMessage[]): string | undefined {
+  const last = [...messages].reverse().find((m) => m.role === 'user')
+  return last?.parts
+    .map((p) => (p.type === 'text' ? p.text : ''))
+    .join('')
+    .trim()
+}
+
 export class CoworkChatTransport extends CustomChatTransport {
   /** The route records uses where the turn meets its snapshot (AH-083). */
   protected override recordsMemoryUsesOnFinish = false
@@ -453,6 +462,7 @@ export class CoworkChatTransport extends CustomChatTransport {
       compatInstructions: this.config.compatInstructions,
       projectTooling: this.config.projectTooling,
       planMode: this.config.planMode,
+      userRequest: lastUserText(messages),
       openingInspection: this.config.openingInspection,
       bashAvailable: sandboxEnforces(),
       subagentNames: this.config.allowSubagents ? this.config.subagentNames : [],

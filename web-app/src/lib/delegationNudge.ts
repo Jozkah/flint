@@ -38,3 +38,20 @@ export class DelegationNudge {
     return NUDGE_TEXT
   }
 }
+
+/**
+ * A survey the model should not read for itself: it names several areas, or
+ * asks for everything of a kind across the repo. Short lookups never match.
+ */
+const SWEEP =
+  /\b(survey|audit|inventory|map out|investigate|go through|every (?:place|file|module|package|usage)|all (?:the |of the )?(?:\w+ )?(?:files|places|usages|tests|modules|packages)|whole (?:repo|codebase|project)|across (?:the )?(?:repo|codebase|project|packages|modules)|for each of|which areas|separately)\b/i
+
+export const SWEEP_HINT =
+  'This request is a survey. Your first call must be `task`, one subagent per area, all in one message. Do not read or grep first.'
+
+/** The one-line hint for a survey-shaped request, otherwise undefined. */
+export function sweepHint(request: string | undefined): string | undefined {
+  const text = request?.trim()
+  if (!text || text.length < 40) return undefined
+  return SWEEP.test(text) ? SWEEP_HINT : undefined
+}

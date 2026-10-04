@@ -15,6 +15,7 @@ import {
   subagentChoices,
 } from '@/lib/coworkSubagentGuide'
 import { replyLanguageLine } from '@/lib/replyLanguage'
+import { sweepHint } from '@/lib/delegationNudge'
 import {
   DESTRUCTIVE_ACTION_RULE,
   UNTRUSTED_CONTENT_RULE,
@@ -178,6 +179,8 @@ export type CoworkPromptOptions = {
   /** The attached project's current git branch, when one could be read. */
   gitBranch?: string | null
   planMode: boolean
+  /** The latest user message, so a survey-shaped request can be told to delegate. */
+  userRequest?: string
   /**
    * This is the opening turn of a repository-bound session and the request did
    * not say what to change, so the turn reads and proposes rather than acting.
@@ -590,7 +593,11 @@ export function buildCoworkSystemPrompt(opts: CoworkPromptOptions): string {
     blocks.push(opts.projectTooling.trim())
   }
   if (opts.webSearch && hasTool(opts, 'web_search') && hasTool(opts, 'web_fetch')) blocks.push(WEB_BLOCK)
-  if (subagentsOffered(opts)) blocks.push(subagentGuide(opts.subagentNames))
+  if (subagentsOffered(opts)) {
+    blocks.push(subagentGuide(opts.subagentNames))
+    const hint = sweepHint(opts.userRequest)
+    if (hint) blocks.push(hint)
+  }
   if (hasTool(opts, 'list_sessions')) blocks.push(SESSIONS_BLOCK)
   // Skills are only worth naming when the run can read them.
   if (opts.skillsBlock?.trim() && hasTool(opts, 'skill_read')) {
