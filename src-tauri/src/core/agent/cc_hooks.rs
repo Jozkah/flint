@@ -67,8 +67,10 @@ const MAX_TIMEOUT_SECS: u64 = 60;
 /// otherwise eat the context window.
 const MAX_CONTEXT_CHARS: usize = 32 * 1024;
 
-fn claude_home() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude"))
+/// `~/.claude` under the app's own home (`jan_home_dir`), so an isolated
+/// profile (explicit home override, tests) never reads the real one.
+pub(crate) fn claude_home() -> Option<PathBuf> {
+    crate::core::app::commands::jan_home_dir().map(|h| h.join(".claude"))
 }
 
 /// The hooks that apply right now: none unless the user opted in.
@@ -228,7 +230,7 @@ async fn exec(hook: &Hook, payload: &Value, cwd: &Path) -> Option<String> {
     let cwd = if cwd.is_dir() {
         cwd.to_path_buf()
     } else {
-        dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+        crate::core::app::commands::jan_home_dir().unwrap_or_else(|| PathBuf::from("."))
     };
 
     let mut cmd = tokio::process::Command::new(&shell.program);
@@ -352,6 +354,15 @@ pub async fn prompt_submit_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn claude_home_follows_the_app_home_not_the_real_profile() {
+        let home = crate::core::app::commands::jan_home_dir().expect("home");
+        assert_eq!(claude_home(), Some(home.join(".claude")));
+        if let Some(real) = dirs::home_dir() {
+            assert_ne!(claude_home(), Some(real.join(".claude")));
+        }
+    }
     use crate::core::agent::cc_links::Link;
 
     fn links(hooks: bool, plugin_root: Option<&Path>) -> Links {

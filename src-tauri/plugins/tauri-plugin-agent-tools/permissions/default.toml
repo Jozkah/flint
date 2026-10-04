@@ -93,6 +93,7 @@ permissions = [
     "allow-mailbox-mark-read",
     "allow-mailbox-claim",
     "allow-mailbox-reply",
+    "allow-mailbox-auto-reply",
     "allow-mailbox-list-sessions",
     "allow-mailbox-stop-approve",
     "allow-mailbox-stop-pending",

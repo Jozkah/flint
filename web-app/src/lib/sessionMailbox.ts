@@ -51,6 +51,12 @@ export type MailSessionSummary = {
   id: string
   displayName: string
   status: SessionStatus
+  /** The session's attached folder, as it reported it. Untrusted display text. */
+  folder?: string | null
+  /** False when that session opted out of messages from other sessions. */
+  acceptsMessages?: boolean
+  /** Epoch ms of the session's last registry change. */
+  lastActivity?: number
 }
 
 export type MailEnvelope = {
@@ -63,7 +69,8 @@ export type MailEnvelope = {
   createdAt: number
   replyTo?: string | null
   depth: number
-  origin: 'agent' | 'user'
+  /** `auto`: the sender's final answer, sent for it when its run did not reply. */
+  origin: 'agent' | 'user' | 'auto'
 }
 
 /** The error codes the contract names, plus the renderer's own. */
@@ -74,6 +81,8 @@ export type MailboxErrorCode =
   | 'pair_limit_exceeded'
   | 'self_target'
   | 'not_same_project'
+  | 'recipient_opted_out'
+  | 'ambiguous_session'
   | 'no_project'
   | 'unknown_session'
   | 'session_deleted'
@@ -96,6 +105,8 @@ export type MailboxErrorCode =
   | 'unknown'
 
 const KNOWN_CODES: ReadonlySet<string> = new Set<MailboxErrorCode>([
+  'recipient_opted_out',
+  'ambiguous_session',
   'invalid_reason',
   'target_not_running',
   'caller_not_running',
@@ -180,6 +191,8 @@ export type SessionRecord = {
   id: string
   displayName: string
   project: string | null
+  folder?: string | null
+  acceptsMessages?: boolean
   status: SessionStatus
   runId?: string | null
   heartbeatAt?: number | null
@@ -218,11 +231,14 @@ export const sessionMailbox = {
     sessionId: string
     displayName: string
     folder?: string | null
+    /** The per-session opt-out; omitted keeps what the backend has. */
+    acceptsMessages?: boolean
   }) =>
     call<SessionRecord>('mailbox_session_register', {
       sessionId: input.sessionId,
       displayName: input.displayName,
       folder: input.folder ?? null,
+      acceptsMessages: input.acceptsMessages ?? null,
     }),
 
   /**
@@ -279,6 +295,14 @@ export const sessionMailbox = {
 
   reply: (input: { fromSessionId: string; replyTo: string; text: string }) =>
     call<SendReceipt>('mailbox_reply', input),
+
+  /**
+   * Send a run's final answer as the reply to a message it handled. Resolves
+   * to `null` when nothing was sent: the agent already replied, or the message
+   * was itself a reply.
+   */
+  autoReply: (input: { fromSessionId: string; replyTo: string; text: string }) =>
+    call<SendReceipt | null>('mailbox_auto_reply', input),
 
   listSessions: (sessionId: string) =>
     call<MailSessionSummary[]>('mailbox_list_sessions', { sessionId }),

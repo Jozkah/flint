@@ -92,6 +92,7 @@ const COMMANDS: &[&str] = &[
     "mailbox_mark_read",
     "mailbox_claim",
     "mailbox_reply",
+    "mailbox_auto_reply",
     "mailbox_list_sessions",
     "mailbox_stop_approve",
     "mailbox_stop_pending",

@@ -52,6 +52,7 @@ import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 import { AttributionSettings } from '@/containers/AttributionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
+import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -493,6 +494,7 @@ function AgentToolsContent() {
 
         {tab === 'behaviour' && <CompactionPolicySettings />}
         {tab === 'behaviour' && <BrowserAgentSettings />}
+        {tab === 'behaviour' && <VisualizeSettings />}
         {tab === 'memories' && (
           <Card
             title={t('settings:agentTools.memories')}

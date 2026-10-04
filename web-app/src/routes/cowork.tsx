@@ -16,6 +16,8 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { parseSlashMarker, slashDisplay } from '@/lib/slashCommands'
 import ChatInput from '@/containers/ChatInput'
 import { CodeOpenProvider } from '@/containers/message/CodeOpenProvider'
+import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import type { CodeOpenOptions, CodePathCheck } from '@/lib/codeOpen'
 import { resolveCodePath } from '@/lib/codePathResolve'
 import HeaderPage from '@/containers/HeaderPage'
@@ -334,6 +336,12 @@ import { CoworkProjectInit } from '@/containers/CoworkProjectInit'
 import { projectInitLabel, useProjectInitDrafts } from '@/lib/projectInit'
 import { CoworkHandoffNotice } from '@/containers/CoworkHandoffNotice'
 import { CoworkHeldInput } from '@/containers/CoworkHeldInput'
+import { SessionMessagingToggle } from '@/containers/SessionMessagingToggle'
+import {
+  answerMail,
+  createMailLedger,
+  finalAnswerText,
+} from '@/lib/mailAutoReply'
 import { holdQueueThenStop } from '@/lib/chatSteering'
 import { CoworkInterruptedTurn } from '@/containers/CoworkInterruptedTurn'
 import {
@@ -2570,6 +2578,11 @@ export function CoworkPage() {
     const sid = ensureCurrentSession(paneSessionIdRef.current)
     // This session's run only: another session running is no reason to wait.
     if (useCoworkRun.getState().runs[sid]) return
+    // The mail this run takes in (the message that woke it, and anything that
+    // reaches it at a step boundary), so the run's final answer can go back to
+    // the sender when the agent did not reply itself.
+    const mailLedger = createMailLedger()
+    mailLedger.note(from)
     // Read the attached files into the message. Documents go in as text (there
     // is no retrieval tool here to search them with), media as file parts.
     const attached =
@@ -3176,6 +3189,10 @@ export function CoworkPage() {
       // an inline `system_prompt` is first-class, as it is in Rust.
       allowSubagents: true,
       webSearch,
+      // The session's own folder, which is what makes `stop_session` offerable
+      // and what readiness is probed for. Not `runReadRoot`: a worktree run
+      // reads somewhere else but is still this folder's session.
+      projectRoot: current?.folder ?? undefined,
       workspacePath,
       readOnlyFolder: runReadRoot,
       extraFolders: runExtraFolders,
@@ -3262,11 +3279,19 @@ export function CoworkPage() {
         pushLive([
           { role: 'tool', content: '', callId, name, status: 'running' },
         ]),
-      onToolArgsDelta: () => {},
+      // Only a widget's arguments are kept as they stream: it is the one call
+      // whose card draws from them before the call is complete.
+      onToolArgsDelta: (callId, delta) => {
+        const row = runTurns.find((turn) => turn.callId === callId)
+        if (row?.name !== SHOW_WIDGET_TOOL) return
+        row.argsLive = (row.argsLive ?? '') + delta
+        textFrame.schedule()
+      },
       onToolCall: (call) => {
         const row = runTurns.find((turn) => turn.callId === call.toolCallId)
         if (row) {
           row.args = call.input
+          row.argsLive = undefined
           publish()
           // #321: checkpointed now, not at the next step or text delta. A
           // crash between here and the step's end otherwise left the saved
@@ -4576,6 +4601,7 @@ export function CoworkPage() {
               useMessageQueue.getState().takeSteering(sid)
             )
             if (taken.length === 0) return []
+            for (const m of taken) mailLedger.note(m.from)
             // Into this run's execution record, in sequence with its calls:
             // steering changes what the model works from. The words stay in
             // the transcript; the record says only that input was delivered.
@@ -4686,6 +4712,14 @@ export function CoworkPage() {
         : null
       useCoworkRun.getState().finishRun(sid, runId, ending)
       recordRunEnded(ending)
+      // The answer to a session that asked this one something: sent after the
+      // run is recorded as over, and only for a run that finished on its own.
+      if (stop === 'done') {
+        const asked = mailLedger.unanswered()
+        if (asked.length > 0) {
+          void answerMail(sid, asked, finalAnswerText(outcome?.messages ?? []))
+        }
+      }
       // Only a run that finished on its own, and not one about to go on with
       // what was queued behind it: that one sounds when it ends.
       if (stop === 'done' && !continueWith) notifyAnswerFinished()
@@ -4735,6 +4769,22 @@ export function CoworkPage() {
   }
   // A paired phone's message to the session in view takes the same path.
   useRemoteComposer('cowork', session?.id, handleSubmit)
+  // A widget's button sends its prompt as the user's next message, once the
+  // run in view has ended.
+  const widgetBusyRef = useRef(false)
+  widgetBusyRef.current = running
+  const widgetSubmitRef = useRef(handleSubmit)
+  widgetSubmitRef.current = handleSubmit
+  const widgetHost = useMemo<WidgetHost>(
+    () => ({
+      sendPrompt: (text) => {
+        if (widgetBusyRef.current) return false
+        widgetSubmitRef.current(text)
+        return true
+      },
+    }),
+    []
+  )
   // Cowork's own `/` built-ins; `/help` is added by the composer.
   /**
    * Compact this session now: fold its older messages into a summary written
@@ -5353,6 +5403,10 @@ export function CoworkPage() {
           />
         }
       />
+      {/* Whether other sessions may write to this one, and whether it answers
+          them on its own. Here, not only on a held message, so it can be
+          decided before anyone writes. */}
+      {session?.id && <SessionMessagingToggle sessionId={session.id} />}
       {/* AH-177: this session's canonical events, written to a file. */}
       <CoworkEventExport
         sessionId={session?.id}
@@ -5626,6 +5680,7 @@ export function CoworkPage() {
             ) : (
               <Conversation className="absolute inset-0 text-start">
                 <ConversationContent className="transcript-list mx-auto w-full max-w-[756px] px-[18px] pt-4 pb-3">
+                  <WidgetHostContext.Provider value={widgetHost}>
                   <CodeOpenProvider
             open={openToolPath}
             check={checkToolPath}
@@ -5847,6 +5902,7 @@ export function CoworkPage() {
                                           ))
                     })}
                   </CodeOpenProvider>
+                  </WidgetHostContext.Provider>
                   {/* AH-109: overlapping team tasks, before either runs. */}
                   <CoworkTeamConflicts sessionId={session?.id} />
                   <CoworkChildApprovals sessionId={session?.id} />

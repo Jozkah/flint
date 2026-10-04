@@ -23,6 +23,8 @@ import {
 } from '@/lib/coworkTools'
 import { isReadOnly, type CoworkMode } from '@/lib/coworkMode'
 import { isBrowserTool } from '@/lib/browserAgent'
+import { isVisualizeTool } from '@/lib/visualize/constants'
+import { executeVisualizeTool } from '@/lib/visualize/tools'
 import { attribute, sealed } from '@/lib/coworkPrompt'
 import {
   isMissingPathError,
@@ -853,6 +855,13 @@ async function routeCoworkTool(
 
     const mcpServer = ctx.mcpServerFor?.(toolName)
     if (mcpServer) return await callMcpTool(call, mcpServer, ctx, signal)
+
+    if (isVisualizeTool(toolName)) {
+      const viz = executeVisualizeTool(toolName, call.input, ctx.sessionId)
+      return viz.error !== undefined
+        ? { output: viz.error, isError: true }
+        : { output: viz.content ?? '' }
+    }
 
     if (WEB_TOOL_NAMES.has(toolName)) {
       if (!ctx.webSearch) {

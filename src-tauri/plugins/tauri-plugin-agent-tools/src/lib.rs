@@ -200,6 +200,7 @@ pub fn init<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
             commands::mailbox_mark_read,
             commands::mailbox_claim,
             commands::mailbox_reply,
+            commands::mailbox_auto_reply,
             commands::mailbox_list_sessions,
             commands::mailbox_stop_approve,
             commands::mailbox_stop_pending,

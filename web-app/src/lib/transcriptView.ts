@@ -53,7 +53,10 @@ export function partitionTrace<E extends TraceEntry>(
       )
       // A page shown to the user stays in view: it is the result, not a step.
       const shown =
-        part.type === 'tool-open_in_browser' && part.state === 'output-available'
+        (part.type === 'tool-open_in_browser' &&
+          part.state === 'output-available') ||
+        // A widget is drawn for the user, from the first streamed character.
+        part.type === 'tool-show_widget'
       if (
         pending ||
         shown ||
