@@ -122,6 +122,12 @@ export const AGENT_TOOL_NAMES = new Set([
   'open_path',
   // A PowerShell script outside the sandbox. Asked about every time, script shown.
   'host_powershell',
+  // winget (changes asked, looking free), a command in WSL or over SSH (asked every
+  // time), and a desktop notification.
+  'host_package',
+  'host_wsl',
+  'host_ssh',
+  'notify_user',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -416,13 +422,25 @@ const HOST_ASKED = new Set([
   HOST_ACTION_NAME,
   HOST_BUILD_NAME,
   'host_powershell',
+  'host_package',
+  'host_wsl',
+  'host_ssh',
   'clipboard',
   'open_path',
 ])
+/** winget is asked about only when it changes a program; looking is free. */
+const hostCallNeedsAsking = (toolName: string, input: unknown): boolean =>
+  toolName !== 'host_package' ||
+  ['install', 'upgrade', 'uninstall'].includes(
+    String((input as Record<string, unknown> | null)?.action)
+  )
 /** What the question says it is about, by tool. */
 const HOST_CONTEXT: Record<string, string> = {
   [HOST_BUILD_NAME]: 'Build',
   host_powershell: 'PowerShell on this computer',
+  host_package: 'Programs on this computer',
+  host_wsl: 'Command in WSL',
+  host_ssh: 'Command over SSH',
   clipboard: 'Clipboard',
   open_path: 'Open on screen',
 }
@@ -455,6 +473,21 @@ export async function describeHostAction(
       return `Replace the clipboard with ${text.length} characters: "${first}${text.length > 60 ? '...' : ''}"`
     }
     return 'Read the text on the clipboard'
+  }
+  if (toolName === 'host_package') {
+    const verb = String(a.action ?? '')
+    const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
+    return `${label} ${String(a.id ?? '')} with winget`
+  }
+  if (toolName === 'host_wsl' || toolName === 'host_ssh') {
+    const command = String(a.command ?? '').trim()
+    const where =
+      toolName === 'host_ssh'
+        ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
+        : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
+    return `Run this ${where}:\n${
+      command.length > 1500 ? `${command.slice(0, 1500)}\n[... ${command.length - 1500} more characters]` : command
+    }`
   }
   if (toolName === 'host_powershell') {
     const script = String(a.script ?? '').trim()
@@ -629,7 +662,7 @@ export async function executeAgentTool(
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
 
-    if (HOST_ASKED.has(toolName)) {
+    if (HOST_ASKED.has(toolName) && hostCallNeedsAsking(toolName, input)) {
       // The id the question is asked under is the id the backend is told, so
       // its guard can see that a person answered.
       const callId = options.callId ?? `${toolName}-${Date.now()}`

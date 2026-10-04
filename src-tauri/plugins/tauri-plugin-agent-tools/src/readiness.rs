@@ -424,7 +424,7 @@ pub fn required_capabilities(tool: &str) -> Vec<&'static str> {
             vec![capability::FS_WRITE]
         }
         "read" | "ls" | "find" | "grep" | "screenshot" | "memory_list" | "memory_read"
-        | "skill_list" | "skill_read" | "message_check" | "git_inspect" | "windows_events" | "host_query" | "local_http" | "docker" | "host_action" | "host_build" | "clipboard" | "open_path" | "host_powershell" => vec![capability::FS_READ],
+        | "skill_list" | "skill_read" | "message_check" | "git_inspect" | "windows_events" | "host_query" | "local_http" | "docker" | "host_action" | "host_build" | "clipboard" | "open_path" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "notify_user" => vec![capability::FS_READ],
         // Runs the host's git/gh directly (no shell, no sandbox); each call is
         // confined and classified by the tool itself and the gate.
         "git" => vec![capability::FS_READ],

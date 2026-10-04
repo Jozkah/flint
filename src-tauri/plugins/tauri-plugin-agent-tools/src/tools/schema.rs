@@ -393,6 +393,71 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "host_package",
+                "description": "Look at, and change, the programs installed on this computer, through winget (which the sandboxed `bash` cannot run). Looking needs no approval: list (installed programs, optional `query` filter), search (`query`), show (`id`: details of one package) and outdated (programs with an update). Changing asks the user every time and names the package: install, upgrade and uninstall, each by the exact winget `id` (such as Git.Git; find it with search). There is no upgrade-everything; each package is its own question. Installs are silent and non-interactive, and one that needs an administrator fails with Windows' own message. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "description": "list, search, show, outdated, install, upgrade or uninstall." },
+                        "id": { "type": "string", "description": "The exact winget package id, for show, install, upgrade and uninstall." },
+                        "query": { "type": "string", "description": "A search word, for search and list." }
+                    },
+                    "required": ["action"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "host_wsl",
+                "description": "Run a command inside a WSL (Linux) distribution, which the sandboxed `bash` cannot reach. The command runs in the distribution's bash from the project folder (which WSL mounts), and the user is asked to approve every call and is shown the whole command, so say what it does and why first. Stops at timeout_secs (default 120, up to 900). Returns the output and exit code. List distributions with host_query wsl_distros. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string", "description": "The bash command or short script (up to 8000 characters). Required." },
+                        "distro": { "type": "string", "description": "The distribution, such as Ubuntu. Default: the user's default." },
+                        "cwd": { "type": "string", "description": "Windows folder to start in, relative to the project or absolute inside a writable root. Default: the project folder." },
+                        "timeout_secs": { "type": "integer", "description": "Stop after this many seconds. Default 120, at most 900." }
+                    },
+                    "required": ["command"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "host_ssh",
+                "description": "Run one command on another machine over SSH, using the user's own SSH client, keys and trusted hosts. The user is asked to approve every call and is shown the machine and the whole command, so say what it does and why first. It never prompts: a password or an unknown host fails, so the host needs a key and must already be trusted. Stops at timeout_secs (default 60, up to 600). `host` is a name, user@name or an alias from the user's ssh config.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "host": { "type": "string", "description": "The machine: name, user@name or an ssh config alias. Required." },
+                        "command": { "type": "string", "description": "The command to run there (up to 8000 characters). Required." },
+                        "port": { "type": "integer", "description": "SSH port if not the default." },
+                        "timeout_secs": { "type": "integer", "description": "Stop after this many seconds. Default 60, at most 600." }
+                    },
+                    "required": ["host", "command"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "notify_user",
+                "description": "Show a desktop notification, for when something long finishes (a build, a test run, a download) and the user may have walked away. Use it once, when the whole job is done, not for progress. Plain text; a short title and a message of up to 300 characters. At most one every 10 seconds and 30 an hour. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "message": { "type": "string", "description": "What happened, in a sentence. Required." },
+                        "title": { "type": "string", "description": "Short title. Default: Flint." }
+                    },
+                    "required": ["message"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "host_powershell",
                 "description": "Run a PowerShell script as the user, outside the sandbox. Use it only for what the sandboxed `bash` cannot do and no other host tool covers (the registry, services, WMI, the Event Log, a profile-installed module, another program's window). Prefer host_query, windows_events, host_action, host_build and docker where they fit: they are narrower. The user is asked to approve every call and is shown the whole script, so say what it does and why first, keep it short, and do not hide effects in it. Non-interactive, no profile, runs from a folder you may write to, stops at timeout_secs (default 120, up to 900). Returns the output and exit code. Windows only.",
                 "parameters": {
@@ -440,11 +505,11 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "host_build",
-                "description": "Run a build or package-manager command (Java, .NET, Go, Rust or Node) in the project folder with the host's own tools, which cannot run inside the sandboxed `bash` (no profile-installed JVM, no ~/.gradle or ~/.m2, no loopback for the Gradle daemon). `program` is gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn (gradlew and mvnw must be in the folder); `args` is the list of words after it, for example [\"build\", \"-x\", \"test\"]. A build runs the project's own scripts, so the user is asked to approve every call and sees the exact command: say what you are building and why first. It runs only in a folder you may write to, stops at timeout_secs (default 600, up to 1800) and returns the head and tail of the log with the exit code. Prefer targeted tasks over a full clean build. Use `bash` for anything else.",
+                "description": "Run a build or package-manager command (Java, .NET, Go, Rust or Node) in the project folder with the host's own tools, which cannot run inside the sandboxed `bash` (no profile-installed JVM, no ~/.gradle or ~/.m2, no loopback for the Gradle daemon). `program` is gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm, yarn, make, cmake, uv or bun (gradlew and mvnw must be in the folder); `args` is the list of words after it, for example [\"build\", \"-x\", \"test\"]. A build runs the project's own scripts, so the user is asked to approve every call and sees the exact command: say what you are building and why first. It runs only in a folder you may write to, stops at timeout_secs (default 600, up to 1800) and returns the head and tail of the log with the exit code. Prefer targeted tasks over a full clean build. Use `bash` for anything else.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "program": { "type": "string", "description": "gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn." },
+                        "program": { "type": "string", "description": "gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm, yarn, make, cmake, uv or bun." },
                         "args": { "type": "array", "items": { "type": "string" }, "description": "The words after the program, as separate strings." },
                         "cwd": { "type": "string", "description": "Folder to build in, relative to the project or an absolute path inside a writable root. Default: the project folder." },
                         "timeout_secs": { "type": "integer", "description": "Stop the build after this many seconds. Default 600, at most 1800." }
@@ -473,11 +538,11 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "host_query",
-                "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros, gpu (adapters, VRAM, utilisation), network (adapters, addresses, DNS, connections per program), updates (recent and pending Windows updates; slow) or battery. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
+                "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros, gpu (adapters, VRAM, utilisation), network (adapters, addresses, DNS, connections per program), updates (recent and pending Windows updates; slow), battery, windows (open windows and titles), devices (hardware with driver problems), disk_health (drive health and SMART counters), firewall (profiles and inbound allow rules), env_names (environment variable names only) or printers. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items, wsl_distros, gpu, network, updates or battery." },
+                        "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items, wsl_distros, gpu, network, updates, battery, windows, devices, disk_health, firewall, env_names or printers." },
                         "name": { "type": "string", "description": "Filter by name (letters, digits, spaces, dots, dashes, underscores)." },
                         "port": { "type": "integer", "description": "ports only: the one port to look at." },
                         "pid": { "type": "integer", "description": "processes only: the one process number to look at." },
@@ -745,7 +810,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 50);
+        assert_eq!(schemas.len(), 54);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

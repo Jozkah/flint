@@ -18,7 +18,11 @@ pub mod git_native;
 pub mod git_tool;
 pub mod host_action;
 pub mod host_build;
+pub mod host_package;
 pub mod host_powershell;
+pub mod host_ssh;
+pub mod host_wsl;
+pub mod notify_user;
 pub mod clipboard;
 pub mod open_path;
 pub mod docker_tool;
@@ -647,6 +651,32 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Look at (free) or change (asked) the programs installed, through winget.
+    // The gate classifies per call: looking is allowed, changing is asked.
+    BuiltinTool {
+        name: "host_package",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // A command inside a WSL distribution; asked every time, command shown.
+    BuiltinTool {
+        name: "host_wsl",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // One command on another machine over the user's SSH; asked every time.
+    BuiltinTool {
+        name: "host_ssh",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // A desktop toast for the end of something long. Rate-limited, no approval:
+    // it reads and changes nothing.
+    BuiltinTool {
+        name: "notify_user",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // Run a PowerShell script as the user, outside the sandbox. The most trusted
     // tool in the set, so: asked every time with the whole script shown, refused
     // by the backend unless a person approved it, run from a writable folder.
@@ -902,7 +932,10 @@ pub fn is_host_tool(name: &str) -> bool {
 /// unless one answered: they change this computer or read something private.
 /// No session grant, no auto-approving mode and no "always" covers them.
 pub fn is_always_ask(name: &str) -> bool {
-    matches!(name, "host_action" | "host_build" | "host_powershell" | "clipboard" | "open_path")
+    matches!(
+        name,
+        "host_action" | "host_build" | "host_powershell" | "host_package" | "host_wsl" | "host_ssh" | "clipboard" | "open_path"
+    )
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -979,10 +1012,11 @@ mod tests {
         // + host_build: gradle, mvn or dotnet outside the sandbox, asked every time.
         // + clipboard and open_path, asked every time.
         // + host_powershell, a script outside the sandbox, asked every time.
+        // + host_package, host_wsl, host_ssh and notify_user.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 50);
+        assert_eq!(BUILTIN_TOOLS.len(), 54);
     }
 
     #[test]
