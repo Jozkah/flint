@@ -53,6 +53,12 @@ export interface ToolResult {
    * Never part of model context.
    */
   unsandboxedRetry?: string
+  /**
+   * A picture the tool made for the model (the `browser` tool's screenshot), as
+   * a bounded data URL. Kept beside the transcript by the renderer; never part
+   * of the stored result.
+   */
+  images?: Array<{ dataUrl: string; name: string }>
 }
 
 /**

@@ -61,7 +61,9 @@ export function browserCallOptions(
   toolName: string,
   toolCallId: string
 ): { callId?: string } {
-  return isBrowserTool(toolName) ? { callId: toolCallId } : {}
+  return isBrowserTool(toolName) || toolName === 'browser'
+    ? { callId: toolCallId }
+    : {}
 }
 
 export const isBrowserActionTool = (name: string): boolean =>

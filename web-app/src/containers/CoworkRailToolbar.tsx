@@ -4,6 +4,7 @@ import {
   Code,
   Diff,
   Eye,
+  Globe,
   Layers,
   ListTree,
   Loader2,
@@ -26,6 +27,7 @@ export type RailMode =
   | 'activity'
   | 'timeline'
   | 'background'
+  | 'browser'
 
 /** The tab a keyboard user just pressed, to be focused again after a move. */
 let refocusMode: RailMode | null = null
@@ -53,9 +55,12 @@ export function CoworkRailToolbar({
   deletions,
   activity,
   changeSummary,
+  agentBrowser = false,
   background,
   presentation = 'toolbar',
 }: {
+  /** The agent has a browser open: its tab is offered. */
+  agentBrowser?: boolean
   /** The session's background tasks: how many are running and how many are
    * listed. The tab is absent when none are listed. */
   background?: { running: number; total: number }
@@ -202,6 +207,14 @@ export function CoworkRailToolbar({
         undefined,
         t('common:rail.timeline')
       )}
+      {agentBrowser &&
+        item(
+          'browser',
+          t('common:rail.agentBrowser'),
+          <Globe className="size-3.5 shrink-0" aria-hidden />,
+          undefined,
+          t('common:rail.agentBrowser')
+        )}
       {/* Only once something has been started in the background, and only while
           the list has rows: there is nothing to open before that. */}
       {background && background.total > 0

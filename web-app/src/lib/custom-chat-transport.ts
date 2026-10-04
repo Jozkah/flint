@@ -180,6 +180,11 @@ import {
 } from '@/lib/mcpLiveTools'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
+import {
+  attachToolScreenshots,
+  SCREENSHOT_TOKEN_ESTIMATE,
+  screenshotsToAttach,
+} from '@/lib/toolScreenshots'
 import { transcodeWebpImages } from '@/lib/imageTranscode'
 import { encodeVideoSentinel, parseVideoDataUrl } from '@/lib/video-sentinel'
 import { isPredefinedRemoteProvider } from '@/lib/providerCaps'
@@ -2776,9 +2781,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
       // Context Shift only shifts llama.cpp's KV cache after generation starts.
       // Keep the submitted chat history under the live router context window first.
-      const systemPromptTokens = effectiveSystem
-        ? estimateTokens(effectiveSystem) + 4
+      // A vision model is also sent the recent browser screenshots (kept beside
+      // the transcript, see lib/toolScreenshots.ts): their cost is reserved here
+      // because the pictures are added after the history is fitted.
+      const screenshotTokens = (selectedModel?.capabilities?.includes('vision') ?? false)
+        ? screenshotsToAttach(messagesToConvert) * SCREENSHOT_TOKEN_ESTIMATE
         : 0
+      const systemPromptTokens =
+        (effectiveSystem ? estimateTokens(effectiveSystem) + 4 : 0) +
+        screenshotTokens
       this.announcedCompaction = this.carriedCompaction
       if (
         autoCompact &&
@@ -2851,7 +2862,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
 
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false
-    let withInlineAttachments = this.mapUserInlineAttachments(effectiveMessages)
+    let withInlineAttachments = attachToolScreenshots(
+      this.mapUserInlineAttachments(effectiveMessages),
+      { supportsVision: modelSupportsVision }
+    )
     // A model that cannot see gets a written description of each image, made by
     // one that can, in the image's place. With no such model (or the feature
     // off) the images are stripped below, as before.

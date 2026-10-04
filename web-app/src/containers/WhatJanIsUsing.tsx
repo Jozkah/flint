@@ -24,6 +24,8 @@ import { useThreads } from '@/hooks/useThreads'
 import { useModelProvider } from '@/hooks/useModelProvider'
 import { useChatAttachments } from '@/hooks/useChatAttachments'
 import { useAppState } from '@/hooks/useAppState'
+import { AgentBrowserWindow } from '@/containers/AgentBrowserWindow'
+import { useBrowserToolMirror } from '@/hooks/useBrowserToolMirror'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
 import { useServiceHub } from '@/hooks/useServiceHub'
 import { useActiveMessages } from '@/hooks/useActiveMessages'
@@ -890,6 +892,13 @@ export function WhatJanIsUsingPanel({
         messages={messages}
         modelId={selectedModel?.id}
         className="shrink-0 motion-safe:animate-rise-in motion-safe:[animation-delay:320ms]"
+      />
+      {/* The agent's own browser, when it has one open: fills what is left of the
+          column, like the in-app preview fills its panel. */}
+      <AgentBrowserWindow
+        sessionId={threadId}
+        onHide={() => useBrowserToolMirror.getState().clear(threadId)}
+        className="min-h-[300px] flex-1"
       />
     </aside>
   )

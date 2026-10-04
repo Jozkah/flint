@@ -430,6 +430,12 @@ export type RunSubagentOptions = {
   dispatch: (call: PendingToolCall, signal: AbortSignal) => Promise<ToolOutcome>
   /** Who the child's calls are recorded as (see `RunDeps.activity`). */
   activity?: () => ToolActivityContext
+  /**
+   * Told, with the tool names in call order, once every call of one of the
+   * child's steps has its result. The session's `post-tool-batch` hooks hear it
+   * tagged as a subagent's. Observe-only: never awaited, never blocking.
+   */
+  onBatchFinished?: (toolNames: string[]) => void
   signal: AbortSignal
   events: SubagentEvents
   /** Session tokens already spent, so a child cannot outrun the session cap. */
@@ -606,6 +612,7 @@ export async function runSubagent(
           }),
         dispatch: opts.dispatch,
         activity: opts.activity,
+        onBatchFinished: opts.onBatchFinished,
         sink,
         onStep: ({ result, outcomes }) => {
           if (result.text.trim()) finalText = result.text

@@ -204,6 +204,9 @@ macro_rules! invoke_commands_with_extras {
         core::browser_verify::commands::browser_verify_run,
         core::browser_verify::commands::browser_verify_cancel,
         core::browser_verify::commands::browser_verify_set_browser,
+        core::browser_verify::commands::browser_tool_watch,
+        core::browser_verify::commands::browser_tool_describe,
+        core::browser_verify::commands::browser_tool_close,
         core::jev::commands::jev_key_set,
         core::jev::commands::jev_key_clear,
         core::jev::commands::jev_status,
@@ -731,6 +734,7 @@ pub fn build_app() -> tauri::App {
         })
         .setup(|app| {
             core::diffusion::register(app.handle());
+            core::browser_verify::commands::install_activity_mirror(app.handle());
             // Toolchain folders the user let the Windows sandbox use are
             // recorded beside the app's settings.
             tauri_plugin_agent_tools::tools::toolchain_grants::set_store(

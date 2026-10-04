@@ -273,7 +273,7 @@ export function categorizeTool(
   if (serverName) return 'external-tool'
   if (toolName === GIT_TOOL_NAME) return 'git'
   // The assistant acting on a web page in the browser pane (click, type, ...).
-  if (BROWSER_ACTION_TOOLS.has(toolName)) return 'browser'
+  if (BROWSER_ACTION_TOOLS.has(toolName) || toolName === 'browser') return 'browser'
   if (FILE_CHANGE_TOOLS.has(toolName)) return 'file-change'
   if (COMMAND_TOOLS.has(toolName)) return 'command'
   if (NETWORK_TOOLS.has(toolName)) return 'network'
@@ -351,7 +351,7 @@ function resourcesFor(
     case 'browser':
       // The page in full (its query string is what a prompt must not hide),
       // then the control, as the page's own snapshot labels it.
-      raw = [str(args.page), str(args.control) ? `"${str(args.control)}"` : undefined].filter(
+      raw = [str(args.url), str(args.page), str(args.control) ? `"${str(args.control)}"` : undefined].filter(
         (v): v is string => Boolean(v)
       )
       break
@@ -442,6 +442,15 @@ function actionFor(
         page: sanitizeResource(str(args.page) ?? 'the open page', 200),
       }
       switch (toolName) {
+        case 'browser': {
+          const what = [str(args.action), str(args.url) ?? str(args.ref)]
+            .filter(Boolean)
+            .join(' ')
+          return {
+            key: 'permissions:action.browserAgent',
+            values: { what: sanitizeResource(what || 'an action', 200) },
+          }
+        }
         case 'browser_click':
           return { key: 'permissions:action.browserClick', values }
         case 'browser_type':

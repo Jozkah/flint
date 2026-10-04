@@ -303,6 +303,18 @@ describe('runSubagent', () => {
     convertToModelMessages.mockClear()
   })
 
+  it("reports each tool turn of the child, observe-only, so the session's batch hooks hear it", async () => {
+    mockSteps([toolStep('c1', 'read', { path: 'a' }), textStep('done')])
+    const onBatchFinished = vi.fn(() => {
+      throw new Error('a hook problem never reaches the child')
+    })
+    const out = await runSubagent(baseOpts({ onBatchFinished }))
+    expect(onBatchFinished).toHaveBeenCalledTimes(1)
+    expect(onBatchFinished).toHaveBeenCalledWith(['read'])
+    expect(out.output).toBe('done')
+    expect(out.isError).toBeFalsy()
+  })
+
   it('returns the final text as the task output', async () => {
     mockSteps([textStep('the config is at /etc/x')])
     const opts = baseOpts()

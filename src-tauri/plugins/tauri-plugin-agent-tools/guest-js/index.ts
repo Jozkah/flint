@@ -44,7 +44,9 @@ export async function firePostToolBatch(
   threadId: string,
   toolNames: string[],
   allowNetwork?: boolean,
-  scope?: WorkspaceScope
+  scope?: WorkspaceScope,
+  /** `main` (default) or `subagent`: what the hook sees as `FLINT_HOOK_AGENT`. */
+  agent?: 'main' | 'subagent'
 ): Promise<void> {
   await invoke('plugin:agent-tools|fire_post_tool_batch', {
     dataFolder,
@@ -52,6 +54,7 @@ export async function firePostToolBatch(
     toolNames,
     allowNetwork,
     scope,
+    agent,
   })
 }
 
