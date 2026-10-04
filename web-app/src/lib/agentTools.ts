@@ -454,8 +454,7 @@ export async function describeHostAction(
   if (toolName === 'clipboard') {
     if (a.action === 'write') {
       const text = String(a.text ?? '')
-      const first = text.slice(0, 60).replace(/[\r\n]+/g, ' ')
-      return `Replace the clipboard with ${text.length} characters: "${first}${text.length > 60 ? '...' : ''}"`
+      return `Replace the clipboard with ${[...text].length} characters:\n${text}`
     }
     return 'Read the text on the clipboard'
   }
@@ -465,21 +464,17 @@ export async function describeHostAction(
     return `${label} ${String(a.id ?? '')} with winget`
   }
   if (toolName === 'host_wsl' || toolName === 'host_ssh') {
-    const command = String(a.command ?? '').trim()
+    const command = String(a.command ?? '')
     const where =
       toolName === 'host_ssh'
         ? `on ${String(a.host ?? '')}${a.port ? ` port ${String(a.port)}` : ''} over SSH`
         : `in WSL (${typeof a.distro === 'string' && a.distro ? a.distro : 'the default distribution'})`
-    return `Run this ${where}:\n${
-      command.length > 1500 ? `${command.slice(0, 1500)}\n[... ${command.length - 1500} more characters]` : command
-    }`
+    return `Run this ${where}:\n${command}`
   }
   if (toolName === 'host_powershell') {
-    const script = String(a.script ?? '').trim()
+    const script = String(a.script ?? '')
     const where = typeof a.cwd === 'string' && a.cwd ? a.cwd : 'the project folder'
-    return `Run this script as you, outside the sandbox, in ${where}:\n${
-      script.length > 1500 ? `${script.slice(0, 1500)}\n[... ${script.length - 1500} more characters]` : script
-    }`
+    return `Run this script as you, outside the sandbox, in ${where}:\n${script}`
   }
   if (toolName === 'open_path') {
     return a.reveal === true

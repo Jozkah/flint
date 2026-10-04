@@ -43,6 +43,7 @@ import {
 } from 'ai'
 import { repairToolArgs } from './toolCallRepair'
 import { streamCutOff } from './streamFinish'
+import { ReasoningLoopGuard } from './reasoningLoopGuard'
 import { recordMemoryUses } from './memoryUses'
 import { getServiceHub, useServiceStore } from '@/hooks/useServiceHub'
 import { useToolAvailable } from '@/hooks/useToolAvailable'
@@ -258,8 +259,10 @@ export type ServiceHub = {
  */
 export const SHELL_ROUTING_GUIDANCE = [
   'Choosing a shell: use the git tool for every git and gh command, the',
-  'built-in bash tool for all other commands, and an MCP shell or terminal',
-  'tool only when the user names it or asks for it.',
+  'built-in bash tool for sandboxed commands when offered. Use host_powershell',
+  'when offered and the user explicitly names it or the command needs host',
+  'access, with approval.',
+  'Use an MCP shell or terminal only when the user names it or asks for it.',
 ].join(' ')
 
 const SCHEMA_PRIMITIVE_TYPES = new Set([
@@ -1308,6 +1311,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
     const agentTools = this.buildAgentToolsSystemInstruction()
+    const shellAvailability = !useAgentToolsConfig.getState().agentToolsEnabled
+      ? 'Host and workspace shell tools are off in this chat. If the user asks for one, explain that they can enable Agent Tools in Settings. Do not claim the command ran.'
+      : this.tools && 'host_powershell' in this.tools
+        ? 'host_powershell is available for an explicit request to run PowerShell on this computer. It asks for approval before execution.'
+        : 'host_powershell is not offered in this request. Do not claim the command ran.'
     // Taught only when the tool is really offered, as Cowork does.
     const delegation =
       this.tools && 'task' in this.tools ? subagentGuide(this.delegationNames, { team: false }) : undefined
@@ -1324,6 +1332,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         files,
         web,
         agentTools,
+        shellAvailability,
         delegation,
         'Use only structured tool calls supplied by this request. Never print <tool_call> or <function=...> markup as an answer. If no suitable tool is available, say that you cannot run it.',
         // Independent of the agent tools: which plugins are on is Flint's own
@@ -1492,6 +1501,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         : []
     const cacheKey = JSON.stringify({
       mcpFingerprint,
+      routedQuery: useMCPServers.getState().settings.enableSmartToolRouting
+        ? this.lastUserMessage
+        : undefined,
       // A server switched on after the chat began has no tools until it is
       // started, so the fingerprint alone cannot see it.
       mcpGeneration: getMcpGeneration(),
@@ -1561,6 +1573,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             tools: mcpFingerprint,
             servers: summaries.map((s) => s.name).sort(),
             disabled: [...disabledToolKeys].sort(),
+            query: this.lastUserMessage,
           })
           if (this.frozenRoutedTools && this.frozenRoutedSig === routedSig) {
             mcpTools = this.frozenRoutedTools
@@ -3403,7 +3416,18 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       ? prependContinuationToUIStream(uiStream, continueContent)
       : uiStream
 
-    return finalStream
+    const reasoningGuard = new ReasoningLoopGuard()
+    return finalStream.pipeThrough(
+      new TransformStream<UIMessageChunk, UIMessageChunk>({
+        transform(chunk, controller) {
+          if (chunk.type === 'reasoning-delta' && reasoningGuard.add(chunk.delta)) {
+            controller.error(new Error('Reasoning stopped after repeating the same text. Try a different model or a lower thinking budget.'))
+            return
+          }
+          controller.enqueue(chunk)
+        },
+      })
+    )
   }
 
   async reconnectToStream(

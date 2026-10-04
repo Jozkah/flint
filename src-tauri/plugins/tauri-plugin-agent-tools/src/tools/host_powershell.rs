@@ -57,15 +57,9 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
     Ok(Plan { script: script.to_string(), timeout: Duration::from_secs(timeout) })
 }
 
-/// What the user is shown: the script itself, cut only when very long.
+/// What the user is shown: the complete script that will execute.
 pub fn display(plan: &Plan) -> String {
-    const SHOWN: usize = 1500;
-    let text = plan.script.trim();
-    if text.chars().count() <= SHOWN {
-        return text.to_string();
-    }
-    let cut: String = text.chars().take(SHOWN).collect();
-    format!("{cut}\n[... {} more characters]", text.chars().count() - SHOWN)
+    plan.script.clone()
 }
 
 /// `-EncodedCommand` takes the script as base64 of UTF-16LE.
@@ -107,7 +101,13 @@ pub async fn run(args: &Value, ctx: &crate::tools::ToolContext<'_>) -> String {
 async fn execute(plan: &Plan, cwd: &Path) -> String {
     use std::process::Stdio;
     // Output as UTF-8, then the user's script.
-    let script = format!("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n{}", plan.script);
+    let script = format!(
+        "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n\
+         $ErrorActionPreference='Stop'\n\
+         $ProgressPreference='SilentlyContinue'\n\
+         try {{\n{}\n}} catch {{ [Console]::Error.WriteLine($_.Exception.Message); exit 1 }}",
+        plan.script
+    );
     let mut cmd = tokio::process::Command::new("powershell.exe");
     cmd.args(["-NoProfile", "-NonInteractive", "-EncodedCommand", &encode(&script)])
         .current_dir(cwd)
@@ -177,11 +177,11 @@ mod tests {
     }
 
     #[test]
-    fn the_user_sees_the_whole_script_unless_it_is_very_long() {
+    fn the_user_sees_the_whole_script() {
         let short = plan(&json!({ "script": "  Get-Process | Sort CPU  " })).unwrap();
-        assert_eq!(display(&short), "Get-Process | Sort CPU");
+        assert_eq!(display(&short), "  Get-Process | Sort CPU  ");
         let long = plan(&json!({ "script": "x".repeat(2000) })).unwrap();
-        assert!(display(&long).contains("500 more characters"));
+        assert_eq!(display(&long), "x".repeat(2000));
     }
 
     #[cfg(windows)]
@@ -192,6 +192,9 @@ mod tests {
         assert!(ok.starts_with("Finished (exit code 0).") && ok.contains("olá 日本"), "{ok}");
         let failed = execute(&plan(&json!({ "script": "Write-Output hi; exit 3" })).unwrap(), &dir).await;
         assert!(failed.starts_with("ERROR: the script failed (exit code 3)."), "{failed}");
+        let missing = execute(&plan(&json!({ "script": "Get-Item -LiteralPath 'C:\\flint-file-that-does-not-exist'; Write-Output ok" })).unwrap(), &dir).await;
+        assert!(missing.starts_with("ERROR: the script failed"), "{missing}");
+        assert!(!missing.contains("CLIXML"), "{missing}");
         let timed = execute(&plan(&json!({ "script": "Start-Sleep 30", "timeout_secs": 5 })).unwrap(), &dir).await;
         assert!(timed.contains("had not finished after 5 seconds"), "{timed}");
     }

@@ -86,15 +86,19 @@ describe('CustomChatTransport smart-tool-routing freeze', () => {
     transport = new CustomChatTransport('sys', 'thread-1')
   })
 
-  it('routes once and freezes the set across subsequent turns', async () => {
+  it('routes again when a later turn needs another tool', async () => {
     transport.setLastUserMessage('first query')
     await transport.refreshTools()
     expect(h.getRelevantTools).toHaveBeenCalledTimes(1)
     expect(Object.keys(transport.getTools())).toContain('tool_a')
 
-    transport.setLastUserMessage('a completely different query')
-    await transport.refreshTools()
-    expect(h.getRelevantTools).toHaveBeenCalledTimes(1)
+    h.getRelevantTools.mockResolvedValue([
+      { name: 'host_powershell', description: '', inputSchema: {}, server: 'srv' },
+    ])
+    transport.setLastUserMessage('run Get-Date with host_powershell')
+    await transport.refreshTools(undefined, true)
+    expect(h.getRelevantTools).toHaveBeenCalledTimes(2)
+    expect(Object.keys(transport.getTools())).toContain('host_powershell')
   })
 
   it('re-routes when the disabled-tool set changes', async () => {

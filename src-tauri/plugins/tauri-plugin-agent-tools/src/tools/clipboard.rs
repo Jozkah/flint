@@ -88,9 +88,7 @@ pub fn summary(action: &Action) -> String {
     match action {
         Action::Read => "Read the text on the clipboard".to_string(),
         Action::Write { text } => {
-            let first: String = text.chars().take(60).collect::<String>().replace(['\r', '\n'], " ");
-            let more = if text.chars().count() > 60 { "..." } else { "" };
-            format!("Replace the clipboard with {} characters: \"{first}{more}\"", text.chars().count())
+            format!("Replace the clipboard with {} characters:\n{text}", text.chars().count())
         }
     }
 }
@@ -177,8 +175,9 @@ mod tests {
     #[test]
     fn the_summary_says_which_way_it_goes() {
         assert_eq!(summary(&Action::Read), "Read the text on the clipboard");
-        let long = summary(&Action::Write { text: format!("line one\nline two {}", "x".repeat(100)) });
-        assert!(long.starts_with("Replace the clipboard with ") && long.contains("...") && !long.contains('\n'));
+        let text = format!("line one\nline two {}DANGEROUS_TAIL", "x".repeat(100));
+        let long = summary(&Action::Write { text: text.clone() });
+        assert!(long.starts_with("Replace the clipboard with ") && long.contains(&text));
     }
 
     #[test]
