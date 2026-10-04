@@ -391,7 +391,7 @@ pub async fn context_for_turn(
 /// Tauri command: run the Claude Code context hooks for a turn. Never an
 /// error: a missing opt-in, a broken hook or an unreadable `~/.claude` all come
 /// back as nothing to add, because these hooks only ever add to a prompt.
-#[tauri::command]
+#[cfg_attr(not(feature = "cli"), tauri::command)]
 pub async fn run_cc_context_hooks(
     session_id: Option<String>,
     project_dir: Option<String>,

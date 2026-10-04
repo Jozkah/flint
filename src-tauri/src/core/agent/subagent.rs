@@ -1409,6 +1409,7 @@ impl Default for ModelSettings {
 }
 
 /// The key the desktop app's Subagents card is persisted under.
+#[cfg_attr(feature = "cli", allow(dead_code))]
 pub(crate) const SUBAGENT_SETTINGS_KEY: &str = "flint-subagent-settings";
 
 /// A model id from the settings blob: a non-empty single line of sane length,
@@ -1456,10 +1457,17 @@ pub(crate) fn parse_model_settings(raw: Option<&str>) -> ModelSettings {
 }
 
 /// The settings as the desktop app last wrote them.
+#[cfg(not(feature = "cli"))]
 pub(crate) fn load_model_settings() -> ModelSettings {
     parse_model_settings(
         crate::core::app::settings_store::settings_get(SUBAGENT_SETTINGS_KEY.to_string()).as_deref(),
     )
+}
+
+/// The headless build has no settings store, so subagent models follow the definitions and routing rules.
+#[cfg(feature = "cli")]
+pub(crate) fn load_model_settings() -> ModelSettings {
+    parse_model_settings(None)
 }
 
 /// The model a child runs on. Mirrors `resolveSubagentChoice` in the web app
