@@ -234,12 +234,23 @@ repository is public.";
 /// Guidance injected only when subagent tools are actually available, so the
 /// model delegates context-heavy exploration instead of exhausting its own
 /// (limited) context window reading files and tool output directly.
-const SUBAGENT_GUIDE: &str = "# Subagents\n\nYour own context window is limited. For open-ended exploration \
-that could pull in a lot of file content or tool output (broad codebase search, reading files, many \
-multi-step research), prefer `dispatch_subagent` over doing it inline: the subagent absorbs that context \
-in its own window and returns only the distilled answer. Dispatch independent subagents in parallel when \
-their work doesn't depend on each other, then `await_subagent` each. Do inline work yourself for small, \
-targeted tasks where delegating would cost more than it saves.";
+fn subagent_guide() -> String {
+    format!(
+        "# Subagents\n\nYour own context window is limited. `dispatch_subagent` hands a job to a subagent that \
+works in its own context, so it can read and search widely and give you back only the conclusion.\n\
+Delegate when: a search or investigation is open-ended and needs many reads or rounds; the work splits into \
+independent parts that can run in parallel; the output would be large and you only need the conclusion; or a \
+role below fits.\n\
+Do not delegate: a lookup you can do in one or two tool calls, a file or symbol you already know, or work \
+another subagent is already doing.\n\
+To run parts in parallel, make several `dispatch_subagent` calls in the same message, then `await_subagent` \
+each run_id. Write each brief as if to a colleague who has seen none of this conversation: the goal, the \
+files or names involved, and what to report back. The user does not see a subagent's output: read it and \
+tell them what matters.\n\
+Roles: {}.",
+        crate::core::agent::roles::role_menu()
+    )
+}
 
 /// System-prompt addendum for a `/goal` run with no staged plan: an unattended
 /// loop that keeps firing turns until a condition is met needs the phased list
@@ -578,8 +589,11 @@ pub(crate) fn build_system_prompt_for(
     // Stable text first, so a prompt cache keeps it across turns; what varies
     // by project follows, and what varies by day or branch comes last, just
     // before the remembered facts.
-    if subagents_enabled {
-        blocks.push(SUBAGENT_GUIDE.to_string());
+    // Only when `dispatch_subagent` is really offered: `offered` is the run's
+    // advertised tool list, which drops it in plan mode or when it is denied,
+    // and a guide for a tool the model cannot call just invites a failed call.
+    if subagents_enabled && offers(offered, "dispatch_subagent") {
+        blocks.push(subagent_guide());
     }
     if offers(offered, "skill_read") || offers(offered, "memory_read") {
         let mut guide = DEFAULT_SKILL_GUIDE.trim().to_string();
@@ -1357,6 +1371,46 @@ We build with make.")
         let with = build_system_prompt(None, &root, None, true).expect("prompt");
         assert!(with.contains("dispatch_subagent"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The guide teaches when to delegate and which roles exist, and it follows
+    /// the advertised tool list: no `dispatch_subagent` offered, no guide.
+    #[test]
+    fn subagent_guide_appears_iff_dispatch_is_offered() {
+        let root = scratch_project("guide-iff");
+        let with: OfferedTools = ["read", "dispatch_subagent", "await_subagent"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let without: OfferedTools = ["read"].iter().map(|s| s.to_string()).collect();
+        let build = |enabled: bool, offered: Option<&OfferedTools>| {
+            build_system_prompt_for(None, &root, None, enabled, None, false, offered)
+                .0
+                .expect("prompt")
+        };
+        let on = build(true, Some(&with));
+        assert!(on.contains("# Subagents"), "{on}");
+        assert!(on.contains("Delegate when"), "{on}");
+        assert!(on.contains("Do not delegate"), "{on}");
+        assert!(on.contains("same message"), "{on}");
+        assert!(on.contains("does not see a subagent's output"), "{on}");
+        for role in crate::core::agent::roles::ROLES {
+            assert!(on.contains(&format!("{} ({})", role.name, role.when)), "role {}", role.name);
+        }
+        // Enabled, but the tool was dropped (plan mode, denied, allowlisted away).
+        assert!(!build(true, Some(&without)).contains("# Subagents"));
+        // Not enabled, even though the tool name is in the set.
+        assert!(!build(false, Some(&with)).contains("# Subagents"));
+        // Callers that do not know the tool list keep the old behaviour.
+        assert!(build(true, None).contains("# Subagents"));
+        assert!(!build(false, None).contains("# Subagents"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn subagent_guide_stays_compact() {
+        // ~4 chars per token; the guide rides on every turn of every run.
+        assert!(subagent_guide().len() < 2000, "{} chars", subagent_guide().len());
     }
 
     // ── Runtime environment block ────────────────────────────────────────

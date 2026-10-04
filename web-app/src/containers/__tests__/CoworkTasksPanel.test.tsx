@@ -225,7 +225,7 @@ describe('CoworkTasksPanel', () => {
     expect(within(row).getByText('researcher')).toBeInTheDocument()
     expect(within(row).getByText(/tokens=1.2k/)).toBeInTheDocument()
     expect(within(row).getByText(/toolCalls.*count=3/)).toBeInTheDocument()
-    expect(within(row).getByText(/model=jan-nano-4b/)).toBeInTheDocument()
+    expect(within(row).getByText('jan-nano-4b')).toBeInTheDocument()
   })
 
   it('shows a queued subagent with its place in the queue', async () => {
@@ -294,8 +294,66 @@ describe('CoworkTasksPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
     expect(screen.getByText('map the lexer')).toBeInTheDocument()
     expect(screen.getByText('looking')).toBeInTheDocument()
-    expect(screen.getByText('token')).toBeInTheDocument()
+    expect(screen.getAllByText(/token/).length).toBeGreaterThan(0)
     expect(screen.getByText('found 3 matches')).toBeInTheDocument()
+  })
+
+  it('shows a subagent’s own stats and tool breakdown when opened', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            usage: { prompt_tokens: 900, completion_tokens: 100, total_tokens: 1000 },
+            transcript: [
+              { role: 'assistant', content: 'on it' },
+              { role: 'tool', name: 'read', content: '', toolState: 'succeeded' },
+              { role: 'tool', name: 'read', content: '', toolState: 'succeeded' },
+            ],
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    const stats = screen.getByTestId('subagent-stats')
+    expect(stats).toHaveTextContent('statLabelInput')
+    expect(stats.querySelector('[data-stat=steps]')).toHaveTextContent('2')
+    expect(stats.querySelector('[data-stat=steps]')).toHaveAttribute('title', expect.stringContaining('turns=1'))
+    expect(stats.textContent).not.toContain('~')
+    expect(screen.getByTestId('subagent-tools')).toHaveTextContent('toolChip name=read count=2')
+  })
+
+  it('marks tokens estimated when the provider reported none', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({ transcript: [{ role: 'assistant', content: 'a'.repeat(400) }] }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByTestId('subagent-stats').textContent).toContain('~')
+  })
+
+  it('labels a child that ran out of steps distinctly, and a shortened result', async () => {
+    render(
+      <Panel
+        state={stateWith([
+          task({
+            status: 'error',
+            stoppedAtLimit: true,
+            resultCapped: true,
+            output: 'partial',
+          }),
+        ])}
+      />
+    )
+    await openWorkflow()
+    expect(screen.getByTestId('task-limit-badge')).toHaveTextContent('common:tasks.limitBadge')
+    await userEvent.click(screen.getByRole('button', { name: /researcher/ }))
+    expect(screen.getByTestId('subagent-stopped-at-limit')).toBeInTheDocument()
+    expect(screen.getByTestId('task-result-capped')).toBeInTheDocument()
   })
 
   it('shows only the tail of a very long output, and says so', async () => {

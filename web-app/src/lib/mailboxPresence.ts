@@ -12,6 +12,10 @@ import { sessionMailbox, type SessionMailbox } from '@/lib/sessionMailbox'
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import {
+  selectPendingApprovalCount,
+  useToolApprovalRequests,
+} from '@/hooks/useToolApprovalRequests'
 
 export const PRESENCE_DEBOUNCE_MS = 400
 export const HEARTBEAT_INTERVAL_MS = 30_000
@@ -19,7 +23,8 @@ export const HEARTBEAT_INTERVAL_MS = 30_000
 type PresenceMailbox = Pick<
   SessionMailbox,
   'register' | 'setStatus' | 'heartbeat' | 'remove' | 'revive'
->
+> &
+  Partial<Pick<SessionMailbox, 'setWaiting'>>
 
 function safe(label: string, fn: () => Promise<unknown>): void {
   try {
@@ -76,6 +81,8 @@ export function createPresenceSync(
   const revived = new Set<string>()
   const pending = new Map<string, ReturnType<typeof setTimeout>>()
   const runs = new Map<string, string>()
+  // Sessions last reported as stopped on an approval prompt.
+  const waiting = new Set<string>()
   const heartbeats = new Map<string, ReturnType<typeof setInterval>>()
 
   /**
@@ -180,6 +187,24 @@ export function createPresenceSync(
     heartbeats.delete(sid)
   }
 
+  /** Report each running session's approval wait, only when it changes. */
+  const syncWaiting = () => {
+    const approvals = useToolApprovalRequests.getState()
+    for (const [sid, runId] of runs.entries()) {
+      const now = selectPendingApprovalCount(approvals, sid) > 0
+      if (now === waiting.has(sid)) continue
+      if (now) waiting.add(sid)
+      else waiting.delete(sid)
+      const setWaiting = mailbox.setWaiting
+      if (!setWaiting) continue
+      safe('waiting', () =>
+        afterRegistration(sid, () =>
+          setWaiting({ sessionId: sid, runId, waiting: now })
+        )
+      )
+    }
+  }
+
   const syncRuns = (
     current: Record<string, { runId: string; startedAt: number }>
   ) => {
@@ -196,6 +221,7 @@ export function createPresenceSync(
         )
       }
       runs.set(sid, run.runId)
+      waiting.delete(sid)
       stopHeartbeat(sid)
       safe('status', () =>
         afterRegistration(sid, () =>
@@ -214,6 +240,7 @@ export function createPresenceSync(
     for (const [sid, runId] of [...runs.entries()]) {
       if (current[sid]) continue
       runs.delete(sid)
+      waiting.delete(sid)
       stopHeartbeat(sid)
       // The run id it started with: the backend ignores an ending that names
       // any other run, so a late ending cannot idle a newer run.
@@ -235,7 +262,15 @@ export function createPresenceSync(
       }
     })
     const offRuns = useCoworkRun.subscribe((state, prev) => {
-      if (state.runs !== prev.runs) syncRuns(state.runs)
+      if (state.runs !== prev.runs) {
+        syncRuns(state.runs)
+        syncWaiting()
+      }
+    })
+    const offApprovals = useToolApprovalRequests.subscribe((state, prev) => {
+      if (state.pending !== prev.pending || state.queued !== prev.queued) {
+        syncWaiting()
+      }
     })
     // Turning the opt-out on or off is registered at once, not after the
     // debounce: the setting is a promise about who may write to this session.
@@ -250,6 +285,7 @@ export function createPresenceSync(
     return () => {
       offSessions()
       offRuns()
+      offApprovals()
       offOptOut()
       for (const timer of pending.values()) clearTimeout(timer)
       pending.clear()

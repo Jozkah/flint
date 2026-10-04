@@ -9,6 +9,7 @@ import {
 import { useCoworkSessions, type CoworkSession } from '@/hooks/useCoworkSessions'
 import { useCoworkRun } from '@/hooks/useCoworkRun'
 import { useSessionMessaging } from '@/hooks/useSessionMessaging'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
 
 const session = (id: string, title = id, folder: string | null = null): CoworkSession =>
   ({ id, title, folder, turns: [], messages: [], updated: 0 }) as CoworkSession
@@ -19,6 +20,7 @@ const fake = () => ({
   heartbeat: vi.fn(async () => undefined),
   remove: vi.fn(async () => undefined),
   revive: vi.fn(async () => undefined),
+  setWaiting: vi.fn(async () => undefined),
 })
 
 describe('mailbox presence', () => {
@@ -31,6 +33,7 @@ describe('mailbox presence', () => {
     useCoworkSessions.setState({ sessions: [session('A', 'Alpha', '/p')], currentId: 'A' })
     useCoworkRun.setState({ runs: {} })
     useSessionMessaging.setState({ optOut: {} })
+    useToolApprovalRequests.setState({ pending: {} })
     mailbox = fake()
     stop = createPresenceSync(mailbox, { debounceMs: 100, heartbeatMs: 30_000 }).start()
   })
@@ -227,6 +230,38 @@ describe('mailbox presence', () => {
       folder: '/p',
       acceptsMessages: false,
     })
+  })
+
+  it('reports an approval wait while running, and clears it', async () => {
+    await vi.advanceTimersByTimeAsync(100)
+    useCoworkRun.getState().startRun('A', 'r1')
+    await vi.advanceTimersByTimeAsync(0)
+    useToolApprovalRequests.setState({
+      pending: { c1: { threadId: 'A', toolName: 'bash' } as never },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.setWaiting).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      runId: 'r1',
+      waiting: true,
+    })
+    useToolApprovalRequests.setState({ pending: {} })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.setWaiting).toHaveBeenLastCalledWith({
+      sessionId: 'A',
+      runId: 'r1',
+      waiting: false,
+    })
+    expect(mailbox.setWaiting).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not report a wait for a session that is not running', async () => {
+    await vi.advanceTimersByTimeAsync(100)
+    useToolApprovalRequests.setState({
+      pending: { c1: { threadId: 'A', toolName: 'bash' } as never },
+    })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(mailbox.setWaiting).not.toHaveBeenCalled()
   })
 
   it('never throws into the UI when the backend fails', async () => {

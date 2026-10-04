@@ -41,6 +41,7 @@ import { useJevSettings } from '@/hooks/useJevSettings'
 import { useAutomationSettings } from '@/hooks/useAutomationSettings'
 import { useModelRouting } from '@/hooks/useModelRouting'
 import { useWorkProfiles } from '@/hooks/useWorkProfiles'
+import { useSubagentSettings } from '@/hooks/useSubagentSettings'
 import { useSkillActivation } from '@/hooks/useSkillActivation'
 import { useImageDescription } from '@/hooks/useImageDescription'
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide'
@@ -100,6 +101,7 @@ const secondaryStores = [
   useAutomationSettings,
   useModelRouting,
   useWorkProfiles,
+  useSubagentSettings,
   useSkillActivation,
   useImageDescription,
   useOnboardingGuide,
