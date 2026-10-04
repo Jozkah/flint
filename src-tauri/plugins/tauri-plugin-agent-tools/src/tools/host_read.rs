@@ -51,8 +51,8 @@ const REGISTRY_ROOTS: &[&str] = &[
 const REGISTRY_REFUSED: &[&str] = &["secret", "credential", "password", "vault", "sam", "security", "lsa"];
 
 const PROCESSES: &str = r#"
-$n=$env:HQ_NAME; $m=[int]$env:HQ_MAX
-@(Get-Process | Where-Object { -not $n -or $_.ProcessName -like "*$n*" } | Sort-Object WorkingSet64 -Descending | Select-Object -First $m Id,ProcessName,@{n='MemMB';e={[math]::Round($_.WorkingSet64/1MB)}},@{n='CpuSec';e={[math]::Round($_.CPU,1)}},StartTime,Path) | ConvertTo-Json -Compress -Depth 3
+$n=$env:HQ_NAME; $id=$env:HQ_PID; $m=[int]$env:HQ_MAX
+@(Get-Process | Where-Object { (-not $n -or $_.ProcessName -like "*$n*") -and (-not $id -or $_.Id -eq [int]$id) } | Sort-Object WorkingSet64 -Descending | Select-Object -First $m Id,ProcessName,@{n='MemMB';e={[math]::Round($_.WorkingSet64/1MB)}},@{n='CpuSec';e={[math]::Round($_.CPU,1)}},StartTime,Path) | ConvertTo-Json -Compress -Depth 3
 "#;
 
 const SERVICES: &str = r#"
@@ -202,6 +202,15 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
     let script = match query {
         "processes" => {
             env.push(("HQ_NAME", name_filter(args)?.unwrap_or_default()));
+            let pid = match args.get("pid") {
+                None | Some(Value::Null) => String::new(),
+                Some(v) => v
+                    .as_u64()
+                    .filter(|p| *p >= 1 && *p <= u32::MAX as u64)
+                    .ok_or("ERROR: host_query 'pid' must be a whole number.")?
+                    .to_string(),
+            };
+            env.push(("HQ_PID", pid));
             PROCESSES
         }
         "services" => {
@@ -362,6 +371,14 @@ mod tests {
         for name in ["a*", "a\"; Remove-Item x", "$env:X", "a[b]", "x`y", ""] {
             assert!(plan(&json!({ "query": "processes", "name": name })).is_err(), "{name}");
         }
+    }
+
+    #[test]
+    fn a_process_can_be_looked_up_by_number() {
+        let p = plan(&json!({ "query": "processes", "pid": 4321 })).unwrap();
+        assert_eq!(env_of(&p, "HQ_PID").as_deref(), Some("4321"));
+        assert!(plan(&json!({ "query": "processes", "pid": "x" })).is_err());
+        assert!(plan(&json!({ "query": "processes", "pid": 0 })).is_err());
     }
 
     #[test]

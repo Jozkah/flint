@@ -188,6 +188,9 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
   - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items or WSL distributions.
   - `local_http` sends a GET or HEAD to a server on this computer, to check that a dev server answers. It only reaches localhost and does not follow redirects.
   - `docker` runs `ps`, `images`, `logs`, `top`, `port`, one `stats` sample, `version`, `info` and the `compose` equivalents. Anything that starts, stops, removes, builds or runs is refused and handed to you instead.
+- Two more tools change things on this computer, so each call asks you first, naming the exact target, and no mode or grant answers for you:
+  - `host_action` ends one process (by its number, never by name) or starts, stops or restarts one Windows service. System-critical processes and services, and Flint itself, are refused. A service that needs an administrator fails with Windows' own message.
+  - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code.
 
 ### Inference and repository targeting
 

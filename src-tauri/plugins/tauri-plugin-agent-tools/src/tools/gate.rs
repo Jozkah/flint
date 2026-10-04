@@ -554,6 +554,24 @@ pub fn resolve_decision(
             Err(_) => Decision::Allow,
         };
     }
+    // `host_action` ends a process or changes a service. Every call that names
+    // a real action is asked about, each time: no session grant and no mode that
+    // auto-approves covers it. A call the planner refuses is let through to the
+    // handler, which refuses it with the reason and runs nothing.
+    if tool.name == "host_action" {
+        return match crate::tools::host_action::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // `host_build` runs the project's own build scripts outside the sandbox, so
+    // it is asked about every time too.
+    if tool.name == "host_build" {
+        return match crate::tools::host_build::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
     // The interactive browser is classified per call (tools/browser_tool.rs):
     // looking at a page the run already opened runs; acting on it is gated
     // like a write; opening an address and running script in the page are
@@ -774,6 +792,53 @@ mod tests {
         }
         // Reading is not a change.
         assert_ne!(decide("read", json!({"path": ".git/config"})), git);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn host_action_is_asked_about_every_time() {
+        let root = unique_root();
+        let mut grants = SessionGrants::default();
+        grants.grant(PromptKind::Write);
+        let decide = |perms: &ToolPermissions, args: serde_json::Value| {
+            resolve_decision(
+                lookup("host_action").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                perms,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        let plain = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &[], &[]);
+        let ask = Decision::Prompt(PromptKind::Ask);
+        // A session write grant does not cover it.
+        assert_eq!(decide(&plain, json!({"action": "kill_process", "pid": 4321})), ask);
+        assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "Spooler"})), ask);
+        let build = |args: serde_json::Value| {
+            resolve_decision(
+                lookup("host_build").unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &plain,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(build(json!({"program": "gradlew", "args": ["build"]})), ask);
+        assert_eq!(build(json!({"program": "bash", "args": ["-c", "x"]})), Decision::Allow);
+        // A call the planner refuses reaches the handler, which refuses it.
+        assert_eq!(decide(&plain, json!({"action": "start_program", "name": "calc"})), Decision::Allow);
+        assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "RpcSs"})), Decision::Allow);
+        // An agent.toml deny still wins.
+        let deny = ToolPermissions::new(PermissionDefault::ReadOnly, &[], &s(&["host_action"]), &[]);
+        assert!(matches!(decide(&deny, json!({"action": "kill_process", "pid": 4321})), Decision::HardDeny(_)));
         let _ = std::fs::remove_dir_all(&root);
     }
 

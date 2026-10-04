@@ -393,6 +393,39 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "host_build",
+                "description": "Run a Java or .NET build in the project folder with the host's own tools, which cannot run inside the sandboxed `bash` (no profile-installed JVM, no ~/.gradle or ~/.m2, no loopback for the Gradle daemon). `program` is gradle, gradlew, mvn, mvnw or dotnet (the wrappers must be in the folder); `args` is the list of words after it, for example [\"build\", \"-x\", \"test\"]. A build runs the project's own scripts, so the user is asked to approve every call and sees the exact command: say what you are building and why first. It runs only in a folder you may write to, stops at timeout_secs (default 600, up to 1800) and returns the head and tail of the log with the exit code. Prefer targeted tasks over a full clean build. Use `bash` for anything else.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "program": { "type": "string", "description": "gradle, gradlew, mvn, mvnw or dotnet." },
+                        "args": { "type": "array", "items": { "type": "string" }, "description": "The words after the program, as separate strings." },
+                        "cwd": { "type": "string", "description": "Folder to build in, relative to the project or an absolute path inside a writable root. Default: the project folder." },
+                        "timeout_secs": { "type": "integer", "description": "Stop the build after this many seconds. Default 600, at most 1800." }
+                    },
+                    "required": ["program"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "host_action",
+                "description": "Change one thing on this computer: end a process (kill_process, by its process number `pid` only, never by name; find it with host_query processes or ports) or start, stop or restart a Windows service (start_service, stop_service, restart_service, by the service's exact short name `name`; find it with host_query services). The user is asked to approve every call and sees exactly what it will do, so say why in your message first. Critical system processes and services, and Flint itself, are refused. It runs with Flint's own rights, so a service that needs an administrator fails with Windows' own refusal. To start a program, ask the user. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "action": { "type": "string", "description": "kill_process, start_service, stop_service or restart_service." },
+                        "pid": { "type": "integer", "description": "kill_process only: the process number." },
+                        "name": { "type": "string", "description": "The service actions only: the exact short service name, such as Spooler." }
+                    },
+                    "required": ["action"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "host_query",
                 "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
                 "parameters": {
@@ -401,6 +434,7 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
                         "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items or wsl_distros." },
                         "name": { "type": "string", "description": "Filter by name (letters, digits, spaces, dots, dashes, underscores)." },
                         "port": { "type": "integer", "description": "ports only: the one port to look at." },
+                        "pid": { "type": "integer", "description": "processes only: the one process number to look at." },
                         "status": { "type": "string", "description": "services only: running or stopped." },
                         "key": { "type": "string", "description": "registry only: the key, such as HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion." },
                         "max_results": { "type": "integer", "description": "How many rows, 1 to 200. Default 40." }
@@ -665,7 +699,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 45);
+        assert_eq!(schemas.len(), 47);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

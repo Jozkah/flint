@@ -16,6 +16,8 @@ pub mod gate;
 pub mod git_attribution;
 pub mod git_native;
 pub mod git_tool;
+pub mod host_action;
+pub mod host_build;
 pub mod docker_tool;
 pub mod host_read;
 pub mod local_http;
@@ -642,6 +644,24 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Runs gradle, mvn or dotnet (and their wrappers) in the project folder with
+    // the host's own JVM, caches and loopback, which the bash sandbox lacks. A
+    // build is the project's own code, so the gate asks about every call and
+    // the backend refuses one the app did not record a person approving.
+    BuiltinTool {
+        name: "host_build",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // End one process or start, stop or restart one service on this computer.
+    // `Write` so plan mode withholds it. The gate asks about every call (no
+    // grant or auto-approval covers it) and the backend refuses a call the app
+    // did not record a person approving. No path argument.
+    BuiltinTool {
+        name: "host_action",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     // Read-only host facts (processes, ports, services, registry, ...) the bash
     // sandbox cannot see. A named query from a fixed list; no command text.
     BuiltinTool {
@@ -923,10 +943,12 @@ mod tests {
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + windows_events, the host's Event Log reader the sandbox is refused.
         // + host_query, local_http and docker: read-only host facts, loopback HTTP and Docker.
+        // + host_action: end a process or start, stop or restart a service, asked every time.
+        // + host_build: gradle, mvn or dotnet outside the sandbox, asked every time.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 45);
+        assert_eq!(BUILTIN_TOOLS.len(), 47);
     }
 
     #[test]

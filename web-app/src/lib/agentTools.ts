@@ -112,6 +112,11 @@ export const AGENT_TOOL_NAMES = new Set([
   'host_query',
   'local_http',
   'docker',
+  // Ends a process or changes a service. Asked about every time: see
+  // `approveHostAction`.
+  'host_action',
+  // Gradle, Maven and .NET builds outside the sandbox. Asked about every time.
+  'host_build',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -399,6 +404,90 @@ export async function approveBrowserTool(
   return ok ? null : 'The user declined this browser action.'
 }
 
+const HOST_ACTION_NAME = 'host_action'
+const HOST_BUILD_NAME = 'host_build'
+
+/** One row of a `host_query` answer, or none. */
+async function hostQueryRows(
+  args: Record<string, unknown>,
+  threadId: string
+): Promise<Record<string, unknown>[]> {
+  try {
+    const r = await executeAgentTool('host_query', args, threadId)
+    const parsed = typeof r.content === 'string' ? JSON.parse(r.content) : null
+    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+  } catch {
+    return []
+  }
+}
+
+/** What a `host_action` call will do, with the target's own details looked up. */
+export async function describeHostAction(
+  input: unknown,
+  threadId: string
+): Promise<string> {
+  const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  if (typeof a.program === 'string') {
+    const words = Array.isArray(a.args) ? a.args.map(String) : []
+    const command = [a.program, ...words]
+      .map((w) => (/\s/.test(w) ? `"${w}"` : w))
+      .join(' ')
+    const where = typeof a.cwd === 'string' && a.cwd ? ` in ${a.cwd}` : ' in the project folder'
+    return `Run \`${command}\`${where}, outside the sandbox (it runs the project's own build scripts)`
+  }
+  if (a.action === 'kill_process') {
+    const row = (await hostQueryRows({ query: 'processes', pid: a.pid }, threadId))[0]
+    const who = row
+      ? `${String(row.ProcessName)}${row.Path ? ` (${String(row.Path)})` : ''}`
+      : 'no process with that number is running'
+    return `End process ${String(a.pid)}: ${who}`
+  }
+  const name = String(a.name ?? '')
+  const verb = String(a.action ?? '').replace('_service', '')
+  const row = (await hostQueryRows({ query: 'services', name }, threadId)).find(
+    (r) => String(r.Name).toLowerCase() === name.toLowerCase()
+  )
+  const label = verb ? verb[0].toUpperCase() + verb.slice(1) : 'Change'
+  const detail = row ? ` (${String(row.DisplayName)}, now ${String(row.Status)})` : ''
+  return `${label} service ${name}${detail}`
+}
+
+/**
+ * Ask the user about a `host_action` call, before the backend runs it. `null`
+ * when they approved, otherwise what to tell the model.
+ *
+ * Asked every time: no grant and no approving mode covers it, because it ends
+ * a program or changes a service. The prompt names the exact target (a process
+ * with its name and path), looked up just before asking. Nobody to ask (an
+ * unattended run) means it is refused.
+ */
+export async function approveHostAction(
+  input: unknown,
+  threadId: string,
+  options: AgentToolOptions,
+  toolName: string = HOST_ACTION_NAME
+): Promise<string | null> {
+  if (options.unattended) {
+    return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
+  }
+  const what = await describeHostAction(input, threadId)
+  const context =
+    toolName === HOST_BUILD_NAME ? `Build: ${what}` : `Change this computer: ${what}`
+  const ok = options.approve
+    ? await options.approve({ context, alwaysAsk: true, input })
+    : await useToolApprovalRequests
+        .getState()
+        .requestApproval(options.callId ?? '', toolName, threadId, undefined, {
+          input,
+          alwaysAsk: true,
+          taskContext: context,
+          signal: options.signal,
+          origin: options.origin,
+          destructiveChecked: true,
+        })
+  return ok ? null : 'The user declined this action.'
+}
+
 /**
  * Execute one built-in agent tool.
  *
@@ -499,6 +588,15 @@ export async function executeAgentTool(
   try {
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
+
+    if (toolName === HOST_ACTION_NAME || toolName === HOST_BUILD_NAME) {
+      // The id the question is asked under is the id the backend is told, so
+      // its guard can see that a person answered.
+      const callId = options.callId ?? `${toolName}-${Date.now()}`
+      options = { ...options, callId }
+      const declined = await approveHostAction(input, threadId, options, toolName)
+      if (declined) return { error: declined }
+    }
 
     if (toolName === BROWSER_TOOL_NAME) {
       // The id the question is asked under is the id the backend is told, so

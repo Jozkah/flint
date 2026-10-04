@@ -1334,6 +1334,16 @@ async fn execute_tool_inner(
                 && permissions
                     .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
                     .is_none() => {}
+        // `host_action` is asked about every time, and only an answer a person
+        // gave counts: the renderer shows the exact target and records the
+        // approval before calling this. A project `ask` rule is the renderer's
+        // blind spot, so it still refuses.
+        Decision::Prompt(PromptKind::Ask)
+            if (name == "host_action" || name == "host_build")
+                && approval == Some(ApprovalSource::Prompted)
+                && permissions
+                    .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
+                    .is_none() => {}
         Decision::Prompt(PromptKind::Write) if name == "browser" && approval.is_none() => {
             return Err(
                 "tool 'browser' needs user approval before it acts on a page, and none was recorded for this call"
