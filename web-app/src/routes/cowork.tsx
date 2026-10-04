@@ -328,6 +328,8 @@ import {
 } from '@/lib/coworkRunOutcome'
 import { CoworkRunNotice } from '@/containers/CoworkRunNotice'
 import { CoworkAskEntry } from '@/containers/CoworkAskEntry'
+import { CoworkAskedCard } from '@/containers/CoworkAskedCard'
+import { askedFromParts } from '@/lib/askedSessions'
 import { SessionStopNotice } from '@/containers/SessionStopNotice'
 import type { SessionStopNotice as SessionStopNoticeData } from '@/types/coworkSession'
 import { CoworkContextBreakdown } from '@/containers/CoworkContextBreakdown'
@@ -5887,6 +5889,9 @@ export function CoworkPage() {
                         {/* Derived from the message's own write parts, so nothing
                         shared with the chat surface needs to know artifacts
                         exist. */}
+                        {askedFromParts(message.parts).map((asked) => (
+                          <CoworkAskedCard key={asked.key} asked={asked} />
+                        ))}
                         {artifactsFromParts(message.parts).map((artifact) => (
                           <CoworkArtifactCard
                             key={artifact.path}
