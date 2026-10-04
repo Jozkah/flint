@@ -14,6 +14,8 @@ import type {
   ToolSchema,
 } from '@janhq/tauri-plugin-agent-tools-api'
 import { isBrowserActionTool } from '@/lib/browserAgent'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { visualizeSchemas } from '@/lib/visualize/tools'
 import {
   SESSION_MESSAGING_TOOLS,
   STOP_SESSION_TOOL_NAME,
@@ -368,6 +370,7 @@ export function coworkToolSignature(
     sandboxEnforces ? 'jail' : 'nojail',
     opts.allowSubagents ? opts.subagentNames.join(',') : 'nosub',
     opts.webSearch ? 'web' : 'noweb',
+    useVisualizeConfig.getState().enabled ? 'viz' : 'noviz',
     // Readiness is part of the signature because it changes the advertised
     // tools: a shell that starts after a retry must produce a different tool
     // set on the next message, and a signature that ignored it would keep
@@ -508,6 +511,16 @@ export function coworkToolsFromSchemas(
         WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>
       ),
     } as Tool
+  }
+
+  // Inline widgets draw nothing outside the transcript, so review mode keeps them.
+  if (useVisualizeConfig.getState().enabled) {
+    for (const schema of visualizeSchemas()) {
+      tools[schema.function.name] = {
+        description: schema.function.description,
+        inputSchema: jsonSchema(schema.function.parameters),
+      } as Tool
+    }
   }
 
   tools[TODO_TOOL_NAME] = todoTool

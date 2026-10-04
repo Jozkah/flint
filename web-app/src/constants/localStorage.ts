@@ -12,6 +12,7 @@ export const localStorageKey = {
   settingWebSearch: 'setting-web-search',
   settingWebPreview: 'setting-web-preview',
   settingAgentTools: 'setting-agent-tools',
+  settingVisualize: 'setting-visualize',
   settingHardware: 'setting-hardware',
   settingVulkan: 'setting-vulkan',
   toolApproval: 'tool-approval',
