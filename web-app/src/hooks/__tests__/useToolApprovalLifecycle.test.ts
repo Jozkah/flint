@@ -106,6 +106,7 @@ beforeEach(() => {
     approvedMcpTools: {},
     approvedServers: [],
     approvedToolsGlobal: [],
+    approvedSimilarCalls: [],
     invalidatedServers: [],
     allowAllMCPPermissions: false,
   })
@@ -115,7 +116,7 @@ describe('store migration', () => {
   const AT = () => '2026-09-13T00:00:00.000Z'
 
   it('is versioned', () => {
-    expect(TOOL_APPROVAL_STORE_VERSION).toBe(1)
+    expect(TOOL_APPROVAL_STORE_VERSION).toBe(3)
   })
 
   it('drops name-only server approvals and lists them as needing renewal', () => {
@@ -198,9 +199,23 @@ describe('store migration', () => {
       approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      approvedSimilarCalls: [],
       invalidatedServers: [],
       allowAllMCPPermissions: false,
+      permissionMode: 'ask',
     })
+  })
+
+  it('restores only recognized similar-call grants', () => {
+    const restored = migrateToolApproval({
+      approvedSimilarCalls: [
+        { key: 'host_powershell:stop-process-id', label: 'PowerShell: Stop-Process -Id' },
+        { key: 'host_powershell:any-script', label: 'Any script' },
+      ],
+    }, 3, AT)
+    expect(restored.approvedSimilarCalls).toEqual([
+      { key: 'host_powershell:stop-process-id', label: 'PowerShell: Stop-Process -Id' },
+    ])
   })
 })
 

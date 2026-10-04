@@ -327,6 +327,17 @@ describe('git tool prompts', () => {
     const req = describePermissionRequest({ toolName: 'bash', input: {}, alwaysAsk: true })
     expect(req.scopesOffered).toEqual(['allow-once'])
   })
+
+  it('offers a scoped standing grant for a recognized process stop', () => {
+    const req = describePermissionRequest({
+      toolName: 'host_powershell',
+      input: { script: 'Stop-Process -Id 42' },
+      alwaysAsk: true,
+    })
+    expect(req.scopesOffered).toEqual(['allow-once', 'allow-always'])
+    expect(req.scopeExplanations['allow-always']?.explanation.key)
+      .toBe('permissions:scope.allowSimilarExplanation')
+  })
 })
 
 describe('self-approval MCP tools', () => {

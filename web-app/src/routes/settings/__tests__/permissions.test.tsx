@@ -98,6 +98,7 @@ beforeEach(() => {
       { name: 'local-only', fingerprint: LOCAL },
     ],
     approvedToolsGlobal: ['web_fetch'],
+    approvedSimilarCalls: [],
     invalidatedServers: [],
     allowAllMCPPermissions: false,
     permissionMode: 'ask',
@@ -105,6 +106,18 @@ beforeEach(() => {
 })
 
 describe('Permissions settings', () => {
+  it('lists and revokes similar-call grants', async () => {
+    useToolApproval.setState({ approvedSimilarCalls: [
+      { key: 'host_powershell:stop-process-id', label: 'PowerShell: Stop-Process -Id' },
+    ] })
+    const user = userEvent.setup()
+    render(<Page />)
+    expect(screen.getByText('PowerShell: Stop-Process -Id')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {
+      name: 'permissions:settings.revokeLabel:PowerShell: Stop-Process -Id',
+    }))
+    expect(useToolApproval.getState().approvedSimilarCalls).toEqual([])
+  })
   it('lists conversation grants by title, global tools and every trusted server', async () => {
     render(<Page />)
     expect(screen.getByText('Fix the parser')).toBeInTheDocument()

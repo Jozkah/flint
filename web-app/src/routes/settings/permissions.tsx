@@ -125,6 +125,8 @@ function PermissionsSettings() {
   const approvedTools = useToolApproval((s) => s.approvedTools)
   const approvedMcpTools = useToolApproval((s) => s.approvedMcpTools)
   const approvedToolsGlobal = useToolApproval((s) => s.approvedToolsGlobal)
+  const approvedSimilarCalls = useToolApproval((s) => s.approvedSimilarCalls)
+  const revokeSimilarCall = useToolApproval((s) => s.revokeSimilarCall)
   const approvedServers = useToolApproval((s) => s.approvedServers)
   const invalidatedServers = useToolApproval((s) => s.invalidatedServers)
   const allowAll = useToolApproval((s) => s.allowAllMCPPermissions)
@@ -483,10 +485,10 @@ function PermissionsSettings() {
           title={t('permissions:settings.toolsEverywhere')}
           description={t('permissions:settings.toolsEverywhereDesc')}
           aside={
-            <span className="tabular-nums">{approvedToolsGlobal.length}</span>
+            <span className="tabular-nums">{approvedToolsGlobal.length + approvedSimilarCalls.length}</span>
           }
         >
-          {approvedToolsGlobal.length === 0 ? (
+          {approvedToolsGlobal.length === 0 && approvedSimilarCalls.length === 0 ? (
             <p className={EMPTY}>
               {t('permissions:settings.noToolsEverywhere')}
             </p>
@@ -504,6 +506,21 @@ function PermissionsSettings() {
                       name: tool,
                     })}
                     onClick={() => revokeToolEverywhere(tool)}
+                  >
+                    {t('permissions:settings.revoke')}
+                  </Button>
+                </li>
+              ))}
+              {approvedSimilarCalls.map((grant) => (
+                <li key={grant.key} className={ROW}>
+                  <span className="min-w-0 text-[13px] font-medium text-foreground">
+                    {grant.label}
+                  </span>
+                  <Button
+                    variant="destructive"
+                    className={REVOKE}
+                    aria-label={t('permissions:settings.revokeLabel', { name: grant.label })}
+                    onClick={() => revokeSimilarCall(grant.key)}
                   >
                     {t('permissions:settings.revoke')}
                   </Button>

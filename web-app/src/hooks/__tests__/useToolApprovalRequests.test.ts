@@ -27,6 +27,7 @@ describe('useToolApprovalRequests', () => {
       approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      approvedSimilarCalls: [],
       invalidatedServers: [],
       allowAllMCPPermissions: false,
       permissionMode: 'ask',
@@ -91,6 +92,54 @@ describe('useToolApprovalRequests', () => {
         })
     ).resolves.toBe(true)
     expect(useToolApprovalRequests.getState().pending).toEqual({})
+  })
+
+  it('remembers a narrow process-stop rule across different IDs', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'stop-42', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 42' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-42']).toBeDefined()
+    useToolApprovalRequests.getState().resolveApproval('stop-42', 'allow-always')
+    await expect(first).resolves.toBe(true)
+    expect(useToolApproval.getState().approvedSimilarCalls).toHaveLength(1)
+
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'stop-99', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 99' }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    expect(useToolApprovalRequests.getState().pending['stop-99']).toBeUndefined()
+
+    void useToolApprovalRequests.getState().requestApproval(
+      'other-script', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 99; Remove-Item C:\\data' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['other-script']).toBeDefined()
+
+    useToolApproval.getState().revokeSimilarCall('host_powershell:stop-process-id')
+    void useToolApprovalRequests.getState().requestApproval(
+      'stop-after-revoke', 'host_powershell', 'thread-process', undefined,
+      { input: { script: 'Stop-Process -Id 100' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-after-revoke']).toBeDefined()
+  })
+
+  it('applies a process-kill grant only to host_action kill_process', async () => {
+    const first = useToolApprovalRequests.getState().requestApproval(
+      'kill-42', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'kill_process', pid: 42 }, alwaysAsk: true }
+    )
+    useToolApprovalRequests.getState().resolveApproval('kill-42', 'allow-always')
+    await first
+    await expect(useToolApprovalRequests.getState().requestApproval(
+      'kill-99', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'kill_process', pid: 99 }, alwaysAsk: true }
+    )).resolves.toBe(true)
+    void useToolApprovalRequests.getState().requestApproval(
+      'stop-service', 'host_action', 'thread-host-action', undefined,
+      { input: { action: 'stop_service', name: 'Example' }, alwaysAsk: true }
+    )
+    expect(useToolApprovalRequests.getState().pending['stop-service']).toBeDefined()
   })
 
   it('stores a pending approval keyed by toolCallId', () => {

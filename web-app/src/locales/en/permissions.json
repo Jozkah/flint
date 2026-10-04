@@ -65,11 +65,13 @@
     "noBroaderOptions": "No broader safe approval is available for this request.",
     "allowAlwaysServer": "Always allow {{server}}",
     "allowAlwaysTool": "Always allow {{tool}}",
+    "allowSimilar": "Always allow similar {{action}} calls",
     "onceExplanation": "Only this request. Flint asks again next time.",
     "threadExplanation": "This tool, in this conversation, until you revoke it.",
     "threadProgramExplanation": "Reruns of {{program}} outside the sandbox, in this conversation only. Nothing is remembered after it.",
     "alwaysServerExplanation": "Every tool from {{server}}, in every conversation, until you revoke it.",
     "alwaysToolExplanation": "{{tool}}, in every conversation, until you revoke it.",
+    "allowSimilarExplanation": "Future single-process calls matching {{action}} run without asking, including different process IDs. Other scripts still ask. Revoke this in Settings > Permissions.",
     "broader": "Broader"
   },
   "request": {
