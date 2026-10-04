@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { OctagonAlert } from 'lucide-react'
+import { Check, ChevronDown, OctagonAlert } from 'lucide-react'
 import { DecisionScope } from '@/containers/DecisionScope'
 import { route } from '@/constants/routes'
 import { Card, CardItem } from '@/containers/Card'
@@ -12,6 +12,12 @@ import {
 } from '@/hooks/useAutoApproveLimit'
 import { FolderAccessCard } from '@/containers/FolderAccessCard'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { useToolApproval, type PermissionMode } from '@/hooks/useToolApproval'
 import { useThreads } from '@/hooks/useThreads'
@@ -328,7 +334,7 @@ function PermissionsSettings() {
             <span>{t('permissions:settings.revokeEffect')}</span>
           </>
         }
-        layout={[0, 1, 0, 1, 0, 1, 0]}
+        layout={[0, 1, 0, 1, 0, 1, 0, 0, 1]}
       >
         {/* 0. How long an auto-approved run goes before checking in */}
         <AutoApproveLimitCard />
@@ -338,31 +344,50 @@ function PermissionsSettings() {
           title={t('permissions:settings.permissionMode')}
           description={t('permissions:settings.permissionModeDesc')}
         >
-          <label htmlFor="tool-permission-mode" className="text-sm font-medium">
+          <span id="tool-permission-mode-label" className="text-sm font-medium">
             {t('permissions:settings.approvalBehavior')}
-          </label>
-          <select
-            id="tool-permission-mode"
-            className="mt-2 w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-            value={permissionMode}
-            onChange={(event) => {
-              const mode = event.target.value as PermissionMode
-              if (
-                mode === 'bypass' &&
-                  !window.confirm(t('permissions:settings.bypassConfirm'))
-              )
-                return
-              setPermissionMode(mode)
-            }}
-          >
-            <option value="ask">{t('permissions:settings.modeAsk')}</option>
-            <option value="auto-approve">
-              {t('permissions:settings.modeAuto')}
-            </option>
-            <option value="bypass">
-              {t('permissions:settings.modeBypass')}
-            </option>
-          </select>
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="mt-2 w-full justify-between text-sm"
+                aria-labelledby="tool-permission-mode-label"
+              >
+                {t(
+                  permissionMode === 'ask'
+                    ? 'permissions:settings.modeAsk'
+                    : permissionMode === 'auto-approve'
+                      ? 'permissions:settings.modeAuto'
+                      : 'permissions:settings.modeBypass'
+                )}
+                <ChevronDown aria-hidden className="size-4 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-[var(--radix-dropdown-menu-trigger-width)]">
+              {([
+                ['ask', 'permissions:settings.modeAsk'],
+                ['auto-approve', 'permissions:settings.modeAuto'],
+                ['bypass', 'permissions:settings.modeBypass'],
+              ] as const).map(([mode, label]) => (
+                <DropdownMenuItem
+                  key={mode}
+                  role="menuitemradio"
+                  aria-checked={permissionMode === mode}
+                  onSelect={() => {
+                    if (
+                      mode === 'bypass' &&
+                      !window.confirm(t('permissions:settings.bypassConfirm'))
+                    ) return
+                    setPermissionMode(mode as PermissionMode)
+                  }}
+                >
+                  <span className="flex-1">{t(label)}</span>
+                  {permissionMode === mode && <Check aria-hidden className="size-4" />}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <p className="mt-2 text-xs text-muted-foreground">
             {t('permissions:settings.modeDetails')}
           </p>
