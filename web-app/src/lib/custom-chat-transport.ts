@@ -52,6 +52,9 @@ import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
 import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
 import { subagentGuide } from '@/lib/coworkPrompt'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
+import { visualizeSchemas } from '@/lib/visualize/tools'
+import { truncateStaleWidgetCode } from '@/lib/visualize/history'
 import { SESSION_MESSAGING_TOOLS } from '@/lib/sessionMessagingTools'
 import { errorText } from '@/lib/errorText'
 import {
@@ -1437,6 +1440,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
       chatDelegation: chatDelegationEnabled(),
+      visualizeEnabled: useVisualizeConfig.getState().enabled,
     })
     if (useCache && this.toolsCacheKey === cacheKey) return
 
@@ -1563,6 +1567,17 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           description: WEB_FETCH_DESCRIPTION,
           inputSchema: jsonSchema(WEB_FETCH_INPUT_SCHEMA as Record<string, unknown>),
         } as Tool
+      }
+
+      // Inline widgets are the renderer's own and need no workspace, so they
+      // are offered whether or not the agent tools are on.
+      if (useVisualizeConfig.getState().enabled) {
+        for (const schema of visualizeSchemas()) {
+          toolsRecord[schema.function.name] = {
+            description: schema.function.description,
+            inputSchema: jsonSchema(schema.function.parameters),
+          } as Tool
+        }
       }
 
       // Built-in agent tools (filesystem reads plus skills/memory), provided by
@@ -2708,6 +2723,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       requestSystem = folded.system
       effectiveMessages = folded.messages
     }
+    // Old widgets replay as a one-line note; the stored message keeps the code.
+    effectiveMessages = truncateStaleWidgetCode(effectiveMessages)
 
     const modelSupportsVision =
       selectedModel?.capabilities?.includes('vision') ?? false

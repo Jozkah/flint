@@ -33,6 +33,8 @@ import { WebToolWidget } from './WebToolWidget'
 import { AgentToolWidget, TerminalWidget } from './AgentToolWidget'
 import { OpenablePath } from './OpenablePath'
 import { BrowserOpenedCard } from './BrowserOpenedCard'
+import { WidgetCard } from './WidgetCard'
+import { SHOW_WIDGET_TOOL } from '@/lib/visualize/constants'
 import { parseBrowserTarget } from '@/lib/browserOpen'
 import { browserCardUrl, isBrowserTool } from '@/lib/browserAgent'
 import { useBrowserShots } from '@/hooks/useBrowserShots'
@@ -228,6 +230,13 @@ export const ToolCallCard = memo(
         : headerArg(bar)
 
     if (!isToolPart(part)) return null
+
+    // A widget is the answer's content, not a step: it gets a card of its own.
+    if (toolName === SHOW_WIDGET_TOOL) {
+      return (
+        <WidgetCard part={part} messageId={messageId} className={className} />
+      )
+    }
 
     const isError = part.state === 'output-error'
     const running = isToolRunning(part.state)

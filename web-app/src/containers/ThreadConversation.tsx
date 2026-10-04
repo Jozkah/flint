@@ -175,6 +175,12 @@ import {
   notifyToolBatch,
 } from '@/lib/agentTools'
 import { browserCallOptions } from '@/lib/browserAgent'
+import {
+  VISUALIZE_TOOL_NAMES,
+  isVisualizeTool,
+} from '@/lib/visualize/constants'
+import { executeVisualizeTool } from '@/lib/visualize/tools'
+import { WidgetHostContext, type WidgetHost } from '@/lib/visualize/hostContext'
 import { chatFolderToolOptions, chatFoldersOf } from '@/lib/chatFolders'
 import { PathRootsContext } from '@/lib/codeOpen'
 import { ChatFoldersChip } from '@/containers/ChatFoldersChip'
@@ -250,6 +256,7 @@ function isAutoAllowedTool(toolName: string): boolean {
   return (
     useAppState.getState().ragToolNames.has(toolName) ||
     isNativeWebTool(toolName) ||
+    isVisualizeTool(toolName) ||
     AGENT_TOOL_NAMES.has(toolName) ||
     // Handing a job to a subagent asks for nothing itself; what the child then
     // does is gated call by call, in Ask mode.
@@ -1049,6 +1056,8 @@ export function ThreadConversation({
 
             if (isNativeWebTool(toolName)) {
               result = await executeWebTool(toolName, toolCall.input)
+            } else if (isVisualizeTool(toolName)) {
+              result = executeVisualizeTool(toolName, toolCall.input, threadId)
             } else if (AGENT_TOOL_NAMES.has(toolName)) {
               const agentResult = await executeAgentTool(
                 toolName,
@@ -1207,6 +1216,7 @@ export function ThreadConversation({
                   ...mcpToolNames,
                   ...ragToolNames,
                   ...AGENT_TOOL_NAMES,
+                  ...VISUALIZE_TOOL_NAMES,
                 ]),
               }
             }
@@ -1974,6 +1984,22 @@ export function ThreadConversation({
       })
     },
     [sendMessage, threadId, addMessage]
+  )
+
+  // A widget's button sends its prompt as the user's next message, once the
+  // current reply is done. Read through a ref so the host value stays stable.
+  const widgetBusyRef = useRef(false)
+  widgetBusyRef.current =
+    status === CHAT_STATUS.STREAMING || status === CHAT_STATUS.SUBMITTED
+  const widgetHost = useMemo<WidgetHost>(
+    () => ({
+      sendPrompt: (text) => {
+        if (widgetBusyRef.current) return false
+        void sendQueuedMessage(text)
+        return true
+      },
+    }),
+    [sendQueuedMessage]
   )
 
   sendSteeringRef.current = (text) => {
@@ -2848,6 +2874,7 @@ export function ThreadConversation({
 
   return (
     <PathRootsContext.Provider value={chatPathRoots}>
+    <WidgetHostContext.Provider value={widgetHost}>
     <div
       className={cn(
         'flex h-full min-h-0 flex-col',
@@ -3238,6 +3265,7 @@ export function ThreadConversation({
         </div>
       </div>
     </div>
+    </WidgetHostContext.Provider>
     </PathRootsContext.Provider>
   )
 }

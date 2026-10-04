@@ -274,6 +274,15 @@
     "endpointSearch": "Web search instance URL",
     "endpointSearchDesc": "The base URL of your self-hosted search instance."
   },
+  "visualize": {
+    "title": "Visual widgets",
+    "enabled": "Let the assistant draw widgets",
+    "enabledDesc": "Diagrams, mockups, charts and small interactive explainers shown inline in the conversation. Adds two short tool descriptions to each request.",
+    "cdn": "Let widgets load libraries from cdnjs and jsdelivr",
+    "cdnDesc": "Off by default. When on, a widget may load scripts (such as a charting library) from cdnjs.cloudflare.com and cdn.jsdelivr.net, and nowhere else. It still cannot send data out.",
+    "maxHeight": "Maximum widget height",
+    "maxHeightDesc": "A widget grows to this height in pixels, then scrolls. You can always open it full size."
+  },
   "agentTools": {
     "tabBehaviour": "Behaviour",
     "shellTitle": "Shell and git",

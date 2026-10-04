@@ -28,6 +28,7 @@ import { useCoworkActivity } from '@/hooks/useCoworkActivity'
 import { useCoworkCheckpoints } from '@/hooks/useCoworkCheckpoints'
 import { useFileActivity } from '@/hooks/useFileActivity'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
+import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { useModelOverrides } from '@/hooks/useModelOverrides'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
 import { useCoworkDisplay } from '@/hooks/useCoworkDisplay'
@@ -87,6 +88,7 @@ const secondaryStores = [
   useCoworkCheckpoints,
   useFileActivity,
   useAgentToolsConfig,
+  useVisualizeConfig,
   useModelOverrides,
   useContextBreakdown,
   useCoworkDisplay,
