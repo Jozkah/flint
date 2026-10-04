@@ -8,6 +8,7 @@ export type CoworkRail =
   | { kind: 'code' }
   | { kind: 'tasks' }
   | { kind: 'timeline' }
+  | { kind: 'background' }
   | null
 
 /**

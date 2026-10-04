@@ -76,9 +76,11 @@ describe('buildCoworkTools', () => {
 
   it('names the saved subagents in the task description', async () => {
     const tools = await buildCoworkTools(
-      opts({ subagentNames: ['researcher', 'reviewer'] })
+      opts({ subagentNames: ['researcher', 'planner', 'writer'] })
     )
-    expect(tools[TASK_TOOL_NAME].description).toContain('researcher, reviewer')
+    // Shipped roles are listed with their own reason; the rest are "saved".
+    expect(tools[TASK_TOOL_NAME].description).toContain('Saved: researcher, writer')
+    expect(tools[TASK_TOOL_NAME].description).toContain('planner (')
   })
 
   // The todo tool must keep the Rust name: the plan-mode addendum instructs the

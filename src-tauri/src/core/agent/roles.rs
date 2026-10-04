@@ -33,6 +33,9 @@ pub const ROLES_VERSION: u32 = 1;
 pub struct Role {
     pub name: &'static str,
     pub description: &'static str,
+    /// One short clause for the model: when to pick this role. Shown in the
+    /// dispatch tool's description and the Subagents guide, so keep it tiny.
+    pub when: &'static str,
     pub tools: &'static [&'static str],
     pub prompt: &'static str,
     /// Whether the role must never change anything.
@@ -44,6 +47,7 @@ const READ: &[&str] = &["read", "ls", "find", "grep"];
 pub const ROLES: &[Role] = &[
     Role {
         name: "explorer",
+        when: "find where code lives or how it fits together, read-only",
         description: "Read-only exploration: finds where things are and how they fit together, and reports with file and line references.",
         tools: READ,
         read_only: true,
@@ -57,6 +61,7 @@ Do not guess. If something is not in the files you read, say so.",
     },
     Role {
         name: "planner",
+        when: "design a phased plan before a large change, read-only",
         description: "Read-only planning: investigates, then returns a phased plan with the files each step touches and how to verify it.",
         tools: READ,
         read_only: true,
@@ -70,6 +75,7 @@ Keep each phase small enough to review on its own.",
     },
     Role {
         name: "implementer",
+        when: "make a well-specified edit in named files",
         description: "Makes the change it is given, in the files it is given, and reports exactly what it changed.",
         tools: &["read", "ls", "find", "grep", "write", "edit"],
         read_only: false,
@@ -83,6 +89,7 @@ Answer with:\n\
     },
     Role {
         name: "reviewer",
+        when: "check code for real bugs, read-only",
         description: "Read-only review: reports real defects in the code it is pointed at, each with its location and a concrete failure.",
         tools: READ,
         read_only: true,
@@ -94,6 +101,7 @@ Say plainly when you found nothing. Do not pad the review with style preferences
     },
     Role {
         name: "tester",
+        when: "run the tests that cover a change and report results",
         description: "Finds the tests that cover a change, runs them, and reports the exact results.",
         tools: &["read", "ls", "find", "grep", "bash"],
         read_only: false,
@@ -107,6 +115,7 @@ Answer with:\n\
     },
     Role {
         name: "security",
+        when: "look for exploitable weaknesses, read-only",
         description: "Read-only security review: finds exploitable weaknesses, with the path an attacker would take.",
         tools: READ,
         read_only: true,
@@ -117,6 +126,16 @@ For each finding give: file and line, the weakness, how an attacker reaches it, 
 Rate each as high, medium or low. Report nothing you cannot tie to code you read.",
     },
 ];
+
+/// `name (when to use it)` for every shipped role, `; `-separated, for the
+/// dispatch tool description and the Subagents guide.
+pub fn role_menu() -> String {
+    ROLES
+        .iter()
+        .map(|r| format!("{} ({})", r.name, r.when))
+        .collect::<Vec<_>>()
+        .join("; ")
+}
 
 /// The shipped roles as subagent definitions.
 pub fn definitions() -> Vec<SubagentDefinition> {

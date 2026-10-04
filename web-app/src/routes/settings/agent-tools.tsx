@@ -52,6 +52,7 @@ import { CompactionPolicySettings } from '@/containers/CompactionPolicySettings'
 import { AttributionSettings } from '@/containers/AttributionSettings'
 import { SandboxToolchainGrants } from '@/containers/SandboxToolchainGrants'
 import { BrowserAgentSettings } from '@/containers/BrowserAgentSettings'
+import { SubagentSettings } from '@/containers/SubagentSettings'
 import { VisualizeSettings } from '@/containers/VisualizeSettings'
 import { STICKY_DIALOG_FOOTER } from '@/containers/dialogs/dialogLayout'
 
@@ -98,6 +99,12 @@ function AgentToolsContent() {
   const agentToolsEnabled = useAgentToolsConfig((s) => s.agentToolsEnabled)
   const setAgentToolsEnabled = useAgentToolsConfig(
     (s) => s.setAgentToolsEnabled
+  )
+  const chatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.chatDelegationEnabled
+  )
+  const setChatDelegationEnabled = useAgentToolsConfig(
+    (s) => s.setChatDelegationEnabled
   )
   const bashNetworkEnabled = useAgentToolsConfig((s) => s.bashNetworkEnabled)
   const setBashNetworkEnabled = useAgentToolsConfig(
@@ -359,6 +366,22 @@ function AgentToolsContent() {
               />
             }
           />
+          {/* Chats may hand jobs to subagents. Each child's changes and
+              commands still ask, exactly as the chat's own do. */}
+          <CardItem
+            anchor="settings-agent-tools-chat-delegation"
+            title={t('settings:agentTools.chatDelegation')}
+            description={t('settings:agentTools.chatDelegationDesc')}
+            align="start"
+            actions={
+              <Switch
+                data-testid="chat-delegation-toggle"
+                checked={chatDelegationEnabled}
+                onCheckedChange={setChatDelegationEnabled}
+                disabled={!agentToolsEnabled}
+              />
+            }
+          />
           {/* A display preference, kept beside the tools it is about.
               Nothing is deleted: hidden activity stays in the session, in
               exports and in search. */}
@@ -492,6 +515,7 @@ function AgentToolsContent() {
         </Card>
         )}
 
+        {tab === 'behaviour' && <SubagentSettings />}
         {tab === 'behaviour' && <CompactionPolicySettings />}
         {tab === 'behaviour' && <BrowserAgentSettings />}
         {tab === 'behaviour' && <VisualizeSettings />}

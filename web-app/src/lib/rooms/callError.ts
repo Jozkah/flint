@@ -38,6 +38,12 @@ export type RoomToolContext = {
   participantName?: string
   /** The turn's signal: stopping it withdraws any prompt still open. */
   signal?: AbortSignal
+  /**
+   * Tokens the room may still spend before its own limit, when it has one. A
+   * subagent a participant starts is held to it, so delegation cannot spend what
+   * the room was not given.
+   */
+  tokenBudget?: number
 }
 
 export type StreamReplyInput = {
