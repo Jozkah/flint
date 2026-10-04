@@ -342,6 +342,11 @@ windows-sys = { version = "0.60.2", features = [
   "Win32_Graphics_Dwm",
   "Win32_Storage_FileSystem",
   "Win32_System_Threading",
+  # The crash handler (core::crash_trace): exception records, the loaded
+  # module an address belongs to.
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Kernel",
+  "Win32_System_LibraryLoader",
   # Turn on VT sequences for the headless CLI's colored stderr (core::cli::color).
   "Win32_System_Console",
   # Read the Git-for-Windows install path the installer records, so native Git

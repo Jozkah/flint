@@ -31,6 +31,15 @@ fn main() {
         tauri_build::build();
     }
 
+    // The commit that built this binary, for the crash report: an offset in a
+    // module only means something against the build that produced it.
+    if let Ok(output) = std::process::Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).output() {
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if output.status.success() && !sha.is_empty() {
+            println!("cargo:rustc-env=FLINT_GIT_SHA={sha}");
+        }
+    }
+
     // Windows gives a program's main thread a 1 MB stack unless the linker asks
     // for more (Linux and macOS give the main thread 8 MB). Tauri runs its
     // command dispatch and window-event handling on that thread, and in the

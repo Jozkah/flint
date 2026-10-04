@@ -682,7 +682,7 @@ pub fn build_app() -> tauri::App {
 
     // Desktop registers the shared command list plus remote access.
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
+    let app_builder = app_builder.invoke_handler(core::crash_trace::traced(invoke_commands_with_extras![
         // Remote access (phone pairing and the window bridge); desktop-only.
         core::remote::commands::remote_get_status,
         core::remote::commands::remote_set_config,
@@ -707,7 +707,7 @@ pub fn build_app() -> tauri::App {
         core::browser_agent::pane::browser_agent_grants,
         core::browser_agent::pane::browser_agent_stop,
         core::browser_agent::pane::browser_agent_resume,
-    ]);
+    ]));
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let app_builder = app_builder.invoke_handler(invoke_commands_with_extras![
@@ -739,9 +739,27 @@ pub fn build_app() -> tauri::App {
             // A marker left by the previous run means it did not shut down
             // cleanly; say so in the log, once, so a crash report has a lead.
             let data_folder = get_jan_data_folder_path(app.handle().clone());
-            if let Some(earlier) = core::crash_trace::mark_started(&data_folder) {
-                log::warn!("{}", core::crash_trace::unclean_message(&earlier));
+            let earlier_run = core::crash_trace::mark_started(&data_folder);
+            // What a fatal exception wrote last time, if one did: read before
+            // this run's handler starts a new file.
+            let earlier_report = core::crash_trace::take_crash_report(&data_folder);
+            let stack_note = core::crash_trace::install_crash_handler(&data_folder);
+            tauri_plugin_agent_tools::breadcrumb::set_sink(core::crash_trace::breadcrumb);
+            // The logger is attached further down, so what to say about the
+            // earlier run and the stack is kept and logged once it is.
+            let mut crash_notes: Vec<(log::Level, String)> = Vec::new();
+            match (earlier_run, earlier_report) {
+                (Some(run), report) => crash_notes.push((
+                    log::Level::Error,
+                    core::crash_trace::unclean_message(&run, report.as_deref()),
+                )),
+                (None, Some(report)) => crash_notes.push((
+                    log::Level::Error,
+                    format!("a crash report from an earlier run was found:\n{report}"),
+                )),
+                (None, None) => {}
             }
+            crash_notes.extend(stack_note);
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
             // Toolchain folders the user let the Windows sandbox use are
@@ -850,6 +868,9 @@ pub fn build_app() -> tauri::App {
                     ])
                     .build(),
             )?;
+            for (level, text) in crash_notes {
+                log::log!(level, "{text}");
+            }
             // The Windows window is created hidden and shown here, at the place
             // it was last left, so it never paints at the default spot and then
             // jumps. See core::window_state.
