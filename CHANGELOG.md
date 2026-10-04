@@ -183,6 +183,11 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - New Cowork sessions are named automatically by the model from the first prompt, without overwriting a name you set.
 - Reasoning effort in Cowork is saved per session and no longer moves the global model picker, and subagent steps use the parent session's reasoning settings.
 - Added **Describe this project** to the Cowork folder menu.
+- Cowork and chat can read what the shell sandbox cannot see, through tools the app runs outside it. All are read-only and ask for nothing:
+  - `windows_events` reads the Windows Event Log by channel, level, time, event id and source.
+  - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items or WSL distributions.
+  - `local_http` sends a GET or HEAD to a server on this computer, to check that a dev server answers. It only reaches localhost and does not follow redirects.
+  - `docker` runs `ps`, `images`, `logs`, `top`, `port`, one `stats` sample, `version`, `info` and the `compose` equivalents. Anything that starts, stops, removes, builds or runs is refused and handed to you instead.
 
 ### Inference and repository targeting
 

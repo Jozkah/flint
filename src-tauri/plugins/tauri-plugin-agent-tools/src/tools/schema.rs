@@ -393,6 +393,55 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "host_query",
+                "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items or wsl_distros." },
+                        "name": { "type": "string", "description": "Filter by name (letters, digits, spaces, dots, dashes, underscores)." },
+                        "port": { "type": "integer", "description": "ports only: the one port to look at." },
+                        "status": { "type": "string", "description": "services only: running or stopped." },
+                        "key": { "type": "string", "description": "registry only: the key, such as HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion." },
+                        "max_results": { "type": "integer", "description": "How many rows, 1 to 200. Default 40." }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "local_http",
+                "description": "Send a GET or HEAD request to a server running on this computer (localhost, 127.0.0.1 or [::1]) and return the status, a few headers and the start of the body. Use it to check that a dev server you started answers. The sandboxed `bash` cannot reach loopback, so use this instead of curl there. Plain http only; redirects are not followed (the Location header is shown). For anything on the internet use web_fetch.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "http://localhost:5173/ or similar. Required." },
+                        "method": { "type": "string", "description": "GET (default) or HEAD." },
+                        "max_bytes": { "type": "integer", "description": "How much of the body to return, 256 to 65536. Default 16384." }
+                    },
+                    "required": ["url"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "docker",
+                "description": "Look at Docker with the host's own docker CLI, which cannot run inside the sandboxed `bash`. Read-only: ps, images, logs, top, port, stats --no-stream, version, info, and compose ps, logs, top, ls, version. `args` is the list of words after `docker`, for example [\"ps\", \"-a\"] or [\"logs\", \"--tail\", \"100\", \"web\"]. Anything that starts, stops, removes, builds, runs, execs or inspects is refused: give the user the exact command instead. Logs cannot be followed. Output is redacted for credentials.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "args": { "type": "array", "items": { "type": "string" }, "description": "The words after `docker`, as separate strings." }
+                    },
+                    "required": ["args"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "windows_events",
                 "description": "Read the Windows Event Log (newest first) with the host's own access. Use it to find out why an app crashed, a service failed or the machine restarted. The sandboxed `bash` cannot read the Event Log, so use this instead of `wevtutil` or `Get-WinEvent` there. Read-only. Filter by level, time, event id and provider so the answer stays short; the Security log needs an administrator and is refused otherwise. Windows only.",
                 "parameters": {
@@ -616,7 +665,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 42);
+        assert_eq!(schemas.len(), 45);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

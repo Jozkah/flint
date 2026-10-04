@@ -650,6 +650,9 @@ pub(crate) async fn execute_text(
         "web_fetch" => crate::tools::web::web_fetch(args, ctx.read_roots).await,
         "git_inspect" => crate::tools::git_native::git_inspect(args, ctx.read_roots).await,
         "windows_events" => crate::tools::win_events::windows_events(args).await,
+        "host_query" => crate::tools::host_read::host_query(args).await,
+        "local_http" => crate::tools::local_http::local_http(args).await,
+        "docker" => crate::tools::docker_tool::docker(args).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,
         "git" => crate::tools::git_tool::run(args, ctx).await,
         // The interactive confined browser; its screenshot image travels only

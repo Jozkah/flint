@@ -16,6 +16,9 @@ pub mod gate;
 pub mod git_attribution;
 pub mod git_native;
 pub mod git_tool;
+pub mod docker_tool;
+pub mod host_read;
+pub mod local_http;
 pub mod handlers;
 pub mod host_tools;
 pub mod image;
@@ -639,6 +642,27 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Read-only host facts (processes, ports, services, registry, ...) the bash
+    // sandbox cannot see. A named query from a fixed list; no command text.
+    BuiltinTool {
+        name: "host_query",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // GET or HEAD to a server on this computer; loopback only, because the
+    // sandbox blocks loopback and web_fetch is for the internet.
+    BuiltinTool {
+        name: "local_http",
+        capability: Capability::Read,
+        path_args: &[],
+    },
+    // Read-only Docker (ps, logs, top, ...) run by the host; anything that
+    // changes things is refused.
+    BuiltinTool {
+        name: "docker",
+        capability: Capability::Read,
+        path_args: &[],
+    },
     // Reads the Windows Event Log with the host's wevtutil, which the bash
     // sandbox is not admitted to. Read-only, typed filters, no path.
     BuiltinTool {
@@ -898,10 +922,11 @@ mod tests {
         // + request_access, list_plugins, open_in_browser and generate_image, which the desktop answers itself.
         // + git_inspect and git_clone, host Git the bash sandbox cannot run.
         // + windows_events, the host's Event Log reader the sandbox is refused.
+        // + host_query, local_http and docker: read-only host facts, loopback HTTP and Docker.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 42);
+        assert_eq!(BUILTIN_TOOLS.len(), 45);
     }
 
     #[test]

@@ -108,6 +108,10 @@ export const AGENT_TOOL_NAMES = new Set([
   'git_inspect',
   // The Windows Event Log, read by the host because the sandbox is refused.
   'windows_events',
+  // Read-only host facts, loopback HTTP and Docker, which the sandbox cannot do.
+  'host_query',
+  'local_http',
+  'docker',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
