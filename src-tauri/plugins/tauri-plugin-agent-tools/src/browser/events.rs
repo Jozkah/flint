@@ -91,6 +91,11 @@ impl Mains {
         self.own.fetch_add(1, Ordering::SeqCst);
     }
 
+    // Newer Rust renames `fetch_update` to `try_update`, which the minimum
+    // supported Rust (1.88) does not have yet; the release-grade build denies
+    // warnings, so the deprecation is allowed here until that moves (the same
+    // call in `core/agent/subagent.rs` is allowed the same way).
+    #[allow(deprecated)]
     fn take_own(&self) -> bool {
         self.own
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| n.checked_sub(1))
