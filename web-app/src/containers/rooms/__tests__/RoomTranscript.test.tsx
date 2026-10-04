@@ -255,4 +255,20 @@ describe('the header of a message', () => {
     const to = screen.getByTestId('message-to')
     expect(to.getAttribute('style') ?? '').toMatch(/color/)
   })
+
+  it('draws a widget call as a card and keeps it out of the tool trace', () => {
+    const room = makeRoom()
+    const messages = [
+      makeMessage({
+        text: 'Here is the flow.',
+        toolCalls: [
+          { name: 'show_widget', ok: true, args: { title: 'Flow', widget_code: '<p>hi</p>' }, output: 'Widget rendered: Flow, 9 chars.' },
+        ],
+      }),
+    ]
+    render(<RoomTranscript room={room} journal={asJournal(messages)} liveTurn={null} />)
+    expect(screen.getByTestId('widget-card')).toBeInTheDocument()
+    expect(screen.getByTestId('widget-frame').getAttribute('sandbox')).toBe('allow-scripts')
+    expect(screen.queryByTestId('message-tools')).toBeNull()
+  })
 })
