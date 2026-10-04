@@ -155,4 +155,21 @@ describe('QueuedMessageChip', () => {
     expect(screen.getByTestId('queued-steering')).toHaveTextContent('common:queue.steering')
     expect(screen.queryByTestId('queued-steer')).toBeNull()
   })
+
+  it('swaps Steering for a Steer now button on hover that interrupts at once', () => {
+    const onSteerNow = vi.fn()
+    render(
+      <QueuedMessageChip
+        message={{ ...baseMessage, steer: true }}
+        onSteerNow={onSteerNow}
+      />
+    )
+    screen.getByTestId('queued-steer-now').click()
+    expect(onSteerNow).toHaveBeenCalledWith('queued-1')
+  })
+
+  it('has no Steer now once the run is over', () => {
+    render(<QueuedMessageChip message={{ ...baseMessage, steer: true }} />)
+    expect(screen.queryByTestId('queued-steer-now')).toBeNull()
+  })
 })

@@ -1589,6 +1589,7 @@
     "heldHint": "The run this was typed for did not take it. Send it as the next message or discard it",
     "steer": "Steer now",
     "steerHint": "Hand this to the agent at its next step instead of waiting for the run to end (Ctrl+Enter from the composer)",
+    "steerNowHint": "Stop what the agent is doing right now and send this at once",
     "steering": "Steering",
     "steeringHint": "Goes to the agent at its next step; if the run ends first, it is sent as the next message"
   },

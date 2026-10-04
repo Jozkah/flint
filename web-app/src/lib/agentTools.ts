@@ -38,6 +38,7 @@ import { runAccessRequest } from '@/lib/accessRequests'
 import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
 import { runGenerateImage } from '@/lib/generateImageTool'
+import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
 import { putToolScreenshot, SCREENSHOT_RESULT_NOTE } from '@/lib/toolScreenshots'
 import {
   BROWSER_TOOL_NAME,
@@ -418,22 +419,6 @@ export async function approveBrowserTool(
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
 /** Every call is put to the user: they change this computer or read something private. */
-const HOST_ASKED = new Set([
-  HOST_ACTION_NAME,
-  HOST_BUILD_NAME,
-  'host_powershell',
-  'host_package',
-  'host_wsl',
-  'host_ssh',
-  'clipboard',
-  'open_path',
-])
-/** winget is asked about only when it changes a program; looking is free. */
-const hostCallNeedsAsking = (toolName: string, input: unknown): boolean =>
-  toolName !== 'host_package' ||
-  ['install', 'upgrade', 'uninstall'].includes(
-    String((input as Record<string, unknown> | null)?.action)
-  )
 /** What the question says it is about, by tool. */
 const HOST_CONTEXT: Record<string, string> = {
   [HOST_BUILD_NAME]: 'Build',

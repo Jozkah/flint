@@ -35,6 +35,11 @@ type QueuedMessageChipProps = {
    * waiting for the run to end. Absent when there is no run to steer.
    */
   onSteer?: (id: string) => void
+  /**
+   * Interrupt the running step and deliver an already-steering message now,
+   * without waiting for the next safe point.
+   */
+  onSteerNow?: (id: string) => void
   onMoveUp?: (id: string) => void
   onMoveDown?: (id: string) => void
   /**
@@ -83,6 +88,7 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
   onEdit,
   onRemove,
   onSteer,
+  onSteerNow,
   onMoveUp,
   onMoveDown,
   onRelease,
@@ -145,12 +151,27 @@ export const QueuedMessageChip = memo(function QueuedMessageChip({
             )}
           </>
         ) : message.steer ? (
-          <span
-            data-testid="queued-steering"
-            className="text-[11px] text-muted-foreground"
-            title={t('common:queue.steeringHint')}
-          >
-            {t('common:queue.steering')}
+          // Hovering "Steering" turns it into "Steer now": stop the run's
+          // current step and hand this over at once.
+          <span className="group/steer relative flex shrink-0 items-center">
+            <span
+              data-testid="queued-steering"
+              className="text-[11px] text-muted-foreground group-hover/steer:invisible group-focus-within/steer:invisible"
+              title={t('common:queue.steeringHint')}
+            >
+              {t('common:queue.steering')}
+            </span>
+            {onSteerNow && (
+              <button
+                type="button"
+                data-testid="queued-steer-now"
+                title={t('common:queue.steerNowHint')}
+                className="absolute inset-0 hidden items-center justify-center whitespace-nowrap rounded-md bg-accent text-[11px] font-medium text-foreground group-hover/steer:flex focus-visible:flex focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-ring"
+                onClick={() => onSteerNow(message.id)}
+              >
+                {t('common:queue.steer')}
+              </button>
+            )}
           </span>
         ) : (
           onSteer && (
