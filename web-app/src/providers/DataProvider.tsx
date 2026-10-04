@@ -446,6 +446,15 @@ export function DataProvider() {
                   console.log(`Auto-started server model: ${model}`)
                 } catch (err) {
                   console.warn(`Failed to auto-start server model ${model}:`, err)
+                  // A picture or video model cannot load in the chat engine, so
+                  // trying it again at every launch only repeats the error.
+                  if (/image or video generation model/.test(JSON.stringify(err))) {
+                    setLastServerModels(
+                      lastServerModels.filter(
+                        (m) => !(m.model === model && m.provider === providerName)
+                      )
+                    )
+                  }
                 }
               })
             )

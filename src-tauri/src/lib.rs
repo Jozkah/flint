@@ -607,6 +607,9 @@ async fn handle_graceful_exit<R: tauri::Runtime>(
 /// handing the app to [`run_app`].
 #[cfg(not(feature = "cli"))]
 pub fn build_app() -> tauri::App {
+    // A panic reaches the log, with where it happened, instead of a standard
+    // error nobody sees.
+    core::crash_trace::install_panic_hook();
     let builder = tauri::Builder::default();
     // Shadowed rather than mutated: under `cowork-smoke`/`e2e` the plugin below
     // is the only thing that touches `builder`, and a `mut` binding would then
@@ -733,6 +736,12 @@ pub fn build_app() -> tauri::App {
             mcp_lazy: Default::default(),
         })
         .setup(|app| {
+            // A marker left by the previous run means it did not shut down
+            // cleanly; say so in the log, once, so a crash report has a lead.
+            let data_folder = get_jan_data_folder_path(app.handle().clone());
+            if let Some(earlier) = core::crash_trace::mark_started(&data_folder) {
+                log::warn!("{}", core::crash_trace::unclean_message(&earlier));
+            }
             core::diffusion::register(app.handle());
             core::browser_verify::commands::install_activity_mirror(app.handle());
             // Toolchain folders the user let the Windows sandbox use are
@@ -1074,6 +1083,7 @@ pub fn run_app(app: tauri::App) {
                     }
 
                     log::info!("App cleanup completed");
+                    core::crash_trace::mark_clean_exit(&get_jan_data_folder_path(app_handle.clone()));
                 });
             });
         }

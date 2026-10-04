@@ -13,6 +13,8 @@ pub mod browser_verify;
 #[cfg(not(feature = "cli"))]
 pub mod browser_agent;
 pub mod compat_env;
+#[cfg(not(feature = "cli"))]
+pub mod crash_trace;
 // Jev (TypeSafe) decision support: optional, off by default; desktop-only.
 #[cfg(not(feature = "cli"))]
 pub mod jev;

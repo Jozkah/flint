@@ -903,6 +903,16 @@ Section Install
     File /a "/oname=LICENSE" "flint_workspace\src-tauri\resources\LICENSE"
     SetOutPath "$INSTDIR\resources\pre-install"
     File /nonfatal /a /r "flint_workspace\src-tauri\resources\pre-install\"
+    ; The phone app's files, which Remote access serves under /m/. Like the
+    ; engine block below, this is a copy of tauri.windows.conf.json's
+    ; `bundle.resources`, which the NSIS bundler does not read for this
+    ; template: without it the .exe shipped no phone app and every phone got
+    ; an "it is not included" page (the MSI was fine). Fatal rather than
+    ; /nonfatal, so a build that staged no phone app fails here. The old folder
+    ; goes first so the hashed names of an earlier build do not pile up.
+    RMDir /r "$INSTDIR\resources\mobile"
+    SetOutPath "$INSTDIR\resources\mobile"
+    File /a /r "flint_workspace\src-tauri\resources\mobile\*"
     SetOutPath "$INSTDIR\resources\bin"
     File /a "/oname=flint.exe" "flint_workspace\src-tauri\resources\bin\flint.exe"
     ; The engine. This block is a hand-maintained snapshot of

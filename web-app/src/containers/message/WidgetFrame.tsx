@@ -21,6 +21,16 @@ export const PARTIAL_PAINT_DELAY_MS = 300
 /** A frame silent this long is treated as stuck in a loop. */
 export const STALL_AFTER_MS = 10_000
 
+/**
+ * The shell announces itself from an inline script, while its own document is
+ * still loading, so the frame's `load` event can arrive just after `ready`
+ * (it did, 3 ms after, in the desktop's WebView2). A load inside this window is
+ * the shell finishing, not the widget navigating away; a real self-navigation
+ * comes later, after the widget's code has run, and a frame that is gone stops
+ * sending its heartbeat in any case.
+ */
+export const LOAD_AFTER_READY_GRACE_MS = 1_000
+
 /** Heights measured so far, so a remounted widget does not collapse and jump. */
 const measured = new Map<string, number>()
 
@@ -83,6 +93,7 @@ export const WidgetFrame = memo(function WidgetFrame({
   const lastBeat = useRef(Date.now())
   const isReady = useRef(false)
   isReady.current = ready
+  const readyAt = useRef(0)
 
   // A new document (the desktop scheme's id arriving, or a policy change) has
   // not announced itself yet.
@@ -102,6 +113,7 @@ export const WidgetFrame = memo(function WidgetFrame({
       switch (msg.op) {
         case 'ready':
           lastBeat.current = Date.now()
+          readyAt.current = Date.now()
           setReady(true)
           break
         case 'beat':
@@ -199,11 +211,15 @@ export const WidgetFrame = memo(function WidgetFrame({
       title={title}
       data-testid="widget-frame"
       sandbox={WIDGET_SANDBOX}
-      // The shell loads once and then announces itself. A load after that
+      // The shell loads once and then announces itself. A load well after that
       // means the widget navigated its own frame (location = ...): the sandbox
-      // cannot forbid that, so the frame is dropped at once.
+      // cannot forbid that, so the frame is dropped at once. A load right
+      // after `ready` is the shell's own document finishing (see
+      // LOAD_AFTER_READY_GRACE_MS) and must not count.
       onLoad={() => {
-        if (isReady.current) handlers.current.onStalled?.()
+        if (isReady.current && Date.now() - readyAt.current > LOAD_AFTER_READY_GRACE_MS) {
+          handlers.current.onStalled?.()
+        }
       }}
       referrerPolicy="no-referrer"
       className={className}

@@ -213,6 +213,15 @@ jobs:
           FLINT_MAC_TARGET: ${{ matrix.mac_arch == 'arm64' && 'aarch64-apple-darwin' || '' }}
         run: make build
 
+      # Windows gives the main thread 1 MB unless the exe asks for more, and the
+      # release build overflowed that on the first tool call; a debug build never
+      # shows it. src-tauri/build.rs sets the reserve, and this fails the build if
+      # the exe it produced does not carry it.
+      - name: Check the main thread stack (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: node scripts/check-main-thread-stack.mjs src-tauri/target/release/Flint-Desktop.exe
+
       - name: Report ccache statistics
         if: success() || failure()
         run: |
