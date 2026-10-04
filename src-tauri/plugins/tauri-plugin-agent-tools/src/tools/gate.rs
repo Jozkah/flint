@@ -336,7 +336,7 @@ fn call_escapes(
 
 /// `\\?\C:\x` as `C:\x`, so a resolved path reads like the paths rules are
 /// written against. Other paths are returned as they are.
-fn strip_verbatim(path: &Path) -> PathBuf {
+pub(crate) fn strip_verbatim(path: &Path) -> PathBuf {
     let text = path.to_string_lossy();
     match text.strip_prefix(r"\\?\") {
         Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
@@ -568,6 +568,20 @@ pub fn resolve_decision(
     // it is asked about every time too.
     if tool.name == "host_build" {
         return match crate::tools::host_build::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    // The clipboard holds what a person copied a moment ago, and `open_path`
+    // starts a program on their screen: both asked about every time.
+    if tool.name == "clipboard" {
+        return match crate::tools::clipboard::plan(args) {
+            Ok(_) => Decision::Prompt(PromptKind::Ask),
+            Err(_) => Decision::Allow,
+        };
+    }
+    if tool.name == "open_path" {
+        return match crate::tools::open_path::plan(args) {
             Ok(_) => Decision::Prompt(PromptKind::Ask),
             Err(_) => Decision::Allow,
         };
@@ -833,6 +847,24 @@ mod tests {
         };
         assert_eq!(build(json!({"program": "gradlew", "args": ["build"]})), ask);
         assert_eq!(build(json!({"program": "bash", "args": ["-c", "x"]})), Decision::Allow);
+        let simple = |tool: &str, args: serde_json::Value| {
+            resolve_decision(
+                lookup(tool).unwrap(),
+                &args,
+                &root,
+                None,
+                &[],
+                &plain,
+                &grants,
+                true,
+                &crate::subject::Subject::MainAgent,
+            )
+        };
+        assert_eq!(simple("clipboard", json!({"action": "read"})), ask);
+        assert_eq!(simple("clipboard", json!({"action": "write", "text": "x"})), ask);
+        assert_eq!(simple("clipboard", json!({"action": "clear"})), Decision::Allow);
+        assert_eq!(simple("open_path", json!({"path": "docs/a.pdf"})), ask);
+        assert_eq!(simple("open_path", json!({})), Decision::Allow);
         // A call the planner refuses reaches the handler, which refuses it.
         assert_eq!(decide(&plain, json!({"action": "start_program", "name": "calc"})), Decision::Allow);
         assert_eq!(decide(&plain, json!({"action": "stop_service", "name": "RpcSs"})), Decision::Allow);

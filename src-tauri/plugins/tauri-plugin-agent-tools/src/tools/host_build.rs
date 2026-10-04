@@ -36,6 +36,11 @@ pub enum Program {
     Mvn,
     Mvnw,
     Dotnet,
+    Go,
+    Cargo,
+    Npm,
+    Pnpm,
+    Yarn,
 }
 
 impl Program {
@@ -46,6 +51,11 @@ impl Program {
             "mvn" => Program::Mvn,
             "mvnw" => Program::Mvnw,
             "dotnet" => Program::Dotnet,
+            "go" => Program::Go,
+            "cargo" => Program::Cargo,
+            "npm" => Program::Npm,
+            "pnpm" => Program::Pnpm,
+            "yarn" => Program::Yarn,
             _ => return None,
         })
     }
@@ -57,6 +67,11 @@ impl Program {
             Program::Mvn => "mvn",
             Program::Mvnw => "mvnw",
             Program::Dotnet => "dotnet",
+            Program::Go => "go",
+            Program::Cargo => "cargo",
+            Program::Npm => "npm",
+            Program::Pnpm => "pnpm",
+            Program::Yarn => "yarn",
         }
     }
 
@@ -81,8 +96,18 @@ impl Program {
             (Program::Gradle, true) => "gradle.bat",
             (Program::Mvn, true) => "mvn.cmd",
             (Program::Dotnet, true) => "dotnet.exe",
+            (Program::Go, true) => "go.exe",
+            (Program::Cargo, true) => "cargo.exe",
+            (Program::Npm, true) => "npm.cmd",
+            (Program::Pnpm, true) => "pnpm.cmd",
+            (Program::Yarn, true) => "yarn.cmd",
             (Program::Gradle, false) => "gradle",
             (Program::Mvn, false) => "mvn",
+            (Program::Go, false) => "go",
+            (Program::Cargo, false) => "cargo",
+            (Program::Npm, false) => "npm",
+            (Program::Pnpm, false) => "pnpm",
+            (Program::Yarn, false) => "yarn",
             _ => "dotnet",
         }
     }
@@ -110,7 +135,7 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         .get("program")
         .and_then(Value::as_str)
         .and_then(Program::parse)
-        .ok_or("ERROR: host_build needs a 'program': gradle, gradlew, mvn, mvnw or dotnet.")?;
+        .ok_or("ERROR: host_build needs a 'program': gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn.")?;
     let list = match args.get("args") {
         None | Some(Value::Null) => Vec::new(),
         Some(Value::Array(items)) => items.clone(),
@@ -267,10 +292,10 @@ mod tests {
 
     #[test]
     fn only_the_listed_programs_run() {
-        for p in ["gradle", "gradlew", "mvn", "mvnw", "dotnet"] {
+        for p in ["gradle", "gradlew", "mvn", "mvnw", "dotnet", "go", "cargo", "npm", "pnpm", "yarn"] {
             assert!(plan(&json!({ "program": p })).is_ok(), "{p}");
         }
-        for p in ["bash", "cmd", "powershell", "npm", "java", "gradle.bat", "../gradlew", ""] {
+        for p in ["bash", "cmd", "powershell", "npx", "java", "gradle.bat", "../gradlew", "node", ""] {
             assert!(plan(&json!({ "program": p })).is_err(), "{p}");
         }
         assert!(plan(&json!({})).is_err());

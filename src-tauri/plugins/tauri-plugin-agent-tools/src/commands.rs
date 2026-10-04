@@ -1339,7 +1339,7 @@ async fn execute_tool_inner(
         // approval before calling this. A project `ask` rule is the renderer's
         // blind spot, so it still refuses.
         Decision::Prompt(PromptKind::Ask)
-            if (name == "host_action" || name == "host_build")
+            if crate::tools::is_always_ask(&name)
                 && approval == Some(ApprovalSource::Prompted)
                 && permissions
                     .asks_call(&name, &[], &crate::subject::Subject::MainAgent)
