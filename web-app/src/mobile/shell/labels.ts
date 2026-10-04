@@ -5,6 +5,7 @@ export const COWORK_MODES = [
   { id: 'review', label: 'Review first', short: 'Review', sub: 'Reads, searches and inspects. Cannot write files or run commands.' },
   { id: 'ask', label: 'Ask before changes', short: 'Ask', sub: 'Works normally, but every change waits for you to allow it.' },
   { id: 'auto', label: 'Auto mode', short: 'Auto', sub: 'Changes files and runs commands without asking.' },
+  { id: 'bypass', label: 'Bypass permissions', short: 'Bypass', sub: 'Runs tool calls without approval prompts for this session. Folder access limits still apply.' },
 ] as const
 
 export const ACCESS_MODES = [

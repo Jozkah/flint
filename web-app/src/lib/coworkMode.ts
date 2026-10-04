@@ -20,8 +20,10 @@ export type CoworkMode =
   | 'ask'
   /** No gate. Opt-in, and labelled as such wherever it is shown. */
   | 'auto'
+  /** No approval prompts in this Cowork session. Backend access limits still apply. */
+  | 'bypass'
 
-export const COWORK_MODES: readonly CoworkMode[] = ['review', 'ask', 'auto']
+export const COWORK_MODES: readonly CoworkMode[] = ['review', 'ask', 'auto', 'bypass']
 
 /** i18n key for a mode's short name, used in the selector and readiness card. */
 export const modeLabelKey = (mode: CoworkMode): string =>

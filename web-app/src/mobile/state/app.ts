@@ -75,7 +75,7 @@ export type AppState = {
     web: boolean
     reason: 'auto' | 'on' | 'off'
     budget: string
-    cwMode: 'review' | 'ask' | 'auto'
+    cwMode: 'review' | 'ask' | 'auto' | 'bypass'
     access: 'review-only' | 'managed-worktree' | 'edit-folder'
   }
 }

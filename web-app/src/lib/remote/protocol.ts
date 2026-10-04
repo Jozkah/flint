@@ -233,7 +233,7 @@ export type CoworkDetail = {
   folder: string | null
   group?: string
   /** What the session may do. */
-  mode: 'review' | 'ask' | 'auto'
+  mode: 'review' | 'ask' | 'auto' | 'bypass'
   /** Where its changes go. */
   access: 'review-only' | 'managed-worktree' | 'edit-folder'
   model: { id: string; provider: string } | null

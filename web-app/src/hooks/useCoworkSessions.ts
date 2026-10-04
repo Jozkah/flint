@@ -940,7 +940,10 @@ export const useCoworkSessions = create<CoworkSessionsState>()(
       // the model to see; the saved session keeps only the text of the result.
       partialize: (state) => ({
         ...state,
-        sessions: state.sessions.map(stripSessionToolImages),
+        sessions: state.sessions.map((session) => {
+          const saved = stripSessionToolImages(session)
+          return saved.mode === 'bypass' ? { ...saved, mode: 'ask' as const } : saved
+        }),
       }),
       // Blank sessions left over from earlier launches are dropped as the
       // store loads, except the one that is selected.

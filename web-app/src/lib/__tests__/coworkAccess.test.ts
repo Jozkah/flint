@@ -90,6 +90,11 @@ describe('the full matrix', () => {
       'managed-worktree': 'allowed, silent, to managed',
       'edit-folder': 'allowed, silent, to repository',
     },
+    bypass: {
+      'review-only': 'allowed, silent, to sandbox',
+      'managed-worktree': 'allowed, silent, to managed',
+      'edit-folder': 'allowed, silent, to repository',
+    },
   }
 
   const describeDecision = (runMode: CoworkMode, access: AccessMode) => {
