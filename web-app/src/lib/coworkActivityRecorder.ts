@@ -19,6 +19,7 @@ import {
   type ActivityTask,
 } from '@/lib/coworkActivity'
 import { backgroundJobId } from '@/lib/coworkTasks'
+import { deriveTaskTitle } from '@/lib/taskTitle'
 import { PLAN_EXECUTE_INSTRUCTION } from '@/lib/coworkPlanReview'
 import { CONTINUATION_PREFIX } from '@/lib/coworkContinuity'
 import {
@@ -125,11 +126,15 @@ export function recordAgentDispatch(
     /** The dispatching tool call id. Also the task id. */
     callId: string
     agentName: string
+    /** The model's short name for this errand, when it gave one. */
+    title?: string
     description?: string
     /** The model this child will run on, which may not be the parent's. */
     model?: string
     parentTaskId?: string
     anchorMessageId?: string
+    /** Started without the parent waiting; listed in Background tasks. */
+    background?: boolean
   }
 ): void {
   const phaseId = openWorkflow(run, task.anchorMessageId)
@@ -140,8 +145,10 @@ export function recordAgentDispatch(
     workflowId: run.runId,
     phaseId,
     parentTaskId: task.parentTaskId,
+    ...(task.background ? { background: true } : {}),
     kind: 'agent',
-    title: task.agentName,
+    // The errand's own name, not the role's: see `deriveTaskTitle`.
+    title: deriveTaskTitle(task.title, task.description) ?? task.agentName,
     agentName: task.agentName,
     description: task.description,
     model: task.model,

@@ -148,6 +148,34 @@ export type ActivityTask = {
   output?: string
   /** `output` is the end of something longer; the rest was not kept. */
   outputTruncated?: boolean
+  /**
+   * Started without the parent waiting for it: a background `task`, a team
+   * member, or a subagent the Rust loop dispatched. The Background tasks tab
+   * lists these (and backgrounded shell jobs) and nothing else.
+   */
+  background?: boolean
+  /** The assistant this subagent ran with, when it had one (Subagents settings or inherited). */
+  assistant?: string
+  /** The work profile label this subagent ran with. */
+  profile?: string
+  /** Which of the two the child inherited from the parent run rather than a setting. */
+  inherited?: ('assistant' | 'profile')[]
+  /**
+   * The checkout of its own this child works in, when it asked for one. `taskId`
+   * is the team task id the Changes panel's review list is keyed by, so a row
+   * can lead there. Not authority-bearing: a path and a branch name.
+   */
+  checkout?: { path: string; branch: string; taskId: string }
+  /**
+   * Cleared from the Background tasks list. Only hides the row there: the
+   * record, its transcript and its output stay, and the Tasks panel still
+   * shows it.
+   */
+  bgDismissed?: boolean
+  /** The child's answer was shortened (middle cut) before the parent got it. */
+  resultCapped?: boolean
+  /** The child ran out of its step budget instead of finishing. */
+  stoppedAtLimit?: boolean
   /** A shell command's exit code, when its result reported one. */
   exitCode?: number
   /** The command was killed by a signal rather than exiting. */
@@ -485,6 +513,48 @@ export function settleSessionWork(
     now,
     reason
   )
+}
+
+/** Whether the Background tasks tab lists this task. */
+export function isBackgroundTask(task: ActivityTask): boolean {
+  return task.background === true || (task.kind === 'shell' && !!task.jobId)
+}
+
+/**
+ * A session's background tasks as the tab shows them: running (or queued)
+ * ones, and finished ones, each newest first. Cleared rows are left out. Read
+ * from the same record as the Tasks panel, so the two cannot disagree.
+ */
+export function backgroundTasksOf(
+  state: ActivityState,
+  sessionId: string
+): { running: ActivityTask[]; finished: ActivityTask[] } {
+  const mine = Object.values(state.tasks).filter(
+    (t) => t.sessionId === sessionId && isBackgroundTask(t) && !t.bgDismissed
+  )
+  const newest = (a: ActivityTask, b: ActivityTask) => b.startedAt - a.startedAt
+  return {
+    running: mine.filter((t) => !isFinished(t.status)).sort(newest),
+    finished: mine.filter((t) => isFinished(t.status)).sort(newest),
+  }
+}
+
+/**
+ * Hide finished background rows from the tab: one, or all of a session's.
+ * Running rows are never touched, and nothing is deleted.
+ */
+export function dismissBackground(
+  state: ActivityState,
+  match: { id: string } | { sessionId: string }
+): ActivityState {
+  let tasks = state.tasks
+  for (const task of Object.values(state.tasks)) {
+    const hit = 'id' in match ? task.id === match.id : task.sessionId === match.sessionId
+    if (!hit || !isBackgroundTask(task) || !isFinished(task.status) || task.bgDismissed) continue
+    if (tasks === state.tasks) tasks = { ...tasks }
+    tasks[task.id] = { ...task, bgDismissed: true }
+  }
+  return tasks === state.tasks ? state : { ...state, tasks }
 }
 
 function settleMatching(

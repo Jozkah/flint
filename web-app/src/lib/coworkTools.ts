@@ -9,6 +9,19 @@
 import { TEAM_TOOL_NAME } from '@/lib/coworkTeam'
 import { jsonSchema, type Tool } from 'ai'
 import { getAgentToolSchemas } from '@/lib/agentTools'
+import {
+  AWAIT_TASK_TOOL_NAME,
+  BACKGROUND_TASK_TOOLS,
+  CANCEL_TASK_TOOL_NAME,
+  TASK_STATUS_TOOL_NAME,
+} from '@/lib/coworkBackgroundTasks'
+import {
+  BRIEF_RULE,
+  DELEGATE_WHEN,
+  DO_NOT_DELEGATE,
+  NOT_SHOWN_TO_USER,
+  subagentChoices,
+} from '@/lib/coworkSubagentGuide'
 import type {
   ComponentReport,
   ToolSchema,
@@ -57,6 +70,7 @@ export const CLIENT_TOOL_NAMES = new Set([
   ASK_TOOL_NAME,
   TASK_TOOL_NAME,
   TEAM_TOOL_NAME,
+  ...BACKGROUND_TASK_TOOLS,
 ])
 
 const todoTool: Tool = {
@@ -192,29 +206,26 @@ const askTool: Tool = {
  * single call carrying the whole plan is what makes those answerable before
  * anything runs — asked one `task` at a time, they cannot be.
  */
-function teamTool(subagentNames: string[]): Tool {
-  const known = subagentNames.length
-    ? ` Saved subagents: ${subagentNames.join(', ')}.`
-    : ''
+/** What `team` tells the model; exported so its size and wording are tested. */
+export function teamDescription(subagentNames: string[]): string {
+  return [
+    'Run several subagents on one piece of work. Independent tasks run at the same time (a few at once); `depends_on` orders the rest. ' +
+      'Use it when the work splits into independent parts (one task per module, a review beside a test run) or when one part must finish before another starts. ' +
+      'For a single job use `task`; do not use it for a lookup you can do yourself.',
+    'Each child cannot see this chat, so every `description` must be a complete brief: the goal, the files or names involved, and what to report back. ' +
+      "The user does not see the children's output: read the results and tell them what matters.",
+    'Declare in `writes` the files or folders a task will change, and in `deletes` and `renames` what it removes or moves: ' +
+      'when two unordered tasks would change the same paths, the user is shown the overlap before anything runs. ' +
+      'Paths only read go in `reads` and never conflict. Set `isolate` on a task whose changes must not reach the attached folder or its siblings. ' +
+      'Only the tester role has a shell, so do not ask the others to build or run tests. ' +
+      'A reviewer of other tasks’ output must list them in `depends_on`.',
+    subagentChoices(subagentNames),
+  ].join('\n')
+}
+
+export function teamTool(subagentNames: string[]): Tool {
   return {
-    description:
-      'Run several subagents on one piece of work, respecting an order you ' +
-      'declare. Use it when the work splits into parts that can go at once, ' +
-      'or where one part must finish before another starts. Each task is run ' +
-      'by a child that cannot see this conversation, so describe it in full. ' +
-      'Declare in `writes` the files or folders a task will change, and in ' +
-      '`deletes` and `renames` what it removes or moves: when two tasks with ' +
-      'nothing ordering them would change the same paths, the user is shown ' +
-      'the overlap before anything runs and decides whether to order them, ' +
-      'narrow a scope, or run them side by side. Paths only read go in ' +
-      '`reads` and never conflict. Set `isolate` on a task that should work in a checkout ' +
-      'of its own, when its changes must not reach the attached folder or its ' +
-      'siblings. Only the tester role has a shell; implementer, reviewer and ' +
-      'the other read roles do not, so do not ask them to build or run tests: ' +
-      'use tester, or run checks yourself after the team returns. A reviewer of ' +
-      'other tasks’ output must list them in `depends_on`, or be dispatched ' +
-      'in a later team call.' +
-      known,
+    description: teamDescription(subagentNames),
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
@@ -235,6 +246,14 @@ function teamTool(subagentNames: string[]): Tool {
                 description: 'The whole brief; the child sees nothing else.',
               },
               subagent_name: { type: 'string', minLength: 1 },
+              title: {
+                type: 'string',
+                description: 'A short name for this task, 3-6 words, shown on its row.',
+              },
+              model: {
+                type: 'string',
+                description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
+              },
               depends_on: {
                 type: 'array',
                 items: { type: 'string', minLength: 1 },
@@ -298,18 +317,58 @@ function teamTool(subagentNames: string[]): Tool {
   } as Tool
 }
 
-function taskTool(subagentNames: string[]): Tool {
-  const known = subagentNames.length
-    ? ` Saved subagents: ${subagentNames.join(', ')}.`
-    : ''
+/**
+ * What a surface can do with `task`. Cowork has a `team` to point at and a
+ * checkout to isolate into; plain chat and Rooms have neither, so their copy of
+ * the tool does not mention them.
+ */
+export type DelegationOptions = { team: boolean; isolate: boolean; background: boolean }
+export const COWORK_DELEGATION: DelegationOptions = {
+  team: true,
+  isolate: true,
+  background: true,
+}
+
+/** What `task` tells the model; exported so its size and wording are tested. */
+export function taskDescription(
+  subagentNames: string[],
+  opts: DelegationOptions = COWORK_DELEGATION
+): string {
+  const how = opts.background
+    ? 'By default this blocks until the subagent answers, and calls in one message run one after another. To run several at once, set background:true on each: it returns a task_id immediately and the subagent keeps working while you do other things; collect each with await_task (task_status checks on them, cancel_task stops one).' +
+      (opts.team ? ' `team` runs a declared set with an order.' : '')
+    : 'This blocks until the subagent answers, and calls in one message run one after another.'
+  return [
+    `Hand a self-contained job to a subagent: a nested agent with its own context and tools. ${BRIEF_RULE}`,
+    DELEGATE_WHEN,
+    DO_NOT_DELEGATE,
+    how,
+    NOT_SHOWN_TO_USER,
+    `${subagentChoices(subagentNames)} For a one-off, give a descriptive subagent_name and a system_prompt.` +
+      (opts.isolate
+        ? ' Set isolate:true for a job that changes files you want reviewed first.'
+        : ''),
+  ].join('\n')
+}
+
+export function taskTool(
+  subagentNames: string[],
+  opts: DelegationOptions = COWORK_DELEGATION
+): Tool {
   return {
-    description:
-      'Run a subagent: a nested, isolated agent with its own system prompt and narrowed tools. It does not see this conversation, so state everything it needs in `description`. Returns its final answer.' +
-      known,
+    description: taskDescription(subagentNames, opts),
     inputSchema: jsonSchema({
       type: 'object',
       properties: {
         subagent_name: { type: 'string', minLength: 1 },
+        title: {
+          type: 'string',
+          description: 'A short name for this errand, 3-6 words, shown on its row.',
+        },
+        model: {
+          type: 'string',
+          description: 'Optional. A configured model id to run this on instead of the default, for example a faster one for a read-only survey. Leave out unless you have a reason.',
+        },
         description: { type: 'string', minLength: 1 },
         system_prompt: {
           type: 'string',
@@ -320,11 +379,96 @@ function taskTool(subagentNames: string[]): Tool {
           type: 'array',
           items: { type: 'string', minLength: 1 },
         },
+        ...(opts.isolate
+          ? {
+              isolate: {
+                type: 'boolean' as const,
+                description:
+                  'Give this subagent a checkout of its own, so its file changes do not reach the attached folder until the user reviews them. Not combinable with allowed_tools or background.',
+              },
+            }
+          : {}),
+        ...(opts.background
+          ? {
+              background: {
+                type: 'boolean' as const,
+                description:
+                  'Start it and return a task_id at once instead of waiting. Collect the answer with await_task.',
+              },
+            }
+          : {}),
       },
       required: ['subagent_name', 'description'],
       additionalProperties: false,
     }),
   } as Tool
+}
+
+const taskIdProperty = {
+  type: 'string' as const,
+  minLength: 1,
+  description: 'The task_id that `task` with background:true returned.',
+}
+
+export const awaitTaskTool: Tool = {
+  description:
+    'Wait for a background task to finish and return its final answer. If the answer comes back shortened, call again with the same task_id and an offset to read the omitted part. Can be called again for a task that already finished.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      task_id: taskIdProperty,
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        description:
+          'Only for an answer that came back shortened: the character to continue reading from.',
+      },
+    },
+    required: ['task_id'],
+    additionalProperties: false,
+  }),
+} as Tool
+
+export const taskStatusTool: Tool = {
+  description:
+    'Say whether background tasks are running, done, failed or cancelled, and for how long. Without task_id it lists every background task of this run. Does not wait.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: { task_id: taskIdProperty },
+    additionalProperties: false,
+  }),
+} as Tool
+
+export const cancelTaskTool: Tool = {
+  description:
+    'Stop one background task. Its partial work is discarded. A task that already finished is left alone.',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: { task_id: taskIdProperty },
+    required: ['task_id'],
+    additionalProperties: false,
+  }),
+} as Tool
+
+/**
+ * The delegation tools for a surface that is not Cowork: `task` with the
+ * options it can honour, and the three tools that manage its background
+ * children.
+ */
+export function delegationTools(
+  subagentNames: string[],
+  opts: DelegationOptions
+): Record<string, Tool> {
+  return {
+    [TASK_TOOL_NAME]: taskTool(subagentNames, opts),
+    ...(opts.background
+      ? {
+          [AWAIT_TASK_TOOL_NAME]: awaitTaskTool,
+          [TASK_STATUS_TOOL_NAME]: taskStatusTool,
+          [CANCEL_TASK_TOOL_NAME]: cancelTaskTool,
+        }
+      : {}),
+  }
 }
 
 export type CoworkToolOptions = {
@@ -399,7 +543,12 @@ export function allowedToolNames(
     if (opts.planMode && PLAN_DENIED_TOOLS.has(name)) return false
     if (opts.planMode && isReviewDeniedBrowserTool(name)) return false
     if (opts.planMode && name === STOP_SESSION_TOOL_NAME) return false
-    if (name === TASK_TOOL_NAME && !opts.allowSubagents) return false
+    if (
+      (name === TASK_TOOL_NAME || BACKGROUND_TASK_TOOLS.has(name)) &&
+      !opts.allowSubagents
+    ) {
+      return false
+    }
     return true
   })
 }
@@ -523,6 +672,9 @@ export function coworkToolsFromSchemas(
   if (opts.allowSubagents && !opts.planMode) {
     tools[TASK_TOOL_NAME] = taskTool(opts.subagentNames)
     tools[TEAM_TOOL_NAME] = teamTool(opts.subagentNames)
+    tools[AWAIT_TASK_TOOL_NAME] = awaitTaskTool
+    tools[TASK_STATUS_TOOL_NAME] = taskStatusTool
+    tools[CANCEL_TASK_TOOL_NAME] = cancelTaskTool
   }
   return tools
 }

@@ -1300,3 +1300,28 @@ fn old_read_mail_and_old_outbox_entries_are_compacted() {
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].id, old_unread.message_id);
 }
+
+#[test]
+fn waiting_approval_shows_only_while_running_and_clears_with_the_run() {
+    let fx = Fixture::new("waiting");
+    let mb = Mailbox::open(&fx.data);
+    pair(&fx, &mb);
+    // Idle: a wait is ignored.
+    mb.set_waiting_approval("b", None, true).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+    mb.set_status("b", true, Some("r1")).unwrap();
+    mb.set_waiting_approval("b", Some("r1"), true).unwrap();
+    let listed = mb.list_sessions("a").unwrap();
+    assert_eq!(listed[0].status, SessionStatus::Running);
+    assert!(listed[0].waiting_approval);
+    // A different run cannot change it.
+    mb.set_waiting_approval("b", Some("other"), false).unwrap();
+    assert!(mb.list_sessions("a").unwrap()[0].waiting_approval);
+    mb.set_waiting_approval("b", Some("r1"), false).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+    // Ending the run clears a standing wait.
+    mb.set_waiting_approval("b", Some("r1"), true).unwrap();
+    mb.set_status("b", false, Some("r1")).unwrap();
+    mb.set_status("b", true, Some("r2")).unwrap();
+    assert!(!mb.list_sessions("a").unwrap()[0].waiting_approval);
+}

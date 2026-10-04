@@ -57,6 +57,8 @@ import {
 } from '@/lib/webSearchTool'
 import { useAgentToolsConfig } from '@/hooks/useAgentToolsConfig'
 import { getAgentToolSchemas, sandboxEnforces } from '@/lib/agentTools'
+import { chatDelegationEnabled, chatDelegationTools } from '@/lib/chatDelegation'
+import { subagentGuide } from '@/lib/coworkPrompt'
 import { useVisualizeConfig } from '@/hooks/useVisualizeConfig'
 import { visualizeSchemas } from '@/lib/visualize/tools'
 import { truncateStaleWidgetCode } from '@/lib/visualize/history'
@@ -973,6 +975,8 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModel: LanguageModel | null = null
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
+  /** Saved subagent names the chat's `task` tool offers, for its prompt. */
+  protected delegationNames: string[] = []
   private toolsCacheKey: string | null = null
   /** Kept until the set changes again, so the prompt prefix stays stable. */
   private mcpChangeText: string | null = null
@@ -1279,6 +1283,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     const files = this.buildFilesSystemInstruction(messages)
     const web = this.buildWebSearchSystemInstruction()
     const agentTools = this.buildAgentToolsSystemInstruction()
+    // Taught only when the tool is really offered, as Cowork does.
+    const delegation =
+      this.tools && 'task' in this.tools ? subagentGuide(this.delegationNames, { team: false }) : undefined
     // Any tool, MCP included, returns outside content, and an MCP tool can act
     // on the world as readily as the agent tools can.
     const hasTools = Object.keys(this.tools ?? {}).length > 0
@@ -1292,6 +1299,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         files,
         web,
         agentTools,
+        delegation,
         'Use only structured tool calls supplied by this request. Never print <tool_call> or <function=...> markup as an answer. If no suitable tool is available, say that you cannot run it.',
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
@@ -1471,6 +1479,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       deadTools: deadTools(this.threadId),
       webSearchEnabled: useWebSearchConfig.getState().webSearchEnabled,
       agentToolsEnabled: useAgentToolsConfig.getState().agentToolsEnabled,
+      chatDelegation: chatDelegationEnabled(),
       visualizeEnabled: useVisualizeConfig.getState().enabled,
     })
     if (useCache && this.toolsCacheKey === cacheKey) return
@@ -1663,6 +1672,15 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
           }
         } catch (error) {
           console.warn('Failed to load agent tools:', error)
+        }
+        // A job handed to a subagent: the Cowork `task` family on the chat's
+        // own footing, behind its own setting.
+        try {
+          const offered = await chatDelegationTools()
+          Object.assign(toolsRecord, offered.tools)
+          this.delegationNames = offered.names
+        } catch (error) {
+          console.warn('Failed to load delegation tools:', error)
         }
       }
     }
