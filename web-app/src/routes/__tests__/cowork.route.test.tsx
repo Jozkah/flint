@@ -186,6 +186,12 @@ vi.mock('@/lib/coworkTransport', () => ({
       ask: {},
       todo: {},
     }
+    get builtinTools() {
+      return this.advertisedTools
+    }
+    mcpServerFor() {
+      return undefined
+    }
     constructor(
       public sessionId: string,
       public config: any

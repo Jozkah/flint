@@ -6,6 +6,7 @@ import { useToolAvailable } from './useToolAvailable'
 import { ExtensionManager } from '@/lib/extension'
 import { ExtensionTypeEnum, MCPExtension } from '@janhq/core'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator/mcp-orchestrator'
+import { bumpMcpGeneration } from '@/lib/mcpLiveTools'
 
 export const useTools = () => {
   const updateTools = useAppState((state) => state.updateTools)
@@ -21,6 +22,8 @@ export const useTools = () => {
         // notice via its own TTL, serving stale/reordered tools in the
         // meantime and destabilizing the KV-cache prefix Flint sends.
         mcpOrchestrator.invalidateCache()
+        // Chats and Cowork re-read the tool set at their next request.
+        bumpMcpGeneration()
 
         // Get MCP extension first
         const mcpExtension = ExtensionManager.getInstance().get<MCPExtension>(

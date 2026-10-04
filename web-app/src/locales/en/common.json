@@ -1452,7 +1452,7 @@
     "tools": "Tools",
     "builtins": "{{count}} built-in",
     "noMcp": "no MCP servers",
-    "mcpNotOffered": "MCP servers from Settings are not offered in Cowork",
+    "mcpNotOffered": "Enabled MCP servers connect when a message is sent",
     "context": "Context",
     "tokens": "{{count}} tokens",
     "tokensPartial": "at least {{count}} tokens; some parts could not be measured",

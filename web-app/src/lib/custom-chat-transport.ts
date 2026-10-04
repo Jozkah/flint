@@ -157,6 +157,19 @@ import { chatAwaitsTools, chatRunOf, chatSnapshotId, continueOrBeginChatRun, end
 import { usageEventPayload } from '@/lib/executionTimeline'
 import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
+import {
+  announceMcpChange,
+  diffMcpSnapshots,
+  enabledMcpServers,
+  getMcpGeneration,
+  loadLiveMcpTools,
+  mcpChangeNote,
+  mcpStartingNote,
+  readMcpBaseline,
+  snapshotMcpTools,
+  syncMcpStore,
+  writeMcpBaseline,
+} from '@/lib/mcpLiveTools'
 import { encodeAudioSentinel, parseAudioDataUrl } from '@/lib/audio-sentinel'
 import { prepareToolResultImagesForModel } from '@/lib/toolResultImages'
 import { transcodeWebpImages } from '@/lib/imageTranscode'
@@ -961,6 +974,9 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
   private routerModelKey = ''
   protected tools: Record<string, Tool> = {}
   private toolsCacheKey: string | null = null
+  /** Kept until the set changes again, so the prompt prefix stays stable. */
+  private mcpChangeText: string | null = null
+  protected mcpStartingText: string | null = null
   // Smart tool routing selects tools from the latest user message, which would
   // change the tool set (and thus the cached prompt prefix) every turn. Freeze
   // the routed set for the thread's lifetime so the prefix stays stable;
@@ -1280,6 +1296,7 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // Independent of the agent tools: which plugins are on is Flint's own
         // state, and the answer to "is X enabled?" should never need a shell.
         pluginInventoryLine(),
+        ...this.mcpPromptNotes(),
         // The precedence chain (AH-084), stated by the backend so every surface
         // says the same thing, then the remembered facts it ranks. Remembered
         // facts are data the model may use, not instructions it must follow;
@@ -1440,6 +1457,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         : []
     const cacheKey = JSON.stringify({
       mcpFingerprint,
+      // A server switched on after the chat began has no tools until it is
+      // started, so the fingerprint alone cannot see it.
+      mcpGeneration: getMcpGeneration(),
+      mcpEnabled: enabledMcpServers(),
       model: selectedModel?.id ?? '',
       modelSupportsTools,
       hasDocuments,
@@ -1485,6 +1506,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
       try {
         const mcpService = this.serviceHub.mcp()
         let mcpTools: MCPTool[]
+        let mcpStarting: string[] = []
+        // Smart routing lists a subset; only a full listing may refresh the
+        // store the tool picker and the call dispatcher read.
+        let fullListing = false
         const mcpSettings = useMCPServers.getState().settings
         const routingEnabled = mcpSettings.enableSmartToolRouting
 
@@ -1530,9 +1555,14 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             this.frozenRoutedSig = routedSig
           }
         } else {
-          // A send that uses tools starts enabled servers on demand.
-          mcpTools = await mcpService.getTools({ start: true })
+          // A send that uses tools starts enabled servers on demand, waiting
+          // a bounded time for ones still starting.
+          const live = await loadLiveMcpTools(mcpService)
+          mcpTools = live.tools
+          mcpStarting = live.starting
+          fullListing = true
         }
+        this.mcpStartingText = mcpStartingNote(mcpStarting)
 
         if (Array.isArray(mcpTools) && mcpTools.length > 0) {
           const seenBy = new Map<string, string>()
@@ -1560,6 +1590,10 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
             } as Tool
           })
         }
+        this.recordMcpSet(
+          [...toolServers].map(([name, server]) => ({ name, server })),
+          fullListing ? mcpTools : undefined
+        )
       } catch (error) {
         console.warn('Failed to load MCP tools:', error)
       }
@@ -1643,6 +1677,38 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     )
     this.toolServers = toolServers
     this.toolsCacheKey = cacheKey
+  }
+
+  /**
+   * Compare this request's MCP tools with the last request's. A difference
+   * becomes a note for the model, a toast for the person when a server
+   * appeared, and a refresh of the lists the UI and the call dispatcher read.
+   */
+  protected recordMcpSet(
+    advertised: { name: string; server?: string }[],
+    listed?: MCPTool[]
+  ): void {
+    const next = snapshotMcpTools(advertised)
+    const key = this.threadId ?? ''
+    const before = readMcpBaseline(key)
+    let note = before?.note ?? null
+    if (listed) syncMcpStore(listed)
+    if (before) {
+      const change = diffMcpSnapshots(before.snapshot, next)
+      const changed = mcpChangeNote(change)
+      if (changed) {
+        note = changed
+        announceMcpChange(change)
+      }
+    }
+    writeMcpBaseline(key, next, note)
+    this.mcpChangeText = note
+  }
+
+  protected mcpPromptNotes(): string[] {
+    return [this.mcpChangeText, this.mcpStartingText].filter(
+      (s): s is string => typeof s === 'string' && s.length > 0
+    )
   }
 
   private async resolveRouterModel(settings: {
