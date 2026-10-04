@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   }[],
   getTools: vi.fn(),
   disabled: [] as string[],
+  enableServerTools: vi.fn(),
 }))
 
 vi.mock('@/hooks/useServiceHub', () => {
@@ -25,6 +26,7 @@ vi.mock('@/hooks/useToolAvailable', () => ({
   useToolAvailable: {
     getState: () => ({
       getDisabledTools: () => h.disabled,
+      enableServerTools: h.enableServerTools,
       isToolDisabled: (s: string, t: string) => h.disabled.includes(`${s}::${t}`),
     }),
   },
@@ -92,6 +94,7 @@ beforeEach(() => {
   bumpMcpGeneration()
   clearMcpBaselines()
   vi.mocked(toast.info).mockClear()
+  h.enableServerTools.mockClear()
 })
 
 describe('plain chat: a server turned on after the chat began', () => {
@@ -248,5 +251,68 @@ describe('Cowork: a server turned on after the session began', () => {
     const prompt = promptOf(t)
     expect(prompt).toContain('late (still starting')
     expect(prompt).toContain('MCP server late is still starting')
+  })
+})
+
+describe('a server that is on but offers nothing says why', () => {
+  // The state that left a Cowork chat answering "no ida-multi-mcp tools":
+  // the server is enabled and connected, every tool is switched off in the
+  // global Tools menu, and nothing in the prompt or the UI said so.
+  const allOff = () => {
+    turnOn('ida-multi-mcp', [ida, { ...ida, name: 'ida_xrefs' }])
+    h.disabled = ['ida-multi-mcp::ida_decompile', 'ida-multi-mcp::ida_xrefs']
+  }
+
+  it('Cowork names the server, its tool count and the reason', async () => {
+    allOff()
+    const t = new CoworkChatTransport('s1', coworkConfig())
+    await t.refreshTools()
+    expect(Object.keys(t.advertisedTools)).not.toContain('ida_decompile')
+    const prompt = promptOf(t)
+    expect(prompt).toContain(
+      'ida-multi-mcp (2 tools, all switched off in the Tools menu)'
+    )
+    expect(prompt).toContain('MCP tools withheld from this request')
+    expect(prompt).not.toContain('MCP servers in this session: none')
+    expect(toast.info).toHaveBeenCalledWith(
+      'ida-multi-mcp: 2 tools, all switched off',
+      expect.anything()
+    )
+  })
+
+  it('plain chat gives the model the same note', async () => {
+    allOff()
+    const t = new CustomChatTransport('sys', 'thread-1')
+    await t.refreshTools(undefined, true)
+    expect(Object.keys(t.getTools())).not.toContain('ida_decompile')
+    expect(promptOf(t)).toContain('every one is switched off in the Tools menu')
+  })
+
+  it('names an enabled server that listed no tools', async () => {
+    useMCPServers.setState({
+      mcpServers: { quiet: { command: 'x', args: [], env: {}, active: true } },
+    } as never)
+    const t = new CoworkChatTransport('s1', coworkConfig())
+    await t.refreshTools()
+    expect(promptOf(t)).toContain('quiet (enabled, but it listed no tools')
+  })
+
+  it('says nothing while the tools are offered', async () => {
+    turnOn('ida-multi-mcp', [ida])
+    const t = new CoworkChatTransport('s1', coworkConfig())
+    await t.refreshTools()
+    expect(promptOf(t)).not.toContain('withheld')
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+
+  it('switching a server back on in Settings re-enables its tools', () => {
+    useMCPServers.setState({
+      mcpServers: { 'ida-multi-mcp': { command: 'x', args: [], env: {}, active: false } },
+    } as never)
+    h.enableServerTools.mockClear()
+    useMCPServers.setState({
+      mcpServers: { 'ida-multi-mcp': { command: 'x', args: [], env: {}, active: true } },
+    } as never)
+    expect(h.enableServerTools).toHaveBeenCalledWith('ida-multi-mcp')
   })
 })

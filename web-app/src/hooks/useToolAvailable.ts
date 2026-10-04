@@ -21,6 +21,8 @@ type ToolDisabledState = {
     toolName: string,
     enabled: boolean
   ) => void
+  /** Switch every tool of one server back on. */
+  enableServerTools: (serverName: string) => void
   isToolDisabled: (serverName: string, toolName: string) => boolean
   getDisabledTools: () => string[]
   setDisabledTools: (toolKeys: string[]) => void
@@ -46,6 +48,15 @@ export const useToolAvailable = create<ToolDisabledState>()(
           return { disabledTools: [...state.disabledTools, toolKey] }
         })
       },
+
+      enableServerTools: (serverName) =>
+        set((state) => {
+          const prefix = `${serverName}::`
+          const kept = state.disabledTools.filter((k) => !k.startsWith(prefix))
+          return kept.length === state.disabledTools.length
+            ? state
+            : { disabledTools: kept }
+        }),
 
       isToolDisabled: (serverName, toolName) =>
         get().disabledTools.includes(createToolKey(serverName, toolName)),

@@ -167,6 +167,8 @@ import { mcpOrchestrator } from '@/lib/mcp-orchestrator'
 import { isRouterModelSelectable } from '@/lib/mcp-router-model-filter'
 import {
   announceMcpChange,
+  announceMcpWithheld,
+  mcpAvailability,
   diffMcpSnapshots,
   enabledMcpServers,
   getMcpGeneration,
@@ -1611,6 +1613,23 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
               ),
             } as Tool
           })
+        }
+        if (fullListing) {
+          // Enabled servers that offered nothing are said so, to the model and
+          // to the person, instead of being left out without a word.
+          const availability = mcpAvailability(
+            mcpTools,
+            snapshotMcpTools(
+              [...toolServers].map(([name, server]) => ({ name, server }))
+            ),
+            mcpStarting,
+            isToolDisabled
+          )
+          this.mcpStartingText =
+            [this.mcpStartingText, availability.note]
+              .filter((s): s is string => Boolean(s))
+              .join(' ') || null
+          announceMcpWithheld(availability.withheld)
         }
         this.recordMcpSet(
           [...toolServers].map(([name, server]) => ({ name, server })),

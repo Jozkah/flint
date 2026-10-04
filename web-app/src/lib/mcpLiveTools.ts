@@ -13,6 +13,7 @@ import type { MCPTool } from '@/types/completion'
 import type { MCPService } from '@/services/mcp/types'
 import { useAppState } from '@/hooks/useAppState'
 import { useMCPServers } from '@/hooks/useMCPServers'
+import { useToolAvailable } from '@/hooks/useToolAvailable'
 
 let generation = 0
 let cached: { gen: number; at: number; result: LiveMcp } | null = null
@@ -43,7 +44,22 @@ export function enabledMcpServers(): string[] {
 // An enable or disable in Settings changes `active` without waiting for the
 // backend's event, so the counter follows the store as well.
 let activeSignature = ''
+// Which servers were last seen switched on or off. A server the user switches
+// on again starts with its tools on: the per-tool switches of an earlier
+// session must not leave a freshly enabled server silently offering nothing.
+const lastActive = new Map<string, boolean>()
 useMCPServers.subscribe?.((state) => {
+  for (const [name, config] of Object.entries(state.mcpServers ?? {})) {
+    const now = Boolean(config?.active)
+    if (lastActive.get(name) === false && now) {
+      try {
+        useToolAvailable.getState?.()?.enableServerTools?.(name)
+      } catch {
+        // Availability is a convenience; never block the settings toggle.
+      }
+    }
+    lastActive.set(name, now)
+  }
   const next = Object.entries(state.mcpServers ?? {})
     .map(([name, config]) => `${name}:${config?.active ? 1 : 0}`)
     .sort()
@@ -145,7 +161,8 @@ export function mcpChangeNote(change: McpChange): string | null {
 /** One label per server for the environment line; a starting server says so. */
 export function mcpServerLabels(
   snapshot: McpSnapshot,
-  starting: readonly string[] = []
+  starting: readonly string[] = [],
+  withheld: readonly string[] = []
 ): string[] {
   return [
     ...Object.keys(snapshot)
@@ -155,7 +172,105 @@ export function mcpServerLabels(
       .filter((s) => !(s in snapshot))
       .sort()
       .map((s) => `${s} (still starting, tools not available yet)`),
+    ...withheld,
   ]
+}
+
+/** An enabled server whose tools did not reach the request, and why. */
+export type McpWithheld = {
+  server: string
+  /** Tools the server listed. Zero: it is enabled but listed nothing. */
+  total: number
+  /** How many of them the per-tool switches turn off. */
+  disabled: number
+}
+
+export type McpAvailability = {
+  withheld: McpWithheld[]
+  /** One label per withheld server for the environment line. */
+  labels: string[]
+  /** What the model is told, so it does not report a missing server. */
+  note: string | null
+}
+
+/**
+ * Enabled servers that offered nothing to this request. A server that is
+ * connected but whose every tool is switched off, or that is enabled but
+ * listed no tools, used to vanish from the prompt without a word and the model
+ * then said the server was not attached.
+ */
+export function mcpAvailability(
+  listed: readonly { name: string; server?: string }[],
+  offered: McpSnapshot,
+  starting: readonly string[],
+  isDisabled: (server: string, tool: string) => boolean,
+  enabled: readonly string[] = enabledMcpServers()
+): McpAvailability {
+  const per = new Map<string, McpWithheld>()
+  for (const tool of listed) {
+    const server = tool.server || 'unknown'
+    const entry = per.get(server) ?? { server, total: 0, disabled: 0 }
+    entry.total += 1
+    if (isDisabled(server, tool.name)) entry.disabled += 1
+    per.set(server, entry)
+  }
+  for (const server of enabled) {
+    if (!per.has(server) && !starting.includes(server)) {
+      per.set(server, { server, total: 0, disabled: 0 })
+    }
+  }
+  const withheld = [...per.values()]
+    .filter((e) => !(offered[e.server]?.length > 0))
+    .sort((a, b) => (a.server < b.server ? -1 : a.server > b.server ? 1 : 0))
+  const describe = (e: McpWithheld) =>
+    e.total === 0
+      ? 'enabled, but it listed no tools (not connected?)'
+      : e.disabled === e.total
+        ? `${count(e.total)}, all switched off in the Tools menu`
+        : `${count(e.total)}, none offered`
+  const labels = withheld.map((e) => `${e.server} (${describe(e)})`)
+  if (withheld.length === 0) return { withheld, labels, note: null }
+  const parts = withheld.map((e) =>
+    e.total === 0
+      ? `${e.server} is enabled but listed no tools; it may have failed to start (Settings > MCP Servers shows its log)`
+      : e.disabled === e.total
+        ? `${e.server} is connected with ${count(e.total)}, but every one is switched off in the Tools menu, so none are offered`
+        : `${e.server} is connected with ${count(e.total)}, none of which could be offered`
+  )
+  return {
+    withheld,
+    labels,
+    note:
+      `MCP tools withheld from this request: ${parts.join('; ')}. ` +
+      'The server is not missing: tell the user which switch to turn on instead of saying it is not attached.',
+  }
+}
+
+let lastWithheldKey = ''
+
+/** Tell the person, once per change, that a server they enabled offers nothing. */
+export function announceMcpWithheld(withheld: readonly McpWithheld[]): void {
+  const key = withheld.map((e) => `${e.server}:${e.total}:${e.disabled}`).join('|')
+  if (key === lastWithheldKey) return
+  lastWithheldKey = key
+  for (const e of withheld) {
+    if (e.total === 0) {
+      toast.info(`${e.server} is enabled but offered no tools`, {
+        description: 'It may not be connected. Check its log in Settings > MCP Servers.',
+      })
+      continue
+    }
+    toast.info(`${e.server}: ${count(e.total)}, all switched off`, {
+      description: 'Its tools are hidden from the model by the Tools menu.',
+      action: {
+        label: 'Switch on',
+        onClick: () => {
+          useToolAvailable.getState?.()?.enableServerTools?.(e.server)
+          bumpMcpGeneration()
+        },
+      },
+    })
+  }
 }
 
 /**

@@ -13,6 +13,8 @@ import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
 import {
   loadLiveMcpTools,
   mcpServerLabels,
+  mcpAvailability,
+  announceMcpWithheld,
   mcpStartingNote,
   snapshotMcpTools,
 } from '@/lib/mcpLiveTools'
@@ -160,6 +162,7 @@ export class CoworkChatTransport extends CustomChatTransport {
   private mcpOverlay: Record<string, Tool> = {}
   private mcpToolServers = new Map<string, string>()
   private mcpStarting: string[] = []
+  private mcpWithheldLabels: string[] = []
   /** False until a request has read the live set: an estimate states no line. */
   private mcpRead = false
   private advertised: Record<string, Tool> | null = null
@@ -455,7 +458,8 @@ export class CoworkChatTransport extends CustomChatTransport {
             snapshotMcpTools(
               [...this.mcpToolServers].map(([name, server]) => ({ name, server }))
             ),
-            this.mcpStarting
+            this.mcpStarting,
+            this.mcpWithheldLabels
           ),
       gitBranch: this.config.gitBranch,
       projectInstructions: this.config.projectInstructions,
@@ -541,13 +545,13 @@ export class CoworkChatTransport extends CustomChatTransport {
     const servers = new Map<string, string>()
     this.mcpStarting = []
     this.mcpStartingText = null
+    this.mcpWithheldLabels = []
     this.mcpRead = true
     if (!this.config.planMode) {
       try {
         const mcp = getServiceHub().mcp()
         const live = await loadLiveMcpTools(mcp)
         this.mcpStarting = live.starting
-        this.mcpStartingText = mcpStartingNote(live.starting)
         const isDisabled = useToolAvailable.getState().isToolDisabled
         for (const tool of live.tools) {
           const server = tool.server || 'unknown'
@@ -564,10 +568,20 @@ export class CoworkChatTransport extends CustomChatTransport {
             ),
           } as Tool
         }
-        this.recordMcpSet(
-          [...servers].map(([name, server]) => ({ name, server })),
-          live.tools
+        const offered = [...servers].map(([name, server]) => ({ name, server }))
+        const availability = mcpAvailability(
+          live.tools,
+          snapshotMcpTools(offered),
+          live.starting,
+          isDisabled
         )
+        this.mcpWithheldLabels = availability.labels
+        this.mcpStartingText =
+          [mcpStartingNote(live.starting), availability.note]
+            .filter((s): s is string => Boolean(s))
+            .join(' ') || null
+        announceMcpWithheld(availability.withheld)
+        this.recordMcpSet(offered, live.tools)
       } catch (error) {
         console.warn('Failed to load MCP tools:', error)
         overlay = {}
