@@ -23,6 +23,8 @@ import { RoomStatusBadge } from '@/containers/rooms/RoomStatusBadge'
 import { RoomUsageBar } from '@/containers/rooms/RoomUsageBar'
 import { RoomTranscript } from '@/containers/rooms/RoomTranscript'
 import { RoomComposer } from '@/containers/rooms/RoomComposer'
+import { ChatTasks } from '@/containers/ChatTasks'
+import { CoworkChildApprovals } from '@/containers/CoworkChildApprovals'
 import { RoomControls } from '@/containers/rooms/RoomControls'
 import { RoomEditor } from '@/containers/rooms/RoomEditor'
 
@@ -164,6 +166,10 @@ export function RoomView({ roomId }: { roomId: string }) {
           <FrameBody className="min-h-0 overflow-hidden">
             <RoomUsageBar room={room} />
             <RoomTranscript room={room} journal={state.journal} liveTurn={state.liveTurn} />
+            {/* A subagent a participant started: its approvals have no tool card
+                to sit under, and its rows are the same Tasks panel as elsewhere. */}
+            <CoworkChildApprovals sessionId={room.id} />
+            <ChatTasks threadId={room.id} />
             <RoomComposer room={room} />
           </FrameBody>
         </Frame>

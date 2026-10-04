@@ -7,17 +7,7 @@ import {
 } from '@/components/ui/collapsible'
 import { cn } from '@/lib/utils'
 import type { ToolUIPart } from 'ai'
-import {
-  ChevronDownIcon,
-  FileDiffIcon,
-  FileTextIcon,
-  GlobeIcon,
-  ListTodoIcon,
-  Loader2Icon,
-  SearchIcon,
-  TerminalIcon,
-  WrenchIcon,
-} from 'lucide-react'
+import { ChevronDownIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import {
   createContext,
@@ -61,7 +51,7 @@ import { useToolCallRuntime } from '@/hooks/useToolCallRuntime'
 import { ToolElapsed } from './tool-runtime'
 import { useTranslation } from '@/i18n/react-i18next-compat'
 import { Button } from '@/components/ui/button'
-import { ShieldAlertIcon } from 'lucide-react'
+import { ToolKindIcon, TOOL_TILE_CLASS } from '@/components/ToolKindTile'
 import { Citations } from '@/components/Citations'
 import { parseCitationsFromToolOutput } from '@/lib/citation-parser'
 import { toolKind } from '@/lib/toolKind'
@@ -338,7 +328,7 @@ export const ToolHeader = memo(
         <span
           aria-hidden
           data-slot="tool-icon"
-          className="grid size-[22px] shrink-0 place-items-center rounded-md bg-[color-mix(in_oklab,var(--tk)_14%,transparent)] text-(--tk) [&_svg]:size-[13px]"
+          className={TOOL_TILE_CLASS}
         >
           <ToolKindIcon
             name={toolName}
@@ -410,36 +400,6 @@ export const ToolHeader = memo(
     )
   }
 )
-
-/** The card's icon: its kind, or a shield while it waits for the user. */
-const ToolKindIcon = ({
-  name,
-  awaitingApproval,
-  running,
-}: {
-  name: string
-  awaitingApproval: boolean
-  running: boolean
-}) => {
-  if (awaitingApproval) return <ShieldAlertIcon />
-  if (running) return <Loader2Icon className="motion-safe:animate-spin" />
-  switch (toolKind({ name })) {
-    case 'web':
-      return name === 'web_fetch' ? <GlobeIcon /> : <SearchIcon />
-    case 'search':
-      return <SearchIcon />
-    case 'bash':
-      return <TerminalIcon />
-    case 'edit':
-      return <FileDiffIcon />
-    case 'read':
-      return <FileTextIcon />
-    case 'todo':
-      return <ListTodoIcon />
-    default:
-      return <WrenchIcon />
-  }
-}
 
 export type ToolContentProps = ComponentProps<typeof CollapsibleContent>
 

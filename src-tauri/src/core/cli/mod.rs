@@ -2810,6 +2810,8 @@ pub async fn run_durable_subagent(
         isolate: Some(false),
         fork_context: false,
         durable: true,
+        max_turns: spec.max_turns,
+        title: None,
     };
     let resolved = sub::resolve_dispatch(&registry, &request, &args.permissions)
         .map_err(|e| HarnessError::new(ErrorKind::InvalidInput, e.to_string()).at(Stage::Child))?;
@@ -2820,8 +2822,13 @@ pub async fn run_durable_subagent(
         model: spec.model.clone(),
         budget_remaining: spec.max_session_tokens,
         send_reasoning: spec.send_reasoning,
+        model_settings: sub::load_model_settings(),
     };
-    let mut body = sub::child_body(&resolved, &spec.description, &parent, None);
+    let mut body = sub::child_body(&resolved, &spec.description, &parent, None, spec.max_turns);
+    if spec.max_turns.is_none() {
+        // A durable job that asked for no limit is unbounded, as it always was.
+        body["max_turns"] = serde_json::json!(0);
+    }
     // Routed when it was dispatched; the child runs what its parent chose.
     body["model"] = serde_json::json!(spec.model);
 
@@ -3419,8 +3426,27 @@ async fn print_event(
         StreamEvent::SubagentQueued { name, waiting, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] queued ({waiting} waiting)")))
         }
+        StreamEvent::SubagentTitle { name, title, .. } => {
+            eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] {title}")))
+        }
         StreamEvent::SubagentEnd { name, .. } => {
             eprintln!("{}", color::paint("2", format_args!("[subagent:{name}] finished")))
+        }
+        StreamEvent::SubagentFinished { name, status, usage, .. } => {
+            let tokens = usage
+                .as_ref()
+                .and_then(|u| u.get("total_tokens"))
+                .and_then(|t| t.as_u64())
+                .filter(|t| *t > 0);
+            let note = match (status.as_str(), tokens) {
+                ("turn_limit", _) => " stopped at its turn limit".to_string(),
+                ("error", _) => " failed".to_string(),
+                (_, Some(t)) => format!(" used {t} tokens"),
+                _ => String::new(),
+            };
+            if !note.is_empty() {
+                eprintln!("{}", color::paint("2", format_args!("[subagent:{name}]{note}")));
+            }
         }
         StreamEvent::Subagent { name, event, .. } => {
             if let StreamEvent::ToolCall {

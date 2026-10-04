@@ -95,17 +95,49 @@ describe('ContextWindowCard', () => {
     it('does not read as full when the window is not known, and says why', () => {
       render(<ContextWindowCard segments={segments} usedTokens={10000} />)
       expect(screen.getByTestId('window-unknown').textContent).toContain(
-        'not how full it is'
+        'does not report its window size'
       )
-      expect(
-        (screen.getByTestId('context-bar') as HTMLElement).style.maskImage
-      ).toContain('linear-gradient')
+      const bar = screen.getByTestId('context-bar')
+      expect(bar.getAttribute('data-window')).toBe('unknown')
+      expect(bar.querySelectorAll('[data-segment]')).toHaveLength(0)
+    })
+
+    it('fills 25.5K of a 262K window to about a tenth, blue and orange in proportion', () => {
+      const two: ContextSegment[] = [
+        { id: 'messages', label: 'Messages', tokens: 20000, color: 'bg-blue-500' },
+        { id: 'systemTools', label: 'System tools', tokens: 5500, color: 'bg-orange-500' },
+      ]
+      render(<ContextWindowCard segments={two} usedTokens={25500} windowTokens={262144} />)
+      expect(screen.getByText('25.5K / 262.1K (10%)')).toBeTruthy()
+      const bar = screen.getByTestId('context-bar')
+      const blue = width(bar.querySelector('[data-segment="messages"]'))
+      const orange = width(bar.querySelector('[data-segment="systemTools"]'))
+      expect(blue + orange).toBeCloseTo((25500 / 262144) * 100, 2)
+      expect(blue / orange).toBeCloseTo(20000 / 5500, 2)
+    })
+
+    it('clamps a window that is over its limit to a full bar', () => {
+      render(<ContextWindowCard segments={segments} usedTokens={10000} windowTokens={8000} />)
+      const bar = screen.getByTestId('context-bar')
+      const sum = Array.from(bar.querySelectorAll('[data-segment]')).reduce(
+        (n, el) => n + width(el),
+        0
+      )
+      expect(sum).toBeCloseTo(100, 5)
+      expect(screen.getByText('10.0K / 8.0K (100%)')).toBeTruthy()
+    })
+
+    it('draws the bar at the design-system height on the track colour', () => {
+      render(<ContextWindowCard {...local} />)
+      const cls = screen.getByTestId('context-bar').className
+      expect(cls).toContain('h-1.5')
+      expect(cls).toContain('bg-track')
     })
 
     it('says nothing about an unknown window when it is known', () => {
       render(<ContextWindowCard {...local} />)
       expect(screen.queryByTestId('window-unknown')).toBeNull()
-      expect((screen.getByTestId('context-bar') as HTMLElement).style.maskImage).toBeFalsy()
+      expect(screen.getByTestId('context-bar').getAttribute('data-window')).toBe('known')
     })
   })
 
@@ -115,7 +147,7 @@ describe('ContextWindowCard', () => {
     it('says so for a request sent hours ago', () => {
       render(<ContextWindowCard {...local} updatedAt={now - 2 * 3_600_000} now={now} />)
       expect(screen.getByTestId('context-age').textContent).toBe(
-        'Last updated 2 hours ago. Send a message to refresh.'
+        ' · updated 2 hours ago'
       )
     })
 

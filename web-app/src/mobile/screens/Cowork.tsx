@@ -1,11 +1,13 @@
-import type { RemoteMessage, SessionStatus } from '@/lib/remote/protocol'
+import type { CoworkDetail, RemoteMessage, SessionStatus } from '@/lib/remote/protocol'
 import { TopThread } from '../shell/TopBar'
 import { Composer } from '../shell/Composer'
 import { accessLabel, modeLabel } from '../shell/labels'
 import { I } from '../ui/icons'
 import { Empty, Loading } from '../ui/bits'
-import { AssistantHeader, Prose, ToolTimeline, UserBubble } from '../ui/messages'
+import { AssistantHeader, Notes, Prose, Reasoning, ToolTimeline, UserBubble } from '../ui/messages'
 import { ApprovalCard } from '../ui/ApprovalCard'
+import { AskCard } from '../ui/AskCard'
+import { PromptCard } from '../ui/PromptCard'
 import { ChangeBars, WhatChanged } from '../ui/changes'
 import { PendingBubble, QueueBar, ResolvedLine, StreamingMessage } from '../ui/live'
 import { client, openDrawer, openSheet, sendMessage, toast, useApp } from '../state/app'
@@ -23,6 +25,17 @@ const STATUS: Record<SessionStatus, string> = {
   done: 'Completed',
 }
 
+/** How the last run ended, in the words of the desktop's notices. */
+const ENDING: Record<NonNullable<CoworkDetail['ending']>['by'], string> = {
+  steps: 'Stopped at the step limit',
+  tokens: 'Stopped: out of token budget or context',
+  error: 'The run failed',
+  deadline: 'Stopped at its time limit',
+  timeout: 'Stopped: the model took too long',
+  loop: 'Stopped: it was repeating itself',
+  interrupted: 'Flint was closed in the middle of this turn',
+}
+
 export default function Cowork({ id }: { id: string }) {
   const detail = useRpc('cowork.get', { id })
   const msgs = useRpc('thread.messages', { id, kind: 'cowork', limit: 100 })
@@ -31,6 +44,8 @@ export default function Cowork({ id }: { id: string }) {
   const compacting = useApp((s) => Boolean(s.compacting[id]))
   const status = useRpc('status', {})
   const approvals = useRpc('approvals.list', {}, (status.data?.approvalsWaiting ?? 0) > 0)
+  const asks = useRpc('asks.list', {}, (status.data?.questionsWaiting ?? 0) > 0)
+  const promptList = useRpc('prompts.list', {}, (status.data?.promptsWaiting ?? 0) > 0)
   const changes = useRpc('cowork.changes', { id })
   const queue = useRpc('thread.queue', { id })
   const d = detail.data
@@ -46,6 +61,8 @@ export default function Cowork({ id }: { id: string }) {
     }
   }
   const mine = (approvals.data?.approvals ?? []).filter((a) => a.threadId === id)
+  const questions = (asks.data?.asks ?? []).filter((a) => a.threadId === id)
+  const prompts = (promptList.data?.prompts ?? []).filter((p) => p.threadId === id)
   const stream = useLive((s) => s.streams[id])
   const pending = pendingFor(
     useLive((s) => s.pending),
@@ -54,13 +71,17 @@ export default function Cowork({ id }: { id: string }) {
   )
   const resolvedAll = useLive((s) => s.resolved)
   const resolved = Object.entries(resolvedAll).filter(
-    ([rid, r]) => r.threadId === id && !mine.some((a) => a.requestId === rid)
+    ([rid, r]) =>
+      r.threadId === id &&
+      !mine.some((a) => a.requestId === rid) &&
+      !questions.some((a) => a.requestId === rid) &&
+      !prompts.some((p) => p.id === rid)
   )
   useFollow('cowork', id)
   useEffect(() => {
     if (msgs.data) prunePending(id, msgs.data.messages)
   }, [id, msgs.data])
-  const ref = useStickToBottom(messages.length + mine.length + pending.length + (stream?.text.length ?? 0) + (stream?.tools.length ?? 0))
+  const ref = useStickToBottom(messages.length + mine.length + questions.length + pending.length + (stream?.text.length ?? 0) + (stream?.tools.length ?? 0))
   const running = d?.status === 'running' || d?.status === 'waiting' || Boolean(stream && !stream.done)
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant')?.id
   const todos = d?.todos ?? []
@@ -107,25 +128,29 @@ export default function Cowork({ id }: { id: string }) {
       <div className="scroll" ref={ref} data-testid="cowork-scroll">
         {(detail.loading || msgs.loading) && !msgs.data && <Loading />}
         {detail.error && !d && <Empty>{detail.error.message}</Empty>}
-        {msgs.data && messages.length === 0 && <Empty>Nothing in this session yet.</Empty>}
+        {msgs.data && messages.length === 0 && pending.length === 0 && !stream && questions.length === 0 && (
+          <Empty>Nothing in this session yet.</Empty>
+        )}
         {earlier > 0 && (
           <button type="button" className="btn ghost" style={{ alignSelf: 'center', margin: '4px 0 12px' }} onClick={() => void showEarlier()}>
             Show {earlier} earlier {earlier === 1 ? 'message' : 'messages'}
           </button>
         )}
         {messages.map((m) => {
-          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} />
+          if (m.role === 'user') return <UserBubble key={m.id} text={m.text} attachments={m.attachments} />
           if (m.role !== 'assistant') return null
           const isLast = m.id === lastAssistant
           return (
             <div key={m.id} style={{ display: 'contents' }}>
-              {m.text && (
+              {(m.text || m.reasoning) && (
                 <div className="msg">
                   <AssistantHeader model={d?.model?.id} at={m.createdAt} />
-                  <Prose text={m.text} />
+                  <Reasoning text={m.reasoning} />
+                  {m.text && <Prose text={m.text} />}
                 </div>
               )}
               {m.tools && m.tools.length > 0 && <ToolTimeline steps={m.tools} />}
+              <Notes items={m.notes} />
               {isLast && mine.map((a) => <ApprovalCard key={a.requestId} a={a} />)}
             </div>
           )
@@ -135,6 +160,13 @@ export default function Cowork({ id }: { id: string }) {
           <PendingBubble key={p.clientId} p={p} />
         ))}
         {stream && <StreamingMessage s={stream} model={d?.model?.id} />}
+        {/* After the reply in flight: the question is what the run stopped on. */}
+        {questions.map((a) => (
+          <AskCard key={a.requestId} a={a} />
+        ))}
+        {prompts.map((p) => (
+          <PromptCard key={p.id} p={p} />
+        ))}
         {resolved.map(([rid, r]) => (
           <ResolvedLine key={rid} r={r} />
         ))}
@@ -142,6 +174,21 @@ export default function Cowork({ id }: { id: string }) {
           <div className="compacting" role="status">
             <I n="loader" spin size={14} />
             Compacting the conversation…
+          </div>
+        )}
+        {d?.ending && !running && (
+          <div className="endnote" role="status" data-testid="run-ending" data-ending={d.ending.by}>
+            <span className="tx">
+              <b>{ENDING[d.ending.by]}</b>
+              {d.ending.message && <small>{d.ending.message}</small>}
+            </span>
+            <button
+              type="button"
+              className="btn sm pri"
+              onClick={() => void sendMessage('cowork.send', { id, text: 'Continue.', resume: true })}
+            >
+              {d.ending.by === 'steps' || d.ending.by === 'tokens' || d.ending.by === 'interrupted' ? 'Keep going' : 'Try again'}
+            </button>
           </div>
         )}
         {changes.data && !running && <WhatChanged c={changes.data} />}

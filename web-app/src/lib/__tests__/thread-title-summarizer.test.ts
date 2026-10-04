@@ -30,8 +30,14 @@ vi.mock('@/hooks/useModelProvider', () => ({
       selectedModel: { id: 'test-model' },
       selectedProvider: mockSelectedProvider,
       getProviderByName: mockGetProviderByName,
+      providers: mockProviders,
     }),
   },
+}))
+let mockProviders: Array<{ provider: string; models: Array<{ id: string }> }> = []
+let mockFallbackModels: string[] = []
+vi.mock('@/hooks/useGeneralSetting', () => ({
+  useGeneralSetting: { getState: () => ({ fallbackModels: mockFallbackModels }) },
 }))
 
 describe('cleanTitle', () => {
@@ -131,7 +137,8 @@ describe('generateThreadTitle', () => {
     expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         model: mockModel,
-        abortSignal: controller.signal,
+        abortSignal: expect.any(AbortSignal),
+        maxRetries: 0,
       })
     )
   })
@@ -165,9 +172,11 @@ describe('generateThreadTitle', () => {
   it('returns null when aborted', async () => {
     const abortError = new Error('Aborted')
     abortError.name = 'AbortError'
-    mockGenerateText.mockRejectedValue(abortError)
-
     const controller = new AbortController()
+    mockGenerateText.mockImplementation(async () => {
+      controller.abort()
+      throw abortError
+    })
     const result = await generateThreadTitle('test message', controller.signal)
 
     expect(result).toBeNull()
@@ -220,11 +229,11 @@ describe('generateThreadTitle', () => {
     const controller = new AbortController()
     await generateThreadTitle('test message', controller.signal)
 
-    expect(mockGenerateText).toHaveBeenCalledWith(
-      expect.objectContaining({
-        abortSignal: controller.signal,
-      })
-    )
+    // Chained to the caller's signal (plus a timeout), so Stop still ends it.
+    const passed = mockGenerateText.mock.calls[0][0].abortSignal as AbortSignal
+    expect(passed.aborted).toBe(false)
+    controller.abort()
+    expect(passed.aborted).toBe(true)
   })
 
   it('runs once per chat and source, sharing an in-flight call', async () => {
@@ -241,6 +250,70 @@ describe('generateThreadTitle', () => {
     // An edited first message titles again.
     mockGenerateText.mockResolvedValue({ text: 'Other' })
     expect(await generateThreadTitle('bye', signal, 't1', 'bye')).toBe('Other')
+  })
+})
+
+describe('generateThreadTitle fallback chain', () => {
+  const signal = () => new AbortController().signal
+  const down = Object.assign(new Error('Service Unavailable'), { statusCode: 503 })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetTitleGuards()
+    mockSelectedProvider = 'test-provider'
+    mockGetProviderByName.mockImplementation((name: string) => ({
+      provider: name,
+      models: [],
+    }))
+    mockCreateModel.mockImplementation(async (id: string) => ({ id }))
+    mockProviders = [
+      { provider: 'test-provider', models: [{ id: 'test-model' }] },
+      { provider: 'backup', models: [{ id: 'b1' }, { id: 'b2' }, { id: 'b3' }] },
+    ]
+    mockFallbackModels = ['backup::b1', 'backup::b2', 'backup::b3']
+  })
+
+  it('moves to the next model when the primary is down, one attempt each', async () => {
+    mockGenerateText
+      .mockRejectedValueOnce(down)
+      .mockResolvedValueOnce({ text: 'Rescued Title' })
+    expect(await generateThreadTitle('hello', signal(), 's1')).toBe('Rescued Title')
+    expect(mockGenerateText).toHaveBeenCalledTimes(2)
+    for (const [args] of mockGenerateText.mock.calls) {
+      expect(args.maxRetries).toBe(0)
+    }
+    expect(mockCreateModel.mock.calls.map((c) => c[0])).toEqual(['test-model', 'b1'])
+  })
+
+  it('caps the chain at two fallbacks, then uses the first words', async () => {
+    mockGenerateText.mockRejectedValue(down)
+    expect(await generateThreadTitle('hello there', signal(), 's2')).toBe('hello there')
+    expect(mockGenerateText).toHaveBeenCalledTimes(3)
+  })
+
+  it('does not fall back on a failure another model would repeat', async () => {
+    mockGenerateText.mockRejectedValue(
+      Object.assign(new Error('Bad Request'), { statusCode: 400 })
+    )
+    await generateThreadTitle('hello', signal(), 's3')
+    expect(mockGenerateText).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not fall back after Stop', async () => {
+    const controller = new AbortController()
+    mockGenerateText.mockImplementation(async () => {
+      controller.abort()
+      throw down
+    })
+    expect(await generateThreadTitle('hello', controller.signal, 's4')).toBeNull()
+    expect(mockGenerateText).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes a single attempt when no fallback is configured', async () => {
+    mockFallbackModels = []
+    mockGenerateText.mockRejectedValue(down)
+    await generateThreadTitle('hello', signal(), 's5')
+    expect(mockGenerateText).toHaveBeenCalledTimes(1)
   })
 })
 

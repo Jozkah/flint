@@ -10,12 +10,13 @@
  * - vLLM, which has no `/props`, in its model list: `GET /v1/models`, each
  *   entry's `max_model_len`.
  *
- * Only asked of an endpoint on this machine or this network. A hosted provider
- * is not probed, and a request is never made to an address the user did not
- * configure.
+ * Only asked of an endpoint that is not a hosted service: this machine, this
+ * network, or a bare hostname (`http://v100:8559/v1`), which is a LAN box as
+ * often as not and is the user's own configured address either way. A hosted
+ * provider is not probed.
  */
 import { providerFetch } from '@/lib/providerFetch'
-import { isLocalEndpoint } from '@/lib/endpointDiagnostics'
+import { endpointScope } from '@/lib/endpointDiagnostics'
 import { usableContextValue } from '@/lib/modelCapabilities'
 
 /** `http://host:port/props`, from a base URL that may end in `/v1`. */
@@ -124,7 +125,7 @@ export async function fetchServerWindow(
 ): Promise<number | null> {
   const props = propsUrl(baseUrl)
   const models = modelsUrl(baseUrl)
-  if (!props || !models || !isLocalEndpoint(baseUrl)) return null
+  if (!props || !models || endpointScope(baseUrl) === 'public') return null
 
   const key = `${models}|${modelId ?? ''}`
   const hit = cache.get(key)

@@ -31,7 +31,13 @@ function WaitCards() {
   const list = approvals.data?.approvals ?? []
   const rooms = sessions.filter((s) => s.kind === 'room' && s.status === 'waiting')
   const first = list[0]
+  const questions = status.data?.questionsWaiting ?? 0
+  const asks = useRpc('asks.list', {}, questions > 0).data?.asks ?? []
+  const promptsWaiting = status.data?.promptsWaiting ?? 0
+  const prompts = useRpc('prompts.list', {}, promptsWaiting > 0).data?.prompts ?? []
   return <>
+    {prompts.map((p) => <button key={p.id} type="button" className="waitcard" onClick={() => go(p.threadId ? routeFor(p.threadId, sessions) : { name: 'notifications' })} data-testid="prompt-waiting"><I n="shield" size={18} /><span className="tx"><b>Flint needs you</b><small>{p.title}</small></span><I n="chevr" style={{ color: 'var(--muted-foreground)' }} /></button>)}
+    {asks.map((a) => <button key={a.requestId} type="button" className="waitcard" onClick={() => go({ name: 'cowork', id: a.threadId })} data-testid="question-waiting"><I n="hand" size={18} style={{ color: 'var(--warning)' }} /><span className="tx"><b>{sessions.find((s) => s.id === a.threadId)?.title ?? 'A Cowork session'} has a question</b><small>{a.questions[0]?.question}</small></span><I n="chevr" style={{ color: 'var(--muted-foreground)' }} /></button>)}
     {waiting > 0 && <button type="button" className="waitcard" onClick={() => (first ? go(routeFor(first.threadId, sessions)) : go({ name: 'notifications' }))} data-testid="approvals-waiting"><I n="shield" size={18} /><span className="tx"><b>{waiting} {waiting === 1 ? 'approval' : 'approvals'} waiting</b>{first && <small>{sessions.find((s) => s.id === first.threadId)?.title ?? first.toolName}{first.subject ? ` · ${first.subject}` : ''}</small>}</span><I n="chevr" style={{ color: 'var(--muted-foreground)' }} /></button>}
     {rooms.slice(0, 2).map((r) => <button key={r.id} type="button" className="waitcard" onClick={() => go({ name: 'room', id: r.id })}><I n="hand" size={18} style={{ color: 'var(--warning)' }} /><span className="tx"><b>{r.title} is waiting for you</b><small>Choose who speaks next or reply</small></span><I n="chevr" /></button>)}
   </>
