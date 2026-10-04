@@ -655,6 +655,7 @@ pub(crate) async fn execute_text(
         "host_build" => crate::tools::host_build::run(args, ctx).await,
         "clipboard" => crate::tools::clipboard::clipboard(args).await,
         "open_path" => crate::tools::open_path::run(args, ctx).await,
+        "host_powershell" => crate::tools::host_powershell::run(args, ctx).await,
         "local_http" => crate::tools::local_http::local_http(args).await,
         "docker" => crate::tools::docker_tool::docker(args).await,
         "git_clone" => crate::tools::git_native::git_clone(args, ctx).await,

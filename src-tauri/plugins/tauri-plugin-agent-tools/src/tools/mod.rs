@@ -18,6 +18,7 @@ pub mod git_native;
 pub mod git_tool;
 pub mod host_action;
 pub mod host_build;
+pub mod host_powershell;
 pub mod clipboard;
 pub mod open_path;
 pub mod docker_tool;
@@ -646,6 +647,14 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Run a PowerShell script as the user, outside the sandbox. The most trusted
+    // tool in the set, so: asked every time with the whole script shown, refused
+    // by the backend unless a person approved it, run from a writable folder.
+    BuiltinTool {
+        name: "host_powershell",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     // Read or replace the text on the clipboard. `Write` so plan mode withholds
     // it; asked about every time, in both directions.
     BuiltinTool {
@@ -893,7 +902,7 @@ pub fn is_host_tool(name: &str) -> bool {
 /// unless one answered: they change this computer or read something private.
 /// No session grant, no auto-approving mode and no "always" covers them.
 pub fn is_always_ask(name: &str) -> bool {
-    matches!(name, "host_action" | "host_build" | "clipboard" | "open_path")
+    matches!(name, "host_action" | "host_build" | "host_powershell" | "clipboard" | "open_path")
 }
 
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
@@ -969,10 +978,11 @@ mod tests {
         // + host_action: end a process or start, stop or restart a service, asked every time.
         // + host_build: gradle, mvn or dotnet outside the sandbox, asked every time.
         // + clipboard and open_path, asked every time.
+        // + host_powershell, a script outside the sandbox, asked every time.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 49);
+        assert_eq!(BUILTIN_TOOLS.len(), 50);
     }
 
     #[test]

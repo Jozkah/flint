@@ -393,6 +393,22 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "host_powershell",
+                "description": "Run a PowerShell script as the user, outside the sandbox. Use it only for what the sandboxed `bash` cannot do and no other host tool covers (the registry, services, WMI, the Event Log, a profile-installed module, another program's window). Prefer host_query, windows_events, host_action, host_build and docker where they fit: they are narrower. The user is asked to approve every call and is shown the whole script, so say what it does and why first, keep it short, and do not hide effects in it. Non-interactive, no profile, runs from a folder you may write to, stops at timeout_secs (default 120, up to 900). Returns the output and exit code. Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "script": { "type": "string", "description": "The PowerShell script (up to 20000 characters). Required." },
+                        "cwd": { "type": "string", "description": "Folder to run in, relative to the project or absolute inside a writable root. Default: the project folder." },
+                        "timeout_secs": { "type": "integer", "description": "Stop the script after this many seconds. Default 120, at most 900." }
+                    },
+                    "required": ["script"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "clipboard",
                 "description": "Read the text on the user's clipboard, or replace it. Both are asked about every time, and the user sees which. Use read when they say they copied something for you; use write to hand them text to paste (a command, a snippet, a message) instead of asking them to select it. Text only. The sandboxed `bash` has no clipboard. Windows only.",
                 "parameters": {
@@ -729,7 +745,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 49);
+        assert_eq!(schemas.len(), 50);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

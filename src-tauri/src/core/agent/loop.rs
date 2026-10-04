@@ -4055,7 +4055,7 @@ impl CompositeToolInvoker {
                     } else if tauri_plugin_agent_tools::tools::is_always_ask(name) {
                         // What an always-asked host tool will do, in words,
                         // so the prompt is not a bare tool name.
-                        use tauri_plugin_agent_tools::tools::{clipboard, host_action, host_build, open_path};
+                        use tauri_plugin_agent_tools::tools::{clipboard, host_action, host_build, host_powershell, open_path};
                         match name {
                             "host_action" => host_action::plan(&args).ok().map(|a| host_action::summary(&a)),
                             "host_build" => host_build::plan(&args).ok().map(|p| {
@@ -4067,6 +4067,13 @@ impl CompositeToolInvoker {
                             }),
                             "clipboard" => clipboard::plan(&args).ok().map(|a| clipboard::summary(&a)),
                             "open_path" => open_path::plan(&args).ok().map(|p| open_path::summary(&p)),
+                            "host_powershell" => host_powershell::plan(&args).ok().map(|p| {
+                                format!(
+                                    "PowerShell (in {}):\n{}",
+                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder"),
+                                    host_powershell::display(&p)
+                                )
+                            }),
                             _ => None,
                         }
                     } else {

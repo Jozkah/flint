@@ -193,6 +193,7 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
   - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code. It also runs `go`, `cargo`, `npm`, `pnpm` and `yarn`.
   - `clipboard` reads the text on your clipboard or replaces it, and asks each time which of the two it is.
   - `open_path` opens a project file or folder on your screen, or shows it in Explorer. Programs, scripts and installers are not opened, only shown. The path must be inside the project folder, worktree or session workspace.
+  - `host_powershell` runs a PowerShell script as you, outside the shell sandbox, for what the other host tools do not cover. The question shows the whole script, and it runs without a profile or prompts, in a folder the session may write to, with a time limit (120 seconds by default, 900 at most).
 - The command line and background jobs already ask before these tools run; the question now names what will happen (the command, the process, the folder) and no longer offers "always". Text from Windows tools now keeps its accents and non-Latin letters.
 
 ### Inference and repository targeting
