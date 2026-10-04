@@ -129,6 +129,12 @@ vi.mock('@/lib/coworkTransport', () => ({
   CoworkChatTransport: class {
     model = 'model-instance'
     advertisedTools: Record<string, unknown> = { read: {}, ask: {}, todo: {} }
+    get builtinTools() {
+      return this.advertisedTools
+    }
+    mcpServerFor() {
+      return undefined
+    }
     constructor(
       public sessionId: string,
       public config: any

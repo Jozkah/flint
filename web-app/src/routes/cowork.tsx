@@ -968,9 +968,22 @@ export function CoworkPage() {
     approvedUserSkillRoots: skillRoots,
   })
 
-  // Counted only to say that they are not offered here (the run is given none).
   const settingsMcpServers = useMCPServers(
     (s) => Object.values(s.mcpServers).filter((c) => c?.active).length
+  )
+  // The servers a run would be offered right now: switched on and listing tools.
+  const mcpToolList = useAppState((s) => s.tools)
+  const mcpServerConfigs = useMCPServers((s) => s.mcpServers)
+  const connectedMcpServers = useMemo(
+    () =>
+      [
+        ...new Set(
+          mcpToolList
+            .map((tool) => tool.server)
+            .filter((server) => mcpServerConfigs[server]?.active)
+        ),
+      ].sort(),
+    [mcpToolList, mcpServerConfigs]
   )
   const doctorResults = useModelDoctor((s) => s.results)
   const browserReports =
@@ -1111,7 +1124,7 @@ export function CoworkPage() {
       skills: resolveSkills(requested, registry),
       // Null until a run has built its tool set: before that nothing knows
       // the number, and stating one would be inventing it.
-      tools: { builtins: advertisedToolCount, mcpServers: [] },
+      tools: { builtins: advertisedToolCount, mcpServers: connectedMcpServers },
       model: {
         id: selectedModel?.id ?? null,
         supportsTools: selectedModel
@@ -1152,6 +1165,7 @@ export function CoworkPage() {
     runOrigins?.context.baseline,
     tooling,
     advertisedToolCount,
+    connectedMcpServers,
     runContext,
     preRunContext,
     availableSkills,
@@ -3221,13 +3235,13 @@ export function CoworkPage() {
       openingInspection: inspecting,
       // What the shell can and cannot do, stated up front. Without it the
       // model learned by failing: probing the disk for runtimes, trying POSIX
-      // syntax, and hunting for MCP servers Cowork never offers.
+      // syntax, and hunting for MCP servers by hand. The MCP line is stated by
+      // the transport from the servers connected at each request.
       platform: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
       shellFlavor: IS_WINDOWS ? 'powershell' : 'posix',
       runnable: toolchains?.runnable,
       unavailable: toolchains?.unavailable,
       networkFromShell: useAgentToolsConfig.getState().bashNetworkEnabled,
-      mcpServers: [],
     })
     // Project memory is keyed by the attached folder's own identity file, not
     // by the tree this run reads: a managed worktree is the same project, and
@@ -3385,7 +3399,7 @@ export function CoworkPage() {
       supportsVision: () =>
         selectedModel?.capabilities?.includes('vision') ?? false,
       providerOptions: () => transport.reasoningProviderOptions(),
-      parentTools: () => transport.advertisedTools,
+      parentTools: () => transport.builtinTools,
       anchorMessageId,
       lane: {
         queue: (callId, name, waiting) =>
@@ -3811,6 +3825,19 @@ export function CoworkPage() {
                     .sessions.find((one) => one.id === sid)?.folder ?? null) ===
                   (current?.folder ?? null),
                 webSearch,
+                // The servers' tools this request advertised; a call to one goes
+                // through the same prompt, with its server named so the user's
+                // trust choices for that server apply.
+                mcpServerFor: (name) => transport.mcpServerFor(name),
+                onApproveMcp: (callId, toolName, input, server, signal) =>
+                  useToolApprovalRequests
+                    .getState()
+                    .requestApproval(callId, toolName, sid, server, {
+                      input,
+                      workspaceLabel: current?.folder ?? undefined,
+                      autoApproveStreak: sid,
+                      signal,
+                    }),
                 // The prompt the chat surface already uses for tool approval,
                 // not a second one: it honours grants the user has already made
                 // and renders in the tool card the call is reported in.

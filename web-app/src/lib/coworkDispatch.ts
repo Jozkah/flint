@@ -1,4 +1,8 @@
 import { executeAgentTool, previewAgentChange } from '@/lib/agentTools'
+import { getServiceHub } from '@/hooks/useServiceHub'
+import { useToolAvailable } from '@/hooks/useToolAvailable'
+import { useToolApprovalRequests } from '@/hooks/useToolApprovalRequests'
+import { deriveToolOutputCap } from '@/lib/context-manager'
 import { destructiveCommandReason } from '@/lib/destructiveCommand'
 import { isReadOnlyCommand } from '@/lib/readOnlyCommand'
 import { normalizeEditInput } from '@/lib/coworkEditInput'
@@ -96,6 +100,23 @@ export type DispatchContext = {
   /** Mirrors the advertised set. Refused when off, so a call to a tool that was
    * never advertised cannot reach the network the user switched off. */
   webSearch: boolean
+  /**
+   * The MCP server a tool of this request belongs to. Only the tools the run
+   * advertised from a connected server answer; any other name is not MCP.
+   */
+  mcpServerFor?: (toolName: string) => string | undefined
+  /**
+   * Puts one MCP call to the user, with its server named so the standing
+   * trust for that server applies. Absent, an MCP call is refused: the gate
+   * failing open would make a tool that appeared mid-chat auto-approved.
+   */
+  onApproveMcp?: (
+    toolCallId: string,
+    toolName: string,
+    input: unknown,
+    server: string,
+    signal?: AbortSignal
+  ) => Promise<boolean>
   /** Applies one `todo` operation and persists the result. */
   onTodo: (input: unknown) => Promise<ToolOutcome>
   /** Suspends until the user answers, or the run is aborted. */
@@ -364,6 +385,105 @@ function deniedByUser(toolName: string): ToolOutcome {
       `The user did not allow \`${toolName}\`. Do not retry it. Say what you ` +
       'would have changed, and wait for instructions.',
     isError: true,
+  }
+}
+
+/**
+ * One call to a tool of a connected MCP server.
+ *
+ * Gated like the chat's: the call is put to the user unless a grant they made
+ * already covers this server, whenever the server appeared. The backend then
+ * checks its own trust record, and a ticket minted from this approval is what
+ * lets an untrusted server's single call through.
+ */
+async function callMcpTool(
+  call: PendingToolCall,
+  server: string,
+  ctx: DispatchContext,
+  signal?: AbortSignal
+): Promise<ToolOutcome> {
+  const { toolName } = call
+  if (isReadOnly(ctx.mode)) return planRefusal(toolName)
+  // The disabled list filters what is advertised, not what runs: a call the
+  // model repeats from earlier in the conversation must not slip past it.
+  if (useToolAvailable.getState().isToolDisabled(server, toolName)) {
+    return { output: `Tool '${toolName}' is disabled.`, isError: true }
+  }
+  const permission = {
+    call: call.toolCallId,
+    tool: toolName,
+    session: ctx.sessionId,
+    run: ctx.activity?.run ?? '',
+    invocation: ctx.activity?.invocation ?? '',
+    agent: ctx.activity?.agent ?? '',
+    resource: resourceOf(call.input),
+  }
+  // The unasked streak is left to the approval queue: it counts a call a grant
+  // answers and starts over only when it prompts. Resetting here would let a
+  // trusted server's calls never reach the limit.
+  await recordToolActivity({ ...permission, phase: 'awaiting-permission' })
+  if (!ctx.onApproveMcp) {
+    await recordToolActivity({
+      ...permission,
+      phase: 'refused',
+      detail: 'nothing could present the request',
+    })
+    return deniedByUser(toolName)
+  }
+  let allowed = false
+  try {
+    allowed = await unlessStopped(
+      ctx.onApproveMcp(call.toolCallId, toolName, call.input, server, signal),
+      signal
+    )
+  } catch {
+    allowed = false
+  }
+  if (signal?.aborted) {
+    await recordToolActivity({
+      ...permission,
+      phase: 'cancelled',
+      detail: `approval withdrawn: ${stopReason(signal)}`,
+    })
+    return {
+      output:
+        `\`${toolName}\` was not run: the run was stopped while it was ` +
+        'waiting for approval.',
+      isError: true,
+    }
+  }
+  await recordToolActivity({ ...permission, phase: allowed ? 'allowed' : 'refused' })
+  if (!allowed) return deniedByUser(toolName)
+
+  try {
+    const mcp = getServiceHub().mcp()
+    const fingerprint = useToolApprovalRequests
+      .getState()
+      .takeApprovedFingerprint?.(call.toolCallId)
+    const approvalTicket = await mcp
+      .allowOnceForServer(server, toolName, fingerprint)
+      .catch(() => undefined)
+    const result = await mcp.callTool({
+      toolName,
+      serverName: server,
+      arguments: (call.input ?? {}) as object,
+      approvalTicket,
+      maxOutputChars: deriveToolOutputCap(undefined),
+    })
+    const failure = result.error
+      ? String(result.error)
+      : (result as { isError?: unknown }).isError === true
+        ? JSON.stringify(result.content ?? '')
+        : undefined
+    if (failure) return { output: failure, isError: true }
+    return {
+      output: (result.content ?? []).map((c) => c.text).join('\n'),
+    }
+  } catch (error) {
+    return {
+      output: error instanceof Error ? error.message : String(error),
+      isError: true,
+    }
   }
 }
 
@@ -855,6 +975,9 @@ async function routeCoworkTool(
     if (isReviewDeniedBrowserTool(toolName) && isReadOnly(ctx.mode)) {
       return planRefusal(toolName)
     }
+
+    const mcpServer = ctx.mcpServerFor?.(toolName)
+    if (mcpServer) return await callMcpTool(call, mcpServer, ctx, signal)
 
     if (isVisualizeTool(toolName)) {
       const viz = executeVisualizeTool(toolName, call.input, ctx.sessionId)

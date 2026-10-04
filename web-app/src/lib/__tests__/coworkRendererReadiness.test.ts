@@ -34,15 +34,24 @@ describe('the Environment rows the renderer answers for', () => {
     expect(rows.context.reason).toBe('context-unknown')
   })
 
-  it('marks MCP and a remote model’s local runtime as not applicable', () => {
+  it('says enabled MCP servers are offered, and a remote model has no local runtime', () => {
     const rows = byComponent({
       model: { id: 'm', provider: 'anthropic', supportsTools: true },
       contextTokens: 200_000,
       settingsMcpServers: 2,
     })
-    expect(rows.mcp.reason).toBe('mcp-none-configured')
-    expect(rows.mcp.message).toMatch(/not offered to Cowork/)
+    expect(rows.mcp.state).toBe('ready')
+    expect(rows.mcp.message).toMatch(/2 MCP servers .* are offered to Cowork/)
     expect(rows['local-runtime'].reason).toBe('local-runtime-absent')
+  })
+
+  it('says no MCP servers are configured when none is enabled', () => {
+    const rows = byComponent({
+      model: null,
+      contextTokens: null,
+      settingsMcpServers: 0,
+    })
+    expect(rows.mcp.reason).toBe('mcp-none-configured')
   })
 
   it('says a local model’s runtime is started on demand', () => {
