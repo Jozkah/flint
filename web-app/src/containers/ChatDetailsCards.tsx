@@ -111,7 +111,7 @@ export function AutoCompactRow({ maxTokens }: { maxTokens?: number }) {
           ? t('context:cards.autoCompactOff')
           : percent !== undefined
             ? t('context:cards.autoCompactAt', { percent })
-            : t('context:cards.autoCompact')}
+            : t('context:cards.autoCompactNeedsWindow')}
       </span>
       <Switch
         checked={policy.auto}

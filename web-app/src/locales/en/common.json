@@ -1031,6 +1031,7 @@
     "compactFailed": "Nothing to compact yet.",
     "newSession": "New session"
   },
+  "autoCompactNeedsWindow": "Auto-compact needs a context size, and {{model}} has none Flint can find. Set Max Context Tokens for this model so long chats compact before they fill it. If the provider refuses a request for its length, Flint compacts and retries once.",
   "compaction": {
     "working": "Compacting the conversation…",
     "divider_one": "Context compacted — {{count}} earlier message summarized",

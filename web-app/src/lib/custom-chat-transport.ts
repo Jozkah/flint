@@ -4,6 +4,13 @@ import { refreshSkillCatalog, skillCatalogBlock } from '@/lib/skillCatalog'
 import { buildContextBreakdown } from '@/lib/contextBreakdown'
 import { currentDescriber, describeImagesInMessages } from '@/lib/imageDescription'
 import { useContextBreakdown } from '@/hooks/useContextBreakdown'
+import {
+  rememberedWindowFor,
+  resolveCompactionWindow,
+} from '@/lib/compactionWindowSource'
+import { listedWindow } from '@/lib/listedWindows'
+import { fetchServerWindow } from '@/lib/serverWindow'
+import { knownContextWindow } from '@/lib/knownContextWindow'
 import { useUsageStats } from '@/stores/usage-stats-store'
 import { useGeneralSetting } from '@/hooks/useGeneralSetting'
 import {
@@ -933,6 +940,16 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
    * fitted, and plans against the window the refusal named when it named one.
    */
   private overflowRetry: { learnedWindow: number | null } | null = null
+  /** Threads and models already told that auto-compact has no window to use. */
+  private unknownWindowNoticed = new Set<string>()
+
+  /** Tell the user, once per chat and model, that auto-compact needs a context size. */
+  private noticeUnknownWindow(threadId: string, modelId: string): void {
+    const key = `${threadId}|${modelId}`
+    if (this.unknownWindowNoticed.has(key)) return
+    this.unknownWindowNoticed.add(key)
+    toast.warning(i18n.t('common:autoCompactNeedsWindow', { model: modelId }))
+  }
   /** The compaction the latest attempt of this request announced. */
   private sentCompaction: CompactionRecord | null = null
   /** HTTP status of the failure `onError` last reported, for the fallback decision. */
@@ -2597,11 +2614,25 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
         // The router has not loaded the model yet. Preserve the configured limit.
       }
     }
-    const knownContextTokens = effectiveContextWindow(
-      configuredContextTokens,
-      liveContextTokens,
-      contextShiftEnabled
-    )
+    // A model with no window of its own (a custom OpenAI-compatible one) still
+    // has a best available one: what the provider describes, what its model
+    // list named, the last one this chat showed, or what the server says now.
+    const resolvedWindow = await resolveCompactionWindow({
+      known: effectiveContextWindow(
+        configuredContextTokens,
+        liveContextTokens,
+        contextShiftEnabled
+      ),
+      provider: knownContextWindow(selectedModel, provider),
+      listed: listedWindow(provider?.base_url, modelId),
+      remembered: rememberedWindowFor(
+        useContextBreakdown.getState(),
+        threadId,
+        modelId
+      ),
+      fetchServer: () => fetchServerWindow(provider?.base_url, modelId),
+    })
+    const knownContextTokens = resolvedWindow.tokens
     // The resend after a length refusal plans against what the refusal named
     // when that is smaller, and against an assumed window when nothing is
     // known: a request that was refused has to shrink, not be sent again.
@@ -2623,6 +2654,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
     // The model's Auto Compact parameter, when set, decides; otherwise the
     // shared policy does (`lib/compaction.ts`).
     const autoCompact = resolveAutoCompact(inferenceParams, compaction.auto)
+    // Auto-compact has nothing to measure against: say so rather than letting
+    // it look like it is working. A refused request still compacts and retries.
+    if (autoCompact && resolvedWindow.source === 'none') {
+      this.noticeUnknownWindow(threadId, modelId)
+    }
 
     let effectiveMessages = messagesToConvert
     if (maxContextTokens > 0) {
