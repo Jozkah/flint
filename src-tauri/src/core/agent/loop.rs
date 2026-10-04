@@ -3945,6 +3945,14 @@ impl CompositeToolInvoker {
                         .map(|d| format!("Destructive command: {d}."));
                     Decision::Prompt(PromptKind::Exec)
                 }
+                // Changes the computer or reads something private: asked every
+                // time, so no "always" is offered for it.
+                Decision::Prompt(PromptKind::Ask)
+                    if tauri_plugin_agent_tools::tools::is_always_ask(name) =>
+                {
+                    forced_reason = Some("Asked every time: it changes this computer or reads something private.".to_string());
+                    Decision::Prompt(PromptKind::Ask)
+                }
                 other => other,
             };
             if matches!(decision, Decision::Prompt(_)) {
@@ -4044,6 +4052,23 @@ impl CompositeToolInvoker {
                         tauri_plugin_agent_tools::tools::git_tool::plan_from_args(&args)
                             .ok()
                             .map(|p| p.display())
+                    } else if tauri_plugin_agent_tools::tools::is_always_ask(name) {
+                        // What an always-asked host tool will do, in words,
+                        // so the prompt is not a bare tool name.
+                        use tauri_plugin_agent_tools::tools::{clipboard, host_action, host_build, open_path};
+                        match name {
+                            "host_action" => host_action::plan(&args).ok().map(|a| host_action::summary(&a)),
+                            "host_build" => host_build::plan(&args).ok().map(|p| {
+                                format!(
+                                    "{} (in {})",
+                                    p.display(),
+                                    args.get("cwd").and_then(|v| v.as_str()).unwrap_or("the project folder")
+                                )
+                            }),
+                            "clipboard" => clipboard::plan(&args).ok().map(|a| clipboard::summary(&a)),
+                            "open_path" => open_path::plan(&args).ok().map(|p| open_path::summary(&p)),
+                            _ => None,
+                        }
                     } else {
                         matches!(tool.capability, Capability::Exec)
                             .then(|| args.get("command").and_then(|v| v.as_str()))

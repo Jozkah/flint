@@ -393,12 +393,42 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
-                "name": "host_build",
-                "description": "Run a Java or .NET build in the project folder with the host's own tools, which cannot run inside the sandboxed `bash` (no profile-installed JVM, no ~/.gradle or ~/.m2, no loopback for the Gradle daemon). `program` is gradle, gradlew, mvn, mvnw or dotnet (the wrappers must be in the folder); `args` is the list of words after it, for example [\"build\", \"-x\", \"test\"]. A build runs the project's own scripts, so the user is asked to approve every call and sees the exact command: say what you are building and why first. It runs only in a folder you may write to, stops at timeout_secs (default 600, up to 1800) and returns the head and tail of the log with the exit code. Prefer targeted tasks over a full clean build. Use `bash` for anything else.",
+                "name": "clipboard",
+                "description": "Read the text on the user's clipboard, or replace it. Both are asked about every time, and the user sees which. Use read when they say they copied something for you; use write to hand them text to paste (a command, a snippet, a message) instead of asking them to select it. Text only. The sandboxed `bash` has no clipboard. Windows only.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "program": { "type": "string", "description": "gradle, gradlew, mvn, mvnw or dotnet." },
+                        "action": { "type": "string", "description": "read or write." },
+                        "text": { "type": "string", "description": "write only: the text to put on the clipboard (up to 12000 characters)." }
+                    },
+                    "required": ["action"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "open_path",
+                "description": "Open a file or folder from the project on the user's screen: a folder opens in Explorer, a document, image or page opens in its default app, and `reveal` shows any file selected in Explorer. Use it when the point is for the user to look at something you made. Asked about every time. Only paths inside the project folder, worktree or session workspace; programs, scripts, installers and shortcuts are not opened (reveal them instead). Windows only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "The file or folder, relative to the project or absolute inside it. Required." },
+                        "reveal": { "type": "boolean", "description": "Show the file selected in Explorer instead of opening it." }
+                    },
+                    "required": ["path"]
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "host_build",
+                "description": "Run a build or package-manager command (Java, .NET, Go, Rust or Node) in the project folder with the host's own tools, which cannot run inside the sandboxed `bash` (no profile-installed JVM, no ~/.gradle or ~/.m2, no loopback for the Gradle daemon). `program` is gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn (gradlew and mvnw must be in the folder); `args` is the list of words after it, for example [\"build\", \"-x\", \"test\"]. A build runs the project's own scripts, so the user is asked to approve every call and sees the exact command: say what you are building and why first. It runs only in a folder you may write to, stops at timeout_secs (default 600, up to 1800) and returns the head and tail of the log with the exit code. Prefer targeted tasks over a full clean build. Use `bash` for anything else.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "program": { "type": "string", "description": "gradle, gradlew, mvn, mvnw, dotnet, go, cargo, npm, pnpm or yarn." },
                         "args": { "type": "array", "items": { "type": "string" }, "description": "The words after the program, as separate strings." },
                         "cwd": { "type": "string", "description": "Folder to build in, relative to the project or an absolute path inside a writable root. Default: the project folder." },
                         "timeout_secs": { "type": "integer", "description": "Stop the build after this many seconds. Default 600, at most 1800." }
@@ -427,11 +457,11 @@ pub fn builtin_tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "host_query",
-                "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
+                "description": "Read facts about this computer that the sandboxed `bash` cannot see. Name one query: processes (largest memory first), services, ports (listening TCP ports and the program holding each), disks, system (OS, CPU, memory, uptime), installed_programs, registry (one key under HKLM\\SOFTWARE, HKCU\\SOFTWARE or the Services and Control keys; credential values are hidden), crash_reports (application crash events and dump files), scheduled_tasks (not Microsoft's own), startup_items, wsl_distros, gpu (adapters, VRAM, utilisation), network (adapters, addresses, DNS, connections per program), updates (recent and pending Windows updates; slow) or battery. Read-only, Windows only. Use `name` to filter processes, services, installed_programs and scheduled_tasks, `port` to ask what holds one port, `status` (running or stopped) for services, and `key` for registry.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items or wsl_distros." },
+                        "query": { "type": "string", "description": "processes, services, ports, disks, system, installed_programs, registry, crash_reports, scheduled_tasks, startup_items, wsl_distros, gpu, network, updates or battery." },
                         "name": { "type": "string", "description": "Filter by name (letters, digits, spaces, dots, dashes, underscores)." },
                         "port": { "type": "integer", "description": "ports only: the one port to look at." },
                         "pid": { "type": "integer", "description": "processes only: the one process number to look at." },
@@ -699,7 +729,7 @@ mod tests {
         // Kept in step with BUILTIN_TOOLS below; the count is asserted here
         // too so a tool added to one list and not the other fails loudly
         // rather than being silently unadvertised.
-        assert_eq!(schemas.len(), 47);
+        assert_eq!(schemas.len(), 49);
         for schema in &schemas {
             assert_eq!(schema["type"], "function");
         }

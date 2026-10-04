@@ -18,6 +18,8 @@ pub mod git_native;
 pub mod git_tool;
 pub mod host_action;
 pub mod host_build;
+pub mod clipboard;
+pub mod open_path;
 pub mod docker_tool;
 pub mod host_read;
 pub mod local_http;
@@ -644,6 +646,20 @@ pub const BUILTIN_TOOLS: &[BuiltinTool] = &[
         capability: Capability::Read,
         path_args: &[],
     },
+    // Read or replace the text on the clipboard. `Write` so plan mode withholds
+    // it; asked about every time, in both directions.
+    BuiltinTool {
+        name: "clipboard",
+        capability: Capability::Write,
+        path_args: &[],
+    },
+    // Open a project file or folder on screen, or show it in Explorer. Asked
+    // about every time; the handler confines the path and refuses programs.
+    BuiltinTool {
+        name: "open_path",
+        capability: Capability::Write,
+        path_args: &[],
+    },
     // Runs gradle, mvn or dotnet (and their wrappers) in the project folder with
     // the host's own JVM, caches and loopback, which the bash sandbox lacks. A
     // build is the project's own code, so the gate asks about every call and
@@ -873,6 +889,13 @@ pub fn is_host_tool(name: &str) -> bool {
     ) || is_browser_tool(name)
 }
 
+/// Tools whose every call is put to a person, and which the backend refuses
+/// unless one answered: they change this computer or read something private.
+/// No session grant, no auto-approving mode and no "always" covers them.
+pub fn is_always_ask(name: &str) -> bool {
+    matches!(name, "host_action" | "host_build" | "clipboard" | "open_path")
+}
+
 /// The session-messaging tools. Auto-allowed by the gate (an agent.toml deny
 /// still wins), offered only in session scope, and withheld from subagents.
 pub fn is_mailbox_tool(name: &str) -> bool {
@@ -945,10 +968,11 @@ mod tests {
         // + host_query, local_http and docker: read-only host facts, loopback HTTP and Docker.
         // + host_action: end a process or start, stop or restart a service, asked every time.
         // + host_build: gradle, mvn or dotnet outside the sandbox, asked every time.
+        // + clipboard and open_path, asked every time.
         // + git, the host's git and gh with per-call classification.
         // + the 9 browser-pane tools, which only the desktop can run.
         // + browser, the interactive confined browser.
-        assert_eq!(BUILTIN_TOOLS.len(), 47);
+        assert_eq!(BUILTIN_TOOLS.len(), 49);
     }
 
     #[test]

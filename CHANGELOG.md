@@ -185,12 +185,15 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Added **Describe this project** to the Cowork folder menu.
 - Cowork and chat can read what the shell sandbox cannot see, through tools the app runs outside it. All are read-only and ask for nothing:
   - `windows_events` reads the Windows Event Log by channel, level, time, event id and source.
-  - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items or WSL distributions.
+  - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items, WSL distributions, GPU, network, Windows Update or battery.
   - `local_http` sends a GET or HEAD to a server on this computer, to check that a dev server answers. It only reaches localhost and does not follow redirects.
   - `docker` runs `ps`, `images`, `logs`, `top`, `port`, one `stats` sample, `version`, `info` and the `compose` equivalents. Anything that starts, stops, removes, builds or runs is refused and handed to you instead.
 - Two more tools change things on this computer, so each call asks you first, naming the exact target, and no mode or grant answers for you:
   - `host_action` ends one process (by its number, never by name) or starts, stops or restarts one Windows service. System-critical processes and services, and Flint itself, are refused. A service that needs an administrator fails with Windows' own message.
-  - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code.
+  - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code. It also runs `go`, `cargo`, `npm`, `pnpm` and `yarn`.
+  - `clipboard` reads the text on your clipboard or replaces it, and asks each time which of the two it is.
+  - `open_path` opens a project file or folder on your screen, or shows it in Explorer. Programs, scripts and installers are not opened, only shown. The path must be inside the project folder, worktree or session workspace.
+- The command line and background jobs already ask before these tools run; the question now names what will happen (the command, the process, the folder) and no longer offers "always". Text from Windows tools now keeps its accents and non-Latin letters.
 
 ### Inference and repository targeting
 

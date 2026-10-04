@@ -206,13 +206,13 @@ pub async fn host_action(args: &Value) -> String {
     cmd.arg("-NoProfile").arg("-NonInteractive").arg("-Command");
     match &action {
         Action::KillProcess { pid } => {
-            cmd.arg(KILL)
+            cmd.arg(crate::tools::host_read::utf8_script(KILL))
                 .env("HA_PID", pid.to_string())
                 .env("HA_SELF", std::process::id().to_string())
                 .env("HA_DENY", PROTECTED_PROCESSES.join(","));
         }
         Action::Service { op, name } => {
-            cmd.arg(SERVICE)
+            cmd.arg(crate::tools::host_read::utf8_script(SERVICE))
                 .env("HA_NAME", name)
                 .env("HA_OP", op.word())
                 .env("HA_DENY", PROTECTED_SERVICES.join(","));

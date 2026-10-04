@@ -117,6 +117,9 @@ export const AGENT_TOOL_NAMES = new Set([
   'host_action',
   // Gradle, Maven and .NET builds outside the sandbox. Asked about every time.
   'host_build',
+  // The clipboard and opening a project file on screen. Asked about every time.
+  'clipboard',
+  'open_path',
 ])
 
 // Keyed by what the answer depends on. One module-level list shared by chat
@@ -406,6 +409,8 @@ export async function approveBrowserTool(
 
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
+/** Every call is put to the user: they change this computer or read something private. */
+const HOST_ASKED = new Set([HOST_ACTION_NAME, HOST_BUILD_NAME, 'clipboard', 'open_path'])
 
 /** One row of a `host_query` answer, or none. */
 async function hostQueryRows(
@@ -424,9 +429,23 @@ async function hostQueryRows(
 /** What a `host_action` call will do, with the target's own details looked up. */
 export async function describeHostAction(
   input: unknown,
-  threadId: string
+  threadId: string,
+  toolName: string = HOST_ACTION_NAME
 ): Promise<string> {
   const a = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+  if (toolName === 'clipboard') {
+    if (a.action === 'write') {
+      const text = String(a.text ?? '')
+      const first = text.slice(0, 60).replace(/[\r\n]+/g, ' ')
+      return `Replace the clipboard with ${text.length} characters: "${first}${text.length > 60 ? '...' : ''}"`
+    }
+    return 'Read the text on the clipboard'
+  }
+  if (toolName === 'open_path') {
+    return a.reveal === true
+      ? `Show ${String(a.path)} in Explorer`
+      : `Open ${String(a.path)} with its default app`
+  }
   if (typeof a.program === 'string') {
     const words = Array.isArray(a.args) ? a.args.map(String) : []
     const command = [a.program, ...words]
@@ -470,9 +489,15 @@ export async function approveHostAction(
   if (options.unattended) {
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
-  const what = await describeHostAction(input, threadId)
+  const what = await describeHostAction(input, threadId, toolName)
   const context =
-    toolName === HOST_BUILD_NAME ? `Build: ${what}` : `Change this computer: ${what}`
+    toolName === HOST_BUILD_NAME
+      ? `Build: ${what}`
+      : toolName === 'clipboard'
+        ? `Clipboard: ${what}`
+        : toolName === 'open_path'
+          ? `Open on screen: ${what}`
+          : `Change this computer: ${what}`
   const ok = options.approve
     ? await options.approve({ context, alwaysAsk: true, input })
     : await useToolApprovalRequests
@@ -589,7 +614,7 @@ export async function executeAgentTool(
     const inputError = agentToolInputError(toolName, input)
     if (inputError) return { error: inputError }
 
-    if (toolName === HOST_ACTION_NAME || toolName === HOST_BUILD_NAME) {
+    if (HOST_ASKED.has(toolName)) {
       // The id the question is asked under is the id the backend is told, so
       // its guard can see that a person answered.
       const callId = options.callId ?? `${toolName}-${Date.now()}`

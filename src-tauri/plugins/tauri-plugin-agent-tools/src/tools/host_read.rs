@@ -34,6 +34,10 @@ pub const QUERIES: &[&str] = &[
     "scheduled_tasks",
     "startup_items",
     "wsl_distros",
+    "gpu",
+    "network",
+    "updates",
+    "battery",
 ];
 
 /// A value name that is never shown, whatever key it sits in.
@@ -120,11 +124,44 @@ $m=[int]$env:HQ_MAX
 @(Get-CimInstance Win32_StartupCommand | Select-Object -First $m Name,Command,Location,User) | ConvertTo-Json -Compress -Depth 3
 "#;
 
+const GPU: &str = r#"
+$gpus=@(Get-CimInstance Win32_VideoController | Select-Object Name,DriverVersion,@{n='AdapterRamGB';e={[math]::Round($_.AdapterRAM/1GB,1)}},VideoModeDescription)
+$nv=$null
+try { $nv=@(& nvidia-smi --query-gpu=name,memory.total,memory.used,utilization.gpu,temperature.gpu,driver_version --format=csv,noheader,nounits 2>$null) } catch {}
+[pscustomobject]@{Adapters=$gpus;NvidiaSmiMiBPercentC=$nv} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const NETWORK: &str = r#"
+$m=[int]$env:HQ_MAX
+$adapters=@(Get-NetAdapter | Where-Object Status -eq 'Up' | Select-Object Name,InterfaceDescription,LinkSpeed,MacAddress)
+$ips=@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '169.254.*' } | Select-Object InterfaceAlias,IPAddress,PrefixLength)
+$dns=@(Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses } | Select-Object InterfaceAlias,@{n='Servers';e={$_.ServerAddresses -join ', '}})
+$procs=@{}; Get-Process | ForEach-Object { $procs[[int]$_.Id]=$_.ProcessName }
+$conns=@(Get-NetTCPConnection -State Established | Group-Object OwningProcess | Sort-Object Count -Descending | Select-Object -First $m @{n='Process';e={$procs[[int]$_.Name]}},@{n='Pid';e={[int]$_.Name}},Count)
+[pscustomobject]@{Adapters=$adapters;Addresses=$ips;Dns=$dns;EstablishedByProcess=$conns} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const UPDATES: &str = r#"
+$m=[int]$env:HQ_MAX
+$installed=@(Get-HotFix | Sort-Object InstalledOn -Descending | Select-Object -First $m HotFixID,Description,InstalledOn)
+$pending=@(); $note=''
+try { $s=New-Object -ComObject Microsoft.Update.Session; $r=$s.CreateUpdateSearcher().Search('IsInstalled=0 and IsHidden=0'); foreach($u in $r.Updates){ $pending += $u.Title } } catch { $note='Windows Update could not be searched: ' + $_.Exception.Message }
+[pscustomobject]@{RecentlyInstalled=$installed;Pending=@($pending | Select-Object -First $m);Note=$note} | ConvertTo-Json -Compress -Depth 4
+"#;
+
+const BATTERY: &str = r#"
+$b=@(Get-CimInstance Win32_Battery | Select-Object Name,@{n='ChargePercent';e={$_.EstimatedChargeRemaining}},@{n='Status';e={switch([int]$_.BatteryStatus){1{'Discharging'}2{'On AC'}3{'Fully charged'}4{'Low'}5{'Critical'}6{'Charging'}7{'Charging, high'}8{'Charging, low'}9{'Charging, critical'}default{'Unknown'}}}},@{n='MinutesRemaining';e={ if($_.EstimatedRunTime -lt 71582788){$_.EstimatedRunTime}else{$null} }})
+$plan=(powercfg /getactivescheme) -join ' '
+[pscustomobject]@{HasBattery=($b.Count -gt 0);Batteries=$b;PowerPlan=$plan} | ConvertTo-Json -Compress -Depth 4
+"#;
+
 /// What to run for a query: the script, and the environment it reads.
 #[derive(Debug, PartialEq)]
 pub struct Plan {
     pub script: &'static str,
     pub env: Vec<(&'static str, String)>,
+    /// How long it may run. Searching Windows Update is slow.
+    pub timeout_secs: u64,
 }
 
 /// Letters, digits, space, dot, dash, underscore: no wildcard, quote or `$`, so
@@ -258,6 +295,10 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
         }
         "startup_items" => STARTUP_ITEMS,
         "wsl_distros" => "",
+        "gpu" => GPU,
+        "network" => NETWORK,
+        "updates" => UPDATES,
+        "battery" => BATTERY,
         other => {
             return Err(format!(
                 "ERROR: host_query has no query '{other}'. Use one of {}.",
@@ -265,7 +306,15 @@ pub fn plan(args: &Value) -> Result<Plan, String> {
             ))
         }
     };
-    Ok(Plan { script, env })
+    let timeout_secs = if query == "updates" { 90 } else { TIMEOUT_SECS };
+    Ok(Plan { script, env, timeout_secs })
+}
+
+/// A script that writes UTF-8. PowerShell writes to a pipe in the console's
+/// code page, so a Portuguese date, a Japanese file name or a service's display
+/// name would otherwise reach the model as garbage.
+pub(crate) fn utf8_script(script: &str) -> String {
+    format!("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)\n{script}")
 }
 
 /// Cut to the output cap on a character boundary, saying so.
@@ -300,16 +349,16 @@ pub async fn host_query(args: &Value) -> String {
         c
     } else {
         let mut c = tokio::process::Command::new("powershell.exe");
-        c.args(["-NoProfile", "-NonInteractive", "-Command", plan.script]);
+        c.args(["-NoProfile", "-NonInteractive", "-Command", &utf8_script(plan.script)]);
         c
     };
     for (key, value) in &plan.env {
         cmd.env(key, value);
     }
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).kill_on_drop(true).creation_flags(0x0800_0000);
-    let run = tokio::time::timeout(Duration::from_secs(TIMEOUT_SECS), cmd.output()).await;
+    let run = tokio::time::timeout(Duration::from_secs(plan.timeout_secs), cmd.output()).await;
     match run {
-        Err(_) => format!("ERROR: host_query did not finish in {TIMEOUT_SECS} seconds and was stopped."),
+        Err(_) => format!("ERROR: host_query did not finish in {} seconds and was stopped.", plan.timeout_secs),
         Ok(Err(e)) => format!("ERROR: could not run the query: {e}"),
         Ok(Ok(out)) => {
             let (stdout, stderr) = if is_wsl {
@@ -414,6 +463,13 @@ mod tests {
         ] {
             assert!(vet_registry_key(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn scripts_write_utf8() {
+        let s = utf8_script("Get-Date");
+        assert!(s.starts_with("[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)"));
+        assert!(s.ends_with("Get-Date"));
     }
 
     #[test]
