@@ -1157,6 +1157,17 @@ describe('dispatchCoworkTool: destructive commands and auto-approve limit', () =
     expect(executeAgentTool).not.toHaveBeenCalled()
   })
 
+  it('runs a destructive command without an approval prompt in bypass mode', async () => {
+    const onApprove = vi.fn(async () => false)
+    const out = await dispatchCoworkTool(
+      call('bash', { command: 'rm -rf ~/' }),
+      ctx({ sessionId: 'bypass', mode: 'bypass', onApprove })
+    )
+    expect(onApprove).not.toHaveBeenCalled()
+    expect(executeAgentTool).toHaveBeenCalled()
+    expect(out.isError).not.toBe(true)
+  })
+
   it('does not ask for an ordinary command in autonomous mode', async () => {
     const onApprove = vi.fn(async () => true)
     await dispatchCoworkTool(

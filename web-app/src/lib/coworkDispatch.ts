@@ -806,7 +806,7 @@ async function routeCoworkTool(
     // push, a pull request or a destructive command is asked about always.
     const gitOwnTree =
       !!git &&
-      ctx.mode === 'auto' &&
+      (ctx.mode === 'auto' || ctx.mode === 'bypass') &&
       gitInsideSessionTree(git.plan.cwd, ctx.worktreePath, !!ctx.writeGrant)
     const needsApproval = git
       ? !git.alwaysAsk && (decision.needsApproval || !gitOwnTree)
@@ -814,7 +814,7 @@ async function routeCoworkTool(
     // In Auto mode, a file write inside the session's own worktree or sandbox
     // is the run's ordinary work: it never pauses the run to ask.
     const ownTree =
-      ctx.mode === 'auto' &&
+      (ctx.mode === 'auto' || ctx.mode === 'bypass') &&
       writesInsideSessionTree(
         toolName,
         call.input,
@@ -822,6 +822,7 @@ async function routeCoworkTool(
         ctx.worktreePath
       )
     const overLimit =
+      ctx.mode !== 'bypass' &&
       !git?.alwaysAsk &&
       !needsApproval &&
       !readOnlyShell &&
@@ -867,7 +868,7 @@ async function routeCoworkTool(
           }
         : undefined
 
-    if (needsApproval || forced) {
+    if (ctx.mode !== 'bypass' && (needsApproval || forced)) {
       resetAutoApproveStreak(ctx.sessionId)
       // Recorded separately from the outcome: "the user was asked" and "the
       // user said no" are different facts, and a refused call that was never
@@ -1101,7 +1102,9 @@ async function routeCoworkTool(
               // grants apply, a subagent is named, and stopping the run
               // withdraws the question.
               approve: ({ context, url, alwaysAsk, input }) =>
-                ctx.onApprove
+                ctx.mode === 'bypass'
+                  ? Promise.resolve(true)
+                  : ctx.onApprove
                   ? unlessStopped(
                       ctx.onApprove(
                         call.toolCallId,
@@ -1143,7 +1146,9 @@ async function routeCoworkTool(
         failure: result.error,
         failureResources: result.resources,
         program: commandProgram(call.input),
-        ask: onApprove
+        ask: ctx.mode === 'bypass'
+          ? () => Promise.resolve(true)
+          : onApprove
           ? () =>
               unlessStopped(
                 onApprove(call.toolCallId, toolName, call.input, undefined, signal, {

@@ -98,6 +98,7 @@ beforeEach(() => {
       { name: 'local-only', fingerprint: LOCAL },
     ],
     approvedToolsGlobal: ['web_fetch'],
+    approvedSimilarCalls: [],
     invalidatedServers: [],
     allowAllMCPPermissions: false,
     permissionMode: 'ask',
@@ -105,6 +106,18 @@ beforeEach(() => {
 })
 
 describe('Permissions settings', () => {
+  it('lists and revokes similar-call grants', async () => {
+    useToolApproval.setState({ approvedSimilarCalls: [
+      { key: 'host_powershell:stop-process-id', label: 'PowerShell: Stop-Process -Id' },
+    ] })
+    const user = userEvent.setup()
+    render(<Page />)
+    expect(screen.getByText('PowerShell: Stop-Process -Id')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', {
+      name: 'permissions:settings.revokeLabel:PowerShell: Stop-Process -Id',
+    }))
+    expect(useToolApproval.getState().approvedSimilarCalls).toEqual([])
+  })
   it('lists conversation grants by title, global tools and every trusted server', async () => {
     render(<Page />)
     expect(screen.getByText('Fix the parser')).toBeInTheDocument()
@@ -301,14 +314,17 @@ describe('Permissions settings', () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     render(<Page />)
-    const mode = screen.getByRole('combobox', { name: 'permissions:settings.approvalBehavior' })
-    await user.selectOptions(mode, 'auto-approve')
+    const mode = screen.getByRole('button', { name: 'permissions:settings.approvalBehavior' })
+    await user.click(mode)
+    await user.click(screen.getByRole('menuitemradio', { name: 'permissions:settings.modeAuto' }))
     expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
-    await user.selectOptions(mode, 'bypass')
+    await user.click(mode)
+    await user.click(screen.getByRole('menuitemradio', { name: 'permissions:settings.modeBypass' }))
     expect(confirm).toHaveBeenCalled()
     expect(useToolApproval.getState().permissionMode).toBe('auto-approve')
     confirm.mockReturnValue(true)
-    await user.selectOptions(mode, 'bypass')
+    await user.click(mode)
+    await user.click(screen.getByRole('menuitemradio', { name: 'permissions:settings.modeBypass' }))
     expect(useToolApproval.getState().permissionMode).toBe('bypass')
     confirm.mockRestore()
   })

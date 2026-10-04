@@ -183,7 +183,7 @@ export function coworkDetailOf(session: {
   id: string
   title: string
   folder: string | null
-  mode?: 'review' | 'ask' | 'auto'
+  mode?: 'review' | 'ask' | 'auto' | 'bypass'
   planMode?: boolean
   access?: 'review-only' | 'managed-worktree' | 'edit-folder'
   model?: { provider: string; id: string }

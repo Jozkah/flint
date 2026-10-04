@@ -180,7 +180,7 @@ function modelOf(v: unknown): ModelRef | undefined {
 }
 
 const REASONING: readonly ReasoningMode[] = ['auto', 'on', 'off']
-const MODES: readonly CoworkModeId[] = ['review', 'ask', 'auto']
+const MODES: readonly CoworkModeId[] = ['review', 'ask', 'auto', 'bypass']
 const ACCESS: readonly CoworkAccessId[] = ['review-only', 'managed-worktree', 'edit-folder']
 
 const desktopOnly = (what: string) =>

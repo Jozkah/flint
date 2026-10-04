@@ -15,6 +15,7 @@ import {
   useAutoApproveLimit,
 } from '@/hooks/useAutoApproveLimit'
 import { rememberCommand, repeatCommandKey } from '@/lib/repeatedCommand'
+import { similarToolCall } from '@/lib/similarToolCall'
 
 /**
  * What the prompt can say about a call beyond its name. All optional, so a
@@ -111,9 +112,8 @@ export type PendingApproval = {
   workspaceLabel?: string
   threadIsEphemeral?: boolean
   /**
-   * Asked every time: no ordinary standing grant answers this prompt. The
-   * temporary Git grant below is the one deliberate exception for ordinary
-   * non-destructive remote Git/GitHub operations in this conversation.
+   * Asked every time unless a recognized single-process action has its own
+   * explicit standing grant. Temporary Git grants are another narrow case.
    */
   alwaysAsk?: boolean
   conversationProgram?: string
@@ -390,6 +390,21 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
           return
         }
 
+        const similar = !serverName ? similarToolCall(toolName, context?.input) : null
+        if (similar && (
+          settings.isSimilarCallApproved(similar.key) ||
+          settings.isToolApproved(threadId, similar.key)
+        )) {
+          const limit = useAutoApproveLimit.getState().limit
+          if (!noteAutoApproved(context?.autoApproveStreak ?? threadId, limit)) {
+            approve()
+            return
+          }
+          alwaysAsk = true
+          taskContext = autoApprovePauseReason(limit)
+          resetAutoApproveStreak(context?.autoApproveStreak ?? threadId)
+        }
+
         if (permissionMode === 'auto-approve' && !alwaysAsk) {
           const streakKey = context?.autoApproveStreak ?? threadId
           const limit = useAutoApproveLimit.getState().limit
@@ -547,6 +562,14 @@ export const useToolApprovalRequests = create<ToolApprovalRequestsState>()(
 
       if (temporaryGit) {
         // Intentionally transient; persisted grants are not changed.
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-thread' && !entry.threadIsEphemeral
+      ) {
+        approval.approveToolForThread(entry.threadId, similarToolCall(entry.toolName, entry.input)!.key)
+      } else if (!serverName && similarToolCall(entry.toolName, entry.input) &&
+        decision === 'allow-always'
+      ) {
+        approval.approveSimilarCall(similarToolCall(entry.toolName, entry.input)!)
       } else if (
         ALWAYS_ASK_TOOLS.has(entry.toolName) ||
         (serverName && isSelfApprovalTool(entry.toolName)) ||

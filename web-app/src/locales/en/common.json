@@ -1456,6 +1456,11 @@
       "label": "Auto mode",
       "short": "Auto",
       "description": "Changes files and runs commands without asking."
+    },
+    "bypass": {
+      "label": "Bypass permissions",
+      "short": "Bypass",
+      "description": "Runs tool calls without approval prompts for this session. Folder access limits still apply."
     }
   },
   "rewind": {

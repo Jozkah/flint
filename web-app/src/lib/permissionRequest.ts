@@ -23,6 +23,7 @@ import {
   type GitPlan,
 } from '@/lib/gitTool'
 import { isSelfApprovalTool } from '@/lib/selfApprovalTools'
+import { similarToolCall } from '@/lib/similarToolCall'
 
 export type PermissionCategory =
   | 'file-change'
@@ -58,8 +59,8 @@ export type PermissionRequestInput = {
   threadIsEphemeral?: boolean
   /**
    * The caller will ask about this call every time (a push, a destructive
-   * command, the auto-approve pause), so nothing broader than "Allow once"
-   * can be recorded from the answer.
+   * command, the auto-approve pause). Recognized actions may still offer a
+   * narrow rule, such as clipboard reads or single-process termination.
    */
   alwaysAsk?: boolean
   /**
@@ -480,6 +481,10 @@ function actionFor(
         ? { key: 'permissions:action.readTarget', values: { target: resources[0] } }
         : { key: 'permissions:action.readFiles' }
     default:
+      if (toolName === 'clipboard') {
+        if (args.action === 'read') return { key: 'permissions:action.readClipboard' }
+        if (args.action === 'write') return { key: 'permissions:action.writeClipboard' }
+      }
       if (toolName === STOP_SESSION_TOOL_NAME) {
         return {
           key: 'permissions:action.stopSession',
@@ -530,6 +535,10 @@ function consequencesFor(
     case 'browser':
       return [{ key: 'permissions:consequence.browser' }]
     default:
+      if (toolName === 'clipboard') {
+        if (args.action === 'read') return [{ key: 'permissions:consequence.readClipboard' }]
+        if (args.action === 'write') return [{ key: 'permissions:consequence.writeClipboard' }]
+      }
       if (toolName === STOP_SESSION_TOOL_NAME) {
         return [{ key: 'permissions:consequence.stopSession' }]
       }
@@ -545,12 +554,20 @@ function consequencesFor(
  * - `allow-once`: always.
  * - `allow-thread`: `useToolApproval.approvedTools[threadId]`, persisted. Not
  *   offered when the conversation id is reused (temporary chat).
- * - `allow-always`: for a server tool, the server's trust, recorded with the
+ * - `allow-always`: for a recognized action, only that action;
+ *   for a server tool, the server's trust, recorded with the
  *   backend gate (`mcp_trust_server`); for a tool with no server, the tool name
  *   in `approvedToolsGlobal`, persisted by the renderer store.
  */
 export function scopesFor(req: PermissionRequestInput): ApprovalScope[] {
   const scopes: ApprovalScope[] = ['allow-once']
+  if (
+    !req.serverName &&
+    !ALWAYS_ASK_TOOLS.has(req.toolName) &&
+    similarToolCall(req.toolName, req.input)
+  ) return req.threadIsEphemeral
+    ? [...scopes, 'allow-always']
+    : [...scopes, 'allow-thread', 'allow-always']
   // Decided call by call: nothing broader can be recorded for these.
   if (
     req.alwaysAsk &&
@@ -705,6 +722,26 @@ export function describePermissionRequest(
   const scopeExplanations: Partial<Record<ApprovalScope, ScopeExplanation>> = {}
   for (const scope of scopesOffered) {
     scopeExplanations[scope] = explain(scope, toolName, serverName)
+  }
+  const similar = !serverName ? similarToolCall(toolName, req.input) : null
+  if (similar && scopeExplanations['allow-always']) {
+    scopeExplanations['allow-always'] = {
+      label: { key: 'permissions:scope.allowSimilar', values: { action: similar.label } },
+      explanation: {
+        key: similar.key === 'clipboard:read'
+          ? 'permissions:scope.allowClipboardReadExplanation'
+          : 'permissions:scope.allowSimilarExplanation',
+        values: { action: similar.label },
+      },
+      broader: true,
+    }
+  }
+  if (similar && scopeExplanations['allow-thread']) {
+    scopeExplanations['allow-thread'] = {
+      label: { key: 'permissions:scope.allowSimilarThread', values: { action: similar.label } },
+      explanation: { key: 'permissions:scope.allowSimilarThreadExplanation', values: { action: similar.label } },
+      broader: false,
+    }
   }
   if (req.alwaysAsk && req.conversationProgram && scopeExplanations['allow-thread']) {
     scopeExplanations['allow-thread'] = {

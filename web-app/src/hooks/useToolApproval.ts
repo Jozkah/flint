@@ -48,7 +48,9 @@ export type InvalidatedApproval = {
 }
 
 /** Persisted store version. Bump together with {@link migrateToolApproval}. */
-export const TOOL_APPROVAL_STORE_VERSION = 2
+export const TOOL_APPROVAL_STORE_VERSION = 3
+
+export type SimilarCallGrant = { key: string; label: string }
 
 export type PermissionMode = 'ask' | 'auto-approve' | 'bypass'
 
@@ -57,6 +59,7 @@ export type PersistedToolApproval = {
   approvedMcpTools: Record<string, McpToolGrant[]>
   approvedServers: McpServerGrant[]
   approvedToolsGlobal: string[]
+  approvedSimilarCalls: SimilarCallGrant[]
   invalidatedServers: InvalidatedApproval[]
   allowAllMCPPermissions: boolean
   permissionMode: PermissionMode
@@ -122,6 +125,9 @@ type ToolApprovalState = PersistedToolApproval & {
   approveToolEverywhere: (toolName: string) => void
   /** Withdraw an every-conversation tool grant. */
   revokeToolEverywhere: (toolName: string) => void
+  approveSimilarCall: (grant: SimilarCallGrant) => void
+  revokeSimilarCall: (key: string) => void
+  isSimilarCallApproved: (key: string) => boolean
   /**
    * Whether a call is covered by a standing grant.
    *
@@ -224,6 +230,16 @@ export function migrateToolApproval(
     approvedMcpTools,
     approvedServers,
     approvedToolsGlobal: stringList(source.approvedToolsGlobal),
+    approvedSimilarCalls: Array.isArray(source.approvedSimilarCalls)
+      ? source.approvedSimilarCalls.filter(
+          (value): value is SimilarCallGrant =>
+            isObject(value) && isString(value.key) && isString(value.label) &&
+            (value.key === 'clipboard:read' ||
+              value.key === 'host_action:kill_process' ||
+              value.key === 'host_powershell:stop-process-id' ||
+              value.key === 'host_powershell:stop-process-id-force')
+        )
+      : [],
     invalidatedServers,
     allowAllMCPPermissions: source.allowAllMCPPermissions === true,
     permissionMode:
@@ -246,6 +262,7 @@ export const useToolApproval = create<ToolApprovalState>()(
       approvedMcpTools: {},
       approvedServers: [],
       approvedToolsGlobal: [],
+      approvedSimilarCalls: [],
       invalidatedServers: [],
       allowAllMCPPermissions: false,
       permissionMode: 'ask',
@@ -477,6 +494,16 @@ export const useToolApproval = create<ToolApprovalState>()(
         )
       },
 
+      approveSimilarCall: (grant) => set((state) =>
+        state.approvedSimilarCalls.some((saved) => saved.key === grant.key)
+          ? state
+          : { approvedSimilarCalls: [...state.approvedSimilarCalls, grant] }
+      ),
+      revokeSimilarCall: (key) => set((state) => ({
+        approvedSimilarCalls: state.approvedSimilarCalls.filter((grant) => grant.key !== key),
+      })),
+      isSimilarCallApproved: (key) => get().approvedSimilarCalls.some((grant) => grant.key === key),
+
       isToolApproved: (
         threadId: string,
         toolName: string,
@@ -528,6 +555,7 @@ export const useToolApproval = create<ToolApprovalState>()(
         approvedMcpTools: state.approvedMcpTools,
         approvedServers: state.approvedServers,
         approvedToolsGlobal: state.approvedToolsGlobal,
+        approvedSimilarCalls: state.approvedSimilarCalls,
         invalidatedServers: state.invalidatedServers,
         allowAllMCPPermissions: state.allowAllMCPPermissions,
         // Full bypass is an explicit choice for this app session only.

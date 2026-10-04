@@ -40,6 +40,7 @@ import { listPluginsForModel } from '@/lib/pluginInventory'
 import { runOpenInBrowser } from '@/lib/browserOpen'
 import { runGenerateImage } from '@/lib/generateImageTool'
 import { HOST_ASKED, hostCallNeedsAsking } from '@/lib/hostAsked'
+import { similarToolCall } from '@/lib/similarToolCall'
 import {
   putToolScreenshot,
   SCREENSHOT_RESULT_NOTE,
@@ -436,7 +437,7 @@ export async function approveBrowserTool(
 
 const HOST_ACTION_NAME = 'host_action'
 const HOST_BUILD_NAME = 'host_build'
-/** Every call is put to the user: they change this computer or read something private. */
+/** Host calls ask unless an explicit action-scoped grant covers them. */
 /** What the question says it is about, by tool. */
 const HOST_CONTEXT: Record<string, string> = {
   [HOST_BUILD_NAME]: 'Build',
@@ -477,7 +478,7 @@ export async function describeHostAction(
       const text = String(a.text ?? '')
       return `Replace the clipboard with ${[...text].length} characters:\n${text}`
     }
-    return 'Read the text on the clipboard'
+    return 'Read the current clipboard content'
   }
   if (toolName === 'host_package') {
     const verb = String(a.action ?? '')
@@ -539,10 +540,9 @@ export async function describeHostAction(
  * Ask the user about a `host_action` call, before the backend runs it. `null`
  * when they approved, otherwise what to tell the model.
  *
- * Asked every time: no grant and no approving mode covers it, because it ends
- * a program or changes a service. The prompt names the exact target (a process
- * with its name and path), looked up just before asking. Nobody to ask (an
- * unattended run) means it is refused.
+ * The prompt names the exact target (a process with its name and path), looked
+ * up just before asking. Recognized actions may use an explicit scoped grant.
+ * An unattended run without such a grant is refused.
  */
 export async function approveHostAction(
   input: unknown,
@@ -550,9 +550,14 @@ export async function approveHostAction(
   options: AgentToolOptions,
   toolName: string = HOST_ACTION_NAME
 ): Promise<string | null> {
+  const similar = similarToolCall(toolName, input)
+  const approval = useToolApproval.getState()
   if (
     options.unattended &&
-    useToolApproval.getState().permissionMode !== 'bypass'
+    approval.permissionMode !== 'bypass' &&
+    (!similar ||
+      (!approval.isSimilarCallApproved(similar.key) &&
+        !approval.isToolApproved(threadId, similar.key)))
   ) {
     return `${toolName} was not run: the user must approve it every time, and nobody is available to ask. Tell the user what you wanted to do.`
   }
