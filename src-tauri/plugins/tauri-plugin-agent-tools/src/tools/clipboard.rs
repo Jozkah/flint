@@ -26,10 +26,32 @@ pub enum Action {
     Write { text: String },
 }
 
+// Text first. With no text, an image is saved as a PNG in the temp folder and
+// its path reported (the model can open it with its file tools); copied files
+// are listed. Asking for the text of an image is what used to fail.
 const READ: &str = r#"
 $ErrorActionPreference='Stop'
-$t = Get-Clipboard -Raw
-if ($null -eq $t -or $t.Length -eq 0) { '' } else { $t }
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+if ([System.Windows.Forms.Clipboard]::ContainsText()) {
+  $t = [System.Windows.Forms.Clipboard]::GetText()
+  if ($t.Length -gt 0) { $t; return }
+}
+if ([System.Windows.Forms.Clipboard]::ContainsImage()) {
+  $img = [System.Windows.Forms.Clipboard]::GetImage()
+  $dir = Join-Path $env:TEMP 'flint-clipboard'
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $file = Join-Path $dir ("clipboard-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".png")
+  $img.Save($file, [System.Drawing.Imaging.ImageFormat]::Png)
+  "The clipboard holds an image ($($img.Width)x$($img.Height)). Saved as PNG: $file"
+  return
+}
+if ([System.Windows.Forms.Clipboard]::ContainsFileDropList()) {
+  "The clipboard holds copied files:"
+  [System.Windows.Forms.Clipboard]::GetFileDropList() | ForEach-Object { $_ }
+  return
+}
+''
 "#;
 
 const WRITE: &str = r#"
