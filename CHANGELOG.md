@@ -135,11 +135,14 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Each step inside a folded run is one closed line saying what it did, such as **Read AUDIT.md** or **Failed to run Diffed original vs patched files**, and opens on click. The run's line counts failures, as in **Ran 54 commands, read 4 files (2 failed)**.
 - Added an **`open_in_browser`** tool. The model can put a page in front of the user, shown as an **Opened in Browser** card with an **Open** button and a link menu. A page on this computer opens at once; any other site waits for the user to press **Open**.
 
-### Git approvals
+### Approvals and work modes
 
 - Inline approvals keep **More options** available instead of hiding it when the immediate request only exposes Allow once.
 - Added **Allow all temporarily** for non-destructive remote Git/GitHub operations in the current conversation.
 - Temporary Git trust stays in renderer memory, is never persisted as an Always allow grant, is not offered to temporary chats and never covers destructive Git operations.
+- Cowork's work-mode menu includes **Bypass permissions** for the current session. It resets to **Ask before changes** when Flint restarts; folder boundaries remain enforced.
+- **Settings > Permissions** offers Ask for permission, automatic approval of safe calls with prompts for dangerous calls, and Bypass permissions until Flint closes.
+- Recognized single-process termination calls can be allowed once, for the current conversation or for future similar calls. A saved rule covers other process IDs but keeps `Stop-Process -Id` separate from `Stop-Process -Id -Force`.
 
 ### Privacy and security
 
@@ -193,16 +196,16 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
   - `host_query` answers one named question about this computer: processes, services, listening ports and what holds them, disks, system details, installed programs, one registry key (credential values hidden), crash reports, scheduled tasks, startup items, WSL distributions, GPU, network, Windows Update, battery, open windows, devices with driver problems, disk health, the firewall, environment variable names or printers.
   - `local_http` sends a GET or HEAD to a server on this computer, to check that a dev server answers. It only reaches localhost and does not follow redirects.
   - `docker` runs `ps`, `images`, `logs`, `top`, `port`, one `stats` sample, `version`, `info` and the `compose` equivalents. Anything that starts, stops, removes, builds or runs is refused and handed to you instead.
-- Two more tools change things on this computer, so each call asks you first, naming the exact target, and no mode or grant answers for you:
+- Tools that can change things on this computer name the exact target in their approval request. Approval behavior follows the selected mode and any matching scoped grant:
   - `host_action` ends one process (by its number, never by name) or starts, stops or restarts one Windows service. System-critical processes and services, and Flint itself, are refused. A service that needs an administrator fails with Windows' own message.
   - `host_build` runs `gradle`, `gradlew`, `mvn`, `mvnw` or `dotnet` in the project folder, outside the shell sandbox that cannot run them (no profile-installed Java, no `~/.gradle`, no loopback for the Gradle daemon). It shows the exact command, runs only in a folder the session may write to, stops at a time limit and returns the head and tail of the log with the exit code. It also runs `go`, `cargo`, `npm`, `pnpm`, `yarn`, `make`, `cmake`, `uv` and `bun`.
-  - `clipboard` reads the text on your clipboard or replaces it, and asks each time which of the two it is.
+  - `clipboard` reads the current clipboard content or replaces it. Read grants can cover later reads; writes continue to ask.
   - `open_path` opens a project file or folder on your screen, or shows it in Explorer. Programs, scripts and installers are not opened, only shown. The path must be inside the project folder, worktree or session workspace.
   - `host_powershell` runs a PowerShell script as you, outside the shell sandbox, for what the other host tools do not cover. The question shows the whole script, and it runs without a profile or prompts, in a folder the session may write to, with a time limit (120 seconds by default, 900 at most).
   - `host_package` looks at the programs installed through winget without asking (list, search, show, outdated) and asks before each install, upgrade or uninstall, naming the exact package. There is no upgrade-everything.
   - `host_wsl` runs a command inside a WSL distribution and `host_ssh` runs one on another machine over your own SSH keys. Both show the whole command and ask each time. SSH never prompts and never trusts a new host by itself.
   - `notify_user` shows a desktop notification when something long finishes. It needs no approval and is limited to one every 10 seconds and 30 an hour.
-- The command line and background jobs already ask before these tools run; the question now names what will happen (the command, the process, the folder) and no longer offers "always". Text from Windows tools now keeps its accents and non-Latin letters.
+- Approval requests for command-line and background tools name what will happen (the command, the process, the folder). Only recognized actions offer a scoped standing grant; arbitrary scripts continue to ask. Text from Windows tools keeps its accents and non-Latin letters.
 
 ### Inference and repository targeting
 
