@@ -6,13 +6,24 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 vi.mock('@/hooks/useServiceHub', () => ({ getServiceHub: () => ({}) }))
 
-import { approvalSourceFor, useToolApprovalRequests } from '../useToolApprovalRequests'
+import {
+  approvalSourceFor,
+  useToolApprovalRequests,
+} from '../useToolApprovalRequests'
 import { useToolApproval } from '../useToolApproval'
 
 describe('approvalSourceFor', () => {
   beforeEach(() => {
-    useToolApprovalRequests.setState({ pending: {}, queued: {}, answeredByPrompt: {} })
-    useToolApproval.setState({ allowAllMCPPermissions: false })
+    useToolApprovalRequests.setState({
+      pending: {},
+      queued: {},
+      answeredByPrompt: {},
+      bypassedCalls: {},
+    })
+    useToolApproval.setState({
+      allowAllMCPPermissions: false,
+      permissionMode: 'ask',
+    })
   })
 
   it('is "prompted" for a call the user allowed in the prompt', async () => {
@@ -28,12 +39,27 @@ describe('approvalSourceFor', () => {
     expect(approvalSourceFor('never-asked')).toBe('auto')
   })
 
+  it('records bypass separately from a user answer', async () => {
+    useToolApproval.setState({ permissionMode: 'bypass' })
+    await expect(
+      useToolApprovalRequests
+        .getState()
+        .requestApproval('c3', 'host_powershell', 's1', undefined, {
+          alwaysAsk: true,
+          input: { script: 'Get-Date' },
+        })
+    ).resolves.toBe(true)
+    expect(approvalSourceFor('c3')).toBe('bypass')
+  })
+
   it('does not mark a denied call as prompted-allowed', async () => {
     const asked = useToolApprovalRequests
       .getState()
       .requestApproval('c2', 'write', 's1', undefined, { preview: 'diff' })
     useToolApprovalRequests.getState().resolveApproval('c2', 'deny')
     expect(await asked).toBe(false)
-    expect(useToolApprovalRequests.getState().answeredByPrompt.c2).toBeUndefined()
+    expect(
+      useToolApprovalRequests.getState().answeredByPrompt.c2
+    ).toBeUndefined()
   })
 })

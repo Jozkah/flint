@@ -48,7 +48,9 @@ export type InvalidatedApproval = {
 }
 
 /** Persisted store version. Bump together with {@link migrateToolApproval}. */
-export const TOOL_APPROVAL_STORE_VERSION = 1
+export const TOOL_APPROVAL_STORE_VERSION = 2
+
+export type PermissionMode = 'ask' | 'auto-approve' | 'bypass'
 
 export type PersistedToolApproval = {
   approvedTools: Record<string, string[]>
@@ -57,6 +59,7 @@ export type PersistedToolApproval = {
   approvedToolsGlobal: string[]
   invalidatedServers: InvalidatedApproval[]
   allowAllMCPPermissions: boolean
+  permissionMode: PermissionMode
 }
 
 type ToolApprovalState = PersistedToolApproval & {
@@ -135,6 +138,7 @@ type ToolApprovalState = PersistedToolApproval & {
   setAllowAllMCPPermissions: (allow: boolean) => void
   /** Turn off "allow every MCP tool without asking". */
   revokeAllowAllMCPPermissions: () => void
+  setPermissionMode: (mode: PermissionMode) => void
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -222,6 +226,11 @@ export function migrateToolApproval(
     approvedToolsGlobal: stringList(source.approvedToolsGlobal),
     invalidatedServers,
     allowAllMCPPermissions: source.allowAllMCPPermissions === true,
+    permissionMode:
+      source.permissionMode === 'auto-approve' ||
+      source.permissionMode === 'bypass'
+        ? source.permissionMode
+        : 'ask',
   }
 }
 
@@ -239,6 +248,7 @@ export const useToolApproval = create<ToolApprovalState>()(
       approvedToolsGlobal: [],
       invalidatedServers: [],
       allowAllMCPPermissions: false,
+      permissionMode: 'ask',
 
       approveToolForThread: (threadId: string, toolName: string) => {
         set((state) => ({
@@ -252,7 +262,12 @@ export const useToolApproval = create<ToolApprovalState>()(
         }))
       },
 
-      approveMcpToolForThread: (threadId, serverName, toolName, fingerprint) => {
+      approveMcpToolForThread: (
+        threadId,
+        serverName,
+        toolName,
+        fingerprint
+      ) => {
         set((state) => {
           const current = state.approvedMcpTools[threadId] ?? []
           const others = current.filter(
@@ -499,6 +514,7 @@ export const useToolApproval = create<ToolApprovalState>()(
       revokeAllowAllMCPPermissions: () => {
         set({ allowAllMCPPermissions: false })
       },
+      setPermissionMode: (mode) => set({ permissionMode: mode }),
     }),
     {
       name: localStorageKey.toolApproval,
@@ -514,6 +530,9 @@ export const useToolApproval = create<ToolApprovalState>()(
         approvedToolsGlobal: state.approvedToolsGlobal,
         invalidatedServers: state.invalidatedServers,
         allowAllMCPPermissions: state.allowAllMCPPermissions,
+        // Full bypass is an explicit choice for this app session only.
+        permissionMode:
+          state.permissionMode === 'bypass' ? 'ask' : state.permissionMode,
       }),
     }
   )

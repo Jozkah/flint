@@ -186,7 +186,15 @@
     "autoApproveLimit": "Pause long unattended runs",
     "autoApproveLimitLabel": "Check in after this many calls in a row",
     "autoApproveLimitDesc": "When tool calls run without asking, Flint stops and asks you after {{count}} in a row. 0 turns the pause off (maximum {{max}}).",
-    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in."
+    "autoApproveLimitOff": "Off: tool calls that run without asking never pause for a check-in.",
+    "permissionMode": "Tool permission mode",
+    "permissionModeDesc": "Applies to built-in and connected tools. Sandbox and access boundaries still apply.",
+    "approvalBehavior": "Approval behavior",
+    "modeAsk": "Ask for permission",
+    "modeAuto": "Auto approve safe calls; ask for dangerous calls",
+    "modeBypass": "Bypass permissions until Flint closes",
+    "modeDetails": "Auto approve asks for destructive commands, host actions, remote changes, and other sensitive calls. Bypass skips those approval prompts too.",
+    "bypassConfirm": "Bypass permissions approves every tool call without asking, including destructive commands and actions on your computer. Enable until Flint closes?"
   },
   "badge": {
     "reachesRemote": "Reaches {{target}}",
