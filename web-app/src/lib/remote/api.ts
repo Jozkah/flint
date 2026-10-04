@@ -37,6 +37,11 @@ export type RemoteStatus = {
   detected: { tailscale: string | null; lan: string | null }
   pairedDevices: number
   connectedDevices: number
+  /** Whether this install has the phone app's files; false means phones get
+   * a placeholder page. Absent from an older backend. */
+  phoneApp?: boolean
+  /** Where they were looked for, when missing. */
+  phoneAppPaths?: string[]
 }
 
 export type RemoteDevice = {

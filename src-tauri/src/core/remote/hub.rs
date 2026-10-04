@@ -193,6 +193,8 @@ pub struct RemoteHub {
     revoked: broadcast::Sender<String>,
     frontend: Arc<dyn Frontend>,
     pub static_dir: Option<PathBuf>,
+    /// Other folders the phone app may sit in, tried after `static_dir`.
+    static_dirs: Vec<PathBuf>,
 }
 
 impl RemoteHub {
@@ -226,7 +228,36 @@ impl RemoteHub {
             revoked: broadcast::channel(16).0,
             frontend,
             static_dir,
+            static_dirs: Vec::new(),
         }
+    }
+
+    /// Every folder the phone app may sit in, in order of preference.
+    pub fn with_static_dirs(mut self, dirs: Vec<PathBuf>) -> Self {
+        self.static_dirs = dirs;
+        self
+    }
+
+    /// The folder holding the phone app right now, if any.
+    ///
+    /// Looked up on every request, not decided once at start: an update
+    /// replaces these files while the app is closing or starting, and a
+    /// folder that was empty for that moment must not stay "missing" until
+    /// the next restart.
+    pub fn phone_app_root(&self) -> Option<&PathBuf> {
+        self.static_dir
+            .iter()
+            .chain(self.static_dirs.iter())
+            .find(|d| d.join("index.html").is_file())
+    }
+
+    /// Where the phone app was looked for, for the log and the status view.
+    pub fn phone_app_candidates(&self) -> Vec<PathBuf> {
+        self.static_dir
+            .iter()
+            .chain(self.static_dirs.iter())
+            .cloned()
+            .collect()
     }
 
     pub fn config(&self) -> RemoteConfig {

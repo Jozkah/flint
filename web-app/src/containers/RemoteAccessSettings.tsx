@@ -217,6 +217,14 @@ export function RemoteAccessSettings({
             }
           />
         )}
+        {status.phoneApp === false && (
+          <p className="px-4 pb-2 text-xs text-destructive" data-testid="remote-no-phone-app">
+            {t('remote:noPhoneApp')}
+            {status.phoneAppPaths?.[0] && (
+              <code className="mt-1 block break-all font-mono text-[11px]">{status.phoneAppPaths[0]}</code>
+            )}
+          </p>
+        )}
         {status.error && (
           <p className="px-4 pb-2 text-xs text-destructive" data-testid="remote-error">
             {t('remote:startError', { error: status.error })}

@@ -93,6 +93,11 @@ pub struct RemoteStatus {
     pub detected: Detected,
     pub paired_devices: usize,
     pub connected_devices: usize,
+    /// Whether this install has the phone app's files. When false, phones are
+    /// shown a placeholder page.
+    pub phone_app: bool,
+    /// Where they were looked for, when missing.
+    pub phone_app_paths: Vec<String>,
 }
 
 #[derive(Default)]
@@ -108,16 +113,21 @@ pub struct RemoteState {
     rt: tokio::sync::Mutex<Runtime_>,
 }
 
-/// Where the phone app (web-app `build:mobile`) sits among the bundled
-/// resources. The bundle config lists the folder `resources/mobile/`, which
-/// keeps that path under the resource dir; a flat `mobile/` is accepted too.
-pub(crate) fn phone_app_dir(resources: &std::path::Path) -> PathBuf {
-    let nested = resources.join("resources").join("mobile");
-    if nested.join("index.html").is_file() {
-        nested
-    } else {
-        resources.join("mobile")
+/// Every folder the phone app (web-app `build:mobile`) may sit in under
+/// `bases` (the resource dir and the folder of the running program). The
+/// bundle config lists the folder `resources/mobile/`, which keeps that path
+/// under the resource dir; a flat `mobile/` is accepted too. Which one holds
+/// it is decided when a phone asks, not here.
+pub(crate) fn phone_app_dirs(bases: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = Vec::new();
+    for base in bases {
+        for dir in [base.join("resources").join("mobile"), base.join("mobile")] {
+            if !out.contains(&dir) {
+                out.push(dir);
+            }
+        }
     }
+    out
 }
 
 fn remote_dir(data: &std::path::Path) -> PathBuf {
@@ -130,13 +140,38 @@ pub fn init<R: Runtime>(app: &AppHandle<R>) {
     let dir = remote_dir(&get_jan_data_folder_path(app.clone()));
     let config = RemoteConfig::load(&dir.join("config.json"));
     let devices = DeviceStore::load(dir.join("devices.json"));
-    let static_dir = app.path().resource_dir().ok().map(|d| phone_app_dir(&d));
-    let hub = Arc::new(RemoteHub::new(
-        config.clone(),
-        devices,
-        Arc::new(TauriFrontend(app.clone())),
-        static_dir,
-    ));
+    // The resource dir, and the program's own folder in case that lookup
+    // fails or points elsewhere.
+    let bases: Vec<PathBuf> = app
+        .path()
+        .resource_dir()
+        .ok()
+        .into_iter()
+        .chain(
+            std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(PathBuf::from)),
+        )
+        .collect();
+    let hub = Arc::new(
+        RemoteHub::new(
+            config.clone(),
+            devices,
+            Arc::new(TauriFrontend(app.clone())),
+            None,
+        )
+        .with_static_dirs(phone_app_dirs(&bases)),
+    );
+    if hub.phone_app_root().is_none() {
+        log::warn!(
+            "remote: the phone app's files were not found; phones get a placeholder page. Looked in: {}",
+            hub.phone_app_candidates()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+    }
     hub.set_upload_dir(get_jan_data_folder_path(app.clone()).join("uploads").join("remote"));
     match super::push::VapidKey::load_or_create(&dir.join("vapid.json")) {
         Ok(k) => hub.set_vapid(k),
@@ -265,6 +300,17 @@ async fn status_of(state: &RemoteState) -> RemoteStatus {
         detected: Detected {
             tailscale: ts.map(|i| i.to_string()),
             lan: lan.map(|i| i.to_string()),
+        },
+        phone_app: state.hub.phone_app_root().is_some(),
+        phone_app_paths: if state.hub.phone_app_root().is_some() {
+            Vec::new()
+        } else {
+            state
+                .hub
+                .phone_app_candidates()
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect()
         },
         paired_devices: state.hub.list_devices().len(),
         connected_devices: state.hub.connected_count(),
