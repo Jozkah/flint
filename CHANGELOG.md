@@ -342,6 +342,28 @@ These are the significant additions merged after the previous 0.9.0 changelog pa
 - Clicks and typing ask for approval in Chat and Cowork, a control that looks like submit or delete asks every time, and a run has an action limit. Unattended runs only reach sites with a saved always-allow rule.
 - The browser tools return a clear message in the command line and in background jobs, where there is no pane, and a hidden or minimized window gets an explanation instead of a hang.
 - Toasts move clear of the Web preview pane, and the pane never covers the approvals chip.
+- The browser is now interactive, with a live agent-browser window, and its approval prompt says what the tool is about to do.
+
+### Subagent delegation
+- Chat, Rooms and Cowork can hand work to subagents. **Settings > Subagents** picks the assistant, work profile and model they use, and the Tasks panel shows each one with its transcript, status and cost.
+- A background subagent can ask its parent a question, tell the parent when it finishes, and be resumed by id with its earlier context.
+- Subagents can run in the background with `await_task`, `task_status` and `cancel_task`, and a Room's subagents are bounded by a token limit.
+
+### Messaging between sessions
+- Sessions in any project can message each other by title, with an opt-out. A message can ask a question and wait for the answer, shown as an **Asked** card.
+- `list_sessions` reports when a session is waiting for approval, and a run's final answer is sent back as the reply when it handled a message.
+
+### Visual widgets
+- Chat, Cowork and Rooms can draw inline charts and widgets in a sandboxed frame, with a **Visual widgets** setting. A frozen or self-navigating widget is replaced by a Re-run placeholder.
+
+### Live MCP tools
+- An MCP server turned on mid-chat reaches the next request in Chat and Cowork, with approval behavior unchanged. A failed server listing is retried.
+
+### Phone and context
+- The phone can answer Cowork questions and every approval, see the computer's other blocking prompts and a stopped run, show the full transcript, regenerate or edit a message, and rename a Cowork session.
+- The context ring is always shown, scales to the model's window and remembers its figures per chat. Generation speed now counts reasoning and tool-argument output.
+- Chats and Cowork can run your Claude Code SessionStart and UserPromptSubmit hooks after an opt-in, and Claude Code imports stay linked to `~/.claude`.
+- Title and summary agents fall back through your model chain, and a refused write points to `request_access` write mode.
 
 ## Core Flint capabilities
 
