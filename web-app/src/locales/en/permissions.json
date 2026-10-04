@@ -24,6 +24,7 @@
     "searchWeb": "Flint wants to search the web",
     "useExternalTool": "Flint wants to use {{tool}} from {{server}}",
     "readTarget": "Flint wants to read {{target}}",
+    "browserAgent": "Flint wants to use its browser: {{what}}",
     "browserClick": "Flint wants to click {{control}} on {{page}}",
     "browserType": "Flint wants to type \"{{text}}\" into {{control}} on {{page}}",
     "browserPress": "Flint wants to press {{keyName}} on {{page}}",

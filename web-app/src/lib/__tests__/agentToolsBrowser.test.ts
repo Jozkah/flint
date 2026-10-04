@@ -60,8 +60,10 @@ describe('browser tool results and run-end wiring', () => {
     expect(r.content).toContain('Screenshot of http://127.0.0.1:1/')
     expect(r.content).toContain(SCREENSHOT_RESULT_NOTE)
     expect(getToolScreenshot('call-9')).toBe(shot)
-    // The stored result is text: no picture inside it.
-    expect(JSON.stringify(r)).not.toContain('base64')
+    // The stored text carries no picture; the picture travels in `images`,
+    // which the tool loop hands only to a model that can see.
+    expect(r.content).not.toContain('base64')
+    expect(r.images).toHaveLength(1)
   })
 
   it('does not touch the result of any other tool, even one that returns images', async () => {
