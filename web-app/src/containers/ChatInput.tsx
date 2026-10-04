@@ -871,6 +871,13 @@ const ChatInput = memo(function ChatInput({
         }
       : undefined)
 
+  // The counter's "Set a price" link: the model's provider settings.
+  const openPriceSettings = (providerName: string) =>
+    void router.navigate({
+      to: route.settings.providers,
+      params: { providerName },
+    })
+
   // Always there, so its slot never shifts the controls beside it; with
   // nothing counted yet it is an empty ring.
   const tokenCounterVisible = !hideTokenCounter
@@ -3785,6 +3792,7 @@ const ChatInput = memo(function ChatInput({
                     source={tokenSource}
                     compact={true}
                     onCompact={compactFromCounter}
+                    onSetPrice={openPriceSettings}
                   />
                 </div>
               )}
@@ -3980,6 +3988,7 @@ const ChatInput = memo(function ChatInput({
             messages={threadMessages || []}
             source={tokenSource}
             onCompact={compactFromCounter}
+            onSetPrice={openPriceSettings}
           />
         </div>
       )}

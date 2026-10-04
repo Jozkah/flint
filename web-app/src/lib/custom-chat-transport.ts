@@ -3219,7 +3219,11 @@ export class CustomChatTransport implements ChatTransport<UIMessage> {
                 pricedModel ?? (modelId ? { id: modelId } : undefined)
               ),
               usage.inputTokens,
-              outputTokens
+              outputTokens,
+              {
+                cachedInputTokens: usage.cachedInputTokens,
+                cacheWriteTokens: usage.cacheWriteTokens,
+              }
             ),
           })
 
