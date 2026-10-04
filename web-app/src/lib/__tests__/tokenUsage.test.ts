@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import type { LanguageModelUsage } from 'ai'
 import {
+  cacheReusePercent,
+  summarizeUsage,
   combineTokenUsage,
   createUsageCollector,
   describeTokenUsage,
@@ -251,7 +253,7 @@ describe('normalizeLanguageModelUsage', () => {
 })
 
 describe('combineTokenUsage', () => {
-  it('adds two separate calls and keeps cache counts only when both reported', () => {
+  it('adds two separate calls; the cached share covers the calls that reported', () => {
     const both = combineTokenUsage(
       finalizeTokenUsage({ inputTokens: 100, outputTokens: 5, cachedInputTokens: 60 }),
       finalizeTokenUsage({ inputTokens: 200, outputTokens: 7, cachedInputTokens: 150 })
@@ -268,7 +270,65 @@ describe('combineTokenUsage', () => {
       finalizeTokenUsage({ inputTokens: 200, outputTokens: 7 })
     )
     expect(partial.inputTokens).toBe(300)
-    expect(partial.cachedInputTokens).toBeUndefined()
+    // The silent call neither adds a zero nor dilutes the share.
+    expect(partial.cachedInputTokens).toBe(60)
+    expect(partial.cacheReportedInputTokens).toBe(100)
+    expect(partial.uncachedInputTokens).toBe(40)
+    expect(cacheReusePercent(partial)).toBe(60)
+  })
+
+  it('totals are input plus output even when a provider total disagreed', () => {
+    const sum = combineTokenUsage(
+      finalizeTokenUsage({ inputTokens: 100, outputTokens: 5, totalTokens: 999 }),
+      finalizeTokenUsage({ inputTokens: 200, outputTokens: 7, totalTokens: 1 })
+    )
+    expect(sum.totalTokens).toBe(312)
+  })
+
+  it('survives a long mixed session: cached share is over reporting requests only', () => {
+    const calls = Array.from({ length: 484 }, (_, i) =>
+      i % 5 === 0
+        ? finalizeTokenUsage({ inputTokens: 1000, outputTokens: 10, requests: 1 })
+        : finalizeTokenUsage({
+            inputTokens: 2000,
+            outputTokens: 10,
+            cachedInputTokens: 1800,
+            requests: 1,
+            cacheReportedRequests: 1,
+            cacheHitRequests: 1,
+          })
+    )
+    const session = summarizeUsage(calls)!
+    expect(session.requests).toBe(484)
+    expect(session.cacheReportedRequests).toBe(387)
+    expect(cacheReusePercent(session)).toBeCloseTo(90, 5)
+    expect(session.cachedInputTokens! + session.uncachedInputTokens!).toBe(387 * 2000)
+    expect(session.totalTokens).toBe(session.inputTokens! + session.outputTokens!)
+  })
+
+  it('reads and writes the reporting base through storage', () => {
+    const partial = combineTokenUsage(
+      finalizeTokenUsage({ inputTokens: 100, cachedInputTokens: 60 }),
+      finalizeTokenUsage({ inputTokens: 200 })
+    )
+    const back = readTokenUsage(toCoworkUsage(partial))!
+    expect(back.cacheReportedInputTokens).toBe(100)
+    expect(cacheReusePercent(back)).toBe(60)
+  })
+
+  it('no request reporting leaves the share unknown', () => {
+    const none = combineTokenUsage(
+      finalizeTokenUsage({ inputTokens: 100 }),
+      finalizeTokenUsage({ inputTokens: 200 })
+    )
+    expect(none.cachedInputTokens).toBeUndefined()
+    expect(cacheReusePercent(none)).toBeUndefined()
+  })
+
+  it('cached plus new input equals the input of a single reply', () => {
+    const u = finalizeTokenUsage({ inputTokens: 97856, cachedInputTokens: 94000, outputTokens: 1184 })
+    expect(u.cachedInputTokens! + u.uncachedInputTokens!).toBe(u.inputTokens)
+    expect(u.totalTokens).toBe(99040)
   })
 })
 

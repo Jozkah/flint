@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { cn, formatTokenCount } from '@/lib/utils'
 import type { ContextSegment } from '@/lib/contextBreakdown'
 import { contextUsage } from '@/lib/contextUsage'
+import { InfoTip } from '@/components/TokenUsageSummary'
 
 /** How long ago, in words: "2 hours ago". Nothing under a minute. */
 function ago(ms: number): string | null {
@@ -231,11 +232,12 @@ export function ContextWindowCard({
         </p>
       )}
 
-      <p
-        className="px-4 pb-4 pt-3 text-[11px] leading-snug text-muted-foreground"
-        title="Estimated from what the last request carried, at about 4 characters per token. Send a message to refresh."
-      >
-        Estimated
+      <p className="flex items-center gap-1 px-4 pb-4 pt-3 text-[11px] leading-snug text-muted-foreground">
+        <span>Estimated</span>
+        <InfoTip
+          testId="context-estimated-note"
+          note="The window figures are counted by Flint, at about 4 characters per token, over what the last request carried. The reply numbers below come from the provider. Send a message to refresh."
+        />
         {age && <span data-testid="context-age">{` · updated ${age}`}</span>}
       </p>
     </div>

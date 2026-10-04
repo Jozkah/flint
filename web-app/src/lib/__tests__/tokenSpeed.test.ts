@@ -100,7 +100,7 @@ describe('speedStats', () => {
   it('is empty with no samples, and one sample is both latest and average', () => {
     expect(speedStats([])).toEqual({})
     const one = speedStats([{ tokenSpeed: 40, tokenCount: 200, durationMs: 5000, source: 'measured' }])
-    expect(one).toEqual({ last: 40, average: 40, source: 'measured' })
+    expect(one).toEqual({ last: 40, average: 40, samples: 1, source: 'measured' })
   })
 
   it('averages every token over every second, not the speeds', () => {
@@ -116,9 +116,57 @@ describe('speedStats', () => {
   it('leaves out replies too short or too quick to time', () => {
     expect(
       speedStats([
-        { tokenSpeed: 900, tokenCount: 3, durationMs: 4 },
-        { tokenSpeed: 30, tokenCount: 60, durationMs: 2000 },
+        { tokenSpeed: 900, tokenCount: 3, durationMs: 4, source: 'server' },
+        { tokenSpeed: 30, tokenCount: 60, durationMs: 2000, source: 'measured' },
       ])
-    ).toMatchObject({ last: 30, average: 30 })
+    ).toMatchObject({ last: 30, average: 30, samples: 1 })
+  })
+
+  it('does not average in replies saved before the speed origin was recorded', () => {
+    // The old clock could read 880 tok/s for a reply that thought first.
+    const stats = speedStats([
+      { tokenSpeed: 880, tokenCount: 5000, durationMs: 5700 },
+      { tokenSpeed: 2400, tokenCount: 900, durationMs: 400 },
+      { tokenSpeed: 63, tokenCount: 400, durationMs: 6300, source: 'measured' },
+    ])
+    expect(stats.average).toBeCloseTo(63, 5)
+    expect(stats.samples).toBe(1)
+    // Only legacy figures: the latest is still shown, no average is made up.
+    const legacy = speedStats([{ tokenSpeed: 880, tokenCount: 5000, durationMs: 5700 }])
+    expect(legacy.last).toBe(880)
+    expect(legacy.average).toBeUndefined()
+  })
+
+  it('ignores NaN, zero and infinite inputs', () => {
+    const stats = speedStats([
+      { tokenSpeed: Number.NaN, tokenCount: 100, durationMs: 1000, source: 'server' },
+      { tokenSpeed: Infinity, tokenCount: 100, durationMs: 1000, source: 'server' },
+      { tokenSpeed: 50, tokenCount: Number.NaN, durationMs: 1000, source: 'server' },
+      { tokenSpeed: 0, tokenCount: 100, durationMs: 1000, source: 'server' },
+      { tokenSpeed: 25, tokenCount: 100, durationMs: 4000, source: 'measured' },
+    ])
+    expect(stats).toMatchObject({ last: 25, average: 25, samples: 1 })
+  })
+
+  it('always lies between the slowest and the fastest reply (property)', () => {
+    let seed = 12345
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) % 4294967296
+      return seed / 4294967296
+    }
+    for (let run = 0; run < 300; run++) {
+      const n = 1 + Math.floor(rnd() * 40)
+      const samples = Array.from({ length: n }, () => ({
+        tokenSpeed: 1 + rnd() * 400,
+        tokenCount: 8 + Math.floor(rnd() * 20000),
+        durationMs: 60 + rnd() * 100000,
+        source: (['server', 'measured', 'estimated'] as const)[Math.floor(rnd() * 3)],
+      }))
+      const { average, samples: counted } = speedStats(samples)
+      const speeds = samples.map((s) => s.tokenSpeed)
+      expect(counted).toBe(n)
+      expect(average!).toBeGreaterThanOrEqual(Math.min(...speeds) - 1e-9)
+      expect(average!).toBeLessThanOrEqual(Math.max(...speeds) + 1e-9)
+    }
   })
 })

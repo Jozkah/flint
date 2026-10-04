@@ -78,6 +78,14 @@ export type TokenUsage = {
   requests?: number
   cacheReportedRequests?: number
   cacheHitRequests?: number
+  /**
+   * The input tokens of the requests that reported a cache count: the base
+   * `cachedInputTokens` is a share of. Equal to `inputTokens` for one request;
+   * smaller for several when some of them said nothing about their cache, so
+   * a session's cached share is never diluted by requests that did not report.
+   * Absent when it equals `inputTokens`.
+   */
+  cacheReportedInputTokens?: number
 }
 
 type Json = Record<string, unknown>
@@ -107,6 +115,7 @@ export function finalizeTokenUsage(parts: {
   requests?: unknown
   cacheReportedRequests?: unknown
   cacheHitRequests?: unknown
+  cacheReportedInputTokens?: unknown
 }): TokenUsage {
   const input = tokenCount(parts.inputTokens)
   const output = tokenCount(parts.outputTokens)
@@ -116,13 +125,19 @@ export function finalizeTokenUsage(parts: {
     ...(parts.reported ?? {}),
   }
 
-  if (cached !== undefined && input !== undefined && cached > input) {
+  // What the cached count is a share of: the requests that reported it.
+  let base = input
+  const givenBase = tokenCount(parts.cacheReportedInputTokens)
+  if (givenBase !== undefined && cached !== undefined) {
+    base = input !== undefined ? Math.min(givenBase, input) : givenBase
+  }
+  if (cached !== undefined && base !== undefined && cached > base) {
     reported.cachedInputTokens ??= cached
-    cached = input
+    cached = base
   }
   const uncached =
-    input !== undefined && cached !== undefined
-      ? Math.max(input - cached, 0)
+    base !== undefined && cached !== undefined
+      ? Math.max(base - cached, 0)
       : undefined
   // What was written was processed fresh, so it cannot exceed the fresh part.
   const writeCeiling = uncached ?? input
@@ -154,6 +169,9 @@ export function finalizeTokenUsage(parts: {
   if (requests !== undefined) out.requests = requests
   if (reportedRequests !== undefined) out.cacheReportedRequests = reportedRequests
   if (hitRequests !== undefined) out.cacheHitRequests = hitRequests
+  if (cached !== undefined && base !== undefined && base !== input) {
+    out.cacheReportedInputTokens = base
+  }
   return out
 }
 
@@ -181,12 +199,15 @@ export function cacheStatus(usage: TokenUsage | undefined): CacheStatus {
   return 'not-reported'
 }
 
-/** Cached input as a share of input, 0-100, when both are known and input > 0. */
+/**
+ * Cached input as a share of the input of the requests that reported a cache
+ * count, 0-100. Undefined when no request did, or there was no input.
+ */
 export function cacheReusePercent(usage: TokenUsage | undefined): number | undefined {
-  const input = usage?.inputTokens
   const cached = usage?.cachedInputTokens
-  if (input === undefined || cached === undefined || input <= 0) return undefined
-  return (Math.min(cached, input) / input) * 100
+  const base = usage?.cacheReportedInputTokens ?? usage?.inputTokens
+  if (base === undefined || cached === undefined || base <= 0) return undefined
+  return (Math.min(cached, base) / base) * 100
 }
 
 /** Exact values for an accessible label or tooltip; absent ones say so. */
@@ -374,9 +395,6 @@ export function normalizeLanguageModelUsage(
 const sumKnown = (a?: number, b?: number): number | undefined =>
   a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0)
 
-const sumBoth = (a?: number, b?: number): number | undefined =>
-  a === undefined || b === undefined ? undefined : a + b
-
 /**
  * Two separate model calls, added together.
  *
@@ -388,12 +406,27 @@ const sumBoth = (a?: number, b?: number): number | undefined =>
  */
 export function combineTokenUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
   const reported = { ...(a.reported ?? {}), ...(b.reported ?? {}) }
+  const inputTokens = sumKnown(a.inputTokens, b.inputTokens)
+  const outputTokens = sumKnown(a.outputTokens, b.outputTokens)
+  const cachedInputTokens = sumKnown(a.cachedInputTokens, b.cachedInputTokens)
   return finalizeTokenUsage({
-    inputTokens: sumKnown(a.inputTokens, b.inputTokens),
-    outputTokens: sumKnown(a.outputTokens, b.outputTokens),
-    totalTokens: sumKnown(a.totalTokens, b.totalTokens),
-    cachedInputTokens: sumBoth(a.cachedInputTokens, b.cachedInputTokens),
-    cacheWriteTokens: sumBoth(a.cacheWriteTokens, b.cacheWriteTokens),
+    inputTokens,
+    outputTokens,
+    // Input plus output, so the sum can never disagree with its parts; a
+    // provider's own total only stands in when neither part is known.
+    totalTokens:
+      inputTokens === undefined && outputTokens === undefined
+        ? sumKnown(a.totalTokens, b.totalTokens)
+        : undefined,
+    // Over the requests that reported a cache count, with the input they
+    // carried kept beside it: a request that said nothing neither adds a zero
+    // nor hides the rest.
+    cachedInputTokens,
+    cacheReportedInputTokens:
+      cachedInputTokens === undefined
+        ? undefined
+        : sumKnown(cacheBaseOf(a), cacheBaseOf(b)),
+    cacheWriteTokens: sumKnown(a.cacheWriteTokens, b.cacheWriteTokens),
     cacheSource:
       a.cacheSource === b.cacheSource ? a.cacheSource : undefined,
     reported: Object.keys(reported).length > 0 ? reported : undefined,
@@ -404,6 +437,10 @@ export function combineTokenUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
     cacheHitRequests: sumKnown(hitRequestsOf(a), hitRequestsOf(b)),
   })
 }
+
+/** The input the cached count of one usage is a share of. */
+const cacheBaseOf = (u: TokenUsage): number | undefined =>
+  u.cachedInputTokens === undefined ? undefined : (u.cacheReportedInputTokens ?? u.inputTokens)
 
 /** Usage saved before request counts existed is one request. */
 const requestsOf = (u: TokenUsage): number | undefined =>
@@ -479,6 +516,8 @@ export function readTokenUsage(value: unknown): TokenUsage | undefined {
     requests: value.requests,
     cacheReportedRequests: value.cacheReportedRequests ?? value.cache_reported_requests,
     cacheHitRequests: value.cacheHitRequests ?? value.cache_hit_requests,
+    cacheReportedInputTokens:
+      value.cacheReportedInputTokens ?? value.cache_reported_input_tokens,
   })
 }
 
@@ -505,6 +544,9 @@ export function toCoworkUsage(usage: TokenUsage): CoworkUsage {
     out.cache_reported_requests = usage.cacheReportedRequests
   }
   if (usage.cacheHitRequests !== undefined) out.cache_hit_requests = usage.cacheHitRequests
+  if (usage.cacheReportedInputTokens !== undefined) {
+    out.cache_reported_input_tokens = usage.cacheReportedInputTokens
+  }
   return out
 }
 

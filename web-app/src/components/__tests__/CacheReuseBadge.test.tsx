@@ -47,7 +47,7 @@ describe('CacheReuseBadge', () => {
     const badge = screen.getByTestId('cache-status')
     expect(badge.dataset.cacheStatus).toBe('reused')
     expect(badge.getAttribute('aria-label')).toContain('Cache reused on 1 of 2 requests.')
-    expect(badge.getAttribute('aria-label')).toContain('Not every request reported')
+    expect(badge.getAttribute('aria-label')).toContain('Only 1 of 2 requests reported cache info')
   })
 })
 

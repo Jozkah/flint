@@ -51,9 +51,10 @@ export function CacheReuseBadge({
     several && hits !== undefined
       ? ` Cache reused on ${hits} of ${requests} requests.`
       : ''
+  const reportedRequests = usage?.cacheReportedRequests
   const partial =
-    status === 'reused' && usage?.cachedInputTokens === undefined
-      ? ' Not every request reported its cached count, so no cached total is shown.'
+    several && reportedRequests !== undefined && reportedRequests < requests
+      ? ` Only ${reportedRequests} of ${requests} requests reported cache info; the share is of their input.`
       : ''
   const detail = `${TEXT[status]}. ${exactUsageText(usage)}.${counts}${partial}`
 
